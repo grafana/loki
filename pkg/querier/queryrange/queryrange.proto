@@ -145,7 +145,7 @@ message IndexStatsResponse {
   ];
 }
 
-message LabelVolumeRequest {
+message VolumeRequest {
   repeated string match = 1;
   google.protobuf.Timestamp startTs = 2 [
     (gogoproto.stdtime) = true,
@@ -157,8 +157,8 @@ message LabelVolumeRequest {
   ];
 }
 
-message LabelVolumeResponse {
-  logproto.LabelVolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.LabelVolumeResponse"];
+message VolumeResponse {
+  logproto.VolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.VolumeResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"

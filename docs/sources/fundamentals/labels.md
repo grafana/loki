@@ -146,7 +146,7 @@ The two previous examples use statically defined labels with a single value; how
       __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{<relref "../clients/promtail/pipelines">}}) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{< relref "../clients/promtail/pipelines" >}}) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 
@@ -202,7 +202,7 @@ Now let's talk about Loki, where the index is typically an order of magnitude sm
 
 Loki will effectively keep your static costs as low as possible (index size and memory requirements as well as static log storage) and make the query performance something you can control at runtime with horizontal scaling.
 
-To see how this works, let's look back at our example of querying your access log data for a specific IP address. We don't want to use a label to store the IP address. Instead we use a [filter expression]({{<relref "../query/log_queries#line-filter-expression">}}) to query for it:
+To see how this works, let's look back at our example of querying your access log data for a specific IP address. We don't want to use a label to store the IP address. Instead we use a [filter expression]({{< relref "../query/log_queries#line-filter-expression" >}}) to query for it:
 
 ```
 {job="apache"} |= "11.11.11.11"

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -309,9 +311,42 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	})
 }
 
-func (i *TSDBIndex) LabelVolume(ctx context.Context, _ string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	volumes := make(map[string]map[string]uint64)
+// SeriesVolume returns the volumes of the series described by the passed
+// matchers by the names of the passed matchers. All non-requested labels are
+// aggregated into the requested series.
+//
+// ex: Imagine we have two labels: 'foo' and 'fizz' each with two values 'a'
+// and 'b'. Called with the matcher `{foo="a"}`, SeriesVolume returns the
+// aggregated size of the series `{foo="a"}`. If SeriesVolume with
+// `{foo=~".+", fizz=~".+"}, it returns the series volumes aggregated as follows:
+//
+// {foo="a", fizz="a"}
+// {foo="a", fizz="b"}
+// {foo="b", fizz="a"}
+// {foo="b", fizz="b"}
+func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.SeriesVolume")
+	defer sp.Finish()
 
+	var matchAll bool
+	labelsToMatch := make(map[string]struct{})
+	for _, m := range matchers {
+		if m.Name == "" {
+			matchAll = true
+			continue
+		}
+
+		if m.Name == TenantLabel {
+			continue
+		}
+
+		labelsToMatch[m.Name] = struct{}{}
+	}
+
+	seriesNames := make(map[uint64]string)
+	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+
+	volumes := make(map[string]uint64)
 	err := i.forPostings(ctx, shard, from, through, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		var filterer chunk.Filterer
@@ -335,12 +370,21 @@ func (i *TSDBIndex) LabelVolume(ctx context.Context, _ string, from, through mod
 			}
 
 			if stats.Entries > 0 {
-				for _, l := range []labels.Label(ls) {
-					if _, ok := volumes[l.Name]; !ok {
-						volumes[l.Name] = make(map[string]uint64)
+				seriesLabels = seriesLabels[:0]
+				for _, l := range ls {
+					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && matchAll || ok {
+						seriesLabels = append(seriesLabels, l)
 					}
-					volumes[l.Name][l.Value] += stats.KB << 10 // Return bytes
 				}
+
+				// If the labels are < 1k, this does not alloc
+				// https://github.com/prometheus/prometheus/pull/8025
+				hash := seriesLabels.Hash()
+				if _, ok := seriesNames[hash]; !ok {
+					seriesNames[hash] = seriesLabels.String()
+				}
+
+				volumes[seriesNames[hash]] += stats.KB << 10 // Return bytes
 			}
 		}
 		return p.Err()

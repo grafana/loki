@@ -7,7 +7,7 @@ description: Working with recording rules.
 
 Recording rules are evaluated by the `ruler` component. Each `ruler` acts as its own `querier`, in the sense that it
 executes queries against the store without using the `query-frontend` or `querier` components. It will respect all query
-[limits]({{< relref "../configuration/#limits_config" >}}) put in place for the `querier`.
+[limits]({{< relref "../configuration#limits_config" >}}) put in place for the `querier`.
 
 Loki's implementation of recording rules largely reuses Prometheus' code.
 
@@ -70,8 +70,8 @@ so a `Persistent Volume` should be utilised.
 ### Per-Tenant Limits
 
 Remote-write can be configured at a global level in the base configuration, and certain parameters tuned specifically on
-a per-tenant basis. Most of the configuration options [defined here]({{<relref "../configuration/#ruler">}})
-have [override options]({{<relref "../configuration/#limits_config">}}) (which can be also applied at runtime!).
+a per-tenant basis. Most of the configuration options [defined here]({{< relref "../configuration#ruler" >}})
+have [override options]({{< relref "../configuration#limits_config" >}}) (which can be also applied at runtime!).
 
 ### Tuning
 
@@ -147,5 +147,5 @@ the `loki_ruler_wal_corruptions_repair_failed_total` metric will be incremented.
 
 ### Found another failure mode?
 
-Please open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
+Open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
 

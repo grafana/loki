@@ -217,7 +217,7 @@ func TestIndexClient_Stats(t *testing.T) {
 	}
 }
 
-func TestIndexClient_LabelVolume(t *testing.T) {
+func TestIndexClient_SeriesVolume(t *testing.T) {
 	tempDir := t.TempDir()
 	tableRange := config.TableRange{
 		Start: 0,
@@ -276,17 +276,17 @@ func TestIndexClient_LabelVolume(t *testing.T) {
 	intervals := getIntervalEndpoints(config.ObjectStorageIndexRequiredPeriod, indexStartYesterday.Time(), through.Time(), true)
 
 	t.Run("it returns label volumes from the whole index, separated by ts of interval end", func(t *testing.T) {
-		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, through, 10, nil...)
+		vol, err := indexClient.SeriesVolume(context.Background(), "", indexStartYesterday, through, 10, nil...)
 		require.NoError(t, err)
 
 		require.Len(t, vol.Volumes, 5)
-		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 1024 * 200, Timestamp: intervals[0].UnixNano()})
-		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 1024 * 100, Timestamp: intervals[1].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.Volume{Name: "foo", Value: "bar", Volume: 1024 * 200, Timestamp: intervals[0].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.Volume{Name: "foo", Value: "bar", Volume: 1024 * 100, Timestamp: intervals[1].UnixNano()})
 
-		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "fizz", Value: "buzz", Volume: 1024 * 100, Timestamp: intervals[0].UnixNano()})
-		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "fizz", Value: "buzz", Volume: 1024 * 100, Timestamp: intervals[1].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.Volume{Name: "fizz", Value: "buzz", Volume: 1024 * 100, Timestamp: intervals[0].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.Volume{Name: "fizz", Value: "buzz", Volume: 1024 * 100, Timestamp: intervals[1].UnixNano()})
 
-		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "ping", Value: "pong", Volume: 1024 * 100, Timestamp: intervals[0].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.Volume{Name: "ping", Value: "pong", Volume: 1024 * 100, Timestamp: intervals[0].UnixNano()})
 
 		require.Equal(t, int32(10), vol.Limit)
 	})
@@ -296,7 +296,7 @@ func TestIndexClient_LabelVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Len(t, vol.Volumes, 1)
-		require.Contains(t, vol.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 1024 * 200, Timestamp: intervals[0].UnixNano()})
+		require.Contains(t, vol.Volumes, logproto.Volume{Name: "foo", Value: "bar", Volume: 1024 * 200, Timestamp: intervals[0].UnixNano()})
 	})
 }
 

@@ -13,7 +13,7 @@ import (
 	strings "strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -272,13 +272,13 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Through:  through,
 			Matchers: req.Query,
 		}, err
-	case LabelVolumeOp:
-		req, err := loghttp.ParseLabelVolumeQuery(r)
+	case SeriesVolumeOp:
+		req, err := loghttp.ParseSeriesVolumeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
-		return &logproto.LabelVolumeRequest{
+		return &logproto.VolumeRequest{
 			From:     from,
 			Through:  through,
 			Matchers: req.Query,
@@ -415,7 +415,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
-	case *logproto.LabelVolumeRequest:
+	case *logproto.VolumeRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
@@ -423,7 +423,7 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			"limit": []string{fmt.Sprintf("%d", request.Limit)},
 		}
 		u := &url.URL{
-			Path:     "/loki/api/v1/index/label_volume",
+			Path:     "/loki/api/v1/index/series_volume",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{
@@ -501,12 +501,12 @@ func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangeb
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
-	case *logproto.LabelVolumeRequest:
-		var resp logproto.LabelVolumeResponse
+	case *logproto.VolumeRequest:
+		var resp logproto.VolumeResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
-		return &LabelVolumeResponse{
+		return &VolumeResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
@@ -739,17 +739,17 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: &mergedIndexStats,
 			Headers:  headers,
 		}, nil
-	case *LabelVolumeResponse:
-		resp0 := responses[0].(*LabelVolumeResponse)
+	case *VolumeResponse:
+		resp0 := responses[0].(*VolumeResponse)
 		headers := make([]*definitions.PrometheusResponseHeader, len(resp0.Headers))
 		for i, header := range resp0.Headers {
 			h := header
 			headers[i] = &h
 		}
 
-		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
+		resps := make([]*logproto.VolumeResponse, 0, len(responses))
 		for _, r := range responses {
-			resps = append(resps, r.(*LabelVolumeResponse).Response)
+			resps = append(resps, r.(*VolumeResponse).Response)
 		}
 
 		promResponse := queryrangebase.PrometheusResponse{
@@ -767,36 +767,36 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	}
 }
 
-func MergeToPrometheusResponse(responses []*logproto.LabelVolumeResponse, limit int32) queryrangebase.PrometheusData {
-	mergedVolumes := labelvolume.MergeVolumes(responses...)
+func MergeToPrometheusResponse(responses []*logproto.VolumeResponse, limit int32) queryrangebase.PrometheusData {
+	mergedVolumes := seriesvolume.MergeVolumes(responses...)
 	return mapToPrometheusResponse(mergedVolumes, int(limit))
 }
 
-func mapToPrometheusResponse(mergedVolumes map[int64]map[string]map[string]uint64, limit int) queryrangebase.PrometheusData {
+func mapToPrometheusResponse(mergedVolumes map[int64]map[string]uint64, limit int) queryrangebase.PrometheusData {
 	samplesByStream := map[logproto.LabelAdapter]*logproto.LegacySample{}
 
 	// Aggregate samples into single sample with latest timestamp
-	for ts, vs := range mergedVolumes {
-		for name, v := range vs {
-			for value, volume := range v {
-				tsMs := ts / 1e6 //convert ns to ms
+	for ts, series := range mergedVolumes {
+		for name, v := range series {
+			tsMs := ts / 1e6 //convert ns to ms
 
-				streamKey := logproto.LabelAdapter{
-					Name:  name,
-					Value: value,
-				}
-				if sample, ok := samplesByStream[streamKey]; !ok {
-					samplesByStream[streamKey] = &logproto.LegacySample{
-						TimestampMs: tsMs,
-						Value:       float64(volume),
-					}
-				} else {
-					if sample.TimestampMs < tsMs {
-						sample.TimestampMs = tsMs
-					}
+      //TODO(trevorwhitney): convert name to label/value labelAdapter
+			streamKey := logproto.LabelAdapter{
+				Name:  name,
+				Value: "",
+			}
 
-					sample.Value += float64(volume)
+			if sample, ok := samplesByStream[streamKey]; !ok {
+				samplesByStream[streamKey] = &logproto.LegacySample{
+					TimestampMs: tsMs,
+					Value:       float64(v),
 				}
+			} else {
+				if sample.TimestampMs < tsMs {
+					sample.TimestampMs = tsMs
+				}
+
+				sample.Value += float64(v)
 			}
 		}
 	}

@@ -851,7 +851,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	}
 }
 
-func Test_labelvolume_splitByInterval_Do(t *testing.T) {
+func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	setup := func(next queryrangebase.Handler) queryrangebase.Handler {
 		l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
@@ -866,9 +866,9 @@ func Test_labelvolume_splitByInterval_Do(t *testing.T) {
 
 	t.Run("label volumes", func(t *testing.T) {
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-			return &LabelVolumeResponse{
-				Response: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
 						{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e9},
 						{Name: "bar", Value: "baz", Volume: 28, Timestamp: 1e9},
 					},
@@ -878,7 +878,7 @@ func Test_labelvolume_splitByInterval_Do(t *testing.T) {
 		})
 		split := setup(next)
 		through := model.TimeFromUnixNano(end.UnixNano())
-		req := &logproto.LabelVolumeRequest{
+		req := &logproto.VolumeRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  through,
 			Matchers: "{}",
@@ -903,9 +903,9 @@ func Test_labelvolume_splitByInterval_Do(t *testing.T) {
 
 	t.Run("label volumes with limits", func(t *testing.T) {
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-			return &LabelVolumeResponse{
-				Response: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
 						{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e9},
 						{Name: "bar", Value: "baz", Volume: 28, Timestamp: 1e9},
 						{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e12},
@@ -917,7 +917,7 @@ func Test_labelvolume_splitByInterval_Do(t *testing.T) {
 		})
 		split := setup(next)
 		through := model.TimeFromUnixNano(end.UnixNano())
-		req := &logproto.LabelVolumeRequest{
+		req := &logproto.VolumeRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  through,
 			Matchers: "{}",

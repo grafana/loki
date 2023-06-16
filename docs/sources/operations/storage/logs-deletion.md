@@ -11,11 +11,11 @@ Log entries that fall within a specified time window and match an optional line 
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
-The compactor component exposes REST [endpoints]({{<relref "../../reference/api/#compactor">}}) that process delete requests.
+The compactor component exposes REST [endpoints]({{< relref "../../reference/api#compactor" >}}) that process delete requests.
 Hitting the endpoint specifies the streams and the time window.
 The deletion of the log entries takes place after a configurable cancellation time period expires.
 
-Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor]({{<relref "retention#compactor">}}). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
+Log entry deletion relies on configuration of the custom logs retention workflow as defined for the [compactor]({{< relref "./retention#compactor" >}}). The compactor looks at unprocessed requests which are past their cancellation period to decide whether a chunk is to be deleted or not.
 
 ## Configuration
 

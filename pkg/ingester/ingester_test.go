@@ -469,10 +469,10 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	}, nil
 }
 
-func (s *mockStore) LabelVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	return &logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e9},
+func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return &logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{foo="bar"}`, Value: "", Volume: 38, Timestamp: 1e9},
 		},
 		Limit: limit,
 	}, nil
@@ -1081,7 +1081,7 @@ func TestStats(t *testing.T) {
 	}, resp)
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestSeriesVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -1092,20 +1092,52 @@ func TestLabelVolume(t *testing.T) {
 	i.instances["test"] = defaultInstance(t)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	volumes, err := i.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
-		From:     0,
-		Through:  1e3, // Through is in milliseconds
-		Matchers: "{}",
-		Limit:    5,
+
+	t.Run("matching a single label", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90, Timestamp: 1e9},
+			{Name: `{log_stream="worker"}`, Value: "", Volume: 70, Timestamp: 1e9},
+		}, volumes.Volumes)
+	})
+
+	t.Run("matching multiple labels, exact", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker", host="agent"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", log_stream="dispatcher", Timestamp: 1e9}`, Value: "", Volume: 90},
+			{Name: `{host="agent", log_stream="worker", Timestamp: 1e9}`, Value: "", Volume: 70},
+		}, volumes.Volumes)
 	})
 	require.NoError(t, err)
 
-	require.Len(t, volumes.Volumes, 5)
-	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "host", Value: "agent", Volume: 160, Timestamp: 1e9})
-	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "job", Value: "3", Volume: 160, Timestamp: 1e9})
-	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "log_stream", Value: "dispatcher", Volume: 90, Timestamp: 1e9})
-	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "log_stream", Value: "worker", Volume: 70, Timestamp: 1e9})
-	require.Contains(t, volumes.Volumes, logproto.LabelVolume{Name: "foo", Value: "bar", Volume: 38, Timestamp: 1e9})
+	t.Run("matching multiple labels, regex", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker", host=~".+"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", log_stream="dispatcher"}`, Value: "", Volume: 90, Timestamp: 1e9},
+			{Name: `{host="agent", log_stream="worker"}`, Value: "", Volume: 70, Timestamp: 1e9},
+		}, volumes.Volumes)
+	})
 }
 
 type ingesterClient struct {

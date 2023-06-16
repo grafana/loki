@@ -200,7 +200,7 @@ will always run faster than
 Line filter expressions are the fastest way to filter logs once the
 log stream selectors have been applied.
 
-Line filter expressions have support matching IP addresses. See [Matching IP addresses]({{<relref "../ip">}}) for details.
+Line filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
 
 
 ### Removing color codes
@@ -240,7 +240,7 @@ Using Duration, Number and Bytes will convert the label value prior to comparisi
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{<relref "../#pipeline-errors">}}) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{< relref "..#pipeline-errors" >}}) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
@@ -271,7 +271,7 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 > Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.
 
-Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{<relref "../ip">}}) for details.
+Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
 
 ### Distinct filter expression
 
@@ -291,7 +291,7 @@ The expression `{app="order"} | json | distinct id` will return the distinct occ
 ```
 ### Parser expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{<relref "../metric_queries">}}).
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{< relref "../metric_queries" >}}).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -311,7 +311,7 @@ If an extracted label key name already exists in the original log stream, the ex
 Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
 
 It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
-Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers]({{<relref "../query_examples#examples-that-use-multiple-parsers">}}).
+Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers]({{< relref "../query_examples#examples-that-use-multiple-parsers" >}}).
 
 #### JSON
 
@@ -582,7 +582,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions]({{<relref "../template_functions/">}}) to learn about available functions in the template format.
+See [template functions]({{< relref "../template_functions" >}}) to learn about available functions in the template format.
 
 ### Labels format expression
 

@@ -166,7 +166,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	labelVolumeTripperware, err := NewLabelVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -315,12 +315,12 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
 
 		return r.indexStats.RoundTrip(req)
-	case LabelVolumeOp:
-		volumeQuery, err := loghttp.ParseLabelVolumeQuery(req)
+	case SeriesVolumeOp:
+		volumeQuery, err := loghttp.ParseSeriesVolumeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		level.Info(logger).Log("msg", "executing query", "type", "label_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
+		level.Info(logger).Log("msg", "executing query", "type", "series_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
 
 		return r.labelVolume.RoundTrip(req)
 	default:
@@ -353,7 +353,7 @@ const (
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
 	IndexStatsOp   = "index_stats"
-	LabelVolumeOp  = "label_volume"
+	SeriesVolumeOp = "series_volume"
 )
 
 func getOperation(path string) string {
@@ -368,8 +368,8 @@ func getOperation(path string) string {
 		return InstantQueryOp
 	case path == "/loki/api/v1/index/stats":
 		return IndexStatsOp
-	case path == "/loki/api/v1/index/label_volume":
-		return LabelVolumeOp
+	case path == "/loki/api/v1/index/series_volume":
+		return SeriesVolumeOp
 	default:
 		return ""
 	}
@@ -743,7 +743,7 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
-func NewLabelVolumeTripperware(cfg Config,
+func NewSeriesVolumeTripperware(cfg Config,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,

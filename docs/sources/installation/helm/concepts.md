@@ -25,7 +25,7 @@ This chart includes dashboards for monitoring Loki. These require the scrape con
 
 ## Canary
 
-This chart installs the [canary]({{<relref "../../operations/loki-canary">}}) and its alerts by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `monitoring.lokiCanary.enabled=false`.
+This chart installs the [canary]({{< relref "../../operations/loki-canary" >}}) and its alerts by default. This is another tool to verify the Loki deployment is in a healthy state. It can be disabled with `monitoring.lokiCanary.enabled=false`.
 
 ## Gateway
 
