@@ -117,6 +117,11 @@ type stream struct {
 func (c *Client) pushLogLine(line string, timestamp time.Time, metadata labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
+	metadataJson, err := metadata.MarshalJSON()
+	if err != nil {
+		return err
+	}
+
 	s := stream{
 		Stream: map[string]string{
 			"job": "varlog",
@@ -125,7 +130,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, metadata labels.L
 			{
 				formatTS(timestamp),
 				line,
-				metadata.String(),
+				string(metadataJson),
 			},
 		},
 	}
