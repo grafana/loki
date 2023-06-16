@@ -245,9 +245,9 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 	require.Len(t, expectedQueries, 0)
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestSeriesVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()
-	indexQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+	indexQuerier.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{Volumes: []logproto.Volume{
 		{Name: "bar", Value: "baz", Volume: 38},
 	}}, nil)
 
@@ -255,10 +255,10 @@ func TestLabelVolume(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	vol, err := gateway.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{Matchers: "{}"})
+	vol, err := gateway.GetSeriesVolume(ctx, &logproto.VolumeRequest{Matchers: "{}"})
 	require.NoError(t, err)
 
-	require.Equal(t, &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+	require.Equal(t, &logproto.VolumeResponse{Volumes: []logproto.Volume{
 		{Name: "bar", Value: "baz", Volume: 38},
 	}}, vol)
 }
@@ -272,12 +272,12 @@ func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
 }
 
-func (i *indexQuerierMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *indexQuerierMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }

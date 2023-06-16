@@ -13,7 +13,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{ `{{< relref "./examples/" >}}` }}) document.
+Configuration examples can be found in the [Configuration Examples]({{ `{{< relref "./examples" >}}` }}) document.
 
 ## Printing Loki config at runtime
 

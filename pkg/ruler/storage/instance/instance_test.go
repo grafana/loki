@@ -12,9 +12,13 @@ import (
 	"testing"
 	"time"
 
+	"net/url"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	common_config "github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
 	"github.com/prometheus/prometheus/model/histogram"
@@ -201,6 +205,33 @@ func TestInstance(t *testing.T) {
 		require.NoError(t, err)
 	}
 	assert.Len(t, mockStorage.series, count)
+
+	require.NotPanics(t, func() {
+		sendInterval := 100 * time.Millisecond
+		cfg.RemoteWrite = []*config.RemoteWriteConfig{
+			{
+				Name: "write-test",
+				URL: &common_config.URL{
+					URL: &url.URL{
+						Scheme: "http",
+						Host:   "localhost:8080",
+						Path:   "/write",
+					},
+				},
+				RemoteTimeout: config.DefaultRemoteWriteConfig.RemoteTimeout,
+				QueueConfig:   config.DefaultRemoteWriteConfig.QueueConfig,
+				MetadataConfig: config.MetadataConfig{
+					Send:              true,
+					MaxSamplesPerSend: 1,
+					SendInterval:      model.Duration(sendInterval),
+				},
+			},
+		}
+		err = inst.Update(cfg)
+		assert.NoError(t, err)
+		// Wait enough time for the metrics send interval to kick in.
+		time.Sleep(2 * sendInterval)
+	})
 }
 
 type mockWalStorage struct {

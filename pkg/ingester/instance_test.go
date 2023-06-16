@@ -838,44 +838,41 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
-func TestInstance_LabelVolume(t *testing.T) {
+func TestInstance_SeriesVolume(t *testing.T) {
 	t.Run("no matchers", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  11000,
 			Matchers: "{}",
-			Limit:    3,
+			Limit:    2,
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
-			{Name: "host", Value: "agent", Volume: 160},
-			{Name: "job", Value: "3", Volume: 160},
-			{Name: "log_stream", Value: "dispatcher", Volume: 90},
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 90},
+			{Name: `{host="agent", job="3", log_stream="worker"}`, Value: "", Volume: 70},
 		}, volumes.Volumes)
 	})
 
 	t.Run("with matchers", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  11000,
-			Matchers: "{log_stream=\"dispatcher\"}",
-			Limit:    3,
+			Matchers: `{log_stream="dispatcher"}`,
+			Limit:    2,
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
-			{Name: "host", Value: "agent", Volume: 90},
-			{Name: "job", Value: "3", Volume: 90},
-			{Name: "log_stream", Value: "dispatcher", Volume: 90},
+		require.Equal(t, []logproto.Volume{
+			{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90},
 		}, volumes.Volumes)
 	})
 
 	t.Run("excludes streams outside of time bounds", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetLabelVolume(context.Background(), &logproto.LabelVolumeRequest{
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     5,
 			Through:  11,
 			Matchers: "{}",
@@ -883,10 +880,24 @@ func TestInstance_LabelVolume(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		require.Equal(t, []logproto.LabelVolume{
-			{Name: "host", Value: "agent", Volume: 71},
-			{Name: "job", Value: "3", Volume: 71},
-			{Name: "log_stream", Value: "dispatcher", Volume: 45},
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 45},
+			{Name: `{host="agent", job="3", log_stream="worker"}`, Value: "", Volume: 26},
+		}, volumes.Volumes)
+	})
+
+	t.Run("enforces the limit", func(t *testing.T) {
+		instance := defaultInstance(t)
+		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+			From:     0,
+			Through:  11000,
+			Matchers: "{}",
+			Limit:    1,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 90},
 		}, volumes.Volumes)
 	})
 }

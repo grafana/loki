@@ -851,14 +851,14 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	}
 }
 
-func Test_labelvolume_splitByInterval_Do(t *testing.T) {
+func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-		return &LabelVolumeResponse{
-			Response: &logproto.LabelVolumeResponse{
-				Volumes: []logproto.LabelVolume{
-					{Name: "foo", Value: "bar", Volume: 38},
-					{Name: "bar", Value: "baz", Volume: 28},
+		return &VolumeResponse{
+			Response: &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{Name: `{foo="bar"}`, Value: "", Volume: 38},
+					{Name: `{bar="baz"}`, Value: "", Volume: 28},
 				},
 				Limit: 1},
 			Headers: nil,
@@ -876,21 +876,21 @@ func Test_labelvolume_splitByInterval_Do(t *testing.T) {
 
 	tests := []struct {
 		name string
-		req  *logproto.LabelVolumeRequest
-		want *LabelVolumeResponse
+		req  *logproto.VolumeRequest
+		want *VolumeResponse
 	}{
 		{
 			"label volumes",
-			&logproto.LabelVolumeRequest{
+			&logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: "{}",
 				Limit:    1,
 			},
-			&LabelVolumeResponse{
-				Response: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{
-						{Name: "foo", Value: "bar", Volume: 76},
+			&VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Value: "", Volume: 76},
 					},
 					Limit: 1,
 				},
