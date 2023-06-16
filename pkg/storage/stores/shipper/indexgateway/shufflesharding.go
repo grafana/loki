@@ -111,9 +111,8 @@ func (s *NoopStrategy) FilterTenants(tenantIDs []string) ([]string, error) {
 func GetShardingStrategy(cfg Config, indexGatewayRingManager *RingManager, o Limits) ShardingStrategy {
 	if cfg.Mode != RingMode || indexGatewayRingManager.Mode == ClientMode {
 		return NewNoopStrategy()
-	} else {
-		instanceAddr := indexGatewayRingManager.RingLifecycler.GetInstanceAddr()
-		instanceID := indexGatewayRingManager.RingLifecycler.GetInstanceID()
-		return NewShuffleShardingStrategy(indexGatewayRingManager.Ring, o, instanceAddr, instanceID)
 	}
+	instanceAddr := indexGatewayRingManager.RingLifecycler.GetInstanceAddr()
+	instanceID := indexGatewayRingManager.RingLifecycler.GetInstanceID()
+	return NewShuffleShardingStrategy(indexGatewayRingManager.Ring, o, instanceAddr, instanceID)
 }
