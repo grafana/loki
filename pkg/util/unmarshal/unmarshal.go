@@ -6,7 +6,7 @@ import (
 	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
-	
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 )
