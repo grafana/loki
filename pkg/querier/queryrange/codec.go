@@ -769,65 +769,36 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 
 func MergeToPrometheusResponse(responses []*logproto.VolumeResponse, limit int32) queryrangebase.PrometheusData {
 	mergedVolumes := seriesvolume.Merge(responses, limit)
-	return mapToPrometheusResponse(mergedVolumes, int(limit))
+	return mapToPrometheusResponse(mergedVolumes)
 }
 
-func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse, limit int) queryrangebase.PrometheusData {
-	samplesByStream := map[logproto.LabelAdapter]*logproto.LegacySample{}
-	tsMs := mergedResponse.From.UnixNano() / 1e6 //convert ns to ms
+func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse) queryrangebase.PrometheusData {
+	samplesByStream := map[string]*logproto.LegacySample{}
+
+	// since this is an instant response, we're only interested in a single "bucket", which is
+	// bounded by the latest timestamp we've seen (which should correspond to the end of the query range)
+	tsMs := mergedResponse.Through.UnixNano() / 1e6 //convert ns to ms
 
 	// Aggregate samples into single sample with latest timestamp
 	for _, volume := range mergedResponse.Volumes {
-		//TODO(trevorwhitney): convert name (which is a series) to label/value labelAdapter
-		streamKey := logproto.LabelAdapter{
-			Name:  volume.Name,
-			Value: volume.Value,
-		}
-
-		if sample, ok := samplesByStream[streamKey]; !ok {
-			samplesByStream[streamKey] = &logproto.LegacySample{
+		if sample, ok := samplesByStream[volume.Name]; !ok {
+			samplesByStream[volume.Name] = &logproto.LegacySample{
 				TimestampMs: tsMs,
 				Value:       float64(volume.Volume),
 			}
 		} else {
-			if sample.TimestampMs < tsMs {
-				sample.TimestampMs = tsMs
-			}
-
 			sample.Value += float64(volume.Volume)
 		}
 	}
 
 	result := make([]queryrangebase.SampleStream, 0, len(samplesByStream))
 	for stream, sample := range samplesByStream {
-		result = append(result, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{stream},
-			Samples: []logproto.LegacySample{*sample},
-		})
-	}
-
-	// Sort and limit to top N results
-	sort.Slice(result, func(i, j int) bool {
-		labelI := result[i].Labels[0]
-		sampleI := result[i].Samples[0]
-
-		labelJ := result[j].Labels[0]
-		sampleJ := result[j].Samples[0]
-
-		if sampleI.Value == sampleJ.Value {
-			if sampleI.TimestampMs == sampleJ.TimestampMs {
-				if labelI.Name == labelJ.Name {
-					return labelI.Value < labelJ.Value
-				}
-				return labelI.Name < labelJ.Name
-			}
-			return sampleI.TimestampMs > sampleJ.TimestampMs
+		if lbls, err := syntax.ParseLabels(stream); err == nil {
+			result = append(result, queryrangebase.SampleStream{
+				Labels:  logproto.FromLabelsToLabelAdapters(lbls),
+				Samples: []logproto.LegacySample{*sample},
+			})
 		}
-		return sampleI.Value > sampleJ.Value
-	})
-
-	if limit < len(result) {
-		result = result[:limit]
 	}
 
 	return queryrangebase.PrometheusData{

@@ -135,7 +135,9 @@ var (
 			{Name: `{foo="bar"}`, Value: "", Volume: 1024}, //nanoseconds
 			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
 		},
-		Limit: 5,
+		From:    model.TimeFromUnix(testTime.Add(-4 * time.Hour).Unix()),
+		Through: model.TimeFromUnix(testTime.Add(-1 * time.Hour).Unix()),
+		Limit:   5,
 	}
 )
 
@@ -594,7 +596,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 				}},
 				Samples: []logproto.LegacySample{{
 					Value:       6700,
-					TimestampMs: 1e3,
+					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
 				}},
 			},
 			{
@@ -604,7 +606,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 				}},
 				Samples: []logproto.LegacySample{{
 					Value:       2048,
-					TimestampMs: 1e3,
+					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
 				}},
 			},
 		},
