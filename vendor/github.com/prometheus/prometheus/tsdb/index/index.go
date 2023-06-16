@@ -49,6 +49,8 @@ const (
 	FormatV1 = 1
 	// FormatV2 represents 2 version of index.
 	FormatV2 = 2
+	// FormatV3 represents 3 version of index.
+	FormatV3 = 3
 
 	indexFilename = "index"
 )
@@ -1148,7 +1150,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 	}
 	r.version = int(r.b.Range(4, 5)[0])
 
-	if r.version != FormatV1 && r.version != FormatV2 {
+	if r.version != FormatV1 && r.version != FormatV2 && r.version != FormatV3 {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
