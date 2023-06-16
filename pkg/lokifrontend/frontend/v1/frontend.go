@@ -13,7 +13,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -329,7 +332,17 @@ func (f *Frontend) PublishAsyncQueryRequest(req *request) (*frontendv1pb.ClientT
 
 	subj := fmt.Sprintf("query.%s", joinedTenantIDs)
 
-	ack, err := stream.Publish(subj, b)
+	id := uuid.New().String()
+
+	msg := &nats.Msg{
+		Subject: subj,
+		Data:    b,
+		Header: nats.Header{
+			"Nats-Msg-Id": []string{id},
+		},
+	}
+
+	ack, err := stream.PublishMsg(req.originalCtx, msg, jetstream.WithMsgID(id))
 	if err != nil {
 		return nil, err
 	}

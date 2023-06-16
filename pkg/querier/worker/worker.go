@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/httpgrpc"
@@ -79,7 +80,7 @@ type processor interface {
 	// shutting down.
 	notifyShutdown(ctx context.Context, conn *grpc.ClientConn, address string)
 
-	processAsyncRequest(conn *nats.Conn, subject string, req *httpgrpc.HTTPRequest)
+	processAsyncRequest(js jetstream.JetStream, id, subject string, req *httpgrpc.HTTPRequest)
 }
 
 type querierWorker struct {
@@ -92,10 +93,11 @@ type querierWorker struct {
 
 	natsConnProvider *loki_nats.ConnProvider
 	conn             *nats.Conn
-	subscription     *nats.Subscription
-	stream           nats.JetStreamContext
+	stream           jetstream.JetStream
+	consumer         jetstream.Consumer
 
-	subservices *services.Manager
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
 
 	mu sync.Mutex
 	// Set to nil when stop is called... no more managers are created afterwards.
@@ -185,14 +187,17 @@ func newQuerierWorkerWithProcessor(cfg Config, natsCfg loki_nats.Config, metrics
 		f.subservices = subservices
 	}
 
-	f.BasicService = services.NewIdleService(f.starting, f.stopping)
+	f.BasicService = services.NewBasicService(f.starting, f.running, f.stopping)
 	return f, nil
 }
 
 func (w *querierWorker) starting(ctx context.Context) error {
+	w.subservicesWatcher = services.NewFailureWatcher()
+
 	if w.subservices == nil {
 		return nil
 	}
+	w.subservicesWatcher.WatchManager(w.subservices)
 
 	if err := services.StartManagerAndAwaitHealthy(ctx, w.subservices); err != nil {
 		return errors.Wrap(err, "unable to start querier worker subservices")
@@ -204,11 +209,15 @@ func (w *querierWorker) starting(ctx context.Context) error {
 	}
 	w.conn = conn
 
-	var sub *nats.Subscription
-	for {
-		sub, err = conn.QueueSubscribe("query.*", "queriers", w.subscribeHandler)
-		if err != nil {
+	var (
+		js   jetstream.JetStream
+		cons jetstream.Consumer
+	)
 
+	for {
+		js, cons, err = w.createrOrUpdateConsumer(ctx, "query", "query.*")
+		if err != nil {
+			level.Error(w.logger).Log("msg", "failed to create or update jetstream consumer", "err", err.Error())
 			select {
 			case <-ctx.Done():
 				return ctx.Err()
@@ -220,9 +229,46 @@ func (w *querierWorker) starting(ctx context.Context) error {
 		break
 	}
 
-	w.subscription = sub
+	w.stream = js
+	w.consumer = cons
+
+	level.Info(w.logger).Log("msg", "successfully created jetstream consumer")
 
 	return nil
+}
+
+func (w *querierWorker) createrOrUpdateConsumer(ctx context.Context, streamName, subject string) (jetstream.JetStream, jetstream.Consumer, error) {
+	stream, err := jetstream.New(w.conn)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to get jetstream context")
+	}
+
+	cons, err := stream.CreateOrUpdateConsumer(ctx, "query", jetstream.ConsumerConfig{
+		AckPolicy:     jetstream.AckExplicitPolicy,
+		FilterSubject: "query.*",
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return stream, cons, nil
+}
+
+func (w *querierWorker) running(ctx context.Context) error {
+	consCtx, err := w.consumer.Consume(w.consumeHandler)
+	if err != nil {
+		return err
+	}
+	defer consCtx.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-w.subservicesWatcher.Chan():
+			return errors.Wrap(err, "worker subservice failed")
+		}
+	}
 }
 
 func (w *querierWorker) stopping(_ error) error {
@@ -248,14 +294,14 @@ func (w *querierWorker) stopping(_ error) error {
 	return services.StopManagerAndAwaitStopped(context.Background(), w.subservices)
 }
 
-func (w *querierWorker) subscribeHandler(msg *nats.Msg) {
+func (w *querierWorker) consumeHandler(msg jetstream.Msg) {
 	if err := msg.InProgress(); err != nil {
-		level.Error(w.logger).Log("msg", "failed to set received nats message to state IN_PROGRESS")
+		level.Error(w.logger).Log("msg", "failed to notify server that this message is in progress")
 		return
 	}
 
 	req := &httpgrpc.HTTPRequest{}
-	err := json.Unmarshal(msg.Data, req)
+	err := json.Unmarshal(msg.Data(), req)
 	if err != nil {
 		if err := msg.Nak(); err != nil {
 			level.Error(w.logger).Log("msg", "failed to set nack nats message")
@@ -264,11 +310,14 @@ func (w *querierWorker) subscribeHandler(msg *nats.Msg) {
 		return
 	}
 
-	level.Info(w.logger).Log("msg", "received nats msg", "subject", msg.Subject, "reply", msg.Reply, "size", msg.Size(), "data", msg.Data)
+	level.Info(w.logger).Log("msg", "received nats msg", "subject", msg.Subject(), "reply", msg.Reply())
 
-	respSub := fmt.Sprintf("%s.processed", msg.Subject)
+	var (
+		id  = msg.Headers().Get("Nats-Msg-Id")
+		sub = fmt.Sprintf("%s.processed", msg.Subject())
+	)
 
-	w.processor.processAsyncRequest(w.conn, respSub, req)
+	w.processor.processAsyncRequest(w.stream, id, sub, req)
 
 	if err := msg.Ack(); err != nil {
 		level.Error(w.logger).Log("msg", "failed to set ack nats message")

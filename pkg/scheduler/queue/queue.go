@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
@@ -65,7 +66,7 @@ type RequestQueue struct {
 	// Nats
 	natsConnProvider *loki_nats.ConnProvider
 	conn             *nats.Conn
-	stream           nats.JetStreamContext
+	stream           jetstream.JetStream
 
 	connectedQuerierWorkers *atomic.Int32
 
@@ -275,7 +276,7 @@ func (q *RequestQueue) starting(ctx context.Context) (err error) {
 	}
 	q.conn = conn
 
-	var stream nats.JetStreamContext
+	var stream jetstream.JetStream
 	for {
 		stream, err = q.createOrUpdateStream(ctx, "query", []string{"query.*", "query.*.processed"})
 		if err != nil {
@@ -297,27 +298,27 @@ func (q *RequestQueue) starting(ctx context.Context) (err error) {
 	return nil
 }
 
-func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name string, subjects []string) (nats.JetStreamContext, error) {
-	stream, err := q.conn.JetStream()
+func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name string, subjects []string) (jetstream.JetStream, error) {
+	stream, err := jetstream.New(q.conn)
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
 
-	streamOpts := &nats.StreamConfig{
+	streamOpts := jetstream.StreamConfig{
 		Name:      name,
 		Subjects:  subjects,
 		Replicas:  3,
 		MaxAge:    4 * time.Hour,
-		Retention: nats.LimitsPolicy,
-		Discard:   nats.DiscardOld,
+		Retention: jetstream.LimitsPolicy,
+		Discard:   jetstream.DiscardOld,
 	}
 
-	_, err = stream.UpdateStream(streamOpts)
+	_, err = stream.UpdateStream(ctx, streamOpts)
 	if err != nil {
-		if err == nats.ErrStreamNotFound {
-			_, err = stream.AddStream(streamOpts)
+		if err == jetstream.ErrStreamNotFound {
+			_, err = stream.CreateStream(ctx, streamOpts)
 			if err != nil {
-				return nil, errors.Wrap(err, "failed to add stream")
+				return nil, errors.Wrap(err, "failed to create stream")
 			}
 			return stream, nil
 		}
@@ -327,7 +328,7 @@ func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name string, su
 	return stream, nil
 }
 
-func (q *RequestQueue) GetJetStream() nats.JetStreamContext { return q.stream }
+func (q *RequestQueue) GetJetStream() jetstream.JetStream { return q.stream }
 
 func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()

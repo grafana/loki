@@ -8,7 +8,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
-	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/httpgrpc"
@@ -109,6 +109,7 @@ func (m mockProcessor) processQueriesOnSingleStream(ctx context.Context, _ *grpc
 	<-ctx.Done()
 }
 
-func (m mockProcessor) processAsyncRequest(_ *nats.Conn, _ string, _ *httpgrpc.HTTPRequest) {}
+func (m mockProcessor) processAsyncRequest(_ jetstream.JetStream, _, _ string, _ *httpgrpc.HTTPRequest) {
+}
 
 func (m mockProcessor) notifyShutdown(_ context.Context, _ *grpc.ClientConn, _ string) {}

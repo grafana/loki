@@ -16,9 +16,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -553,7 +556,17 @@ func (s *Scheduler) publishAsyncQueryRequest(req *schedulerRequest) error {
 
 	subj := fmt.Sprintf("query.%s", req.tenantID)
 
-	ack, err := stream.Publish(subj, b)
+	id := uuid.New().String()
+
+	msg := &nats.Msg{
+		Subject: subj,
+		Data:    b,
+		Header: nats.Header{
+			"Nats-Msg-Id": []string{id},
+		},
+	}
+
+	ack, err := stream.PublishMsg(req.ctx, msg, jetstream.WithMsgID(id))
 	if err != nil {
 		return err
 	}

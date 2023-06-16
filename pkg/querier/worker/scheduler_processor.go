@@ -15,7 +15,7 @@ import (
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
-	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/weaveworks/common/httpgrpc"
@@ -162,7 +162,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (fp *schedulerProcessor) processAsyncRequest(conn *nats.Conn, subject string, req *httpgrpc.HTTPRequest) {
+func (sp *schedulerProcessor) processAsyncRequest(js jetstream.JetStream, id, subject string, req *httpgrpc.HTTPRequest) {
 	// TODO(@periklis) Implement the request handling here
 	fmt.Println(req.String())
 }
