@@ -16,9 +16,9 @@ func init() {
 
 // Entry represents a log entry.  It includes a log message and the time it occurred at.
 type Entry struct {
-	Timestamp      time.Time
-	Line           string
-	MetadataLabels string
+	Timestamp time.Time
+	Line      string
+	Labels    string
 }
 
 func (e *Entry) UnmarshalJSON(data []byte) error {
@@ -47,13 +47,13 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 				return
 			}
 			e.Line = v
-		case 2: // metadataLabels
+		case 2: // labels
 			il, err := jsonparser.ParseString(value)
 			if err != nil {
 				parseError = err
 				return
 			}
-			e.MetadataLabels = il
+			e.Labels = il
 		}
 		i++
 	})
@@ -75,7 +75,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		i := 0
 		var ts time.Time
 		var line string
-		var metadataLabels string
+		var labels string
 		ok := iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
 			var ok bool
 			switch i {
@@ -91,7 +91,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 				}
 				return true
 			case 2:
-				metadataLabels = iter.ReadString()
+				labels = iter.ReadString()
 				i++
 				if iter.Error != nil {
 					return false
@@ -104,9 +104,9 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		})
 		if ok {
 			*((*[]Entry)(ptr)) = append(*((*[]Entry)(ptr)), Entry{
-				Timestamp:      ts,
-				Line:           line,
-				MetadataLabels: metadataLabels,
+				Timestamp: ts,
+				Line:      line,
+				Labels:    labels,
 			})
 			return true
 		}
@@ -144,7 +144,7 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteMore()
 	stream.WriteStringWithHTMLEscaped(e.Line)
 	stream.WriteMore()
-	stream.WriteString(e.MetadataLabels)
+	stream.WriteString(e.Labels)
 	stream.WriteArrayEnd()
 }
 

@@ -38,8 +38,7 @@ var queryTests = []struct {
 					"entries":[
 						{
 							"ts": "2019-09-13T18:32:22.380001319Z",
-							"line": "super line",
-							"metadataLabels": ""
+							"line": "super line"
 						}
 					]
 				}
@@ -183,8 +182,7 @@ var tailTests = []struct {
 					"entries": [
 						{
 							"ts": "2019-09-13T18:32:22.380001319Z",
-							"line": "super line",
-							"metadataLabels": ""
+							"line": "super line"
 						}
 					]
 				}

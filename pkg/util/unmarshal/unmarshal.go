@@ -2,11 +2,11 @@ package unmarshal
 
 import (
 	"io"
+	"reflect"
 	"unsafe"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	jsoniter "github.com/json-iterator/go"
 )
 
@@ -53,18 +53,18 @@ func NewStream(s *loghttp.Stream) (*logproto.Stream, error) {
 	}
 
 	for i, entry := range stream.Entries {
-		if entry.MetadataLabels == "" {
+		if entry.Labels == "" {
 			continue
 		}
 		// labels in v1 HTTP push endpoint are in json format({"foo":"bar"}) while for proto it is key=value format({foo="bar"})
 		// So here we need to convert metadata labels from json to proto format.
 		// ToDo(Sandeep): Find a way to either not do the conversion or efficiently do it since
 		// metadata labels can be attached to each log line.
-		metadataLabels := loghttp.LabelSet{}
-		if err := metadataLabels.UnmarshalJSON(util.YoloBuf(entry.MetadataLabels)); err != nil {
+		labels := loghttp.LabelSet{}
+		if err := labels.UnmarshalJSON(yoloBytes(entry.Labels)); err != nil {
 			return nil, err
 		}
-		stream.Entries[i].MetadataLabels = metadataLabels.String()
+		stream.Entries[i].Labels = labels.String()
 	}
 	return &stream, nil
 }
@@ -81,4 +81,10 @@ func ReadTailResponseJSON(r *loghttp.TailResponse, reader WebsocketReader) error
 		return err
 	}
 	return jsoniter.Unmarshal(data, r)
+}
+
+func yoloBytes(s string) (b []byte) {
+	*(*string)(unsafe.Pointer(&b)) = s
+	(*reflect.SliceHeader)(unsafe.Pointer(&b)).Cap = len(s)
+	return
 }
