@@ -143,6 +143,7 @@ func combineFilters(in []*LineFilterExpr) StageExpr {
 
 func leafNode(in *LineFilterExpr) *LineFilterExpr {
 	current := in
+	//nolint:revive
 	for ; current.Left != nil; current = current.Left {
 	}
 	return current
@@ -545,6 +546,46 @@ func (e *DropLabelsExpr) String() string {
 }
 func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
 
+type KeepLabelsExpr struct {
+	keepLabels []log.KeepLabel
+	implicit
+}
+
+func newKeepLabelsExpr(keepLabels []log.KeepLabel) *KeepLabelsExpr {
+	return &KeepLabelsExpr{keepLabels: keepLabels}
+}
+
+func (e *KeepLabelsExpr) Shardable() bool { return true }
+
+func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
+	return log.NewKeepLabels(e.keepLabels), nil
+}
+
+func (e *KeepLabelsExpr) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpKeep))
+
+	for i, keepLabel := range e.keepLabels {
+		if keepLabel.Matcher != nil {
+			sb.WriteString(keepLabel.Matcher.String())
+			if i+1 != len(e.keepLabels) {
+				sb.WriteString(",")
+			}
+		}
+		if keepLabel.Name != "" {
+			sb.WriteString(keepLabel.Name)
+			if i+1 != len(e.keepLabels) {
+				sb.WriteString(",")
+			}
+		}
+	}
+	str := sb.String()
+	return str
+}
+
+func (e *KeepLabelsExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -705,30 +746,10 @@ func (l *LogfmtExpressionParser) String() string {
 }
 
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
-	if t == labels.MatchRegexp || t == labels.MatchNotRegexp {
-		return simplifyRegexMatcher(t, n, v)
-	}
-
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
-	return m
-}
-
-func simplifyRegexMatcher(typ labels.MatchType, name, value string) *labels.Matcher {
-	reg, err := syntax.Parse(value, syntax.Perl)
-	if err != nil {
-		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
-	}
-	reg = reg.Simplify()
-
-	m, ok := simplify(typ, name, reg)
-	if !ok {
-		util.AllNonGreedy(reg)
-		return labels.MustNewMatcher(typ, name, reg.String())
-	}
-
 	return m
 }
 
@@ -939,6 +960,9 @@ const (
 
 	// drop labels
 	OpDrop = "drop"
+
+	// keep labels
+	OpKeep = "keep"
 )
 
 func IsComparisonOperator(op string) bool {

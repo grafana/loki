@@ -16,7 +16,7 @@ keywords: []
 
 This tool helps to generate a Helm Charts `values.yaml` file based on specified
  expected ingestion, retention rate and node type. It will always configure a
- [scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment. The storage needs to be configured after generation.
+ [scalable]({{< relref "../../get-started/deployment-modes#simple-scalable-deployment-mode" >}}) deployment. The storage needs to be configured after generation.
 
 <div id="app">
   <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
@@ -70,7 +70,7 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
     </span>
     <span v-else-if="help === 'node'">
     Defines the node type of the Kubernetes cluster. Is a vendor or type
-    missing? If so, please add it to <code>pkg/sizing/node.go</code>.
+    missing? If so, add it to <code>pkg/sizing/node.go</code>.
     </span>
     <span v-else-if="help === 'retention'">
     Defines how long the ingested logs should be kept.

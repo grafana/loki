@@ -76,6 +76,9 @@ var tokens = map[string]int{
 
 	// drop labels
 	OpDrop: DROP,
+
+	// keep labels
+	OpKeep: KEEP,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
@@ -133,6 +136,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	switch r {
 	case '#':
 		// Scan until a newline or EOF is encountered
+		//nolint:revive
 		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
 		}
 

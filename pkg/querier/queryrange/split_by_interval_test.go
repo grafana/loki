@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
@@ -836,6 +838,63 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 						Labels: map[string]string{"filename": "/var/hostlog/test.log", "job": "varlogs"},
 					},
 				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res, err := split.Do(ctx, tt.req)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, res)
+		})
+	}
+}
+
+func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return &VolumeResponse{
+			Response: &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{Name: `{foo="bar"}`, Value: "", Volume: 38},
+					{Name: `{bar="baz"}`, Value: "", Volume: 28},
+				},
+				Limit: 1},
+			Headers: nil,
+		}, nil
+	})
+
+	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+	split := SplitByIntervalMiddleware(
+		testSchemas,
+		l,
+		LokiCodec,
+		splitByTime,
+		nilMetrics,
+	).Wrap(next)
+
+	tests := []struct {
+		name string
+		req  *logproto.VolumeRequest
+		want *VolumeResponse
+	}{
+		{
+			"label volumes",
+			&logproto.VolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: "{}",
+				Limit:    1,
+			},
+			&VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Value: "", Volume: 76},
+					},
+					Limit: 1,
+				},
+				Headers: nil,
 			},
 		},
 	}

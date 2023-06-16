@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -26,18 +27,64 @@ import (
 
 // Config is the configuration for the queryrange tripperware
 type Config struct {
-	queryrangebase.Config `yaml:",inline"`
-	Transformer           UserIDTransformer `yaml:"-"`
+	queryrangebase.Config  `yaml:",inline"`
+	Transformer            UserIDTransformer     `yaml:"-"`
+	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
+	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", false, "Cache index stats query results.")
+	cfg.StatsCacheConfig.RegisterFlags(f)
+}
+
+// Validate validates the config.
+func (cfg *Config) Validate() error {
+	if err := cfg.Config.Validate(); err != nil {
+		return err
+	}
+
+	if cfg.CacheIndexStatsResults {
+		if err := cfg.StatsCacheConfig.Validate(); err != nil {
+			return errors.Wrap(err, "invalid index_stats_results_cache config")
+		}
+	}
+	return nil
 }
 
 // Stopper gracefully shutdown resources created
 type Stopper interface {
 	Stop()
+}
+
+type StopperWrapper []Stopper
+
+// Stop gracefully shutdowns created resources
+func (s StopperWrapper) Stop() {
+	for _, stopper := range s {
+		if stopper != nil {
+			stopper.Stop()
+		}
+	}
+}
+
+func newResultsCacheFromConfig(cfg queryrangebase.ResultsCacheConfig, registerer prometheus.Registerer, log log.Logger, cacheType stats.CacheType) (cache.Cache, error) {
+	if !cache.IsCacheConfigured(cfg.CacheConfig) {
+		return nil, errors.Errorf("%s cache is not configured", cacheType)
+	}
+
+	c, err := cache.New(cfg.CacheConfig, registerer, log, cacheType)
+	if err != nil {
+		return nil, err
+	}
+
+	if cfg.Compression == "snappy" {
+		c = cache.NewSnappy(c, log)
+	}
+
+	return c, nil
 }
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
@@ -54,36 +101,52 @@ func NewTripperware(
 	metrics := NewMetrics(registerer)
 
 	var (
-		c   cache.Cache
-		err error
+		resultsCache cache.Cache
+		statsCache   cache.Cache
+		err          error
 	)
 
 	if cfg.CacheResults {
-		c, err = cache.New(cfg.CacheConfig, registerer, log, stats.ResultCache)
+		resultsCache, err = newResultsCacheFromConfig(cfg.ResultsCacheConfig, registerer, log, stats.ResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
-		if cfg.Compression == "snappy" {
-			c = cache.NewSnappy(c, log)
+	}
+
+	if cfg.CacheIndexStatsResults {
+		// If the stats cache is not configured, use the results cache config.
+		cacheCfg := cfg.StatsCacheConfig.ResultsCacheConfig
+		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
+			level.Debug(log).Log("msg", "using results cache config for stats cache")
+			cacheCfg = cfg.ResultsCacheConfig
+		}
+
+		statsCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.StatsResultCache)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 
-	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics)
+	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, LokiCodec, statsCache,
+		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, retentionEnabled, metrics)
+	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, resultsCache,
+		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, retentionEnabled, metrics)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, resultsCache, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -98,40 +161,42 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, retentionEnabled, metrics)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, LokiCodec, c,
-		cacheGenNumLoader, retentionEnabled, metrics)
+	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
-		metricRT := metricsTripperware(next)
-		limitedRT := limitedTripperware(next)
-		logFilterRT := logFilterTripperware(next)
-		seriesRT := seriesTripperware(next)
-		labelsRT := labelsTripperware(next)
-		instantRT := instantMetricTripperware(next)
-		statsRT := indexStatsTripperware(next)
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, limits)
-	}, c, nil
+		var (
+			metricRT      = metricsTripperware(next)
+			limitedRT     = limitedTripperware(next)
+			logFilterRT   = logFilterTripperware(next)
+			seriesRT      = seriesTripperware(next)
+			labelsRT      = labelsTripperware(next)
+			instantRT     = instantMetricTripperware(next)
+			statsRT       = indexStatsTripperware(next)
+			labelVolumeRT = labelVolumeTripperware(next)
+		)
+
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, labelVolumeRT, limits)
+	}, StopperWrapper{resultsCache, statsCache}, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats http.RoundTripper
+	next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
 		logger:        logger,
 		limited:       limited,
@@ -142,6 +207,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		labels:        labels,
 		instantMetric: instantMetric,
 		indexStats:    indexStats,
+		labelVolume:   labelVolume,
 		next:          next,
 	}
 }
@@ -246,10 +312,17 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-
 		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
 
 		return r.indexStats.RoundTrip(req)
+	case SeriesVolumeOp:
+		volumeQuery, err := loghttp.ParseSeriesVolumeQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		level.Info(logger).Log("msg", "executing query", "type", "series_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
+
+		return r.labelVolume.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -280,6 +353,7 @@ const (
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
 	IndexStatsOp   = "index_stats"
+	SeriesVolumeOp = "series_volume"
 )
 
 func getOperation(path string) string {
@@ -294,6 +368,8 @@ func getOperation(path string) string {
 		return InstantQueryOp
 	case path == "/loki/api/v1/index/stats":
 		return IndexStatsOp
+	case path == "/loki/api/v1/index/series_volume":
+		return SeriesVolumeOp
 	default:
 		return ""
 	}
@@ -308,15 +384,9 @@ func NewLogFilterTripperware(
 	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	c cache.Cache,
-	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
-	retentionEnabled bool,
 	metrics *Metrics,
+	indexStatsTripperware queryrangebase.Tripperware,
 ) (queryrangebase.Tripperware, error) {
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
-	if err != nil {
-		return nil, err
-	}
-
 	return func(next http.RoundTripper) http.RoundTripper {
 		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
 
@@ -333,7 +403,7 @@ func NewLogFilterTripperware(
 				log,
 				limits,
 				c,
-				func(r queryrangebase.Request) bool {
+				func(_ context.Context, r queryrangebase.Request) bool {
 					return !r.GetCachingOptions().Disabled
 				},
 				cfg.Transformer,
@@ -384,22 +454,15 @@ func NewLogFilterTripperware(
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
 func NewLimitedTripperware(
-	cfg Config,
+	_ Config,
 	engineOpts logql.EngineOpts,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
-	c cache.Cache,
-	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
-	retentionEnabled bool,
 	metrics *Metrics,
+	indexStatsTripperware queryrangebase.Tripperware,
 ) (queryrangebase.Tripperware, error) {
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
-	if err != nil {
-		return nil, err
-	}
-
 	return func(next http.RoundTripper) http.RoundTripper {
 		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
 
@@ -518,12 +581,8 @@ func NewMetricTripperware(
 	retentionEnabled bool,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
+	indexStatsTripperware queryrangebase.Tripperware,
 ) (queryrangebase.Tripperware, error) {
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
-	if err != nil {
-		return nil, err
-	}
-
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	var queryCacheMiddleware queryrangebase.Middleware
 	if cfg.CacheResults {
@@ -536,7 +595,7 @@ func NewMetricTripperware(
 			codec,
 			extractor,
 			cacheGenNumLoader,
-			func(r queryrangebase.Request) bool {
+			func(_ context.Context, r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
 			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
@@ -640,16 +699,9 @@ func NewInstantMetricTripperware(
 	limits Limits,
 	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
-	c cache.Cache,
-	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
-	retentionEnabled bool,
 	metrics *Metrics,
+	indexStatsTripperware queryrangebase.Tripperware,
 ) (queryrangebase.Tripperware, error) {
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
-	if err != nil {
-		return nil, err
-	}
-
 	return func(next http.RoundTripper) http.RoundTripper {
 		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
 
@@ -691,6 +743,21 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
+func NewSeriesVolumeTripperware(cfg Config,
+	log log.Logger,
+	limits Limits,
+	schema config.SchemaConfig,
+	codec queryrangebase.Codec,
+	c cache.Cache,
+	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
+	retentionEnabled bool,
+	metrics *Metrics,
+) (queryrangebase.Tripperware, error) {
+	labelVolumeCfg := cfg
+	labelVolumeCfg.CacheIndexStatsResults = false
+	return NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+}
+
 func NewIndexStatsTripperware(
 	cfg Config,
 	log log.Logger,
@@ -715,7 +782,7 @@ func NewIndexStatsTripperware(
 			codec,
 			c,
 			cacheGenNumLoader,
-			func(r queryrangebase.Request) bool {
+			func(_ context.Context, r queryrangebase.Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
 			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {

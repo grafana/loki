@@ -1,11 +1,14 @@
 ---
-title: Overview
-description: Overview
-weight: 100
+menuTitle: Overview
+title: Loki overview
+description: Loki product overview and features.
+weight: 200
 aliases:
     - /docs/loki/latest/overview/
+    - /docs/loki/latest/fundamentals/overview/
+    - /docs/loki/latest/get-started/overview/
 ---
-# Overview
+# Loki overview
 
 Grafana Loki is a log aggregation tool,
 and it is the core of a fully-featured logging stack.
@@ -22,7 +25,7 @@ An agent (also called a client) acquires logs,
 turns the logs into streams,
 and pushes the streams to Loki through an HTTP API.
 The Promtail agent is designed for Loki installations,
-but many other [Agents]({{<relref "../../clients">}}) seamlessly integrate with Loki.
+but many other [Agents]({{< relref "../clients" >}}) seamlessly integrate with Loki.
 
 ![Loki agent interaction](loki-overview-2.png)
 
@@ -31,7 +34,7 @@ Each stream identifies a set of logs associated with a unique set of labels.
 A quality set of labels is key to the creation of an index that is both compact
 and allows for efficient query execution.
 
-[LogQL]({{<relref "../../query">}}) is the query language for Loki.
+[LogQL]({{< relref "../query" >}}) is the query language for Loki.
 
 ## Loki features
 

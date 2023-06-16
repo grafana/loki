@@ -96,7 +96,7 @@ type websocket struct {
 	buf []byte
 }
 
-func (ws *websocket) WriteMessage(t int, data []byte) error {
+func (ws *websocket) WriteMessage(_ int, data []byte) error {
 	ws.buf = append(ws.buf, data...)
 	return nil
 }

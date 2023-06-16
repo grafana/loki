@@ -25,7 +25,7 @@ const (
 
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
-// +kubebuilder:validation:Enum="1x.extra-small";"1x.small";"1x.medium"
+// +kubebuilder:validation:Enum="1x.demo";"1x.extra-small";"1x.small";"1x.medium"
 type LokiStackSizeType string
 
 const (
@@ -622,6 +622,20 @@ type IngestionLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Line Size"
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
+
+	// PerStreamRateLimit defines the maximum byte rate per second per stream. Units MB.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Maximum byte rate per second per stream (in MB)"
+	PerStreamRateLimit int32 `json:"perStreamRateLimit,omitempty"`
+
+	// PerStreamRateLimitBurst defines the maximum burst bytes per stream. Units MB.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Maximum burst bytes per stream (in MB)"
+	PerStreamRateLimitBurst int32 `json:"perStreamRateLimitBurst,omitempty"`
 }
 
 // RetentionStreamSpec defines a log stream with separate retention time.

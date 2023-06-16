@@ -8,7 +8,7 @@ draft: true
 
 > _NOTE: the file should be named `_DRAFT_<your-title>.md` and be placed in the `docs/sources/lids` directory.
 Once accepted, it will be assigned a LID number and the file will be renamed by the sponsor.<br>
-> **Please remove this section before submitting, and retain the structure of this document.**_
+> **Remove this section before submitting, and retain the structure of this document.**_
 
 **Author:** Name (email)
 

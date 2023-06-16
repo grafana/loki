@@ -3,6 +3,7 @@ package log
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -459,6 +460,24 @@ func Test_lineFormatter_Format(t *testing.T) {
 			labels.FromStrings("foo", "aSdtIGEgc3RyaW5nLCBlbmNvZGUgbWUh"),
 			[]byte("1"),
 		},
+		{
+			"alignLeft",
+			newMustLineFormatter("{{ alignLeft 4 .foo }}"),
+			labels.FromStrings("foo", "hello"),
+			1656353124120000000,
+			[]byte("hell"),
+			labels.FromStrings("foo", "hello"),
+			[]byte("1"),
+		},
+		{
+			"alignRight",
+			newMustLineFormatter("{{ alignRight 4 .foo }}"),
+			labels.FromStrings("foo", "hello"),
+			1656353124120000000,
+			[]byte("ello"),
+			labels.FromStrings("foo", "hello"),
+			[]byte("1"),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -480,6 +499,14 @@ func newMustLineFormatter(tmpl string) *LineFormatter {
 }
 
 func Test_labelsFormatter_Format(t *testing.T) {
+	// These variables are used to test unixToTime.
+	// They resolve to the local timezone so it works everywhere.
+	epochDay19503 := time.Unix(19503*86400, 0)
+	epochSeconds1679577215 := time.Unix(1679577215, 0)
+	epochMilliseconds1257894000000 := time.UnixMilli(1257894000000)
+	epochMicroseconds1673798889902000 := time.UnixMicro(1673798889902000)
+	epochNanoseconds1000000000000000000 := time.Unix(0, 1000000000000000000)
+
 	tests := []struct {
 		name  string
 		fmter *LabelsFormatter
@@ -637,6 +664,51 @@ func Test_labelsFormatter_Format(t *testing.T) {
 				"bar", "i'm a string, encode me!",
 			),
 		},
+		{
+			"unixToTime days",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "19503"}},
+			labels.Labels{
+				{Name: "bar", Value: "19503"},
+				{Name: "foo", Value: epochDay19503.String()},
+			},
+		},
+		{
+			"unixToTime seconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1679577215"}},
+			labels.Labels{
+				{Name: "bar", Value: "1679577215"},
+				{Name: "foo", Value: epochSeconds1679577215.String()},
+			},
+		},
+		{
+			"unixToTime milliseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1257894000000"}},
+			labels.Labels{
+				{Name: "bar", Value: "1257894000000"},
+				{Name: "foo", Value: epochMilliseconds1257894000000.String()},
+			},
+		},
+		{
+			"unixToTime microseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1673798889902000"}},
+			labels.Labels{
+				{Name: "bar", Value: "1673798889902000"},
+				{Name: "foo", Value: epochMicroseconds1673798889902000.String()},
+			},
+		},
+		{
+			"unixToTime nanoseconds",
+			mustNewLabelsFormatter([]LabelFmt{NewTemplateLabelFmt("foo", `{{ .bar | unixToTime }}`)}),
+			labels.Labels{{Name: "foo", Value: ""}, {Name: "bar", Value: "1000000000000000000"}},
+			labels.Labels{
+				{Name: "bar", Value: "1000000000000000000"},
+				{Name: "foo", Value: epochNanoseconds1000000000000000000.String()},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -721,6 +793,48 @@ func Test_trunc(t *testing.T) {
 	}
 }
 
+func Test_AlignLeft(t *testing.T) {
+	tests := []struct {
+		s    string
+		c    int
+		want string
+	}{
+		{"Hello, 世界", -1, "Hello, 世界"},
+		{"Hello, 世界", 0, ""},
+		{"Hello, 世界", 1, "H"},
+		{"Hello, 世界", 8, "Hello, 世"},
+		{"Hello, 世界", 20, "Hello, 世界           "},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s%d", tt.s, tt.c), func(t *testing.T) {
+			if got := alignLeft(tt.c, tt.s); got != tt.want {
+				t.Errorf("alignLeft() = %q, want %q for %q with %v", got, tt.want, tt.s, tt.c)
+			}
+		})
+	}
+}
+
+func Test_AlignRight(t *testing.T) {
+	tests := []struct {
+		s    string
+		c    int
+		want string
+	}{
+		{"Hello, 世界", -1, "Hello, 世界"},
+		{"Hello, 世界", 0, ""},
+		{"Hello, 世界", 1, "界"},
+		{"Hello, 世界", 2, "世界"},
+		{"Hello, 世界", 20, "           Hello, 世界"},
+	}
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("%s%d", tt.s, tt.c), func(t *testing.T) {
+			if got := alignRight(tt.c, tt.s); got != tt.want {
+				t.Errorf("alignRight() = %q, want %q for %q with %v", got, tt.want, tt.s, tt.c)
+			}
+		})
+	}
+}
+
 func Test_substring(t *testing.T) {
 	tests := []struct {
 		start int
@@ -800,4 +914,12 @@ func TestDecolorizer(t *testing.T) {
 			require.Equal(t, tt.expected, result)
 		})
 	}
+}
+
+func TestInvalidUnixTimes(t *testing.T) {
+	_, err := unixToTime("abc")
+	require.Error(t, err)
+
+	_, err = unixToTime("464")
+	require.Error(t, err)
 }

@@ -253,7 +253,7 @@ func (s *PromtailServer) targets(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
-func (s *PromtailServer) reload(rw http.ResponseWriter, req *http.Request) {
+func (s *PromtailServer) reload(rw http.ResponseWriter, _ *http.Request) {
 	rc := make(chan error)
 	s.reloadCh <- rc
 	if err := <-rc; err != nil {
