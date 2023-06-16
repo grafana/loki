@@ -3,6 +3,7 @@ package queryrange
 import (
 	"context"
 	"fmt"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"net/http"
 	"time"
 
@@ -161,6 +162,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
+	// The shard resolver uses index stats to determine the number of shards to use.
+	// Later on, the query engine overwirtes the context with other stats,
+	resolverStatsCtx, ctx := stats.NewContext(ctx)
+
 	resolver, ok := shardResolverForConf(
 		ctx,
 		conf,
@@ -212,10 +217,24 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 	query := ast.ng.Query(ctx, params, parsed)
 
+	// The query.Exec creates a new stats context. The shardresolver
+	// has stats for the index stats requests it performs.
+	// We want to aggregate the stats from both.
+	//var cacheStats stats.Caches
+	//statsFromCtx := stats.FromContext(ctx)
+	//if statsFromCtx != nil {
+	//	cacheStats = statsFromCtx.Caches()
+	//}
+
 	res, err := query.Exec(ctx)
 	if err != nil {
 		return nil, err
 	}
+
+	// Merge index stats result cache stats from shard resolver into the query stats.
+	//res.Statistics.Caches.StatsResult.Merge(cacheStats.StatsResult)
+	res.Statistics.Caches.StatsResult.Merge(resolverStatsCtx.Caches().StatsResult)
+	//_ = resolverStatsCtx.Caches().StatsResult
 
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {
