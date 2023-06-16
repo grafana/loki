@@ -5,9 +5,10 @@ import (
 	"reflect"
 	"unsafe"
 
+	jsoniter "github.com/json-iterator/go"
+	
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	jsoniter "github.com/json-iterator/go"
 )
 
 // DecodePushRequest directly decodes json to a logproto.PushRequest
