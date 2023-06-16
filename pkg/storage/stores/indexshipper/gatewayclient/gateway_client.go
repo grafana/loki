@@ -337,18 +337,10 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
 	}
-
-	r := indexgateway.GetShuffleShardingSubring(s.ring, userID, s.limits)
-	rs, err := r.GetReplicationSetForOperation(indexgateway.IndexesRead)
+	addrs, err := s.getServerAddresses(userID)
 	if err != nil {
-		return errors.Wrap(err, "index gateway get ring")
+		return err
 	}
-
-	addrs := rs.GetAddresses()
-	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
 	var lastErr error
 	for _, addr := range addrs {
 		if s.cfg.LogGatewayRequests {
@@ -372,6 +364,22 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 	}
 
 	return lastErr
+}
+
+func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
+	r := indexgateway.GetShuffleShardingSubring(s.ring, tenantID, s.limits)
+	rs, err := r.GetReplicationSetForOperation(indexgateway.IndexesRead)
+	if err != nil {
+		return nil, errors.Wrap(err, "index gateway get ring")
+	}
+
+	addrs := rs.GetAddresses()
+	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
+	rand.Shuffle(len(addrs), func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
+
+	return addrs, nil
 }
 
 func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
