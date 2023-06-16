@@ -641,3 +641,44 @@ the result will be
 {host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 {app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
+
+### Keep Labels expression
+
+**Syntax**:  `|keep name, other_name, some_name="some_value"`
+
+The `| keep` expression will keep only the specified labels in the pipeline and drop all the other labels.
+
+{{% admonition type="note" %}}
+The keep stage will not drop the  __error__ or __error_details__ labels added by Loki at query time. To drop these labels, refer to [drop](#drop-labels-expression) stage.
+{{% /admonition %}}
+
+Query examples:
+
+For the query `{job="varlogs"}|json|keep level, method="GET"`, with the following log lines:
+
+```
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{level="info", method="GET"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{level="info"} {"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+For the query `{job="varlogs"}|json|keep level, tenant, app=~"some-api.*"`, with the following log lines:
+
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{app="some-api-service", level="info"} {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{level="info"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
