@@ -27,9 +27,9 @@ type Limits interface {
 }
 
 type ShardingStrategy interface {
-	// FilterUsers whose indexes should be loaded by the index gateway.
+	// FilterTenants whose indexes should be loaded by the index gateway.
 	// Returns the list of user IDs that should be synced by the index gateway.
-	FilterUsers(tenantID []string) ([]string, error)
+	FilterTenants(tenantID []string) ([]string, error)
 }
 
 type ShuffleShardingStrategy struct {
@@ -48,10 +48,10 @@ func NewShuffleShardingStrategy(r ring.ReadRing, l Limits, instanceAddr, instanc
 	}
 }
 
-// FilterUsers implements ShardingStrategy.
-func (s *ShuffleShardingStrategy) FilterUsers(tenantIDs []string) ([]string, error) {
-	// As a protection, ensure the store-gateway instance is healthy in the ring. It could also be missing
-	// in the ring if it was failing to heartbeat the ring and it got remove from another healthy store-gateway
+// FilterTenants implements ShardingStrategy.
+func (s *ShuffleShardingStrategy) FilterTenants(tenantIDs []string) ([]string, error) {
+	// As a protection, ensure the index-gateway instance is healthy in the ring. It could also be missing
+	// in the ring if it was failing to heartbeat the ring and it got remove from another healthy index-gateway
 	// instance, because of the auto-forget feature.
 	if set, err := s.r.GetAllHealthy(IndexesSync); err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ func (s *ShuffleShardingStrategy) FilterUsers(tenantIDs []string) ([]string, err
 	for _, tenantID := range tenantIDs {
 		subRing := GetShuffleShardingSubring(s.r, tenantID, s.limits)
 
-		// Include the user only if it belongs to this store-gateway shard.
+		// Include the user only if it belongs to this index-gateway shard.
 		if subRing.HasInstance(s.instanceID) {
 			filteredIDs = append(filteredIDs, tenantID)
 		}
@@ -81,6 +81,9 @@ func GetShuffleShardingSubring(ring ring.ReadRing, tenantID string, limits Limit
 
 	// A shard size of 0 means shuffle sharding is disabled for this specific user,
 	// so we just return the full ring so that indexes will be sharded across all index gateways.
+	// Since we set the shard size to replication factor if shard size is 0, this
+	// can only happen if both the shard size and the replication factor are set
+	// to 0.
 	if shardSize <= 0 {
 		return ring
 	}
@@ -88,17 +91,29 @@ func GetShuffleShardingSubring(ring ring.ReadRing, tenantID string, limits Limit
 	return ring.ShuffleShard(tenantID, shardSize)
 }
 
-// MatchAllStrategy is an implementation of the ShardingStrategy that does not
+// NoopStrategy is an implementation of the ShardingStrategy that does not
 // filter anything.
 // This is used when the index gateway runs in simple mode or when the index
 // gateway runs in ring mode, but the ring manager runs in client mode.
-type MatchAllStrategy struct{}
+type NoopStrategy struct{}
 
-func NewMatchAllStrategy() *MatchAllStrategy {
-	return &MatchAllStrategy{}
+func NewNoopStrategy() *NoopStrategy {
+	return &NoopStrategy{}
 }
 
-// FilterUsers implements ShardingStrategy.
-func (s *MatchAllStrategy) FilterUsers(tenantIDs []string) ([]string, error) {
+// FilterTenants implements ShardingStrategy.
+func (s *NoopStrategy) FilterTenants(tenantIDs []string) ([]string, error) {
 	return tenantIDs, nil
+}
+
+// GetShardingStrategy returns the correct ShardingStrategy implementaion based
+// on provided configuration.
+func GetShardingStrategy(cfg Config, indexGatewayRingManager *RingManager, o Limits) ShardingStrategy {
+	if cfg.Mode != RingMode || indexGatewayRingManager.Mode == ClientMode {
+		return NewNoopStrategy()
+	} else {
+		instanceAddr := indexGatewayRingManager.RingLifecycler.GetInstanceAddr()
+		instanceID := indexGatewayRingManager.RingLifecycler.GetInstanceID()
+		return NewShuffleShardingStrategy(indexGatewayRingManager.Ring, o, instanceAddr, instanceID)
+	}
 }

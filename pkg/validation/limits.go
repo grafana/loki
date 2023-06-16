@@ -174,7 +174,7 @@ type Limits struct {
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 
-	IndexGatewayShardSize int `yaml:"gateway_shard_size" json:"gateway_shard_size"`
+	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 }
 
 type StreamRetention struct {
@@ -274,7 +274,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
-	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 1, "The shard size defines how many index gateways should be used for querying.")
+	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor of is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)

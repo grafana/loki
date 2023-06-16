@@ -32,6 +32,14 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
+// TenantFilter is invoked by an IndexGateway instance and answers which
+// tenants from the given list of tenants are assigned to this instance.
+//
+// It is only relevant by an IndexGateway in the ring mode and if its result
+// does not contain a given tenant, that tenant will be ignored by this
+// IndexGateway during query readiness.
+//
+// It requires the same function signature as indexgateway.(*ShardingStrategy).FilterTenants
 type TenantFilter func([]string) ([]string, error)
 
 type TableManager interface {
@@ -251,7 +259,6 @@ func (tm *tableManager) cleanupCache() error {
 
 // ensureQueryReadiness compares tables required for being query ready with the tables we already have and downloads the missing ones.
 func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
-	level.Info(tm.logger).Log("msg", "query readiness setup started")
 	start := time.Now()
 	distinctUsers := make(map[string]struct{})
 
@@ -290,7 +297,6 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	level.Info(tm.logger).Log("msg", "listing tables", "tables", strings.Join(tables, ","))
 
 	for _, tableName := range tables {
 		if tableName == deletion.DeleteRequestsTableName {
@@ -330,7 +336,6 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		level.Debug(tm.logger).Log("msg", "table manager owns tenants", "tenants", strings.Join(usersToBeQueryReadyFor, ","))
 
 		// continue if both user index and common index is not required to be downloaded for query readiness
 		if len(usersToBeQueryReadyFor) == 0 && activeTableNumber-tableNumber > int64(tm.cfg.QueryReadyNumDays) {
@@ -357,6 +362,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		level.Info(tm.logger).Log(
 			"msg", "index pre-download for query readiness completed",
 			"users_len", len(usersToBeQueryReadyFor),
+			"users", strings.Join(usersToBeQueryReadyFor, ","),
 			"query_readiness_duration", ensureQueryReadinessDuration,
 			"table", tableName,
 			"create_table_duration", createTableDuration,

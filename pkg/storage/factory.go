@@ -406,7 +406,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 
 		var filterFn downloads.TenantFilter
 		if shardingStrategy != nil {
-			filterFn = shardingStrategy.FilterUsers
+			filterFn = shardingStrategy.FilterTenants
 		}
 		shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
 		if err != nil {

@@ -37,15 +37,24 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 #### Index gateway shuffle sharding
 
-The index gateway now support shuffle sharding of index data when run in "ring"
-mode. This means that data is sharded by tenant and additionally replicated. In
-case you configured a high replication factor to accommodate for load (since in
-the past this was the only option to give a tenant more instances for
-querying), you should consider reducing the replication factor to meaningful
-value for replication (e.g. 3) and instead increasing the shard factor for
+The index gateway now supports shuffle sharding of index data when running in
+"ring" mode. The index data is sharded by tenant where each tenant gets
+assigned a sub-set of all available instances of the gateway ring.
+
+In case you configured a high replication factor to accommodate for load, since
+in the past this was the only option to give a tenant more instances for
+querying, you should consider reducing the replication factor to meaningful
+value for replication (e.g. from 12 to 3) and instead set the shard factor for
 individual tenants as required.
 
+If the global shard factor (no per-tenant) is 0 (default value), the global
+shard factor of is set to replication factor. It can still be overwritten per
+tenant.
+
+In the context of the index gateway, sharding is synonymous to replication.
+
 #### Index shipper multi-store support
+
 In previous releases, if you did not explicitly configure `-boltdb.shipper.shared-store`, `-tsdb.shipper.shared-store`, those values default to the `object_store` configured in the latest `period_config` of the corresponding index type.
 These defaults are removed in favor of uploading indexes to multiple stores. If you do not explicitly configure a `shared-store`, the boltdb and tsdb indexes will be shipped to the `object_store` configured for that period.
 

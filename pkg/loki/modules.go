@@ -1163,14 +1163,7 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
-	var shardingStrategy indexgateway.ShardingStrategy
-	if t.Cfg.IndexGateway.Mode != indexgateway.RingMode || t.indexGatewayRingManager.Mode == indexgateway.ClientMode {
-		shardingStrategy = indexgateway.NewMatchAllStrategy()
-	} else {
-		instanceAddr := t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr()
-		instanceID := t.indexGatewayRingManager.RingLifecycler.GetInstanceID()
-		shardingStrategy = indexgateway.NewShuffleShardingStrategy(t.indexGatewayRingManager.Ring, t.Overrides, instanceAddr, instanceID)
-	}
+	shardingStrategy := indexgateway.GetShardingStrategy(t.Cfg.IndexGateway, t.indexGatewayRingManager, t.Overrides)
 
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
@@ -1207,6 +1200,9 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
+	if t.Cfg.LimitsConfig.IndexGatewayShardSize == 0 {
+		t.Cfg.LimitsConfig.IndexGatewayShardSize = t.Cfg.IndexGateway.Ring.ReplicationFactor
+	}
 	// IndexGateway runs by default on legacy read and backend targets, and should always assume
 	// ring mode when run in this way.
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
