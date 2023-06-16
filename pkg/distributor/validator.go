@@ -3,12 +3,10 @@ package distributor
 import (
 	"errors"
 	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/validation"
@@ -111,13 +109,13 @@ func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, strea
 	for _, l := range ls {
 		if len(l.Name) > ctx.maxLabelNameLength {
 			updateMetrics(validation.LabelNameTooLong, ctx.userID, stream)
-			return httpgrpc.Errorf(http.StatusBadRequest, validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
+			return fmt.Errorf(validation.LabelNameTooLongErrorMsg, stream.Labels, l.Name)
 		} else if len(l.Value) > ctx.maxLabelValueLength {
 			updateMetrics(validation.LabelValueTooLong, ctx.userID, stream)
-			return httpgrpc.Errorf(http.StatusBadRequest, validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
+			return fmt.Errorf(validation.LabelValueTooLongErrorMsg, stream.Labels, l.Value)
 		} else if cmp := strings.Compare(lastLabelName, l.Name); cmp == 0 {
 			updateMetrics(validation.DuplicateLabelNames, ctx.userID, stream)
-			return httpgrpc.Errorf(http.StatusBadRequest, validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
+			return fmt.Errorf(validation.DuplicateLabelNamesErrorMsg, stream.Labels, l.Name)
 		}
 		lastLabelName = l.Name
 	}

@@ -375,9 +375,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}()
 
+	if validationErr != nil {
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+	}
+
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
-		return &logproto.PushResponse{}, httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+		return &logproto.PushResponse{}, validationErr
 	}
 
 	now := time.Now()
