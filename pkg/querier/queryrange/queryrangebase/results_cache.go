@@ -114,7 +114,7 @@ type Extractor interface {
 type PrometheusResponseExtractor struct{}
 
 // Extract extracts response for specific a range from a response.
-func (PrometheusResponseExtractor) Extract(start, end int64, res Response, resStart, resEnd int64) Response {
+func (PrometheusResponseExtractor) Extract(start, end int64, res Response, _, _ int64) Response {
 	promRes := res.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
@@ -509,14 +509,14 @@ type accumulator struct {
 }
 
 func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
-	any, err := types.MarshalAny(acc.Response)
+	anyResp, err := types.MarshalAny(acc.Response)
 	if err != nil {
 		return nil, err
 	}
 	return append(extents, Extent{
 		Start:    acc.Extent.Start,
 		End:      acc.Extent.End,
-		Response: any,
+		Response: anyResp,
 		TraceId:  acc.Extent.TraceId,
 	}), nil
 }
@@ -533,14 +533,14 @@ func newAccumulator(base Extent) (*accumulator, error) {
 }
 
 func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
-	any, err := types.MarshalAny(res)
+	anyResp, err := types.MarshalAny(res)
 	if err != nil {
 		return Extent{}, err
 	}
 	return Extent{
 		Start:    req.GetStart(),
 		End:      req.GetEnd(),
-		Response: any,
+		Response: anyResp,
 		TraceId:  jaegerTraceID(ctx),
 	}, nil
 }
@@ -609,11 +609,11 @@ func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Du
 				return nil, err
 			}
 			extracted := s.extractor.Extract(extents[i].GetStart(), maxCacheTime, res, extents[i].GetStart(), extents[i].GetEnd())
-			any, err := types.MarshalAny(extracted)
+			anyResp, err := types.MarshalAny(extracted)
 			if err != nil {
 				return nil, err
 			}
-			extents[i].Response = any
+			extents[i].Response = anyResp
 		}
 	}
 	return extents, nil

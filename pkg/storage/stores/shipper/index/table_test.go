@@ -41,7 +41,7 @@ func (m *mockIndexShipper) AddIndex(tableName, _ string, index shipper_index.Ind
 	return nil
 }
 
-func (m *mockIndexShipper) ForEach(ctx context.Context, tableName, _ string, callback shipper_index.ForEachIndexCallback) error {
+func (m *mockIndexShipper) ForEach(_ context.Context, tableName, _ string, callback shipper_index.ForEachIndexCallback) error {
 	for _, idx := range m.addedIndexes[tableName] {
 		if err := callback(false, idx); err != nil {
 			return err

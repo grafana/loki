@@ -973,7 +973,7 @@ func (badResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader { ret
 
 type badReader struct{}
 
-func (badReader) Read(p []byte) (n int, err error) {
+func (badReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("")
 }
 
@@ -1024,15 +1024,6 @@ var (
 				"downloadTime": 0
 			},
 			"index": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0
-			},
-		    "statsResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,

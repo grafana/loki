@@ -28,11 +28,11 @@ func err(err error) string {
 	return "200"
 }
 
-func (observer) ObserveBatch(ctx context.Context, b gocql.ObservedBatch) {
+func (observer) ObserveBatch(_ context.Context, b gocql.ObservedBatch) {
 	requestDuration.WithLabelValues("BATCH", err(b.Err)).Observe(b.End.Sub(b.Start).Seconds())
 }
 
-func (observer) ObserveQuery(cts context.Context, q gocql.ObservedQuery) {
+func (observer) ObserveQuery(_ context.Context, q gocql.ObservedQuery) {
 	parts := strings.SplitN(q.Statement, " ", 2)
 	requestDuration.WithLabelValues(parts[0], err(q.Err)).Observe(q.End.Sub(q.Start).Seconds())
 }

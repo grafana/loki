@@ -405,7 +405,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			if !ok {
 				level.Warn(s.log).Log("msg", "failed to find file event watcher", "path", k)
 				continue
-			} else {
+			} else { //nolint:revive
 				if watcherUseCount[k]--; watcherUseCount[k] > 0 {
 					// Multiple targets are using this file watcher, leave it alone
 					continue
