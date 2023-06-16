@@ -11,9 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
-
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
@@ -31,6 +28,7 @@ import (
 
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
@@ -43,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -174,7 +173,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
+	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1143,7 +1142,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return &merged, nil
 }
 
-func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1155,20 +1154,20 @@ func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 	}
 
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil && req.Matchers != labelvolume.MatchAny {
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
-	type f func() (*logproto.LabelVolumeResponse, error)
+	type f func() (*logproto.VolumeResponse, error)
 	jobs := []f{
-		f(func() (*logproto.LabelVolumeResponse, error) {
-			return instance.GetLabelVolume(ctx, req)
+		f(func() (*logproto.VolumeResponse, error) {
+			return instance.GetSeriesVolume(ctx, req)
 		}),
-		f(func() (*logproto.LabelVolumeResponse, error) {
-			return i.store.LabelVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
+		f(func() (*logproto.VolumeResponse, error) {
+			return i.store.SeriesVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
 		}),
 	}
-	resps := make([]*logproto.LabelVolumeResponse, len(jobs))
+	resps := make([]*logproto.VolumeResponse, len(jobs))
 
 	if err := concurrency.ForEachJob(
 		ctx,
@@ -1183,7 +1182,7 @@ func (i *Ingester) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	merged := labelvolume.Merge(resps, req.Limit)
+	merged := seriesvolume.Merge(resps, req.Limit)
 	return merged, nil
 }
 

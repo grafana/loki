@@ -21,7 +21,7 @@ A set of example log lines are included for each format.
 Use the provided example log lines, or copy and paste your own log lines into the example log lines box.
 
 Use the provided example query, or enter your own query.
-The [log stream selector]({{<relref "./log_queries/#log-stream-selector">}}) remains fixed for all possible example queries.
+The [log stream selector]({{< relref "./log_queries#log-stream-selector" >}}) remains fixed for all possible example queries.
 Modify the remainder of the log line and click on the **Run query** button
 to run the entered query against the example log lines. 
 

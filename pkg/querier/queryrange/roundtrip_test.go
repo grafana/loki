@@ -129,10 +129,10 @@ var (
 		},
 	}
 
-	labelVolume = logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 1024},
-			{Name: "bar", Value: "baz", Volume: 3350},
+	seriesVolume = logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{foo="bar"}`, Value: "", Volume: 1024},
+			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
 		},
 		Limit: 10,
 	}
@@ -547,7 +547,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 	require.Equal(t, response.Entries*2, res.Response.Entries)
 }
 
-func TestLabelVolumeTripperware(t *testing.T) {
+func TestSeriesVolumeTripperware(t *testing.T) {
 	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
@@ -558,7 +558,7 @@ func TestLabelVolumeTripperware(t *testing.T) {
 	require.NoError(t, err)
 	defer rt.Close()
 
-	lreq := &logproto.LabelVolumeRequest{
+	lreq := &logproto.VolumeRequest{
 		Matchers: `{job="varlogs"}`,
 		From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
 		Through:  model.TimeFromUnixNano(testTime.UnixNano()),
@@ -573,7 +573,7 @@ func TestLabelVolumeTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := labelVolumeResult(labelVolume)
+	count, h := labelVolumeResult(seriesVolume)
 	rt.setHandler(h)
 
 	resp, err := tpw(rt).RoundTrip(req)
@@ -583,14 +583,14 @@ func TestLabelVolumeTripperware(t *testing.T) {
 	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
-	expected := logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{ // add volumes from across shards
-			{Name: "bar", Value: "baz", Volume: 6700},
-			{Name: "foo", Value: "bar", Volume: 2048},
+	expected := logproto.VolumeResponse{
+		Volumes: []logproto.Volume{ // add volumes from across shards
+			{Name: `{bar="baz"}`, Value: "", Volume: 6700},
+			{Name: `{foo="bar"}`, Value: "", Volume: 2048},
 		},
 	}
 
-	res, ok := volumeResp.(*LabelVolumeResponse)
+	res, ok := volumeResp.(*VolumeResponse)
 	require.Equal(t, true, ok)
 	require.Equal(t, expected.Volumes, res.Response.Volumes)
 }
@@ -1279,13 +1279,13 @@ func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
 	})
 }
 
-func labelVolumeResult(v logproto.LabelVolumeResponse) (*int, http.Handler) {
+func labelVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteLabelVolumeResponseJSON(&v, w); err != nil {
+		if err := marshal.WriteSeriesVolumeResponseJSON(&v, w); err != nil {
 			panic(err)
 		}
 		count++

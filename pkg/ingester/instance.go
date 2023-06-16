@@ -8,9 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/distributor/writefailures"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
-
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -24,6 +21,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
@@ -35,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -624,15 +623,28 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
-func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil && req.Matchers != labelvolume.MatchAny {
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
-	from, through := req.From.Time(), req.Through.Time()
+	matchAny := len(matchers) == 0
+	labelsToMatch := make(map[string]struct{})
+	for _, m := range matchers {
+		if m.Name == "" {
+			matchAny = true
+			continue
+		}
 
-	volumes := make(map[string]map[string]uint64)
+		labelsToMatch[m.Name] = struct{}{}
+	}
+
+	seriesNames := make(map[uint64]string)
+	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+
+	from, through := req.From.Time(), req.Through.Time()
+	volumes := make(map[string]uint64)
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
@@ -652,13 +664,21 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 				}
 			}
 
+			seriesLabels = seriesLabels[:0]
 			for _, l := range s.labels {
-				if _, ok := volumes[l.Name]; !ok {
-					volumes[l.Name] = make(map[string]uint64)
+				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					seriesLabels = append(seriesLabels, l)
 				}
-				volumes[l.Name][l.Value] += size
 			}
 
+			// If the labels are < 1k, this does not alloc
+			// https://github.com/prometheus/prometheus/pull/8025
+			hash := seriesLabels.Hash()
+			if _, ok := seriesNames[hash]; !ok {
+				seriesNames[hash] = seriesLabels.String()
+			}
+
+			volumes[seriesNames[hash]] += size
 			s.chunkMtx.RUnlock()
 		}
 		return nil
@@ -666,7 +686,7 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	res := labelvolume.MapToLabelVolumeResponse(volumes, int(req.Limit))
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 

@@ -7,7 +7,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
@@ -346,7 +346,7 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	return ParseRangeQuery(r)
 }
 
-func ParseLabelVolumeQuery(r *http.Request) (*RangeQuery, error) {
+func ParseSeriesVolumeQuery(r *http.Request) (*RangeQuery, error) {
 	err := labelVolumeLimit(r)
 	if err != nil {
 		return nil, err
@@ -361,13 +361,13 @@ func ParseLabelVolumeQuery(r *http.Request) (*RangeQuery, error) {
 }
 
 func labelVolumeLimit(r *http.Request) error {
-	l, err := parseInt(r.Form.Get("limit"), labelvolume.DefaultLimit)
+	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
 	if err != nil {
 		return err
 	}
 
 	if l == 0 {
-		r.Form.Set("limit", fmt.Sprint(labelvolume.DefaultLimit))
+		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
 		return nil
 	}
 
