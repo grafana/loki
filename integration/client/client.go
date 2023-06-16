@@ -86,22 +86,22 @@ func New(instanceID, token, baseURL string, opts ...Option) *Client {
 }
 
 // PushLogLine creates a new logline with the current time as timestamp
-func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) error {
-	return c.pushLogLine(line, c.Now, nil, extraLabels...)
+func (c *Client) PushLogLine(line string, logLabels ...map[string]string) error {
+	return c.pushLogLine(line, c.Now, nil, logLabels...)
 }
 
-func (c *Client) PushLogLineWithMetadata(line string, metadata map[string]string, extraLabels ...map[string]string) error {
-	return c.PushLogLineWithTimestampAndMetadata(line, c.Now, metadata, extraLabels...)
+func (c *Client) PushLogLineWithMetadata(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
+	return c.PushLogLineWithTimestampAndMetadata(line, c.Now, logLabels, extraLabels...)
 }
 
 // PushLogLineWithTimestamp creates a new logline at the given timestamp
 // The timestamp has to be a Unix timestamp (epoch seconds)
-func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, nil, extraLabelList...)
+func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, logLabels ...map[string]string) error {
+	return c.pushLogLine(line, timestamp, nil, logLabels...)
 }
 
-func (c *Client) PushLogLineWithTimestampAndMetadata(line string, timestamp time.Time, metadata map[string]string, extraLabelList ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, labels.FromMap(metadata), extraLabelList...)
+func (c *Client) PushLogLineWithTimestampAndMetadata(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
+	return c.pushLogLine(line, timestamp, labels.FromMap(logLabels), extraLabelList...)
 }
 
 func formatTS(ts time.Time) string {
@@ -114,10 +114,10 @@ type stream struct {
 }
 
 // pushLogLine creates a new logline
-func (c *Client) pushLogLine(line string, timestamp time.Time, metadata labels.Labels, extraLabelList ...map[string]string) error {
+func (c *Client) pushLogLine(line string, timestamp time.Time, logLabels labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
-	metadataJson, err := metadata.MarshalJSON()
+	logLabelsJSON, err := logLabels.MarshalJSON()
 	if err != nil {
 		return err
 	}
@@ -130,7 +130,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, metadata labels.L
 			{
 				formatTS(timestamp),
 				line,
-				string(metadataJson),
+				string(logLabelsJSON),
 			},
 		},
 	}
