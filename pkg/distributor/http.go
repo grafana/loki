@@ -62,8 +62,6 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d.writeFailuresManager.Log(tenantID, err)
-
 	resp, ok := httpgrpc.HTTPResponseFromError(err)
 	if ok {
 		body := string(resp.Body)

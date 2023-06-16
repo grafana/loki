@@ -2,6 +2,7 @@ package distributor
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -71,14 +72,14 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		formatedRejectMaxAgeTime := time.Unix(0, ctx.rejectOldSampleMaxAge).Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.GreaterThanMaxSampleAge, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
+		return fmt.Errorf(validation.GreaterThanMaxSampleAgeErrorMsg, labels, formatedEntryTime, formatedRejectMaxAgeTime)
 	}
 
 	if ts > ctx.creationGracePeriod {
 		formatedEntryTime := entry.Timestamp.Format(timeFormat)
 		validation.DiscardedSamples.WithLabelValues(validation.TooFarInFuture, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.TooFarInFuture, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
+		return fmt.Errorf(validation.TooFarInFutureErrorMsg, labels, formatedEntryTime)
 	}
 
 	if maxSize := ctx.maxLineSize; maxSize != 0 && len(entry.Line) > maxSize {
@@ -88,7 +89,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		// for parity.
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
+		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
 	}
 
 	return nil
@@ -98,12 +99,12 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 func (v Validator) ValidateLabels(ctx validationContext, ls labels.Labels, stream logproto.Stream) error {
 	if len(ls) == 0 {
 		validation.DiscardedSamples.WithLabelValues(validation.MissingLabels, ctx.userID).Inc()
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.MissingLabelsErrorMsg)
+		return fmt.Errorf(validation.MissingLabelsErrorMsg)
 	}
 	numLabelNames := len(ls)
 	if numLabelNames > ctx.maxLabelNamesPerSeries {
 		updateMetrics(validation.MaxLabelNamesPerSeries, ctx.userID, stream)
-		return httpgrpc.Errorf(http.StatusBadRequest, validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
+		return fmt.Errorf(validation.MaxLabelNamesPerSeriesErrorMsg, stream.Labels, numLabelNames, ctx.maxLabelNamesPerSeries)
 	}
 
 	lastLabelName := ""

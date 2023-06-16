@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
 
 	"github.com/go-kit/log/level"
@@ -106,6 +107,8 @@ type instance struct {
 
 	chunkFilter          chunk.RequestChunkFilterer
 	streamRateCalculator *StreamRateCalculator
+
+	writeFailures *writefailures.Manager
 }
 
 func newInstance(
@@ -119,6 +122,7 @@ func newInstance(
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
 	streamRateCalculator *StreamRateCalculator,
+	writeFailures *writefailures.Manager,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -145,6 +149,8 @@ func newInstance(
 		chunkFilter: chunkFilter,
 
 		streamRateCalculator: streamRateCalculator,
+
+		writeFailures: writeFailures,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -274,7 +280,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -306,7 +312,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
