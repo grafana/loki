@@ -25,8 +25,6 @@ import (
 )
 
 var (
-	wrapRegistryOnce sync.Once
-
 	configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
@@ -125,18 +123,18 @@ groups:
 `
 )
 
-func wrapRegistry() {
-	wrapRegistryOnce.Do(func() {
-		prometheus.DefaultRegisterer = &wrappedRegisterer{Registerer: prometheus.DefaultRegisterer}
-	})
+func resetMetricRegistry() {
+	registry := &wrappedRegisterer{Registry: prometheus.NewRegistry()}
+	prometheus.DefaultRegisterer = registry
+	prometheus.DefaultGatherer = registry
 }
 
 type wrappedRegisterer struct {
-	prometheus.Registerer
+	*prometheus.Registry
 }
 
 func (w *wrappedRegisterer) Register(collector prometheus.Collector) error {
-	if err := w.Registerer.Register(collector); err != nil {
+	if err := w.Registry.Register(collector); err != nil {
 		var aErr prometheus.AlreadyRegisteredError
 		if errors.As(err, &aErr) {
 			return nil
@@ -162,7 +160,7 @@ type Cluster struct {
 }
 
 func New() *Cluster {
-	wrapRegistry()
+	resetMetricRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
 		panic(err.Error())
