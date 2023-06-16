@@ -522,7 +522,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Timestamp: 0, Value: "bar", Volume: 38},
+						{Name: "foo", Value: "bar", Volume: 38},
 					},
 					Limit: 100,
 				},
@@ -1022,13 +1022,11 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 							Name:      "job",
 							Value:     "prometheus",
 							Volume:    150,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 						{
 							Name:      "job",
 							Value:     "loki",
 							Volume:    300,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 					},
 					Limit: 5,
@@ -1041,13 +1039,11 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 							Name:      "job",
 							Value:     "prometheus",
 							Volume:    100,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 						{
 							Name:      "job",
 							Value:     "loki",
 							Volume:    200,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 					},
 					Limit: 5,
@@ -1083,13 +1079,11 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 							Name:      "job",
 							Value:     "prometheus",
 							Volume:    150,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 						{
 							Name:      "job",
 							Value:     "loki",
 							Volume:    300,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 					},
 					Limit: 5,
@@ -1102,13 +1096,11 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 							Name:      "job",
 							Value:     "prometheus",
 							Volume:    100,
-							Timestamp: 2e9, //Value here is nanoseconds
 						},
 						{
 							Name:      "job",
 							Value:     "loki",
 							Volume:    200,
-							Timestamp: 2e9, //Value here is nanoseconds
 						},
 					},
 					Limit: 5,
@@ -1141,13 +1133,11 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 							Name:      "job",
 							Value:     "prometheus",
 							Volume:    150,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 						{
 							Name:      "cluster",
 							Value:     "dev",
 							Volume:    300,
-							Timestamp: 1e9, //Value here is nanoseconds
 						},
 					},
 					Limit: 1,
@@ -1160,13 +1150,11 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 							Name:      "job",
 							Value:     "prometheus",
 							Volume:    100,
-							Timestamp: 2e9, //Value here is nanoseconds
 						},
 						{
 							Name:      "cluster",
 							Value:     "dev",
 							Volume:    200,
-							Timestamp: 2e9, //Value here is nanoseconds
 						},
 					},
 					Limit: 1,

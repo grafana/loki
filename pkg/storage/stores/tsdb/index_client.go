@@ -49,8 +49,8 @@ type IndexStatsAccumulator interface {
 }
 
 type SeriesVolumeAccumulator interface {
-	AddVolumes(map[string]uint64, int64)
-	Volumes() *logproto.VolumeResponse
+	AddVolumes(map[string]uint64)
+	Volumes(from, through time.Time) *logproto.VolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -281,7 +281,7 @@ func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, thr
 		return nil, err
 	}
 
-	return acc.Volumes(), nil
+	return acc.Volumes(from.Time(), through.Time()), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.

@@ -132,8 +132,8 @@ var (
 
 	seriesVolume = logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: `{foo="bar"}`, Value: "", Volume: 1024, Timestamp: 1e9}, //nanoseconds
-			{Name: `{bar="baz"}`, Value: "", Volume: 3350, Timestamp: 1e9},
+			{Name: `{foo="bar"}`, Value: "", Volume: 1024}, //nanoseconds
+			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
 		},
 		Limit: 5,
 	}

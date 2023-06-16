@@ -392,6 +392,6 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 	if err != nil {
 		return err
 	}
-	acc.AddVolumes(volumes, through.UnixNano())
+	acc.AddVolumes(volumes)
 	return nil
 }

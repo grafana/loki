@@ -681,12 +681,7 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-  //TODO(trevorwhitney): feels hacky, do we need a timestamp here after all?
-  vols := map[int64]map[string]uint64 {
-		through.UnixNano(): volumes,
-  }
-
-	res := seriesvolume.MapToSeriesVolumeResponse(vols, int(req.Limit))
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit), from, through)
 	return res, nil
 }
 

@@ -2,206 +2,360 @@ package seriesvolume
 
 import (
 	"testing"
+	"time"
 
+	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_AddVolumes(t *testing.T) {
-	t.Run("always accumulates values for the same label/value pair into the latest timestamp", func(t *testing.T) {
+	now := time.Now()
+	t1 := now.Add(-time.Hour)
+	t2 := now.Add(-time.Minute)
+	volumes := map[string]uint64{
+		`{job: "loki"}`:       5,
+		`{job: "prometheus"}`: 10,
+		`{cluster: "dev"}`:    25,
+		`{cluster: "prod"}`:   50,
+	}
+
+	t.Run("accumulates values for the same series", func(t *testing.T) {
 		acc := NewAccumulator(4)
-		volumes := map[string]uint64{
-			`{job: "loki"}`:       5,
-			`{job: "prometheus"}`: 10,
-			`{cluster: "dev"}`:    25,
-			`{cluster: "prod"}`:   50,
-		}
+		acc.AddVolumes(volumes)
 
-		acc.AddVolumes(volumes, 1)
-
-		resp := acc.Volumes()
+		resp := acc.Volumes(t1, t2)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
-					Name:      "{cluster: \"prod\"}",
-					Value:     "",
-					Volume:    50,
-					Timestamp: 1,
+					Name:   "{cluster: \"prod\"}",
+					Value:  "",
+					Volume: 50,
 				},
 				{
-					Name:      "{cluster: \"dev\"}",
-					Value:     "",
-					Volume:    25,
-					Timestamp: 1,
+					Name:   "{cluster: \"dev\"}",
+					Value:  "",
+					Volume: 25,
 				},
 				{
-					Name:      "{job: \"prometheus\"}",
-					Value:     "",
-					Volume:    10,
-					Timestamp: 1,
+					Name:   "{job: \"prometheus\"}",
+					Value:  "",
+					Volume: 10,
 				},
 				{
-					Name:      "{job: \"loki\"}",
-					Value:     "",
-					Volume:    5,
-					Timestamp: 1,
+					Name:   "{job: \"loki\"}",
+					Value:  "",
+					Volume: 5,
 				},
 			},
-			Limit: 4,
+			Limit:   4,
+			From:    model.TimeFromUnixNano(t1.UnixNano()),
+			Through: model.TimeFromUnixNano(t2.UnixNano()),
 		}, resp)
 
-		volumes = map[string]uint64{
-			`{job: "loki"}`:       5,
-			`{job: "prometheus"}`: 10,
-			`{cluster: "dev"}`:    25,
-			`{cluster: "prod"}`:   50,
-		}
+		acc.AddVolumes(volumes)
 
-		acc.AddVolumes(volumes, 2)
-
-		resp = acc.Volumes()
+		resp = acc.Volumes(t1, t2)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
-					Name:      "{cluster: \"prod\"}",
-					Value:     "",
-					Volume:    100,
-					Timestamp: 2,
+					Name:   "{cluster: \"prod\"}",
+					Value:  "",
+					Volume: 100,
 				},
 				{
-					Name:      "{cluster: \"dev\"}",
-					Value:     "",
-					Volume:    50,
-					Timestamp: 2,
+					Name:   "{cluster: \"dev\"}",
+					Value:  "",
+					Volume: 50,
 				},
 				{
-					Name:      "{job: \"prometheus\"}",
-					Value:     "",
-					Volume:    20,
-					Timestamp: 2,
+					Name:   "{job: \"prometheus\"}",
+					Value:  "",
+					Volume: 20,
 				},
 				{
-					Name:      "{job: \"loki\"}",
-					Value:     "",
-					Volume:    10,
-					Timestamp: 2,
+					Name:   "{job: \"loki\"}",
+					Value:  "",
+					Volume: 10,
 				},
 			},
-			Limit: 4,
+			Limit:   4,
+			From:    model.TimeFromUnixNano(t1.UnixNano()),
+			Through: model.TimeFromUnixNano(t2.UnixNano()),
 		}, resp)
 	})
 
 	t.Run("sorts label value pairs by volume", func(t *testing.T) {
 		acc := NewAccumulator(5)
-		volumes := map[string]uint64{
-			`{job: "loki"}`:       5,
-			`{job: "prometheus"}`: 10,
-			`{cluster: "dev"}`:    25,
-			`{cluster: "prod"}`:   50,
-		}
+		acc.AddVolumes(volumes)
 
-		acc.AddVolumes(volumes, 1)
-
-		resp := acc.Volumes()
+		resp := acc.Volumes(t1, t2)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
-					Name:      "{cluster: \"prod\"}",
-					Value:     "",
-					Volume:    50,
-					Timestamp: 1,
+					Name:   "{cluster: \"prod\"}",
+					Value:  "",
+					Volume: 50,
 				},
 				{
-					Name:      "{cluster: \"dev\"}",
-					Value:     "",
-					Volume:    25,
-					Timestamp: 1,
+					Name:   "{cluster: \"dev\"}",
+					Value:  "",
+					Volume: 25,
 				},
 				{
-					Name:      "{job: \"prometheus\"}",
-					Value:     "",
-					Volume:    10,
-					Timestamp: 1,
+					Name:   "{job: \"prometheus\"}",
+					Value:  "",
+					Volume: 10,
 				},
 				{
-					Name:      "{job: \"loki\"}",
-					Value:     "",
-					Volume:    5,
-					Timestamp: 1,
+					Name:   "{job: \"loki\"}",
+					Value:  "",
+					Volume: 5,
 				},
 			},
-			Limit: 5,
+			Limit:   5,
+			From:    model.TimeFromUnixNano(t1.UnixNano()),
+			Through: model.TimeFromUnixNano(t2.UnixNano()),
 		}, resp)
 	})
 
-	t.Run("merges volumes for the same label value pair and timestamp", func(t *testing.T) {
-		acc := NewAccumulator(5)
-		volumes := map[string]uint64{
-			`{job: "loki"}`:       5,
-			`{job: "prometheus"}`: 10,
-		}
-		acc.AddVolumes(volumes, 1)
-
-		volumes = map[string]uint64{
-			`{job: "loki"}`:       5,
-			`{job: "prometheus"}`: 10,
-		}
-		acc.AddVolumes(volumes, 1)
-
-		resp := acc.Volumes()
-		require.Equal(t, &logproto.VolumeResponse{
-			Volumes: []logproto.Volume{
-				{
-					Name:      "{job: \"prometheus\"}",
-					Value:     "",
-					Volume:    20,
-					Timestamp: 1,
-				},
-				{
-					Name:      "{job: \"loki\"}",
-					Value:     "",
-					Volume:    10,
-					Timestamp: 1,
-				},
-			},
-			Limit: 5,
-		}, resp)
-	})
-
-	t.Run("aggregate volumes to latest timestamp for series and apply limit", func(t *testing.T) {
+	t.Run("applies limit", func(t *testing.T) {
 		acc := NewAccumulator(2)
 		volumes := map[string]uint64{
 			`{job: "loki"}`:       5,
 			`{job: "prometheus"}`: 10,
 			`{job: "mimir"}`:      1,
 		}
-		acc.AddVolumes(volumes, 1)
+		acc.AddVolumes(volumes)
 
 		volumes = map[string]uint64{
 			`{job: "loki"}`:       20,
 			`{job: "prometheus"}`: 30,
 			`{job: "mimir"}`:      1,
 		}
-		acc.AddVolumes(volumes, 2)
+		acc.AddVolumes(volumes)
 
-		resp := acc.Volumes()
+		resp := acc.Volumes(t1, t2)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
-					Name:      "{job: \"prometheus\"}",
-					Value:     "",
-					Volume:    40,
-					Timestamp: 2,
+					Name:   "{job: \"prometheus\"}",
+					Value:  "",
+					Volume: 40,
 				},
 				{
-					Name:      "{job: \"loki\"}",
-					Value:     "",
-					Volume:    25,
-					Timestamp: 2,
+					Name:   "{job: \"loki\"}",
+					Value:  "",
+					Volume: 25,
 				},
 			},
-			Limit: 2,
+			Limit:   2,
+			From:    model.TimeFromUnixNano(t1.UnixNano()),
+			Through: model.TimeFromUnixNano(t2.UnixNano()),
 		}, resp)
+	})
+}
+
+func Test_Merge(t *testing.T) {
+	t.Run("merges and sorts multiple volume responses into a single response with values aggregated", func(t *testing.T) {
+		limit := int32(5)
+		responses := []*logproto.VolumeResponse{
+			{
+				Volumes: []logproto.Volume{
+					{
+						Name:   "{cluster: \"dev\"}",
+						Value:  "",
+						Volume: 25,
+					},
+					{
+						Name:   "{cluster: \"prod\"}",
+						Value:  "",
+						Volume: 50,
+					},
+				},
+				Limit: limit,
+			},
+			{
+				Volumes: []logproto.Volume{
+					{
+						Name:   "{cluster: \"dev\"}",
+						Value:  "",
+						Volume: 25,
+					},
+					{
+						Name:   "{job: \"foo\"}",
+						Value:  "",
+						Volume: 15,
+					},
+					{
+						Name:   "{cluster: \"prod\"}",
+						Value:  "",
+						Volume: 50,
+					},
+				},
+				Limit: limit,
+			},
+		}
+
+		mergedResponse := Merge(responses, limit)
+
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{
+					Name:   "{cluster: \"prod\"}",
+					Value:  "",
+					Volume: 100,
+				},
+				{
+					Name:   "{cluster: \"dev\"}",
+					Value:  "",
+					Volume: 50,
+				},
+				{
+					Name:   "{job: \"foo\"}",
+					Value:  "",
+					Volume: 15,
+				},
+			},
+			Limit:   limit,
+			From:    0,
+			Through: 0,
+		}, mergedResponse)
+	})
+
+	t.Run("applies limit to return N biggest series", func(t *testing.T) {
+		limit := int32(2)
+		responses := []*logproto.VolumeResponse{
+			{
+				Volumes: []logproto.Volume{
+					{
+						Name:   "{cluster: \"dev\"}",
+						Value:  "",
+						Volume: 25,
+					},
+					{
+						Name:   "{cluster: \"prod\"}",
+						Value:  "",
+						Volume: 50,
+					},
+				},
+				Limit: limit,
+			},
+			{
+				Volumes: []logproto.Volume{
+					{
+						Name:   "{cluster: \"dev\"}",
+						Value:  "",
+						Volume: 25,
+					},
+					{
+						Name:   "{job: \"foo\"}",
+						Value:  "",
+						Volume: 15,
+					},
+					{
+						Name:   "{cluster: \"prod\"}",
+						Value:  "",
+						Volume: 50,
+					},
+				},
+				Limit: limit,
+			},
+		}
+
+		mergedResponse := Merge(responses, limit)
+
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{
+					Name:   "{cluster: \"prod\"}",
+					Value:  "",
+					Volume: 100,
+				},
+				{
+					Name:   "{cluster: \"dev\"}",
+					Value:  "",
+					Volume: 50,
+				},
+			},
+			Limit:   limit,
+			From:    0,
+			Through: 0,
+		}, mergedResponse)
+	})
+
+	t.Run("aggregates responses into earliest from and latest through timestamp of input", func(t *testing.T) {
+		limit := int32(5)
+		now := time.Now()
+		oneHourFromNow := now.Add(time.Hour)
+		oneHourAgo := now.Add(-time.Hour)
+
+		responses := []*logproto.VolumeResponse{
+			{
+				Volumes: []logproto.Volume{
+					{
+						Name:   "{cluster: \"dev\"}",
+						Value:  "",
+						Volume: 25,
+					},
+					{
+						Name:   "{cluster: \"prod\"}",
+						Value:  "",
+						Volume: 50,
+					},
+				},
+				Limit:   limit,
+				From:    5,
+				Through: model.TimeFromUnixNano(oneHourAgo.UnixNano()),
+			},
+			{
+				Volumes: []logproto.Volume{
+					{
+						Name:   "{cluster: \"dev\"}",
+						Value:  "",
+						Volume: 25,
+					},
+					{
+						Name:   "{job: \"foo\"}",
+						Value:  "",
+						Volume: 15,
+					},
+					{
+						Name:   "{cluster: \"prod\"}",
+						Value:  "",
+						Volume: 50,
+					},
+				},
+				Limit:   limit,
+				From:    10,
+				Through: model.TimeFromUnixNano(oneHourFromNow.UnixNano()),
+			},
+		}
+
+		mergedResponse := Merge(responses, limit)
+
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{
+					Name:   "{cluster: \"prod\"}",
+					Value:  "",
+					Volume: 100,
+				},
+				{
+					Name:   "{cluster: \"dev\"}",
+					Value:  "",
+					Volume: 50,
+				},
+				{
+					Name:   "{job: \"foo\"}",
+					Value:  "",
+					Volume: 15,
+				},
+			},
+			Limit:   limit,
+			From:    5,
+			Through: model.TimeFromUnixNano(oneHourFromNow.UnixNano()),
+		}, mergedResponse)
 	})
 }

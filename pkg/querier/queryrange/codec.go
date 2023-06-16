@@ -768,36 +768,33 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 }
 
 func MergeToPrometheusResponse(responses []*logproto.VolumeResponse, limit int32) queryrangebase.PrometheusData {
-	mergedVolumes := seriesvolume.MergeVolumes(responses...)
+	mergedVolumes := seriesvolume.Merge(responses, limit)
 	return mapToPrometheusResponse(mergedVolumes, int(limit))
 }
 
-func mapToPrometheusResponse(mergedVolumes map[int64]map[string]uint64, limit int) queryrangebase.PrometheusData {
+func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse, limit int) queryrangebase.PrometheusData {
 	samplesByStream := map[logproto.LabelAdapter]*logproto.LegacySample{}
+	tsMs := mergedResponse.From.UnixNano() / 1e6 //convert ns to ms
 
 	// Aggregate samples into single sample with latest timestamp
-	for ts, series := range mergedVolumes {
-		for name, v := range series {
-			tsMs := ts / 1e6 //convert ns to ms
+	for _, volume := range mergedResponse.Volumes {
+		//TODO(trevorwhitney): convert name (which is a series) to label/value labelAdapter
+		streamKey := logproto.LabelAdapter{
+			Name:  volume.Name,
+			Value: volume.Value,
+		}
 
-      //TODO(trevorwhitney): convert name to label/value labelAdapter
-			streamKey := logproto.LabelAdapter{
-				Name:  name,
-				Value: "",
+		if sample, ok := samplesByStream[streamKey]; !ok {
+			samplesByStream[streamKey] = &logproto.LegacySample{
+				TimestampMs: tsMs,
+				Value:       float64(volume.Volume),
+			}
+		} else {
+			if sample.TimestampMs < tsMs {
+				sample.TimestampMs = tsMs
 			}
 
-			if sample, ok := samplesByStream[streamKey]; !ok {
-				samplesByStream[streamKey] = &logproto.LegacySample{
-					TimestampMs: tsMs,
-					Value:       float64(v),
-				}
-			} else {
-				if sample.TimestampMs < tsMs {
-					sample.TimestampMs = tsMs
-				}
-
-				sample.Value += float64(v)
-			}
+			sample.Value += float64(volume.Volume)
 		}
 	}
 

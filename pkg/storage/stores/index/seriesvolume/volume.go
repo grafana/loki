@@ -3,8 +3,10 @@ package seriesvolume
 import (
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/common/model"
 )
 
 const (
@@ -15,150 +17,92 @@ const (
 // TODO(masslessparticle): Lock striping to reduce contention on this map
 type Accumulator struct {
 	lock    sync.RWMutex
-	volumes map[string]*volume //key -> value -> [ts, val]
+	volumes map[string]uint64
 	limit   int32
-}
-
-type volume struct {
-	Timestamp int64
-	Value     uint64
 }
 
 func NewAccumulator(limit int32) *Accumulator {
 	return &Accumulator{
-		volumes: make(map[string]*volume),
+		volumes: make(map[string]uint64),
 		limit:   limit,
 	}
 }
 
-// AddVolumes adds the given volumes to the accumulator at the given nanosecond timestamp.
-// We only keep one value per label/value combination, so if a volume already exists, add to
-// it and update the timestamp for the series to be the latest timestamp seen.
-func (acc *Accumulator) AddVolumes(mergedVolumes map[string]uint64, timestamp int64) {
+func (acc *Accumulator) AddVolumes(volumes map[string]uint64) {
 	acc.lock.Lock()
 	defer acc.lock.Unlock()
 
-	for series, v := range mergedVolumes {
-		if vol, ok := acc.volumes[series]; !ok {
-			acc.volumes[series] = &volume{
-				Timestamp: timestamp,
-				Value:     v,
-			}
-		} else {
-			if vol.Timestamp < timestamp {
-				vol.Timestamp = timestamp
-			}
-
-			vol.Value += v
-		}
+	for name, size := range volumes {
+		acc.volumes[name] += size
 	}
 }
 
-func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
+func (acc *Accumulator) Volumes(from, through time.Time) *logproto.VolumeResponse {
 	acc.lock.RLock()
 	defer acc.lock.RUnlock()
 
-	mergedVolumes := make(map[int64]map[string]uint64)
-	for series, vol := range acc.volumes {
-		if _, ok := mergedVolumes[vol.Timestamp]; !ok {
-			mergedVolumes[vol.Timestamp] = make(map[string]uint64)
-		}
-
-		if _, ok := mergedVolumes[vol.Timestamp][series]; !ok {
-			mergedVolumes[vol.Timestamp][series] = vol.Value
-		} else {
-			mergedVolumes[vol.Timestamp][series] += vol.Value
-		}
-	}
-
-	return MapToSeriesVolumeResponse(mergedVolumes, int(acc.limit))
+	return MapToSeriesVolumeResponse(acc.volumes, int(acc.limit), from, through)
 }
 
 func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
-	mergedVolumes := MergeVolumes(responses...)
-	return MapToSeriesVolumeResponse(mergedVolumes, int(limit))
-}
+	mergedVolumes := make(map[string]uint64)
+	var from, through time.Time
 
-func MapToSeriesVolumeResponse(mergedVolumes map[int64]map[string]uint64, limit int) *logproto.VolumeResponse {
-	// Aggregate volumes into single value per label/value pair
-	// adopting the latest timestamp seen
-	acc := make(map[string]*volume)
-	for timestamp, series := range mergedVolumes {
-		for name, v := range series {
-			if vol, ok := acc[name]; !ok {
-				acc[name] = &volume{
-					Timestamp: timestamp,
-					Value:     v,
-				}
-			} else {
-				if vol.Timestamp < timestamp {
-					vol.Timestamp = timestamp
-				}
-
-				vol.Value += v
-			}
-		}
-	}
-
-	// Convert aggregation into slice of logproto.Volume
-	volumes := make([]logproto.Volume, 0, len(mergedVolumes)*len(mergedVolumes[0]))
-	for name, v := range acc {
-		volumes = append(volumes, logproto.Volume{
-			Name:      name,
-			Value:     "",
-			Volume:    v.Value,
-			Timestamp: v.Timestamp,
-		})
-	}
-
-	// Sort the LabelVolume response by timestamp, volume, name, value
-	// to ensure consistency in responses
-	sort.Slice(volumes, func(i, j int) bool {
-		if volumes[i].Timestamp == volumes[j].Timestamp {
-			if volumes[i].Volume == volumes[j].Volume {
-				if volumes[i].Name == volumes[j].Name {
-					return volumes[i].Value < volumes[j].Value
-				}
-
-				return volumes[i].Name < volumes[j].Name
-			}
-
-			return volumes[i].Volume > volumes[j].Volume
-		}
-		return volumes[i].Timestamp < volumes[j].Timestamp
-	})
-
-	// Apply the limit
-	if len(volumes) > limit {
-		volumes = volumes[:limit]
-	}
-
-	return &logproto.VolumeResponse{
-		Volumes: volumes,
-		Limit:   int32(limit),
-	}
-}
-
-func MergeVolumes(responses ...*logproto.VolumeResponse) map[int64]map[string]uint64 {
-	mergedVolumes := make(map[int64]map[string]uint64)
 	for _, res := range responses {
 		if res == nil {
 			// Some stores return nil responses
 			continue
 		}
 
-		for _, v := range res.Volumes {
-			if _, ok := mergedVolumes[v.Timestamp]; !ok {
-				mergedVolumes[v.Timestamp] = make(map[string]uint64)
-			}
+		resFrom, resThrough := res.From.Time(), res.Through.Time()
 
-			if _, ok := mergedVolumes[v.Timestamp][v.Name]; !ok {
-				mergedVolumes[v.Timestamp][v.Name] = v.GetVolume()
-			} else {
-				mergedVolumes[v.Timestamp][v.Name] += v.GetVolume()
-			}
+		if resFrom.Before(from) || from.IsZero() {
+			from = resFrom
+		}
+
+		if resThrough.After(through) || through.IsZero() {
+			through = resThrough
+		}
+
+		for _, v := range res.Volumes {
+			mergedVolumes[v.Name] += v.GetVolume()
+
 		}
 	}
 
-	return mergedVolumes
+	return MapToSeriesVolumeResponse(mergedVolumes, int(limit), from, through)
+}
+
+func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int, from, through time.Time) *logproto.VolumeResponse {
+	volumes := make([]logproto.Volume, 0, len(mergedVolumes))
+	for name, size := range mergedVolumes {
+		volumes = append(volumes, logproto.Volume{
+			Name:   name,
+			Value:  "",
+			Volume: size,
+		})
+	}
+
+	sort.Slice(volumes, func(i, j int) bool {
+		if volumes[i].Volume == volumes[j].Volume {
+			if volumes[i].Name == volumes[j].Name {
+				return volumes[i].Value < volumes[j].Value
+			}
+
+			return volumes[i].Name < volumes[j].Name
+		}
+
+		return volumes[i].Volume > volumes[j].Volume
+	})
+
+	if limit < len(volumes) {
+		volumes = volumes[:limit]
+	}
+
+	return &logproto.VolumeResponse{
+		Volumes: volumes,
+		Limit:   int32(limit),
+		From:    model.TimeFromUnixNano(from.UnixNano()),
+		Through: model.TimeFromUnixNano(through.UnixNano()),
+	}
 }
