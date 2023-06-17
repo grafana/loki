@@ -2410,10 +2410,8 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	nChunks := d.Uvarint()
 	chunksRemaining := nChunks
 
-	markersLn := int(d.Be32()) // markersLn
+	markersLn := int(d.Be32())
 
-	// variables must be declared before goto, allowing us to skip
-	// using chunk pages when the chunk count is small
 	var (
 		nMarkers int
 		marker   chunkPageMarker
@@ -2423,24 +2421,26 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 		// against the previous chunk and the maxt for a page may not be
 		// the maxt of the page's last chunk
 		// since chunks are ordered by mint, not maxt
-		forceMinTime bool
+		forceMinTime  bool
+		startMarkers  = d.Len()
+		markersOffset int
 	)
 
-	startMarkers := d.Len()
 	if nChunks < dec.maxChunksToBypassMarkerLookup {
 		d.Skip(markersLn)
 		goto iterate
 	}
 
 	nMarkers = d.Uvarint()
+	markersOffset = markersLn - (startMarkers - d.Len())
 
 	for i := 0; i < nMarkers; i++ {
 		marker.decode(d)
 		forceMinTime = true
 
 		if overlap(from, through, marker.MinTime, marker.MaxTime) {
-			d.Skip(markersLn - (startMarkers - d.Len())) // skip the rest of markers
-			d.Skip(marker.Offset)                        // skip to the desired chunks
+			d.Skip(markersOffset)
+			d.Skip(marker.Offset)
 			goto iterate
 		}
 
