@@ -2451,20 +2451,22 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	if d.Err() != nil {
 		return errors.Wrap(d.Err(), "read chunk markers")
 	}
-	return nil
 
 iterate:
 	for i := 0; i < chunksRemaining; i++ {
 		chunkMeta := &ChunkMeta{}
 		var err error
+
 		if i == 0 && forceMinTime {
 			err = readChunkMetaWithForcedMintime(d, marker.MinTime, chunkMeta, true)
 		} else {
 			err = readChunkMeta(d, prevMaxT, chunkMeta)
 		}
+
 		if err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
 		}
+
 		prevMaxT = chunkMeta.MaxTime
 
 		if overlap(from, through, chunkMeta.MinTime, chunkMeta.MaxTime) {
