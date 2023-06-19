@@ -41,14 +41,14 @@ The index gateway now supports shuffle sharding of index data when running in
 "ring" mode. The index data is sharded by tenant where each tenant gets
 assigned a sub-set of all available instances of the gateway ring.
 
-In case you configured a high replication factor to accommodate for load, since
+If you configured a high replication factor to accommodate for load, since
 in the past this was the only option to give a tenant more instances for
-querying, you should consider reducing the replication factor to meaningful
-value for replication (e.g. from 12 to 3) and instead set the shard factor for
+querying, you should consider reducing the replication factor to a meaningful
+value for replication (for example, from 12 to 3) and instead set the shard factor for
 individual tenants as required.
 
 If the global shard factor (no per-tenant) is 0 (default value), the global
-shard factor of is set to replication factor. It can still be overwritten per
+shard factor is set to replication factor. It can still be overwritten per
 tenant.
 
 In the context of the index gateway, sharding is synonymous to replication.

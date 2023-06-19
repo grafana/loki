@@ -1651,7 +1651,7 @@ ring:
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-  # How many index gateway instances are assigned to each tenant. Deprecated:
+  # Deprecated: How many index gateway instances are assigned to each tenant.
   # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
   # setting.
   # CLI flag: -replication-factor
@@ -2616,8 +2616,8 @@ shard_streams:
 [minimum_labels_number: <int>]
 
 # The shard size defines how many index gateways should be used by a tenant for
-# querying. If the global shard factor is 0, the global shard factor of is set
-# to the deprecated -replication-factor for backwards compatibility reasons.
+# querying. If the global shard factor is 0, the global shard factor is set to
+# the deprecated -replication-factor for backwards compatibility reasons.
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 ```
