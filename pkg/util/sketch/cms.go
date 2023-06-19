@@ -32,7 +32,8 @@ func make2dslice(col, row int) [][]uint32 {
 }
 
 func (s *CountMinSketch) getPos(h1, h2 uint32, row int) uint32 {
-	return (h1 + uint32(row)*h2) % uint32(s.depth)
+	pos := (h1 + uint32(row)*h2) % uint32(s.width)
+	return pos
 }
 
 // Add 'count' occurences of the given input.
@@ -80,11 +81,11 @@ func (s *CountMinSketch) Count(event string) uint32 {
 	min := uint32(math.MaxUint32)
 	h1, h2 := hashn(event)
 
+	var pos uint32
 	for i := 0; i < s.depth; i++ {
-		pos := s.getPos(h1, h2, i)
-		v := s.counters[i][pos]
-		if v < min {
-			min = v
+		pos = s.getPos(h1, h2, i)
+		if s.counters[i][pos] < min {
+			min = s.counters[i][pos]
 		}
 	}
 	return min
