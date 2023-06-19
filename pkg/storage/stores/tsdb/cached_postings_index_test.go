@@ -422,6 +422,6 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 	acc := &stats.Stats{}
 
 	for i := 0; i < b.N; i++ {
-		tsdbIndex.Stats(context.Background(), "fake", 5, 15, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		tsdbIndex.Stats(context.Background(), "fake", 5, 15, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
 	}
 }

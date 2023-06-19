@@ -156,7 +156,7 @@ func NewLRUCache(name string, cfg LRUCacheConfig, reg prometheus.Registerer, log
 }
 
 // Fetch implements Cache.
-func (c *LRUCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (c *LRUCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	found, missing, bufs = make([]string, 0, len(keys)), make([]string, 0, len(keys)), make([][]byte, 0, len(keys))
 	for _, key := range keys {
 		val, ok := c.get(key)
@@ -172,7 +172,7 @@ func (c *LRUCache) Fetch(ctx context.Context, keys []string) (found []string, bu
 }
 
 // Store implements Cache.
-func (c *LRUCache) Store(ctx context.Context, keys []string, values [][]byte) error {
+func (c *LRUCache) Store(_ context.Context, keys []string, values [][]byte) error {
 	for i := range keys {
 		c.set(keys[i], values[i])
 	}

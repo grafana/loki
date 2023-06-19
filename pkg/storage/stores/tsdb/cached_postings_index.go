@@ -71,7 +71,7 @@ func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
 	}
 
 	prev := storage.SeriesRef(0)
-	var total uint64 = 0
+	var total uint64
 	for p.Next() {
 		v := p.At()
 
@@ -83,7 +83,7 @@ func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
 		// This is the 'diff' part -- compute difference from previous value.
 		buf.PutUvarint64(uint64(v - prev))
 		prev = v
-		total += 1
+		total++
 	}
 	if p.Err() != nil {
 		return nil, p.Err()

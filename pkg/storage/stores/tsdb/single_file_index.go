@@ -160,7 +160,7 @@ type simplePostingsClient struct {
 	reader IndexReader
 }
 
-func (s *simplePostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+func (s *simplePostingsClient) ForPostings(_ context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	p, err := PostingsForMatchers(s.reader, nil, matchers...)
 	if err != nil {
 		return err
