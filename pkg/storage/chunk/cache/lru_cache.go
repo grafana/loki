@@ -246,10 +246,11 @@ func (c *LRUCache) set(key string, val []byte) {
 	defer c.mtx.Unlock()
 
 	wasUpdate := false
-	var oldValue []byte
+	previousSize := 0
 	if v, ok := c.lru.Get(key); ok {
 		wasUpdate = true
-		oldValue = v.([]byte)
+		previousSize = entryMemoryUsage(key, v.([]byte))
+		c.curSize -= uint64(previousSize)
 	}
 
 	if !c.ensureFits(key, val) {
@@ -264,14 +265,12 @@ func (c *LRUCache) set(key string, val []byte) {
 	c.lru.Add(key, v)
 
 	size := entryMemoryUsage(key, val)
-	c.bytesInUse.Add(float64(size))
+
+	c.bytesInUse.Add(float64(size - previousSize))
 	c.curSize += uint64(size)
 
 	if wasUpdate {
-		// it was an update - discount previous value.
-		previousSize := entryMemoryUsage(key, oldValue)
-		c.bytesInUse.Add(float64(-previousSize))
-		c.curSize -= uint64(previousSize)
+		// it was an update - don't update other metrics.
 		return
 	}
 

@@ -119,15 +119,16 @@ func TestLRUCacheEviction(t *testing.T) {
 		copy(value, vstr)
 		values = append(values, value)
 	}
+	assert.Equal(t, cnt, c.lru.Len())
 	require.NoError(t, c.Store(ctx, keys, values))
 	assert.Equal(t, cnt, c.lru.Len())
 
-	assert.Equal(t, testutil.ToFloat64(c.overflow), float64(0))
-	assert.Equal(t, testutil.ToFloat64(c.added), float64(15))
-	assert.Equal(t, testutil.ToFloat64(c.evicted), float64(evicted))
-	assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
-	assert.Equal(t, testutil.ToFloat64(c.requests), float64(cnt*2+evicted))
-	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.overflow))
+	assert.Equal(t, float64(15), testutil.ToFloat64(c.added))
+	assert.Equal(t, float64(evicted), testutil.ToFloat64(c.evicted))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.current))
+	assert.Equal(t, float64(cnt*2+evicted), testutil.ToFloat64(c.requests))
+	assert.Equal(t, float64(cnt-evicted), testutil.ToFloat64(c.totalMisses))
 	assert.Equal(t, float64(cnt*entrySize), testutil.ToFloat64(c.bytesInUse))
 
 	for i := cnt; i < cnt+evicted; i++ {
