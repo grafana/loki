@@ -55,9 +55,122 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 	})
 }
 
-// PushRequest models a log stream push
+// PushRequest models a log stream push but is unmarshalled to proto push format.
 type PushRequest struct {
-	Streams []*Stream `json:"streams"`
+	Streams []LogProtoStream `json:"streams"`
+}
+
+// LogProtoStream helps with unmarshalling of each log stream for push request.
+// This might look un-necessary but without it the CPU usage in benchmarks was increasing by ~25% :shrug:
+type LogProtoStream struct {
+	logproto.Stream
+}
+
+func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
+	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
+		switch string(key) {
+		case "stream":
+			labels := make(LabelSet)
+			err := jsonparser.ObjectEach(val, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+				labels[yoloString(key)] = yoloString(val)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			s.Labels = labels.String()
+		case "values":
+			if ty == jsonparser.Null {
+				return nil
+			}
+			entries, err := unmarshalHTTPToLogProtoEntries(val)
+			if err != nil {
+				return err
+			}
+			s.Entries = entries
+		}
+		return nil
+	})
+	return err
+}
+
+func unmarshalHTTPToLogProtoEntries(data []byte) ([]logproto.Entry, error) {
+	var (
+		entries    []logproto.Entry
+		parseError error
+	)
+	_, err := jsonparser.ArrayEach(data, func(value []byte, ty jsonparser.ValueType, _ int, err error) {
+		if err != nil || parseError != nil {
+			return
+		}
+		if ty == jsonparser.Null {
+			return
+		}
+		e, err := unmarshalHTTPToLogProtoEntry(value)
+		if err != nil {
+			parseError = err
+			return
+		}
+		entries = append(entries, e)
+	})
+	if parseError != nil {
+		return nil, parseError
+	}
+	if err != nil {
+		return nil, parseError
+	}
+
+	return entries, nil
+}
+
+func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
+	var (
+		i          int
+		parseError error
+		e          logproto.Entry
+	)
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// assert that both items in array are of type string
+		if (i == 0 || i == 1) && t != jsonparser.String {
+			parseError = jsonparser.MalformedStringError
+			return
+		} else if i == 2 && t != jsonparser.Object {
+			parseError = jsonparser.MalformedObjectError
+			return
+		}
+		switch i {
+		case 0: // timestamp
+			ts, err := jsonparser.ParseInt(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Timestamp = time.Unix(0, ts)
+		case 1: // value
+			v, err := jsonparser.ParseString(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Line = v
+		case 2: // labels
+			labels := make(LabelSet)
+			err := jsonparser.ObjectEach(value, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+				labels[yoloString(key)] = yoloString(val)
+				return nil
+			})
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Labels = labels.String()
+		}
+		i++
+	})
+	if parseError != nil {
+		return e, parseError
+	}
+	return e, err
 }
 
 // ResultType holds the type of the result
@@ -376,4 +489,8 @@ func labelVolumeLimit(r *http.Request) error {
 	}
 
 	return nil
+}
+
+func yoloString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

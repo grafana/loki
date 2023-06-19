@@ -110,27 +110,22 @@ func formatTS(ts time.Time) string {
 
 type stream struct {
 	Stream map[string]string `json:"stream"`
-	Values [][]string        `json:"values"`
+	Values [][]any           `json:"values"`
 }
 
 // pushLogLine creates a new logline
 func (c *Client) pushLogLine(line string, timestamp time.Time, logLabels labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
-	logLabelsJSON, err := logLabels.MarshalJSON()
-	if err != nil {
-		return err
-	}
-
 	s := stream{
 		Stream: map[string]string{
 			"job": "varlog",
 		},
-		Values: [][]string{
+		Values: [][]any{
 			{
 				formatTS(timestamp),
 				line,
-				string(logLabelsJSON),
+				logLabels,
 			},
 		},
 	}

@@ -45,6 +45,32 @@ var pushTests = []struct {
 			]
 		}`,
 	},
+	{
+		[]logproto.Stream{
+			{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+						Labels:    `{foo="bar"}`,
+					},
+				},
+				Labels: `{test="test"}`,
+			},
+		},
+		`{
+			"streams": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line", {"foo":"bar"} ]
+					]
+				}
+			]
+		}`,
+	},
 }
 
 func Test_DecodePushRequest(t *testing.T) {
