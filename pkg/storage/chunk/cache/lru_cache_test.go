@@ -9,10 +9,10 @@ package cache
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"testing"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,122 +27,113 @@ func TestLRUCacheEviction(t *testing.T) {
 		key:   "00",
 		value: []byte("00"),
 	}
+	entrySize := entryMemoryUsage(itemTemplate.key, itemTemplate.value)
 
-	tests := []struct {
-		name string
-		cfg  LRUCacheConfig
-	}{
-		{
-			name: "test-memory-eviction",
-			cfg:  LRUCacheConfig{MaxSizeBytes: strconv.FormatInt(int64(cnt*sizeOf(itemTemplate)), 10)},
-		},
+	cfg := LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(entrySize * cnt), MaxItems: cnt, MaxItemSizeBytes: flagext.ByteSize(entrySize + 1), Enabled: true}
+
+	c, err := NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	require.NoError(t, err)
+	defer c.Stop()
+	ctx := context.Background()
+
+	// Check put / get works. Put/get 10 different items.
+	keys := []string{}
+	values := [][]byte{}
+	for i := 0; i < cnt; i++ {
+		key := fmt.Sprintf("%02d", i)
+		value := make([]byte, len(key))
+		copy(value, key)
+		keys = append(keys, key)
+		values = append(values, value)
+	}
+	require.NoError(t, c.Store(ctx, keys, values))
+	require.Equal(t, cnt, c.lru.Len())
+
+	assert.Equal(t, float64(10), testutil.ToFloat64(c.added), float64(10))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.evicted), float64(0))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.current), float64(cnt))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.requests), float64(0))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.totalMisses), float64(0))
+	assert.Equal(t, float64(cnt*entryMemoryUsage(itemTemplate.key, itemTemplate.value)), testutil.ToFloat64(c.bytesInUse))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.overflow))
+
+	for i := 0; i < cnt; i++ {
+		key := fmt.Sprintf("%02d", i)
+		value, ok := c.get(key)
+		require.True(t, ok)
+		require.Equal(t, []byte(key), value)
 	}
 
-	for _, test := range tests {
-		c, err := NewLRUCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
-		require.NoError(t, err)
-		ctx := context.Background()
+	assert.Equal(t, float64(10), testutil.ToFloat64(c.added))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.evicted))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.current))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.requests))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.totalMisses))
+	assert.Equal(t, float64(cnt*entrySize), testutil.ToFloat64(c.bytesInUse))
 
-		// Check put / get works
-		keys := []string{}
-		values := [][]byte{}
-		for i := 0; i < cnt; i++ {
-			key := fmt.Sprintf("%02d", i)
-			value := make([]byte, len(key))
-			copy(value, key)
-			keys = append(keys, key)
-			values = append(values, value)
-		}
-		require.NoError(t, c.Store(ctx, keys, values))
-		require.Len(t, c.lru.Len(), cnt)
-
-		assert.Equal(t, testutil.ToFloat64(c.added), float64(1))
-		assert.Equal(t, testutil.ToFloat64(c.evicted), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.requests), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.bytesInUse), float64(cnt*sizeOf(itemTemplate)))
-
-		for i := 0; i < cnt; i++ {
-			key := fmt.Sprintf("%02d", i)
-			value, ok := c.get(key)
-			require.True(t, ok)
-			require.Equal(t, []byte(key), value)
-		}
-
-		assert.Equal(t, testutil.ToFloat64(c.added), float64(1))
-		assert.Equal(t, testutil.ToFloat64(c.evicted), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.requests), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.bytesInUse), float64(cnt*sizeOf(itemTemplate)))
-
-		// Check evictions
-		keys = []string{}
-		values = [][]byte{}
-		for i := cnt - evicted; i < cnt+evicted; i++ {
-			key := fmt.Sprintf("%02d", i)
-			value := make([]byte, len(key))
-			copy(value, key)
-			keys = append(keys, key)
-			values = append(values, value)
-		}
-		err = c.Store(ctx, keys, values)
-		require.NoError(t, err)
-		require.Len(t, c.lru.Len(), cnt)
-
-		assert.Equal(t, testutil.ToFloat64(c.added), float64(2))
-		assert.Equal(t, testutil.ToFloat64(c.evicted), float64(evicted))
-		assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.requests), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(0))
-		assert.Equal(t, testutil.ToFloat64(c.bytesInUse), float64(cnt*sizeOf(itemTemplate)))
-
-		for i := 0; i < cnt-evicted; i++ {
-			_, ok := c.get(fmt.Sprintf("%02d", i))
-			require.False(t, ok)
-		}
-		for i := cnt - evicted; i < cnt+evicted; i++ {
-			key := fmt.Sprintf("%02d", i)
-			value, ok := c.get(key)
-			require.True(t, ok)
-			require.Equal(t, []byte(key), value)
-		}
-
-		assert.Equal(t, testutil.ToFloat64(c.added), float64(2))
-		assert.Equal(t, testutil.ToFloat64(c.evicted), float64(evicted))
-		assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.requests), float64(cnt*2+evicted))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
-		assert.Equal(t, testutil.ToFloat64(c.bytesInUse), float64(cnt*sizeOf(itemTemplate)))
-
-		// Check updates work
-		keys = []string{}
-		values = [][]byte{}
-		for i := cnt; i < cnt+evicted; i++ {
-			keys = append(keys, fmt.Sprintf("%02d", i))
-			vstr := fmt.Sprintf("%02d", i*2)
-			value := make([]byte, len(vstr))
-			copy(value, vstr)
-			values = append(values, value)
-		}
-		err = c.Store(ctx, keys, values)
-		require.NoError(t, err)
-		require.Len(t, c.lru.Len(), cnt)
-
-		for i := cnt; i < cnt+evicted; i++ {
-			value, ok := c.get(fmt.Sprintf("%02d", i))
-			require.True(t, ok)
-			require.Equal(t, []byte(fmt.Sprintf("%02d", i*2)), value)
-		}
-
-		assert.Equal(t, testutil.ToFloat64(c.added), float64(3))
-		assert.Equal(t, testutil.ToFloat64(c.evicted), float64(evicted))
-		assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
-		assert.Equal(t, testutil.ToFloat64(c.requests), float64(cnt*2+evicted*2))
-		assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
-		assert.Equal(t, testutil.ToFloat64(c.bytesInUse), float64(cnt*sizeOf(itemTemplate)))
-
-		c.Stop()
+	// Check evictions
+	keys = []string{}
+	values = [][]byte{}
+	for i := cnt - evicted; i < cnt+evicted; i++ {
+		key := fmt.Sprintf("%02d", i)
+		value := make([]byte, len(key))
+		copy(value, key)
+		keys = append(keys, key)
+		values = append(values, value)
 	}
+	require.NoError(t, c.Store(ctx, keys, values))
+	require.NoError(t, err)
+	require.Equal(t, cnt, c.lru.Len())
+
+	assert.Equal(t, float64(15), testutil.ToFloat64(c.added))
+	assert.Equal(t, testutil.ToFloat64(c.evicted), float64(evicted))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.current))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.requests))
+	assert.Equal(t, float64(0), testutil.ToFloat64(c.totalMisses))
+	assert.Equal(t, float64(cnt*entrySize), testutil.ToFloat64(c.bytesInUse))
+
+	for i := 0; i < cnt-evicted; i++ {
+		_, ok := c.get(fmt.Sprintf("%02d", i))
+		require.False(t, ok)
+	}
+	for i := cnt - evicted; i < cnt+evicted; i++ {
+		key := fmt.Sprintf("%02d", i)
+		value, ok := c.get(key)
+		require.True(t, ok)
+		require.Equal(t, []byte(key), value)
+	}
+
+	assert.Equal(t, float64(15), testutil.ToFloat64(c.added))
+	assert.Equal(t, float64(evicted), testutil.ToFloat64(c.evicted))
+	assert.Equal(t, float64(cnt), testutil.ToFloat64(c.current))
+	assert.Equal(t, float64(cnt*2+evicted), testutil.ToFloat64(c.requests))
+	assert.Equal(t, float64(cnt-evicted), testutil.ToFloat64(c.totalMisses))
+	assert.Equal(t, float64(cnt*entrySize), testutil.ToFloat64(c.bytesInUse))
+
+	// Check updates work
+	keys = []string{}
+	values = [][]byte{}
+	for i := cnt; i < cnt+evicted; i++ {
+		keys = append(keys, fmt.Sprintf("%02d", i))
+		vstr := fmt.Sprintf("%02d", i*2)
+		value := make([]byte, len(vstr))
+		copy(value, vstr)
+		values = append(values, value)
+	}
+	require.NoError(t, c.Store(ctx, keys, values))
+	require.Equal(t, cnt, c.lru.Len())
+
+	assert.Equal(t, testutil.ToFloat64(c.added), float64(15))
+	assert.Equal(t, testutil.ToFloat64(c.evicted), float64(evicted))
+	assert.Equal(t, testutil.ToFloat64(c.current), float64(cnt))
+	assert.Equal(t, testutil.ToFloat64(c.requests), float64(cnt*2+evicted*2))
+	assert.Equal(t, testutil.ToFloat64(c.totalMisses), float64(cnt-evicted))
+	assert.Equal(t, testutil.ToFloat64(c.bytesInUse), float64(cnt*entrySize))
+
+	for i := cnt; i < cnt+evicted; i++ {
+		value, ok := c.get(fmt.Sprintf("%02d", i))
+		require.True(t, ok)
+		require.Equal(t, []byte(fmt.Sprintf("%02d", i*2)), value)
+	}
+
 }

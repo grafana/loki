@@ -24,7 +24,7 @@ type ChunkRef struct {
 }
 
 type IndexCfg struct {
-	indexshipper.Config
+	indexshipper.Config `yaml:",inline"`
 
 	CachePostings bool `yaml:"cache_postings"`
 }
