@@ -439,9 +439,8 @@ func (s *mockStore) Series(_ context.Context, req logql.SelectLogParams) ([]logp
 					"bar": "baz2",
 				},
 			}}, nil
-	} else {
-		return nil, nil
 	}
+	return nil, nil
 }
 
 func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {

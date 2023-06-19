@@ -1107,9 +1107,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 			if err != nil {
 				return nil, err
 			}
-			for _, s := range storeSeries {
-				resp.Series = append(resp.Series, s)
-			}
+			resp.Series = append(resp.Series, storeSeries...)
 		}
 	}
 	return resp, nil
