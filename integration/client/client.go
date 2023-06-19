@@ -86,8 +86,8 @@ func New(instanceID, token, baseURL string, opts ...Option) *Client {
 }
 
 // PushLogLine creates a new logline with the current time as timestamp
-func (c *Client) PushLogLine(line string, logLabels ...map[string]string) error {
-	return c.pushLogLine(line, c.Now, nil, logLabels...)
+func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) error {
+	return c.pushLogLine(line, c.Now, nil, extraLabels...)
 }
 
 func (c *Client) PushLogLineWithMetadata(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
@@ -96,8 +96,8 @@ func (c *Client) PushLogLineWithMetadata(line string, logLabels map[string]strin
 
 // PushLogLineWithTimestamp creates a new logline at the given timestamp
 // The timestamp has to be a Unix timestamp (epoch seconds)
-func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, logLabels ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, nil, logLabels...)
+func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabels ...map[string]string) error {
+	return c.pushLogLine(line, timestamp, nil, extraLabels...)
 }
 
 func (c *Client) PushLogLineWithTimestampAndMetadata(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
