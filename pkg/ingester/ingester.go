@@ -174,6 +174,7 @@ type ChunkStore interface {
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
 	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1079,7 +1080,39 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 	if err != nil {
 		return nil, err
 	}
-	return instance.Series(ctx, req)
+	resp, err := instance.Series(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
+		var storeSeries []logproto.SeriesIdentifier
+		
+		groups := []string {""}
+		if len(req.Groups) != 0 {
+			groups = req.Groups
+		}
+
+		for _, group := range groups {
+			storeSeries, err = i.store.Series(ctx, logql.SelectLogParams{
+				QueryRequest: &logproto.QueryRequest{
+					Selector:  group,
+					Limit:     1,
+					Start:     start,
+					End:       end,
+					Direction: logproto.FORWARD,
+					Shards:    req.Shards,
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			for _, s := range storeSeries {
+				resp.Series = append(resp.Series, s)
+			}
+		}
+	}
+	return resp, nil
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {

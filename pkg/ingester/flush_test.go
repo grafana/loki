@@ -355,6 +355,10 @@ func (s *testStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _
 	return &logproto.VolumeResponse{}, nil
 }
 
+func (s *testStore) Series(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
+}
+
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {
 	userIDs := []string{"1", "2", "3"}
 
