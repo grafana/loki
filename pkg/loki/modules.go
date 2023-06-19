@@ -257,6 +257,9 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 }
 
 func (t *Loki) initOverrides() (_ services.Service, err error) {
+	if t.Cfg.LimitsConfig.IndexGatewayShardSize == 0 {
+		t.Cfg.LimitsConfig.IndexGatewayShardSize = t.Cfg.IndexGateway.Ring.ReplicationFactor
+	}
 	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides are not a service, since they don't have any operational state.
 	return nil, err
@@ -1200,9 +1203,6 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 }
 
 func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
-	if t.Cfg.LimitsConfig.IndexGatewayShardSize == 0 {
-		t.Cfg.LimitsConfig.IndexGatewayShardSize = t.Cfg.IndexGateway.Ring.ReplicationFactor
-	}
 	// IndexGateway runs by default on legacy read and backend targets, and should always assume
 	// ring mode when run in this way.
 	legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
