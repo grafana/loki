@@ -666,6 +666,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 
 		if asyncStore {
+			t.Cfg.StorageConfig.EnableAsyncStore = true
+
 			t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
 				IngesterQuerier: t.ingesterQuerier,
 				QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
