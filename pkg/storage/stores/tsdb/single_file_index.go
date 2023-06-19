@@ -120,7 +120,7 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 type TSDBIndex struct {
 	reader         IndexReader
 	chunkFilter    chunk.RequestChunkFilterer
-	postingsClient PostingsClient
+	postingsClient PostingsReader
 }
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
@@ -138,8 +138,8 @@ func NewTSDBIndexFromFile(location string) (Index, GetRawFileReaderFunc, error) 
 	}, nil
 }
 
-func getPostingsClient(reader IndexReader) PostingsClient {
-	var postingsClient PostingsClient
+func getPostingsClient(reader IndexReader) PostingsReader {
+	var postingsClient PostingsReader
 
 	if shouldCachePostings && sharedCacheClient != nil {
 		postingsClient = NewCachedPostingsClient(reader, util_log.Logger, sharedCacheClient)
@@ -152,7 +152,7 @@ func getPostingsClient(reader IndexReader) PostingsClient {
 	return postingsClient
 }
 
-func DefaultPostingsClient(reader IndexReader) PostingsClient {
+func DefaultPostingsClient(reader IndexReader) PostingsReader {
 	return &simplePostingsClient{reader: reader}
 }
 
@@ -168,7 +168,7 @@ func (s *simplePostingsClient) ForPostings(ctx context.Context, matchers []*labe
 	return fn(p)
 }
 
-func NewTSDBIndex(reader IndexReader, postingsClient PostingsClient) *TSDBIndex {
+func NewTSDBIndex(reader IndexReader, postingsClient PostingsReader) *TSDBIndex {
 	return &TSDBIndex{
 		reader:         reader,
 		postingsClient: postingsClient,

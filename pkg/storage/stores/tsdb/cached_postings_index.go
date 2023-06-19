@@ -18,13 +18,13 @@ import (
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
-type PostingsClient interface {
+type PostingsReader interface {
 	ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error
 }
 
 var sharedCacheClient cache.Cache
 
-func NewCachedPostingsClient(reader IndexReader, logger log.Logger, cacheClient cache.Cache) PostingsClient {
+func NewCachedPostingsClient(reader IndexReader, logger log.Logger, cacheClient cache.Cache) PostingsReader {
 	return &cachedPostingsClient{
 		reader:      reader,
 		cacheClient: cacheClient,
