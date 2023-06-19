@@ -1152,7 +1152,7 @@ github.com/prometheus/client_golang/prometheus/testutil/promlint
 # github.com/prometheus/client_model v0.4.0
 ## explicit; go 1.18
 github.com/prometheus/client_model/go
-# github.com/prometheus/common v0.43.0
+# github.com/prometheus/common v0.44.0
 ## explicit; go 1.18
 github.com/prometheus/common/config
 github.com/prometheus/common/expfmt
@@ -1517,7 +1517,7 @@ golang.org/x/net/netutil
 golang.org/x/net/proxy
 golang.org/x/net/publicsuffix
 golang.org/x/net/trace
-# golang.org/x/oauth2 v0.7.0
+# golang.org/x/oauth2 v0.8.0
 ## explicit; go 1.17
 golang.org/x/oauth2
 golang.org/x/oauth2/authhandler
