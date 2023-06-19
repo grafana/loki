@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
@@ -206,7 +207,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -240,7 +241,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	// recover the checkpointed series
