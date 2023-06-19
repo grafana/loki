@@ -81,11 +81,13 @@ func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, c
 func (fp *frontendProcessor) processAsyncRequest(js jetstream.JetStream, id, subject string, req *httpgrpc.HTTPRequest) {
 	fp.runRequest(context.Background(), req, false, func(response *httpgrpc.HTTPResponse, _ *querier_stats.Stats) error {
 		if response == nil {
+			level.Info(fp.log).Log("msg", "empty query response received", "id", id, "subject", "subject", "url", req.Url)
 			return nil
 		}
 
 		data, err := json.Marshal(response)
 		if err != nil {
+			level.Error(fp.log).Log("msg", "failed to marshal query response", "err", err.Error())
 			return err
 		}
 
@@ -99,7 +101,7 @@ func (fp *frontendProcessor) processAsyncRequest(js jetstream.JetStream, id, sub
 
 		level.Info(fp.log).Log("msg", "publishing nats msg", "subject", msg.Subject, "id", id)
 
-		ack, err := js.PublishMsg(context.TODO(), msg, jetstream.WithMsgID(id), jetstream.WithExpectStream("query"))
+		ack, err := js.PublishMsg(context.TODO(), msg, jetstream.WithMsgID(id), jetstream.WithExpectStream("query-responses"))
 		if err != nil {
 			level.Error(fp.log).Log("msg", "failed to publish message", "subject", msg.Subject, "id", id)
 			return err

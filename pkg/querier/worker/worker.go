@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"fmt"
 	"os"
 	"sync"
 	"time"
@@ -215,7 +214,23 @@ func (w *querierWorker) starting(ctx context.Context) error {
 	)
 
 	for {
-		js, cons, err = w.createrOrUpdateConsumer(ctx, "query", "query.*")
+		js, err = w.createOrUpdateStream(ctx, "query-responses", []string{"processed"})
+		if err != nil {
+			level.Error(w.logger).Log("msg", "failed to create or update jetstream stream", "err", err.Error())
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+		conn.Flush()
+		break
+	}
+	w.stream = js
+
+	for {
+		cons, err = w.createrOrUpdateConsumer(ctx, "query", "query.*")
 		if err != nil {
 			level.Error(w.logger).Log("msg", "failed to create or update jetstream consumer", "err", err.Error())
 			select {
@@ -228,8 +243,6 @@ func (w *querierWorker) starting(ctx context.Context) error {
 		conn.Flush()
 		break
 	}
-
-	w.stream = js
 	w.consumer = cons
 
 	level.Info(w.logger).Log("msg", "successfully created jetstream consumer")
@@ -237,21 +250,51 @@ func (w *querierWorker) starting(ctx context.Context) error {
 	return nil
 }
 
-func (w *querierWorker) createrOrUpdateConsumer(ctx context.Context, streamName, subject string) (jetstream.JetStream, jetstream.Consumer, error) {
+func (w *querierWorker) createOrUpdateStream(ctx context.Context, name string, subjects []string) (jetstream.JetStream, error) {
 	stream, err := jetstream.New(w.conn)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "failed to get jetstream context")
+		return nil, errors.Wrap(err, "failed to get jetstream context")
 	}
 
-	cons, err := stream.CreateOrUpdateConsumer(ctx, "query", jetstream.ConsumerConfig{
+	streamOpts := jetstream.StreamConfig{
+		Name:      name,
+		Subjects:  subjects,
+		Replicas:  3,
+		MaxAge:    4 * time.Hour,
+		Retention: jetstream.LimitsPolicy,
+		Discard:   jetstream.DiscardOld,
+	}
+
+	_, err = stream.UpdateStream(ctx, streamOpts)
+	if err != nil {
+		if err == jetstream.ErrStreamNotFound {
+			_, err = stream.CreateStream(ctx, streamOpts)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create stream")
+			}
+			return stream, nil
+		}
+		return nil, errors.Wrap(err, "failed to update stream")
+	}
+
+	return stream, nil
+}
+
+func (w *querierWorker) createrOrUpdateConsumer(ctx context.Context, streamName, subject string) (jetstream.Consumer, error) {
+	js, err := jetstream.New(w.conn)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get jetstream context")
+	}
+
+	cons, err := js.CreateOrUpdateConsumer(ctx, "query", jetstream.ConsumerConfig{
 		AckPolicy:     jetstream.AckExplicitPolicy,
 		FilterSubject: "query.*",
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	return stream, cons, nil
+	return cons, nil
 }
 
 func (w *querierWorker) running(ctx context.Context) error {
@@ -314,7 +357,7 @@ func (w *querierWorker) consumeHandler(msg jetstream.Msg) {
 
 	var (
 		id  = msg.Headers().Get("Nats-Msg-Id")
-		sub = fmt.Sprintf("%s.processed", msg.Subject())
+		sub = "processed"
 	)
 
 	w.processor.processAsyncRequest(w.stream, id, sub, req)
