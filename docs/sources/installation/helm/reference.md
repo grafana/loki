@@ -1827,7 +1827,7 @@ true
 		<tr>
 			<td>loki.extraMemberlistConfig</td>
 			<td>object</td>
-			<td></td>
+			<td>Extra memberlist configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1928,6 +1928,15 @@ null
   "reject_old_samples_max_age": "168h",
   "split_queries_by_interval": "15m"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.memberlistConfig</td>
+			<td>object</td>
+			<td>memberlist configuration (overrides embedded default)</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2407,6 +2416,15 @@ null
 			<td>monitoring.lokiCanary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `loki-canary` pod</td>
 			<td><pre lang="json">
 {}
 </pre>

@@ -60,7 +60,7 @@ type Index interface {
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
-	LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
+	SeriesVolume(ctx context.Context, userID string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
 }
 
 type NoopIndex struct{}
@@ -88,6 +88,6 @@ func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStat
 
 func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (NoopIndex) LabelVolume(_ context.Context, _ string, _, _ model.Time, _ LabelVolumeAccumulator, _ *index.ShardAnnotation, _ shouldIncludeChunk, _ ...*labels.Matcher) error {
+func (NoopIndex) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ SeriesVolumeAccumulator, _ *index.ShardAnnotation, _ shouldIncludeChunk, _ ...*labels.Matcher) error {
 	return nil
 }

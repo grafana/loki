@@ -968,7 +968,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 
 func TestQuerier_LabeleVolumes(t *testing.T) {
 	t.Run("it returns label volumes from the store", func(t *testing.T) {
-		ret := &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Value: "bar", Volume: 38},
 		}}
 
@@ -976,17 +976,17 @@ func TestQuerier_LabeleVolumes(t *testing.T) {
 		require.NoError(t, err)
 
 		store := newStoreMock()
-		store.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 		querier := SingleTenantQuerier{
 			store:  store,
 			limits: limits,
 		}
 
-		req := &logproto.LabelVolumeRequest{From: 0, Through: 1000, Matchers: `{}`}
+		req := &logproto.VolumeRequest{From: 0, Through: 1000, Matchers: `{}`}
 		ctx := user.InjectOrgID(context.Background(), "test")
-		resp, err := querier.LabelVolume(ctx, req)
+		resp, err := querier.SeriesVolume(ctx, req)
 		require.NoError(t, err)
-		require.Equal(t, []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 38}}, resp.Volumes)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Value: "bar", Volume: 38}}, resp.Volumes)
 	})
 }
 

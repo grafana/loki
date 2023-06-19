@@ -279,7 +279,7 @@ func (i *Instance) Run(ctx context.Context) error {
 type noopScrapeManager struct{}
 
 func (n noopScrapeManager) Get() (*scrape.Manager, error) {
-	return nil, nil
+	return nil, errors.New("No-op Scrape manager not ready")
 }
 
 // initialize sets up the various Prometheus components with their initial

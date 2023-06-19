@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
@@ -25,7 +28,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error)
+	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -39,13 +42,13 @@ type AsyncStoreCfg struct {
 // AsyncStore is meant to be used only in queriers or any other service other than ingesters.
 // It should never be used in ingesters otherwise it would start spiraling around doing queries over and over again to other ingesters.
 type AsyncStore struct {
-	Store
+	stores.Store
 	scfg                 config.SchemaConfig
 	ingesterQuerier      IngesterQuerier
 	queryIngestersWithin time.Duration
 }
 
-func NewAsyncStore(cfg AsyncStoreCfg, store Store, scfg config.SchemaConfig) *AsyncStore {
+func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConfig) *AsyncStore {
 	return &AsyncStore{
 		Store:                store,
 		scfg:                 scfg,
@@ -162,15 +165,18 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	return &merged, nil
 }
 
-func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.SeriesVolume")
+	defer sp.Finish()
+
 	logger := util_log.WithContext(ctx, util_log.Logger)
 	matchersStr := syntax.MatchersString(matchers)
-	type f func() (*logproto.LabelVolumeResponse, error)
+	type f func() (*logproto.VolumeResponse, error)
 	var jobs []f
 
 	if a.shouldQueryIngesters(through, model.Now()) {
-		jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
-			vols, err := a.ingesterQuerier.LabelVolume(ctx, userID, from, through, limit, matchers...)
+		jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
+			vols, err := a.ingesterQuerier.SeriesVolume(ctx, userID, from, through, limit, matchers...)
 			level.Debug(logger).Log(
 				"msg", "queried label volumes",
 				"matchers", matchersStr,
@@ -179,8 +185,8 @@ func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, throu
 			return vols, err
 		})
 	}
-	jobs = append(jobs, func() (*logproto.LabelVolumeResponse, error) {
-		vols, err := a.Store.LabelVolume(ctx, userID, from, through, limit, matchers...)
+	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
+		vols, err := a.Store.SeriesVolume(ctx, userID, from, through, limit, matchers...)
 		level.Debug(logger).Log(
 			"msg", "queried label volume",
 			"matchers", matchersStr,
@@ -189,7 +195,7 @@ func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, throu
 		return vols, err
 	})
 
-	resps := make([]*logproto.LabelVolumeResponse, len(jobs))
+	resps := make([]*logproto.VolumeResponse, len(jobs))
 	if err := concurrency.ForEachJob(
 		ctx,
 		len(jobs),
@@ -203,7 +209,15 @@ func (a *AsyncStore) LabelVolume(ctx context.Context, userID string, from, throu
 		return nil, err
 	}
 
-	merged := labelvolume.Merge(resps, limit)
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", limit,
+	)
+
+	merged := seriesvolume.Merge(resps, limit)
 	return merged, nil
 }
 

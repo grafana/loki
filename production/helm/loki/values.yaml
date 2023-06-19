@@ -96,6 +96,9 @@ loki:
     {{- end}}
 
     memberlist:
+    {{- if .Values.loki.memberlistConfig }}
+      {{- toYaml .Values.loki.memberlistConfig | nindent 2 }}
+    {{- else }}
     {{- if .Values.loki.extraMemberlistConfig}}
     {{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}
     {{- end }}
@@ -106,6 +109,7 @@ loki:
         - {{ .memberlistService }}
         {{- end }}
         {{- end }}
+    {{- end }}
 
     {{- with .Values.loki.ingester }}
     ingester:
@@ -145,7 +149,7 @@ loki:
     {{- end }}
     {{- end }}
 
-    {{- if .Values.loki.schemaConfig}}
+    {{- if .Values.loki.schemaConfig }}
     schema_config:
     {{- toYaml .Values.loki.schemaConfig | nindent 2}}
     {{- else }}
@@ -227,7 +231,9 @@ loki:
     {{- end }}
   # Should authentication be enabled
   auth_enabled: true
-  #  Extra memberlist configuration
+  # -- memberlist configuration (overrides embedded default)
+  memberlistConfig: {}
+  # -- Extra memberlist configuration
   extraMemberlistConfig: {}
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
   tenants: []
@@ -625,6 +631,8 @@ monitoring:
     enabled: true
     # -- Additional annotations for the `loki-canary` Daemonset
     annotations: {}
+    # -- Additional labels for each `loki-canary` pod
+    podLabels: {}
     # -- Additional CLI arguments for the `loki-canary' command
     extraArgs: []
     # -- Environment variables to add to the canary pods
