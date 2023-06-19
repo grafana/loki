@@ -4,7 +4,7 @@ description: "Add support for executing queries asynchronously"
 draft: true
 ---
 
-# _DRAFT_: Asynchronous Queries
+# DRAFT: Asynchronous Queries
 
 **Author:** Periklis Tsirakidis
 
