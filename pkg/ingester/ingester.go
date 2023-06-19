@@ -1087,8 +1087,8 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
 		var storeSeries []logproto.SeriesIdentifier
-		
-		groups := []string {""}
+
+		groups := []string{""}
 		if len(req.Groups) != 0 {
 			groups = req.Groups
 		}

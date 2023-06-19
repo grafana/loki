@@ -1151,7 +1151,6 @@ func TestSeriesVolume(t *testing.T) {
 	})
 }
 
-
 func Test_Series(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
@@ -1190,13 +1189,13 @@ func Test_Series(t *testing.T) {
 		}
 		_, err = i.Push(ctx, &req)
 		require.NoError(t, err)
-	
+
 		res, err := i.Series(ctx, &logproto.SeriesRequest{
 			Start:  time.Unix(0, 0),
-			End:  time.Unix(1, 0),
+			End:    time.Unix(1, 0),
 			Groups: []string{`{foo="bar"}`},
 		})
-	
+
 		require.NoError(t, err)
 		require.ElementsMatch(t, []logproto.SeriesIdentifier{
 			{
@@ -1228,15 +1227,15 @@ func Test_Series(t *testing.T) {
 				Timestamp: time.Now(),
 				Line:      fmt.Sprintf("line %d", i),
 			},
-		)
+			)
 		}
 
 		_, err = i.Push(ctx, &req)
 		require.NoError(t, err)
 
 		res, err := i.Series(ctx, &logproto.SeriesRequest{
-			Start: time.Now().Add(-20 * time.Hour),
-			End: time.Now(),
+			Start:  time.Now().Add(-20 * time.Hour),
+			End:    time.Now(),
 			Groups: []string{`{foo="bar"}`},
 		})
 
@@ -1271,15 +1270,15 @@ func Test_Series(t *testing.T) {
 				Timestamp: time.Now(),
 				Line:      fmt.Sprintf("line %d", i),
 			},
-		)
+			)
 		}
 
 		_, err = i.Push(ctx, &req)
 		require.NoError(t, err)
 
 		res, err := i.Series(ctx, &logproto.SeriesRequest{
-			Start: time.Now().Add(-30 * time.Minute),
-			End: time.Now(),
+			Start:  time.Now().Add(-30 * time.Minute),
+			End:    time.Now(),
 			Groups: []string{`{foo="bar"}`},
 		})
 
