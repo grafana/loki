@@ -80,6 +80,10 @@ func (t TopKResult) Less(i, j int) bool { return t[i].Count > t[j].Count }
 func (t TopKResult) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
 
 func (t *Topk) Topk() TopKResult {
+	n := t.max
+	if len(t.currentTop) < t.max {
+		n = len(t.currentTop)
+	}
 	res := make(TopKResult, 0, len(t.currentTop))
 	for e := range t.currentTop {
 		res = append(res, element{
@@ -88,5 +92,5 @@ func (t *Topk) Topk() TopKResult {
 		})
 	}
 	sort.Sort(res)
-	return res[:t.max]
+	return res[:n]
 }
