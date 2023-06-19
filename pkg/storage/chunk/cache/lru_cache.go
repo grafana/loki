@@ -245,8 +245,11 @@ func (c *LRUCache) set(key string, val []byte) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	if _, ok := c.lru.Get(key); ok {
-		return
+	wasUpdate := false
+	var oldValue []byte
+	if v, ok := c.lru.Get(key); ok {
+		wasUpdate = true
+		oldValue = v.([]byte)
 	}
 
 	if !c.ensureFits(key, val) {
@@ -261,11 +264,19 @@ func (c *LRUCache) set(key string, val []byte) {
 	c.lru.Add(key, v)
 
 	size := entryMemoryUsage(key, val)
-
 	c.bytesInUse.Add(float64(size))
-	c.added.Inc()
-	c.current.Inc()
 	c.curSize += uint64(size)
+
+	if wasUpdate {
+		// it was an update - discount previous value.
+		previousSize := entryMemoryUsage(key, oldValue)
+		c.bytesInUse.Add(float64(-previousSize))
+		c.curSize -= uint64(previousSize)
+		return
+	}
+
+	c.current.Inc()
+	c.added.Inc()
 }
 
 func (c *LRUCache) ensureFits(key string, val []byte) bool {
@@ -297,6 +308,9 @@ func (c *LRUCache) ensureFits(key string, val []byte) bool {
 }
 
 func entryMemoryUsage(key string, val []byte) int {
+	if len(val) == 0 {
+		return 0
+	}
 	return int(unsafe.Sizeof(val)) + len(key)
 }
 
