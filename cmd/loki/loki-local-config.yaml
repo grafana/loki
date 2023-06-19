@@ -14,7 +14,7 @@ common:
   replication_factor: 1
   ring:
     kvstore:
-      store: inmemory
+      store: memberlist
 
 query_range:
   results_cache:

@@ -2,20 +2,26 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"net/textproto"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -30,6 +36,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
@@ -114,7 +121,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 }
 
 // NewScheduler creates a new Scheduler.
-func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
+func NewScheduler(cfg Config, natsCfg loki_nats.Config, limits Limits, log log.Logger, ringManager *RingManager, registerer prometheus.Registerer) (*Scheduler, error) {
 	if cfg.UseSchedulerRing {
 		if ringManager == nil {
 			return nil, errors.New("ring manager can't be empty when use_scheduler_ring is true")
@@ -124,6 +131,12 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 	}
 
 	queueMetrics := queue.NewMetrics("query_scheduler", registerer)
+
+	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, log, queueMetrics)
+	if err != nil {
+		return nil, err
+	}
+
 	s := &Scheduler{
 		cfg:    cfg,
 		log:    log,
@@ -133,7 +146,7 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 		connectedFrontends: map[string]*connectedFrontend{},
 		queueMetrics:       queueMetrics,
 		ringManager:        ringManager,
-		requestQueue:       queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics),
+		requestQueue:       rq,
 	}
 
 	s.queueDuration = promauto.With(registerer).NewHistogram(prometheus.HistogramOpts{
@@ -172,7 +185,6 @@ func NewScheduler(cfg Config, limits Limits, log log.Logger, ringManager *RingMa
 		s.shouldRun.Store(true)
 	}
 
-	var err error
 	s.subservices, err = services.NewManager(svcs...)
 	if err != nil {
 		return nil, err
@@ -476,19 +488,44 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 	// monitoring the contexts in a select and cancel things appropriately.
 	errCh := make(chan error, 1)
 	go func() {
-		err := querier.Send(&schedulerpb.SchedulerToQuerier{
-			UserID:          req.tenantID,
-			QueryID:         req.queryID,
-			FrontendAddress: req.frontendAddress,
-			HttpRequest:     req.request,
-			StatsEnabled:    req.statsEnabled,
-		})
+		var err error
+
+		url, err := url.Parse(req.request.Url)
 		if err != nil {
 			errCh <- err
 			return
 		}
 
-		_, err = querier.Recv()
+		var isAsync bool
+		queryParams := url.Query()
+		async := queryParams.Get("async")
+		if async != "" {
+			isAsync, err = strconv.ParseBool(async)
+			if err != nil {
+				errCh <- err
+				return
+			}
+		}
+
+		switch {
+		case isAsync:
+			err = s.publishAsyncQueryRequest(req)
+		default:
+			err = querier.Send(&schedulerpb.SchedulerToQuerier{
+				UserID:          req.tenantID,
+				QueryID:         req.queryID,
+				FrontendAddress: req.frontendAddress,
+				HttpRequest:     req.request,
+				StatsEnabled:    req.statsEnabled,
+			})
+			if err != nil {
+				errCh <- err
+				return
+			}
+
+			_, err = querier.Recv()
+		}
+
 		errCh <- err
 	}()
 
@@ -508,6 +545,75 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 		}
 		return err
 	}
+}
+
+func (s *Scheduler) publishAsyncQueryRequest(req *schedulerRequest) error {
+	stream := s.requestQueue.GetJetStream()
+	b, err := json.Marshal(req.request)
+	if err != nil {
+		return err
+	}
+
+	subj := fmt.Sprintf("query.%s", req.tenantID)
+
+	id := uuid.New().String()
+
+	msg := &nats.Msg{
+		Subject: subj,
+		Data:    b,
+		Header: nats.Header{
+			"Nats-Msg-Id": []string{id},
+		},
+	}
+
+	ack, err := stream.PublishMsg(req.ctx, msg, jetstream.WithMsgID(id))
+	if err != nil {
+		return err
+	}
+
+	opts, err := s.cfg.GRPCClientConfig.DialOption([]grpc.UnaryClientInterceptor{
+		otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
+		middleware.ClientUserHeaderInterceptor,
+	},
+		nil)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to create gRPC options for the connection to frontend to report async ack", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return err
+	}
+
+	conn, err := grpc.DialContext(req.ctx, req.frontendAddress, opts...)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to create gRPC connection to frontend to report error", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return err
+	}
+
+	defer func() {
+		_ = conn.Close()
+	}()
+
+	b, err = json.Marshal(ack)
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to marshal async ack to JSON", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return err
+	}
+
+	client := frontendv2pb.NewFrontendForQuerierClient(conn)
+
+	userCtx := user.InjectOrgID(req.ctx, req.tenantID)
+	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
+		QueryID: req.queryID,
+		HttpResponse: &httpgrpc.HTTPResponse{
+			Code: http.StatusAccepted,
+			Body: b,
+		},
+	})
+
+	if err != nil {
+		level.Warn(s.log).Log("msg", "failed to forward async ack to frontend", "frontend", req.frontendAddress, "err", err, "ack", ack)
+		return err
+	}
+
+	return nil
 }
 
 func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRequest, requestErr error) {

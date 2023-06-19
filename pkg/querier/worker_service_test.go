@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
 
+	loki_nats "github.com/grafana/loki/pkg/nats"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 )
 
@@ -38,6 +39,7 @@ func Test_InitQuerierService(t *testing.T) {
 
 		querierWorkerService, err := InitWorkerService(
 			config,
+			loki_nats.Config{},
 			nil,
 			mockQueryHandlers,
 			alwaysExternalHandlers,

@@ -167,6 +167,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
+		r.NATS.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -175,6 +176,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.NATS.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -302,6 +304,18 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	if mergeWithExisting || reflect.DeepEqual(r.NATS.RingConfig, defaults.NATS.RingConfig) {
+		r.NATS.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.NATS.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.NATS.InstancePort = rc.InstancePort
+		r.NATS.InstanceAddr = rc.InstanceAddr
+		r.NATS.InstanceID = rc.InstanceID
+		r.NATS.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.NATS.InstanceZone = rc.InstanceZone
+		r.NATS.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.NATS.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -409,6 +423,9 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+	if reflect.DeepEqual(cfg.NATS.RingConfig.InstanceInterfaceNames, defaults.NATS.RingConfig.InstanceInterfaceNames) {
+		cfg.NATS.RingConfig.InstanceInterfaceNames = append(cfg.NATS.RingConfig.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -422,6 +439,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.NATS.RingConfig.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

@@ -32,6 +32,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/nats"
 	"github.com/grafana/loki/pkg/runtime"
 	fe "github.com/grafana/loki/pkg/util/flagext"
 	loki_flagext "github.com/grafana/loki/pkg/util/flagext"
@@ -690,7 +691,6 @@ func BenchmarkShardStream(b *testing.B) {
 		b.ResetTimer()
 		for n := 0; n < b.N; n++ {
 			d.shardStream(stream, 0, "fake") //nolint:errcheck
-
 		}
 	})
 

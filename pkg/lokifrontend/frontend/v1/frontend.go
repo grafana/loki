@@ -2,19 +2,28 @@ package v1
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/google/uuid"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/httpgrpc"
+
+	loki_nats "github.com/grafana/loki/pkg/nats"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -80,7 +89,7 @@ type request struct {
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
-func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
+func New(cfg Config, natsCfg loki_nats.Config, limits Limits, log log.Logger, registerer prometheus.Registerer) (*Frontend, error) {
 	queueMetrics := queue.NewMetrics("query_frontend", registerer)
 	f := &Frontend{
 		cfg:          cfg,
@@ -94,10 +103,14 @@ func New(cfg Config, limits Limits, log log.Logger, registerer prometheus.Regist
 		}),
 	}
 
-	f.requestQueue = queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, queueMetrics)
+	rq, err := queue.NewRequestQueue(cfg.MaxOutstandingPerTenant, cfg.QuerierForgetDelay, natsCfg, log, queueMetrics)
+	if err != nil {
+		return nil, err
+	}
+	f.requestQueue = rq
+
 	f.activeUsers = util.NewActiveUsersCleanupWithDefaultValues(f.cleanupInactiveUserMetrics)
 
-	var err error
 	f.subservices, err = services.NewManager(f.requestQueue, f.activeUsers)
 	if err != nil {
 		return nil, err
@@ -227,20 +240,49 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 		resps := make(chan *frontendv1pb.ClientToFrontend, 1)
 		errs := make(chan error, 1)
 		go func() {
-			err = server.Send(&frontendv1pb.FrontendToClient{
-				Type:         frontendv1pb.HTTP_REQUEST,
-				HttpRequest:  req.request,
-				StatsEnabled: stats.IsEnabled(req.originalCtx),
-			})
+			url, err := url.Parse(req.request.Url)
 			if err != nil {
 				errs <- err
 				return
 			}
 
-			resp, err := server.Recv()
-			if err != nil {
-				errs <- err
-				return
+			var isAsync bool
+			queryParams := url.Query()
+			async := queryParams.Get("async")
+
+			if async != "" {
+				isAsync, err = strconv.ParseBool(async)
+				if err != nil {
+					errs <- err
+					return
+				}
+			}
+
+			var resp *frontendv1pb.ClientToFrontend
+
+			switch {
+			case isAsync:
+				resp, err = f.PublishAsyncQueryRequest(req)
+				if err != nil {
+					errs <- err
+					return
+				}
+			default:
+				err = server.Send(&frontendv1pb.FrontendToClient{
+					Type:         frontendv1pb.HTTP_REQUEST,
+					HttpRequest:  req.request,
+					StatsEnabled: stats.IsEnabled(req.originalCtx),
+				})
+				if err != nil {
+					errs <- err
+					return
+				}
+
+				resp, err = server.Recv()
+				if err != nil {
+					errs <- err
+					return
+				}
 			}
 
 			resps <- resp
@@ -269,6 +311,56 @@ func (f *Frontend) Process(server frontendv1pb.Frontend_ProcessServer) error {
 			req.response <- resp.HttpResponse
 		}
 	}
+}
+
+func (f *Frontend) PublishAsyncQueryRequest(req *request) (*frontendv1pb.ClientToFrontend, error) {
+	stream := f.requestQueue.GetJetStream()
+	if stream == nil {
+		return nil, nil
+	}
+
+	b, err := json.Marshal(req.request)
+	if err != nil {
+		return nil, err
+	}
+
+	tenantIDs, err := tenant.TenantIDs(req.originalCtx)
+	if err != nil {
+		return nil, err
+	}
+	joinedTenantIDs := strings.Join(tenantIDs, "_")
+
+	subj := fmt.Sprintf("query.%s", joinedTenantIDs)
+
+	id := uuid.New().String()
+
+	msg := &nats.Msg{
+		Subject: subj,
+		Data:    b,
+		Header: nats.Header{
+			"Nats-Msg-Id": []string{id},
+		},
+	}
+
+	ack, err := stream.PublishMsg(req.originalCtx, msg, jetstream.WithMsgID(id))
+	if err != nil {
+		return nil, err
+	}
+
+	b, err = json.Marshal(ack)
+	if err != nil {
+		return nil, err
+	}
+
+	level.Info(f.log).Log("msg", "received ack from jetstream publish action", "ack", string(b))
+
+	// Build a fake response for returning the jetstream ack here
+	return &frontendv1pb.ClientToFrontend{
+		HttpResponse: &httpgrpc.HTTPResponse{
+			Code: http.StatusAccepted,
+			Body: b,
+		},
+	}, nil
 }
 
 func (f *Frontend) NotifyClientShutdown(_ context.Context, req *frontendv1pb.NotifyClientShutdownRequest) (*frontendv1pb.NotifyClientShutdownResponse, error) {

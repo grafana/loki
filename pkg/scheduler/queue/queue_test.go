@@ -8,12 +8,17 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	loki_nats "github.com/grafana/loki/pkg/nats"
 )
 
 func BenchmarkGetNextRequest(b *testing.B) {
+	logger := log.NewNopLogger()
+
 	const maxOutstandingPerTenant = 2
 	const numTenants = 50
 	const queriers = 5
@@ -45,7 +50,7 @@ func BenchmarkGetNextRequest(b *testing.B) {
 
 			queues := make([]*RequestQueue, 0, b.N)
 			for n := 0; n < b.N; n++ {
-				queue := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics("query_scheduler", nil))
+				queue, _ := NewRequestQueue(maxOutstandingPerTenant, 0, loki_nats.Config{}, logger, NewMetrics("query_scheduler", nil))
 				queues = append(queues, queue)
 
 				for ix := 0; ix < queriers; ix++ {
@@ -102,8 +107,10 @@ func BenchmarkQueueRequest(b *testing.B) {
 	users := make([]string, 0, numTenants)
 	requests := make([]string, 0, numTenants)
 
+	logger := log.NewNopLogger()
+
 	for n := 0; n < b.N; n++ {
-		q := NewRequestQueue(maxOutstandingPerTenant, 0, NewMetrics("query_scheduler", nil))
+		q, _ := NewRequestQueue(maxOutstandingPerTenant, 0, loki_nats.Config{}, logger, NewMetrics("query_scheduler", nil))
 
 		for ix := 0; ix < queriers; ix++ {
 			q.RegisterQuerierConnection(fmt.Sprintf("querier-%d", ix))
@@ -131,9 +138,10 @@ func BenchmarkQueueRequest(b *testing.B) {
 }
 
 func TestRequestQueue_GetNextRequestForQuerier_ShouldGetRequestAfterReshardingBecauseQuerierHasBeenForgotten(t *testing.T) {
+	logger := log.NewNopLogger()
 	const forgetDelay = 3 * time.Second
 
-	queue := NewRequestQueue(1, forgetDelay, NewMetrics("query_scheduler", nil))
+	queue, _ := NewRequestQueue(1, forgetDelay, loki_nats.Config{}, logger, NewMetrics("query_scheduler", nil))
 
 	// Start the queue service.
 	ctx := context.Background()
@@ -302,9 +310,10 @@ func TestContextCond(t *testing.T) {
 }
 
 func TestMaxQueueSize(t *testing.T) {
+	logger := log.NewNopLogger()
 	t.Run("queue size is tracked per tenant", func(t *testing.T) {
 		maxSize := 3
-		queue := NewRequestQueue(maxSize, 0, NewMetrics("query_scheduler", nil))
+		queue, _ := NewRequestQueue(maxSize, 0, loki_nats.Config{}, logger, NewMetrics("query_scheduler", nil))
 		queue.RegisterQuerierConnection("querier")
 
 		// enqueue maxSize items with different actors

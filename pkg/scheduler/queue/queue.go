@@ -6,9 +6,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
+
+	loki_nats "github.com/grafana/loki/pkg/nats"
 )
 
 const (
@@ -51,6 +57,17 @@ type RequestChannel chan Request
 type RequestQueue struct {
 	services.Service
 
+	log log.Logger
+
+	// Subservices manager.
+	subservices        *services.Manager
+	subservicesWatcher *services.FailureWatcher
+
+	// Nats
+	natsConnProvider *loki_nats.ConnProvider
+	conn             *nats.Conn
+	stream           jetstream.JetStream
+
 	connectedQuerierWorkers *atomic.Int32
 
 	mtx     sync.Mutex
@@ -61,17 +78,30 @@ type RequestQueue struct {
 	metrics *Metrics
 }
 
-func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, metrics *Metrics) *RequestQueue {
+func NewRequestQueue(maxOutstandingPerTenant int, forgetDelay time.Duration, natsCfg loki_nats.Config, l log.Logger, metrics *Metrics) (*RequestQueue, error) {
 	q := &RequestQueue{
+		log:                     l,
 		queues:                  newTenantQueues(maxOutstandingPerTenant, forgetDelay),
 		connectedQuerierWorkers: atomic.NewInt32(0),
 		metrics:                 metrics,
 	}
 
-	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
-	q.Service = services.NewTimerService(forgetCheckPeriod, nil, q.forgetDisconnectedQueriers, q.stopping).WithName("request queue")
+	// TODO(@periklis) Make this subservice optional
+	natsConn, err := loki_nats.NewConnProvider(natsCfg)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create NATS connection provider")
+	}
+	q.natsConnProvider = natsConn
 
-	return q
+	q.subservices, err = services.NewManager(q.natsConnProvider)
+	if err != nil {
+		return nil, err
+	}
+
+	q.cond = contextCond{Cond: sync.NewCond(&q.mtx)}
+	q.Service = services.NewBasicService(q.starting, q.running, q.stopping).WithName("request queue")
+
+	return q, nil
 }
 
 // Enqueue puts the request into the queue. MaxQueries is tenant-specific value that specifies how many queriers can
@@ -192,6 +222,114 @@ func (q *RequestQueue) forgetDisconnectedQueriers(_ context.Context) error {
 	return nil
 }
 
+func (q *RequestQueue) running(ctx context.Context) error {
+	t := time.NewTicker(forgetCheckPeriod)
+	defer t.Stop()
+
+	for {
+		select {
+		case <-t.C:
+			err := q.forgetDisconnectedQueriers(ctx)
+			if err != nil {
+				return err
+			}
+		case <-ctx.Done():
+			return nil
+		case err := <-q.subservicesWatcher.Chan():
+			return errors.Wrap(err, "frontend subservice failed")
+		}
+	}
+}
+
+func (q *RequestQueue) starting(ctx context.Context) (err error) {
+	defer func() {
+		if err == nil || q.subservices == nil {
+			return
+		}
+
+		if stopErr := services.StopManagerAndAwaitStopped(context.Background(), q.subservices); stopErr != nil {
+			level.Error(q.log).Log("msg", "failed to gracefully stop scheduler dependencies", "err", stopErr)
+		}
+	}()
+
+	q.subservicesWatcher = services.NewFailureWatcher()
+
+	if q.subservices == nil {
+		return nil
+	}
+	q.subservicesWatcher.WatchManager(q.subservices)
+
+	if err := services.StartManagerAndAwaitHealthy(ctx, q.subservices); err != nil {
+		return errors.Wrap(err, "unable to start frontend subservices")
+	}
+
+	// Skip stream creation if no NATS module available
+	if q.natsConnProvider == nil {
+		level.Info(q.log).Log("msg", "no nats connection provider given, skipping stream creation")
+		return nil
+	}
+
+	conn, err := q.natsConnProvider.GetConn()
+	if err != nil {
+		level.Error(q.log).Log("msg", "failed to get connection to nats server", "err", err.Error())
+		return err
+	}
+	q.conn = conn
+
+	var stream jetstream.JetStream
+	for {
+		stream, err = q.createOrUpdateStream(ctx, "query", []string{"query.*", "query.*.processed"})
+		if err != nil {
+			level.Error(q.log).Log("msg", "failed to create or update stream query for subjects query.*.*", "err", err.Error())
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+			}
+			continue
+		}
+		break
+	}
+
+	q.stream = stream
+
+	level.Info(q.log).Log("msg", "successfully created jet stream")
+
+	return nil
+}
+
+func (q *RequestQueue) createOrUpdateStream(ctx context.Context, name string, subjects []string) (jetstream.JetStream, error) {
+	stream, err := jetstream.New(q.conn)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to get jetstream context")
+	}
+
+	streamOpts := jetstream.StreamConfig{
+		Name:      name,
+		Subjects:  subjects,
+		Replicas:  3,
+		MaxAge:    4 * time.Hour,
+		Retention: jetstream.LimitsPolicy,
+		Discard:   jetstream.DiscardOld,
+	}
+
+	_, err = stream.UpdateStream(ctx, streamOpts)
+	if err != nil {
+		if err == jetstream.ErrStreamNotFound {
+			_, err = stream.CreateStream(ctx, streamOpts)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create stream")
+			}
+			return stream, nil
+		}
+		return nil, errors.Wrap(err, "failed to update stream")
+	}
+
+	return stream, nil
+}
+
+func (q *RequestQueue) GetJetStream() jetstream.JetStream { return q.stream }
+
 func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
@@ -206,7 +344,16 @@ func (q *RequestQueue) stopping(_ error) error {
 	// If there are still goroutines in GetNextRequestForQuerier method, they get notified.
 	q.cond.Broadcast()
 
-	return nil
+	if err := q.conn.Drain(); err != nil {
+		return err
+	}
+	q.conn.Close()
+
+	if q.subservices == nil {
+		return nil
+	}
+
+	return services.StopManagerAndAwaitStopped(context.Background(), q.subservices)
 }
 
 func (q *RequestQueue) RegisterQuerierConnection(querier string) {

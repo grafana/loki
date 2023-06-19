@@ -18,12 +18,13 @@ import (
 	"google.golang.org/grpc/metadata"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	loki_nats "github.com/grafana/loki/pkg/nats"
 )
 
 func setupFrontend(t *testing.T, config Config) *Frontend {
 	logger := log.NewNopLogger()
 
-	frontend, err := New(config, limits{queriers: 3}, logger, nil)
+	frontend, err := New(config, loki_nats.Config{}, limits{queriers: 3}, logger, nil)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

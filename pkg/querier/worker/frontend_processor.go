@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,6 +10,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/nats-io/nats.go"
+	"github.com/nats-io/nats.go/jetstream"
 	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc"
 
@@ -73,6 +76,41 @@ func (fp *frontendProcessor) processQueriesOnSingleStream(ctx context.Context, c
 
 		backoff.Reset()
 	}
+}
+
+func (fp *frontendProcessor) processAsyncRequest(js jetstream.JetStream, id, subject string, req *httpgrpc.HTTPRequest) {
+	fp.runRequest(context.Background(), req, false, func(response *httpgrpc.HTTPResponse, _ *querier_stats.Stats) error {
+		if response == nil {
+			level.Info(fp.log).Log("msg", "empty query response received", "id", id, "subject", "subject", "url", req.Url)
+			return nil
+		}
+
+		data, err := json.Marshal(response)
+		if err != nil {
+			level.Error(fp.log).Log("msg", "failed to marshal query response", "err", err.Error())
+			return err
+		}
+
+		msg := &nats.Msg{
+			Subject: subject,
+			Data:    data,
+			Header: nats.Header{
+				"Nats-Msg-Id": []string{id},
+			},
+		}
+
+		level.Info(fp.log).Log("msg", "publishing nats msg", "subject", msg.Subject, "id", id)
+
+		ack, err := js.PublishMsg(context.TODO(), msg, jetstream.WithMsgID(id), jetstream.WithExpectStream("query-responses"))
+		if err != nil {
+			level.Error(fp.log).Log("msg", "failed to publish message", "subject", msg.Subject, "id", id)
+			return err
+		}
+
+		level.Info(fp.log).Log("msg", "received ack from jetstream publish action", "ack", "stream", ack.Stream, "seq", ack.Sequence, "domain", ack.Domain)
+
+		return nil
+	})
 }
 
 // process loops processing requests on an established stream.
