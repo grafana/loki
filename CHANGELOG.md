@@ -6,6 +6,7 @@
 
 ##### Enhancements
 
+* [9710](https://github.com/grafana/loki/pull/9710) **chaudum**: Add shuffle sharding to index gateway
 * [9573](https://github.com/grafana/loki/pull/9573) **CCOLLOT**: Lambda-Promtail: Add support for AWS CloudFront log ingestion.
 * [9497](https://github.com/grafana/loki/pull/9497) **CCOLLOT**: Lambda-Promtail: Add support for AWS CloudTrail log ingestion.
 * [8886](https://github.com/grafana/loki/pull/8886) **MichelHollands**: Add new logql template function `unixToTime`
