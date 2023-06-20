@@ -1,6 +1,7 @@
 package sketch
 
 import (
+	"container/heap"
 	"sort"
 )
 
@@ -39,14 +40,14 @@ func (t *Topk) Observe(event string) {
 	}
 
 	if len(t.currentTop) < t.max {
-		t.heap.Push(&node{event: event, count: estimate})
+		heap.Push(&t.heap, &node{event: event, count: estimate})
 		t.currentTop[event] = estimate
 		return
 	}
 
 	if estimate > t.heap.Peek().(*node).count {
 		if len(t.currentTop) == t.max {
-			min := t.heap.Pop().(*node)
+			min := heap.Pop(&t.heap).(*node)
 			// todo: refactor so we have a nicer way of not calling pop if the
 			// heap length is 0
 			if min != nil {
@@ -55,7 +56,7 @@ func (t *Topk) Observe(event string) {
 		}
 
 		ele := node{event: event, count: estimate}
-		t.heap.Push(&ele)
+		heap.Push(&t.heap, &ele)
 		t.currentTop[event] = estimate
 	}
 }

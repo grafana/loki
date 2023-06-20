@@ -1,6 +1,7 @@
 package sketch
 
 import (
+	"container/heap"
 	"math"
 	"math/rand"
 	"sort"
@@ -100,7 +101,7 @@ func (t *HeavyKeeperTopK) Observe(event string) {
 		// item doesn't exist in heap
 		// if we aren't already tracking the max # of things we can just add this event
 		if len(t.currentTop) < int(t.k) {
-			t.heap.Push(&node{
+			heap.Push(&t.heap, &node{
 				event: event,
 				count: maxCount,
 			})
@@ -112,9 +113,9 @@ func (t *HeavyKeeperTopK) Observe(event string) {
 		// otherwise, if the max count for this event is > heap min
 		// we need to pop the top and add the new event
 		if maxCount > heapMin {
-			m := t.heap.Pop()
+			m := heap.Pop(&t.heap)
 			delete(t.currentTop, m.(*node).event)
-			t.heap.Push(&node{
+			heap.Push(&t.heap, &node{
 				event: event,
 				count: maxCount,
 			})
