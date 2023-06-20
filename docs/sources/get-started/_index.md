@@ -1,12 +1,14 @@
 ---
-title: Getting started
-weight: 300
-description: "This guide assists the reader to create and use a simple Loki cluster for testing and evaluation purposes."
+title: Get started
+weight: 100
+description: How to create and use a simple Loki cluster for testing and evaluation purposes.
 aliases:
     - /docs/loki/latest/getting-started/get-logs-into-loki/
+    - /docs/loki/latest/getting-started/
+    - /docs/loki/latest/get-started/
 ---
 
-# Getting started
+# Get started
 
 This guide assists the reader to create and use a simple Loki cluster.
 The cluster is intended for testing, development, and evaluation;
@@ -22,7 +24,7 @@ Grafana provides a way to pose queries against the logs stored in Loki and visua
 
 The test environment uses Docker compose to instantiate these parts, each in its own container: 
 
-- One [single scalable deployment]({{< relref "../fundamentals/architecture/deployment-modes" >}}) mode **Loki** instance has:
+- One [single scalable deployment]({{< relref "../get-started/deployment-modes" >}}) mode **Loki** instance has:
     - One Loki read component
     - One Loki write component
     - **Minio** is Loki's storage back end in the test environment.

@@ -77,7 +77,7 @@ We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `
 
 Previously we would statically shard queries based on the index row shards configured [here]({{< relref "../../configuration#period_config" >}}).
 TSDB does Dynamic Query Sharding based on how much data a query is going to be processing.
-We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../fundamentals/architecture/components#query-frontend" >}}) for planning the query.
+We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../get-started/components#query-frontend" >}}) for planning the query.
 Based on our experience from operating many Loki clusters, we have configured TSDB to aim for processing 300-600 MBs of data per query shard.
 This means with TSDB we will be running more, smaller queries.
 

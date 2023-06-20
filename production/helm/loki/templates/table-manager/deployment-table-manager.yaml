@@ -106,8 +106,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.fullname" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         {{- with .Values.tableManager.extraVolumes }}
         {{- toYaml . | nindent 8 }}

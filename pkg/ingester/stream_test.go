@@ -63,6 +63,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
+				nil,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
@@ -110,6 +111,7 @@ func TestPushDeduplication(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -140,6 +142,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	// counter should be 2 now since the first line will be deduped
@@ -239,6 +242,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 	s.highestTs = time.Now()
 
@@ -269,6 +273,7 @@ func TestUnorderedPush(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	for _, x := range []struct {
@@ -366,6 +371,7 @@ func TestPushRateLimit(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -400,6 +406,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -433,6 +440,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	base := time.Now()
@@ -482,7 +490,7 @@ func Benchmark_PushStream(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics)
+	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 
