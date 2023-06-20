@@ -14,7 +14,7 @@ keywords:
 
 This Helm Chart installation runs the Grafana Loki cluster within a Kubernetes cluster.
 
-If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{<relref "../../../fundamentals/architecture/deployment-modes/#simple-scalable-deployment-mode">}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
+If object storge is configured, this chart configures Loki to run `read` and `write` targets in a [scalable mode]({{< relref "../../../get-started/deployment-modes#simple-scalable-deployment-mode" >}}), highly available architecture (3 replicas of each) designed to work with AWS S3 object storage. It will also configure meta-monitoring of metrics and logs.
 
 It is not possible to run the scalable mode with the `filesystem` storage.
 
@@ -23,7 +23,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A running Kubernetes cluster.
 - A Prometheus operator installation in case meta-monitoring should be used.
-- Optionally a Memcached deployment for better performance. Consult the [caching section]({{<relref "../../../operations/caching">}}) on how to configure Memcached.
+- Optionally a Memcached deployment for better performance. Consult the [caching section]({{< relref "../../../operations/caching" >}}) on how to configure Memcached.
 
 **To deploy Loki in scalable mode:**
 
@@ -60,7 +60,7 @@ It is not possible to run the scalable mode with the `filesystem` storage.
             insecure: false
       ```
 
-      Consult the [Reference]({{<relref "../reference">}}) for configuring other storage providers.
+      Consult the [Reference]({{< relref "../reference" >}}) for configuring other storage providers.
 
     - If you're just trying things, you can use the following configuration instead, that sets MinIO as storage:
       ```yaml

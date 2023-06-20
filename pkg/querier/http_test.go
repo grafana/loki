@@ -198,27 +198,27 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 	})
 }
 
-func TestLabelVolumeHandler(t *testing.T) {
+func TestSeriesVolumeHandler(t *testing.T) {
 	t.Run("it returns label volumes from the querier", func(t *testing.T) {
-		ret := &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Value: "bar", Volume: 38},
 		}}
 
 		querier := newQuerierMock()
-		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(ret, nil)
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
 
 		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
 
-		req := httptest.NewRequest(http.MethodGet, "/label_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 		err := req.ParseForm()
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		api.LabelVolumeHandler(w, req)
+		api.SeriesVolumeHandler(w, req)
 
-		calls := querier.GetMockedCallsByMethod("LabelVolume")
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
-		require.Equal(t, &logproto.LabelVolumeRequest{
+		require.Equal(t, &logproto.VolumeRequest{
 			From:     0,
 			Through:  1000,
 			Matchers: `{foo="bar"}`,
@@ -231,18 +231,18 @@ func TestLabelVolumeHandler(t *testing.T) {
 
 	t.Run("it returns nothing when a store doesn't support label volumes", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(nil, nil)
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, nil)
 
 		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
 
-		req := httptest.NewRequest(http.MethodGet, "/label_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 		err := req.ParseForm()
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		api.LabelVolumeHandler(w, req)
+		api.SeriesVolumeHandler(w, req)
 
-		calls := querier.GetMockedCallsByMethod("LabelVolume")
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[]}`)
@@ -251,18 +251,18 @@ func TestLabelVolumeHandler(t *testing.T) {
 
 	t.Run("it returns error when there's an error in the querier", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(nil, errors.New("something bad"))
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, errors.New("something bad"))
 
 		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
 
-		req := httptest.NewRequest(http.MethodGet, "/label_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 		err := req.ParseForm()
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		api.LabelVolumeHandler(w, req)
+		api.SeriesVolumeHandler(w, req)
 
-		calls := querier.GetMockedCallsByMethod("LabelVolume")
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `something bad`)

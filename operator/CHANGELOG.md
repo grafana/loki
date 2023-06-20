@@ -1,6 +1,7 @@
 ## Main
 
 - [9600](https://github.com/grafana/loki/pull/9600) **periklis**: Add rules labels filters for openshift-logging application tenant
+- [9735](https://github.com/grafana/loki/pull/9735) **JoaoBraveCoding** Adjust 1x.extra-small resources according to findings
 - [9689](https://github.com/grafana/loki/pull/9689) **xperimental**: Fix availability of demo LokiStack size
 - [9630](https://github.com/grafana/loki/pull/9630) **jpinsonneau**: Expose per_stream_rate_limit & burst
 - [9623](https://github.com/grafana/loki/pull/9623) **periklis**: Fix timeout config constructor when only tenants limits

@@ -275,19 +275,19 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 	return s.grpcClient.GetStats(ctx, in, opts...)
 }
 
-func (s *GatewayClient) GetLabelVolume(ctx context.Context, in *logproto.LabelVolumeRequest, opts ...grpc.CallOption) (*logproto.LabelVolumeResponse, error) {
+func (s *GatewayClient) GetSeriesVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	if s.cfg.Mode == indexgateway.RingMode {
 		var (
-			resp *logproto.LabelVolumeResponse
+			resp *logproto.VolumeResponse
 			err  error
 		)
 		err = s.ringModeDo(ctx, func(client logproto.IndexGatewayClient) error {
-			resp, err = client.GetLabelVolume(ctx, in, opts...)
+			resp, err = client.GetSeriesVolume(ctx, in, opts...)
 			return err
 		})
 		return resp, err
 	}
-	return s.grpcClient.GetLabelVolume(ctx, in, opts...)
+	return s.grpcClient.GetSeriesVolume(ctx, in, opts...)
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
