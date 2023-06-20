@@ -2025,6 +2025,8 @@ tsdb_shipper:
   [mode: <string> | default = ""]
 
   [ingesterdbretainperiod: <duration>]
+
+  [cache_postings: <boolean>]
 ```
 
 ### chunk_store_config
@@ -3917,6 +3919,25 @@ embedded_cache:
   # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
+
+lru_cache:
+  # Maximum memory size of the whole cache. A unit suffix (KB, MB, GB) may be
+  # applied.
+  # CLI flag: -<prefix>.lrucache.max-size-bytes
+  [max_size_bytes: <int> | default = 0B]
+
+  # Maximum memory size of a single item in the cache. A unit suffix (KB, MB,
+  # GB) may be applied.
+  # CLI flag: -<prefix>.lrucache.max-item-size-bytes
+  [max_item_size_bytes: <int> | default = 0B]
+
+  # Maximum items in the cache.
+  # CLI flag: -<prefix>.lrucache.max-items
+  [max_items: <int> | default = 5000]
+
+  # Whether LRUCache should be enabled or not.
+  # CLI flag: -<prefix>.lrucache.enabled
+  [enabled: <boolean> | default = false]
 
 fifocache:
   # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
