@@ -92,7 +92,7 @@ func credentialsFromJSON(ctx context.Context, data []byte, ds *DialSettings) (*g
 
 	// Determine configurations for the OAuth2 transport, which is separate from the API transport.
 	// The OAuth2 transport and endpoint will be configured for mTLS if applicable.
-	clientCertSource, oauth2Endpoint, err := GetClientCertificateSourceAndEndpoint(oauth2DialSettings(ds))
+	clientCertSource, oauth2Endpoint, err := getClientCertificateSourceAndEndpoint(oauth2DialSettings(ds))
 	if err != nil {
 		return nil, err
 	}

@@ -54,8 +54,8 @@ func (n AbortIncompleteMultipartUpload) MarshalXML(e *xml.Encoder, start xml.Sta
 // specific period in the object's lifetime.
 type NoncurrentVersionExpiration struct {
 	XMLName                 xml.Name       `xml:"NoncurrentVersionExpiration" json:"-"`
-	NoncurrentDays          ExpirationDays `xml:"NoncurrentDays,omitempty"`
-	NewerNoncurrentVersions int            `xml:"NewerNoncurrentVersions,omitempty"`
+	NoncurrentDays          ExpirationDays `xml:"NoncurrentDays,omitempty" json:"NoncurrentDays,omitempty"`
+	NewerNoncurrentVersions int            `xml:"NewerNoncurrentVersions,omitempty" json:"NewerNoncurrentVersions,omitempty"`
 }
 
 // MarshalXML if n is non-empty, i.e has a non-zero NoncurrentDays or NewerNoncurrentVersions.

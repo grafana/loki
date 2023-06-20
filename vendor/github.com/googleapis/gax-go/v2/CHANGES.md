@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.9.1](https://github.com/googleapis/gax-go/compare/v2.9.0...v2.9.1) (2023-05-23)
+
+
+### Bug Fixes
+
+* **v2:** drop cloud lro test dep ([#276](https://github.com/googleapis/gax-go/issues/276)) ([c67eeba](https://github.com/googleapis/gax-go/commit/c67eeba0f10a3294b1d93c1b8fbe40211a55ae5f)), refs [#270](https://github.com/googleapis/gax-go/issues/270)
+
+## [2.9.0](https://github.com/googleapis/gax-go/compare/v2.8.0...v2.9.0) (2023-05-22)
+
+
+### Features
+
+* **apierror:** add method to return HTTP status code conditionally ([#274](https://github.com/googleapis/gax-go/issues/274)) ([5874431](https://github.com/googleapis/gax-go/commit/587443169acd10f7f86d1989dc8aaf189e645e98)), refs [#229](https://github.com/googleapis/gax-go/issues/229)
+
+
+### Documentation
+
+* add ref to usage with clients ([#272](https://github.com/googleapis/gax-go/issues/272)) ([ea4d72d](https://github.com/googleapis/gax-go/commit/ea4d72d514beba4de450868b5fb028601a29164e)), refs [#228](https://github.com/googleapis/gax-go/issues/228)
+
+## [2.8.0](https://github.com/googleapis/gax-go/compare/v2.7.1...v2.8.0) (2023-03-15)
+
+
+### Features
+
+* **v2:** add WithTimeout option ([#259](https://github.com/googleapis/gax-go/issues/259)) ([9a8da43](https://github.com/googleapis/gax-go/commit/9a8da43693002448b1e8758023699387481866d1))
+
 ## [2.7.1](https://github.com/googleapis/gax-go/compare/v2.7.0...v2.7.1) (2023-03-06)
 
 

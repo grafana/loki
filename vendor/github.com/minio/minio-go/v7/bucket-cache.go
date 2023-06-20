@@ -240,9 +240,7 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	}
 
 	if signerType.IsV2() {
-		// Get Bucket Location calls should be always path style
-		isVirtualHost := false
-		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
+		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualStyle)
 		return req, nil
 	}
 
