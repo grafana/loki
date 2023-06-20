@@ -22,7 +22,6 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix config as a secret mount for single binary statefulset
 
-
 ## 5.8.0
 
 - [ENHANCEMENT] Add loki.memberlistConfig to fully control the memberlist configuration
