@@ -805,6 +805,17 @@ func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse) queryrange
 		}
 	}
 
+	// sort to enusre consistent ordering in results
+	// this only works because all samples in this result set have the same timestamp
+	// and each only have a single sample.
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Samples[0].Value == result[j].Samples[0].Value {
+			return result[i].Labels[0].Name < result[j].Labels[0].Name
+		}
+
+		return result[i].Samples[0].Value > result[j].Samples[0].Value
+	})
+
 	return queryrangebase.PrometheusData{
 		ResultType: loghttp.ResultTypeVector,
 		Result:     result,

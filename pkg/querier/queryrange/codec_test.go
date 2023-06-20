@@ -265,7 +265,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 38},
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
 					},
 					Limit: 100,
 				},
@@ -522,9 +522,11 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 38},
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
 					},
-					Limit: 100,
+					Limit:   100,
+					From:    0,
+					Through: 0,
 				},
 			}, labelVolumeString, false,
 		},
@@ -1068,14 +1070,13 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 		require.Equal(t, expected.Data.ResultType, "vector")
 
 		require.Len(t, expected.Data.Result, 2)
-		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
+		require.Equal(t, expected.Data.Result, []queryrangebase.SampleStream{{
 			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "loki"}},
 			Samples: []logproto.LegacySample{{Value: 500, TimestampMs: through.Unix() * 1e3}},
-		})
-		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
+		}, {
 			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "prometheus"}},
 			Samples: []logproto.LegacySample{{Value: 250, TimestampMs: through.Unix() * 1e3}},
-		})
+		}})
 	})
 
 	t.Run("converts to prometheus response, aggregating all samples per series into the latest timestamp", func(t *testing.T) {
@@ -1428,15 +1429,17 @@ var (
 		"entries": 4
 		}`
 	labelVolumeString = `{
-		  "volumes": [
-			{
+    "from": 0,
+    "limit": 100,
+    "through": 0,
+    "volumes": [
+      {
         "name": "{foo=\"bar\"}",
-			  "value": "",
-			  "volume": 38
-			}
-		  ],
-		  "limit": 100
-		}`
+        "value": "",
+        "volume": 38
+      }
+    ]
+  }`
 	labelsData  = []string{"foo", "bar"}
 	statsResult = stats.Result{
 		Summary: stats.Summary{
