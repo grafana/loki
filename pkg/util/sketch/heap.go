@@ -35,18 +35,13 @@ func (h *MinHeap) Push(x interface{}) {
 }
 
 func (h *MinHeap) Pop() interface{} {
-	if len(*h) == 0 {
-		return nil
-	}
-	top := (*h)[0]
-	heapSize := len(*h)
-
-	if heapSize > 1 {
-		(*h)[0] = (*h)[heapSize-1]
-	}
-	(*h) = (*h)[:len(*h)-1]
-	heap.Fix(h, 0)
-	return top
+	old := *h
+	n := len(old)
+	item := old[n-1]
+	old[n-1] = nil
+	item.index = 0
+	*h = old[0 : n-1]
+	return item
 }
 
 func (h *MinHeap) Peek() interface{} {

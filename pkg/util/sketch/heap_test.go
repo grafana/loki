@@ -1,18 +1,31 @@
 package sketch
 
 import (
+	"container/heap"
+	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
 func TestHeap(t *testing.T) {
-	h := MinHeap{10, make([]*node, 0)}
-	h.Push("1", 70)
-	h.Push("2", 30)
-	h.Push("3", 20)
-	h.Push("4", 60)
-	h.Push("5", 80)
-	h.Push("6", 50)
-	h.Push("7", 10)
-	h.Push("8", 90)
-	// todo: finish this test
+	h := MinHeap{}
+
+	heap.Init(&h)
+
+	heap.Push(&h, &node{event: "1", count: 70})
+	assert.Equal(t, uint32(70), h.Peek().(*node).count, "expected: %d and got %d", uint32(70), h.Peek().(*node).count)
+
+	heap.Push(&h, &node{event: "2", count: 20})
+	assert.Equal(t, uint32(20), h.Peek().(*node).count, "expected: %d and got %d", uint32(20), h.Peek().(*node).count)
+
+	heap.Push(&h, &node{event: "3", count: 50})
+	assert.Equal(t, uint32(20), h.Peek().(*node).count, "expected: %d and got %d", uint32(20), h.Peek().(*node).count)
+
+	heap.Push(&h, &node{event: "4", count: 60})
+	assert.Equal(t, uint32(20), h.Peek().(*node).count, "expected: %d and got %d", uint32(20), h.Peek().(*node).count)
+
+	heap.Push(&h, &node{event: "5", count: 10})
+	assert.Equal(t, uint32(10), h.Peek().(*node).count, "expected: %d and got %d", uint32(10), h.Peek().(*node).count)
+
+	assert.Equal(t, heap.Pop(&h).(*node).count, uint32(10))
+	assert.Equal(t, h.Peek().(*node).count, uint32(20))
 }
