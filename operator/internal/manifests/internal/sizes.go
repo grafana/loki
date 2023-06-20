@@ -312,25 +312,25 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 				Replicas: 1,
 			},
 			Distributor: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Ingester: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Querier: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			QueryFrontend: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Gateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Ruler: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 		},
 	},
