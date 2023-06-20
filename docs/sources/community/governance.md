@@ -67,6 +67,7 @@ The current team members are:
 - Periklis Tsirakidis - [periklis](https://github.com/periklis) ([Red Hat](https://www.redhat.com/))
 - Salva Corts - [salvacorts](https://github.com/salvacorts) ([Grafana Labs](/))
 - Sandeep Sukhani - [sandeepsukhani](https://github.com/sandeepsukhani) ([Grafana Labs](/))
+- Susana Ferreira - [ssncferreira](https://github.com/ssncferreira)
 - Tom Braack - [sh0rez](https://github.com/sh0rez) ([Grafana Labs](/))
 - Tom Wilkie - [tomwilkie](https://github.com/tomwilkie) ([Grafana Labs](/))
 
