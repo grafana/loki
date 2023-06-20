@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	gzip "github.com/klauspost/pgzip"
@@ -88,7 +89,7 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 	}
 
 	if err == nil {
-		logger = log.With(logger, "size", fStat.Size())
+		logger = log.With(logger, "size", humanize.Bytes(uint64(fStat.Size())))
 	}
 	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
 

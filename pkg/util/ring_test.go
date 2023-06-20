@@ -15,37 +15,6 @@ func TestTokenFor(t *testing.T) {
 	}
 }
 
-func TestIsAssignedKey(t *testing.T) {
-	for _, tc := range []struct {
-		desc   string
-		ring   ring.ReadRing
-		userID string
-		exp    bool
-		addr   string
-	}{
-		{
-			desc:   "basic ring and tenant are assigned key",
-			ring:   newReadRingMock([]ring.InstanceDesc{{Addr: "127.0.0.1", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}}}),
-			userID: "1",
-			exp:    true,
-			addr:   "127.0.0.1",
-		},
-		{
-			desc:   "basic ring and tenant are not assigned key",
-			ring:   newReadRingMock([]ring.InstanceDesc{{Addr: "127.0.0.2", Timestamp: time.Now().UnixNano(), State: ring.ACTIVE, Tokens: []uint32{1, 2, 3}}}),
-			userID: "1",
-			exp:    false,
-			addr:   "127.0.0.1",
-		},
-	} {
-		t.Run(tc.desc, func(t *testing.T) {
-			if res := IsAssignedKey(tc.ring, newReadLifecyclerMock(tc.addr).addr, tc.userID); res != tc.exp {
-				t.Errorf("IsAssignedKey(%v, %v) = %v, want %v", tc.ring, tc.userID, res, tc.exp)
-			}
-		})
-	}
-}
-
 type readRingMock struct {
 	replicationSet ring.ReplicationSet
 }

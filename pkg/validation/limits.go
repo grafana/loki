@@ -173,6 +173,8 @@ type Limits struct {
 
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
+
+	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 }
 
 type StreamRetention struct {
@@ -271,6 +273,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
+
+	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -728,6 +732,10 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+func (o *Overrides) IndexGatewayShardSize(userID string) int {
+	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {
