@@ -51,7 +51,7 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 	lokiv1.SizeOneXExtraSmall: {
 		Querier: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceCPU:    resource.MustParse("1.5"),
 				corev1.ResourceMemory: resource.MustParse("3Gi"),
 			},
 		},
@@ -65,34 +65,34 @@ var ResourceRequirementsTable = map[lokiv1.LokiStackSizeType]ComponentResources{
 		Ingester: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("1Gi"),
+				corev1.ResourceCPU:    resource.MustParse("2"),
+				corev1.ResourceMemory: resource.MustParse("8Gi"),
 			},
 			PDBMinAvailable: 1,
 		},
 		Distributor: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("500Mi"),
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
 		},
 		QueryFrontend: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("200m"),
-				corev1.ResourceMemory: resource.MustParse("500Mi"),
+				corev1.ResourceCPU:    resource.MustParse("1"),
+				corev1.ResourceMemory: resource.MustParse("1Gi"),
 			},
 		},
 		Compactor: ResourceRequirements{
 			PVCSize: resource.MustParse("10Gi"),
 			Requests: map[corev1.ResourceName]resource.Quantity{
 				corev1.ResourceCPU:    resource.MustParse("1"),
-				corev1.ResourceMemory: resource.MustParse("1Gi"),
+				corev1.ResourceMemory: resource.MustParse("2Gi"),
 			},
 		},
 		Gateway: corev1.ResourceRequirements{
 			Requests: map[corev1.ResourceName]resource.Quantity{
-				corev1.ResourceCPU:    resource.MustParse("100m"),
-				corev1.ResourceMemory: resource.MustParse("256Mi"),
+				corev1.ResourceCPU:    resource.MustParse("500m"),
+				corev1.ResourceMemory: resource.MustParse("500Mi"),
 			},
 		},
 		IndexGateway: ResourceRequirements{
@@ -312,25 +312,25 @@ var StackSizeTable = map[lokiv1.LokiStackSizeType]lokiv1.LokiStackSpec{
 				Replicas: 1,
 			},
 			Distributor: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Ingester: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Querier: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			QueryFrontend: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Gateway: &lokiv1.LokiComponentSpec{
 				Replicas: 2,
 			},
 			IndexGateway: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 			Ruler: &lokiv1.LokiComponentSpec{
-				Replicas: 1,
+				Replicas: 2,
 			},
 		},
 	},
