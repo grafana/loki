@@ -134,6 +134,13 @@ func (c *idleTimeoutConn) setDeadline() {
 	_ = c.Conn.SetDeadline(time.Now().Add(c.idleTimeout))
 }
 
+type PipeReaderWriter interface {
+	Read(data []byte) (n int, err error)
+	Write(data []byte) (n int, err error)
+	Close() error
+	Addr() string
+}
+
 type ConnPipe struct {
 	addr net.Addr
 	*io.PipeReader
@@ -149,8 +156,45 @@ func NewConnPipe(addr net.Addr) *ConnPipe {
 	}
 }
 
+func (pipe *ConnPipe) Addr() string {
+	return pipe.addr.String()
+}
+
 func (pipe *ConnPipe) Close() error {
 	return pipe.PipeWriter.Close()
+}
+
+type IdleTimeoutConnPipe struct {
+	*ConnPipe
+	deadline    time.Time
+	idleTimeout time.Duration
+}
+
+func NewIdleTimeoutConnPipe(addr net.Addr, idleTimeout time.Duration) *IdleTimeoutConnPipe {
+	pipe := &IdleTimeoutConnPipe{
+		ConnPipe:    NewConnPipe(addr),
+		idleTimeout: idleTimeout,
+	}
+	pipe.setDeadline()
+	return pipe
+}
+
+func (pipe *IdleTimeoutConnPipe) setDeadline() {
+	pipe.deadline = time.Now().Add(pipe.idleTimeout)
+}
+
+func (pipe *IdleTimeoutConnPipe) Read(data []byte) (n int, err error) {
+	pipe.setDeadline()
+	return pipe.PipeReader.Read(data)
+}
+
+func (pipe *IdleTimeoutConnPipe) Write(data []byte) (n int, err error) {
+	pipe.setDeadline()
+	return pipe.PipeWriter.Write(data)
+}
+
+func (pipe *IdleTimeoutConnPipe) IsIdle(t time.Time) bool {
+	return pipe.deadline.Before(t)
 }
 
 type TCPTransport struct {
@@ -303,11 +347,14 @@ func (t *TCPTransport) Addr() net.Addr {
 type UDPTransport struct {
 	*baseTransport
 	udpConn *net.UDPConn
+	streams map[string]*IdleTimeoutConnPipe
+	mtx     sync.Mutex
 }
 
 func NewSyslogUDPTransport(config *scrapeconfig.SyslogTargetConfig, handleMessage handleMessage, handleError handleMessageError, logger log.Logger) Transport {
 	return &UDPTransport{
 		baseTransport: newBaseTransport(config, handleMessage, handleError, logger),
+		streams:       make(map[string]*IdleTimeoutConnPipe),
 	}
 }
 
@@ -325,8 +372,10 @@ func (t *UDPTransport) Run() error {
 	_ = t.udpConn.SetReadBuffer(1024 * 1024)
 	level.Info(t.logger).Log("msg", "syslog listening on address", "address", t.Addr().String(), "protocol", protocolUDP)
 
-	t.openConnections.Add(1)
+	// t.openConnections does not track connections in the UDP transport, but rather running goroutines
+	t.openConnections.Add(2)
 	go t.acceptPackets()
+	go t.cleanupIdleConnections()
 	return nil
 }
 
@@ -344,13 +393,14 @@ func (t *UDPTransport) acceptPackets() {
 		addr net.Addr
 		err  error
 	)
-	streams := make(map[string]*ConnPipe)
 	buf := make([]byte, t.maxMessageLength())
 
 	for {
 		if !t.Ready() {
 			level.Info(t.logger).Log("msg", "syslog server shutting down", "protocol", protocolUDP, "err", t.ctx.Err())
-			for _, stream := range streams {
+			t.mtx.Lock()
+			defer t.mtx.Unlock()
+			for _, stream := range t.streams {
 				if err = stream.Close(); err != nil {
 					level.Error(t.logger).Log("msg", "failed to close pipe", "err", err)
 				}
@@ -363,23 +413,57 @@ func (t *UDPTransport) acceptPackets() {
 			continue
 		}
 
-		stream, ok := streams[addr.String()]
+		t.mtx.Lock()
+		stream, ok := t.streams[addr.String()]
 		if !ok {
-			stream = NewConnPipe(addr)
-			streams[addr.String()] = stream
+			stream = NewIdleTimeoutConnPipe(addr, time.Minute)
+			t.streams[addr.String()] = stream
 			t.openConnections.Add(1)
 			go t.handleRcv(stream)
 		}
 		if _, err := stream.Write(buf[:n]); err != nil {
 			level.Warn(t.logger).Log("msg", "failed to write to stream", "addr", addr, "err", err)
 		}
+		t.mtx.Unlock()
 	}
 }
 
-func (t *UDPTransport) handleRcv(c *ConnPipe) {
+func (t *UDPTransport) cleanupIdleConnections() {
 	defer t.openConnections.Done()
 
-	lbs := t.connectionLabels(c.addr.String())
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		if !t.Ready() {
+			return
+		}
+		select {
+		case <-t.ctx.Done():
+			// Closing of streams when shutting down is handled by the acceptPackets loop
+			return
+		case now := <-ticker.C:
+			t.mtx.Lock()
+			for addr, stream := range t.streams {
+				if stream.IsIdle(now) {
+					if err := stream.Close(); err != nil {
+						level.Warn(t.logger).Log("msg", "failed to close stream during cleanup", "addr", addr, "err", err)
+					}
+					delete(t.streams, addr)
+					t.openConnections.Done()
+				}
+			}
+			t.mtx.Unlock()
+		default:
+			return
+		}
+	}
+}
+
+func (t *UDPTransport) handleRcv(c PipeReaderWriter) {
+	defer t.openConnections.Done()
+
+	lbs := t.connectionLabels(c.Addr())
 	err := syslogparser.ParseStream(c, func(result *syslog.Result) {
 		if err := result.Error; err != nil {
 			t.handleMessageError(err)
