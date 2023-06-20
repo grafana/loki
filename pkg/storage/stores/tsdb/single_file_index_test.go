@@ -71,7 +71,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases)
+				return BuildIndex(t, t.TempDir(), cases, TSDBIndexOpts{UsePostingsCache: false})
 			},
 		},
 		{
@@ -249,7 +249,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	})
+	}, TSDBIndexOpts{UsePostingsCache: false})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -304,7 +304,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, TSDBIndexOpts{UsePostingsCache: false})
 
 	// Create the test cases
 	testCases := []struct {
@@ -415,7 +415,7 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, TSDBIndexOpts{UsePostingsCache: false})
 
 	t.Run("it matches all the series when the match all matcher is passed", func(t *testing.T) {
 		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")

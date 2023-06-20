@@ -17,7 +17,7 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
+func BuildIndex(t testing.TB, dir string, cases []LoadableSeries, opts TSDBIndexOpts) *TSDBFile {
 	b := NewBuilder()
 
 	for _, s := range cases {
@@ -35,7 +35,7 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 	})
 	require.Nil(t, err)
 
-	idx, err := NewShippableTSDBFile(dst, TSDBIndexOpts{UsePostingsCache: false})
+	idx, err := NewShippableTSDBFile(dst, opts)
 	require.Nil(t, err)
 	return idx
 }
