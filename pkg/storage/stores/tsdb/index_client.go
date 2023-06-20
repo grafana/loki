@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // implements stores.Index
@@ -102,12 +101,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.GetChunkRefs")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	var kvps []interface{}
 	defer func() {
-		log.Log(kvps...)
+		sp.LogKV(kvps...)
 	}()
 
 	matchers, shard, err := cleanMatchers(matchers...)
