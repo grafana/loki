@@ -51,18 +51,23 @@ In case a member leaves, the [offboarding](#offboarding) procedure is applied.
 The current team members are:
 
 - Aditya C S - [adityacs](https://github.com/adityacs)
+- Ashwanth Goli - [ashwanthgoli](https://github.com/ashwanthgoli) ([Grafana Labs](/))
 - Cyril Tovena - [cyriltovena](https://github.com/cyriltovena) ([Grafana Labs](/))
 - Danny Kopping - [dannykopping](https://github.com/dannykopping) ([Grafana Labs](/))
 - David Kaltschmidt - [davkal](https://github.com/davkal) ([Grafana Labs](/))
+- Dylan Guedes - [dylanguedes](https://github.com/dylanguedes) ([Grafana Labs](/))
 - Edward Welch - [slim-bean](https://github.com/slim-bean) ([Grafana Labs](/))
 - Goutham Veeramachaneni - [gouthamve](https://github.com/gouthamve) ([Grafana Labs](/))
 - Joe Elliott - [joe-elliott](https://github.com/joe-elliott) ([Grafana Labs](/))
 - Karsten Jeschkies - [jeschkies](https://github.com/jeschkies) ([Grafana Labs](/))
 - Kaviraj Kanagaraj - [kavirajk](https://github.com/kavirajk) ([Grafana Labs](/))
 - Li Guozhong - [liguozhong](https://github.com/liguozhong) ([Alibaba Cloud](https://alibabacloud.com/))
+- Michel Hollands - [michelhollands](https://github.com/michelhollands) ([Grafana Labs](/))
 - Owen Diehl - [owen-d](https://github.com/owen-d) ([Grafana Labs](/))
 - Periklis Tsirakidis - [periklis](https://github.com/periklis) ([Red Hat](https://www.redhat.com/))
+- Salva Corts - [salvacorts](https://github.com/salvacorts) ([Grafana Labs](/))
 - Sandeep Sukhani - [sandeepsukhani](https://github.com/sandeepsukhani) ([Grafana Labs](/))
+- Susana Ferreira - [ssncferreira](https://github.com/ssncferreira)
 - Tom Braack - [sh0rez](https://github.com/sh0rez) ([Grafana Labs](/))
 - Tom Wilkie - [tomwilkie](https://github.com/tomwilkie) ([Grafana Labs](/))
 
