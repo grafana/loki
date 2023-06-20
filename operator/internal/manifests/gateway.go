@@ -56,6 +56,13 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
+
+		if opts.Stack.Tenants != nil {
+			mode := opts.Stack.Tenants.Mode
+			if err := configureGatewayDeploymentRulesAPIForMode(dpl, mode); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if opts.Gates.HTTPEncryption {
