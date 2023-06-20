@@ -731,7 +731,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 	}
 
 	reader := tenant.indexRange(int64(from), int64(through))
-	idx = NewTSDBIndex(reader, &simplePostingsClient{reader: reader})
+	idx = NewTSDBIndex(reader, &simplePostingsReader{reader: reader})
 	if t.chunkFilter != nil {
 		idx.SetChunkFilterer(t.chunkFilter)
 	}

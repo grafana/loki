@@ -24,15 +24,15 @@ type PostingsReader interface {
 
 var sharedCacheClient cache.Cache
 
-func NewCachedPostingsClient(reader IndexReader, logger log.Logger, cacheClient cache.Cache) PostingsReader {
-	return &cachedPostingsClient{
+func NewCachedPostingsReader(reader IndexReader, logger log.Logger, cacheClient cache.Cache) PostingsReader {
+	return &cachedPostingsReader{
 		reader:      reader,
 		cacheClient: cacheClient,
 		log:         logger,
 	}
 }
 
-type cachedPostingsClient struct {
+type cachedPostingsReader struct {
 	reader IndexReader
 
 	cacheClient cache.Cache
@@ -40,7 +40,7 @@ type cachedPostingsClient struct {
 	log log.Logger
 }
 
-func (c *cachedPostingsClient) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
 	if postings, got := c.fetchPostings(ctx, key); got {
 		return fn(postings)
@@ -123,7 +123,7 @@ func encodedMatchersLen(matchers []*labels.Matcher) int {
 	return matchersLen
 }
 
-func (c *cachedPostingsClient) storePostings(ctx context.Context, postings index.Postings, canonicalMatchers string) error {
+func (c *cachedPostingsReader) storePostings(ctx context.Context, postings index.Postings, canonicalMatchers string) error {
 	dataToCache, err := diffVarintEncodeNoHeader(postings, 0)
 	if err != nil {
 		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
@@ -132,7 +132,7 @@ func (c *cachedPostingsClient) storePostings(ctx context.Context, postings index
 	return c.cacheClient.Store(ctx, []string{canonicalMatchers}, [][]byte{dataToCache})
 }
 
-func (c *cachedPostingsClient) fetchPostings(ctx context.Context, key string) (index.Postings, bool) {
+func (c *cachedPostingsReader) fetchPostings(ctx context.Context, key string) (index.Postings, bool) {
 	found, bufs, _, err := c.cacheClient.Fetch(ctx, []string{key})
 
 	if err != nil {
