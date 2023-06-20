@@ -69,6 +69,9 @@ import (
   DropLabel               log.DropLabel
   DropLabels              []log.DropLabel
   DropLabelsExpr          *DropLabelsExpr
+  KeepLabel               log.KeepLabel
+  KeepLabels              []log.KeepLabel
+  KeepLabelsExpr          *KeepLabelsExpr
 }
 
 %start root
@@ -115,6 +118,9 @@ import (
 %type <DropLabelsExpr>        dropLabelsExpr
 %type <DropLabels>            dropLabels
 %type <DropLabel>             dropLabel
+%type <KeepLabelsExpr>        keepLabelsExpr
+%type <KeepLabels>            keepLabels
+%type <KeepLabel>             keepLabel
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
@@ -135,7 +141,7 @@ import (
                   BYTES_OVER_TIME BYTES_RATE BOOL JSON DISTINCT REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE DROP
+                  DECOLORIZE DROP KEEP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -275,6 +281,7 @@ pipelineStage:
   | PIPE decolorizeExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
   | PIPE dropLabelsExpr          { $$ = $2 }
+  | PIPE keepLabelsExpr          { $$ = $2 }
   | PIPE distinctFilter          { $$ = $2 }
  ;
 
@@ -413,6 +420,17 @@ dropLabels:
     ;
 
 dropLabelsExpr: DROP dropLabels { $$ = newDropLabelsExpr($2) }
+
+keepLabel:
+      IDENTIFIER { $$ = log.NewKeepLabel(nil, $1) }
+    | matcher { $$ = log.NewKeepLabel($1, "") }
+
+keepLabels:
+      keepLabel                  { $$ = []log.KeepLabel{$1}}
+    | keepLabels COMMA keepLabel { $$ = append($1, $3) }
+    ;
+
+keepLabelsExpr: KEEP keepLabels { $$ = newKeepLabelsExpr($2) }
 
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:

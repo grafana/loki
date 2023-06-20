@@ -118,7 +118,7 @@ The problem due to that is if an ingester which first wrote the chunks and index
 This problem would be faced even during rollouts which is quite common.
 
 To avoid this, Loki disables deduplication of index when the replication factor is greater than 1 and `boltdb-shipper` is an active or upcoming index type.
-While using `boltdb-shipper` please avoid configuring WriteDedupe cache since it is used purely for the index deduplication, so it would not be used anyways.
+While using `boltdb-shipper` avoid configuring WriteDedupe cache since it is used purely for the index deduplication, so it would not be used anyways.
 
 ### Compactor
 

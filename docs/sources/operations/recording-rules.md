@@ -147,5 +147,5 @@ the `loki_ruler_wal_corruptions_repair_failed_total` metric will be incremented.
 
 ### Found another failure mode?
 
-Please open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
+Open an [issue](https://github.com/grafana/loki/issues) and tell us about it!
 

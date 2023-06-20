@@ -101,26 +101,26 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
-		{"label_volume", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &logproto.LabelVolumeRequest{
+		{"series_volume", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 				Limit:    3,
 			})
-		}, &logproto.LabelVolumeRequest{
+		}, &logproto.VolumeRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 			Limit:    3,
 		}, false},
-		{"label_volume_default_limit", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &logproto.LabelVolumeRequest{
+		{"series_volume_default_limit", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 			})
-		}, &logproto.LabelVolumeRequest{
+		}, &logproto.VolumeRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
@@ -261,10 +261,10 @@ func Test_codec_DecodeResponse(t *testing.T) {
 		},
 		{
 			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelVolumeString))},
-			&logproto.LabelVolumeRequest{},
-			&LabelVolumeResponse{
-				Response: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{
+			&logproto.VolumeRequest{},
+			&VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
 						{Name: "foo", Value: "bar", Volume: 38},
 					},
 					Limit: 100,
@@ -519,9 +519,9 @@ func Test_codec_EncodeResponse(t *testing.T) {
 		},
 		{
 			"label volume",
-			&LabelVolumeResponse{
-				Response: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{
+			&VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
 						{Name: "foo", Value: "bar", Volume: 38},
 					},
 					Limit: 100,
@@ -1072,15 +1072,6 @@ var (
 				"downloadTime": 0
 			},
 			"index": {
-				"entriesFound": 0,
-				"entriesRequested": 0,
-				"entriesStored": 0,
-				"bytesReceived": 0,
-				"bytesSent": 0,
-				"requests": 0,
-				"downloadTime": 0
-			},
-		    "statsResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,

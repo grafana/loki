@@ -76,6 +76,9 @@ var tokens = map[string]int{
 
 	// drop labels
 	OpDrop: DROP,
+
+	// keep labels
+	OpKeep: KEEP,
 }
 
 var parserFlags = map[string]struct{}{

@@ -39,14 +39,14 @@ func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return args.Get(0).(*fetcher.Fetcher)
 }
 
-func (s *storeMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (s *storeMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }
 
 type ingesterQuerierMock struct {
@@ -63,14 +63,14 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (i *ingesterQuerierMock) LabelVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (i *ingesterQuerierMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
 
-	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }
 
 func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
@@ -310,20 +310,20 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestSeriesVolume(t *testing.T) {
 	store := newStoreMock()
-	store.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
-		&logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: 38},
+	store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Value: "", Volume: 38},
 			},
 			Limit: 10,
 		}, nil)
 
 	ingesterQuerier := newIngesterQuerierMock()
-	ingesterQuerier.On("LabelVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{
-			{Name: "bar", Value: "baz", Volume: 38},
+	ingesterQuerier.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{bar="baz"}`, Value: "", Volume: 38},
 		},
 		Limit: 10,
 	}, nil)
@@ -334,13 +334,13 @@ func TestLabelVolume(t *testing.T) {
 	}
 	asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-	vol, err := asyncStore.LabelVolume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil...)
+	vol, err := asyncStore.SeriesVolume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil...)
 	require.NoError(t, err)
 
-	require.Equal(t, &logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{
-			{Name: "bar", Value: "baz", Volume: 38},
-			{Name: "foo", Value: "bar", Volume: 38},
+	require.Equal(t, &logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{bar="baz"}`, Value: "", Volume: 38},
+			{Name: `{foo="bar"}`, Value: "", Volume: 38},
 		},
 		Limit: 10,
 	}, vol)

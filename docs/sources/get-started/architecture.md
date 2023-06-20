@@ -1,11 +1,14 @@
 ---
-title: Architecture
-description: Grafana Loki's Architecture
-weight: 200
+menutitle: Architecture
+title: Loki architecture
+description: Grafana Loki's architecture.
+weight: 300
 aliases:
     - /docs/loki/latest/architecture/
+    - /docs/loki/latest/fundamentals/architecture/
+    - /docs/loki/latest/get-started/architecture/
 ---
-# Architecture
+# Loki architecture
 
 ## Multi-tenancy
 
@@ -75,7 +78,7 @@ bytes of the log entry.
 
 ### Single Store
 
-Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{< relref "../../operations/storage/boltdb-shipper" >}}) to store the `index` in object storage (the same way we store `chunks`).
+Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{< relref "../operations/storage/boltdb-shipper" >}}) to store the `index` in object storage (the same way we store `chunks`).
 
 ###  Deprecated: Multi-store
 
