@@ -39,7 +39,7 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 The index gateway now supports shuffle sharding of index data when running in
 "ring" mode. The index data is sharded by tenant where each tenant gets
-assigned a sub-set of all available instances of the gateway ring.
+assigned a sub-set of all available instances of the index gateways in the ring.
 
 If you configured a high replication factor to accommodate for load, since
 in the past this was the only option to give a tenant more instances for
