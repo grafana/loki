@@ -785,24 +785,25 @@ func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse) queryrange
 
 	// Aggregate samples into single sample with latest timestamp
 	for _, volume := range mergedResponse.Volumes {
-		if sample, ok := samplesByStream[volume.Name]; !ok {
+		if _, ok := samplesByStream[volume.Name]; !ok {
 			samplesByStream[volume.Name] = &logproto.LegacySample{
 				TimestampMs: tsMs,
-				Value:       float64(volume.Volume),
 			}
-		} else {
-			sample.Value += float64(volume.Volume)
 		}
+
+		samplesByStream[volume.Name].Value += float64(volume.Volume)
 	}
 
 	result := make([]queryrangebase.SampleStream, 0, len(samplesByStream))
 	for stream, sample := range samplesByStream {
-		if lbls, err := syntax.ParseLabels(stream); err == nil {
-			result = append(result, queryrangebase.SampleStream{
-				Labels:  logproto.FromLabelsToLabelAdapters(lbls),
-				Samples: []logproto.LegacySample{*sample},
-			})
+		lbls, err := syntax.ParseLabels(stream)
+		if err != nil {
+			continue
 		}
+		result = append(result, queryrangebase.SampleStream{
+			Labels:  logproto.FromLabelsToLabelAdapters(lbls),
+			Samples: []logproto.LegacySample{*sample},
+		})
 	}
 
 	// sort to enusre consistent ordering in results
