@@ -10,14 +10,9 @@ var (
 	// (replicas included).
 	IndexesSync = ring.NewOp([]ring.InstanceState{ring.JOINING, ring.ACTIVE, ring.LEAVING}, nil)
 
-	// IndexesRead is the operation run by the querier to query indexes via the index-gateway.
-	IndexesRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, func(s ring.InstanceState) bool {
-		// Indexes can only be queried from ACTIVE instances. However, if the index belongs to
-		// a non-active instance, then we should extend the replication set and try to query it
-		// from the next ACTIVE instance in the ring (which is expected to have it because an
-		// index-gateway keeps their previously owned blocks until new owners are ACTIVE).
-		return s != ring.ACTIVE
-	})
+	// IndexesRead is the operation run by the querier/query frontent to query
+	// indexes via the index gateway.
+	IndexesRead = ring.NewOp([]ring.InstanceState{ring.ACTIVE}, nil)
 
 	errGatewayUnhealthy = errors.New("index-gateway is unhealthy in the ring")
 )
