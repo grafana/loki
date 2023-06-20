@@ -21,6 +21,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
@@ -32,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -104,6 +106,8 @@ type instance struct {
 
 	chunkFilter          chunk.RequestChunkFilterer
 	streamRateCalculator *StreamRateCalculator
+
+	writeFailures *writefailures.Manager
 }
 
 func newInstance(
@@ -117,6 +121,7 @@ func newInstance(
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
 	streamRateCalculator *StreamRateCalculator,
+	writeFailures *writefailures.Manager,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -143,6 +148,8 @@ func newInstance(
 		chunkFilter: chunkFilter,
 
 		streamRateCalculator: streamRateCalculator,
+
+		writeFailures: writeFailures,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -272,7 +279,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -304,7 +311,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -613,6 +620,73 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		"entries", res.Entries,
 	)
 
+	return res, nil
+}
+
+func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	matchAny := len(matchers) == 0
+	labelsToMatch := make(map[string]struct{})
+	for _, m := range matchers {
+		if m.Name == "" {
+			matchAny = true
+			continue
+		}
+
+		labelsToMatch[m.Name] = struct{}{}
+	}
+
+	seriesNames := make(map[uint64]string)
+	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+
+	from, through := req.From.Time(), req.Through.Time()
+	volumes := make(map[string]uint64)
+	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
+		// Consider streams which overlap our time range
+		if shouldConsiderStream(s, from, through) {
+			s.chunkMtx.RLock()
+
+			var size uint64
+			for _, chk := range s.chunks {
+				// Consider chunks which overlap our time range
+				// and haven't been flushed.
+				// Flushed chunks will already be counted
+				// by the TSDB manager+shipper
+				chkFrom, chkThrough := chk.chunk.Bounds()
+
+				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
+				}
+			}
+
+			seriesLabels = seriesLabels[:0]
+			for _, l := range s.labels {
+				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					seriesLabels = append(seriesLabels, l)
+				}
+			}
+
+			// If the labels are < 1k, this does not alloc
+			// https://github.com/prometheus/prometheus/pull/8025
+			hash := seriesLabels.Hash()
+			if _, ok := seriesNames[hash]; !ok {
+				seriesNames[hash] = seriesLabels.String()
+			}
+
+			volumes[seriesNames[hash]] += size
+			s.chunkMtx.RUnlock()
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 

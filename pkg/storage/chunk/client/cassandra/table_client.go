@@ -21,7 +21,7 @@ type tableClient struct {
 }
 
 // NewTableClient returns a new TableClient.
-func NewTableClient(ctx context.Context, cfg Config, registerer prometheus.Registerer) (index.TableClient, error) {
+func NewTableClient(_ context.Context, cfg Config, registerer prometheus.Registerer) (index.TableClient, error) {
 	session, clusterConfig, err := cfg.session("table-manager", registerer)
 	if err != nil {
 		return nil, errors.WithStack(err)
@@ -45,7 +45,7 @@ func (c *tableClient) reconnectTableSession() error {
 	return nil
 }
 
-func (c *tableClient) ListTables(ctx context.Context) ([]string, error) {
+func (c *tableClient) ListTables(_ context.Context) ([]string, error) {
 	result, err := c.listTables()
 	//
 	if errors.Cause(err) == gocql.ErrNoConnections {
@@ -111,13 +111,13 @@ func (c *tableClient) deleteTable(ctx context.Context, name string) error {
 	return errors.WithStack(err)
 }
 
-func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
+func (c *tableClient) DescribeTable(_ context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
 	return config.TableDesc{
 		Name: name,
 	}, true, nil
 }
 
-func (c *tableClient) UpdateTable(ctx context.Context, current, expected config.TableDesc) error {
+func (c *tableClient) UpdateTable(_ context.Context, _, _ config.TableDesc) error {
 	return nil
 }
 

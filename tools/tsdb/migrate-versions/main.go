@@ -136,7 +136,7 @@ func migrateTables(pCfg config.PeriodConfig, storageCfg storage.Config, clientMe
 		if err := migrateTable(tableName, indexStorageClient); err != nil {
 			return err
 		}
-		level.Info(util_log.Logger).Log("msg", "succesfully migrated", "table_name", tableName)
+		level.Info(util_log.Logger).Log("msg", "successfully migrated", "table_name", tableName)
 	}
 
 	return nil

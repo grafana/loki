@@ -128,6 +128,14 @@ var (
 			},
 		},
 	}
+
+	seriesVolume = logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{foo="bar"}`, Value: "", Volume: 1024},
+			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
+		},
+		Limit: 10,
+	}
 )
 
 func getQueryAndStatsHandler(queryHandler, statsHandler http.Handler) http.Handler {
@@ -539,6 +547,54 @@ func TestIndexStatsTripperware(t *testing.T) {
 	require.Equal(t, response.Entries*2, res.Response.Entries)
 }
 
+func TestSeriesVolumeTripperware(t *testing.T) {
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	if stopper != nil {
+		defer stopper.Stop()
+	}
+	require.NoError(t, err)
+
+	rt, err := newfakeRoundTripper()
+	require.NoError(t, err)
+	defer rt.Close()
+
+	lreq := &logproto.VolumeRequest{
+		Matchers: `{job="varlogs"}`,
+		From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
+		Through:  model.TimeFromUnixNano(testTime.UnixNano()),
+		Limit:    10,
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	count, h := labelVolumeResult(seriesVolume)
+	rt.setHandler(h)
+
+	resp, err := tpw(rt).RoundTrip(req)
+	require.NoError(t, err)
+	require.Equal(t, 2, *count) // 2 queries from splitting
+
+	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
+
+	expected := logproto.VolumeResponse{
+		Volumes: []logproto.Volume{ // add volumes from across shards
+			{Name: `{bar="baz"}`, Value: "", Volume: 6700},
+			{Name: `{foo="bar"}`, Value: "", Volume: 2048},
+		},
+	}
+
+	res, ok := volumeResp.(*VolumeResponse)
+	require.Equal(t, true, ok)
+	require.Equal(t, expected.Volumes, res.Response.Volumes)
+}
+
 func TestNewTripperware_Caches(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -802,6 +858,10 @@ func TestPostQueries(t *testing.T) {
 		}),
 		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
 			t.Error("unexpected indexStats roundtripper called")
+			return nil, nil
+		}),
+		queryrangebase.RoundTripFunc(func(*http.Request) (*http.Response, error) {
+			t.Error("unexpected labelVolume roundtripper called")
 			return nil, nil
 		}),
 		fakeLimits{},
@@ -1093,6 +1153,7 @@ type fakeLimits struct {
 	requiredNumberLabels    int
 	maxQueryBytesRead       int
 	maxQuerierBytesRead     int
+	maxStatsCacheFreshness  time.Duration
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1161,8 +1222,12 @@ func (f fakeLimits) RequiredLabels(context.Context, string) []string {
 	return f.requiredLabels
 }
 
-func (f fakeLimits) RequiredNumberLabels(ctx context.Context, s string) int {
+func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 	return f.requiredNumberLabels
+}
+
+func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
+	return f.maxStatsCacheFreshness
 }
 
 func counter() (*int, http.Handler) {
@@ -1208,6 +1273,19 @@ func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		if err := marshal.WriteIndexStatsResponseJSON(&v, w); err != nil {
+			panic(err)
+		}
+		count++
+	})
+}
+
+func labelVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
+		if err := marshal.WriteSeriesVolumeResponseJSON(&v, w); err != nil {
 			panic(err)
 		}
 		count++

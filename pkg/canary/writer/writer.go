@@ -2,22 +2,27 @@ package writer
 
 import (
 	"fmt"
-	"io"
 	"math/rand"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 )
 
 const (
 	LogEntry = "%s %s\n"
 )
 
+type EntryWriter interface {
+	// WriteEntry handles sending the log to the output
+	// To maintain consistent log timing, Write is expected to be non-blocking
+	WriteEntry(ts time.Time, entry string)
+	Stop()
+}
+
 type Writer struct {
-	w                    io.Writer
+	w                    EntryWriter
 	sent                 chan time.Time
 	interval             time.Duration
 	outOfOrderPercentage int
@@ -33,7 +38,7 @@ type Writer struct {
 }
 
 func NewWriter(
-	writer io.Writer,
+	writer EntryWriter,
 	sentChan chan time.Time,
 	entryInterval, outOfOrderMin, outOfOrderMax time.Duration,
 	outOfOrderPercentage, entrySize int,
@@ -94,11 +99,9 @@ func (w *Writer) run() {
 				w.pad = str.String()
 				w.prevTsLen = tsLen
 			}
+
+			w.w.WriteEntry(t, fmt.Sprintf(LogEntry, ts, w.pad))
 			w.sent <- t
-			_, err := fmt.Fprintf(w.w, LogEntry, ts, w.pad)
-			if err != nil {
-				level.Error(w.logger).Log("msg", "failed to write log entry", "error", err)
-			}
 		case <-w.quit:
 			return
 		}

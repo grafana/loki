@@ -259,11 +259,11 @@ func (s *indexShipper) stop() {
 
 type Noop struct{}
 
-func (Noop) AddIndex(tableName, userID string, index index.Index) error { return nil }
-func (Noop) ForEach(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+func (Noop) AddIndex(_, _ string, _ index.Index) error { return nil }
+func (Noop) ForEach(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (Noop) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
+func (Noop) ForEachConcurrent(_ context.Context, _, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
 func (Noop) Stop() {}

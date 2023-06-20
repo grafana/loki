@@ -20,7 +20,7 @@ type ClusterSeed struct {
 
 // Merge implements the memberlist.Mergeable interface.
 // It allow to merge the content of two different seeds.
-func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, localCAS bool) (change memberlist.Mergeable, error error) {
+func (c *ClusterSeed) Merge(mergeable memberlist.Mergeable, _ bool) (change memberlist.Mergeable, error error) {
 	if mergeable == nil {
 		return nil, nil
 	}
@@ -55,13 +55,13 @@ func (c *ClusterSeed) MergeContent() []string {
 }
 
 // RemoveTombstones is not required for usagestats
-func (c *ClusterSeed) RemoveTombstones(limit time.Time) (total, removed int) {
+func (c *ClusterSeed) RemoveTombstones(_ time.Time) (total, removed int) {
 	return 0, 0
 }
 
 func (c *ClusterSeed) Clone() memberlist.Mergeable {
-	new := *c
-	return &new
+	clone := *c
+	return &clone
 }
 
 var JSONCodec = jsonCodec{}

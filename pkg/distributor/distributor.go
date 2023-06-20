@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -336,6 +337,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
+					d.writeFailuresManager.Log(tenantID, err)
 					validationErr = err
 					continue
 				}
@@ -373,6 +375,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}()
 
+	if validationErr != nil {
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+	}
+
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
@@ -383,7 +389,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+		d.writeFailuresManager.Log(tenantID, err)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -649,7 +658,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
+		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {

@@ -48,22 +48,22 @@ func (c testConsumerGroupHandler) Close() error {
 	return nil
 }
 
-func (c testConsumerGroupHandler) Pause(partitions map[string][]int32)  {}
-func (c testConsumerGroupHandler) Resume(partitions map[string][]int32) {}
-func (c testConsumerGroupHandler) PauseAll()                            {}
-func (c testConsumerGroupHandler) ResumeAll()                           {}
+func (c testConsumerGroupHandler) Pause(_ map[string][]int32)  {}
+func (c testConsumerGroupHandler) Resume(_ map[string][]int32) {}
+func (c testConsumerGroupHandler) PauseAll()                   {}
+func (c testConsumerGroupHandler) ResumeAll()                  {}
 
 type testSession struct {
 	markedMessage []*sarama.ConsumerMessage
 }
 
-func (s *testSession) Claims() map[string][]int32                                               { return nil }
-func (s *testSession) MemberID() string                                                         { return "foo" }
-func (s *testSession) GenerationID() int32                                                      { return 10 }
-func (s *testSession) MarkOffset(topic string, partition int32, offset int64, metadata string)  {}
-func (s *testSession) Commit()                                                                  {}
-func (s *testSession) ResetOffset(topic string, partition int32, offset int64, metadata string) {}
-func (s *testSession) MarkMessage(msg *sarama.ConsumerMessage, metadata string) {
+func (s *testSession) Claims() map[string][]int32                       { return nil }
+func (s *testSession) MemberID() string                                 { return "foo" }
+func (s *testSession) GenerationID() int32                              { return 10 }
+func (s *testSession) MarkOffset(_ string, _ int32, _ int64, _ string)  {}
+func (s *testSession) Commit()                                          {}
+func (s *testSession) ResetOffset(_ string, _ int32, _ int64, _ string) {}
+func (s *testSession) MarkMessage(msg *sarama.ConsumerMessage, _ string) {
 	s.markedMessage = append(s.markedMessage, msg)
 }
 func (s *testSession) Context() context.Context { return context.Background() }

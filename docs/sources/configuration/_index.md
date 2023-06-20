@@ -13,7 +13,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{< relref "./examples/" >}}) document.
+Configuration examples can be found in the [Configuration Examples]({{< relref "./examples" >}}) document.
 
 ## Printing Loki config at runtime
 
@@ -489,6 +489,11 @@ write_failures_logging:
   # Default: 1KB.
   # CLI flag: -distributor.write-failures-logging.rate
   [rate: <int> | default = 1KB]
+
+  # Experimental and subject to change. Whether a insight=true key should be
+  # logged or not. Default: false.
+  # CLI flag: -distributor.write-failures-logging.add-insights-label
+  [add_insights_label: <boolean> | default = false]
 ```
 
 ### querier
@@ -763,8 +768,8 @@ results_cache:
   # The CLI flags prefix for this block configuration is: frontend
   [cache: <cache_config>]
 
-  # Use compression in results cache. Supported values are: 'snappy' and ''
-  # (disable compression).
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.compression
   [compression: <string> | default = ""]
 
@@ -798,8 +803,8 @@ index_stats_results_cache:
   # frontend.index-stats-results-cache
   [cache: <cache_config>]
 
-  # Use compression in results cache. Supported values are: 'snappy' and ''
-  # (disable compression).
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.index-stats-results-cache.compression
   [compression: <string> | default = ""]
 ```
@@ -2402,6 +2407,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 1m]
+
+# Do not cache requests with an end time that falls within Now minus this
+# duration. 0 disables this feature (default).
+# CLI flag: -frontend.max-stats-cache-freshness
+[max_stats_cache_freshness: <duration> | default = 0s]
 
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers

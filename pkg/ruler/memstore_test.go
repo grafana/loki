@@ -128,7 +128,7 @@ func TestSelectRestores(t *testing.T) {
 	require.Equal(t, 1, callCount)
 }
 
-func TestMemstoreStart(t *testing.T) {
+func TestMemstoreStart(_ *testing.T) {
 	ars := []rulefmt.Rule{
 		{
 			Alert:  ruleName,

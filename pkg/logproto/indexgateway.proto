@@ -22,4 +22,8 @@ service IndexGateway {
   // Note: this MUST be the same as the variant defined in
   // logproto.proto on the Querier service.
   rpc GetStats(logproto.IndexStatsRequest) returns (logproto.IndexStatsResponse) {}
+
+  // Note: this MUST be the same as the variant defined in
+  // logproto.proto on the Querier service.
+  rpc GetSeriesVolume(logproto.VolumeRequest) returns (logproto.VolumeResponse) {}
 }
