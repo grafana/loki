@@ -245,7 +245,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 		{
 			name: "keep all",
 			stages: []Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(false, false),
 				NewKeepLabels([]KeepLabel{}),
 			},
 			lines: [][]byte{
@@ -281,7 +281,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 		{
 			name: "keep by name",
 			stages: []Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(false, false),
 				NewKeepLabels([]KeepLabel{
 					{
 						nil,
@@ -312,7 +312,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 		{
 			name: "keep by matcher",
 			stages: []Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(false, false),
 				NewKeepLabels([]KeepLabel{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
