@@ -32,6 +32,10 @@ func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Man
 }
 
 func (m *Manager) Log(tenantID string, err error) {
+	if m == nil {
+		return
+	}
+
 	if !m.tenantCfgs.LimitedLogPushErrors(tenantID) {
 		return
 	}
