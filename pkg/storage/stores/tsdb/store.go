@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
+	indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -76,8 +77,9 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 
 	sharedCacheClient = idxCache
 
-	if indexCfg.CachePostings {
-		shouldCachePostings = true
+	usePostingsCache := indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil
+	openFn := func(p string) (indexshipper_index.Index, error) {
+		return OpenShippableTSDB(p, TSDBIndexOpts{UsePostingsCache: usePostingsCache})
 	}
 
 	var err error
@@ -86,7 +88,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		objectClient,
 		limits,
 		nil,
-		OpenShippableTSDB,
+		openFn,
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,

@@ -20,24 +20,27 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var shouldCachePostings = false
-
 var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired version")
 
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
-func OpenShippableTSDB(p string) (index_shipper.Index, error) {
+type TSDBIndexOpts struct {
+	UsePostingsCache bool
+}
+
+func OpenShippableTSDB(p string, opts TSDBIndexOpts) (index_shipper.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, opts)
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index_shipper.Index, error) {
-	indexFile, err := OpenShippableTSDB(path)
+	opts := TSDBIndexOpts{UsePostingsCache: false}
+	indexFile, err := OpenShippableTSDB(path, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +79,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index
 	if err != nil {
 		return nil, err
 	}
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, TSDBIndexOpts{UsePostingsCache: false})
 }
 
 // nolint
@@ -92,8 +95,8 @@ type TSDBFile struct {
 	getRawFileReader GetRawFileReaderFunc
 }
 
-func NewShippableTSDBFile(id Identifier) (*TSDBFile, error) {
-	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path())
+func NewShippableTSDBFile(id Identifier, opts TSDBIndexOpts) (*TSDBFile, error) {
+	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -125,34 +128,35 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string) (Index, GetRawFileReaderFunc, error) {
+func NewTSDBIndexFromFile(location string, opts TSDBIndexOpts) (Index, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	tsdbIdx := NewTSDBIndex(reader, getPostingsReader(reader))
+	postingsReader := getPostingsReader(reader, opts.UsePostingsCache)
+	tsdbIdx := NewTSDBIndex(reader, postingsReader)
 
 	return tsdbIdx, func() (io.ReadSeeker, error) {
 		return reader.RawFileReader()
 	}, nil
 }
 
-func getPostingsReader(reader IndexReader) PostingsReader {
-	var postingsReader PostingsReader
+func getPostingsReader(reader IndexReader, usePostingsCache bool) PostingsReader {
+	var pr PostingsReader
 
-	if shouldCachePostings && sharedCacheClient != nil {
-		postingsReader = NewCachedPostingsReader(reader, util_log.Logger, sharedCacheClient)
+	if usePostingsCache && sharedCacheClient != nil {
+		pr = NewCachedPostingsReader(reader, util_log.Logger, sharedCacheClient)
 	}
 
-	if postingsReader == nil {
-		postingsReader = DefaultPostingsReader(reader)
+	if pr == nil {
+		pr = NewPostingsReader(reader)
 	}
 
-	return postingsReader
+	return pr
 }
 
-func DefaultPostingsReader(reader IndexReader) PostingsReader {
+func NewPostingsReader(reader IndexReader) PostingsReader {
 	return &simplePostingsReader{reader: reader}
 }
 
