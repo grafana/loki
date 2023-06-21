@@ -64,6 +64,7 @@ type Limits interface {
 	MaxQueryBytesRead(context.Context, string) int
 	MaxQuerierBytesRead(context.Context, string) int
 	MaxStatsCacheFreshness(context.Context, string) time.Duration
+	VolumeEnabled(string) bool
 }
 
 type limits struct {
