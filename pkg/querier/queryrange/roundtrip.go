@@ -3,10 +3,11 @@ package queryrange
 import (
 	"context"
 	"flag"
-	"github.com/weaveworks/common/user"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/weaveworks/common/user"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
