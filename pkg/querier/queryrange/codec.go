@@ -823,6 +823,103 @@ func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse) queryrange
 	}
 }
 
+func mergeOrderedStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
+	var total int
+
+	// 1. merge response entries by stream
+	groups := make(map[string]*logproto.Stream)
+	for _, resp := range resps {
+		for _, stream := range resp.Data.Result {
+			s, ok := groups[stream.Labels]
+			if !ok {
+				s = &logproto.Stream{
+					Labels:  stream.Labels,
+					Entries: stream.Entries,
+					Hash:    stream.Hash,
+				}
+				groups[stream.Labels] = s
+			} else {
+				s.Entries = append(s.Entries, stream.Entries...)
+			}
+			total += len(stream.Entries)
+		}
+	}
+
+	for _, g := range groups {
+		if direction == logproto.BACKWARD {
+			sort.Sort(sort.Reverse(g))
+		} else {
+			sort.Sort(g)
+		}
+	}
+
+	orderedKeys := make([]string, 0, len(groups))
+	for key := range groups {
+		orderedKeys = append(orderedKeys, key)
+	}
+	if direction == logproto.BACKWARD {
+		sort.Sort(sort.Reverse(sort.StringSlice(orderedKeys)))
+	} else {
+		sort.Strings(orderedKeys)
+	}
+
+	// less than limit, return directly
+	if total <= int(limit) {
+		streams := make([]logproto.Stream, 0, len(orderedKeys))
+		for _, key := range orderedKeys {
+			streams = append(streams, *groups[key])
+		}
+		return streams
+	}
+
+	// 2. get topN, use multi pointer
+	pointers := make(map[string]int, len(groups))
+	for label := range groups {
+		pointers[label] = 0
+	}
+	for i := 0; i < int(limit); i++ {
+		var extremaLabel string
+		var extremaValue time.Time
+		if direction == logproto.BACKWARD {
+			extremaValue = time.Unix(0, 0)
+		} else {
+			extremaValue = time.Unix(1<<63-62135596801, 999999999)
+		}
+
+		// find the top log entry
+		for label := range pointers {
+			if direction == logproto.BACKWARD {
+				if pointers[label] <= len(groups[label].Entries)-1 && groups[label].Entries[pointers[label]].Timestamp.After(extremaValue) {
+					extremaLabel = label
+					extremaValue = groups[label].Entries[pointers[label]].Timestamp
+				}
+			} else {
+				if pointers[label] <= len(groups[label].Entries)-1 && groups[label].Entries[pointers[label]].Timestamp.Before(extremaValue) {
+					extremaLabel = label
+					extremaValue = groups[label].Entries[pointers[label]].Timestamp
+				}
+			}
+		}
+
+		if len(extremaLabel) == 0 {
+			break
+		}
+
+		pointers[extremaLabel]++
+	}
+
+	// 3. cut
+	for label := range groups {
+		groups[label].Entries = groups[label].Entries[:pointers[label]]
+	}
+
+	streams := make([]logproto.Stream, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		streams = append(streams, *groups[key])
+	}
+	return streams
+}
+
 // mergeOrderedNonOverlappingStreams merges a set of ordered, nonoverlapping responses by concatenating matching streams then running them through a heap to pull out limit values
 func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
 	var total int
@@ -1204,7 +1301,7 @@ func mergeLokiResponse(responses ...queryrangebase.Response) *LokiResponse {
 		Statistics: mergedStats,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
-			Result:     mergeOrderedNonOverlappingStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
+			Result:     mergeOrderedStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),
 		},
 	}
 }
