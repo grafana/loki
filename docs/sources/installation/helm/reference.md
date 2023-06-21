@@ -2449,6 +2449,20 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.updateStrategy</td>
+			<td>object</td>
+			<td>Update strategy for the `loki-canary` Daemonset pods</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "maxSurge": 0,
+    "maxUnavailable": 1
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
