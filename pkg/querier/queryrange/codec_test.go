@@ -755,7 +755,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Direction:  logproto.BACKWARD,
 				Limit:      10,
 				Version:    1,
-				Statistics: stats.Result{Summary: stats.Summary{Subqueries: 3}},
+				Statistics: stats.Result{Summary: stats.Summary{Splits: 3}},
 				Data: LokiData{
 					ResultType: loghttp.ResultTypeStream,
 					Result: []logproto.Stream{
