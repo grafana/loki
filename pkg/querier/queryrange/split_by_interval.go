@@ -178,9 +178,14 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
+	// We always need to merge VolumeRequests as that's how they get turned into
+	// Prometheus style metric responses. For all other types we can skip merging
+	// if there is only one interval.
+	_, isVolumeRequest := r.(*logproto.VolumeRequest)
 	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
+
 	// skip split by if unset
-	if interval == 0 {
+	if interval == 0 && !isVolumeRequest {
 		return h.next.Do(ctx, r)
 	}
 
@@ -192,7 +197,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	h.metrics.splits.Observe(float64(len(intervals)))
 
 	// no interval should not be processed by the frontend.
-	if len(intervals) == 0 {
+	if len(intervals) == 0 && !isVolumeRequest {
 		return h.next.Do(ctx, r)
 	}
 
@@ -200,10 +205,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
 	}
 
-	// We always need to merge VolumeRequests as that's how they get turned into
-	// Prometheus style metric responses. For all other types we can skip merging
-	// if there is only one interval.
-	if _, ok := r.(*logproto.VolumeRequest); len(intervals) == 1 && !ok {
+	if len(intervals) == 1 && !isVolumeRequest {
 		return h.next.Do(ctx, intervals[0])
 	}
 
