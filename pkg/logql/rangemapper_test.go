@@ -48,11 +48,11 @@ func Test_SplitRangeInterval(t *testing.T) {
 			)`,
 		},
 		{
-			`bytes_rate({app="foo"}[5s] offset 0s)`,
+			`sum_over_time({app="foo"} | unwrap bar [5s] offset 0s)`,
 			`sum without () (
-				downstream<bytes_rate({app="foo"}[1s] offset 4s), shard=<nil>>
-				++ downstream<bytes_rate({app="foo"}[2s] offset 2s), shard=<nil>>
-				++ downstream<bytes_rate({app="foo"}[2s]), shard=<nil>>
+				downstream<sum_over_time({app="foo"} | unwrap bar [1s] offset 4s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [2s] offset 2s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [2s]), shard=<nil>>
 			)`,
 		},
 		{
