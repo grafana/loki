@@ -969,7 +969,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 func TestQuerier_LabeleVolumes(t *testing.T) {
 	t.Run("it returns label volumes from the store", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
-			{Name: "foo", Value: "bar", Volume: 38},
+			{Name: "foo", Volume: 38},
 		}}
 
 		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
@@ -986,7 +986,7 @@ func TestQuerier_LabeleVolumes(t *testing.T) {
 		ctx := user.InjectOrgID(context.Background(), "test")
 		resp, err := querier.SeriesVolume(ctx, req)
 		require.NoError(t, err)
-		require.Equal(t, []logproto.Volume{{Name: "foo", Value: "bar", Volume: 38}}, resp.Volumes)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
 	})
 }
 

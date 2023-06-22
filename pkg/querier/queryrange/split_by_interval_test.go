@@ -872,8 +872,8 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
-						{Name: `{bar="baz"}`, Value: "", Volume: 28},
+						{Name: `{foo="bar"}`, Volume: 38},
+						{Name: `{bar="baz"}`, Volume: 28},
 					},
 					From:    from,
 					Through: through,
@@ -912,10 +912,10 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
-						{Name: `{bar="baz"}`, Value: "", Volume: 28},
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
-						{Name: `{fizz="buzz"}`, Value: "", Volume: 28},
+						{Name: `{foo="bar"}`, Volume: 38},
+						{Name: `{bar="baz"}`, Volume: 28},
+						{Name: `{foo="bar"}`, Volume: 38},
+						{Name: `{fizz="buzz"}`, Volume: 28},
 					},
 					From:    from,
 					Through: through,
