@@ -100,6 +100,7 @@ The tradeoffs using this approach are:
 
 ```mermaid
   sequenceDiagram
+      autonumber
       title /loki/api/v1/query?query={namespace="abc", container="app"}&async=true
       actor User
       par Place Async Requests
@@ -115,7 +116,6 @@ The tradeoffs using this approach are:
       deactivate QueryFrontend
       end
       par Process Async Queries
-      autonumber
       Querier->>StreamQueryRequest: Consume HTTP Request
       activate Querier
       Querier->>Querier: Execute Query Request
