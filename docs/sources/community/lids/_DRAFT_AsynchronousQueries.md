@@ -98,4 +98,4 @@ The tradeoffs using this approach are:
 
 ### Overview on using asynchronous streams for instant query requests
 
-![Instant Queries Sequence Diagram](../asynchronous-queries-instant-query-seqdiagram.png)
+![Instant Queries Sequence Diagram](./asynchronous-queries-instant-query-seqdiagram.png)
