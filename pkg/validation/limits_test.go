@@ -79,6 +79,7 @@ shard_streams:
 blocked_queries:
   - pattern: ".*foo.*"
     regex: true
+volume_enabled: true
 `
 	inputJSON := `
  {
@@ -126,7 +127,8 @@ blocked_queries:
 		"pattern": ".*foo.*",
 		"regex": true
 	}
-  ]
+  ],
+  "volume_enabled": true
  }
 `
 

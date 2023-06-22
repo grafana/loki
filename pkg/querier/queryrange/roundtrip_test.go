@@ -551,7 +551,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 }
 
 func TestSeriesVolumeTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -1177,6 +1177,7 @@ type fakeLimits struct {
 	maxQueryBytesRead       int
 	maxQuerierBytesRead     int
 	maxStatsCacheFreshness  time.Duration
+	volumeEnabled           bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1251,6 +1252,10 @@ func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 
 func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxStatsCacheFreshness
+}
+
+func (f fakeLimits) VolumeEnabled(_ string) bool {
+	return f.volumeEnabled
 }
 
 func counter() (*int, http.Handler) {
