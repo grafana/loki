@@ -175,7 +175,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 		for pd, matchingChks := range pds {
 			b, ok := periods[pd]
 			if !ok {
-				b = NewBuilder()
+				b = NewBuilder(index.LiveFormat)
 				periods[pd] = b
 			}
 

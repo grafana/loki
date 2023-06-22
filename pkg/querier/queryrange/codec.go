@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	indexStats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -744,20 +745,81 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		}, nil
 	case *VolumeResponse:
 		resp0 := responses[0].(*VolumeResponse)
-		headers := resp0.Headers
+		headers := make([]*definitions.PrometheusResponseHeader, len(resp0.Headers))
+		for i, header := range resp0.Headers {
+			h := header
+			headers[i] = &h
+		}
 
 		resps := make([]*logproto.VolumeResponse, 0, len(responses))
 		for _, r := range responses {
 			resps = append(resps, r.(*VolumeResponse).Response)
 		}
 
-		return &VolumeResponse{
-			Response: seriesvolume.Merge(resps, resp0.Response.Limit),
-			Headers:  headers,
-		}, nil
+		promResponse := queryrangebase.PrometheusResponse{
+			Status:  loghttp.QueryStatusSuccess,
+			Data:    MergeToPrometheusResponse(resps, resp0.Response.Limit),
+			Headers: headers,
+		}
 
+		return &LokiPromResponse{
+			Response:   &promResponse,
+			Statistics: stats.Result{},
+		}, nil
 	default:
 		return nil, errors.New("unknown response in merging responses")
+	}
+}
+
+func MergeToPrometheusResponse(responses []*logproto.VolumeResponse, limit int32) queryrangebase.PrometheusData {
+	mergedVolumes := seriesvolume.Merge(responses, limit)
+	return mapToPrometheusResponse(mergedVolumes)
+}
+
+func mapToPrometheusResponse(mergedResponse *logproto.VolumeResponse) queryrangebase.PrometheusData {
+	samplesByStream := map[string]*logproto.LegacySample{}
+
+	// since this is an instant response, we're only interested in a single "bucket", which is
+	// bounded by the latest timestamp we've seen (which should correspond to the end of the query range)
+	tsMs := mergedResponse.Through.UnixNano() / 1e6 //convert ns to ms
+
+	// Aggregate samples into single sample with latest timestamp
+	for _, volume := range mergedResponse.Volumes {
+		if _, ok := samplesByStream[volume.Name]; !ok {
+			samplesByStream[volume.Name] = &logproto.LegacySample{
+				TimestampMs: tsMs,
+			}
+		}
+
+		samplesByStream[volume.Name].Value += float64(volume.Volume)
+	}
+
+	result := make([]queryrangebase.SampleStream, 0, len(samplesByStream))
+	for stream, sample := range samplesByStream {
+		lbls, err := syntax.ParseLabels(stream)
+		if err != nil {
+			continue
+		}
+		result = append(result, queryrangebase.SampleStream{
+			Labels:  logproto.FromLabelsToLabelAdapters(lbls),
+			Samples: []logproto.LegacySample{*sample},
+		})
+	}
+
+	// sort to enusre consistent ordering in results
+	// this only works because all samples in this result set have the same timestamp
+	// and each sample stream only has a single sample.
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Samples[0].Value == result[j].Samples[0].Value {
+			return result[i].Labels[0].Name < result[j].Labels[0].Name
+		}
+
+		return result[i].Samples[0].Value > result[j].Samples[0].Value
+	})
+
+	return queryrangebase.PrometheusData{
+		ResultType: loghttp.ResultTypeVector,
+		Result:     result,
 	}
 }
 

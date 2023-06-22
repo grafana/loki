@@ -103,6 +103,7 @@ type Limits struct {
 	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
 
 	// Ruler defaults and limits.
 
@@ -732,6 +733,11 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+// VolumeEnabled returns whether volume endpoints are enabled for a user.
+func (o *Overrides) VolumeEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).VolumeEnabled
 }
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {

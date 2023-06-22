@@ -853,59 +853,95 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 
 func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-		return &VolumeResponse{
-			Response: &logproto.VolumeResponse{
-				Volumes: []logproto.Volume{
-					{Name: `{foo="bar"}`, Value: "", Volume: 38},
-					{Name: `{bar="baz"}`, Value: "", Volume: 28},
-				},
-				Limit: 1},
-			Headers: nil,
-		}, nil
-	})
+	setup := func(next queryrangebase.Handler) queryrangebase.Handler {
+		l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+		return SplitByIntervalMiddleware(
+			testSchemas,
+			l,
+			LokiCodec,
+			splitByTime,
+			nilMetrics,
+		).Wrap(next)
+	}
 
-	l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
-	split := SplitByIntervalMiddleware(
-		testSchemas,
-		l,
-		LokiCodec,
-		splitByTime,
-		nilMetrics,
-	).Wrap(next)
+	t.Run("label volumes", func(t *testing.T) {
+		from := model.TimeFromUnixNano(start.UnixNano())
+		through := model.TimeFromUnixNano(end.UnixNano())
 
-	tests := []struct {
-		name string
-		req  *logproto.VolumeRequest
-		want *VolumeResponse
-	}{
-		{
-			"label volumes",
-			&logproto.VolumeRequest{
-				From:     model.TimeFromUnixNano(start.UnixNano()),
-				Through:  model.TimeFromUnixNano(end.UnixNano()),
-				Matchers: "{}",
-				Limit:    1,
-			},
-			&VolumeResponse{
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 76},
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{bar="baz"}`, Value: "", Volume: 28},
 					},
-					Limit: 1,
-				},
+					From:    from,
+					Through: through,
+					Limit:   2},
 				Headers: nil,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			res, err := split.Do(ctx, tt.req)
-			require.NoError(t, err)
-			require.Equal(t, tt.want, res)
+			}, nil
 		})
-	}
+		split := setup(next)
+		req := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: "{}",
+			Limit:    2,
+		}
+
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+
+		response := res.(*LokiPromResponse)
+
+		require.Len(t, response.Response.Data.Result, 2)
+		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 76}},
+		})
+		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "bar", Value: "baz"}},
+			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 56}},
+		})
+	})
+
+	t.Run("label volumes with limits", func(t *testing.T) {
+		from := model.TimeFromUnixNano(start.UnixNano())
+		through := model.TimeFromUnixNano(end.UnixNano())
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{bar="baz"}`, Value: "", Volume: 28},
+						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{fizz="buzz"}`, Value: "", Volume: 28},
+					},
+					From:    from,
+					Through: through,
+					Limit:   1},
+				Headers: nil,
+			}, nil
+		})
+		split := setup(next)
+		req := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: "{}",
+			Limit:    1,
+		}
+
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+
+		response := res.(*LokiPromResponse)
+
+		require.Len(t, response.Response.Data.Result, 1)
+		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
+			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
+			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 152}},
+		})
+	})
 }
 
 func Test_ExitEarly(t *testing.T) {

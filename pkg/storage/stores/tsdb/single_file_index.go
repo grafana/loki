@@ -56,7 +56,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index
 		return nil, ErrAlreadyOnDesiredVersion
 	}
 
-	builder := NewBuilder()
+	builder := NewBuilder(desiredVer)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
@@ -66,7 +66,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index
 
 	parentDir := filepath.Dir(path)
 
-	id, err := builder.BuildWithVersion(ctx, desiredVer, parentDir, func(from, through model.Time, checksum uint32) Identifier {
+	id, err := builder.Build(ctx, parentDir, func(from, through model.Time, checksum uint32) Identifier {
 		id := SingleTenantTSDBIdentifier{
 			TS:       time.Now(),
 			From:     from,
@@ -418,7 +418,6 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 	if err != nil {
 		return err
 	}
-
 	acc.AddVolumes(volumes)
 	return nil
 }

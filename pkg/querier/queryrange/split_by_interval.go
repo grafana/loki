@@ -200,7 +200,10 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
 	}
 
-	if len(intervals) == 1 {
+	// We always need to merge VolumeRequests as that's how they get turned into
+	// Prometheus style metric responses. For all other types we can skip merging
+	// if there is only one interval.
+	if _, ok := r.(*logproto.VolumeRequest); len(intervals) == 1 && !ok {
 		return h.next.Do(ctx, intervals[0])
 	}
 

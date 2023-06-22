@@ -2461,6 +2461,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -frontend.max-querier-bytes-read
 [max_querier_bytes_read: <int> | default = 0B]
 
+# Enable log-volume endpoints.
+[volume_enabled: <boolean>]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
