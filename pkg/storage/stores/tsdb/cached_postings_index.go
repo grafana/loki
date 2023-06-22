@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/dennwc/varint"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -70,15 +69,15 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 // Length argument is expected number of postings, used for preallocating buffer.
 func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error) {
 	buf := encoding.Encbuf{}
-	buf.PutUvarint64(uint64(length))
+	buf.PutUvarint32(uint32(length))
 
 	// This encoding uses around ~1 bytes per posting, but let's use
 	// conservative 1.25 bytes per posting to avoid extra allocations.
 	if length > 0 {
-		buf.B = make([]byte, 0, binary.MaxVarintLen64+5*length/4)
+		buf.B = make([]byte, 0, binary.MaxVarintLen32+5*length/4)
 	}
 
-	buf.PutUvarint64(uint64(length)) // first we put the postings length so we can use it when decoding.
+	buf.PutUvarint32(uint32(length)) // first we put the postings length so we can use it when decoding.
 
 	prev := storage.SeriesRef(0)
 	for _, ref := range p {
@@ -87,7 +86,7 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error)
 		}
 
 		// This is the 'diff' part -- compute difference from previous value.
-		buf.PutUvarint64(uint64(ref - prev))
+		buf.PutUvarint32(uint32(ref - prev))
 		prev = ref
 	}
 
@@ -96,29 +95,17 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error)
 
 func decodeToPostings(b []byte) index.Postings {
 	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
-	postingsLen := decoder.Uvarint64()
+	postingsLen := decoder.Uvarint32()
 	refs := make([]storage.SeriesRef, 0, postingsLen)
 	prev := storage.SeriesRef(0)
 
 	for i := 0; i < int(postingsLen); i++ {
-		v := storage.SeriesRef(decoder.Uvarint64())
+		v := storage.SeriesRef(decoder.Uvarint32())
 		refs = append(refs, v+prev)
 		prev = v
 	}
 
 	return index.NewListPostings(refs)
-}
-
-func encodedMatchersLen(matchers []*labels.Matcher) int {
-	matchersLen := varint.UvarintSize(uint64(len(matchers)))
-	for _, m := range matchers {
-		matchersLen += varint.UvarintSize(uint64(len(m.Name)))
-		matchersLen += len(m.Name)
-		matchersLen++ // 1 byte for the type
-		matchersLen += varint.UvarintSize(uint64(len(m.Value)))
-		matchersLen += len(m.Value)
-	}
-	return matchersLen
 }
 
 func (c *cachedPostingsReader) storePostings(ctx context.Context, expandedPostings []storage.SeriesRef, canonicalMatchers string) error {
