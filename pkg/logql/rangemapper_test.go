@@ -32,6 +32,36 @@ func Test_SplitRangeInterval(t *testing.T) {
 				++ downstream<count_over_time({app="foo"}[2s]), shard=<nil>>
 			)`,
 		},
+		// Should support expressions with offset operator
+		{
+			`count_over_time({app="foo"}[4s] offset 1s)`,
+			`sum without () (
+				downstream<count_over_time({app="foo"}[2s] offset 3s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[2s] offset 1s), shard=<nil>>
+			)`,
+		},
+		{
+			`sum_over_time({app="foo"} | unwrap bar [3s] offset 1s)`,
+			`sum without () (
+				downstream<sum_over_time({app="foo"} | unwrap bar [1s] offset 3s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [2s] offset 1s), shard=<nil>>
+			)`,
+		},
+		{
+			`sum_over_time({app="foo"} | unwrap bar [5s] offset 0s)`,
+			`sum without () (
+				downstream<sum_over_time({app="foo"} | unwrap bar [1s] offset 4s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [2s] offset 2s), shard=<nil>>
+				++ downstream<sum_over_time({app="foo"} | unwrap bar [2s]), shard=<nil>>
+			)`,
+		},
+		{
+			`count_over_time({app="foo"}[3s] offset -1s)`,
+			`sum without () (
+				downstream<count_over_time({app="foo"}[1s] offset 1s), shard=<nil>>
+				++ downstream<count_over_time({app="foo"}[2s] offset -1s), shard=<nil>>
+			)`,
+		},
 		{
 			`rate({app="foo"}[4s] offset 1m)`,
 			`(sum without () (

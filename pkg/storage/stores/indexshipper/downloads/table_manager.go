@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -31,10 +32,15 @@ type Limits interface {
 	DefaultLimits() *validation.Limits
 }
 
-// IndexGatewayOwnsTenant is invoked by an IndexGateway instance and answers whether if the given tenant is assigned to this instance or not.
+// TenantFilter is invoked by an IndexGateway instance and answers which
+// tenants from the given list of tenants are assigned to this instance.
 //
-// It is only relevant by an IndexGateway in the ring mode and if it returns false for a given tenant, that tenant will be ignored by this IndexGateway during query readiness.
-type IndexGatewayOwnsTenant func(tenant string) bool
+// It is only relevant by an IndexGateway in the ring mode and if its result
+// does not contain a given tenant, that tenant will be ignored by this
+// IndexGateway during query readiness.
+//
+// It requires the same function signature as indexgateway.(*ShardingStrategy).FilterTenants
+type TenantFilter func([]string) ([]string, error)
 
 type TableManager interface {
 	Stop()
@@ -65,11 +71,11 @@ type tableManager struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 
-	ownsTenant IndexGatewayOwnsTenant
+	tenantFilter TenantFilter
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
-	ownsTenantFn IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (TableManager, error) {
+	tenantFilter TenantFilter, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -80,7 +86,7 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		openIndexFileFunc:  openIndexFileFunc,
 		indexStorageClient: indexStorageClient,
 		tableRangeToHandle: tableRangeToHandle,
-		ownsTenant:         ownsTenantFn,
+		tenantFilter:       tenantFilter,
 		tables:             make(map[string]Table),
 		metrics:            newMetrics(reg),
 		logger:             logger,
@@ -257,7 +263,11 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 	distinctUsers := make(map[string]struct{})
 
 	defer func() {
-		level.Info(tm.logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers))
+		ids := make([]string, 0, len(distinctUsers))
+		for k := range distinctUsers {
+			ids = append(ids, k)
+		}
+		level.Info(tm.logger).Log("msg", "query readiness setup completed", "duration", time.Since(start), "distinct_users_len", len(distinctUsers), "distinct_users", strings.Join(ids, ","))
 	}()
 
 	activeTableNumber := getActiveTableNumber()
@@ -322,7 +332,10 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		listFilesDuration := time.Since(operationStart)
 
 		// find the users whos index we need to keep ready for querying from this table
-		usersToBeQueryReadyFor := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
+		usersToBeQueryReadyFor, err := tm.findUsersInTableForQueryReadiness(tableNumber, usersWithIndex, queryReadinessNumByUserID)
+		if err != nil {
+			return err
+		}
 
 		// continue if both user index and common index is not required to be downloaded for query readiness
 		if len(usersToBeQueryReadyFor) == 0 && activeTableNumber-tableNumber > int64(tm.cfg.QueryReadyNumDays) {
@@ -349,6 +362,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		level.Info(tm.logger).Log(
 			"msg", "index pre-download for query readiness completed",
 			"users_len", len(usersToBeQueryReadyFor),
+			"users", strings.Join(usersToBeQueryReadyFor, ","),
 			"query_readiness_duration", ensureQueryReadinessDuration,
 			"table", tableName,
 			"create_table_duration", createTableDuration,
@@ -361,8 +375,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 
 // findUsersInTableForQueryReadiness returns the users that needs their index to be query ready based on the tableNumber and
 // query readiness number provided per user
-func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string,
-	queryReadinessNumByUserID map[string]int) []string {
+func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, usersWithIndexInTable []string, queryReadinessNumByUserID map[string]int) ([]string, error) {
 	activeTableNumber := getActiveTableNumber()
 	usersToBeQueryReadyFor := []string{}
 
@@ -377,16 +390,14 @@ func (tm *tableManager) findUsersInTableForQueryReadiness(tableNumber int64, use
 			continue
 		}
 
-		if tm.ownsTenant != nil && !tm.ownsTenant(userID) {
-			continue
-		}
-
 		if activeTableNumber-tableNumber <= int64(queryReadyNumDays) {
 			usersToBeQueryReadyFor = append(usersToBeQueryReadyFor, userID)
 		}
 	}
-
-	return usersToBeQueryReadyFor
+	if tm.tenantFilter != nil {
+		return tm.tenantFilter(usersToBeQueryReadyFor)
+	}
+	return usersToBeQueryReadyFor, nil
 }
 
 // loadLocalTables loads tables present locally.

@@ -843,7 +843,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
-			Through:  11000,
+			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{}",
 			Limit:    2,
 		})
@@ -859,7 +859,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
-			Through:  11000,
+			Through:  1.1 * 1e3, //milliseconds
 			Matchers: `{log_stream="dispatcher"}`,
 			Limit:    2,
 		})
@@ -874,7 +874,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		instance := defaultInstance(t)
 		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
 			From:     5,
-			Through:  11,
+			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{}",
 			Limit:    3,
 		})

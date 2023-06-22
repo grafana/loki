@@ -24,6 +24,7 @@ import (
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -134,7 +135,9 @@ var (
 			{Name: `{foo="bar"}`, Value: "", Volume: 1024},
 			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
 		},
-		Limit: 10,
+		From:    model.TimeFromUnix(testTime.Add(-4 * time.Hour).Unix()),
+		Through: model.TimeFromUnix(testTime.Add(-1 * time.Hour).Unix()),
+		Limit:   5,
 	}
 )
 
@@ -548,7 +551,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 }
 
 func TestSeriesVolumeTripperware(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, maxQueryParallelism: 1}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
 		defer stopper.Stop()
 	}
@@ -580,19 +583,39 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, *count) // 2 queries from splitting
 
-	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, nil)
 	require.NoError(t, err)
 
-	expected := logproto.VolumeResponse{
-		Volumes: []logproto.Volume{ // add volumes from across shards
-			{Name: `{bar="baz"}`, Value: "", Volume: 6700},
-			{Name: `{foo="bar"}`, Value: "", Volume: 2048},
+	expected := queryrangebase.PrometheusData{
+		ResultType: loghttp.ResultTypeVector,
+		Result: []queryrangebase.SampleStream{
+			{
+				Labels: []logproto.LabelAdapter{{
+					Name:  "bar",
+					Value: "baz",
+				}},
+				Samples: []logproto.LegacySample{{
+					Value:       6700,
+					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
+				}},
+			},
+			{
+				Labels: []logproto.LabelAdapter{{
+					Name:  "foo",
+					Value: "bar",
+				}},
+				Samples: []logproto.LegacySample{{
+					Value:       2048,
+					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
+				}},
+			},
 		},
 	}
 
-	res, ok := volumeResp.(*VolumeResponse)
+	res, ok := volumeResp.(*LokiPromResponse)
 	require.Equal(t, true, ok)
-	require.Equal(t, expected.Volumes, res.Response.Volumes)
+	require.Equal(t, "success", res.Response.Status)
+	require.Equal(t, expected, res.Response.Data)
 }
 
 func TestNewTripperware_Caches(t *testing.T) {
@@ -1154,6 +1177,7 @@ type fakeLimits struct {
 	maxQueryBytesRead       int
 	maxQuerierBytesRead     int
 	maxStatsCacheFreshness  time.Duration
+	volumeEnabled           bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1228,6 +1252,10 @@ func (f fakeLimits) RequiredNumberLabels(_ context.Context, _ string) int {
 
 func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Duration {
 	return f.maxStatsCacheFreshness
+}
+
+func (f fakeLimits) VolumeEnabled(_ string) bool {
+	return f.volumeEnabled
 }
 
 func counter() (*int, http.Handler) {

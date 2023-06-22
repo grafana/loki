@@ -370,6 +370,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// range with offset
 		{`rate({a=~".+"}[2s] offset 2s)`, time.Second},
+		{`rate({a=~".+"}[4s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[5s] offset 0s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset -1s)`, 2 * time.Second},
 
 		// label_replace
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "", "", "", "")`, time.Second},
