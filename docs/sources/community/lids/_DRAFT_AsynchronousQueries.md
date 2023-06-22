@@ -100,7 +100,6 @@ The tradeoffs using this approach are:
 
 ```mermaid
   sequenceDiagram
-      autonumber
       title /loki/api/v1/query?query={namespace="abc", container="app"}&async=true
       actor User
       par Place Async Requests
