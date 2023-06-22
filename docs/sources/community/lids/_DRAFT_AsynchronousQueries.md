@@ -18,7 +18,7 @@ draft: true
 
 **Related issues/PRs:** [9730](https://github.com/grafana/loki/pull/9730), [9055](https://github.com/grafana/loki/pull/9055)
 
-**Thread from [mailing list](https://groups.google.com/forum/#!forum/lokiproject):**
+**Thread from [mailing list](https://groups.google.com/forum/#!forum/lokiproject):** [LID: Add support for asynchronous queries](https://groups.google.com/g/loki-team/c/r-1dkFPIdyU/m/9D1nxrYjAAAJ)
 
 ---
 
