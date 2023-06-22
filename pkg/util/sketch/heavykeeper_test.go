@@ -3,6 +3,7 @@ package sketch
 import (
 	"fmt"
 	"github.com/DmitriyVTitov/size"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"math/rand"
 	"strconv"
@@ -118,7 +119,7 @@ func TestHeavyKeeper(t *testing.T) {
 			for i := 0; i < tc.iterations; i++ {
 				// probability decay
 				decay := 0.9
-				hk, _ := NewHeavyKeeperTopK(decay, tc.k, tc.w, tc.d)
+				hk := NewHeavyKeeperTopK(decay, tc.k, tc.w, tc.d)
 
 				itMissing := 0
 				max := int64(0)
@@ -185,4 +186,96 @@ func TestHeavyKeeper(t *testing.T) {
 		})
 
 	}
+}
+
+func TestHKCardinality(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		max := 1000000
+		topk := NewHeavyKeeperTopK(0.9, 10, 100, 100)
+		for i := 0; i < max; i++ {
+			topk.Observe(strconv.Itoa(i))
+		}
+		// hll has a typical error accuracy of 2%
+		c, _ := topk.Cardinality()
+		assert.True(t, (c > uint64(float64(max)*0.98)) || (c < uint64(float64(max)*1.02)), "cardinality %d", c)
+	}
+}
+
+// Tests that we know a given size is not big enough via hll, and can create a new sketch of the right size that
+// will be accurate afterwards based on the hll estimated cardinality
+func TestHKCardinalitySizing(t *testing.T) {
+	numStreams := 100000
+	maxPerStream := 1000
+	k := 100
+	max := int64(0)
+	events := make([]event, 0)
+
+	for j := 0; j < numStreams-k; j++ {
+		num := int64(maxPerStream)
+		n := rand.Int63n(num) + 1
+		if n > max {
+			max = n
+		}
+		for z := 0; z < int(n); z++ {
+			events = append(events, event{name: strconv.Itoa(j), count: 1})
+		}
+	}
+	// then another set of things more than the max of the previous entries
+	for z := numStreams - k; z < numStreams; z++ {
+		n := int64(rand.Int63n(int64(maxPerStream)) + 1 + max)
+		for x := 0; x < int(n); x++ {
+			events = append(events, event{name: strconv.Itoa(z), count: 1})
+		}
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
+
+	topk := NewHKForCardinality(nil, 0.9, k, numStreams/10)
+	for i := 0; i < numStreams; i++ {
+		topk.Observe(strconv.Itoa(i))
+	}
+
+	// hll has a typical error accuracy of 2%
+	c, bigEnough := topk.Cardinality()
+	assert.False(t, bigEnough)
+	top := topk.Topk()
+	missing := 0
+outer1:
+	for i := numStreams - k; i < numStreams; i++ {
+		eventName := strconv.Itoa(i)
+		for j := 0; j < len(top); j++ {
+			if top[j].Event == eventName {
+				continue outer1
+			}
+		}
+		missing++
+	}
+	assert.True(t, missing > 2)
+
+	// underlying sketch wasn't big enough, retry
+	topk = NewHKForCardinality(nil, 0.9, k, int(c))
+
+	for _, e := range events {
+		for i := 0; i < e.count; i++ {
+			topk.Observe(e.name)
+		}
+	}
+	_, bigEnough = topk.Cardinality()
+	assert.True(t, bigEnough)
+	top = topk.Topk()
+
+	missing = 0
+outer2:
+	for i := numStreams - k; i < numStreams; i++ {
+		eventName := strconv.Itoa(i)
+		for j := 0; j < len(top); j++ {
+			if top[j].Event == eventName {
+				continue outer2
+			}
+		}
+
+		missing++
+	}
+	assert.True(t, missing < 3)
 }

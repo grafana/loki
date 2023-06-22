@@ -2,7 +2,12 @@ package sketch
 
 import (
 	"container/heap"
+	"fmt"
 	"sort"
+
+	"github.com/axiomhq/hyperloglog"
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 )
 
 // Topk is a structure that uses a Count Min Sketch, Min-Heap, and map of string -> uint32,
@@ -13,6 +18,52 @@ type Topk struct {
 	heap              MinHeap
 	sketch            *CountMinSketch
 	hashfuncs, rowlen int
+	hll               *hyperloglog.Sketch
+}
+
+// get the correct sketch width based on the expected cardinality of the set
+// we might need to do something smarter here to round up to next order of magnitude if we're say more than 10%
+// over a given size that currently exists, or have some more intermediate sizes
+func getCMSWidth(l log.Logger, c int) int {
+	// default to something reasonable for low cardinality
+	width := 32
+	switch {
+	case c >= 1000001:
+		if l != nil {
+			level.Warn(l).Log("cardinality is greater than 1M but we don't currently have predefined sketch sizes for cardinalities that large")
+		}
+	case c >= 1000000:
+		width = 409600
+		fmt.Println("creating for 5")
+
+	case c >= 100000:
+		width = 65536
+		fmt.Println("creating for 4")
+
+	case c >= 10000:
+		width = 5120
+		fmt.Println("creating for 3")
+
+	case c >= 1000:
+		width = 640
+		fmt.Println("creating for 2")
+
+	case c >= 100:
+		width = 48
+
+		fmt.Println("creating for 1")
+	}
+	return width
+}
+
+func NewCMSTopkForCardinality(l log.Logger, decay float64, k, c int) HeavyKeeperTopK {
+	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
+	w := getCMSWidth(l, c)
+	d := 4
+
+	sk := NewHeavyKeeperTopK(decay, k, w, d)
+	sk.expectedCardinality = c
+	return sk
 }
 
 func NewCMSTopK(k, w, d int) (Topk, error) {
@@ -25,10 +76,12 @@ func NewCMSTopK(k, w, d int) (Topk, error) {
 		currentTop: make(map[string]uint32, k),
 		heap:       MinHeap{},
 		sketch:     s,
+		hll:        hyperloglog.New16(),
 	}, nil
 }
 
 func (t *Topk) Observe(event string) {
+	t.hll.Insert([]byte(event))
 	t.sketch.ConservativeIncrement(event)
 	estimate := t.sketch.Count(event)
 
@@ -94,4 +147,8 @@ func (t *Topk) Topk() TopKResult {
 	}
 	sort.Sort(res)
 	return res[:n]
+}
+
+func (t *Topk) Cardinality() uint64 {
+	return t.hll.Estimate()
 }

@@ -244,3 +244,17 @@ func TestCMSTopk(t *testing.T) {
 
 	}
 }
+
+func TestTopkCardinality(t *testing.T) {
+	for i := 0; i < 10; i++ {
+		max := 1000000
+		topk, err := NewCMSTopK(100, 10, 10)
+		assert.NoError(t, err)
+		for i := 0; i < max; i++ {
+			topk.Observe(strconv.Itoa(i))
+		}
+		// hll has a typical error accuracy of 2%
+		c := topk.Cardinality()
+		assert.True(t, (c > uint64(float64(max)*0.98)) || (c < uint64(float64(max)*1.02)), "cardinality %d", c)
+	}
+}
