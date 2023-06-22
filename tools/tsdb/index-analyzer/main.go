@@ -35,7 +35,7 @@ func main() {
 	tableRanges := getIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
 	openFn := func(p string) (indexshipper_index.Index, error) {
-		return tsdb.OpenShippableTSDB(p, tsdb.TSDBIndexOpts{UsePostingsCache: false})
+		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{UsePostingsCache: false})
 	}
 
 	shipper, err := indexshipper.NewIndexShipper(
