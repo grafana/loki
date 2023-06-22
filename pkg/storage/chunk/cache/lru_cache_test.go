@@ -12,10 +12,11 @@ import (
 	"testing"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 func TestLRUCacheEviction(t *testing.T) {
