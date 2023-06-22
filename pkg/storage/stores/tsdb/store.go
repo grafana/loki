@@ -79,7 +79,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 
 	usePostingsCache := indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil
 	openFn := func(p string) (indexshipper_index.Index, error) {
-		return OpenShippableTSDB(p, TSDBIndexOpts{UsePostingsCache: usePostingsCache})
+		return OpenShippableTSDB(p, IndexOpts{UsePostingsCache: usePostingsCache})
 	}
 
 	var err error

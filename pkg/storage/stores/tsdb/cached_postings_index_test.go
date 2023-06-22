@@ -77,7 +77,7 @@ func TestSingleIdxCached(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases, TSDBIndexOpts{UsePostingsCache: true})
+				return BuildIndex(t, t.TempDir(), cases, IndexOpts{UsePostingsCache: true})
 			},
 		},
 		{
@@ -262,7 +262,7 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	}, TSDBIndexOpts{UsePostingsCache: true})
+	}, IndexOpts{UsePostingsCache: true})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -376,7 +376,7 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tsdbIndex := BuildIndex(t, tempDir, series, TSDBIndexOpts{UsePostingsCache: true})
+			tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
 			acc := &stats.Stats{}
 			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.Equal(t, tc.expectedErr, err)
@@ -429,7 +429,7 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 		},
 	}
 	tempDir := b.TempDir()
-	tsdbIndex := BuildIndex(b, tempDir, series, TSDBIndexOpts{UsePostingsCache: true})
+	tsdbIndex := BuildIndex(b, tempDir, series, IndexOpts{UsePostingsCache: true})
 	acc := &stats.Stats{}
 
 	for i := 0; i < b.N; i++ {

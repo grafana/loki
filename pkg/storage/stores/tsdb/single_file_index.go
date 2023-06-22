@@ -25,11 +25,11 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 // GetRawFileReaderFunc returns an io.ReadSeeker for reading raw tsdb file from disk
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
-type TSDBIndexOpts struct {
+type IndexOpts struct {
 	UsePostingsCache bool
 }
 
-func OpenShippableTSDB(p string, opts TSDBIndexOpts) (index_shipper.Index, error) {
+func OpenShippableTSDB(p string, opts IndexOpts) (index_shipper.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
@@ -39,7 +39,7 @@ func OpenShippableTSDB(p string, opts TSDBIndexOpts) (index_shipper.Index, error
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index_shipper.Index, error) {
-	opts := TSDBIndexOpts{UsePostingsCache: false}
+	opts := IndexOpts{UsePostingsCache: false}
 	indexFile, err := OpenShippableTSDB(path, opts)
 	if err != nil {
 		return nil, err
@@ -79,7 +79,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index
 	if err != nil {
 		return nil, err
 	}
-	return NewShippableTSDBFile(id, TSDBIndexOpts{UsePostingsCache: false})
+	return NewShippableTSDBFile(id, IndexOpts{UsePostingsCache: false})
 }
 
 // nolint
@@ -95,7 +95,7 @@ type TSDBFile struct {
 	getRawFileReader GetRawFileReaderFunc
 }
 
-func NewShippableTSDBFile(id Identifier, opts TSDBIndexOpts) (*TSDBFile, error) {
+func NewShippableTSDBFile(id Identifier, opts IndexOpts) (*TSDBFile, error) {
 	idx, getRawFileReader, err := NewTSDBIndexFromFile(id.Path(), opts)
 	if err != nil {
 		return nil, err
@@ -128,7 +128,7 @@ type TSDBIndex struct {
 
 // Return the index as well as the underlying raw file reader which isn't exposed as an index
 // method but is helpful for building an io.reader for the index shipper
-func NewTSDBIndexFromFile(location string, opts TSDBIndexOpts) (Index, GetRawFileReaderFunc, error) {
+func NewTSDBIndexFromFile(location string, opts IndexOpts) (Index, GetRawFileReaderFunc, error) {
 	reader, err := index.NewFileReader(location)
 	if err != nil {
 		return nil, nil, err

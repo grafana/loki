@@ -57,7 +57,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
 				},
-			}, TSDBIndexOpts{UsePostingsCache: false}),
+			}, IndexOpts{UsePostingsCache: false}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -66,7 +66,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
 				},
-			}, TSDBIndexOpts{UsePostingsCache: false}),
+			}, IndexOpts{UsePostingsCache: false}),
 		},
 	}
 
@@ -115,7 +115,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{fizz="buzz"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
-			}, TSDBIndexOpts{UsePostingsCache: false}),
+			}, IndexOpts{UsePostingsCache: false}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -132,7 +132,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{ping="pong"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
-			}, TSDBIndexOpts{UsePostingsCache: false}),
+			}, IndexOpts{UsePostingsCache: false}),
 		},
 	}
 
@@ -243,7 +243,7 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 					Labels: mustParseLabels(`{fizz="buzz"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
-			}, TSDBIndexOpts{UsePostingsCache: false}),
+			}, IndexOpts{UsePostingsCache: false}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -260,7 +260,7 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 					Labels: mustParseLabels(`{ping="pong"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
-			}, TSDBIndexOpts{UsePostingsCache: false}),
+			}, IndexOpts{UsePostingsCache: false}),
 		},
 	}
 
