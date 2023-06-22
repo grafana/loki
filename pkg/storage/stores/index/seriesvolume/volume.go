@@ -79,17 +79,12 @@ func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int, from,
 	for name, size := range mergedVolumes {
 		volumes = append(volumes, logproto.Volume{
 			Name:   name,
-			Value:  "",
 			Volume: size,
 		})
 	}
 
 	sort.Slice(volumes, func(i, j int) bool {
 		if volumes[i].Volume == volumes[j].Volume {
-			if volumes[i].Name == volumes[j].Name {
-				return volumes[i].Value < volumes[j].Value
-			}
-
 			return volumes[i].Name < volumes[j].Name
 		}
 

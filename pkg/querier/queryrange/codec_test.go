@@ -260,12 +260,12 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelVolumeString))},
+			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
 			&logproto.VolumeRequest{},
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{foo="bar"}`, Volume: 38},
 					},
 					Limit: 100,
 				},
@@ -518,17 +518,17 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"label volume",
+			"series volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{foo="bar"}`, Volume: 38},
 					},
 					Limit:   100,
 					From:    0,
 					Through: 0,
 				},
-			}, labelVolumeString, false,
+			}, seriesVolumeString, false,
 		},
 	}
 	for _, tt := range tests {
@@ -1026,12 +1026,10 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 					Volumes: []logproto.Volume{
 						{
 							Name:   `{job="prometheus"}`,
-							Value:  "",
 							Volume: 150,
 						},
 						{
 							Name:   `{job="loki"}`,
-							Value:  "",
 							Volume: 300,
 						},
 					},
@@ -1045,12 +1043,10 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 					Volumes: []logproto.Volume{
 						{
 							Name:   `{job="prometheus"}`,
-							Value:  "",
 							Volume: 100,
 						},
 						{
 							Name:   `{job="loki"}`,
-							Value:  "",
 							Volume: 200,
 						},
 					},
@@ -1086,12 +1082,10 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 					Volumes: []logproto.Volume{
 						{
 							Name:   `{job="prometheus"}`,
-							Value:  "",
 							Volume: 150,
 						},
 						{
 							Name:   `{job="loki"}`,
-							Value:  "",
 							Volume: 300,
 						},
 					},
@@ -1105,12 +1099,10 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 					Volumes: []logproto.Volume{
 						{
 							Name:   `{job="prometheus"}`,
-							Value:  "",
 							Volume: 100,
 						},
 						{
 							Name:   `{job="loki"}`,
-							Value:  "",
 							Volume: 200,
 						},
 					},
@@ -1144,12 +1136,10 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 					Volumes: []logproto.Volume{
 						{
 							Name:   `{job="prometheus"}`,
-							Value:  "",
 							Volume: 150,
 						},
 						{
 							Name:   `{cluster="dev"}`,
-							Value:  "",
 							Volume: 300,
 						},
 					},
@@ -1163,12 +1153,10 @@ func Test_codec_MergeResponse_Volume(t *testing.T) {
 					Volumes: []logproto.Volume{
 						{
 							Name:   `{job="prometheus"}`,
-							Value:  "",
 							Volume: 100,
 						},
 						{
 							Name:   `{cluster="dev"}`,
-							Value:  "",
 							Volume: 200,
 						},
 					},
@@ -1428,14 +1416,13 @@ var (
 		"bytes": 3,
 		"entries": 4
 		}`
-	labelVolumeString = `{
+	seriesVolumeString = `{
     "from": 0,
     "limit": 100,
     "through": 0,
     "volumes": [
       {
         "name": "{foo=\"bar\"}",
-        "value": "",
         "volume": 38
       }
     ]
