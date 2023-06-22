@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	lru "github.com/hashicorp/golang-lru/simplelru"
-	"github.com/oklog/ulid"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -18,22 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
-
-type codec string
-
-const (
-	codecHeaderSnappy             codec = "dvs" // As in "diff+varint+snappy".
-	codecHeaderSnappyWithMatchers codec = "dm"  // As in "dvs+matchers"
-)
-
-const maxInt = int(^uint(0) >> 1)
-
-const (
-	stringHeaderSize = 8
-	sliceHeaderSize  = 16
-)
-
-var ulidSize = uint64(len(ulid.ULID{}))
 
 type LRUCacheConfig struct {
 	MaxSizeBytes     flagext.ByteSize `yaml:"max_size_bytes"`
