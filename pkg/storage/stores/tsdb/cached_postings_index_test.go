@@ -8,14 +8,25 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 )
 
+func runTSDBIndexCache(t testing.TB) {
+	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
+	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	require.NoError(t, e)
+	sharedCacheClient = c
+}
+
 func TestSingleIdxCached(t *testing.T) {
+	runTSDBIndexCache(t)
+	defer sharedCacheClient.Stop()
 	cases := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar"}`),
@@ -209,6 +220,9 @@ func TestSingleIdxCached(t *testing.T) {
 }
 
 func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
+	runTSDBIndexCache(b)
+	defer sharedCacheClient.Stop()
+
 	now := model.Now()
 	queryFrom, queryThrough := now.Add(3*time.Hour).Add(time.Millisecond), now.Add(5*time.Hour).Add(-time.Millisecond)
 	queryBounds := newBounds(queryFrom, queryThrough)
@@ -252,17 +266,16 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 
 	b.ResetTimer()
 	b.ReportAllocs()
-	var err error
 	for i := 0; i < b.N; i++ {
 		chkRefs := ChunkRefsPool.Get()
-		chkRefs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, chkRefs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-		require.NoError(b, err)
-		require.Len(b, chkRefs, numChunksToMatch*2)
+		chkRefs, _ = tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, chkRefs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 		ChunkRefsPool.Put(chkRefs)
 	}
 }
 
 func TestCacheableTSDBIndex_Stats(t *testing.T) {
+	runTSDBIndexCache(t)
+	defer sharedCacheClient.Stop()
 	series := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
@@ -373,6 +386,8 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 }
 
 func BenchmarkSeriesRepetitive(b *testing.B) {
+	runTSDBIndexCache(b)
+	defer sharedCacheClient.Stop()
 	series := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),

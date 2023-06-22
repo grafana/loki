@@ -9,6 +9,7 @@ import (
 	"github.com/dennwc/varint"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	promEncoding "github.com/prometheus/prometheus/tsdb/encoding"
@@ -51,55 +52,52 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 		return err
 	}
 
-	if err := c.storePostings(ctx, p, key); err != nil {
+	expandedPosts, err := index.ExpandPostings(p)
+	if err != nil {
+		return err
+	}
+
+	if err := c.storePostings(ctx, expandedPosts, key); err != nil {
 		level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
 	}
-	return fn(p)
+
+	// `index.ExpandedPostings` makes the iterator to walk, so we have to reset it by instantiating a new NewListPostings.
+	return fn(index.NewListPostings(expandedPosts))
 }
 
 // diffVarintEncodeNoHeader encodes postings into diff+varint representation.
 // It doesn't add any header to the output bytes.
 // Length argument is expected number of postings, used for preallocating buffer.
-func diffVarintEncodeNoHeader(p index.Postings, length int) ([]byte, error) {
+func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error) {
 	buf := encoding.Encbuf{}
 	buf.PutUvarint64(uint64(length))
 
 	// This encoding uses around ~1 bytes per posting, but let's use
 	// conservative 1.25 bytes per posting to avoid extra allocations.
 	if length > 0 {
-		buf.B = make([]byte, 0, 5*length/4)
+		buf.B = make([]byte, 0, binary.MaxVarintLen64+5*length/4)
 	}
+
+	buf.PutUvarint64(uint64(length)) // first we put the postings length so we can use it when decoding.
 
 	prev := storage.SeriesRef(0)
-	var total uint64
-	for p.Next() {
-		v := p.At()
-
-		// TODO(dylanguedes): can we ignore this?
-		// if v < prev {
-		// 	return nil, errors.Errorf("postings entries must be in increasing order, current: %d, previous: %d", v, prev)
-		// }
+	for _, ref := range p {
+		if ref < prev {
+			return nil, errors.Errorf("postings entries must be in increasing order, current: %d, previous: %d", ref, prev)
+		}
 
 		// This is the 'diff' part -- compute difference from previous value.
-		buf.PutUvarint64(uint64(v - prev))
-		prev = v
-		total++
-	}
-	if p.Err() != nil {
-		return nil, p.Err()
+		buf.PutUvarint64(uint64(ref - prev))
+		prev = ref
 	}
 
-	// add number of postings at the beginning of the buffer, used when decoding.
-	lenBuf := make([]byte, binary.MaxVarintLen64+len(buf.B))
-	binary.PutUvarint(lenBuf, total)
-
-	return append(lenBuf, buf.B...), nil
+	return buf.B, nil
 }
 
 func decodeToPostings(b []byte) index.Postings {
 	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
-	postingsLen := storage.SeriesRef(decoder.Uvarint64())
-	refs := make([]storage.SeriesRef, postingsLen)
+	postingsLen := decoder.Uvarint64()
+	refs := make([]storage.SeriesRef, 0, postingsLen)
 	prev := storage.SeriesRef(0)
 
 	for i := 0; i < int(postingsLen); i++ {
@@ -123,8 +121,8 @@ func encodedMatchersLen(matchers []*labels.Matcher) int {
 	return matchersLen
 }
 
-func (c *cachedPostingsReader) storePostings(ctx context.Context, postings index.Postings, canonicalMatchers string) error {
-	dataToCache, err := diffVarintEncodeNoHeader(postings, 0)
+func (c *cachedPostingsReader) storePostings(ctx context.Context, expandedPostings []storage.SeriesRef, canonicalMatchers string) error {
+	dataToCache, err := diffVarintEncodeNoHeader(expandedPostings, len(expandedPostings))
 	if err != nil {
 		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
 	}
