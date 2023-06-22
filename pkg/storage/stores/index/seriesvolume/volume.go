@@ -1,13 +1,9 @@
 package seriesvolume
 
 import (
+	"github.com/grafana/loki/pkg/logproto"
 	"sort"
 	"sync"
-	"time"
-
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -38,43 +34,30 @@ func (acc *Accumulator) AddVolumes(volumes map[string]uint64) {
 	}
 }
 
-func (acc *Accumulator) Volumes(from, through time.Time) *logproto.VolumeResponse {
+func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
 	acc.lock.RLock()
 	defer acc.lock.RUnlock()
 
-	return MapToSeriesVolumeResponse(acc.volumes, int(acc.limit), from, through)
+	return MapToSeriesVolumeResponse(acc.volumes, int(acc.limit))
 }
 
 func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
 	mergedVolumes := make(map[string]uint64)
-	var from, through time.Time
-
 	for _, res := range responses {
 		if res == nil {
 			// Some stores return nil responses
 			continue
 		}
 
-		resFrom, resThrough := res.From.Time(), res.Through.Time()
-
-		if resFrom.Before(from) || from.IsZero() {
-			from = resFrom
-		}
-
-		if resThrough.After(through) || through.IsZero() {
-			through = resThrough
-		}
-
 		for _, v := range res.Volumes {
 			mergedVolumes[v.Name] += v.GetVolume()
-
 		}
 	}
 
-	return MapToSeriesVolumeResponse(mergedVolumes, int(limit), from, through)
+	return MapToSeriesVolumeResponse(mergedVolumes, int(limit))
 }
 
-func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int, from, through time.Time) *logproto.VolumeResponse {
+func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.VolumeResponse {
 	volumes := make([]logproto.Volume, 0, len(mergedVolumes))
 	for name, size := range mergedVolumes {
 		volumes = append(volumes, logproto.Volume{
@@ -98,7 +81,5 @@ func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int, from,
 	return &logproto.VolumeResponse{
 		Volumes: volumes,
 		Limit:   int32(limit),
-		From:    model.TimeFromUnixNano(from.UnixNano()),
-		Through: model.TimeFromUnixNano(through.UnixNano()),
 	}
 }
