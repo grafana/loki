@@ -99,35 +99,29 @@ The tradeoffs using this approach are:
 ### Overview on using asynchronous streams for instant query requests
 
 ```mermaid
-  sequenceDiagram
-      autonumber
-      title /loki/api/v1/query?query={namespace="abc", container="app"}&async=true
-      actor User
-      par Place Async Requests
-      User->>QueryFrontend: Send async instant query
-      activate QueryFrontend
-      QueryFrontend->>RequestQueue: Store Query Request
-      activate RequestQueue
-      RequestQueue->>StreamQueryRequest: Publish HTTP Request
-      Note right of StreamQueryRequest: Nats-Msg-Id deedbeaf
-      deactivate RequestQueue
-      RequestQueue-->>QueryFrontend:
-      QueryFrontend-->>User: HTTP Code 202 & Nats-Msg-ID
-      deactivate QueryFrontend
-      end
-      par Process Async Queries
-      Querier->>StreamQueryRequest: Consume HTTP Request
-      activate Querier
-      Querier->>Querier: Execute Query Request
-      Querier->>StreamQueryResponse: Publish Async Query Response
-      deactivate Querier
-      end
-      par Request Async Response
-      QueryFrontend->>StreamQueryResponse: Has response for Nats-Msg-ID?
-      StreamQueryResponse-->>QueryFrontend: No
-      QueryFrontend-->>User: HTTP Code 204
-      QueryFrontend->>StreamQueryResponse: Has response for Nats-Msg-ID?
-      StreamQueryResponse-->>QueryFrontend: Yes
-      QueryFrontend-->>User: HTTP Code 200 & Query Response
-      end
+ sequenceDiagram
+    autonumber
+    title /loki/api/v1/query?query={namespace="abc", container="app"}&async=true
+    actor User
+    User->>QueryFrontend: Send async instant query
+    activate QueryFrontend
+    QueryFrontend->>RequestQueue: Store Query Request
+    activate RequestQueue
+    RequestQueue->>StreamQueryRequests: Publish HTTP Request
+    Note right of StreamQueryRequests: Nats-Msg-Id deedbeaf
+    deactivate RequestQueue
+    RequestQueue-->>QueryFrontend:
+    QueryFrontend-->>User: HTTP Code 202 & Nats-Msg-ID
+    deactivate QueryFrontend
+    Querier->>StreamQueryRequests: Consume HTTP Request
+    activate Querier
+    Querier->>Querier: Execute Query Request
+    Querier->>StreamQueryResponses: Publish Async Query Response
+    deactivate Querier
+    QueryFrontend->>StreamQueryResponses: Any response(Nats-Msg-ID=deadbeef)?
+    StreamQueryResponses-->>QueryFrontend: No
+    QueryFrontend-->>User: HTTP Code 204
+    QueryFrontend->>StreamQueryResponses: Any response(Nats-Msg-ID=deadbeef)?
+    StreamQueryResponses-->>QueryFrontend: Yes
+    QueryFrontend-->>User: HTTP Code 200 & Query Response
 ```
