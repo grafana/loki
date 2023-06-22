@@ -102,6 +102,8 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 
 	noop := origExpr.String() == modExpr.String()
 	if noop {
+		// reset split queries counter if the query is a noop
+		m.stats.resetSplitQueries()
 		m.metrics.ParsedQueries.WithLabelValues(NoopKey).Inc()
 	} else {
 		m.metrics.ParsedQueries.WithLabelValues(SuccessKey).Inc()

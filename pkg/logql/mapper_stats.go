@@ -17,3 +17,8 @@ func (s *MapperStats) AddSplitQueries(num int) {
 func (s *MapperStats) GetSplitQueries() int {
 	return s.splitQueries
 }
+
+// resetSplitQueries resets the number of split queries
+func (s *MapperStats) resetSplitQueries() {
+	s.splitQueries = 0
+}
