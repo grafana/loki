@@ -56,17 +56,19 @@ var splittableRangeVectorOp = map[string]struct{}{
 type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
+	stats           *MapperStats
 }
 
 // NewRangeMapper creates a new RangeMapper instance with the given duration as
 // split interval. The interval must be greater than 0.
-func NewRangeMapper(interval time.Duration, metrics *MapperMetrics) (RangeMapper, error) {
+func NewRangeMapper(interval time.Duration, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
 	if interval <= 0 {
 		return RangeMapper{}, fmt.Errorf("cannot create RangeMapper with splitByInterval <= 0; got %s", interval)
 	}
 	return RangeMapper{
 		splitByInterval: interval,
 		metrics:         metrics,
+		stats:           stats,
 	}, nil
 }
 
@@ -344,6 +346,8 @@ func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval t
 		downstreams = appendDownstream(downstreams, expr, splitRangeInterval, splitOffset)
 	}
 
+	// Update stats and metrics
+	m.stats.AddSplitQueries(splitCount)
 	recorder.Add(splitCount, MetricsKey)
 
 	return downstreams
