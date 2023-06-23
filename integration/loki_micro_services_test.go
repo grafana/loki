@@ -200,8 +200,8 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 	cliQueryFrontend.Now = now
 
 	t.Run("ingest-logs", func(t *testing.T) {
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-36*time.Hour), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-72*time.Hour), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
 	})
 
 	t.Run("query-lookback-default", func(t *testing.T) {

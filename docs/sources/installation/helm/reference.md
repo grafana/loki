@@ -1067,7 +1067,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.19-alpine"
+"1.23-alpine"
 </pre>
 </td>
 		</tr>
@@ -2477,6 +2477,15 @@ null
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleLabels</td>
+			<td>object</td>
+			<td>Additional labels for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
