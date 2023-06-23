@@ -608,6 +608,8 @@ monitoring:
       labels: {}
       # -- Enable the config read api on port 8080 of the agent
       enableConfigReadAPI: false
+      # -- The name of the PriorityClass for GrafanaAgent pods
+      priorityClassName: null
     # PodLogs configuration
     podLogs:
       # -- PodLogs annotations
@@ -645,6 +647,8 @@ monitoring:
     nodeSelector: {}
     # -- Tolerations for canary pods
     tolerations: []
+    # -- The name of the PriorityClass for loki-canary pods
+    priorityClassName: null
     # -- Image to use for loki canary
     image:
       # -- The Docker registry
@@ -657,6 +661,12 @@ monitoring:
       digest: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
+    # -- Update strategy for the `loki-canary` Daemonset pods
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
+
 # Configuration for the write pod(s)
 write:
   # -- Number of replicas for the write

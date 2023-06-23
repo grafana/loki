@@ -995,6 +995,152 @@ type timeRange struct {
 	from, to time.Time
 }
 
+func TestStore_indexPrefixChange(t *testing.T) {
+	tempDir := t.TempDir()
+
+	shipperConfig := indexshipper.Config{}
+	flagext.DefaultValues(&shipperConfig)
+	shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
+	shipperConfig.CacheLocation = path.Join(tempDir, "cache")
+	shipperConfig.Mode = indexshipper.ModeReadWrite
+
+	cfg := Config{
+		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		TSDBShipperConfig: shipperConfig,
+		NamedStores: NamedStores{
+			Filesystem: map[string]NamedFSConfig{
+				"named-store": {Directory: path.Join(tempDir, "named-store")},
+			},
+		},
+	}
+	require.NoError(t, cfg.NamedStores.validate())
+
+	firstPeriodDate := parseDate("2019-01-01")
+	secondPeriodDate := parseDate("2019-01-02")
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: timeToModelTime(firstPeriodDate)},
+				IndexType:  config.TSDBType,
+				ObjectType: config.StorageTypeFileSystem,
+				Schema:     "v9",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+		},
+	}
+
+	// time ranges for adding chunks to the first period
+	chunksToBuildForTimeRanges := []timeRange{
+		{
+			secondPeriodDate.Add(-10 * time.Hour),
+			secondPeriodDate.Add(-9 * time.Hour),
+		},
+		{
+			secondPeriodDate.Add(-3 * time.Hour),
+			secondPeriodDate.Add(-2 * time.Hour),
+		},
+	}
+
+	limits, err := validation.NewOverrides(validation.Limits{}, nil)
+	require.NoError(t, err)
+
+	store, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	require.NoError(t, err)
+
+	// build and add chunks to the store
+	addedChunkIDs := map[string]struct{}{}
+	for _, tr := range chunksToBuildForTimeRanges {
+		chk := newChunk(buildTestStreams(fooLabelsWithName, tr))
+
+		err := store.PutOne(ctx, chk.From, chk.Through, chk)
+		require.NoError(t, err)
+
+		addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
+	}
+
+	// get all the chunks from the first period
+	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), newMatchers(fooLabelsWithName.String())...)
+	require.NoError(t, err)
+	var totalChunks int
+	for _, chks := range chunks {
+		totalChunks += len(chks)
+	}
+	require.Equal(t, totalChunks, len(addedChunkIDs))
+
+	// check whether we got back all the chunks which were added
+	for i := range chunks {
+		for _, c := range chunks[i] {
+			_, ok := addedChunkIDs[schemaConfig.ExternalKey(c.ChunkRef)]
+			require.True(t, ok)
+		}
+	}
+
+	// update schema with a new period that uses different index prefix
+	schemaConfig.Configs = append(schemaConfig.Configs, config.PeriodConfig{
+		From:       config.DayTime{Time: timeToModelTime(secondPeriodDate)},
+		IndexType:  config.TSDBType,
+		ObjectType: "named-store",
+		Schema:     "v11",
+		IndexTables: config.PeriodicTableConfig{
+			Prefix: "index_tsdb_",
+			Period: time.Hour * 24,
+		},
+		RowShards: 2,
+	})
+
+	// time ranges adding a chunk to the new period and one that overlaps both
+	chunksToBuildForTimeRanges = []timeRange{
+		{
+			// chunk overlapping both the stores
+			secondPeriodDate.Add(-time.Hour),
+			secondPeriodDate.Add(time.Hour),
+		},
+		{
+			// chunk just for second store
+			secondPeriodDate.Add(2 * time.Hour),
+			secondPeriodDate.Add(3 * time.Hour),
+		},
+	}
+
+	// restart to load the updated schema
+	store.Stop()
+	store, err = NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
+	require.NoError(t, err)
+	defer store.Stop()
+
+	// build and add chunks to the store
+	for _, tr := range chunksToBuildForTimeRanges {
+		chk := newChunk(buildTestStreams(fooLabelsWithName, tr))
+
+		err := store.PutOne(ctx, chk.From, chk.Through, chk)
+		require.NoError(t, err)
+
+		addedChunkIDs[schemaConfig.ExternalKey(chk.ChunkRef)] = struct{}{}
+	}
+
+	// get all the chunks from both the stores
+	chunks, _, err = store.GetChunkRefs(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	require.NoError(t, err)
+
+	totalChunks = 0
+	for _, chks := range chunks {
+		totalChunks += len(chks)
+	}
+	// we get common chunk twice because it is indexed in both the stores
+	require.Equal(t, len(addedChunkIDs)+1, totalChunks)
+
+	// check whether we got back all the chunks which were added
+	for i := range chunks {
+		for _, c := range chunks[i] {
+			_, ok := addedChunkIDs[schemaConfig.ExternalKey(c.ChunkRef)]
+			require.True(t, ok)
+		}
+	}
+}
+
 func TestStore_MultiPeriod(t *testing.T) {
 	limits, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.NoError(t, err)

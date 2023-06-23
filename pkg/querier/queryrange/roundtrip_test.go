@@ -132,8 +132,8 @@ var (
 
 	seriesVolume = logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
-			{Name: `{foo="bar"}`, Value: "", Volume: 1024},
-			{Name: `{bar="baz"}`, Value: "", Volume: 3350},
+			{Name: `{foo="bar"}`, Volume: 1024},
+			{Name: `{bar="baz"}`, Volume: 3350},
 		},
 		From:    model.TimeFromUnix(testTime.Add(-4 * time.Hour).Unix()),
 		Through: model.TimeFromUnix(testTime.Add(-1 * time.Hour).Unix()),
@@ -1158,6 +1158,111 @@ func Test_getOperation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := getOperation(tc.path)
 			assert.Equal(t, tc.expectedOp, got)
+		})
+	}
+}
+
+func TestMetricsTripperware_SplitShardStats(t *testing.T) {
+	l := WithSplitByLimits(fakeLimits{
+		maxSeries:               math.MaxInt32,
+		maxQueryParallelism:     1,
+		tsdbMaxQueryParallelism: 1,
+		queryTimeout:            1 * time.Minute,
+	}, 1*time.Hour) // 1 hour split time interval
+
+	statsTestCfg := testConfig
+	statsTestCfg.ShardedQueries = true
+	statsSchemas := testSchemas
+	statsSchemas[0].RowShards = 4
+
+	for _, tc := range []struct {
+		name               string
+		request            queryrangebase.Request
+		expectedSplitStats int64
+		expectedShardStats int64
+	}{
+		{
+			name: "instant query split",
+			request: &LokiInstantRequest{
+				Query:     `sum by (app) (rate({app="foo"} |= "foo"[2h]))`,
+				Limit:     1000,
+				TimeTs:    testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query",
+			},
+			expectedSplitStats: 2, // [2h] interval split by 1h configured split interval
+			expectedShardStats: 8, // 2 time splits * 4 row shards
+		},
+		{
+			name: "instant query split not split",
+			request: &LokiInstantRequest{
+				Query:     `sum by (app) (rate({app="foo"} |= "foo"[1h]))`,
+				Limit:     1000,
+				TimeTs:    testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query",
+			},
+			expectedSplitStats: 0, // [1h] interval not split
+			expectedShardStats: 4, // 4 row shards
+		},
+		{
+			name: "range query split",
+			request: &LokiRequest{
+				Query:     `sum by (app) (rate({app="foo"} |= "foo"[1h]))`,
+				Limit:     1000,
+				Step:      30000, // 30sec
+				StartTs:   testTime.Add(-2 * time.Hour),
+				EndTs:     testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+			},
+			expectedSplitStats: 3,  // 2 hour range interval split based on the base hour + the remainder
+			expectedShardStats: 12, // 3 time splits * 4 row shards
+		},
+		{
+			name: "range query not split",
+			request: &LokiRequest{
+				Query:     `sum by (app) (rate({app="foo"} |= "foo"[1h]))`,
+				Limit:     1000,
+				Step:      30000, // 30sec
+				StartTs:   testTime.Add(-1 * time.Minute),
+				EndTs:     testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+			},
+			expectedSplitStats: 0, // 1 minute range interval not split
+			expectedShardStats: 4, // 4 row shards
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tpw, stopper, err := NewTripperware(statsTestCfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: statsSchemas}, nil, false, nil)
+			if stopper != nil {
+				defer stopper.Stop()
+			}
+			require.NoError(t, err)
+
+			ctx := user.InjectOrgID(context.Background(), "1")
+			req, err := LokiCodec.EncodeRequest(ctx, tc.request)
+			require.NoError(t, err)
+
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+
+			rt, err := newfakeRoundTripper()
+			require.NoError(t, err)
+			defer rt.Close()
+
+			_, h := promqlResult(matrix)
+			rt.setHandler(h)
+			resp, err := tpw(rt).RoundTrip(req)
+			require.NoError(t, err)
+
+			lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, tc.request)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.expectedSplitStats, lokiResponse.(*LokiPromResponse).Statistics.Summary.Splits)
+			require.Equal(t, tc.expectedShardStats, lokiResponse.(*LokiPromResponse).Statistics.Summary.Shards)
 		})
 	}
 }

@@ -382,6 +382,10 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	atomic.AddInt32(&stats.Requests, int32(i))
 }
 
+func (c *Context) AddSplitQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.Splits, num)
+}
+
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	var stats *Cache
 	switch t {

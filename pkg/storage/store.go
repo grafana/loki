@@ -149,6 +149,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 func (s *store) init() error {
 	for i, p := range s.schemaCfg.Configs {
+		p := p
 		chunkClient, err := s.chunkClientForPeriod(p)
 		if err != nil {
 			return err
