@@ -133,6 +133,8 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Fix role/PSP mapping
 
+- [BUGFIX] Fix service/ingress mapping
+
 ## 4.8.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.2
