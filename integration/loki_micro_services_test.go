@@ -221,7 +221,7 @@ func TestMicroServicesIngestQueryWithSchemaChange(t *testing.T) {
 
 	t.Run("query-lookback-7d", func(t *testing.T) {
 		tQuerier.AddFlags("-querier.query-ingesters-within=168h")
-		tQuerier.Restart()
+		require.NoError(t, tQuerier.Restart())
 
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
