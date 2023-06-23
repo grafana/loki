@@ -408,7 +408,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)
