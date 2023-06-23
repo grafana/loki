@@ -248,7 +248,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 func TestSeriesVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()
 	indexQuerier.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{Volumes: []logproto.Volume{
-		{Name: "bar", Value: "baz", Volume: 38},
+		{Name: "bar", Volume: 38},
 	}}, nil)
 
 	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil)
@@ -259,7 +259,7 @@ func TestSeriesVolume(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, &logproto.VolumeResponse{Volumes: []logproto.Volume{
-		{Name: "bar", Value: "baz", Volume: 38},
+		{Name: "bar", Volume: 38},
 	}}, vol)
 }
 
