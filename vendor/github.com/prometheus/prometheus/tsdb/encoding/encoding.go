@@ -15,6 +15,7 @@ package encoding
 
 import (
 	"encoding/binary"
+	"fmt"
 	"hash"
 	"hash/crc32"
 	"math"
@@ -241,7 +242,7 @@ func (d *Decbuf) Uvarint64() uint64 {
 	}
 	x, n := varint.Uvarint(d.B)
 	if n < 1 {
-		d.E = ErrInvalidSize
+		d.E = fmt.Errorf("Uvarint64: %w", ErrInvalidSize)
 		return 0
 	}
 	d.B = d.B[n:]
