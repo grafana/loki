@@ -139,7 +139,9 @@ func (m *limitStage) Name() string {
 }
 
 func getDropCountByLabelMetric(registerer prometheus.Registerer) *prometheus.CounterVec {
-	return util.RegisterCounterVec(registerer, "logentry", "dropped_lines_by_label_total",
-		"A count of all log lines dropped as a result of a pipeline stage",
-		[]string{"label_name", "label_value"})
+	return util.RegisterCollectorAllowExisting(registerer, prometheus.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "logentry",
+		Name:      "dropped_lones_by_label_total",
+		Help:      "A count of all log lines dropped as a result of a pipeline stage",
+	}, []string{"label_name", "label_value"}))
 }

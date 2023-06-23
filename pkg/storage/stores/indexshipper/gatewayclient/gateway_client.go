@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -85,11 +86,33 @@ func (i *IndexGatewayClientConfig) RegisterFlags(f *flag.FlagSet) {
 	i.RegisterFlagsWithPrefix("index-gateway-client", f)
 }
 
+type gatewayClientMetrics struct {
+	latency *prometheus.HistogramVec
+	count   *prometheus.CounterVec
+}
+
+func newGatewayClientMetrics(r prometheus.Registerer) *gatewayClientMetrics {
+	return &gatewayClientMetrics{
+		latency: util.RegisterCollectorAllowExisting(r, prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: "index_gateway",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent on index gateway requests",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"})),
+		count: util.RegisterCollectorAllowExisting(r, prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Subsystem: "index_gateway",
+			Name:      "client_requests_total",
+			Help:      "Total amount of request performed by index gateway clients when running in ring mode",
+		}, []string{"status", "tenant"})),
+	}
+}
+
 type GatewayClient struct {
 	cfg IndexGatewayClientConfig
 
-	storeGatewayClientRequestDuration *prometheus.HistogramVec
-
+	metrics    *gatewayClientMetrics
 	conn       *grpc.ClientConn
 	grpcClient logproto.IndexGatewayClient
 
@@ -105,31 +128,15 @@ type GatewayClient struct {
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
 func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
-	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Namespace: "loki",
-		Name:      "index_gateway_request_duration_seconds",
-		Help:      "Time (in seconds) spent serving requests when using the index gateway",
-		Buckets:   instrument.DefBuckets,
-	}, []string{"operation", "status_code"})
-	if r != nil {
-		err := r.Register(latency)
-		if err != nil {
-			alreadyErr, ok := err.(prometheus.AlreadyRegisteredError)
-			if !ok {
-				return nil, err
-			}
-			latency = alreadyErr.ExistingCollector.(*prometheus.HistogramVec)
-		}
-	}
-
+	m := newGatewayClientMetrics(r)
 	sgClient := &GatewayClient{
-		cfg:                               cfg,
-		storeGatewayClientRequestDuration: latency,
-		ring:                              cfg.Ring,
-		limits:                            limits,
+		cfg:     cfg,
+		metrics: m,
+		ring:    cfg.Ring,
+		limits:  limits,
 	}
 
-	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
+	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.metrics.latency))
 	if err != nil {
 		return nil, errors.Wrap(err, "index gateway grpc dial option")
 	}
@@ -357,9 +364,10 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 		if err := callback(client); err != nil {
 			lastErr = err
 			level.Error(util_log.Logger).Log("msg", fmt.Sprintf("client do failed for instance %s", addr), "err", err)
+			s.metrics.count.WithLabelValues("error", userID).Inc()
 			continue
 		}
-
+		s.metrics.count.WithLabelValues("success", userID).Inc()
 		return nil
 	}
 
