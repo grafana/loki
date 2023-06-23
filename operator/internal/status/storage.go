@@ -9,7 +9,6 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // SetStorageSchemaStatus updates the storage status component
@@ -26,5 +25,5 @@ func SetStorageSchemaStatus(ctx context.Context, k k8s.Client, req ctrl.Request,
 		Schemas: schemas,
 	}
 
-	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
+	return k.Status().Update(ctx, &s)
 }

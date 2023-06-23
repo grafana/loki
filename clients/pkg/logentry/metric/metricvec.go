@@ -51,6 +51,13 @@ func (c *metricVec) Unregister() {
 	if c.registry == nil {
 		return
 	}
+
+// Describe implements prometheus.Collector and doesn't declare any metrics on purpose to bypass prometheus validation.
+// see https://godoc.org/github.com/prometheus/client_golang/prometheus#hdr-Custom_Collectors_and_constant_Metrics search for "unchecked"
+func (c *metricVec) Describe(_ chan<- *prometheus.Desc) {}
+
+// Collect implements prometheus.Collector
+func (c *metricVec) Collect(ch chan<- prometheus.Metric) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 	for _, m := range c.metrics {

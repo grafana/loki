@@ -1,6 +1,5 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- $autoscalingv2 := .Capabilities.APIVersions.Has "autoscaling/v2" -}}
-{{- if and $isSimpleScalable .Values.gateway.autoscaling.enabled }}
+{{- if .Values.gateway.autoscaling.enabled }}
 {{- if $autoscalingv2 }}
 apiVersion: autoscaling/v2
 {{- else }}
@@ -9,6 +8,7 @@ apiVersion: autoscaling/v2beta1
 kind: HorizontalPodAutoscaler
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
 spec:
@@ -18,6 +18,10 @@ spec:
     name: {{ include "loki.gatewayFullname" . }}
   minReplicas: {{ .Values.gateway.autoscaling.minReplicas }}
   maxReplicas: {{ .Values.gateway.autoscaling.maxReplicas }}
+  {{- with .Values.gateway.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   metrics:
   {{- with .Values.gateway.autoscaling.targetMemoryUtilizationPercentage }}
     - type: Resource

@@ -28,30 +28,30 @@
 //	package main
 //
 //	import (
-//	        "math/rand"
-//	        "net/http"
+//		"math/rand"
+//		"net/http"
 //
-//	        "github.com/prometheus/client_golang/prometheus"
-//	        "github.com/prometheus/client_golang/prometheus/promauto"
-//	        "github.com/prometheus/client_golang/prometheus/promhttp"
+//		"github.com/prometheus/client_golang/prometheus"
+//		"github.com/prometheus/client_golang/prometheus/promauto"
+//		"github.com/prometheus/client_golang/prometheus/promhttp"
 //	)
 //
 //	var histogram = promauto.NewHistogram(prometheus.HistogramOpts{
-//	        Name:    "random_numbers",
-//	        Help:    "A histogram of normally distributed random numbers.",
-//	        Buckets: prometheus.LinearBuckets(-3, .1, 61),
+//		Name:    "random_numbers",
+//		Help:    "A histogram of normally distributed random numbers.",
+//		Buckets: prometheus.LinearBuckets(-3, .1, 61),
 //	})
 //
 //	func Random() {
-//	        for {
-//	                histogram.Observe(rand.NormFloat64())
-//	        }
+//		for {
+//			histogram.Observe(rand.NormFloat64())
+//		}
 //	}
 //
 //	func main() {
-//	        go Random()
-//	        http.Handle("/metrics", promhttp.Handler())
-//	        http.ListenAndServe(":1971", nil)
+//		go Random()
+//		http.Handle("/metrics", promhttp.Handler())
+//		http.ListenAndServe(":1971", nil)
 //	}
 //
 // Prometheus's version of a minimal hello-world program:

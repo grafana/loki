@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Configuring Promtaim
+description: Configuring Promtail
 ---
 # Configuration
 
@@ -35,8 +35,8 @@ defined by the schema below. Brackets indicate that a parameter is optional. For
 non-list parameters the value is set to the specified default.
 
 For more detailed information on configuring how to discover and scrape logs from
-targets, see [Scraping]({{<relref "scraping">}}). For more information on transforming logs
-from scraped targets, see [Pipelines]({{<relref "pipelines">}}).
+targets, see [Scraping]({{< relref "./scraping" >}}). For more information on transforming logs
+from scraped targets, see [Pipelines]({{< relref "./pipelines" >}}).
 
 ### Use environment variables in the configuration
 
@@ -63,8 +63,8 @@ Where default_value is the value to use if the environment variable is undefined
 
 **Note**: With `expand-env=true` the configuration will first run through
 [envsubst](https://pkg.go.dev/github.com/drone/envsubst) which will replace double
-slashes with single slashes. Because of this every use of a slash `\` needs to
-be replaced with a double slash `\\`
+backslashes with single backslashes. Because of this every use of a backslash `\` needs to
+be replaced with a double backslash `\\`
 
 ### Generic placeholders
 
@@ -82,6 +82,9 @@ be replaced with a double slash `\\`
 ### Supported contents and default values of `config.yaml`:
 
 ```yaml
+# Configures global settings which impact all targets.
+[global: <global_config>]
+
 # Configures the server for Promtail.
 [server: <server_config>]
 
@@ -112,6 +115,33 @@ scrape_configs:
 
 # Configures tracing support
 [tracing: <tracing_config>]
+```
+
+## global
+
+The `global` block configures global settings which impact all scrape targets:
+
+```yaml
+# Configure how frequently log files from disk get polled for changes.
+[file_watch_config: <file_watch_config>]
+```
+
+## file_watch_config
+
+The `file_watch_config` block configures how often to poll log files from disk
+for changes:
+
+```yaml
+# Minimum frequency to poll for files. Any time file changes are detected, the
+# poll frequency gets reset to this duration.
+[min_poll_frequency: <duration> | default = "250ms"]
+
+# Maximum frequency to poll for files. Any time no file changes are detected,
+# the poll frequency doubles in value up to the maximum duration specified by
+# this value.
+#
+# The default is set to the same as min_poll_frequency.
+[max_poll_frequency: <duration> | default = "250ms"]
 ```
 
 ## server
@@ -186,6 +216,12 @@ Loki:
 # URL for the Distributor. Path to the push API needs to be included.
 # Example: http://example.com:3100/loki/api/v1/push
 url: <string>
+
+# Custom HTTP headers to be sent along with each push request.
+# Be aware that headers that are set by Promtail itself (e.g. X-Scope-OrgID) can't be overwritten.
+headers:
+  # Example: CF-Access-Client-Id: xxx
+  [ <labelname>: <labelvalue> ... ]
 
 # The tenant ID used by default to push logs to Loki. If omitted or empty
 # it assumes Loki is running in single-tenant mode and no X-Scope-OrgID header
@@ -320,7 +356,7 @@ is restarted to allow it to continue from where it left off.
 ## scrape_configs
 
 The `scrape_configs` block configures how Promtail can scrape logs from a series
-of targets using a specified discovery method:
+of targets using a specified discovery method. Promtail uses the same [Prometheus scrape_configs](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#scrape_config). This means if you already own a Prometheus instance, the config will be very similar:
 
 ```yaml
 # Name to identify this scrape config in the Promtail UI.
@@ -328,6 +364,18 @@ job_name: <string>
 
 # Describes how to transform logs from targets.
 [pipeline_stages: <pipeline_stages>]
+
+# Defines decompression behavior for the given scrape target.
+decompression:
+  # Whether decompression should be tried or not.
+  [enabled: <boolean> | default = false]
+
+  # Initial delay to wait before starting the decompression.
+  # Especially useful in scenarios where compressed files are found before the compression is finished.
+  [initial_delay: <duration> | default = 0s]
+
+  # Compression format. Supported formats are: 'gz', 'bz2' and 'z.
+  [format: <string> | default = ""]
 
 # Describes how to scrape logs from the journal.
 [journal: <journal_config>]
@@ -346,6 +394,9 @@ job_name: <string>
 
 # Configuration describing how to pull/receive Google Cloud Platform (GCP) logs.
 [gcplog: <gcplog_config>]
+
+# Configuration describing how to get Azure Event Hubs messages.
+[azure_event_hub: <azure_event_hub_config>]
 
 # Describes how to fetch logs from Kafka via a Consumer group.
 [kafka: <kafka_config>]
@@ -395,7 +446,7 @@ docker_sd_configs:
 
 ### pipeline_stages
 
-[Pipeline]({{<relref "pipelines">}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
+[Pipeline]({{< relref "./pipelines" >}}) stages are used to transform log entries and their labels. The pipeline is executed after the discovery process finishes. The `pipeline_stages` object consists of a list of stages which correspond to the items listed below.
 
 In most cases, you extract data from logs with `regex` or `json` stages. The extracted data is transformed into a temporary map object. The data can then be used by Promtail e.g. as values for `labels` or as an `output`. Additionally any other stage aside from `docker` and `cri` can access the extracted data.
 
@@ -541,7 +592,7 @@ template:
 #### match
 
 The match stage conditionally executes a set of stages when a log entry matches
-a configurable [LogQL]({{<relref "../../logql/">}}) stream selector.
+a configurable [LogQL]({{< relref "../../query" >}}) stream selector.
 
 ```yaml
 match:
@@ -657,7 +708,7 @@ config:
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
   # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
+  # the extracted value must be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
 ```
@@ -714,7 +765,7 @@ config:
   # Must be either "inc" or "add" (case insensitive). If
   # inc is chosen, the metric value will increase by 1 for each
   # log line received that passed the filter. If add is chosen,
-  # the extracted value most be convertible to a positive float
+  # the extracted value must be convertible to a positive float
   # and its value will be added to the metric.
   action: <string>
 
@@ -730,9 +781,13 @@ picking it from a field in the extracted data map.
 
 ```yaml
 tenant:
-  # Name from extracted data to whose value should be set as tenant ID.
-  # Either source or value config option is required, but not both (they
+  # Either label, source or value config option is required, but not all (they
   # are mutually exclusive).
+
+  # Name from labels to whose value should be set as tenant ID.
+  [ label: <string> ]
+
+  # Name from extracted data to whose value should be set as tenant ID.
   [ source: <string> ]
 
   # Value to use to set the tenant ID when this stage is executed. Useful
@@ -807,8 +862,8 @@ Promtail needs to wait for the next message to catch multi-line messages,
 therefore delays between messages can occur.
 
 See recommended output configurations for
-[syslog-ng]({{<relref "scraping#syslog-ng-output-configuration">}}) and
-[rsyslog]({{<relref "scraping#rsyslog-output-configuration">}}). Both configurations enable
+[syslog-ng]({{< relref "./scraping#syslog-ng-output-configuration" >}}) and
+[rsyslog]({{< relref "./scraping#rsyslog-output-configuration" >}}). Both configurations enable
 IETF Syslog with octet-counting.
 
 You may need to increase the open files limit for the Promtail process
@@ -862,7 +917,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{<relref "../../api#push-log-entries-to-loki">}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
@@ -870,6 +925,8 @@ Note the `server` configuration is the same as [server](#server).
 
 Promtail also exposes a second endpoint on `/promtail/api/v1/raw` which expects newline-delimited log lines.
 This can be used to send NDJSON or plaintext logs.
+
+The readiness of the loki_push_api server can be checked using the endpoint `/ready`.
 
 ```yaml
 # The push server configuration options
@@ -892,14 +949,14 @@ See [Example Push Config](#example-push-config)
 
 The `windows_events` block configures Promtail to scrape windows event logs and send them to Loki.
 
-To subcribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
+To subscribe to a specific events stream you need to provide either an `eventlog_name` or an `xpath_query`.
 
 Events are scraped periodically every 3 seconds by default but can be changed using `poll_interval`.
 
 A bookmark path `bookmark_path` is mandatory and will be used as a position file where Promtail will
 keep record of the last event processed. This file persists across Promtail restarts.
 
-You can set `use_incoming_timestamp` if you want to keep incomming event timestamps. By default Promtail will use the timestamp when
+You can set `use_incoming_timestamp` if you want to keep incoming event timestamps. By default Promtail will use the timestamp when
 the event was read from the event log.
 
 Promtail will serialize JSON windows events, adding `channel` and `computer` labels from the event received.
@@ -979,6 +1036,10 @@ When using the `push` subscription type, keep in mind:
 # timestamp to the log when it was processed.
 [use_incoming_timestamp: <boolean> | default = false]
 
+# use_full_line to force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+# By default, if `textPayload` is present in the line, then it's used as log line.
+[use_full_line: <boolean> | default = false]
+
 # If the subscription_type is push, configures an HTTP handler timeout. If processing the incoming GCP Logs request takes longer
 # than the configured duration, that is processing and then sending the entry down the processing pipeline, the server will abort
 # and respond with a 503 HTTP status code.
@@ -989,15 +1050,17 @@ labels:
   [ <labelname>: <labelvalue> ... ]
 ```
 
-### Available Labels
+#### Available Labels
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabel_configs). This depends on the subscription type chosen.
 
 **Internal labels available for pull**
 
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
 **Internal labels available for push**
 
@@ -1005,8 +1068,59 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_subscription_name`
 - `__gcp_attributes_<NAME>`: All attributes read from `.message.attributes` in the incoming push message. Each attribute key is conveniently renamed, since it might contain unsupported characters. For example, `logging.googleapis.com/timestamp` is converted to `__gcp_attributes_logging_googleapis_com_timestamp`.
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
+
+### Azure Event Hubs
+
+The `azure_event_hubs` block configures how Promtail receives Azure Event Hubs messages. Promtail uses an Apache Kafka endpoint on Event Hubs to receive messages. For more information, see the [Azure Event Hubs documentation](https://learn.microsoft.com/en-us/azure/event-hubs/azure-event-hubs-kafka-overview).
+
+To learn more about streaming Azure logs to an Azure Event Hubs, you can see this [tutorial](https://learn.microsoft.com/en-us/azure/active-directory/reports-monitoring/tutorial-azure-monitor-stream-logs-to-event-hub).
+
+Note that an Apache Kafka endpoint is not available within the `Basic` pricing plan. For more information, see the [Event Hubs pricing page](https://azure.microsoft.com/en-us/pricing/details/event-hubs/).
+
+```yaml
+# Event Hubs namespace host names (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+fully_qualified_namespace: <string> | default = ""
+
+# Event Hubs to consume (Required).
+event_hubs:
+    [ - <string> ... ]
+
+# Event Hubs ConnectionString for authentication on Azure Cloud (Required).
+connection_string: <string> | default = "range"
+
+# The consumer group id.
+[group_id: <string> | default = "promtail"]
+
+# If Promtail should pass on the timestamp from the incoming message or not.
+# When false Promtail will assign the current timestamp to the log when it was processed.
+[use_incoming_timestamp: <bool> | default = false]
+
+# If Promtail should ignore messages that don't match the schema for Azure resource logs.
+# Schema is described here https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/resource-logs-schema.
+[disallow_custom_messages: <bool> | default = false]
+
+# Labels optionally hold labels to associate with each log line.
+[labels]:
+  [ <labelname>: <labelvalue> ... ]
+```
+
+#### Available Labels
+
+When Promtail receives Azure Event Hubs messages, various internal labels are made available for [relabeling](#relabel_configs).
+
+- `__azure_event_hubs_category`: The log category of the message when a message is an application log.
+
+The following list of labels is discovered using the Kafka endpoint in Event Hubs.
+
+- `__meta_kafka_topic`: The current topic for where the message has been read.
+- `__meta_kafka_partition`: The partition id where the message has been read.
+- `__meta_kafka_member_id`: The consumer group member id.
+- `__meta_kafka_group_id`: The consumer group id.
+- `__meta_kafka_message_key`: The message key. If it is empty, this value will be 'none'.
 
 ### kafka
 
@@ -1095,7 +1209,7 @@ labels:
 [use_incoming_timestamp: <bool> | default = false]
 ```
 
-**Available Labels:**
+#### Available Labels
 
 The list of labels below are discovered when consuming kafka:
 
@@ -1111,7 +1225,7 @@ To keep discovered labels to your logs use the [relabel_configs](#relabel_config
 
 The `gelf` block configures a GELF UDP listener allowing users to push
 logs to Promtail with the [GELF](https://docs.graylog.org/docs/gelf) protocol.
-Currently only UDP is supported, please submit a feature request if you're interested into TCP support.
+Currently only UDP is supported, submit a feature request if you're interested into TCP support.
 
 > GELF messages can be sent uncompressed or compressed with either GZIP or ZLIB.
 
@@ -1121,7 +1235,7 @@ Each GELF message received will be encoded in JSON as the log line. For example:
 {"version":"1.1","host":"example.org","short_message":"A short message","timestamp":1231231123,"level":5,"_some_extra":"extra"}
 ```
 
-You can leverage [pipeline stages]({{<relref "./stages">}}) with the GELF target,
+You can leverage [pipeline stages]({{< relref "./stages" >}}) with the GELF target,
 if for example, you want to parse the log line and extract more labels or change the log line format.
 
 ```yaml
@@ -1139,7 +1253,7 @@ use_incoming_timestamp: <bool>
 
 ```
 
-**Available Labels:**
+#### Available Labels
 
 - `__gelf_message_level`: The GELF level as string.
 - `__gelf_message_host`: The host sending the GELF message.
@@ -1193,7 +1307,7 @@ Here are the different set of fields type available and the fields they include 
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
-"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders"`
+"FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders", "ClientRequestSource"`
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
@@ -1227,6 +1341,7 @@ All Cloudflare logs are in JSON. Here is an example:
 	"ClientRequestReferer": "https://www.foo.com/foo/168855/?offset=8625",
 	"ClientRequestURI": "/foo/15248108/",
 	"ClientRequestUserAgent": "some bot",
+        "ClientRequestSource": "1"
 	"ClientSSLCipher": "ECDHE-ECDSA-AES128-GCM-SHA256",
 	"ClientSSLProtocol": "TLSv1.2",
 	"ClientSrcPort": 39816,
@@ -1258,10 +1373,10 @@ All Cloudflare logs are in JSON. Here is an example:
 	"OriginSSLProtocol": "TLSv1.2",
 	"ParentRayID": "00",
 	"RayID": "6b0a...",
-  "RequestHeaders": [],
-  "ResponseHeaders": [
-    "x-foo": "bar"
-  ],
+        "RequestHeaders": [],
+        "ResponseHeaders": [
+          "x-foo": "bar"
+        ],
 	"SecurityLevel": "med",
 	"WAFAction": "unknown",
 	"WAFFlags": "0",
@@ -1277,7 +1392,7 @@ All Cloudflare logs are in JSON. Here is an example:
 }
 ```
 
-You can leverage [pipeline stages]({{<relref "./stages">}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
+You can leverage [pipeline stages]({{< relref "./stages" >}}) if, for example, you want to parse the JSON log line and extract more labels or change the log line format.
 
 ### heroku_drain
 
@@ -1815,7 +1930,7 @@ service discovery should run on each node in a distributed setup. The containers
 either the [json-file](https://docs.docker.com/config/containers/logging/json-file/)
 or [journald](https://docs.docker.com/config/containers/logging/journald/) logging driver.
 
-Please note that the discovery will not pick up finished containers. That means
+Note that the discovery will not pick up finished containers. That means
 Promtail will not scrape the remaining logs from finished containers after a restart.
 
 The configuration is inherited from [Prometheus' Docker service discovery](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#docker_sd_config).
@@ -1982,9 +2097,9 @@ The `tracing` block configures tracing for Jaeger. Currently, limited to configu
 
 ## Example Docker Config
 
-It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{<relref "../docker-driver/">}}) for local Docker installs or Docker Compose.
+It's fairly difficult to tail Docker files on a standalone machine because they are in different locations for every OS.  We recommend the [Docker logging driver]({{< relref "../docker-driver" >}}) for local Docker installs or Docker Compose.
 
-If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/tree/master/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail it's name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
+If running in a Kubernetes environment, you should look at the defined configs which are in [helm](https://github.com/grafana/helm-charts/blob/main/charts/promtail/templates/configmap.yaml) and [jsonnet](https://github.com/grafana/loki/blob/main/production/ksonnet/promtail/scrape_config.libsonnet), these leverage the prometheus service discovery libraries (and give Promtail its name) for automatically finding and tailing pods.  The jsonnet config explains with comments what each section is for.
 
 
 ## Example Static Config
@@ -2118,7 +2233,7 @@ scrape_configs:
       pushserver: push1
 ```
 
-Please note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
+Note the `job_name` must be provided and must be unique between multiple `loki_push_api` scrape_configs, it will be used to register metrics.
 
 A new server instance is created so the `http_listen_port` and `grpc_listen_port` must be different from the Promtail `server` config section (unless it's disabled)
 

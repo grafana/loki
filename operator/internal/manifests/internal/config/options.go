@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -20,7 +21,7 @@ type Options struct {
 	Name                  string
 	Compactor             Address
 	FrontendWorker        Address
-	GossipRing            Address
+	GossipRing            GossipRing
 	Querier               Address
 	IndexGateway          Address
 	Ruler                 Ruler
@@ -30,6 +31,8 @@ type Options struct {
 	EnableRemoteReporting bool
 
 	ObjectStorage storage.Options
+
+	HTTPTimeouts HTTPTimeoutConfig
 
 	Retention RetentionOptions
 
@@ -53,6 +56,25 @@ type Address struct {
 	FQDN string
 	// Port is required
 	Port int
+}
+
+// GossipRing defines the memberlist configuration
+type GossipRing struct {
+	// InstanceAddr is optional, defaults to private networks
+	InstanceAddr string
+	// InstancePort is required
+	InstancePort int
+	// BindPort is the port for listening to gossip messages
+	BindPort int
+	// MembersDiscoveryAddr is required
+	MembersDiscoveryAddr string
+}
+
+// HTTPTimeoutConfig defines the HTTP server config options.
+type HTTPTimeoutConfig struct {
+	IdleTimeout  time.Duration
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
 }
 
 // Ruler configuration

@@ -5,11 +5,19 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.singleBinaryFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.singleBinaryLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.singleBinary.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
-  replicas: {{ .Values.singleBinary.replicas }}
+  replicas: {{ include "loki.singleBinaryReplicas" . }}
   podManagementPolicy: Parallel
   updateStrategy:
     rollingUpdate:
@@ -31,7 +39,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -120,6 +128,9 @@ spec:
             {{- end }}
           resources:
             {{- toYaml .Values.singleBinary.resources | nindent 12 }}
+        {{- with .Values.singleBinary.extraContainers }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.singleBinary.affinity }}
       affinity:
         {{- tpl . $ | nindent 8 }}
@@ -140,8 +151,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         - name: runtime-config
           configMap:

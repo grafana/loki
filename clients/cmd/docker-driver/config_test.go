@@ -81,7 +81,7 @@ var pipeline = PipelineConfig{
 }
 
 func Test_parsePipeline(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_parsePipeline")
+	f, err := os.CreateTemp("", "Test_parsePipeline")
 	if err != nil {
 		t.Fatal(err)
 	}

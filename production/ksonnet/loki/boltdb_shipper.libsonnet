@@ -17,9 +17,6 @@
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_boltdb_shipper then 24 else super.index_period_hours,
     loki+: if self.using_boltdb_shipper then {
-      chunk_store_config+: {
-        write_dedupe_cache_config:: {},
-      },
       storage_config+: {
         boltdb_shipper+: {
           shared_store: $._config.boltdb_shipper_shared_store,
@@ -35,7 +32,8 @@
   },
 
   // we don't dedupe index writes when using boltdb-shipper so don't deploy a cache for it.
-  memcached_index_writes: if $._config.using_boltdb_shipper then {} else super.memcached_index_writes,
+  memcached_index_writes: if $._config.using_boltdb_shipper then {} else
+    if 'memcached_index_writes' in super then super.memcached_index_writes else {},
 
   // Use PVC for compactor instead of node disk.
   compactor_data_pvc:: if $._config.using_boltdb_shipper then
@@ -49,9 +47,7 @@
     target: 'compactor',
   } else {},
 
-  compactor_ports: [
-    containerPort.new(name='http-metrics', port=$._config.http_listen_port),
-  ],
+  compactor_ports:: $.util.defaultPorts,
 
   compactor_container:: if $._config.using_boltdb_shipper then
     container.new('compactor', $._images.compactor) +

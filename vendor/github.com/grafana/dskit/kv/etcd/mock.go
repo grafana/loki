@@ -62,11 +62,11 @@ func newMockKV() *mockKV {
 //
 // Known limitations:
 //
-// * Compact is not implemented and will panic
-// * RequestProgress is not implemented and will panic
-// * Only exact and prefix matching is supported for Get, Put, and Delete
-// * There may be inconsistencies with how various version numbers are adjusted
-//   but none that are exposed by kv.Client unit tests
+//   - Compact is not implemented and will panic
+//   - RequestProgress is not implemented and will panic
+//   - Only exact and prefix matching is supported for Get, Put, and Delete
+//   - There may be inconsistencies with how various version numbers are adjusted
+//     but none that are exposed by kv.Client unit tests
 type mockKV struct {
 	// Key-value pairs created by put calls or transactions
 	values    map[string]mvccpb.KeyValue

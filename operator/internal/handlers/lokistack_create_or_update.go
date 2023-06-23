@@ -8,7 +8,6 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
@@ -190,16 +189,16 @@ func CreateOrUpdateLokiStack(
 		}
 
 		// extract the existing tenant's id, cookieSecret if exists, otherwise create new.
-		tenantConfigs, err = gateway.GetTenantConfigMapData(ctx, k, req)
+		tenantConfigs, err = gateway.GetTenantConfigSecretData(ctx, k, req)
 		if err != nil {
-			ll.Error(err, "error in getting tenant config map data")
+			ll.Error(err, "error in getting tenant secret data")
 		}
 	}
 
 	var (
-		alertingRules  []lokiv1beta1.AlertingRule
-		recordingRules []lokiv1beta1.RecordingRule
-		rulerConfig    *lokiv1beta1.RulerConfigSpec
+		alertingRules  []lokiv1.AlertingRule
+		recordingRules []lokiv1.RecordingRule
+		rulerConfig    *lokiv1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
 		ocpAmEnabled   bool
 		ocpUWAmEnabled bool
@@ -250,11 +249,34 @@ func CreateOrUpdateLokiStack(
 			ll.Error(err, "failed to check OCP User Workload AlertManager")
 			return err
 		}
+	} else {
+		// Clean up ruler resources
+		err = rules.RemoveRulesConfigMap(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove rules ConfigMap")
+			return err
+		}
+
+		err = rules.RemoveRuler(ctx, req, k)
+		if err != nil {
+			ll.Error(err, "failed to remove ruler StatefulSet")
+			return err
+		}
 	}
 
 	certRotationRequiredAt := ""
 	if stack.Annotations != nil {
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
+	}
+
+	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	if err != nil {
+		ll.Error(err, "failed to parse query timeout")
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
+			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
+		}
 	}
 
 	// Here we will translate the lokiv1.LokiStack options into manifest options
@@ -274,6 +296,7 @@ func CreateOrUpdateLokiStack(
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
 		},
+		Timeouts: timeoutConfig,
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
@@ -355,6 +378,7 @@ func CreateOrUpdateLokiStack(
 
 		depAnnotations, err := dependentAnnotations(ctx, k, obj)
 		if err != nil {
+			l.Error(err, "failed to set dependent annotations")
 			return err
 		}
 
@@ -383,7 +407,7 @@ func CreateOrUpdateLokiStack(
 
 	// 1x.extra-small is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall {
+	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 

@@ -12,7 +12,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/go-logr/logr"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
 )
 
@@ -48,7 +48,7 @@ func (r *AlertingRuleReconciler) Reconcile(ctx context.Context, _ ctrl.Request) 
 // SetupWithManager sets up the controller with the Manager.
 func (r *AlertingRuleReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&lokiv1beta1.AlertingRule{}).
+		For(&lokiv1.AlertingRule{}).
 		Watches(&source.Kind{Type: &corev1.Namespace{}}, &handler.EnqueueRequestForObject{}, builder.OnlyMetadata).
 		Complete(r)
 }

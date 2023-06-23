@@ -16,7 +16,7 @@ services:
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: grafana/loki:2.7.2
+    image: grafana/loki:2.8.2
     user: root
     entrypoint:
       - "chown"
@@ -52,6 +52,7 @@ services:
       [
         '--log.level=debug',
         '--config.file=/etc/prometheus/prometheus.yml',
+        '--enable-feature=remote-write-receiver',
         '--query.lookback-delta=30s'
       ]
     networks:
@@ -72,7 +73,7 @@ services:
       - ./loki/:/var/log/
 
   promtail:
-    image: grafana/promtail:2.7.2
+    image: grafana/promtail:2.8.2
     volumes:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
@@ -92,8 +93,8 @@ services:
         mkdir -p /data/loki-ruler &&
         minio server /data
     environment:
-      - MINIO_ACCESS_KEY=loki
-      - MINIO_SECRET_KEY=supersecret
+      - MINIO_ROOT_USER=loki
+      - MINIO_ROOT_PASSWORD=supersecret
       - MINIO_PROMETHEUS_AUTH_TYPE=public
       - MINIO_UPDATE=off
     ports:
@@ -114,9 +115,10 @@ services:
       - loki
 
   loki-read:
-    image: grafana/loki:2.7.2
+    image: grafana/loki:2.8.2
     volumes:
       - ./config:/etc/loki/
+      - ./rules:/loki/rules:ro
     ports:
       - "3100"
       - "7946"
@@ -136,7 +138,7 @@ services:
     # only needed for interactive debugging with dlv
 
   loki-write:
-    image: grafana/loki:2.7.2
+    image: grafana/loki:2.8.2
     volumes:
       - ./config:/etc/loki/
     ports:

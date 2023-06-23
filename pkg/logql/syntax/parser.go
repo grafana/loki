@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/scanner"
 
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -53,7 +52,7 @@ type parser struct {
 
 func (p *parser) Parse() (Expr, error) {
 	p.lexer.errs = p.lexer.errs[:0]
-	p.lexer.Scanner.Error = func(_ *scanner.Scanner, msg string) {
+	p.lexer.Scanner.Error = func(_ *Scanner, msg string) {
 		p.lexer.Error(msg)
 	}
 	e := p.p.Parse(p)
@@ -103,19 +102,12 @@ func ParseExprWithoutValidation(input string) (expr Expr, err error) {
 func validateExpr(expr Expr) error {
 	switch e := expr.(type) {
 	case SampleExpr:
-		err := validateSampleExpr(e)
-		if err != nil {
-			return err
-		}
+		return validateSampleExpr(e)
 	case LogSelectorExpr:
-		err := validateMatchers(e.Matchers())
-		if err != nil {
-			return err
-		}
+		return validateLogSelectorExpression(e)
 	default:
 		return logqlmodel.NewParseError(fmt.Sprintf("unexpected expression type: %v", e), 0, 0)
 	}
-	return nil
 }
 
 // validateMatchers checks whether a query would touch all the streams in the query range or uses at least one matcher to select specific streams.
@@ -162,14 +154,27 @@ func ParseSampleExpr(input string) (SampleExpr, error) {
 func validateSampleExpr(expr SampleExpr) error {
 	switch e := expr.(type) {
 	case *BinOpExpr:
+		if e.err != nil {
+			return e.err
+		}
 		if err := validateSampleExpr(e.SampleExpr); err != nil {
 			return err
 		}
-
 		return validateSampleExpr(e.RHS)
-	case *LiteralExpr, *VectorExpr:
+	case *LiteralExpr:
+		if e.err != nil {
+			return e.err
+		}
+		return nil
+	case *VectorExpr:
+		if e.err != nil {
+			return e.err
+		}
 		return nil
 	case *VectorAggregationExpr:
+		if e.err != nil {
+			return e.err
+		}
 		if e.Operation == OpTypeSort || e.Operation == OpTypeSortDesc {
 			if err := validateSortGrouping(e.Grouping); err != nil {
 				return err
@@ -177,7 +182,20 @@ func validateSampleExpr(expr SampleExpr) error {
 		}
 		return validateSampleExpr(e.Left)
 	default:
-		return validateMatchers(expr.Selector().Matchers())
+		selector, err := e.Selector()
+		if err != nil {
+			return err
+		}
+		return validateLogSelectorExpression(selector)
+	}
+}
+
+func validateLogSelectorExpression(expr LogSelectorExpr) error {
+	switch e := expr.(type) {
+	case *VectorExpr:
+		return nil
+	default:
+		return validateMatchers(e.Matchers())
 	}
 }
 
@@ -227,5 +245,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// Therefore we must normalize early in the write path.
 	// See https://github.com/grafana/loki/pull/7355
 	// for more information
-	return labels.NewBuilder(ls).Labels(nil), nil
+	return labels.NewBuilder(ls).Labels(), nil
 }

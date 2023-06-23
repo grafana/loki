@@ -9,11 +9,19 @@ The `cri` stage is a parsing stage that reads the log line using the standard CR
 ## Schema
 
 ```yaml
-cri: {}
+cri:
+  # Max buffer size to hold partial lines.
+  [max_partial_lines: <int> | default = 100]
+
+  # Max line size to hold a single partial line, if max_partial_line_size_truncate is true. Example: 262144.
+  [max_partial_line_size: <int> | default = 0]
+
+  # Allows to pretruncate partial lines before storing in partial buffer.
+  [max_partial_line_size_truncate: <bool> | default = false]
 ```
 
 Unlike most stages, the `cri` stage provides no configuration options and only
-supports the specific CRI log format. CRI specifies log lines log lines as
+supports the specific CRI log format. CRI specifies log lines as
 space-delimited values with the following components:
 
 1. `time`: The timestamp string of the log

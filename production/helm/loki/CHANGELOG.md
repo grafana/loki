@@ -11,7 +11,158 @@ Entries should be ordered as follows:
 
 Entries should include a reference to the pull request that introduced the change.
 
-[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. Add your changelog bellow this line. This locator is used by CI pipeline to find the place where to put changelog entry.)
+[//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+## 5.8.4
+
+- [ENHANCEMENT] Add loki.lokiCanary.updateStrategy configuration
+
+## 5.8.3
+
+- [ENHANCEMENT] Add priorityClassName for Grafana Agent and Loki Canary
+
+## 5.8.2
+
+- [BUGFIX] Reference the correct configmap name for table manager
+
+## 5.8.1
+
+- [BUGFIX] Fix config as a secret mount for single binary statefulset
+
+## 5.8.0
+
+- [ENHANCEMENT] Add loki.memberlistConfig to fully control the memberlist configuration
+
+## 5.7.1
+
+- [FEATURE] Add support for additional labels on loki-canary pods
+
+## 5.6.4
+
+- [FEATURE] Make table manager retention options configurable in values
+
+## 5.6.3
+
+- [BUGFIX] Fix configmap checksum in read statefulset template
+
+## 5.6.2
+
+- [BUGFIX] Fix configmap checksum in table manager deployment template
+
+## 5.6.1
+
+- [BUGFIX] Fix HPA for single binary deployment
+
+## 5.6.0
+
+- [ENHANCEMENT] Add `gateway.ingress.labels` to values and ingress-gateway in helm chart.
+
+## 5.5.12
+
+- [BUGFIX] Fix checksum annotation for config in single binary
+
+## 5.5.11
+
+- [BUGFIX] Add missing metrics section in backend hpa template
+
+## 5.5.10
+
+- [CHANGE] Make the gateway listen on IPv6 as well as IPv4
+
+## 5.5.9
+
+- [FEATURE] Add `loki.configStorageType` & `loki.externalConfigSecretName` values to chart and templates.
+
+## 5.5.8
+
+- [CHANGE] Add support for annotations on all Deployments and StatefulSets
+
+## 5.5.7
+
+- [BUGFIX] Fix breaking helm upgrade by changing sts podManagementPolicy from Parallel to OrderedReady which fails since that field cannot be modified on sts.
+
+## 5.5.6
+
+- [FEATURE] Add hpa templates for read, write and backend.
+
+## 5.5.5
+
+- [BUGFIX] Quote tenantId value in logsInstance
+
+## 5.5.4
+
+- [CHANGE] Add extraVolumeClaimTemplates for StatefulSet of the write component.
+
+## 5.5.3
+
+- [BUGFIX] Fix issue in distribution of queries to available read pods by using k8s service for discovering query-scheduler replicas
+
+## 5.5.2
+
+- [BUGFIX] Use $.Release.Namespace consistently
+- [CHANGE] Add clusterLabelOverride for alert label overrides.
+- [BUGFIX] Use $.Release.Namespace consistently
+
+## 5.5.1
+
+- [FEATURE] Added ability to reference images by digest
+
+## 5.5.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.2
+
+
+## 5.4.0
+
+- [CHANGE] Changed version of Loki to 2.8.2
+
+
+- [CHANGE] Change default GEL and Loki versions to 1.7.1 and 2.8.1 respectively
+- [BUGFIX] Fix dns port in network-policy
+
+## 4.10.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.3
+
+- [BUGFIX] Add projected volume type to psp
+
+
+## 4.9.0
+
+- [CHANGE] Changed version of Loki to 2.7.5
+
+
+- [BUGFIX] Fix role/PSP mapping
+
+## 4.8.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.6.2
+
+## 4.7
+
+- [CHANGE] **BREAKING** Rename `gel-license.jwt` property of secret `gel-secrets` to `license.jwt` on enterprise-logs chart.
+
+## 4.6.2
+
+- [BUGFIX] Fix tokengen and provisioner secrets creation on enterprise-logs chart.
+
+## 4.6.1
+
+- [FEATURE] Add `gateway.nginxConfig.customReadUrl`, `gateway.nginxConfig.customWriteUrl` and `gateway.nginxConfig.customBackendUrl` to override read/write/backend paths.
+- [BUGFIX] Remove unreleased setting `useFederatedToken` from Azure configuration block.
+
+## 4.6
+
+- [Change] Bump Loki version to 2.7.3. Revert to 2 target simple scalable mode as default until third target ships in minor release.
+
+## 4.5.1
+
+- [BUGFIX] Fix rendering of namespace in provisioner job.
+- [ENHANCEMENT] Allow to configure `publishNotReadyAddresses` on memberlist service.
+- [BUGFIX] Correctly set `compactor_address` for 3 target scalable configuration.
+
+## 4.5
+
+- [ENHANCEMENT] Single binary mode is now possible for more than 1 replica, with a gateway and object storage backend.
 
 ## 4.4.2
 

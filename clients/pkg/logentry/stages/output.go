@@ -60,7 +60,7 @@ func (o *outputStage) Close() {
 }
 
 // Process implements Stage
-func (o *outputStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (o *outputStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
 	if o.cfgs == nil {
 		return
 	}

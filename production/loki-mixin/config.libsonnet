@@ -15,6 +15,11 @@
     // Enable dashboard and panels for Grafana Labs internal components.
     internal_components: false,
 
+    promtail: {
+      // Whether or not to include promtail specific dashboards
+      enabled: true,
+    },
+
     // SSD related configuration for dashboards.
     ssd: {
       // Support Loki SSD mode on dashboards.

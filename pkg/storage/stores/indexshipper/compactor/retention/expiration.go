@@ -53,6 +53,10 @@ func NewExpirationChecker(limits Limits) ExpirationChecker {
 func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+	// The 0 value should disable retention
+	if period <= 0 {
+		return false, nil
+	}
 	return now.Sub(ref.Through) > period, nil
 }
 
@@ -62,6 +66,10 @@ func (e *expirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filte
 func (e *expirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
 	userID := unsafeGetString(ref.UserID)
 	period := e.tenantsRetention.RetentionPeriodFor(userID, ref.Labels)
+	// The 0 value should disable retention
+	if period <= 0 {
+		return false
+	}
 	return now.Sub(tableEndTime) > period
 }
 
@@ -93,23 +101,23 @@ func (e *expirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval
 }
 
 // NeverExpiringExpirationChecker returns an expiration checker that never expires anything
-func NeverExpiringExpirationChecker(limits Limits) ExpirationChecker {
+func NeverExpiringExpirationChecker(_ Limits) ExpirationChecker {
 	return &neverExpiringExpirationChecker{}
 }
 
 type neverExpiringExpirationChecker struct{}
 
-func (e *neverExpiringExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
+func (e *neverExpiringExpirationChecker) Expired(_ ChunkEntry, _ model.Time) (bool, filter.Func) {
 	return false, nil
 }
-func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(interval model.Interval, userID string) bool {
+func (e *neverExpiringExpirationChecker) IntervalMayHaveExpiredChunks(_ model.Interval, _ string) bool {
 	return false
 }
 func (e *neverExpiringExpirationChecker) MarkPhaseStarted()  {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFailed()   {}
 func (e *neverExpiringExpirationChecker) MarkPhaseTimedOut() {}
 func (e *neverExpiringExpirationChecker) MarkPhaseFinished() {}
-func (e *neverExpiringExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+func (e *neverExpiringExpirationChecker) DropFromIndex(_ ChunkEntry, _ model.Time, _ model.Time) bool {
 	return false
 }
 

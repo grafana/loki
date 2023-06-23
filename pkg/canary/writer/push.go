@@ -9,7 +9,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -45,6 +44,13 @@ type Push struct {
 	userAgent   string
 	contentType string
 	logger      log.Logger
+
+	// channel for incoming logs
+	entries chan entry
+
+	// shutdown channels
+	quit chan struct{}
+	done chan struct{}
 
 	// auth
 	username, password string
@@ -101,13 +107,16 @@ func NewPush(
 		Path:   pushEndpoint,
 	}
 
-	return &Push{
+	p := &Push{
 		lokiURL:     u.String(),
 		tenantID:    tenantID,
 		httpClient:  client,
 		userAgent:   defaultUserAgent,
 		contentType: defaultContentType,
 		logger:      logger,
+		entries:     make(chan entry, 50), // Use a buffered channel so we can retry failed pushes without blocking WriteEntry
+		quit:        make(chan struct{}),
+		done:        make(chan struct{}),
 		labelName:   labelName,
 		labelValue:  labelValue,
 		streamName:  streamName,
@@ -115,79 +124,118 @@ func NewPush(
 		username:    username,
 		password:    password,
 		backoff:     backoffCfg,
-	}, nil
+	}
+	go p.run()
+	return p, nil
 }
 
-// Write implements the io.Writer.
-func (p *Push) Write(payload []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.httpClient.Timeout)
-	defer cancel()
-	if err := p.send(ctx, payload); err != nil {
-		return 0, err
-	}
-	return len(payload), nil
+type entry struct {
+	ts    time.Time
+	entry string
 }
 
-func (p *Push) parsePayload(payload []byte) (*logproto.PushRequest, error) {
-	// payload that is sent by the `writer` will be in format `LogEntry`
-	var (
-		tsStr, logLine string
-	)
-	if _, err := fmt.Sscanf(string(payload), LogEntry, &tsStr, &logLine); err != nil {
-		return nil, fmt.Errorf("failed to parse payload written sent by writer: %w", err)
-	}
+// WriteEntry implements EntryWriter
+func (p *Push) WriteEntry(ts time.Time, e string) {
+	p.entries <- entry{ts, e}
+}
 
-	ts, err := strconv.ParseInt(tsStr, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse unix nano timestamp: %w", err)
+// Stop will cancel any ongoing requests and stop the goroutine listening for requests
+func (p *Push) Stop() {
+	if p.quit != nil {
+		close(p.quit)
+		<-p.done
+		p.quit = nil
 	}
+}
+
+// buildPayload creates the snappy compressed protobuf to send to Loki
+func (p *Push) buildPayload(e entry) ([]byte, error) {
 
 	labels := model.LabelSet{
 		model.LabelName(p.labelName):  model.LabelValue(p.labelValue),
 		model.LabelName(p.streamName): model.LabelValue(p.streamValue),
 	}
 
-	return &logproto.PushRequest{
+	req := &logproto.PushRequest{
 		Streams: []logproto.Stream{
 			{
 				Labels: labels.String(),
 				Entries: []logproto.Entry{
 					{
-						Timestamp: time.Unix(0, ts),
-						Line:      string(payload),
+						Timestamp: e.ts,
+						Line:      e.entry,
 					},
 				},
 				Hash: uint64(labels.Fingerprint()),
 			},
 		},
-	}, nil
-}
-
-// send does the heavy lifting of sending the generated logs into the Loki server.
-// It won't batch.
-func (p *Push) send(ctx context.Context, payload []byte) error {
-	var (
-		resp *http.Response
-		err  error
-	)
-
-	preq, err := p.parsePayload(payload)
-	if err != nil {
-		return err
 	}
-
-	payload, err = proto.Marshal(preq)
+	payload, err := proto.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("failed to marshal payload to json: %w", err)
+		return []byte{}, fmt.Errorf("failed to marshal payload to json: %w", err)
 	}
 
 	payload = snappy.Encode(nil, payload)
 
+	return payload, nil
+}
+
+// run pulls lines out of the channel and sends them to Loki
+func (p *Push) run() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer func() {
+		close(p.done)
+	}()
+
+	for {
+		select {
+		case <-p.quit:
+			cancel()
+			return
+		case e := <-p.entries:
+			payload, err := p.buildPayload(e)
+			if err != nil {
+				level.Error(p.logger).Log("msg", "failed to build payload", "err", err)
+				continue
+			}
+
+			// We will use a timeout within each attempt to send
+			backoff := backoff.New(context.Background(), *p.backoff)
+
+			// send log with retry
+			for {
+				status := 0
+				status, err = p.send(ctx, payload)
+				if err == nil {
+					break
+				}
+
+				if status > 0 && status != 429 && status/100 != 5 {
+					level.Error(p.logger).Log("msg", "failed to send entry, server rejected push with a non-retryable status code", "entry", e.ts.UnixNano(), "status", status, "err", err)
+					break
+				}
+
+				if !backoff.Ongoing() {
+					level.Error(p.logger).Log("msg", "failed to send entry, retries exhausted, entry will be dropped", "entry", e.ts.UnixNano(), "status", status, "error", err)
+					break
+				}
+				level.Warn(p.logger).Log("msg", "failed to send entry, retrying", "entry", e.ts.UnixNano(), "status", status, "error", err)
+				backoff.Wait()
+			}
+		}
+	}
+}
+
+// send makes one attempt to send the payload to Loki
+func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
+	var (
+		err  error
+		resp *http.Response
+	)
 	req, err := http.NewRequest("POST", p.lokiURL, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("failed to create push request: %w", err)
+		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
-	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", p.contentType)
 	req.Header.Set("User-Agent", p.userAgent)
 
@@ -200,42 +248,28 @@ func (p *Push) send(ctx context.Context, payload []byte) error {
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
 	}
+	// Set a timeout for the request
+	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
+	defer cancel()
+	req = req.WithContext(ctx)
 
-	backoff := backoff.New(ctx, *p.backoff)
-
-	// send log with retry
-	for {
-		resp, err = p.httpClient.Do(req)
-		if err != nil {
-			return fmt.Errorf("failed to push payload: %w", err)
+	resp, err = p.httpClient.Do(req)
+	if err != nil {
+		return -1, fmt.Errorf("failed to push payload: %w", err)
+	}
+	status := resp.StatusCode
+	if status/100 != 2 {
+		scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
+		line := ""
+		if scanner.Scan() {
+			line = scanner.Text()
 		}
-		status := resp.StatusCode
-
-		if status/100 != 2 {
-			scanner := bufio.NewScanner(io.LimitReader(resp.Body, defaultMaxReponseBufferLen))
-			line := ""
-			if scanner.Scan() {
-				line = scanner.Text()
-			}
-			err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
-
-		}
-
-		if err := resp.Body.Close(); err != nil {
-			level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
-		}
-
-		if status > 0 && status != 429 && status/100 != 5 {
-			break
-		}
-
-		if !backoff.Ongoing() {
-			break
-		}
-
-		level.Info(p.logger).Log("msg", "retrying as server returned non successful error", "status", status, "error", err)
-
+		err = fmt.Errorf("server returned HTTP status %s (%d): %s", resp.Status, status, line)
 	}
 
-	return err
+	if err := resp.Body.Close(); err != nil {
+		level.Error(p.logger).Log("msg", "failed to close response body", "error", err)
+	}
+
+	return status, err
 }

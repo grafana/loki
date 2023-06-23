@@ -1,20 +1,19 @@
 ---
-title: Install the Single Binary Helm Chart
-menuTitle: Install single binary Loki
-description: Install Loki in single binary mode.
+title: Install the monolithic Helm chart
+menuTitle: Install monolithic Loki
+description: Install Loki in monolithic, single binary mode.
 aliases:
   - /docs/installation/helm/monolithic
-weight: 100
-keywords: []
+weight: 300
+keywords: 
 ---
 
-# Install the Single Binary Helm Chart
+# Install the monolithic Helm chart
 
 This Helm Chart installation runs the Grafana Loki *single binary* within a Kubernetes cluster.
 
-If the storage type is set to `filesystem`, this chart configures Loki to run the `all` target in a [monolithic mode]({{<relref "../../../fundamentals/architecture/deployment-modes#monolithic-mode">}}), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
-
-It is not possible to install the single binary with a different storage type.
+If you set the `singleBinary.replicas` value to 1, this chart configures Loki to run the `all` target in a [monolithic mode]({{< relref "../../../get-started/deployment-modes#monolithic-mode" >}}), designed to work with a filesystem storage. It will also configure meta-monitoring of metrics and logs.
+If you set the `singleBinary.replicas` value to 2 or more, this chart configures Loki to run a *single binary* in a replicated, highly available mode.  When running replicas of a single binary, you must configure object storage.
 
 **Before you begin: Software Requirements**
 
@@ -35,9 +34,9 @@ It is not possible to install the single binary with a different storage type.
     helm repo update
     ```
 
-1. Configure the `filesystem` storage:
+1. Create the configuration file `values.yaml`:
 
-    - Create the configuration file `values.yaml`:
+    - If running a single replica of Loki, configure the `filesystem` storage:
 
       ```yaml
       loki:
@@ -45,6 +44,25 @@ It is not possible to install the single binary with a different storage type.
           replication_factor: 1
         storage:
           type: 'filesystem'
+      singleBinary:
+        replicas: 1
+      ```
+
+    - If running Loki with a replication factor greater than 1, set the desired number replicas and provide object storage credentials:
+
+      ```yaml
+      loki:
+        commonConfig:
+          replication_factor: 3
+        storage:
+          type: 's3'
+          s3:
+            endpoint: foo.aws.com
+            bucketnames: loki-chunks
+            secret_access_key: supersecret
+            access_key_id: secret
+      singleBinary:
+        replicas: 3
       ```
 
 1. Deploy the Loki cluster using one of these commands.
@@ -58,5 +76,5 @@ It is not possible to install the single binary with a different storage type.
     - Deploy with the defined configuration in a custom Kubernetes cluster namespace:
 
         ```bash
-        helm install --values values.yaml loki --namespace=loki grafana/loki-simple-scalable
+        helm install --values values.yaml loki --namespace=loki grafana/loki
         ```

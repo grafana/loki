@@ -5,8 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/stretchr/testify/mock"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/tenant"
@@ -45,7 +51,7 @@ type slowConnectionSimulator struct {
 	didTimeout bool
 }
 
-func (s *slowConnectionSimulator) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (s *slowConnectionSimulator) ServeHTTP(_ http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if err := ctx.Err(); err != nil {
 		panic(fmt.Sprintf("context already errored: %s", err))
@@ -189,5 +195,92 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		}
 
 		require.True(t, connSimulator.didTimeout)
+	})
+}
+
+func TestSeriesVolumeHandler(t *testing.T) {
+	now := time.Now()
+	t1 := model.TimeFromUnix(now.Add(-time.Hour).Unix())
+	t2 := model.TimeFromUnix(now.Add(-time.Minute).Unix())
+
+	t.Run("it returns label volumes from the querier", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 38},
+			},
+			From:    t1,
+			Through: t2,
+		}
+
+		querier := newQuerierMock()
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
+
+		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
+
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		api.SeriesVolumeHandler(w, req)
+
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
+		require.Len(t, calls, 1)
+		require.Equal(t, &logproto.VolumeRequest{
+			From:     0,
+			Through:  1000,
+			Matchers: `{foo="bar"}`,
+			Limit:    100,
+		}, calls[0].Arguments[1])
+
+		require.Equal(
+			t,
+			fmt.Sprintf(
+				`{"volumes":[{"name":"{foo=\"bar\"}","volume":38}],"from":%s,"through":%s}`,
+				t1, t2,
+			),
+			strings.TrimSpace(w.Body.String()),
+		)
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
+
+	t.Run("it returns nothing when a store doesn't support label volumes", func(t *testing.T) {
+		querier := newQuerierMock()
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, nil)
+
+		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
+
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		api.SeriesVolumeHandler(w, req)
+
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
+		require.Len(t, calls, 1)
+
+		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[],"from":0,"through":0}`)
+		require.Equal(t, http.StatusOK, w.Result().StatusCode)
+	})
+
+	t.Run("it returns error when there's an error in the querier", func(t *testing.T) {
+		querier := newQuerierMock()
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, errors.New("something bad"))
+
+		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
+
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		err := req.ParseForm()
+		require.NoError(t, err)
+
+		w := httptest.NewRecorder()
+		api.SeriesVolumeHandler(w, req)
+
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
+		require.Len(t, calls, 1)
+
+		require.Equal(t, strings.TrimSpace(w.Body.String()), `something bad`)
+		require.Equal(t, http.StatusInternalServerError, w.Result().StatusCode)
 	})
 }

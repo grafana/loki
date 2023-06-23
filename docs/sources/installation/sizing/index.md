@@ -1,14 +1,14 @@
 ---
 title: Size the cluster 
 menuTitle: Size the cluster 
-description: A sizing tool that generates Helm Chart values.
+description: This tool generates a Helm Chart values.yaml file based on expected ingestion, retention rate, and node type, to help size your Grafana deployment.
 aliases:
   - /docs/installation/helm/generate
 weight: 100
 keywords: []
 ---
 
-<link rel="stylesheet" href="../../logql/analyzer/style.css">
+<link rel="stylesheet" href="../../query/analyzer/style.css">
 
 # Size the cluster
 <!-- vale Grafana.Quotes = NO -->
@@ -16,7 +16,7 @@ keywords: []
 
 This tool helps to generate a Helm Charts `values.yaml` file based on specified
  expected ingestion, retention rate and node type. It will always configure a
- [scalable]({{<relref "../../fundamentals/architecture/deployment-modes#simple-scalable-deployment-mode">}}) deployment. The storage needs to be configured after generation.
+ [scalable]({{< relref "../../get-started/deployment-modes#simple-scalable-deployment-mode" >}}) deployment. The storage needs to be configured after generation.
 
 <div id="app">
   <label>Node Type<i class="fa fa-question" v-on:mouseover="help='node'" v-on:mouseleave="help=null"></i></label>
@@ -50,12 +50,14 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
       <th>Write Replicas</th>
       <th>Nodes</th>
       <th>Cores</th>
+      <th>Memory</th>
     </tr>
     <tr>
       <td>{{ clusterSize.TotalReadReplicas }}</td>
       <td>{{ clusterSize.TotalWriteReplicas }}</td>
       <td>{{ clusterSize.TotalNodes}}</td>
       <td>{{ clusterSize.TotalCoresRequest}}</td>
+      <td>{{ clusterSize.TotalMemoryRequest}} GB</td>
     </tr>
     </table>
   </div>
@@ -64,16 +66,17 @@ This tool helps to generate a Helm Charts `values.yaml` file based on specified
 
   <blockquote v-if="help">
     <span v-if="help === 'ingest'">
-    Defines the log volume in terrabytes expected to be ingested each day.
+    Defines the log volume in gigabytes, ie 1e+9 bytes, expected to be ingested each day.
     </span>
     <span v-else-if="help === 'node'">
-    Defines the node type of the Kubernetes cluster.
+    Defines the node type of the Kubernetes cluster. Is a vendor or type
+    missing? If so, add it to <code>pkg/sizing/node.go</code>.
     </span>
     <span v-else-if="help === 'retention'">
     Defines how long the ingested logs should be kept.
     </span>
     <span v-else-if="help === 'queryperf'">
-    Defines the expected query performance. Basic enables 3mbps. Super should be chosen if more query throughput is required.
+    Defines the expected query performance. Basic is sized for a max query throughput of around 3GB/s. Super aims for 25% more throughput.
     </span>
   </blockquote>
 </div>

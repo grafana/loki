@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -221,7 +220,7 @@ func (c *Client) copyObjectDo(ctx context.Context, srcBucket, srcObject, destBuc
 		headers.Set(minIOBucketSourceETag, dstOpts.Internal.SourceETag)
 	}
 	if dstOpts.Internal.ReplicationRequest {
-		headers.Set(minIOBucketReplicationRequest, "")
+		headers.Set(minIOBucketReplicationRequest, "true")
 	}
 	if !dstOpts.Internal.LegalholdTimestamp.IsZero() {
 		headers.Set(minIOBucketReplicationObjectLegalHoldTimestamp, dstOpts.Internal.LegalholdTimestamp.Format(time.RFC3339Nano))
@@ -516,7 +515,7 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 				return UploadInfo{}, err
 			}
 			if dst.Progress != nil {
-				io.CopyN(ioutil.Discard, dst.Progress, end-start+1)
+				io.CopyN(io.Discard, dst.Progress, end-start+1)
 			}
 			objParts = append(objParts, complPart)
 			partIndex++
@@ -525,7 +524,7 @@ func (c *Client) ComposeObject(ctx context.Context, dst CopyDestOptions, srcs ..
 
 	// 4. Make final complete-multipart request.
 	uploadInfo, err := c.completeMultipartUpload(ctx, dst.Bucket, dst.Object, uploadID,
-		completeMultipartUpload{Parts: objParts}, PutObjectOptions{})
+		completeMultipartUpload{Parts: objParts}, PutObjectOptions{ServerSideEncryption: dst.Encryption})
 	if err != nil {
 		return UploadInfo{}, err
 	}

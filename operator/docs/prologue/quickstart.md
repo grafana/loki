@@ -29,7 +29,7 @@ make quickstart
 If you want to test local changes from your repository fork, you need to provide an image registry organization that you own that has an image repository name `loki-operator`, e.g. `quay.io/my-company-org/loki-operator`. The command to use your custom images is:
 
 ```shell
-make quickstart REGISTRY_ORG=my-company-org
+make quickstart REGISTRY_BASE=quay.io/my-company-org
 ```
 
 ## Further reading

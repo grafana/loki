@@ -49,7 +49,7 @@ func (l *labelDropStage) Close() {
 }
 
 // Process implements Stage
-func (l *labelDropStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (l *labelDropStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
 	for _, label := range l.cfgs {
 		delete(labels, model.LabelName(label))
 	}

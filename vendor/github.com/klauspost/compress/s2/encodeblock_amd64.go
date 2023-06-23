@@ -146,6 +146,20 @@ func encodeSnappyBetterBlockAsm10B(dst []byte, src []byte) int
 //go:noescape
 func encodeSnappyBetterBlockAsm8B(dst []byte, src []byte) int
 
+// calcBlockSize encodes a non-empty src to a guaranteed-large-enough dst.
+// Maximum input 4294967295 bytes.
+// It assumes that the varint-encoded length of the decompressed bytes has already been written.
+//
+//go:noescape
+func calcBlockSize(src []byte) int
+
+// calcBlockSizeSmall encodes a non-empty src to a guaranteed-large-enough dst.
+// Maximum input 1024 bytes.
+// It assumes that the varint-encoded length of the decompressed bytes has already been written.
+//
+//go:noescape
+func calcBlockSizeSmall(src []byte) int
+
 // emitLiteral writes a literal chunk and returns the number of bytes written.
 //
 // It assumes that:
@@ -192,3 +206,23 @@ func emitCopyNoRepeat(dst []byte, offset int, length int) int
 //
 //go:noescape
 func matchLen(a []byte, b []byte) int
+
+// cvtLZ4Block converts an LZ4 block to S2
+//
+//go:noescape
+func cvtLZ4BlockAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)
+
+// cvtLZ4sBlock converts an LZ4s block to S2
+//
+//go:noescape
+func cvtLZ4sBlockAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)
+
+// cvtLZ4Block converts an LZ4 block to Snappy
+//
+//go:noescape
+func cvtLZ4BlockSnappyAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)
+
+// cvtLZ4sBlock converts an LZ4s block to Snappy
+//
+//go:noescape
+func cvtLZ4sBlockSnappyAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)

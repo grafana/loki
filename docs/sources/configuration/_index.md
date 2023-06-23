@@ -13,7 +13,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{< relref "./examples/" >}}) document.
+Configuration examples can be found in the [Configuration Examples]({{< relref "./examples" >}}) document.
 
 ## Printing Loki config at runtime
 
@@ -185,6 +185,14 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # The table_manager block configures the table manager for retention.
 [table_manager: <table_manager>]
 
+# Configuration for memberlist client. Only applies if the selected kvstore is
+# memberlist.
+# 
+# When a memberlist config with atleast 1 join_members is defined, kvstore of
+# type memberlist is automatically selected for all the components that require
+# a ring unless otherwise specified in the component's configuration section.
+[memberlist: <memberlist>]
+
 # Configuration for 'runtime config' module, responsible for reloading runtime
 # configuration file.
 [runtime_config: <runtime_config>]
@@ -192,13 +200,18 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for tracing.
 [tracing: <tracing>]
 
-# Configuration for usage report.
+# Configuration for analytics.
 [analytics: <analytics>]
 
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.
 [common: <common>]
+
+# How long to wait between SIGTERM and shutdown. After receiving SIGTERM, Loki
+# will report 503 Service Unavailable status via /ready endpoint.
+# CLI flag: -shutdown-delay
+[shutdown_delay: <duration> | default = 0s]
 ```
 
 ### server
@@ -376,9 +389,19 @@ grpc_tls_config:
 # CLI flag: -server.log-source-ips-regex
 [log_source_ips_regex: <string> | default = ""]
 
-# Optionally log requests at info level instead of debug level.
+# Optionally log request headers.
+# CLI flag: -server.log-request-headers
+[log_request_headers: <boolean> | default = false]
+
+# Optionally log requests at info level instead of debug level. Applies to
+# request headers as well if server.log-request-headers is enabled.
 # CLI flag: -server.log-request-at-info-level-enabled
 [log_request_at_info_level_enabled: <boolean> | default = false]
+
+# Comma separated list of headers to exclude from loggin. Only used if
+# server.log-request-headers is true.
+# CLI flag: -server.log-request-headers-exclude-list
+[log_request_exclude_headers_list: <string> | default = ""]
 
 # Base path to serve all API routes from (e.g. /v1/)
 # CLI flag: -server.path-prefix
@@ -401,11 +424,13 @@ ring:
     # CLI flag: -distributor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: distributor.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: distributor.ring
     [etcd: <etcd>]
 
@@ -453,6 +478,22 @@ rate_store:
   # updating rates
   # CLI flag: -distributor.rate-store.ingester-request-timeout
   [ingester_request_timeout: <duration> | default = 500ms]
+
+  # If enabled, detailed logs and spans will be emitted.
+  # CLI flag: -distributor.rate-store.debug
+  [debug: <boolean> | default = false]
+
+# Experimental. Customize the logging of write failures.
+write_failures_logging:
+  # Experimental and subject to change. Log volume allowed (per second).
+  # Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging.rate
+  [rate: <int> | default = 1KB]
+
+  # Experimental and subject to change. Whether a insight=true key should be
+  # logged or not. Default: false.
+  # CLI flag: -distributor.write-failures-logging.add-insights-label
+  [add_insights_label: <boolean> | default = false]
 ```
 
 ### querier
@@ -500,6 +541,10 @@ engine:
 # When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
+
+# When true, querier limits sent via a header are enforced.
+# CLI flag: -querier.per-request-limits-enabled
+[per_request_limits_enabled: <boolean> | default = false]
 ```
 
 ### query_scheduler
@@ -512,6 +557,11 @@ The `query_scheduler` block configures the Loki query scheduler. When configured
 # 429.
 # CLI flag: -query-scheduler.max-outstanding-requests-per-tenant
 [max_outstanding_requests_per_tenant: <int> | default = 100]
+
+# Maximum number of levels of nesting of hierarchical queues. 0 means that
+# hierarchical queues are disabled.
+# CLI flag: -query-scheduler.max-queue-hierarchy-levels
+[max_queue_hierarchy_levels: <int> | default = 3]
 
 # If a querier disconnects without sending notification about graceful shutdown,
 # the query-scheduler will keep the querier in the tenant's shard until the
@@ -545,11 +595,13 @@ scheduler_ring:
     # CLI flag: -query-scheduler.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: query-scheduler.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: query-scheduler.ring
     [etcd: <etcd>]
 
@@ -609,6 +661,10 @@ scheduler_ring:
   # zone-awareness is enabled.
   # CLI flag: -query-scheduler.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -query-scheduler.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 ```
 
 ### frontend
@@ -712,8 +768,8 @@ results_cache:
   # The CLI flags prefix for this block configuration is: frontend
   [cache: <cache_config>]
 
-  # Use compression in results cache. Supported values are: 'snappy' and ''
-  # (disable compression).
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.compression
   [compression: <string> | default = ""]
 
@@ -734,6 +790,23 @@ results_cache:
 # List of headers forwarded by the query Frontend to downstream querier.
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
+
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_index_stats_results is true, the
+# config for the results cache is used.
+index_stats_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.index-stats-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -741,9 +814,13 @@ results_cache:
 The `ruler` block configures the Loki ruler.
 
 ```yaml
-# URL of alerts return path.
+# Base URL of the Grafana instance.
 # CLI flag: -ruler.external.url
 [external_url: <url>]
+
+# Datasource UID for the dashboard.
+# CLI flag: -ruler.datasource-uid
+[datasource_uid: <string> | default = ""]
 
 # Labels to add to all alerts.
 [external_labels: <list of Labels>]
@@ -765,13 +842,17 @@ The `ruler` block configures the Loki ruler.
 # options instead.
 storage:
   # Method to use for backend rule storage (configdb, azure, gcs, s3, swift,
-  # local, bos)
+  # local, bos, cos)
   # CLI flag: -ruler.storage.type
   [type: <string> | default = ""]
 
   # Configures backend rule storage for Azure.
   # The CLI flags prefix for this block configuration is: ruler.storage
   [azure: <azure_storage_config>]
+
+  # Configures backend rule storage for AlibabaCloud Object Storage (OSS).
+  # The CLI flags prefix for this block configuration is: ruler
+  [alibabacloud: <alibabacloud_storage_config>]
 
   # Configures backend rule storage for GCS.
   # The CLI flags prefix for this block configuration is: ruler.storage
@@ -788,6 +869,10 @@ storage:
   # Configures backend rule storage for Swift.
   # The CLI flags prefix for this block configuration is: ruler.storage
   [swift: <swift_storage_config>]
+
+  # Configures backend rule storage for IBM Cloud Object Storage (COS).
+  # The CLI flags prefix for this block configuration is: ruler.storage
+  [cos: <cos_storage_config>]
 
   # Configures backend rule storage for a local file system directory.
   local:
@@ -830,18 +915,18 @@ storage:
 [notification_timeout: <duration> | default = 10s]
 
 alertmanager_client:
-  # Path to the client certificate file, which will be used for authenticating
-  # with the server. Also requires the key path to be configured.
+  # Path to the client certificate, which will be used for authenticating with
+  # the server. Also requires the key path to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-cert-path
   [tls_cert_path: <string> | default = ""]
 
-  # Path to the key file for the client certificate. Also requires the client
+  # Path to the key for the client certificate. Also requires the client
   # certificate to be configured.
   # CLI flag: -ruler.alertmanager-client.tls-key-path
   [tls_key_path: <string> | default = ""]
 
-  # Path to the CA certificates file to validate server certificate against. If
-  # not set, the host's root CA certificates are used.
+  # Path to the CA certificates to validate server certificate against. If not
+  # set, the host's root CA certificates are used.
   # CLI flag: -ruler.alertmanager-client.tls-ca-path
   [tls_ca_path: <string> | default = ""]
 
@@ -957,11 +1042,13 @@ ring:
     # CLI flag: -ruler.ring.prefix
     [prefix: <string> | default = "rulers/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: ruler.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: ruler.ring
     [etcd: <etcd>]
 
@@ -1077,6 +1164,93 @@ remote_write:
   # -limits.per-user-override-period.
   # CLI flag: -ruler.remote-write.config-refresh-period
   [config_refresh_period: <duration> | default = 10s]
+
+# Configuration for rule evaluation.
+evaluation:
+  # The evaluation mode for the ruler. Can be either 'local' or 'remote'. If set
+  # to 'local', the ruler will evaluate rules locally. If set to 'remote', the
+  # ruler will evaluate rules remotely. If unset, the ruler will evaluate rules
+  # locally.
+  # CLI flag: -ruler.evaluation.mode
+  [mode: <string> | default = "local"]
+
+  # Upper bound of random duration to wait before rule evaluation to avoid
+  # contention during concurrent execution of rules. Jitter is calculated
+  # consistently for a given rule. Set 0 to disable (default).
+  # CLI flag: -ruler.evaluation.max-jitter
+  [max_jitter: <duration> | default = 0s]
+
+  query_frontend:
+    # GRPC listen address of the query-frontend(s). Must be a DNS address
+    # (prefixed with dns:///) to enable client side load balancing.
+    # CLI flag: -ruler.evaluation.query-frontend.address
+    [address: <string> | default = ""]
+
+    # Set to true if query-frontend connection requires TLS.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-enabled
+    [tls_enabled: <boolean> | default = false]
+
+    # Path to the client certificate, which will be used for authenticating with
+    # the server. Also requires the key path to be configured.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-cert-path
+    [tls_cert_path: <string> | default = ""]
+
+    # Path to the key for the client certificate. Also requires the client
+    # certificate to be configured.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-key-path
+    [tls_key_path: <string> | default = ""]
+
+    # Path to the CA certificates to validate server certificate against. If not
+    # set, the host's root CA certificates are used.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-ca-path
+    [tls_ca_path: <string> | default = ""]
+
+    # Override the expected name on the server certificate.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-server-name
+    [tls_server_name: <string> | default = ""]
+
+    # Skip validating server certificate.
+    # CLI flag: -ruler.evaluation.query-frontend.tls-insecure-skip-verify
+    [tls_insecure_skip_verify: <boolean> | default = false]
+
+    # Override the default cipher suite list (separated by commas). Allowed
+    # values:
+    # 
+    # Secure Ciphers:
+    # - TLS_RSA_WITH_AES_128_CBC_SHA
+    # - TLS_RSA_WITH_AES_256_CBC_SHA
+    # - TLS_RSA_WITH_AES_128_GCM_SHA256
+    # - TLS_RSA_WITH_AES_256_GCM_SHA384
+    # - TLS_AES_128_GCM_SHA256
+    # - TLS_AES_256_GCM_SHA384
+    # - TLS_CHACHA20_POLY1305_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+    # - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+    # - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+    # - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+    # - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+    # - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+    # - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+    # 
+    # Insecure Ciphers:
+    # - TLS_RSA_WITH_RC4_128_SHA
+    # - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+    # - TLS_RSA_WITH_AES_128_CBC_SHA256
+    # - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+    # - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+    # - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+    # - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+    # - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+    # CLI flag: -ruler.evaluation.query-frontend.tls-cipher-suites
+    [tls_cipher_suites: <string> | default = ""]
+
+    # Override the default minimum TLS version. Allowed values: VersionTLS10,
+    # VersionTLS11, VersionTLS12, VersionTLS13
+    # CLI flag: -ruler.evaluation.query-frontend.tls-min-version
+    [tls_min_version: <string> | default = ""]
 ```
 
 ### ingester_client
@@ -1128,10 +1302,12 @@ lifecycler:
       # CLI flag: -ring.prefix
       [prefix: <string> | default = "collectors/"]
 
-      # Configuration for a Consul client. Only applies if store is consul.
+      # Configuration for a Consul client. Only applies if the selected kvstore
+      # is consul.
       [consul: <consul>]
 
-      # Configuration for an ETCD v3 client. Only applies if store is etcd.
+      # Configuration for an ETCD v3 client. Only applies if the selected
+      # kvstore is etcd.
       [etcd: <etcd>]
 
       multi:
@@ -1204,6 +1380,11 @@ lifecycler:
   # Name of network interface to read address from.
   # CLI flag: -ingester.lifecycler.interface
   [interface_names: <list of strings> | default = [<private network interfaces>]]
+
+  # Enable IPv6 support. Required to make use of IP addresses from IPv6
+  # interfaces.
+  # CLI flag: -ingester.enable-inet6
+  [enable_inet6: <boolean> | default = false]
 
   # Duration to sleep for before exiting, to ensure metrics are scraped.
   # CLI flag: -ingester.final-sleep
@@ -1363,6 +1544,11 @@ wal:
 # Maximum number of dropped streams to keep in memory during tailing.
 # CLI flag: -ingester.tailer.max-dropped-streams
 [max_dropped_streams: <int> | default = 10]
+
+# Path where the shutdown marker file is stored. If not set and
+# common.path_prefix is set then common.path_prefix will be used.
+# CLI flag: -ingester.shutdown-marker-path
+[shutdown_marker_path: <string> | default = ""]
 ```
 
 ### index_gateway
@@ -1394,11 +1580,13 @@ ring:
     # CLI flag: -index-gateway.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: index-gateway.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: index-gateway.ring
     [etcd: <etcd>]
 
@@ -1459,7 +1647,13 @@ ring:
   # CLI flag: -index-gateway.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
-  # How many index gateway instances are assigned to each tenant.
+  # Enable using a IPv6 instance address.
+  # CLI flag: -index-gateway.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
+  # Deprecated: How many index gateway instances are assigned to each tenant.
+  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
+  # setting.
   # CLI flag: -replication-factor
   [replication_factor: <int> | default = 3]
 ```
@@ -1469,6 +1663,11 @@ ring:
 The `storage_config` block configures one of many possible stores for both the index and chunks. Which configuration to be picked should be defined in schema_config block.
 
 ```yaml
+# The alibabacloud_storage_config block configures the connection to Alibaba
+# Cloud Storage object storage backend.
+# The CLI flags prefix for this block configuration is: common
+[alibabacloud: <alibabacloud_storage_config>]
+
 # The aws_storage_config block configures the connection to dynamoDB and S3
 # object storage. Either one of them or both can be configured.
 [aws: <aws_storage_config>]
@@ -1676,6 +1875,10 @@ hedging:
 # in period_config.
 [named_stores: <named_stores_config>]
 
+# The cos_storage_config block configures the connection to IBM Cloud Object
+# Storage (COS) backend.
+[cos: <cos_storage_config>]
+
 # Cache validity for active index entries. Should be no higher than
 # -ingester.max-chunk-idle.
 # CLI flag: -store.index-cache-validity
@@ -1698,16 +1901,16 @@ hedging:
 # CLI flag: -store.max-chunk-batch-size
 [max_chunk_batch_size: <int> | default = 50]
 
-# Configures storing index in an Object Store (GCS/S3/Azure/Swift/Filesystem) in
-# the form of boltdb files. Required fields only required when boltdb-shipper is
-# defined in config.
+# Configures storing index in an Object Store
+# (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required
+# fields only required when boltdb-shipper is defined in config.
 boltdb_shipper:
   # Directory where ingesters would write index files which would then be
   # uploaded by shipper to configured storage
   # CLI flag: -boltdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure,
+  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
   # filesystem
   # CLI flag: -boltdb.shipper.shared-store
   [shared_store: <string> | default = ""]
@@ -1771,7 +1974,7 @@ tsdb_shipper:
   # CLI flag: -tsdb.shipper.active-index-directory
   [active_index_directory: <string> | default = ""]
 
-  # Shared store for keeping index files. Supported types: gcs, s3, azure,
+  # Shared store for keeping index files. Supported types: gcs, s3, azure, cos,
   # filesystem
   # CLI flag: -tsdb.shipper.shared-store
   [shared_store: <string> | default = ""]
@@ -1866,7 +2069,9 @@ The `compactor` block configures the compactor component, which compacts index s
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
-# azure, swift, filesystem, bos.
+# azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
+# to operate on all the object stores that contain either boltdb-shipper or tsdb
+# index.
 # CLI flag: -boltdb.shipper.compactor.shared-store
 [shared_store: <string> | default = ""]
 
@@ -1902,6 +2107,11 @@ The `compactor` block configures the compactor component, which compacts index s
 # given table in the index.
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
+
+# Store used for managing delete requests. Defaults to
+# -boltdb.shipper.compactor.shared-store.
+# CLI flag: -boltdb.shipper.compactor.delete-request-store
+[delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
 # CLI flag: -boltdb.shipper.compactor.delete-batch-size
@@ -1946,12 +2156,14 @@ compactor_ring:
     # CLI flag: -boltdb.shipper.compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is:
     # boltdb.shipper.compactor.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is:
     # boltdb.shipper.compactor.ring
     [etcd: <etcd>]
@@ -2012,6 +2224,10 @@ compactor_ring:
   # zone-awareness is enabled.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+  # Enable using a IPv6 instance address.
+  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
@@ -2159,6 +2375,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -store.max-query-length
 [max_query_length: <duration> | default = 30d1h]
 
+# Limit the length of the [range] inside a range query. Default is 0 or
+# unlimited
+# CLI flag: -querier.max-query-range
+[max_query_range: <duration> | default = 0s]
+
 # Maximum number of queries that will be scheduled in parallel by the frontend.
 # CLI flag: -querier.max-query-parallelism
 [max_query_parallelism: <int> | default = 32]
@@ -2188,6 +2409,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 1m]
+
+# Do not cache requests with an end time that falls within Now minus this
+# duration. 0 disables this feature (default).
+# CLI flag: -frontend.max-stats-cache-freshness
+[max_stats_cache_freshness: <duration> | default = 0s]
 
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
@@ -2221,6 +2447,20 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # disables the lookback, causing sharding of all queries at all times.
 # CLI flag: -frontend.min-sharding-lookback
 [min_sharding_lookback: <duration> | default = 0s]
+
+# Max number of bytes a query can fetch. Enforced in log and metric queries only
+# when TSDB is used. The default value of 0 disables this limit.
+# CLI flag: -frontend.max-query-bytes-read
+[max_query_bytes_read: <int> | default = 0B]
+
+# Max number of bytes a query can fetch after splitting and sharding. Enforced
+# in log and metric queries only when TSDB is used. The default value of 0
+# disables this limit.
+# CLI flag: -frontend.max-querier-bytes-read
+[max_querier_bytes_read: <int> | default = 0B]
+
+# Enable log-volume endpoints.
+[volume_enabled: <boolean>]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
@@ -2312,6 +2552,14 @@ ruler_remote_write_sigv4_config:
 # remote client id as key.
 [ruler_remote_write_config: <map of string to RemoteWriteConfig>]
 
+# Timeout for a remote rule evaluation. Defaults to the value of
+# 'querier.query-timeout'.
+[ruler_remote_evaluation_timeout: <duration>]
+
+# Maximum size (in bytes) of the allowable response size from a remote rule
+# evaluation. Set to 0 to allow any response size (default).
+[ruler_remote_evaluation_max_response_size: <int>]
+
 # Deletion mode. Can be one of 'disabled', 'filter-only', or
 # 'filter-and-delete'. When set to 'filter-only' or 'filter-and-delete', and if
 # retention_enabled is true, then the log entry deletion API endpoints are
@@ -2319,10 +2567,12 @@ ruler_remote_write_sigv4_config:
 # CLI flag: -compactor.deletion-mode
 [deletion_mode: <string> | default = "filter-and-delete"]
 
-# Retention to apply for the store, if the retention is enabled on the compactor
-# side.
+# Retention period to apply to stored data, only applies if retention_enabled is
+# true in the compactor config. As of version 2.8.0, a zero value of 0 or 0s
+# disables retention. In previous releases, Loki did not properly honor a zero
+# value to disable retention and a really large value should be used instead.
 # CLI flag: -store.retention
-[retention_period: <duration> | default = 31d]
+[retention_period: <duration> | default = 0s]
 
 # Per-stream retention to apply, if the retention is enable on the compactor
 # side.
@@ -2361,6 +2611,18 @@ shard_streams:
   [desired_rate: <int>]
 
 [blocked_queries: <blocked_query...>]
+
+# Define a list of required selector labels.
+[required_labels: <list of strings>]
+
+# Minimum number of label matchers a query should contain.
+[minimum_labels_number: <int>]
+
+# The shard size defines how many index gateways should be used by a tenant for
+# querying. If the global shard factor is 0, the global shard factor is set to
+# the deprecated -replication-factor for backwards compatibility reasons.
+# CLI flag: -index-gateway.shard-size
+[index_gateway_shard_size: <int> | default = 0]
 ```
 
 ### frontend_worker
@@ -2771,12 +3033,16 @@ Configuration for `tracing`.
 
 ### analytics
 
-Configuration for usage report.
+Configuration for `analytics`.
 
 ```yaml
 # Enable anonymous usage reporting.
 # CLI flag: -reporting.enabled
 [reporting_enabled: <boolean> | default = true]
+
+# URL to which reports are sent
+# CLI flag: -reporting.usage-stats-url
+[usage_stats_url: <string> | default = "https://stats.grafana.org/loki-usage-report"]
 ```
 
 ### common
@@ -2801,6 +3067,10 @@ storage:
   # storage backend.
   # The CLI flags prefix for this block configuration is: common.storage
   [azure: <azure_storage_config>]
+
+  # The alibabacloud_storage_config block configures the connection to Alibaba
+  # Cloud Storage object storage backend.
+  [alibabacloud: <alibabacloud_storage_config>]
 
   # The bos_storage_config block configures the connection to Baidu Object
   # Storage (BOS) object storage backend.
@@ -2835,6 +3105,11 @@ storage:
     # CLI flag: -common.storage.hedge-max-per-second
     [max_per_second: <int> | default = 5]
 
+  # The cos_storage_config block configures the connection to IBM Cloud Object
+  # Storage (COS) backend.
+  # The CLI flags prefix for this block configuration is: common.storage
+  [cos: <cos_storage_config>]
+
 [persist_tokens: <boolean>]
 
 [replication_factor: <int>]
@@ -2850,11 +3125,13 @@ ring:
     # CLI flag: -common.storage.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
-    # Configuration for a Consul client. Only applies if store is consul.
+    # Configuration for a Consul client. Only applies if the selected kvstore is
+    # consul.
     # The CLI flags prefix for this block configuration is: common.storage.ring
     [consul: <consul>]
 
-    # Configuration for an ETCD v3 client. Only applies if store is etcd.
+    # Configuration for an ETCD v3 client. Only applies if the selected kvstore
+    # is etcd.
     # The CLI flags prefix for this block configuration is: common.storage.ring
     [etcd: <etcd>]
 
@@ -2915,6 +3192,10 @@ ring:
   # CLI flag: -common.storage.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
+  # Enable using a IPv6 instance address.
+  # CLI flag: -common.storage.ring.instance-enable-ipv6
+  [instance_enable_ipv6: <boolean> | default = false]
+
 [instance_interface_names: <list of strings>]
 
 [instance_addr: <string> | default = ""]
@@ -2930,7 +3211,7 @@ ring:
 
 ### consul
 
-Configuration for a Consul client. Only applies if store is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
+Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
@@ -2974,7 +3255,7 @@ Configuration for a Consul client. Only applies if store is `consul`. The suppor
 
 ### etcd
 
-Configuration for an ETCD v3 client. Only applies if store is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
+Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
@@ -3002,18 +3283,18 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # CLI flag: -<prefix>.etcd.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.etcd.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.etcd.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.etcd.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3070,6 +3351,206 @@ Configuration for an ETCD v3 client. Only applies if store is `etcd`. The suppor
 # Etcd password.
 # CLI flag: -<prefix>.etcd.password
 [password: <string> | default = ""]
+```
+
+### memberlist
+
+Configuration for `memberlist` client. Only applies if the selected kvstore is memberlist.
+
+When a memberlist config with atleast 1 join_members is defined, kvstore of type memberlist is automatically selected for all the components that require a ring unless otherwise specified in the component's configuration section.
+
+```yaml
+# Name of the node in memberlist cluster. Defaults to hostname.
+# CLI flag: -memberlist.nodename
+[node_name: <string> | default = ""]
+
+# Add random suffix to the node name.
+# CLI flag: -memberlist.randomize-node-name
+[randomize_node_name: <boolean> | default = true]
+
+# The timeout for establishing a connection with a remote node, and for
+# read/write operations.
+# CLI flag: -memberlist.stream-timeout
+[stream_timeout: <duration> | default = 10s]
+
+# Multiplication factor used when sending out messages (factor * log(N+1)).
+# CLI flag: -memberlist.retransmit-factor
+[retransmit_factor: <int> | default = 4]
+
+# How often to use pull/push sync.
+# CLI flag: -memberlist.pullpush-interval
+[pull_push_interval: <duration> | default = 30s]
+
+# How often to gossip.
+# CLI flag: -memberlist.gossip-interval
+[gossip_interval: <duration> | default = 200ms]
+
+# How many nodes to gossip to.
+# CLI flag: -memberlist.gossip-nodes
+[gossip_nodes: <int> | default = 3]
+
+# How long to keep gossiping to dead nodes, to give them chance to refute their
+# death.
+# CLI flag: -memberlist.gossip-to-dead-nodes-time
+[gossip_to_dead_nodes_time: <duration> | default = 30s]
+
+# How soon can dead node's name be reclaimed with new address. 0 to disable.
+# CLI flag: -memberlist.dead-node-reclaim-time
+[dead_node_reclaim_time: <duration> | default = 0s]
+
+# Enable message compression. This can be used to reduce bandwidth usage at the
+# cost of slightly more CPU utilization.
+# CLI flag: -memberlist.compression-enabled
+[compression_enabled: <boolean> | default = true]
+
+# Gossip address to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-addr
+[advertise_addr: <string> | default = ""]
+
+# Gossip port to advertise to other members in the cluster. Used for NAT
+# traversal.
+# CLI flag: -memberlist.advertise-port
+[advertise_port: <int> | default = 7946]
+
+# The cluster label is an optional string to include in outbound packets and
+# gossip streams. Other members in the memberlist cluster will discard any
+# message whose label doesn't match the configured one, unless the
+# 'cluster-label-verification-disabled' configuration option is set to true.
+# CLI flag: -memberlist.cluster-label
+[cluster_label: <string> | default = ""]
+
+# When true, memberlist doesn't verify that inbound packets and gossip streams
+# have the cluster label matching the configured one. This verification should
+# be disabled while rolling out the change to the configured cluster label in a
+# live memberlist cluster.
+# CLI flag: -memberlist.cluster-label-verification-disabled
+[cluster_label_verification_disabled: <boolean> | default = false]
+
+# Other cluster members to join. Can be specified multiple times. It can be an
+# IP, hostname or an entry specified in the DNS Service Discovery format.
+# CLI flag: -memberlist.join
+[join_members: <list of strings> | default = []]
+
+# Min backoff duration to join other cluster members.
+# CLI flag: -memberlist.min-join-backoff
+[min_join_backoff: <duration> | default = 1s]
+
+# Max backoff duration to join other cluster members.
+# CLI flag: -memberlist.max-join-backoff
+[max_join_backoff: <duration> | default = 1m]
+
+# Max number of retries to join other cluster members.
+# CLI flag: -memberlist.max-join-retries
+[max_join_retries: <int> | default = 10]
+
+# If this node fails to join memberlist cluster, abort.
+# CLI flag: -memberlist.abort-if-join-fails
+[abort_if_cluster_join_fails: <boolean> | default = false]
+
+# If not 0, how often to rejoin the cluster. Occasional rejoin can help to fix
+# the cluster split issue, and is harmless otherwise. For example when using
+# only few components as a seed nodes (via -memberlist.join), then it's
+# recommended to use rejoin. If -memberlist.join points to dynamic service that
+# resolves to all gossiping nodes (eg. Kubernetes headless service), then rejoin
+# is not needed.
+# CLI flag: -memberlist.rejoin-interval
+[rejoin_interval: <duration> | default = 0s]
+
+# How long to keep LEFT ingesters in the ring.
+# CLI flag: -memberlist.left-ingesters-timeout
+[left_ingesters_timeout: <duration> | default = 5m]
+
+# Timeout for leaving memberlist cluster.
+# CLI flag: -memberlist.leave-timeout
+[leave_timeout: <duration> | default = 20s]
+
+# How much space to use for keeping received and sent messages in memory for
+# troubleshooting (two buffers). 0 to disable.
+# CLI flag: -memberlist.message-history-buffer-bytes
+[message_history_buffer_bytes: <int> | default = 0]
+
+# IP address to listen on for gossip messages. Multiple addresses may be
+# specified. Defaults to 0.0.0.0
+# CLI flag: -memberlist.bind-addr
+[bind_addr: <list of strings> | default = []]
+
+# Port to listen on for gossip messages.
+# CLI flag: -memberlist.bind-port
+[bind_port: <int> | default = 7946]
+
+# Timeout used when connecting to other nodes to send packet.
+# CLI flag: -memberlist.packet-dial-timeout
+[packet_dial_timeout: <duration> | default = 2s]
+
+# Timeout for writing 'packet' data.
+# CLI flag: -memberlist.packet-write-timeout
+[packet_write_timeout: <duration> | default = 5s]
+
+# Enable TLS on the memberlist transport layer.
+# CLI flag: -memberlist.tls-enabled
+[tls_enabled: <boolean> | default = false]
+
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
+# CLI flag: -memberlist.tls-cert-path
+[tls_cert_path: <string> | default = ""]
+
+# Path to the key for the client certificate. Also requires the client
+# certificate to be configured.
+# CLI flag: -memberlist.tls-key-path
+[tls_key_path: <string> | default = ""]
+
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
+# CLI flag: -memberlist.tls-ca-path
+[tls_ca_path: <string> | default = ""]
+
+# Override the expected name on the server certificate.
+# CLI flag: -memberlist.tls-server-name
+[tls_server_name: <string> | default = ""]
+
+# Skip validating server certificate.
+# CLI flag: -memberlist.tls-insecure-skip-verify
+[tls_insecure_skip_verify: <boolean> | default = false]
+
+# Override the default cipher suite list (separated by commas). Allowed values:
+# 
+# Secure Ciphers:
+# - TLS_RSA_WITH_AES_128_CBC_SHA
+# - TLS_RSA_WITH_AES_256_CBC_SHA
+# - TLS_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_RSA_WITH_AES_256_GCM_SHA384
+# - TLS_AES_128_GCM_SHA256
+# - TLS_AES_256_GCM_SHA384
+# - TLS_CHACHA20_POLY1305_SHA256
+# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA
+# - TLS_ECDHE_ECDSA_WITH_AES_256_CBC_SHA
+# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA
+# - TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA
+# - TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256
+# - TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384
+# - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+# - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
+# - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256
+# - TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256
+# 
+# Insecure Ciphers:
+# - TLS_RSA_WITH_RC4_128_SHA
+# - TLS_RSA_WITH_3DES_EDE_CBC_SHA
+# - TLS_RSA_WITH_AES_128_CBC_SHA256
+# - TLS_ECDHE_ECDSA_WITH_RC4_128_SHA
+# - TLS_ECDHE_RSA_WITH_RC4_128_SHA
+# - TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA
+# - TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256
+# - TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256
+# CLI flag: -memberlist.tls-cipher-suites
+[tls_cipher_suites: <string> | default = ""]
+
+# Override the default minimum TLS version. Allowed values: VersionTLS10,
+# VersionTLS11, VersionTLS12, VersionTLS13
+# CLI flag: -memberlist.tls-min-version
+[tls_min_version: <string> | default = ""]
 ```
 
 ### grpc_client
@@ -3132,18 +3613,18 @@ backoff_config:
 # CLI flag: -<prefix>.tls-enabled
 [tls_enabled: <boolean> | default = false]
 
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -<prefix>.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -<prefix>.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -<prefix>.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3192,6 +3673,21 @@ backoff_config:
 # VersionTLS11, VersionTLS12, VersionTLS13
 # CLI flag: -<prefix>.tls-min-version
 [tls_min_version: <string> | default = ""]
+
+# The maximum amount of time to establish a connection. A value of 0 means
+# default gRPC connect timeout and backoff.
+# CLI flag: -<prefix>.connect-timeout
+[connect_timeout: <duration> | default = 0s]
+
+# Initial backoff delay after first connection failure. Only relevant if
+# ConnectTimeout > 0.
+# CLI flag: -<prefix>.connect-backoff-base-delay
+[connect_backoff_base_delay: <duration> | default = 1s]
+
+# Maximum backoff delay when establishing a connection. Only relevant if
+# ConnectTimeout > 0.
+# CLI flag: -<prefix>.connect-backoff-max-delay
+[connect_backoff_max_delay: <duration> | default = 5s]
 ```
 
 ### tls_config
@@ -3199,18 +3695,18 @@ backoff_config:
 The TLS configuration.
 
 ```yaml
-# Path to the client certificate file, which will be used for authenticating
-# with the server. Also requires the key path to be configured.
+# Path to the client certificate, which will be used for authenticating with the
+# server. Also requires the key path to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-cert-path
 [tls_cert_path: <string> | default = ""]
 
-# Path to the key file for the client certificate. Also requires the client
+# Path to the key for the client certificate. Also requires the client
 # certificate to be configured.
 # CLI flag: -frontend.tail-tls-config.tls-key-path
 [tls_key_path: <string> | default = ""]
 
-# Path to the CA certificates file to validate server certificate against. If
-# not set, the host's root CA certificates are used.
+# Path to the CA certificates to validate server certificate against. If not
+# set, the host's root CA certificates are used.
 # CLI flag: -frontend.tail-tls-config.tls-ca-path
 [tls_ca_path: <string> | default = ""]
 
@@ -3266,6 +3762,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `frontend`
+- `frontend.index-stats-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
@@ -3273,196 +3770,185 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 &nbsp;
 
 ```yaml
-# Cache config for index entry writing.(deprecated: use embedded-cache instead)
-# Enable in-memory cache (auto-enabled for the chunks & query results cache if
-# no other cache is configured).
+# (deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled
+# for the chunks & query results cache if no other cache is configured).
 # CLI flag: -<prefix>.cache.enable-fifocache
 [enable_fifocache: <boolean> | default = false]
 
-# Cache config for index entry writing.The default validity of entries for
-# caches unless overridden.
+# The default validity of entries for caches unless overridden.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration> | default = 1h]
 
 background:
-  # Cache config for index entry writing.At what concurrency to write back to
-  # cache.
+  # At what concurrency to write back to cache.
   # CLI flag: -<prefix>.background.write-back-concurrency
   [writeback_goroutines: <int> | default = 10]
 
-  # Cache config for index entry writing.How many key batches to buffer for
-  # background write-back.
+  # How many key batches to buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> | default = 10000]
 
+  # Size limit in bytes for background write-back.
+  # CLI flag: -<prefix>.background.write-back-size-limit
+  [writeback_size_limit: <int> | default = 1GB]
+
 memcached:
-  # Cache config for index entry writing.How long keys stay in the memcache.
+  # How long keys stay in the memcache.
   # CLI flag: -<prefix>.memcached.expiration
   [expiration: <duration> | default = 0s]
 
-  # Cache config for index entry writing.How many keys to fetch in each batch.
+  # How many keys to fetch in each batch.
   # CLI flag: -<prefix>.memcached.batchsize
   [batch_size: <int> | default = 1024]
 
-  # Cache config for index entry writing.Maximum active requests to memcache.
+  # Maximum active requests to memcache.
   # CLI flag: -<prefix>.memcached.parallelism
   [parallelism: <int> | default = 100]
 
 memcached_client:
-  # Cache config for index entry writing.Hostname for memcached service to use.
-  # If empty and if addresses is unset, no memcached will be used.
+  # Hostname for memcached service to use. If empty and if addresses is unset,
+  # no memcached will be used.
   # CLI flag: -<prefix>.memcached.hostname
   [host: <string> | default = ""]
 
-  # Cache config for index entry writing.SRV service used to discover memcache
-  # servers.
+  # SRV service used to discover memcache servers.
   # CLI flag: -<prefix>.memcached.service
   [service: <string> | default = "memcached"]
 
-  # Cache config for index entry writing.EXPERIMENTAL: Comma separated addresses
-  # list in DNS Service Discovery format:
+  # EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery
+  # format:
   # https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery
   # CLI flag: -<prefix>.memcached.addresses
   [addresses: <string> | default = ""]
 
-  # Cache config for index entry writing.Maximum time to wait before giving up
-  # on memcached requests.
+  # Maximum time to wait before giving up on memcached requests.
   # CLI flag: -<prefix>.memcached.timeout
   [timeout: <duration> | default = 100ms]
 
-  # Cache config for index entry writing.Maximum number of idle connections in
-  # pool.
+  # Maximum number of idle connections in pool.
   # CLI flag: -<prefix>.memcached.max-idle-conns
   [max_idle_conns: <int> | default = 16]
 
-  # Cache config for index entry writing.The maximum size of an item stored in
-  # memcached. Bigger items are not stored. If set to 0, no maximum size is
-  # enforced.
+  # The maximum size of an item stored in memcached. Bigger items are not
+  # stored. If set to 0, no maximum size is enforced.
   # CLI flag: -<prefix>.memcached.max-item-size
   [max_item_size: <int> | default = 0]
 
-  # Cache config for index entry writing.Period with which to poll DNS for
-  # memcache servers.
+  # Period with which to poll DNS for memcache servers.
   # CLI flag: -<prefix>.memcached.update-interval
   [update_interval: <duration> | default = 1m]
 
-  # Cache config for index entry writing.Use consistent hashing to distribute to
-  # memcache servers.
+  # Use consistent hashing to distribute to memcache servers.
   # CLI flag: -<prefix>.memcached.consistent-hash
   [consistent_hash: <boolean> | default = true]
 
-  # Cache config for index entry writing.Trip circuit-breaker after this number
-  # of consecutive dial failures (if zero then circuit-breaker is disabled).
+  # Trip circuit-breaker after this number of consecutive dial failures (if zero
+  # then circuit-breaker is disabled).
   # CLI flag: -<prefix>.memcached.circuit-breaker-consecutive-failures
   [circuit_breaker_consecutive_failures: <int> | default = 10]
 
-  # Cache config for index entry writing.Duration circuit-breaker remains open
-  # after tripping (if zero then 60 seconds is used).
+  # Duration circuit-breaker remains open after tripping (if zero then 60
+  # seconds is used).
   # CLI flag: -<prefix>.memcached.circuit-breaker-timeout
   [circuit_breaker_timeout: <duration> | default = 10s]
 
-  # Cache config for index entry writing.Reset circuit-breaker counts after this
-  # long (if zero then never reset).
+  # Reset circuit-breaker counts after this long (if zero then never reset).
   # CLI flag: -<prefix>.memcached.circuit-breaker-interval
   [circuit_breaker_interval: <duration> | default = 10s]
 
 redis:
-  # Cache config for index entry writing.Redis Server or Cluster configuration
-  # endpoint to use for caching. A comma-separated list of endpoints for Redis
-  # Cluster or Redis Sentinel. If empty, no redis will be used.
+  # Redis Server or Cluster configuration endpoint to use for caching. A
+  # comma-separated list of endpoints for Redis Cluster or Redis Sentinel. If
+  # empty, no redis will be used.
   # CLI flag: -<prefix>.redis.endpoint
   [endpoint: <string> | default = ""]
 
-  # Cache config for index entry writing.Redis Sentinel master name. An empty
-  # string for Redis Server or Redis Cluster.
+  # Redis Sentinel master name. An empty string for Redis Server or Redis
+  # Cluster.
   # CLI flag: -<prefix>.redis.master-name
   [master_name: <string> | default = ""]
 
-  # Cache config for index entry writing.Maximum time to wait before giving up
-  # on redis requests.
+  # Maximum time to wait before giving up on redis requests.
   # CLI flag: -<prefix>.redis.timeout
   [timeout: <duration> | default = 500ms]
 
-  # Cache config for index entry writing.How long keys stay in the redis.
+  # How long keys stay in the redis.
   # CLI flag: -<prefix>.redis.expiration
   [expiration: <duration> | default = 0s]
 
-  # Cache config for index entry writing.Database index.
+  # Database index.
   # CLI flag: -<prefix>.redis.db
   [db: <int> | default = 0]
 
-  # Cache config for index entry writing.Maximum number of connections in the
-  # pool.
+  # Maximum number of connections in the pool.
   # CLI flag: -<prefix>.redis.pool-size
   [pool_size: <int> | default = 0]
 
-  # Cache config for index entry writing.Username to use when connecting to
-  # redis.
+  # Username to use when connecting to redis.
   # CLI flag: -<prefix>.redis.username
   [username: <string> | default = ""]
 
-  # Cache config for index entry writing.Password to use when connecting to
-  # redis.
+  # Password to use when connecting to redis.
   # CLI flag: -<prefix>.redis.password
   [password: <string> | default = ""]
 
-  # Cache config for index entry writing.Enable connecting to redis with TLS.
+  # Enable connecting to redis with TLS.
   # CLI flag: -<prefix>.redis.tls-enabled
   [tls_enabled: <boolean> | default = false]
 
-  # Cache config for index entry writing.Skip validating server certificate.
+  # Skip validating server certificate.
   # CLI flag: -<prefix>.redis.tls-insecure-skip-verify
   [tls_insecure_skip_verify: <boolean> | default = false]
 
-  # Cache config for index entry writing.Close connections after remaining idle
-  # for this duration. If the value is zero, then idle connections are not
-  # closed.
+  # Close connections after remaining idle for this duration. If the value is
+  # zero, then idle connections are not closed.
   # CLI flag: -<prefix>.redis.idle-timeout
   [idle_timeout: <duration> | default = 0s]
 
-  # Cache config for index entry writing.Close connections older than this
-  # duration. If the value is zero, then the pool does not close connections
-  # based on age.
+  # Close connections older than this duration. If the value is zero, then the
+  # pool does not close connections based on age.
   # CLI flag: -<prefix>.redis.max-connection-age
   [max_connection_age: <duration> | default = 0s]
 
+  # By default, the Redis client only reads from the master node. Enabling this
+  # option can lower pressure on the master node by randomly routing read-only
+  # commands to the master and any available replicas.
+  # CLI flag: -<prefix>.redis.route-randomly
+  [route_randomly: <boolean> | default = false]
+
 embedded_cache:
-  # Cache config for index entry writing.Whether embedded cache is enabled.
+  # Whether embedded cache is enabled.
   # CLI flag: -<prefix>.embedded-cache.enabled
   [enabled: <boolean> | default = false]
 
-  # Cache config for index entry writing.Maximum memory size of the cache in MB.
+  # Maximum memory size of the cache in MB.
   # CLI flag: -<prefix>.embedded-cache.max-size-mb
   [max_size_mb: <int> | default = 100]
 
-  # Cache config for index entry writing.The time to live for items in the cache
-  # before they get purged.
+  # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
 
 fifocache:
-  # Cache config for index entry writing.Maximum memory size of the cache in
-  # bytes. A unit suffix (KB, MB, GB) may be applied.
+  # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
+  # applied.
   # CLI flag: -<prefix>.fifocache.max-size-bytes
   [max_size_bytes: <string> | default = "1GB"]
 
-  # Cache config for index entry writing.deprecated: Maximum number of entries
-  # in the cache.
+  # deprecated: Maximum number of entries in the cache.
   # CLI flag: -<prefix>.fifocache.max-size-items
   [max_size_items: <int> | default = 0]
 
-  # Cache config for index entry writing.The time to live for items in the cache
-  # before they get purged.
+  # The time to live for items in the cache before they get purged.
   # CLI flag: -<prefix>.fifocache.ttl
   [ttl: <duration> | default = 1h]
 
-  # Deprecated (use ttl instead): Cache config for index entry writing.The
-  # expiry duration for the cache.
+  # Deprecated (use ttl instead): The expiry duration for the cache.
   # CLI flag: -<prefix>.fifocache.duration
   [validity: <duration> | default = 0s]
 
-  # Deprecated (use max-size-items or max-size-bytes instead): Cache config for
-  # index entry writing.The number of entries to cache.
+  # Deprecated (use max-size-items or max-size-bytes instead): The number of
+  # entries to cache.
   # CLI flag: -<prefix>.fifocache.size
   [size: <int> | default = 0]
 
@@ -3604,6 +4090,11 @@ dynamodb:
     # CLI flag: -dynamodb.max-retries
     [max_retries: <int> | default = 20]
 
+  # KMS key used for encrypting DynamoDB items.  DynamoDB will use an Amazon
+  # owned KMS key if not provided.
+  # CLI flag: -dynamodb.kms-key-id
+  [kms_key_id: <string> | default = ""]
+
 # S3 endpoint URL with escaped Key and Secret encoded. If only region is
 # specified as a host, proper endpoint will be deduced. Use
 # inmemory:///<bucket-name> to use a mock in-memory implementation.
@@ -3635,6 +4126,10 @@ dynamodb:
 # CLI flag: -s3.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# AWS Session Token
+# CLI flag: -s3.session-token
+[session_token: <string> | default = ""]
+
 # Disable https on s3 connection.
 # CLI flag: -s3.insecure
 [insecure: <boolean> | default = false]
@@ -3645,6 +4140,10 @@ dynamodb:
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -3667,6 +4166,12 @@ http_config:
 # are: v4, v2.
 # CLI flag: -s3.signature-version
 [signature_version: <string> | default = "v4"]
+
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -s3.storage-class
+[storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
@@ -3791,6 +4296,33 @@ The `azure_storage_config` block configures the connection to Azure object stora
 [max_retry_delay: <duration> | default = 500ms]
 ```
 
+### alibabacloud_storage_config
+
+The `alibabacloud_storage_config` block configures the connection to Alibaba Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common`
+- `ruler`
+
+&nbsp;
+
+```yaml
+# Name of OSS bucket.
+# CLI flag: -common.storage.oss.bucketname
+[bucket: <string> | default = ""]
+
+# oss Endpoint to connect to.
+# CLI flag: -common.storage.oss.endpoint
+[endpoint: <string> | default = ""]
+
+# alibabacloud Access Key ID
+# CLI flag: -common.storage.oss.access-key-id
+[access_key_id: <string> | default = ""]
+
+# alibabacloud Secret Access Key
+# CLI flag: -common.storage.oss.secret-access-key
+[secret_access_key: <string> | default = ""]
+```
+
 ### gcs_storage_config
 
 The `gcs_storage_config` block configures the connection to Google Cloud Storage object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
@@ -3872,6 +4404,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # CLI flag: -<prefix>.storage.s3.secret-access-key
 [secret_access_key: <string> | default = ""]
 
+# AWS Session Token
+# CLI flag: -<prefix>.storage.s3.session-token
+[session_token: <string> | default = ""]
+
 # Disable https on s3 connection.
 # CLI flag: -<prefix>.storage.s3.insecure
 [insecure: <boolean> | default = false]
@@ -3882,6 +4418,10 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 [sse_encryption: <boolean> | default = false]
 
 http_config:
+  # Timeout specifies a time limit for requests made by s3 Client.
+  # CLI flag: -<prefix>.storage.s3.http.timeout
+  [timeout: <duration> | default = 0s]
+
   # The maximum amount of time an idle connection will be held open.
   # CLI flag: -<prefix>.storage.s3.http.idle-conn-timeout
   [idle_conn_timeout: <duration> | default = 1m30s]
@@ -3904,6 +4444,12 @@ http_config:
 # are: v4, v2.
 # CLI flag: -<prefix>.storage.s3.signature-version
 [signature_version: <string> | default = "v4"]
+
+# The S3 storage class which objects will use. Supported values are: GLACIER,
+# DEEP_ARCHIVE, GLACIER_IR, INTELLIGENT_TIERING, ONEZONE_IA, OUTPOSTS,
+# REDUCED_REDUNDANCY, STANDARD, STANDARD_IA.
+# CLI flag: -<prefix>.storage.s3.storage-class
+[storage_class: <string> | default = "STANDARD"]
 
 sse:
   # Enable AWS Server Side Encryption. Supported values: SSE-KMS, SSE-S3.
@@ -3979,6 +4525,10 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 # CLI flag: -<prefix>.swift.auth-url
 [auth_url: <string> | default = ""]
 
+# Set this to true to use the internal OpenStack Swift endpoint URL
+# CLI flag: -<prefix>.swift.internal
+[internal: <boolean> | default = false]
+
 # OpenStack Swift username.
 # CLI flag: -<prefix>.swift.username
 [username: <string> | default = ""]
@@ -4048,6 +4598,89 @@ The `swift_storage_config` block configures the connection to OpenStack Object S
 [request_timeout: <duration> | default = 5s]
 ```
 
+### cos_storage_config
+
+The `cos_storage_config` block configures the connection to IBM Cloud Object Storage (COS) backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
+
+- `common.storage`
+- `ruler.storage`
+
+&nbsp;
+
+```yaml
+# Set this to `true` to force the request to use path-style addressing.
+# CLI flag: -<prefix>.cos.force-path-style
+[forcepathstyle: <boolean> | default = false]
+
+# Comma separated list of bucket names to evenly distribute chunks over.
+# CLI flag: -<prefix>.cos.buckets
+[bucketnames: <string> | default = ""]
+
+# COS Endpoint to connect to.
+# CLI flag: -<prefix>.cos.endpoint
+[endpoint: <string> | default = ""]
+
+# COS region to use.
+# CLI flag: -<prefix>.cos.region
+[region: <string> | default = ""]
+
+# COS HMAC Access Key ID.
+# CLI flag: -<prefix>.cos.access-key-id
+[access_key_id: <string> | default = ""]
+
+# COS HMAC Secret Access Key.
+# CLI flag: -<prefix>.cos.secret-access-key
+[secret_access_key: <string> | default = ""]
+
+http_config:
+  # The maximum amount of time an idle connection will be held open.
+  # CLI flag: -<prefix>.cos.http.idle-conn-timeout
+  [idle_conn_timeout: <duration> | default = 1m30s]
+
+  # If non-zero, specifies the amount of time to wait for a server's response
+  # headers after fully writing the request.
+  # CLI flag: -<prefix>.cos.http.response-header-timeout
+  [response_header_timeout: <duration> | default = 0s]
+
+# Configures back off when cos get Object.
+backoff_config:
+  # Minimum backoff time when cos get Object.
+  # CLI flag: -<prefix>.cos.min-backoff
+  [min_period: <duration> | default = 100ms]
+
+  # Maximum backoff time when cos get Object.
+  # CLI flag: -<prefix>.cos.max-backoff
+  [max_period: <duration> | default = 3s]
+
+  # Maximum number of times to retry when cos get Object.
+  # CLI flag: -<prefix>.cos.max-retries
+  [max_retries: <int> | default = 5]
+
+# IAM API key to access COS.
+# CLI flag: -<prefix>.cos.api-key
+[api_key: <string> | default = ""]
+
+# COS service instance id to use.
+# CLI flag: -<prefix>.cos.service-instance-id
+[service_instance_id: <string> | default = ""]
+
+# IAM Auth Endpoint for authentication.
+# CLI flag: -<prefix>.cos.auth-endpoint
+[auth_endpoint: <string> | default = "https://iam.cloud.ibm.com/identity/token"]
+
+# Compute resource token file path.
+# CLI flag: -<prefix>.cos.cr-token-file-path
+[cr_token_file_path: <string> | default = ""]
+
+# Name of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-name
+[trusted_profile_name: <string> | default = ""]
+
+# ID of the trusted profile.
+# CLI flag: -<prefix>.cos.trusted-profile-id
+[trusted_profile_id: <string> | default = ""]
+```
+
 ### local_storage_config
 
 The `local_storage_config` block configures the usage of local file system as object storage backend.
@@ -4082,7 +4715,11 @@ Named store from this example can be used by setting object_store to store-1 in 
 
 [gcs: <map of string to gcs_storage_config>]
 
+[alibabacloud: <map of string to alibabacloud_storage_config>]
+
 [swift: <map of string to swift_storage_config>]
+
+[cos: <map of string to cos_storage_config>]
 ```
 
 ## Runtime Configuration file

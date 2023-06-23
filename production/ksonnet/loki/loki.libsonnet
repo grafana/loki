@@ -8,7 +8,6 @@
 // Loki services
 (import 'distributor.libsonnet') +
 (import 'ingester.libsonnet') +
-(import 'multi-zone.libsonnet') +
 (import 'querier.libsonnet') +
 (import 'table-manager.libsonnet') +
 (import 'query-frontend.libsonnet') +
@@ -28,8 +27,11 @@
 // Index Gateway support
 (import 'index-gateway.libsonnet') +
 
-// BoltDB Shipper support. This should be the last one to get imported.
+// BoltDB Shipper support. Anything that modifies the compactor must be imported after this.
 (import 'boltdb_shipper.libsonnet') +
+
+// Multi-zone ingester related config
+(import 'multi-zone.libsonnet') +
 
 // Memberlist related deployment configuration, mostly migration related
 (import 'memberlist.libsonnet') +

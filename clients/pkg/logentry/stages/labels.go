@@ -65,7 +65,7 @@ func (l *labelStage) Close() {
 }
 
 // Process implements Stage
-func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
 	for lName, lSrc := range l.cfgs {
 		if lValue, ok := extracted[*lSrc]; ok {
 			s, err := getString(lValue)

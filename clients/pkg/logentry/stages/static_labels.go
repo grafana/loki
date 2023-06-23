@@ -59,7 +59,7 @@ func (l *StaticLabelStage) Close() {
 }
 
 // Process implements Stage
-func (l *StaticLabelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (l *StaticLabelStage) Process(labels model.LabelSet, _ map[string]interface{}, _ *time.Time, _ *string) {
 
 	for lName, lSrc := range l.cfgs {
 		if lSrc == nil || *lSrc == "" {

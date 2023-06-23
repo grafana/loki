@@ -174,7 +174,7 @@ func (t *Target) renderEntries(events []win_eventlog.Event) []api.Entry {
 			lbs.Set("computer", event.Computer)
 		}
 		// apply relabelings.
-		processed := relabel.Process(lbs.Labels(nil), t.relabelConfig...)
+		processed, _ := relabel.Process(lbs.Labels(), t.relabelConfig...)
 
 		for _, lbl := range processed {
 			if strings.HasPrefix(lbl.Name, "__") {

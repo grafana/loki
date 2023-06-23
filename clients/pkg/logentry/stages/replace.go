@@ -88,7 +88,7 @@ func parseReplaceConfig(config interface{}) (*ReplaceConfig, error) {
 }
 
 // Process implements Stage
-func (r *replaceStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
+func (r *replaceStage) Process(_ model.LabelSet, extracted map[string]interface{}, _ *time.Time, entry *string) {
 	// If a source key is provided, the replace stage should process it
 	// from the extracted map, otherwise should fallback to the entry
 	input := entry

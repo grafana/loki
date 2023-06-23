@@ -3,9 +3,7 @@ package client
 import (
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
@@ -22,9 +20,9 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/utils"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
@@ -36,11 +34,6 @@ var logEntries = []api.Entry{
 	{Labels: model.LabelSet{"__tenant_id__": "tenant-1"}, Entry: logproto.Entry{Timestamp: time.Unix(5, 0).UTC(), Line: "line5"}},
 	{Labels: model.LabelSet{"__tenant_id__": "tenant-2"}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line6"}},
 	{Labels: model.LabelSet{}, Entry: logproto.Entry{Timestamp: time.Unix(6, 0).UTC(), Line: "line0123456789"}},
-}
-
-type receivedReq struct {
-	tenantID string
-	pushReq  logproto.PushRequest
 }
 
 func TestClient_Handle(t *testing.T) {
@@ -55,7 +48,7 @@ func TestClient_Handle(t *testing.T) {
 		serverResponseStatus      int
 		inputEntries              []api.Entry
 		inputDelay                time.Duration
-		expectedReqs              []receivedReq
+		expectedReqs              []utils.RemoteWriteRequest
 		expectedMetrics           string
 	}{
 		"batch log entries together until the batch size is reached": {
@@ -64,14 +57,14 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
 			inputEntries:         []api.Entry{logEntries[0], logEntries[1], logEntries[2]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -106,10 +99,10 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxLineSizeTruncate: false,
 			serverResponseStatus:      200,
 			inputEntries:              []api.Entry{logEntries[0], logEntries[1], logEntries[6]}, // this logEntries[6] entries has line more than size 10
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -144,10 +137,10 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxLineSizeTruncate: true,
 			serverResponseStatus:      200,
 			inputEntries:              []api.Entry{logEntries[0], logEntries[1], logEntries[6]}, // logEntries[6]'s line is greater than 10 bytes
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq: logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{
+					TenantID: "",
+					Request: logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{
 						logEntries[0].Entry,
 						logEntries[1].Entry,
 						{
@@ -189,14 +182,14 @@ func TestClient_Handle(t *testing.T) {
 			serverResponseStatus: 200,
 			inputEntries:         []api.Entry{logEntries[0], logEntries[1]},
 			inputDelay:           110 * time.Millisecond,
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -229,18 +222,18 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 500,
 			inputEntries:         []api.Entry{logEntries[0]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -273,10 +266,10 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 400,
 			inputEntries:         []api.Entry{logEntries[0]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -309,18 +302,18 @@ func TestClient_Handle(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 429,
 			inputEntries:         []api.Entry{logEntries[0]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -354,10 +347,10 @@ func TestClient_Handle(t *testing.T) {
 			clientDropRateLimited: true,
 			serverResponseStatus:  429,
 			inputEntries:          []api.Entry{logEntries[0]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -391,10 +384,10 @@ func TestClient_Handle(t *testing.T) {
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
 			inputEntries:         []api.Entry{logEntries[0], logEntries[1]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					TenantID: "tenant-default",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -428,18 +421,18 @@ func TestClient_Handle(t *testing.T) {
 			clientTenantID:       "tenant-default",
 			serverResponseStatus: 200,
 			inputEntries:         []api.Entry{logEntries[0], logEntries[3], logEntries[4], logEntries[5]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "tenant-default",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "tenant-default",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 				{
-					tenantID: "tenant-1",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
+					TenantID: "tenant-1",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[3].Entry, logEntries[4].Entry}}}},
 				},
 				{
-					tenantID: "tenant-2",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
+					TenantID: "tenant-2",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[5].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -497,10 +490,10 @@ func TestClient_Handle(t *testing.T) {
 			reg := prometheus.NewRegistry()
 
 			// Create a buffer channel where we do enqueue received requests
-			receivedReqsChan := make(chan receivedReq, 10)
+			receivedReqsChan := make(chan utils.RemoteWriteRequest, 10)
 
 			// Start a local HTTP server
-			server := httptest.NewServer(createServerHandler(receivedReqsChan, testData.serverResponseStatus))
+			server := utils.NewRemoteWriteServer(receivedReqsChan, testData.serverResponseStatus)
 			require.NotNil(t, server)
 			defer server.Close()
 
@@ -546,7 +539,7 @@ func TestClient_Handle(t *testing.T) {
 			close(receivedReqsChan)
 
 			// Get all push requests received on the server side
-			receivedReqs := make([]receivedReq, 0)
+			receivedReqs := make([]utils.RemoteWriteRequest, 0)
 			for req := range receivedReqsChan {
 				receivedReqs = append(receivedReqs, req)
 			}
@@ -575,7 +568,7 @@ func TestClient_StopNow(t *testing.T) {
 		serverResponseStatus int
 		inputEntries         []api.Entry
 		inputDelay           time.Duration
-		expectedReqs         []receivedReq
+		expectedReqs         []utils.RemoteWriteRequest
 		expectedMetrics      string
 	}{
 		{
@@ -585,14 +578,14 @@ func TestClient_StopNow(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 200,
 			inputEntries:         []api.Entry{logEntries[0], logEntries[1], logEntries[2]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry, logEntries[1].Entry}}}},
 				},
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[2].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -614,10 +607,10 @@ func TestClient_StopNow(t *testing.T) {
 			clientMaxRetries:     3,
 			serverResponseStatus: 429,
 			inputEntries:         []api.Entry{logEntries[0]},
-			expectedReqs: []receivedReq{
+			expectedReqs: []utils.RemoteWriteRequest{
 				{
-					tenantID: "",
-					pushReq:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
+					TenantID: "",
+					Request:  logproto.PushRequest{Streams: []logproto.Stream{{Labels: "{}", Entries: []logproto.Entry{logEntries[0].Entry}}}},
 				},
 			},
 			expectedMetrics: `
@@ -639,10 +632,10 @@ func TestClient_StopNow(t *testing.T) {
 			reg := prometheus.NewRegistry()
 
 			// Create a buffer channel where we do enqueue received requests
-			receivedReqsChan := make(chan receivedReq, 10)
+			receivedReqsChan := make(chan utils.RemoteWriteRequest, 10)
 
 			// Start a local HTTP server
-			server := httptest.NewServer(createServerHandler(receivedReqsChan, c.serverResponseStatus))
+			server := utils.NewRemoteWriteServer(receivedReqsChan, c.serverResponseStatus)
 			require.NotNil(t, server)
 			defer server.Close()
 
@@ -693,7 +686,7 @@ func TestClient_StopNow(t *testing.T) {
 			require.Error(t, cc.ctx.Err()) // non-nil error if its cancelled.
 
 			// Get all push requests received on the server side
-			receivedReqs := make([]receivedReq, 0)
+			receivedReqs := make([]utils.RemoteWriteRequest, 0)
 			for req := range receivedReqsChan {
 				receivedReqs = append(receivedReqs, req)
 			}
@@ -708,24 +701,6 @@ func TestClient_StopNow(t *testing.T) {
 			assert.NoError(t, err)
 		})
 	}
-}
-
-func createServerHandler(receivedReqsChan chan receivedReq, status int) http.HandlerFunc {
-	return http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
-		// Parse the request
-		var pushReq logproto.PushRequest
-		if err := util.ParseProtoReader(req.Context(), req.Body, int(req.ContentLength), math.MaxInt32, &pushReq, util.RawSnappy); err != nil {
-			rw.WriteHeader(500)
-			return
-		}
-
-		receivedReqsChan <- receivedReq{
-			tenantID: req.Header.Get("X-Scope-OrgID"),
-			pushReq:  pushReq,
-		}
-
-		rw.WriteHeader(status)
-	})
 }
 
 type RoundTripperFunc func(*http.Request) (*http.Response, error)

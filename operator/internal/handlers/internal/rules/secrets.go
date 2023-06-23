@@ -3,16 +3,16 @@ package rules
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 
 	corev1 "k8s.io/api/core/v1"
 )
 
 // ExtractRulerSecret reads a k8s secret infto a ruler secret struct if valid.
-func ExtractRulerSecret(s *corev1.Secret, t lokiv1beta1.RemoteWriteAuthType) (*manifests.RulerSecret, error) {
+func ExtractRulerSecret(s *corev1.Secret, t lokiv1.RemoteWriteAuthType) (*manifests.RulerSecret, error) {
 	switch t {
-	case lokiv1beta1.BasicAuthorization:
+	case lokiv1.BasicAuthorization:
 		username := s.Data["username"]
 		if len(username) == 0 {
 			return nil, kverrors.New("missing basic auth username", "field", "username")
@@ -24,7 +24,7 @@ func ExtractRulerSecret(s *corev1.Secret, t lokiv1beta1.RemoteWriteAuthType) (*m
 		}
 
 		return &manifests.RulerSecret{Username: string(username), Password: string(password)}, nil
-	case lokiv1beta1.BearerAuthorization:
+	case lokiv1.BearerAuthorization:
 		token := s.Data["bearer_token"]
 		if len(token) == 0 {
 			return nil, kverrors.New("missing bearer token", "field", "bearer_token")

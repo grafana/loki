@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -199,4 +200,68 @@ func TestPlaintextPushTarget(t *testing.T) {
 
 	_ = pt.Stop()
 
+}
+
+func TestReady(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	//Create PushTarget
+	eh := fake.New(func() {})
+	defer eh.Stop()
+
+	// Get a randomly available port by open and closing a TCP socket
+	addr, err := net.ResolveTCPAddr("tcp", localhost+":0")
+	require.NoError(t, err)
+	l, err := net.ListenTCP("tcp", addr)
+	require.NoError(t, err)
+	port := l.Addr().(*net.TCPAddr).Port
+	err = l.Close()
+	require.NoError(t, err)
+
+	// Adjust some of the defaults
+	defaults := server.Config{}
+	defaults.RegisterFlags(flag.NewFlagSet("empty", flag.ContinueOnError))
+	defaults.HTTPListenAddress = localhost
+	defaults.HTTPListenPort = port
+	defaults.GRPCListenAddress = localhost
+	defaults.GRPCListenPort = 0 // Not testing GRPC, a random port will be assigned
+
+	config := &scrapeconfig.PushTargetConfig{
+		Server: defaults,
+		Labels: model.LabelSet{
+			"pushserver": "pushserver2",
+			"keepme":     "label",
+		},
+		KeepTimestamp: true,
+	}
+
+	pt, err := NewPushTarget(logger, eh, []*relabel.Config{}, "job3", config)
+	require.NoError(t, err)
+
+	url := fmt.Sprintf("http://%s:%d/ready", localhost, port)
+	response, err := http.Get(url)
+	if err != nil {
+		require.NoError(t, err)
+	}
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		require.NoError(t, err)
+	}
+	responseCode := fmt.Sprint(response.StatusCode)
+	responseBody := string(body)
+
+	fmt.Println(responseBody)
+	wantedResponse := "ready"
+	if responseBody != wantedResponse {
+		t.Errorf("got the response %q, want %q", responseBody, wantedResponse)
+	}
+	wantedCode := "200"
+	if responseCode != wantedCode {
+		t.Errorf("Got the response code %q, want %q", responseCode, wantedCode)
+	}
+
+	t.Cleanup(func() {
+		_ = pt.Stop()
+	})
 }

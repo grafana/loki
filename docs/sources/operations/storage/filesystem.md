@@ -18,7 +18,7 @@ A folder is created for every tenant all the chunks for one tenant are stored in
 
 If Loki is run in single-tenant mode, all the chunks are put in a folder named `fake` which is the synthesized tenant name used for single tenant mode.
 
-See [multi-tenancy]({{<relref "../multi-tenancy">}}) for more information.
+See [multi-tenancy]({{< relref "../multi-tenancy" >}}) for more information.
 
 ## Pros
 

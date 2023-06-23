@@ -1,5 +1,4 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{ if and $isSimpleScalable .Values.enterprise.tokengen.enabled .Values.enterprise.enabled }}
+{{ if and .Values.enterprise.tokengen.enabled .Values.enterprise.enabled }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -22,5 +21,5 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: {{ template "enterprise-logs.tokengenFullname" . }}
-    namespace: {{ .Release.Namespace }}
+    namespace: {{ $.Release.Namespace }}
 {{- end }}

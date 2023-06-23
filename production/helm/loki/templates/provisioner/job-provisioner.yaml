@@ -4,6 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ template "enterprise-logs.provisionerFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "enterprise-logs.provisionerLabels" . | nindent 4 }}
     {{- with .Values.enterprise.provisioner.labels }}
@@ -92,20 +93,30 @@ spec:
             - /bin/bash
             - -exuc
             - |
+              # In case, the admin resources have already been created, the provisioner job
+              # does not write the token files to the bootstrap mount.
+              # Therefore, secrets are only created if the respective token files exist.
+              # Note: the following bash commands should always return a success status code. 
+              # Therefore, in case the token file does not exist, the first clause of the 
+              # or-operation is successful.
               {{- range .Values.enterprise.provisioner.additionalTenants }}
-              kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.provisionedSecretPrefix" $ }}-{{ .name }}" \
-                --from-literal=token-write="$(cat /bootstrap/token-write-{{ .name }})" \
-                --from-literal=token-read="$(cat /bootstrap/token-read-{{ .name }})"
+              ! test -s /bootstrap/token-write-{{ .name }} || \
+                kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.provisionedSecretPrefix" $ }}-{{ .name }}" \
+                  --from-literal=token-write="$(cat /bootstrap/token-write-{{ .name }})" \
+                  --from-literal=token-read="$(cat /bootstrap/token-read-{{ .name }})"
               {{- end }}
               {{- $namespace := $.Release.Namespace }}
               {{- with .Values.monitoring.selfMonitoring.tenant }}
-              kubectl --namespace "{{ $namespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
-                --from-literal=username="{{ .name }}" \
-                --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
-              {{- if not (eq .secretNamespace $namespace) }}
-              kubectl --namespace "{{ .secretNamespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
-                --from-literal=username="{{ .name }}" \
-                --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
+              {{- $secretNamespace := tpl .secretNamespace $ }}
+              ! test -s /bootstrap/token-self-monitoring || \
+                kubectl --namespace "{{ $namespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
+                  --from-literal=username="{{ .name }}" \
+                  --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
+              {{- if not (eq $secretNamespace $namespace) }}
+              ! test -s /bootstrap/token-self-monitoring || \
+                kubectl --namespace "{{ $secretNamespace }}" create secret generic "{{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}" \
+                  --from-literal=username="{{ .name }}" \
+                  --from-literal=password="$(cat /bootstrap/token-self-monitoring)"
               {{- end }}
               {{- end }}
           volumeMounts:

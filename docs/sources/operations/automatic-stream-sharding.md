@@ -11,6 +11,28 @@ Automatic stream sharding will attempt to keep streams under a `desired_rate` by
 existing streams. When properly tuned, this should eliminate issues where log producers are rate limited due to the
 per-stream rate limit.
 
+**To enable automatic stream sharding:**
+1. Edit the global [limits_config]({{< relref "../configuration#limits_config" >}}) of the Loki configuration file:
+   ```yaml
+   limits_config:
+     shard_streams:
+         enabled: true
+   ```
+2. Optionally lower the `desired_rate` in bytes if you find that the system is still hitting the `per_stream_rate_limit`:
+   ```yaml
+   limits_config:
+     shard_streams:
+       enabled: true
+       desired_rate: 2097152 #2MiB
+   ```
+3. Optionally enable `logging_enabled` for debugging stream sharding. **Note**: this may affect the ingestion performance of Loki.
+   ```yaml
+   limits_config:
+     shard_streams:
+       enabled: true
+       logging_enabled: true
+   ```
+
 ## When to use automatic stream sharding
 
 Large log streams present several problems for Loki, namely increased and uneven resource usage on Ingesters and
@@ -35,14 +57,6 @@ are created with the label `__stream_shard__` and logs are divided evenly among 
 Because automatic stream sharding is reactive and relies on successive calls to Ingesters, the view of current rates is
 always somewhat behind. As a result, the actual size of sharded streams will always be higher than the `desired_rate`.
 In practice, this is still sufficient to keep log producers from being rate limited by per-stream rate limits.
-
-## Enabling and configuring automatic stream sharding
-
-Enable automatic sharding by setting the global or per-tenant override `shard_streams`. This configuration contains
-an `enabled` flag to turn the feature on, a `desired_rate` configuration for the desired stream rate, and an
-optional `logging_enabled` flag to enable debug logging of stream sharding.
-
-*NOTE*: Setting `logging_enabled` may affect the ingestion performance of Loki.
 
 ## Automatic stream sharding metrics
 

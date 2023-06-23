@@ -276,6 +276,17 @@ bool
 </tr>
 <tr>
 <td>
+<code>rulerConfigWebhook</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>RulerConfigWebhook enables the RulerConfig CR validation webhook.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>defaultNodeAffinity</code><br/>
 <em>
 bool
@@ -331,6 +342,17 @@ when using HTTPEncryption or GRPCEncryption.</p>
 <tbody>
 <tr>
 <td>
+<code>enabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Enabled defines the flag to enable that these feature gates are used against OpenShift Container Platform releases.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>servingCertsService</code><br/>
 <em>
 bool
@@ -341,19 +363,6 @@ bool
 to use the in-platform CA and generate a TLS cert/key pair per service for
 in-cluster data-in-transit encryption.
 More details: <a href="https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html">https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html</a></p>
-</td>
-</tr>
-<tr>
-<td>
-<code>gatewayRoute</code><br/>
-<em>
-bool
-</em>
-</td>
-<td>
-<p>GatewayRoute enables creating an OpenShift Route for the LokiStack
-gateway to expose the service to public internet access.
-More details: <a href="https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html">https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html</a></p>
 </td>
 </tr>
 <tr>

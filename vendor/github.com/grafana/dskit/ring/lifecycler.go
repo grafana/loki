@@ -4,9 +4,11 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"sort"
+	strconv "strconv"
 	"sync"
 	"time"
 
@@ -34,6 +36,7 @@ type LifecyclerConfig struct {
 	JoinAfter        time.Duration `yaml:"join_after" category:"advanced"`
 	MinReadyDuration time.Duration `yaml:"min_ready_duration" category:"advanced"`
 	InfNames         []string      `yaml:"interface_names" doc:"default=[<private network interfaces>]"`
+	EnableInet6      bool          `yaml:"enable_inet6" category:"advanced"`
 
 	// FinalSleep's default value can be overridden by
 	// setting it before calling RegisterFlags or RegisterFlagsWithPrefix.
@@ -91,6 +94,7 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.StringVar(&cfg.Zone, prefix+"availability-zone", "", "The availability zone where this instance is running.")
 	f.BoolVar(&cfg.UnregisterOnShutdown, prefix+"unregister-on-shutdown", true, "Unregister from the ring upon clean shutdown. It can be useful to disable for rolling restarts with consistent naming in conjunction with -distributor.extend-writes=false.")
 	f.BoolVar(&cfg.ReadinessCheckRingHealth, prefix+"readiness-check-ring-health", true, "When enabled the readiness probe succeeds only after all instances are ACTIVE and healthy in the ring, otherwise only the instance itself is checked. This option should be disabled if in your cluster multiple instances can be rolled out simultaneously, otherwise rolling updates may be slowed down.")
+	f.BoolVar(&cfg.EnableInet6, prefix+"enable-inet6", false, "Enable IPv6 support. Required to make use of IP addresses from IPv6 interfaces.")
 }
 
 // Lifecycler is responsible for managing the lifecycle of entries in the ring.
@@ -130,6 +134,8 @@ type Lifecycler struct {
 	// Keeps stats updated at every heartbeat period
 	countersLock          sync.RWMutex
 	healthyInstancesCount int
+	instancesCount        int
+	instancesInZoneCount  int
 	zonesCount            int
 
 	lifecyclerMetrics *LifecyclerMetrics
@@ -138,7 +144,7 @@ type Lifecycler struct {
 
 // NewLifecycler creates new Lifecycler. It must be started via StartAsync.
 func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringName, ringKey string, flushOnShutdown bool, logger log.Logger, reg prometheus.Registerer) (*Lifecycler, error) {
-	addr, err := GetInstanceAddr(cfg.Addr, cfg.InfNames, logger)
+	addr, err := GetInstanceAddr(cfg.Addr, cfg.InfNames, logger, cfg.EnableInet6)
 	if err != nil {
 		return nil, err
 	}
@@ -165,7 +171,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		cfg:                   cfg,
 		flushTransferer:       flushTransferer,
 		KVStore:               store,
-		Addr:                  fmt.Sprintf("%s:%d", addr, port),
+		Addr:                  net.JoinHostPort(addr, strconv.Itoa(port)),
 		ID:                    cfg.ID,
 		RingName:              ringName,
 		RingKey:               ringKey,
@@ -381,6 +387,23 @@ func (i *Lifecycler) HealthyInstancesCount() int {
 	defer i.countersLock.RUnlock()
 
 	return i.healthyInstancesCount
+}
+
+// InstancesCount returns the total number of instances in the ring, updated during the last heartbeat period.
+func (i *Lifecycler) InstancesCount() int {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.instancesCount
+}
+
+// InstancesInZoneCount returns the number of instances in the ring that are registered in
+// this lifecycler's zone, updated during the last heartbeat period.
+func (i *Lifecycler) InstancesInZoneCount() int {
+	i.countersLock.RLock()
+	defer i.countersLock.RUnlock()
+
+	return i.instancesInZoneCount
 }
 
 // ZonesCount returns the number of zones for which there's at least 1 instance registered
@@ -795,13 +818,15 @@ func (i *Lifecycler) changeState(ctx context.Context, state InstanceState) error
 
 func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	healthyInstancesCount := 0
-	zones := map[string]struct{}{}
+	instancesCount := 0
+	zones := map[string]int{}
 
 	if ringDesc != nil {
 		now := time.Now()
 
 		for _, ingester := range ringDesc.Ingesters {
-			zones[ingester.Zone] = struct{}{}
+			zones[ingester.Zone]++
+			instancesCount++
 
 			// Count the number of healthy instances for Write operation.
 			if ingester.IsHealthy(Write, i.cfg.RingConfig.HeartbeatTimeout, now) {
@@ -813,6 +838,8 @@ func (i *Lifecycler) updateCounters(ringDesc *Desc) {
 	// Update counters
 	i.countersLock.Lock()
 	i.healthyInstancesCount = healthyInstancesCount
+	i.instancesCount = instancesCount
+	i.instancesInZoneCount = zones[i.cfg.Zone]
 	i.zonesCount = len(zones)
 	i.countersLock.Unlock()
 }

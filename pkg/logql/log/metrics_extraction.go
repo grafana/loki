@@ -50,7 +50,7 @@ type lineSampleExtractor struct {
 // Multiple log stages are run before converting the log line.
 func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
-	hints := newParserHint(s.RequiredLabelNames(), groups, without, noLabels, "")
+	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "", stages)
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
@@ -138,7 +138,7 @@ func LabelExtractorWithStages(
 		sort.Strings(groups)
 	}
 	preStage := ReduceStages(preStages)
-	hints := newParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName)
+	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName, append(preStages, postFilter))
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,

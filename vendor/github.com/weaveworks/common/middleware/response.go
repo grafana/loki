@@ -52,6 +52,11 @@ func newBadResponseLoggingWriter(rw http.ResponseWriter, buffer io.Writer) badRe
 	return &b
 }
 
+// Unwrap method is used by http.ResponseController to get access to original http.ResponseWriter.
+func (b *nonFlushingBadResponseLoggingWriter) Unwrap() http.ResponseWriter {
+	return b.rw
+}
+
 // Header returns the header map that will be sent by WriteHeader.
 // Implements ResponseWriter.
 func (b *nonFlushingBadResponseLoggingWriter) Header() http.Header {

@@ -13,10 +13,10 @@ func (s vectorByValueHeap) Len() int {
 }
 
 func (s vectorByValueHeap) Less(i, j int) bool {
-	if math.IsNaN(s[i].V) {
+	if math.IsNaN(s[i].F) {
 		return true
 	}
-	return s[i].V < s[j].V
+	return s[i].F < s[j].F
 }
 
 func (s vectorByValueHeap) Swap(i, j int) {
@@ -42,10 +42,10 @@ func (s vectorByReverseValueHeap) Len() int {
 }
 
 func (s vectorByReverseValueHeap) Less(i, j int) bool {
-	if math.IsNaN(s[i].V) {
+	if math.IsNaN(s[i].F) {
 		return true
 	}
-	return s[i].V > s[j].V
+	return s[i].F > s[j].F
 }
 
 func (s vectorByReverseValueHeap) Swap(i, j int) {

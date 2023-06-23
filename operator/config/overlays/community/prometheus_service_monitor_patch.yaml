@@ -1,0 +1,14 @@
+# Prometheus Monitor Service (Metrics)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    name: loki-operator
+  name: metrics-monitor
+spec:
+  endpoints:
+    - path: /metrics
+      targetPort: 8443
+      scheme: http
+      interval: 30s
+      scrapeTimeout: 10s

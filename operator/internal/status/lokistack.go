@@ -7,6 +7,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/util/retry"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -20,6 +21,24 @@ const (
 	messagePending = "Some LokiStack components pending on dependencies"
 )
 
+var (
+	conditionFailed = metav1.Condition{
+		Type:    string(lokiv1.ConditionFailed),
+		Message: messageFailed,
+		Reason:  string(lokiv1.ReasonFailedComponents),
+	}
+	conditionPending = metav1.Condition{
+		Type:    string(lokiv1.ConditionPending),
+		Message: messagePending,
+		Reason:  string(lokiv1.ReasonPendingComponents),
+	}
+	conditionReady = metav1.Condition{
+		Type:    string(lokiv1.ConditionReady),
+		Message: messageReady,
+		Reason:  string(lokiv1.ReasonReadyComponents),
+	}
+)
+
 // DegradedError contains information about why the managed LokiStack has an invalid configuration.
 type DegradedError struct {
 	Message string
@@ -31,42 +50,6 @@ func (e *DegradedError) Error() string {
 	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
-// SetReadyCondition updates or appends the condition Ready to the lokistack status conditions.
-// In addition it resets all other Status conditions to false.
-func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	ready := metav1.Condition{
-		Type:    string(lokiv1.ConditionReady),
-		Message: messageReady,
-		Reason:  string(lokiv1.ReasonReadyComponents),
-	}
-
-	return updateCondition(ctx, k, req, ready)
-}
-
-// SetFailedCondition updates or appends the condition Failed to the lokistack status conditions.
-// In addition it resets all other Status conditions to false.
-func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	failed := metav1.Condition{
-		Type:    string(lokiv1.ConditionFailed),
-		Message: messageFailed,
-		Reason:  string(lokiv1.ReasonFailedComponents),
-	}
-
-	return updateCondition(ctx, k, req, failed)
-}
-
-// SetPendingCondition updates or appends the condition Pending to the lokistack status conditions.
-// In addition it resets all other Status conditions to false.
-func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	pending := metav1.Condition{
-		Type:    string(lokiv1.ConditionPending),
-		Message: messagePending,
-		Reason:  string(lokiv1.ReasonPendingComponents),
-	}
-
-	return updateCondition(ctx, k, req, pending)
-}
-
 // SetDegradedCondition appends the condition Degraded to the lokistack status conditions.
 func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, msg string, reason lokiv1.LokiStackConditionReason) error {
 	degraded := metav1.Condition{
@@ -76,6 +59,38 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, m
 	}
 
 	return updateCondition(ctx, k, req, degraded)
+}
+
+func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
+	// Check for failed pods first
+	failed := len(cs.Compactor[corev1.PodFailed]) +
+		len(cs.Distributor[corev1.PodFailed]) +
+		len(cs.Ingester[corev1.PodFailed]) +
+		len(cs.Querier[corev1.PodFailed]) +
+		len(cs.QueryFrontend[corev1.PodFailed]) +
+		len(cs.Gateway[corev1.PodFailed]) +
+		len(cs.IndexGateway[corev1.PodFailed]) +
+		len(cs.Ruler[corev1.PodFailed])
+
+	if failed != 0 {
+		return conditionFailed
+	}
+
+	// Check for pending pods
+	pending := len(cs.Compactor[corev1.PodPending]) +
+		len(cs.Distributor[corev1.PodPending]) +
+		len(cs.Ingester[corev1.PodPending]) +
+		len(cs.Querier[corev1.PodPending]) +
+		len(cs.QueryFrontend[corev1.PodPending]) +
+		len(cs.Gateway[corev1.PodPending]) +
+		len(cs.IndexGateway[corev1.PodPending]) +
+		len(cs.Ruler[corev1.PodPending])
+
+	if pending != 0 {
+		return conditionPending
+	}
+
+	return conditionReady
 }
 
 func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {

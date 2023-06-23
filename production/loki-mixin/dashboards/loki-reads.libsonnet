@@ -56,8 +56,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
-                             dashboards['loki-reads.json'].matchers.cortexgateway + [utils.selector.re('route', http_routes)],
-                             extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.cortexgateway + [utils.selector.re('route', http_routes)],
                              sum_by=['route']
                            )
                          )
@@ -72,8 +71,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
-                             dashboards['loki-reads.json'].matchers.queryFrontend + [utils.selector.re('route', http_routes)],
-                             extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.queryFrontend + [utils.selector.re('route', http_routes)],
                              sum_by=['route']
                            )
                          )
@@ -89,8 +87,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
-                             dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', http_routes)],
-                             extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.querier + [utils.selector.re('route', http_routes)],
                              sum_by=['route']
                            )
                          )
@@ -106,8 +103,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
-                             dashboards['loki-reads.json'].matchers.ingester + [utils.selector.re('route', grpc_routes)],
-                             extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.ingester + [utils.selector.re('route', grpc_routes)],
                              sum_by=['route']
                            )
                          )
@@ -124,8 +120,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
                              'loki_request_duration_seconds',
-                             dashboards['loki-reads.json'].matchers.ingesterZoneAware + [utils.selector.re('route', grpc_routes)],
-                             extra_selectors=dashboards['loki-reads.json'].clusterMatchers,
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.ingesterZoneAware + [utils.selector.re('route', grpc_routes)],
                              sum_by=['route']
                            )
                          )
@@ -153,7 +148,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            $.panel('Latency') +
                            utils.latencyRecordingRulePanel(
                              'loki_bigtable_request_duration_seconds',
-                             dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
+                             dashboards['loki-reads.json'].clusterMatchers + dashboards['loki-reads.json'].matchers.querier + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/ReadRows')]
                            )
                          )
                        )

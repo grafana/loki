@@ -7,6 +7,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     // This is inserted into the gateway Nginx config file
     // under the server directive
     gateway_server_snippet: '',
+    gateway_tenant_id: '1',
   },
 
   _images+:: {
@@ -49,7 +50,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
             listen               80;
             auth_basic           “Prometheus”;
             auth_basic_user_file /etc/nginx/secrets/.htpasswd;
-            proxy_set_header     X-Scope-OrgID 1;
+            proxy_set_header     X-Scope-OrgID %(gateway_tenant_id)s;
 
             location = /api/prom/push {
               proxy_pass       http://distributor.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;

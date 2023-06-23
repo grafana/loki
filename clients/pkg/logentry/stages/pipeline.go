@@ -91,6 +91,25 @@ func RunWithSkip(input chan Entry, process func(e Entry) (Entry, bool)) chan Ent
 	return out
 }
 
+// RunWithSkiporSendMany same as RunWithSkip, except it can either skip sending it to output channel, if `process` functions returns `skip` true. Or send many entries.
+func RunWithSkipOrSendMany(input chan Entry, process func(e Entry) ([]Entry, bool)) chan Entry {
+	out := make(chan Entry)
+	go func() {
+		defer close(out)
+		for e := range input {
+			results, skip := process(e)
+			if skip {
+				continue
+			}
+			for _, result := range results {
+				out <- result
+			}
+		}
+	}()
+
+	return out
+}
+
 // Run implements Stage
 func (p *Pipeline) Run(in chan Entry) chan Entry {
 	in = RunWith(in, func(e Entry) Entry {

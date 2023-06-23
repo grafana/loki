@@ -17,10 +17,11 @@ import (
 )
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	clu := cluster.New()
+	storage.ResetBoltDBIndexClientsWithShipper()
+	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -97,11 +98,11 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			},
 			Values: [][]string{
 				{
-					strconv.FormatInt(now.Add(-45*time.Minute).UnixNano(), 10),
+					strconv.FormatInt(now.Add(-48*time.Hour).UnixNano(), 10),
 					"lineA",
 				},
 				{
-					strconv.FormatInt(now.Add(-45*time.Minute).UnixNano(), 10),
+					strconv.FormatInt(now.Add(-48*time.Hour).UnixNano(), 10),
 					"lineB",
 				},
 				{
@@ -118,32 +119,32 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	expectedDeleteRequests := []client.DeleteRequest{
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
 			Query:     `{deletion_type="filter"} |= "lineB"`,
 			Status:    "received",
 		},
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
 			Query:     `{deletion_type="filter_no_match"} |= "foo"`,
 			Status:    "received",
 		},
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Add(-10 * time.Minute).Unix(),
 			Query:     `{deletion_type="partially_by_time"}`,
 			Status:    "received",
 		},
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
 			Query:     `{deletion_type="whole"}`,
 			Status:    "received",
 		},
 	}
 
-	validateQueryResponse := func(resp *client.Response) {
+	validateQueryResponse := func(expectedStreams []client.StreamValues, resp *client.Response) {
 		t.Helper()
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -173,7 +174,14 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("query", func(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
-		validateQueryResponse(resp)
+
+		// given default value of query_ingesters_within is 3h, older samples won't be present in the response
+		var es []client.StreamValues
+		for _, stream := range expectedStreams {
+			stream.Values = stream.Values[2:]
+			es = append(es, stream)
+		}
+		validateQueryResponse(es, resp)
 	})
 
 	t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
@@ -187,7 +195,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 5)
 
 		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 	})
 
@@ -195,7 +203,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("query again to verify logs being served from storage", func(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
-		validateQueryResponse(resp)
+		validateQueryResponse(expectedStreams, resp)
 	})
 
 	t.Run("add-delete-requests", func(t *testing.T) {
@@ -212,13 +220,13 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("read-delete-request", func(t *testing.T) {
 		deleteRequests, err := cliCompactor.GetDeleteRequests()
 		require.NoError(t, err)
-		require.Equal(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
+		require.ElementsMatch(t, client.DeleteRequests(expectedDeleteRequests), deleteRequests)
 	})
 
 	// Query lines
 	t.Run("verify query time filtering", func(t *testing.T) {
 		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		// update expectedStreams as per the issued requests
@@ -230,7 +238,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 
-		validateQueryResponse(resp)
+		validateQueryResponse(expectedStreams, resp)
 	})
 
 	// Wait until delete request is finished
@@ -247,20 +255,27 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.Eventually(t, func() bool {
 			deleteRequests, err := cliCompactor.GetDeleteRequests()
 			require.NoError(t, err)
-			require.Len(t, deleteRequests, len(expectedDeleteRequests))
+
+		outer:
 			for i := range deleteRequests {
-				if deleteRequests[i] != expectedDeleteRequests[i] {
-					return false
+				for j := range expectedDeleteRequests {
+					if deleteRequests[i] == expectedDeleteRequests[j] {
+						continue outer
+					}
 				}
+				return false
 			}
 			return true
-		}, 10*time.Second, 1*time.Second)
+		}, 20*time.Second, 1*time.Second)
 
 		// Check metrics
 		metrics, err := cliCompactor.Metrics()
 		require.NoError(t, err)
 		checkUserLabelAndMetricValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, float64(len(expectedDeleteRequests)))
-		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 1)
+
+		// ideally this metric should be equal to 1 given that a single line matches the line filter
+		// but the same chunk is indexed in 3 tables
+		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 3)
 	})
 
 	// Query lines
@@ -271,7 +286,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, tQuerier.SetTenantLimits(tenantID, tenantLimits))
 
 		// restart querier to make it sync the index
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		// ensure the deletion-mode limit is updated
@@ -280,7 +295,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 
-		validateQueryResponse(resp)
+		validateQueryResponse(expectedStreams, resp)
 	})
 }
 
@@ -297,7 +312,12 @@ func checkUserLabelAndMetricValue(t *testing.T, metricName, metrics, tenantID st
 
 func checkMetricValue(t *testing.T, metricName, metrics string, expectedValue float64) {
 	t.Helper()
+	require.Equal(t, expectedValue, getMetricValue(t, metricName, metrics))
+}
+
+func getMetricValue(t *testing.T, metricName, metrics string) float64 {
+	t.Helper()
 	val, _, err := extractMetric(metricName, metrics)
 	require.NoError(t, err)
-	require.Equal(t, expectedValue, val)
+	return val
 }

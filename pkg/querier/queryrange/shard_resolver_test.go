@@ -11,8 +11,9 @@ import (
 
 func TestGuessShardFactor(t *testing.T) {
 	for _, tc := range []struct {
-		stats stats.Stats
-		exp   int
+		stats     stats.Stats
+		maxShards int
+		exp       int
 	}{
 		{
 			// no data == no sharding
@@ -43,9 +44,30 @@ func TestGuessShardFactor(t *testing.T) {
 				Bytes: maxBytesPerShard,
 			},
 		},
+		{
+			maxShards: 8,
+			exp:       4,
+			stats: stats.Stats{
+				Bytes: maxBytesPerShard * 4,
+			},
+		},
+		{
+			maxShards: 2,
+			exp:       2,
+			stats: stats.Stats{
+				Bytes: maxBytesPerShard * 4,
+			},
+		},
+		{
+			maxShards: 1,
+			exp:       0,
+			stats: stats.Stats{
+				Bytes: maxBytesPerShard * 4,
+			},
+		},
 	} {
 		t.Run(fmt.Sprintf("%+v", tc.stats), func(t *testing.T) {
-			require.Equal(t, tc.exp, guessShardFactor(tc.stats))
+			require.Equal(t, tc.exp, guessShardFactor(tc.stats, tc.maxShards))
 		})
 	}
 }
