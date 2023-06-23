@@ -30,22 +30,18 @@ func Test_AddVolumes(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{cluster: \"prod\"}",
-					Value:  "",
 					Volume: 50,
 				},
 				{
 					Name:   "{cluster: \"dev\"}",
-					Value:  "",
 					Volume: 25,
 				},
 				{
 					Name:   "{job: \"prometheus\"}",
-					Value:  "",
 					Volume: 10,
 				},
 				{
 					Name:   "{job: \"loki\"}",
-					Value:  "",
 					Volume: 5,
 				},
 			},
@@ -61,22 +57,18 @@ func Test_AddVolumes(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{cluster: \"prod\"}",
-					Value:  "",
 					Volume: 100,
 				},
 				{
 					Name:   "{cluster: \"dev\"}",
-					Value:  "",
 					Volume: 50,
 				},
 				{
 					Name:   "{job: \"prometheus\"}",
-					Value:  "",
 					Volume: 20,
 				},
 				{
 					Name:   "{job: \"loki\"}",
-					Value:  "",
 					Volume: 10,
 				},
 			},
@@ -95,22 +87,18 @@ func Test_AddVolumes(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{cluster: \"prod\"}",
-					Value:  "",
 					Volume: 50,
 				},
 				{
 					Name:   "{cluster: \"dev\"}",
-					Value:  "",
 					Volume: 25,
 				},
 				{
 					Name:   "{job: \"prometheus\"}",
-					Value:  "",
 					Volume: 10,
 				},
 				{
 					Name:   "{job: \"loki\"}",
-					Value:  "",
 					Volume: 5,
 				},
 			},
@@ -141,12 +129,10 @@ func Test_AddVolumes(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{job: \"prometheus\"}",
-					Value:  "",
 					Volume: 40,
 				},
 				{
 					Name:   "{job: \"loki\"}",
-					Value:  "",
 					Volume: 25,
 				},
 			},
@@ -165,12 +151,10 @@ func Test_Merge(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{
 						Name:   "{cluster: \"dev\"}",
-						Value:  "",
 						Volume: 25,
 					},
 					{
 						Name:   "{cluster: \"prod\"}",
-						Value:  "",
 						Volume: 50,
 					},
 				},
@@ -180,17 +164,14 @@ func Test_Merge(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{
 						Name:   "{cluster: \"dev\"}",
-						Value:  "",
 						Volume: 25,
 					},
 					{
 						Name:   "{job: \"foo\"}",
-						Value:  "",
 						Volume: 15,
 					},
 					{
 						Name:   "{cluster: \"prod\"}",
-						Value:  "",
 						Volume: 50,
 					},
 				},
@@ -204,17 +185,14 @@ func Test_Merge(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{cluster: \"prod\"}",
-					Value:  "",
 					Volume: 100,
 				},
 				{
 					Name:   "{cluster: \"dev\"}",
-					Value:  "",
 					Volume: 50,
 				},
 				{
 					Name:   "{job: \"foo\"}",
-					Value:  "",
 					Volume: 15,
 				},
 			},
@@ -231,12 +209,10 @@ func Test_Merge(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{
 						Name:   "{cluster: \"dev\"}",
-						Value:  "",
 						Volume: 25,
 					},
 					{
 						Name:   "{cluster: \"prod\"}",
-						Value:  "",
 						Volume: 50,
 					},
 				},
@@ -246,17 +222,14 @@ func Test_Merge(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{
 						Name:   "{cluster: \"dev\"}",
-						Value:  "",
 						Volume: 25,
 					},
 					{
 						Name:   "{job: \"foo\"}",
-						Value:  "",
 						Volume: 15,
 					},
 					{
 						Name:   "{cluster: \"prod\"}",
-						Value:  "",
 						Volume: 50,
 					},
 				},
@@ -270,12 +243,10 @@ func Test_Merge(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{cluster: \"prod\"}",
-					Value:  "",
 					Volume: 100,
 				},
 				{
 					Name:   "{cluster: \"dev\"}",
-					Value:  "",
 					Volume: 50,
 				},
 			},
@@ -296,12 +267,10 @@ func Test_Merge(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{
 						Name:   "{cluster: \"dev\"}",
-						Value:  "",
 						Volume: 25,
 					},
 					{
 						Name:   "{cluster: \"prod\"}",
-						Value:  "",
 						Volume: 50,
 					},
 				},
@@ -313,17 +282,14 @@ func Test_Merge(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{
 						Name:   "{cluster: \"dev\"}",
-						Value:  "",
 						Volume: 25,
 					},
 					{
 						Name:   "{job: \"foo\"}",
-						Value:  "",
 						Volume: 15,
 					},
 					{
 						Name:   "{cluster: \"prod\"}",
-						Value:  "",
 						Volume: 50,
 					},
 				},
@@ -339,17 +305,14 @@ func Test_Merge(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{
 					Name:   "{cluster: \"prod\"}",
-					Value:  "",
 					Volume: 100,
 				},
 				{
 					Name:   "{cluster: \"dev\"}",
-					Value:  "",
 					Volume: 50,
 				},
 				{
 					Name:   "{job: \"foo\"}",
-					Value:  "",
 					Volume: 15,
 				},
 			},
