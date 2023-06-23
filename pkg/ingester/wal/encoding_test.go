@@ -166,11 +166,11 @@ func Benchmark_EncodeEntries(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	buf := recordPool.GetBytes()[:0]
+	buf := recordPool.GetBytes()
 	defer recordPool.PutBytes(buf)
 
 	for n := 0; n < b.N; n++ {
-		record.EncodeEntries(CurrentEntriesRec, buf)
+		*buf = record.EncodeEntries(CurrentEntriesRec, *buf)
 	}
 }
 

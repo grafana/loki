@@ -1,0 +1,76 @@
+resources:
+- ../../crd
+- ../../rbac
+- ../../manager
+- ../../webhook
+- ../../certmanager
+
+# Adds namespace to all resources.
+namespace: loki-operator
+
+# Value of this field is prepended to the
+# names of all resources, e.g. a deployment named
+# "wordpress" becomes "alices-wordpress".
+# Note that it should also match with the prefix (text before '-') of the namespace
+# field above.
+namePrefix: loki-operator-
+
+labels:
+- pairs:
+    app.kubernetes.io/name: loki-operator
+    app.kubernetes.io/part-of: loki-operator
+    app.kubernetes.io/managed-by: operator-lifecycle-manager
+  includeSelectors: true
+- pairs:
+    app.kubernetes.io/instance: loki-operator-v0.3.0
+    app.kubernetes.io/version: "0.3.0"
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+- files:
+  - controller_manager_config.yaml
+  name: manager-config
+
+patchesStrategicMerge:
+- manager_auth_proxy_patch.yaml
+- manager_related_image_patch.yaml
+- manager_run_flags_patch.yaml
+- manager_webhook_patch.yaml
+- webhookcainjection_patch.yaml
+
+images:
+- name: controller
+  newName: docker.io/grafana/loki-operator
+  newTag: main-ac1c1fd
+
+# the following config is for teaching kustomize how to do var substitution
+vars:
+# [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
+- name: CERTIFICATE_NAMESPACE # namespace of the certificate CR
+  objref:
+    kind: Certificate
+    group: cert-manager.io
+    version: v1
+    name: serving-cert # this name should match the one in certificate.yaml
+  fieldref:
+    fieldpath: metadata.namespace
+- name: CERTIFICATE_NAME
+  objref:
+    kind: Certificate
+    group: cert-manager.io
+    version: v1
+    name: serving-cert # this name should match the one in certificate.yaml
+- name: SERVICE_NAMESPACE # namespace of the service
+  objref:
+    kind: Service
+    version: v1
+    name: webhook-service
+  fieldref:
+    fieldpath: metadata.namespace
+- name: SERVICE_NAME
+  objref:
+    kind: Service
+    version: v1
+    name: webhook-service

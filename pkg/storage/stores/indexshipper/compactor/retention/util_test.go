@@ -148,7 +148,7 @@ func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
 	return true, nil
 }
 
-func (t *table) CleanupSeries(userID []byte, lbls labels.Labels) error {
+func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
@@ -303,7 +303,7 @@ func entryFromChunk(c chunk.Chunk) ChunkEntry {
 			From:     c.From,
 			Through:  c.Through,
 		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(nil),
+		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
 	}
 }
 

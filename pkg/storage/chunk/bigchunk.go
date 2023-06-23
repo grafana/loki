@@ -91,7 +91,7 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 	return nil
 }
 
-func (b *bigchunk) Rebound(start, end model.Time, filter filter.Func) (Data, error) {
+func (b *bigchunk) Rebound(_, _ model.Time, _ filter.Func) (Data, error) {
 	return nil, errors.New("not implemented")
 }
 

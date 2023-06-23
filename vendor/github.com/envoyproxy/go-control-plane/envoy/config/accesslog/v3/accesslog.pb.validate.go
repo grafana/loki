@@ -88,9 +88,18 @@ func (m *AccessLog) validate(all bool) error {
 		}
 	}
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *AccessLog_TypedConfig:
+		if v == nil {
+			err := AccessLogValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -121,6 +130,8 @@ func (m *AccessLog) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -222,9 +233,20 @@ func (m *AccessLogFilter) validate(all bool) error {
 
 	var errors []error
 
-	switch m.FilterSpecifier.(type) {
-
+	oneofFilterSpecifierPresent := false
+	switch v := m.FilterSpecifier.(type) {
 	case *AccessLogFilter_StatusCodeFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetStatusCodeFilter()).(type) {
@@ -256,6 +278,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_DurationFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetDurationFilter()).(type) {
@@ -287,6 +320,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_NotHealthCheckFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetNotHealthCheckFilter()).(type) {
@@ -318,6 +362,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_TraceableFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetTraceableFilter()).(type) {
@@ -349,6 +404,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_RuntimeFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRuntimeFilter()).(type) {
@@ -380,6 +446,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_AndFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetAndFilter()).(type) {
@@ -411,6 +488,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_OrFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetOrFilter()).(type) {
@@ -442,6 +530,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_HeaderFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetHeaderFilter()).(type) {
@@ -473,6 +572,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_ResponseFlagFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetResponseFlagFilter()).(type) {
@@ -504,6 +614,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_GrpcStatusFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGrpcStatusFilter()).(type) {
@@ -535,6 +656,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_ExtensionFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetExtensionFilter()).(type) {
@@ -566,6 +698,17 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	case *AccessLogFilter_MetadataFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetMetadataFilter()).(type) {
@@ -597,6 +740,9 @@ func (m *AccessLogFilter) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofFilterSpecifierPresent {
 		err := AccessLogFilterValidationError{
 			field:  "FilterSpecifier",
 			reason: "value is required",
@@ -605,7 +751,6 @@ func (m *AccessLogFilter) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -2335,9 +2480,18 @@ func (m *ExtensionFilter) validate(all bool) error {
 
 	// no validation rules for Name
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *ExtensionFilter_TypedConfig:
+		if v == nil {
+			err := ExtensionFilterValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -2368,6 +2522,8 @@ func (m *ExtensionFilter) validate(all bool) error {
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {

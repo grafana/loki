@@ -105,7 +105,7 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			mapped, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 			require.Equal(t, tc.out, mapped)
 		})
@@ -120,7 +120,7 @@ func TestMappingStrings(t *testing.T) {
 	}{
 		{
 			in: `{foo="bar"}`,
-			out: `downstream<{foo="bar"}, shard=0_of_2> 
+			out: `downstream<{foo="bar"}, shard=0_of_2>
 					++ downstream<{foo="bar"}, shard=1_of_2>`,
 		},
 		{
@@ -131,7 +131,7 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `sum(rate({foo="bar"}[1m]))`,
 			out: `sum(
-				downstream<sum(rate({foo="bar"}[1m])), shard=0_of_2> 
+				downstream<sum(rate({foo="bar"}[1m])), shard=0_of_2>
 				++ downstream<sum(rate({foo="bar"}[1m])), shard=1_of_2>
 			)`,
 		},
@@ -139,7 +139,7 @@ func TestMappingStrings(t *testing.T) {
 			in: `max(count(rate({foo="bar"}[5m]))) / 2`,
 			out: `(max(
 				sum(
-					downstream<count(rate({foo="bar"}[5m])), shard=0_of_2> 
+					downstream<count(rate({foo="bar"}[5m])), shard=0_of_2>
 					++ downstream<count(rate({foo="bar"}[5m])), shard=1_of_2>)
 				) / 2
 			)`,
@@ -147,14 +147,14 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `topk(3, rate({foo="bar"}[5m]))`,
 			out: `topk(3,
-				downstream<rate({foo="bar"}[5m]), shard=0_of_2> 
+				downstream<rate({foo="bar"}[5m]), shard=0_of_2>
 				++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
 			)`,
 		},
 		{
 			in: `sum(max(rate({foo="bar"}[5m])))`,
 			out: `sum(max(
-				downstream<rate({foo="bar"}[5m]), shard=0_of_2> 
+				downstream<rate({foo="bar"}[5m]), shard=0_of_2>
 				++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
 			))`,
 		},
@@ -169,33 +169,33 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `count(rate({foo="bar"} | json [5m]))`,
 			out: `count(
-				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> 
+				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2>
 				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
 			)`,
 		},
 		{
 			in: `avg(rate({foo="bar"} | json [5m]))`,
 			out: `avg(
-				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2> 
+				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2>
 				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
 			)`,
 		},
 		{
 			in: `{foo="bar"} |= "id=123"`,
-			out: `downstream<{foo="bar"}|="id=123", shard=0_of_2> 
+			out: `downstream<{foo="bar"}|="id=123", shard=0_of_2>
 					++ downstream<{foo="bar"}|="id=123", shard=1_of_2>`,
 		},
 		{
 			in: `sum by (cluster) (rate({foo="bar"} |= "id=123" [5m]))`,
 			out: `sum by (cluster) (
-				downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=0_of_2> 
+				downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=0_of_2>
 				++ downstream<sum by(cluster)(rate({foo="bar"}|="id=123"[5m])), shard=1_of_2>
 			)`,
 		},
 		{
 			in: `sum by (cluster) (sum_over_time({foo="bar"} |= "id=123" | logfmt | unwrap latency [5m]))`,
 			out: `sum by (cluster) (
-				downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=0_of_2> 
+				downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=0_of_2>
 				++ downstream<sum by(cluster)(sum_over_time({foo="bar"}|="id=123"| logfmt | unwrap latency[5m])), shard=1_of_2>
 			)`,
 		},
@@ -231,7 +231,7 @@ func TestMappingStrings(t *testing.T) {
 			in: `sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m]))`,
 			out: `(
 				sum by (cluster) (
-					downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=0_of_2> 
+					downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=0_of_2>
 					++ downstream<sum by (cluster) (rate({foo="bar"}[5m])), shard=1_of_2>
 				)
 				+ ignoring(machine) sum by (cluster, machine) (
@@ -268,12 +268,38 @@ func TestMappingStrings(t *testing.T) {
 			in:  `vector(0)`,
 			out: `vector(0.000000)`,
 		},
+		{
+			// or exprs aren't shardable
+			in:  `count_over_time({a=~".+"}[1s]) or count_over_time({a=~".+"}[1s])`,
+			out: `(downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>ordownstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>)`,
+		},
+		{
+			// vector() exprs aren't shardable
+			in:  `sum(count_over_time({a=~".+"}[1s]) + vector(1))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>+vector(1.000000)))`,
+		},
+		{
+			// on() is never shardable as it can mutate labels
+			in:  `sum(count_over_time({a=~".+"}[1s]) * on () count_over_time({a=~".+"}[1s]))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*on()downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
+		},
+		{
+			// ignoring(<non-empty-labels>) is never shardable as it can mutate labels
+			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring (foo) count_over_time({a=~".+"}[1s]))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*ignoring(foo)downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
+		},
+		{
+			// ignoring () doesn't mutate labels and therefore can be shardable
+			// as long as the operation is shardable
+			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
+			out: `sum(downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=1_of_2>)`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
@@ -1179,7 +1205,7 @@ func TestMapping(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())
@@ -1248,7 +1274,7 @@ func TestStringTrimming(t *testing.T) {
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
 			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics)
-			_, mappedExpr, err := m.Parse(tc.expr)
+			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})

@@ -17,7 +17,7 @@ import (
 )
 
 func Test_RangeVectorSplit(t *testing.T) {
-	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), fakeLimits{
+	srm := NewSplitByRangeMiddleware(log.NewNopLogger(), testEngineOpts, fakeLimits{
 		maxSeries:    10000,
 		queryTimeout: time.Second,
 		splits: map[string]time.Duration{
@@ -52,9 +52,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Path:   "/loki/api/v1/query",
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum by(bar)(bytes_over_time({app="foo"}[1m]))`, 10),
-				subQueryRequestResponse(`sum by(bar)(bytes_over_time({app="foo"}[1m] offset 1m0s))`, 20),
-				subQueryRequestResponse(`sum by(bar)(bytes_over_time({app="foo"}[1m] offset 2m0s))`, 30),
+				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m]))`, 10),
+				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m] offset 1m0s))`, 20),
+				subQueryRequestResponse(`sum by (bar)(bytes_over_time({app="foo"}[1m] offset 2m0s))`, 30),
 			},
 			expected: expectedMergedResponse(10 + 20 + 30),
 		},
@@ -78,9 +78,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Path:   "/loki/api/v1/query",
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum by(bar)(count_over_time({app="foo"}[1m]))`, 0),
-				subQueryRequestResponse(`sum by(bar)(count_over_time({app="foo"}[1m] offset 1m0s))`, 0),
-				subQueryRequestResponse(`sum by(bar)(count_over_time({app="foo"}[1m] offset 2m0s))`, 0),
+				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m]))`, 0),
+				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m] offset 1m0s))`, 0),
+				subQueryRequestResponse(`sum by (bar)(count_over_time({app="foo"}[1m] offset 2m0s))`, 0),
 			},
 			expected: expectedMergedResponse(0 + 0 + 0),
 		},
@@ -104,9 +104,9 @@ func Test_RangeVectorSplit(t *testing.T) {
 				Path:   "/loki/api/v1/query",
 			},
 			subQueries: []queryrangebase.RequestResponse{
-				subQueryRequestResponse(`sum by(bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1),
-				subQueryRequestResponse(`sum by(bar)(sum_over_time({app="foo"} | unwrap bar[1m] offset 1m0s))`, 2),
-				subQueryRequestResponse(`sum by(bar)(sum_over_time({app="foo"} | unwrap bar[1m] offset 2m0s))`, 3),
+				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m]))`, 1),
+				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m] offset 1m0s))`, 2),
+				subQueryRequestResponse(`sum by (bar)(sum_over_time({app="foo"} | unwrap bar[1m] offset 2m0s))`, 3),
 			},
 			expected: expectedMergedResponse(1 + 2 + 3),
 		},

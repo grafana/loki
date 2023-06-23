@@ -4,10 +4,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"testing"
+	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/kv"
+	"github.com/grafana/dskit/kv/consul"
+	"github.com/grafana/dskit/ring"
+	"github.com/grafana/dskit/services"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
@@ -17,7 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -107,7 +114,135 @@ func createTestGrpcServer(t *testing.T) (func(), string) {
 	return s.GracefulStop, lis.Addr().String()
 }
 
+type mockTenantLimits map[string]*validation.Limits
+
+func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+	return tl[userID]
+}
+
+func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return tl
+}
+
+func TestGatewayClient_RingMode(t *testing.T) {
+	// prepare servers and ring
+	logger := log.NewNopLogger()
+	ringKey := "test"
+	n := 6  // nuber of index gateway instances
+	rf := 1 // replication factor
+	s := 3  // shard size
+
+	nodes := make([]*mockIndexGatewayServer, n)
+	for i := 0; i < n; i++ {
+		nodes[i] = &mockIndexGatewayServer{}
+	}
+
+	nodeDescs := map[string]ring.InstanceDesc{}
+
+	for i := range nodes {
+		addr := fmt.Sprintf("index-gateway-%d", i)
+		nodeDescs[addr] = ring.InstanceDesc{
+			Addr:                addr,
+			State:               ring.ACTIVE,
+			Timestamp:           time.Now().Unix(),
+			RegisteredTimestamp: time.Now().Add(-10 * time.Minute).Unix(),
+			Tokens:              []uint32{uint32((math.MaxUint32 / n) * i)},
+		}
+	}
+
+	kvStore, closer := consul.NewInMemoryClient(ring.GetCodec(), logger, nil)
+	t.Cleanup(func() { closer.Close() })
+
+	err := kvStore.CAS(context.Background(), ringKey,
+		func(_ interface{}) (interface{}, bool, error) {
+			return &ring.Desc{
+				Ingesters: nodeDescs,
+			}, true, nil
+		},
+	)
+	require.NoError(t, err)
+
+	ringCfg := ring.Config{
+		KVStore: kv.Config{
+			Mock: kvStore,
+		},
+		HeartbeatTimeout:     time.Hour,
+		ZoneAwarenessEnabled: false,
+		ReplicationFactor:    rf,
+	}
+
+	igwRing, err := ring.New(ringCfg, "indexgateway", ringKey, logger, nil)
+	require.NoError(t, err)
+	require.NoError(t, services.StartAndAwaitRunning(context.Background(), igwRing))
+	require.Eventually(t, func() bool {
+		return igwRing.InstancesCount() == n
+	}, time.Minute, time.Second)
+
+	t.Cleanup(func() {
+		igwRing.StopAsync()
+	})
+
+	t.Run("global shard size", func(t *testing.T) {
+		o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: s}, nil)
+		require.NoError(t, err)
+
+		cfg := IndexGatewayClientConfig{}
+		flagext.DefaultValues(&cfg)
+		cfg.Mode = indexgateway.RingMode
+		cfg.Ring = igwRing
+
+		c, err := NewGatewayClient(cfg, nil, o, logger)
+		require.NoError(t, err)
+		require.NotNil(t, c)
+
+		// Shuffle sharding is deterministic
+		// The same tenant ID gets the same servers assigned every time
+
+		addrs, err := c.getServerAddresses("12345")
+		require.NoError(t, err)
+		require.Len(t, addrs, s)
+		require.ElementsMatch(t, addrs, []string{"index-gateway-0", "index-gateway-3", "index-gateway-5"})
+
+		addrs, err = c.getServerAddresses("67890")
+		require.NoError(t, err)
+		require.Len(t, addrs, s)
+		require.ElementsMatch(t, addrs, []string{"index-gateway-2", "index-gateway-3", "index-gateway-5"})
+	})
+
+	t.Run("per tenant shard size", func(t *testing.T) {
+		tl := mockTenantLimits{
+			"12345": &validation.Limits{IndexGatewayShardSize: 1},
+			// tenant 67890 has not tenant specific overrides
+		}
+		o, err := validation.NewOverrides(validation.Limits{IndexGatewayShardSize: s}, tl)
+		require.NoError(t, err)
+
+		cfg := IndexGatewayClientConfig{}
+		flagext.DefaultValues(&cfg)
+		cfg.Mode = indexgateway.RingMode
+		cfg.Ring = igwRing
+
+		c, err := NewGatewayClient(cfg, nil, o, logger)
+		require.NoError(t, err)
+		require.NotNil(t, c)
+
+		// Shuffle sharding is deterministic
+		// The same tenant ID gets the same servers assigned every time
+
+		addrs, err := c.getServerAddresses("12345")
+		require.NoError(t, err)
+		require.Len(t, addrs, 1)
+		require.ElementsMatch(t, addrs, []string{"index-gateway-3"})
+
+		addrs, err = c.getServerAddresses("67890")
+		require.NoError(t, err)
+		require.Len(t, addrs, s)
+		require.ElementsMatch(t, addrs, []string{"index-gateway-2", "index-gateway-3", "index-gateway-5"})
+	})
+}
+
 func TestGatewayClient(t *testing.T) {
+	logger := log.NewNopLogger()
 	cleanup, storeAddress := createTestGrpcServer(t)
 	t.Cleanup(cleanup)
 
@@ -116,7 +251,8 @@ func TestGatewayClient(t *testing.T) {
 	flagext.DefaultValues(&cfg)
 	cfg.Address = storeAddress
 
-	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, util_log.Logger)
+	overrides, _ := validation.NewOverrides(validation.Limits{}, nil)
+	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger)
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
@@ -295,17 +431,19 @@ func Benchmark_QueriesMatchingLargeNumOfRows(b *testing.B) {
 }*/
 
 func TestDoubleRegistration(t *testing.T) {
+	logger := log.NewNopLogger()
 	r := prometheus.NewRegistry()
+	o, _ := validation.NewOverrides(validation.Limits{}, nil)
 
 	clientCfg := IndexGatewayClientConfig{
 		Address: "my-store-address:1234",
 	}
 
-	client, err := NewGatewayClient(clientCfg, r, util_log.Logger)
+	client, err := NewGatewayClient(clientCfg, r, o, logger)
 	require.NoError(t, err)
 	defer client.Stop()
 
-	client, err = NewGatewayClient(clientCfg, r, util_log.Logger)
+	client, err = NewGatewayClient(clientCfg, r, o, logger)
 	require.NoError(t, err)
 	defer client.Stop()
 }

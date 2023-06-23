@@ -32,6 +32,12 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     // This helps ensure we create SRV records starting with _grpclb
     grpclbServiceFor(deployment):: k.util.serviceFor(deployment, $._config.service_ignored_labels, nameFormat='%(port)s'),
 
+    // Headless service for discovering IPs of pods instead of the service IP.
+    headlessService(deployment, name)::
+      $.util.grpclbServiceFor(deployment) +
+      k.core.v1.service.mixin.spec.withClusterIp('None') +
+      k.core.v1.service.mixin.spec.withPublishNotReadyAddresses(true) +
+      k.core.v1.service.mixin.metadata.withName(name),
 
     readinessProbe::
       container.mixin.readinessProbe.httpGet.withPath('/ready') +

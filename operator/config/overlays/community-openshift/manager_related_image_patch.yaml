@@ -1,0 +1,16 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          env:
+          - name: RELATED_IMAGE_LOKI
+            value: docker.io/grafana/loki:2.8.2
+          - name: RELATED_IMAGE_GATEWAY
+            value: quay.io/observatorium/api:latest
+          - name: RELATED_IMAGE_OPA
+            value: quay.io/observatorium/opa-openshift:latest

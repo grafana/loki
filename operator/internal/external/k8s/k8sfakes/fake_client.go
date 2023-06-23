@@ -113,15 +113,26 @@ type FakeClient struct {
 	schemeReturnsOnCall map[int]struct {
 		result1 *runtime.Scheme
 	}
-	StatusStub        func() client.StatusWriter
+	StatusStub        func() client.SubResourceWriter
 	statusMutex       sync.RWMutex
 	statusArgsForCall []struct {
 	}
 	statusReturns struct {
-		result1 client.StatusWriter
+		result1 client.SubResourceWriter
 	}
 	statusReturnsOnCall map[int]struct {
-		result1 client.StatusWriter
+		result1 client.SubResourceWriter
+	}
+	SubResourceStub        func(string) client.SubResourceClient
+	subResourceMutex       sync.RWMutex
+	subResourceArgsForCall []struct {
+		arg1 string
+	}
+	subResourceReturns struct {
+		result1 client.SubResourceClient
+	}
+	subResourceReturnsOnCall map[int]struct {
+		result1 client.SubResourceClient
 	}
 	UpdateStub        func(context.Context, client.Object, ...client.UpdateOption) error
 	updateMutex       sync.RWMutex
@@ -626,7 +637,7 @@ func (fake *FakeClient) SchemeReturnsOnCall(i int, result1 *runtime.Scheme) {
 	}{result1}
 }
 
-func (fake *FakeClient) Status() client.StatusWriter {
+func (fake *FakeClient) Status() client.SubResourceWriter {
 	fake.statusMutex.Lock()
 	ret, specificReturn := fake.statusReturnsOnCall[len(fake.statusArgsForCall)]
 	fake.statusArgsForCall = append(fake.statusArgsForCall, struct {
@@ -650,32 +661,93 @@ func (fake *FakeClient) StatusCallCount() int {
 	return len(fake.statusArgsForCall)
 }
 
-func (fake *FakeClient) StatusCalls(stub func() client.StatusWriter) {
+func (fake *FakeClient) StatusCalls(stub func() client.SubResourceWriter) {
 	fake.statusMutex.Lock()
 	defer fake.statusMutex.Unlock()
 	fake.StatusStub = stub
 }
 
-func (fake *FakeClient) StatusReturns(result1 client.StatusWriter) {
+func (fake *FakeClient) StatusReturns(result1 client.SubResourceWriter) {
 	fake.statusMutex.Lock()
 	defer fake.statusMutex.Unlock()
 	fake.StatusStub = nil
 	fake.statusReturns = struct {
-		result1 client.StatusWriter
+		result1 client.SubResourceWriter
 	}{result1}
 }
 
-func (fake *FakeClient) StatusReturnsOnCall(i int, result1 client.StatusWriter) {
+func (fake *FakeClient) StatusReturnsOnCall(i int, result1 client.SubResourceWriter) {
 	fake.statusMutex.Lock()
 	defer fake.statusMutex.Unlock()
 	fake.StatusStub = nil
 	if fake.statusReturnsOnCall == nil {
 		fake.statusReturnsOnCall = make(map[int]struct {
-			result1 client.StatusWriter
+			result1 client.SubResourceWriter
 		})
 	}
 	fake.statusReturnsOnCall[i] = struct {
-		result1 client.StatusWriter
+		result1 client.SubResourceWriter
+	}{result1}
+}
+
+func (fake *FakeClient) SubResource(arg1 string) client.SubResourceClient {
+	fake.subResourceMutex.Lock()
+	ret, specificReturn := fake.subResourceReturnsOnCall[len(fake.subResourceArgsForCall)]
+	fake.subResourceArgsForCall = append(fake.subResourceArgsForCall, struct {
+		arg1 string
+	}{arg1})
+	stub := fake.SubResourceStub
+	fakeReturns := fake.subResourceReturns
+	fake.recordInvocation("SubResource", []interface{}{arg1})
+	fake.subResourceMutex.Unlock()
+	if stub != nil {
+		return stub(arg1)
+	}
+	if specificReturn {
+		return ret.result1
+	}
+	return fakeReturns.result1
+}
+
+func (fake *FakeClient) SubResourceCallCount() int {
+	fake.subResourceMutex.RLock()
+	defer fake.subResourceMutex.RUnlock()
+	return len(fake.subResourceArgsForCall)
+}
+
+func (fake *FakeClient) SubResourceCalls(stub func(string) client.SubResourceClient) {
+	fake.subResourceMutex.Lock()
+	defer fake.subResourceMutex.Unlock()
+	fake.SubResourceStub = stub
+}
+
+func (fake *FakeClient) SubResourceArgsForCall(i int) string {
+	fake.subResourceMutex.RLock()
+	defer fake.subResourceMutex.RUnlock()
+	argsForCall := fake.subResourceArgsForCall[i]
+	return argsForCall.arg1
+}
+
+func (fake *FakeClient) SubResourceReturns(result1 client.SubResourceClient) {
+	fake.subResourceMutex.Lock()
+	defer fake.subResourceMutex.Unlock()
+	fake.SubResourceStub = nil
+	fake.subResourceReturns = struct {
+		result1 client.SubResourceClient
+	}{result1}
+}
+
+func (fake *FakeClient) SubResourceReturnsOnCall(i int, result1 client.SubResourceClient) {
+	fake.subResourceMutex.Lock()
+	defer fake.subResourceMutex.Unlock()
+	fake.SubResourceStub = nil
+	if fake.subResourceReturnsOnCall == nil {
+		fake.subResourceReturnsOnCall = make(map[int]struct {
+			result1 client.SubResourceClient
+		})
+	}
+	fake.subResourceReturnsOnCall[i] = struct {
+		result1 client.SubResourceClient
 	}{result1}
 }
 
@@ -763,6 +835,8 @@ func (fake *FakeClient) Invocations() map[string][][]interface{} {
 	defer fake.schemeMutex.RUnlock()
 	fake.statusMutex.RLock()
 	defer fake.statusMutex.RUnlock()
+	fake.subResourceMutex.RLock()
+	defer fake.subResourceMutex.RUnlock()
 	fake.updateMutex.RLock()
 	defer fake.updateMutex.RUnlock()
 	copiedInvocations := map[string][][]interface{}{}

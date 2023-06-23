@@ -80,6 +80,7 @@ func createConnection(cfg SwiftConfig, hedgingCfg hedging.Config, hedging bool) 
 	c := &swift.Connection{
 		AuthVersion:    cfg.AuthVersion,
 		AuthUrl:        cfg.AuthURL,
+		Internal:       cfg.Internal,
 		ApiKey:         cfg.Password,
 		UserName:       cfg.Username,
 		UserId:         cfg.UserID,
@@ -124,7 +125,7 @@ func (s *SwiftObjectClient) Stop() {
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured swift container.
-func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+func (s *SwiftObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var buf bytes.Buffer
 	_, err := s.hedgingConn.ObjectGet(s.cfg.ContainerName, objectKey, &buf, false, nil)
 	if err != nil {
@@ -135,13 +136,13 @@ func (s *SwiftObjectClient) GetObject(ctx context.Context, objectKey string) (io
 }
 
 // PutObject puts the specified bytes into the configured Swift container at the provided key
-func (s *SwiftObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (s *SwiftObjectClient) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
 	_, err := s.conn.ObjectPut(s.cfg.ContainerName, objectKey, object, false, "", "", nil)
 	return err
 }
 
 // List only objects from the store non-recursively
-func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (s *SwiftObjectClient) List(_ context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	if len(delimiter) > 1 {
 		return nil, nil, fmt.Errorf("delimiter must be a single character but was %s", delimiter)
 	}
@@ -153,7 +154,7 @@ func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) 
 		opts.Delimiter = []rune(delimiter)[0]
 	}
 
-	objs, err := s.conn.Objects(s.cfg.ContainerName, opts)
+	objs, err := s.conn.ObjectsAll(s.cfg.ContainerName, opts)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -179,7 +180,7 @@ func (s *SwiftObjectClient) List(ctx context.Context, prefix, delimiter string) 
 }
 
 // DeleteObject deletes the specified object key from the configured Swift container.
-func (s *SwiftObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+func (s *SwiftObjectClient) DeleteObject(_ context.Context, objectKey string) error {
 	return s.conn.ObjectDelete(s.cfg.ContainerName, objectKey)
 }
 

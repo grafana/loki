@@ -4,11 +4,11 @@ description: Cloud setup GCP logs
 ---
 # Cloud setup GCP Logs
 
-This document explain how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
+This document explains how one can setup Google Cloud Platform to forward its cloud resource logs from a particular GCP project into Google Pubsub topic so that is available for Promtail to consume.
 
-This document assumes, that reader have `gcloud` installed and have required permissions(as mentioned in [Roles and Permission](#roles-and-permission) section).
+This document assumes, that reader have `gcloud` installed and have the required permissions (as mentioned in [Roles and Permission](#roles-and-permission) section).
 
-There's two flavours of how to configure this:
+There are two flavours of how to configure this:
 - Pull-based subscription: Promtail pulls log entries from a GCP PubSub topic
 - Push-based subscription: GCP sends log entries to a web server that Promtail listens
 
@@ -18,7 +18,7 @@ Overall, the setup between GCP, Promtail and Loki will look like the following:
 
 ## Roles and Permission
 
-User should have following roles to complete the setup.
+The user should have following roles to complete the setup.
 - "roles/pubsub.editor"
 - "roles/logging.configWriter"
 
@@ -30,7 +30,7 @@ Google Pubsub Topic will act as the queue to persist log messages which then can
 $ gcloud pubsub topics create $TOPIC_ID
 ```
 
-e.g:
+For example,
 ```bash
 $ gcloud pubsub topics create cloud-logs
 ```
@@ -50,7 +50,7 @@ $ gcloud logging sinks create cloud-logs pubsub.googleapis.com/projects/my-proje
 --description="Cloud logs"
 ```
 
-Above command also adds `log-filter` option which represents what type of logs should get into the destination `pubsub` topic.
+The above command also adds `log-filter` option which represents what type of logs should get into the destination `pubsub` topic.
 For more information on adding `log-filter` refer this [document](https://cloud.google.com/logging/docs/export/configure_export_v2#creating_sink)
 
 We cover more advanced `log-filter` [below](#Advanced-Log-filter)
@@ -86,7 +86,7 @@ gcloud pubsub topics add-iam-policy-binding cloud-logs \
 
 ### Pull
 
-We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume log messages.
+We create subscription for the pubsub topic we create above and Promtail uses this subscription to consume the log messages.
 
 ```bash
 $ gcloud pubsub subscriptions create cloud-logs --topic=$TOPIC_ID \
@@ -105,7 +105,7 @@ For more fine grained options, refer to the `gcloud pubsub subscriptions --help`
 
 ### Push
 
-Since GCP PubSub push subscriptions is a rather new service, one needs to grant Google a permission in some cases. First, check the date the GCP project was created on:
+Since GCP PubSub push subscriptions is a rather new service, In some cases, it is necessary to grant Google permission. First, check the date the GCP project was created on:
 
 ```bash
 > gcloud projects describe $GCP_PROJECT_ID
@@ -116,7 +116,7 @@ projectId: $GCP_PROJECT_ID
 projectNumber: '$GCP_PROJECT_NUMBER'
 ```
 
-If the `createTime` is later than **April 8, 2021**, skip the following step. Otherwise, you [need to grant](https://cloud.google.com/pubsub/docs/push#configure_for_push_authentication) the `iam.serviceAccountTokenCreator` role to a Google-managed service account:
+If the `createTime` is earlier than **April 8, 2021**, skip the following step. Otherwise, you [need to grant the](https://cloud.google.com/pubsub/docs/push#configure_for_push_authentication) the `iam.serviceAccountTokenCreator` role to a Google-managed service account:
 ```bash
 PUBSUB_SERVICE_ACCOUNT="service-${GCP_PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
 gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
@@ -124,7 +124,7 @@ gcloud projects add-iam-policy-binding ${GCP_PROJECT_ID} \
  --role='roles/iam.serviceAccountTokenCreator'
 ```
 
-Having configured Promtail with the [GCP Logs Push target](#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
+have configured Promtail with the [GCP Logs Push target](#push), hosted in an internet-facing and HTTPS enabled deployment, we can continue with creating
 the push subscription.
 
 ```bash
@@ -216,7 +216,7 @@ resource "google_pubsub_subscription" "main" {
 }
 ```
 
-Then, to create the new resources run the snippet below after filling in the required variables.
+To create the new resources, run the snippet below after filling in the required variables.
 
 ```bash
 terraform apply \
@@ -226,18 +226,18 @@ terraform apply \
 
 ## ServiceAccount for Promtail
 
-We need a service account with following permissions.
+We need a service account with the following permissions:
 - pubsub.subscriber
 
 This enables Promtail to read log entries from the pubsub subscription created before.
 
-you can find example for Promtail scrape config for `gcplog` [here]({{<relref "scraping/#gcp-log-scraping">}})
+You can find an example for Promtail scrape config for `gcplog` [here]({{< relref "./scraping#gcp-log-scraping" >}})
 
 If you are scraping logs from multiple GCP projects, then this serviceaccount should have above permissions in all the projects you are tyring to scrape.
 
 ## Operations
 
-Sometimes you may wish to clear the pending pubsub queue containing logs.
+Sometimes, you may wish to clear the pending pubsub queue containing logs.
 
 These messages stays in Pubsub Subscription until they're acknowledged. The following command removes log messages without needing to be consumed via Promtail or any other pubsub consumer.
 
@@ -255,16 +255,16 @@ gcloud pubsub subscriptions seek projects/my-project/subscriptions/cloud-logs --
 
 So far we've covered admitting GCS bucket logs into Grafana Loki, but often one may need to add multiple cloud resource logs and may also need to exclude unnecessary logs. The following is a more complex example.
 
-We use the `log-filter` option to include logs and the `exclusion` option to exclude them.
+We use the `log-filter` option to include logs and the `exclusion` option to exclude specific logs.
 
 ### Use Case
-Include following cloud resource logs
+Include the following cloud resource logs:
 - GCS bucket
 - Kubernetes
 - IAM
 - HTTP Load balancer
 
-And we exclude specific HTTP load balancer logs based on payload and status code.
+We also exclude specific HTTP load balancer logs based on payload and status code.
 
 ```
 $ gcloud logging sinks create cloud-logs pubsub.googleapis.com/projects/my-project/topics/cloud-logs \

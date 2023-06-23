@@ -63,7 +63,7 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 	}
 }
 
-func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := context.Background()
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
@@ -100,7 +100,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 	}, nil
 }
 
-func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := context.Background()
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
@@ -138,14 +138,14 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 	}, nil
 }
 
-func (f *FileClient) ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+func (f *FileClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	return &loghttp.LabelResponse{
 		Status: loghttp.QueryStatusSuccess,
 		Data:   f.labels,
 	}, nil
 }
 
-func (f *FileClient) ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+func (f *FileClient) ListLabelValues(name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	i := sort.SearchStrings(f.labels, name)
 	if i < 0 {
 		return &loghttp.LabelResponse{}, nil
@@ -157,7 +157,7 @@ func (f *FileClient) ListLabelValues(name string, quiet bool, start, end time.Ti
 	}, nil
 }
 
-func (f *FileClient) Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (f *FileClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	m := len(f.labels)
 	if m > len(f.labelValues) {
 		m = len(f.labelValues)
@@ -174,7 +174,7 @@ func (f *FileClient) Series(matchers []string, start, end time.Time, quiet bool)
 	}, nil
 }
 
-func (f *FileClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (f *FileClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	return nil, fmt.Errorf("LiveTailQuery: %w", ErrNotSupported)
 }
 
@@ -186,16 +186,24 @@ type limiter struct {
 	n int
 }
 
-func (l *limiter) MaxQuerySeries(userID string) int {
+func (l *limiter) MaxQuerySeries(_ context.Context, _ string) int {
 	return l.n
 }
 
-func (l *limiter) QueryTimeout(userID string) time.Duration {
+func (l *limiter) MaxQueryRange(_ context.Context, _ string) time.Duration {
+	return 0 * time.Second
+}
+
+func (l *limiter) QueryTimeout(_ context.Context, _ string) time.Duration {
 	return time.Minute * 5
 }
 
-func (l *limiter) BlockedQueries(userID string) []*validation.BlockedQuery {
+func (l *limiter) BlockedQueries(_ context.Context, _ string) []*validation.BlockedQuery {
 	return []*validation.BlockedQuery{}
+}
+
+func (l *limiter) RequiredLabels(_ context.Context, _ string) []string {
+	return nil
 }
 
 type querier struct {
@@ -215,7 +223,7 @@ func (q *querier) SelectLogs(_ context.Context, params logql.SelectLogParams) (i
 	return newFileIterator(q.r, params, pipeline.ForStream(q.labels))
 }
 
-func (q *querier) SelectSamples(ctx context.Context, params logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (q *querier) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, fmt.Errorf("Metrics Query: %w", ErrNotSupported)
 }
 

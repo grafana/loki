@@ -91,7 +91,7 @@ Most of these metrics are counters and should continuously increase during norma
 
 If Promtail uses any pipelines with metrics stages, those metrics will also be
 exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
-[Pipelines]({{<relref "../clients/promtail/pipelines">}}) for more information.
+[Pipelines]({{< relref "../clients/promtail/pipelines" >}}) for more information.
 
 An example Grafana dashboard was built by the community and is available as
 dashboard [10004](/dashboards/10004).
@@ -105,7 +105,7 @@ Review your emitted metrics before scraping with Prometheus, and configure the s
 
 ## Mixins
 
-The Loki repository has a [mixin](https://github.com/grafana/loki/blob/master/production/loki-mixin) that includes a
+The Loki repository has a [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin) that includes a
 set of dashboards, recording rules, and alerts. Together, the mixin gives you a
 comprehensive package for monitoring Loki in production.
 

@@ -35,7 +35,7 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Promtail](/grafana/loki/tree/master/docs/sources/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Promtail](/grafana/loki/blob/main/docs/sources/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
@@ -70,7 +70,7 @@ Loki can cache data at many levels, which can drastically improve performance. D
 
 ## Time ordering of logs
 
-Loki [accepts out-of-order writes]({{< relref "../configuration/#accept-out-of-order-writes" >}}) _by default_.
+Loki [accepts out-of-order writes]({{< relref "../configuration#accept-out-of-order-writes" >}}) _by default_.
 This section identifies best practices when Loki is _not_ configured to accept out-of-order writes.
 
 One issue many people have with Loki is their client receiving errors for out of order log entries.  This happens because of this hard and fast rule within Loki:
@@ -110,7 +110,7 @@ It's also worth noting that the batching nature of the Loki push API can lead to
 
 Using `chunk_target_size` instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
 
-Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 1h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
+Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 2h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 
 Depending on the compression used (we have been using snappy which has less compressibility but faster performance), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
 

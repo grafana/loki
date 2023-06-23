@@ -16,6 +16,10 @@ type Encbuf struct {
 
 func (e *Encbuf) PutString(s string) { e.B = append(e.B, s...) }
 
+func (e *Encbuf) Skip(i int) {
+	e.B = e.B[:len(e.B)+i]
+}
+
 func DecWith(b []byte) (res Decbuf) {
 	res.B = b
 	return res

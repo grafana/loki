@@ -3,28 +3,45 @@ package manifests
 import (
 	"fmt"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type RuleName struct {
+	cmName   string
+	tenantID string
+	filename string
+}
+
 // RulesConfigMap returns a ConfigMap resource that contains
 // all loki alerting and recording rules as YAML data.
-func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
-	data := make(map[string]string)
+// If the size of the data is more than 1MB, the ConfigMap will
+// be split into multiple shards, and this function will return
+// the list of shards
+func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+	template := newConfigMapTemplate(opts, l)
+
+	shardedCM := NewShardedConfigMap(template, RulesConfigMapName(opts.Name))
 
 	for _, r := range opts.AlertingRules {
+		r := r
+		if opts.Stack.Tenants != nil {
+			configureAlertingRuleForMode(&r, opts.Stack.Tenants.Mode)
+		}
+
 		c, err := rules.MarshalAlertingRule(r)
 		if err != nil {
 			return nil, err
 		}
-
-		key := fmt.Sprintf("%s-%s-%s.yaml", r.Namespace, r.Name, r.UID)
-		if tenant, ok := opts.Tenants.Configs[r.Spec.TenantID]; ok {
-			tenant.RuleFiles = append(tenant.RuleFiles, key)
-			data[key] = c
-			opts.Tenants.Configs[r.Spec.TenantID] = tenant
+		key := RuleName{
+			tenantID: r.Spec.TenantID,
+			filename: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
 		}
+		shardedCM.data[key.toString()] = c
 	}
 
 	for _, r := range opts.RecordingRules {
@@ -32,17 +49,20 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 		if err != nil {
 			return nil, err
 		}
-
-		key := fmt.Sprintf("%s-%s-%s.yaml", r.Namespace, r.Name, r.UID)
-		if tenant, ok := opts.Tenants.Configs[r.Spec.TenantID]; ok {
-			tenant.RuleFiles = append(tenant.RuleFiles, key)
-			data[key] = c
-			opts.Tenants.Configs[r.Spec.TenantID] = tenant
+		key := RuleName{
+			tenantID: r.Spec.TenantID,
+			filename: fmt.Sprintf("%s-%s-%s", r.Namespace, r.Name, r.UID),
 		}
+		shardedCM.data[key.toString()] = c
 	}
 
-	l := commonLabels(opts.Name)
+	// If configmap size exceeds 1MB, split it into shards, identified by "prefix+index"
+	shards := shardedCM.Shard(opts)
 
+	return shards, nil
+}
+
+func newConfigMapTemplate(opts *Options, l map[string]string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
@@ -53,6 +73,21 @@ func RulesConfigMap(opts *Options) (*corev1.ConfigMap, error) {
 			Namespace: opts.Namespace,
 			Labels:    l,
 		},
-		Data: data,
-	}, nil
+		Data: make(map[string]string),
+	}
+}
+
+func (rn RuleName) toString() string {
+	return fmt.Sprintf("%s%s%s.yaml", rn.tenantID, rulePartsSeparator, rn.filename)
+}
+
+func configureAlertingRuleForMode(ar *lokiv1.AlertingRule, mode lokiv1.ModeType) {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// Do nothing
+	case lokiv1.OpenshiftLogging:
+		openshift.AlertingRuleTenantLabels(ar)
+	case lokiv1.OpenshiftNetwork:
+		// Do nothing
+	}
 }

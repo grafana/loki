@@ -41,3 +41,35 @@ func updateAnnotation(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack
 		return k.Update(ctx, stack)
 	})
 }
+
+func removeAnnotation(ctx context.Context, k k8s.Client, stack *lokiv1.LokiStack, key string) error {
+	if stack.Annotations == nil {
+		return nil
+	}
+	delete(stack.Annotations, key)
+
+	err := k.Update(ctx, stack)
+	switch {
+	case err == nil:
+		return nil
+	case errors.IsConflict(err):
+		// break into retry logic below on conflict
+		break
+	case err != nil:
+		return err
+	}
+
+	objectKey := client.ObjectKeyFromObject(stack)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k.Get(ctx, objectKey, stack); err != nil {
+			return err
+		}
+
+		if stack.Annotations == nil {
+			return nil
+		}
+		delete(stack.Annotations, key)
+
+		return k.Update(ctx, stack)
+	})
+}

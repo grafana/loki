@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-kit/log/level"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
@@ -265,7 +266,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 				continue outer
 			}
 
-			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels(nil))
+			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -276,7 +277,9 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
 func (c *indexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelNamesForMetricName")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelNamesForMetricName")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	// Fetch the series IDs from the index
@@ -302,7 +305,9 @@ func (c *indexReaderWriter) LabelNamesForMetricName(ctx context.Context, userID 
 }
 
 func (c *indexReaderWriter) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.LabelValuesForMetricName")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.LabelValuesForMetricName")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	if len(matchers) != 0 {
@@ -587,7 +592,9 @@ func (c *indexReaderWriter) lookupEntriesByQueries(ctx context.Context, queries 
 }
 
 func (c *indexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesBySeries")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesBySeries")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	level.Debug(log).Log("seriesIDs", len(seriesIDs))
@@ -622,7 +629,9 @@ func (c *indexReaderWriter) lookupLabelNamesBySeries(ctx context.Context, from, 
 }
 
 func (c *indexReaderWriter) lookupLabelNamesByChunks(ctx context.Context, from, through model.Time, userID string, seriesIDs []string) ([]string, error) {
-	log, ctx := spanlogger.New(ctx, "SeriesStore.lookupLabelNamesByChunks")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.lookupLabelNamesByChunks")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
 	// Lookup the series in the index to get the chunks.
@@ -703,6 +712,11 @@ func (c *indexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID
 }
 
 // old index stores do not implement stats -- skip
-func (c *indexReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *indexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
+}
+
+// old index stores do not implement label volume -- skip
+func (c *indexReaderWriter) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }

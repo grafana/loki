@@ -31,10 +31,13 @@ func WithContext(ctx context.Context, l log.Logger) log.Logger {
 		l = WithUserID(userID, l)
 	}
 
-	traceID, ok := tracing.ExtractSampledTraceID(ctx)
-	if !ok {
-		return l
+	traceID, sampled := tracing.ExtractSampledTraceID(ctx)
+	if sampled {
+		return log.With(l, "traceID", traceID, "sampled", "true")
 	}
+	if traceID != "" {
+		return log.With(l, "traceID", traceID)
+	}
+	return l
 
-	return log.With(l, "traceID", traceID)
 }

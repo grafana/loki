@@ -329,15 +329,15 @@ type Expiration struct {
 	XMLName      xml.Name           `xml:"Expiration,omitempty" json:"-"`
 	Date         ExpirationDate     `xml:"Date,omitempty" json:"Date,omitempty"`
 	Days         ExpirationDays     `xml:"Days,omitempty" json:"Days,omitempty"`
-	DeleteMarker ExpireDeleteMarker `xml:"ExpiredObjectDeleteMarker,omitempty"`
+	DeleteMarker ExpireDeleteMarker `xml:"ExpiredObjectDeleteMarker,omitempty" json:"ExpiredObjectDeleteMarker,omitempty"`
 }
 
 // MarshalJSON customizes json encoding by removing empty day/date specification.
 func (e Expiration) MarshalJSON() ([]byte, error) {
 	type expiration struct {
-		Date         *ExpirationDate `json:"Date,omitempty"`
-		Days         *ExpirationDays `json:"Days,omitempty"`
-		DeleteMarker ExpireDeleteMarker
+		Date         *ExpirationDate    `json:"Date,omitempty"`
+		Days         *ExpirationDays    `json:"Days,omitempty"`
+		DeleteMarker ExpireDeleteMarker `json:"ExpiredObjectDeleteMarker,omitempty"`
 	}
 
 	newexp := expiration{

@@ -8,12 +8,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/util"
+
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 
+	"github.com/grafana/regexp/syntax"
+
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -76,7 +81,7 @@ func (m MultiStageExpr) Pipeline() (log.Pipeline, error) {
 
 func (m MultiStageExpr) stages() ([]log.Stage, error) {
 	c := make([]log.Stage, 0, len(m))
-	for _, e := range m {
+	for _, e := range m.reorderStages() {
 		p, err := e.Stage()
 		if err != nil {
 			return nil, logqlmodel.NewStageError(e.String(), err)
@@ -87,6 +92,61 @@ func (m MultiStageExpr) stages() ([]log.Stage, error) {
 		c = append(c, p)
 	}
 	return c, nil
+}
+
+// reorderStages reorders m such that LineFilters
+// are as close to the front of the filter as possible.
+func (m MultiStageExpr) reorderStages() []StageExpr {
+	var (
+		result  = make([]StageExpr, 0, len(m))
+		filters = make([]*LineFilterExpr, 0, len(m))
+		rest    = make([]StageExpr, 0, len(m))
+	)
+
+	for _, s := range m {
+		switch f := s.(type) {
+		case *LineFilterExpr:
+			filters = append(filters, f)
+		case *LineFmtExpr:
+			// line_format modifies the contents of the line so any line filter
+			// originally after a line_format must still be after the same
+			// line_format.
+
+			rest = append(rest, f)
+
+			if len(filters) > 0 {
+				result = append(result, combineFilters(filters))
+			}
+			result = append(result, rest...)
+
+			filters = filters[:0]
+			rest = rest[:0]
+		default:
+			rest = append(rest, f)
+		}
+	}
+
+	if len(filters) > 0 {
+		result = append(result, combineFilters(filters))
+	}
+	return append(result, rest...)
+}
+
+func combineFilters(in []*LineFilterExpr) StageExpr {
+	result := in[len(in)-1]
+	for i := len(in) - 2; i >= 0; i-- {
+		leafNode(result).Left = in[i]
+	}
+
+	return result
+}
+
+func leafNode(in *LineFilterExpr) *LineFilterExpr {
+	current := in
+	//nolint:revive
+	for ; current.Left != nil; current = current.Left {
+	}
+	return current
 }
 
 func (m MultiStageExpr) String() string {
@@ -201,7 +261,7 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
 		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr:
+		case *LineFilterExpr, *LabelFilterExpr, *DistinctFilterExpr:
 			return true
 		default:
 			continue
@@ -409,6 +469,8 @@ func (e *LabelFilterExpr) Stage() (log.Stage, error) {
 	switch ip := e.LabelFilterer.(type) {
 	case *log.IPLabelFilter:
 		return ip, ip.PatternError()
+	case *log.NoopLabelFilter:
+		return log.NoopStage, nil
 	}
 	return e.LabelFilterer, nil
 }
@@ -484,6 +546,46 @@ func (e *DropLabelsExpr) String() string {
 }
 func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
 
+type KeepLabelsExpr struct {
+	keepLabels []log.KeepLabel
+	implicit
+}
+
+func newKeepLabelsExpr(keepLabels []log.KeepLabel) *KeepLabelsExpr {
+	return &KeepLabelsExpr{keepLabels: keepLabels}
+}
+
+func (e *KeepLabelsExpr) Shardable() bool { return true }
+
+func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
+	return log.NewKeepLabels(e.keepLabels), nil
+}
+
+func (e *KeepLabelsExpr) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpKeep))
+
+	for i, keepLabel := range e.keepLabels {
+		if keepLabel.Matcher != nil {
+			sb.WriteString(keepLabel.Matcher.String())
+			if i+1 != len(e.keepLabels) {
+				sb.WriteString(",")
+			}
+		}
+		if keepLabel.Name != "" {
+			sb.WriteString(keepLabel.Name)
+			if i+1 != len(e.keepLabels) {
+				sb.WriteString(",")
+			}
+		}
+	}
+	str := sb.String()
+	return str
+}
+
+func (e *KeepLabelsExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -536,12 +638,12 @@ func (e *LabelFmtExpr) String() string {
 }
 
 type JSONExpressionParser struct {
-	Expressions []log.JSONExpression
+	Expressions []log.LabelExtractionExpr
 
 	implicit
 }
 
-func newJSONExpressionParser(expressions []log.JSONExpression) *JSONExpressionParser {
+func newJSONExpressionParser(expressions []log.LabelExtractionExpr) *JSONExpressionParser {
 	return &JSONExpressionParser{
 		Expressions: expressions,
 	}
@@ -570,12 +672,101 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
+type DistinctFilterExpr struct {
+	labels []string
+	implicit
+}
+
+func newDistinctFilterExpr(labels []string) *DistinctFilterExpr {
+	return &DistinctFilterExpr{
+		labels: labels,
+	}
+}
+
+func (e *DistinctFilterExpr) Shardable() bool { return false }
+
+func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
+
+func (e *DistinctFilterExpr) Stage() (log.Stage, error) {
+	return log.NewDistinctFilter(e.labels)
+}
+
+func (e *DistinctFilterExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFilterDistinct))
+	for i, label := range e.labels {
+		sb.WriteString(label)
+		if i+1 != len(e.labels) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
+type internedStringSet map[string]struct {
+	s  string
+	ok bool
+}
+
+type LogfmtExpressionParser struct {
+	Expressions []log.LabelExtractionExpr
+	dec         *logfmt.Decoder
+	keys        internedStringSet
+
+	implicit
+}
+
+func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr) *LogfmtExpressionParser {
+	return &LogfmtExpressionParser{
+		Expressions: expressions,
+	}
+}
+
+func (l *LogfmtExpressionParser) Shardable() bool { return true }
+
+func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
+
+func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
+	return log.NewLogfmtExpressionParser(l.Expressions)
+}
+
+func (l *LogfmtExpressionParser) String() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	for i, exp := range l.Expressions {
+		sb.WriteString(exp.Identifier)
+		sb.WriteString("=")
+		sb.WriteString(strconv.Quote(exp.Expression))
+
+		if i+1 != len(l.Expressions) {
+			sb.WriteString(",")
+		}
+	}
+	return sb.String()
+}
+
 func mustNewMatcher(t labels.MatchType, n, v string) *labels.Matcher {
 	m, err := labels.NewMatcher(t, n, v)
 	if err != nil {
 		panic(logqlmodel.NewParseError(err.Error(), 0, 0))
 	}
 	return m
+}
+
+// simplify will return an equals matcher if there is a regex matching a literal
+func simplify(typ labels.MatchType, name string, reg *syntax.Regexp) (*labels.Matcher, bool) {
+	switch reg.Op {
+	case syntax.OpLiteral:
+		if !util.IsCaseInsensitive(reg) {
+			t := labels.MatchEqual
+			if typ == labels.MatchNotRegexp {
+				t = labels.MatchNotEqual
+			}
+			return labels.MustNewMatcher(t, name, string(reg.Rune)), true
+		}
+		return nil, false
+	}
+	return nil, false
 }
 
 func mustNewFloat(s string) float64 {
@@ -765,8 +956,13 @@ const (
 	// function filters
 	OpFilterIP = "ip"
 
+	OpFilterDistinct = "distinct"
+
 	// drop labels
 	OpDrop = "drop"
+
+	// keep labels
+	OpKeep = "keep"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -797,6 +993,8 @@ type SampleExpr interface {
 	Expr
 }
 
+// RangeAggregationExpr not all range vector aggregation expressions support grouping by/without label(s),
+// therefore the Grouping struct can be nil.
 type RangeAggregationExpr struct {
 	Left      *LogRange
 	Operation string
@@ -921,6 +1119,13 @@ func (e *RangeAggregationExpr) Walk(f WalkFn) {
 	e.Left.Walk(f)
 }
 
+// Grouping struct represents the grouping by/without label(s) for vector aggregators and range vector aggregators.
+// The representation is as follows:
+//   - No Grouping (labels dismissed): <operation> (<expr>) => Grouping{Without: false, Groups: nil}
+//   - Grouping by empty label set: <operation> by () (<expr>) => Grouping{Without: false, Groups: []}
+//   - Grouping by label set: <operation> by (<labels...>) (<expr>) => Grouping{Without: false, Groups: [<labels...>]}
+//   - Grouping without empty label set: <operation> without () (<expr>) => Grouping{Without: true, Groups: []}
+//   - Grouping without label set: <operation> without (<labels...>) (<expr>) => Grouping{Without: true, Groups: [<labels...>]}
 type Grouping struct {
 	Groups  []string
 	Without bool
@@ -929,10 +1134,15 @@ type Grouping struct {
 // impls Stringer
 func (g Grouping) String() string {
 	var sb strings.Builder
+
+	if g.Groups == nil {
+		return ""
+	}
+
 	if g.Without {
-		sb.WriteString(" without")
-	} else if len(g.Groups) > 0 {
-		sb.WriteString(" by")
+		sb.WriteString(" without ")
+	} else {
+		sb.WriteString(" by ")
 	}
 
 	if len(g.Groups) > 0 {
@@ -940,10 +1150,15 @@ func (g Grouping) String() string {
 		sb.WriteString(strings.Join(g.Groups, ","))
 		sb.WriteString(")")
 	}
+	if len(g.Groups) == 0 {
+		sb.WriteString("()")
+	}
 
 	return sb.String()
 }
 
+// VectorAggregationExpr all vector aggregation expressions support grouping by/without label(s),
+// therefore the Grouping struct can never be nil.
 type VectorAggregationExpr struct {
 	Left SampleExpr
 
@@ -1174,8 +1389,15 @@ func (e *BinOpExpr) String() string {
 // impl SampleExpr
 func (e *BinOpExpr) Shardable() bool {
 	if e.Opts != nil && e.Opts.VectorMatching != nil {
-		// prohibit sharding when we're changing the label groupings, such as on or ignoring
-		return false
+		matching := e.Opts.VectorMatching
+		// prohibit sharding when we're changing the label groupings,
+		// such as when using `on` grouping or when using
+		// `ignoring` with a non-zero set of labels to ignore.
+		// `ignoring ()` is effectively the zero value
+		// that doesn't mutate labels and is shardable.
+		if matching.On || len(matching.MatchingLabels) > 0 {
+			return false
+		}
 	}
 	return shardableOps[e.Op] && e.SampleExpr.Shardable() && e.RHS.Shardable()
 }
@@ -1260,15 +1482,15 @@ func mustNewBinOpExpr(op string, opts *BinOpOptions, lhs, rhs Expr) SampleExpr {
 func reduceBinOp(op string, left, right float64) *LiteralExpr {
 	merged, err := MergeBinOp(
 		op,
-		&promql.Sample{Point: promql.Point{V: left}},
-		&promql.Sample{Point: promql.Point{V: right}},
+		&promql.Sample{F: left},
+		&promql.Sample{F: right},
 		false,
 		false,
 	)
 	if err != nil {
 		return &LiteralExpr{err: err}
 	}
-	return &LiteralExpr{Val: merged.V}
+	return &LiteralExpr{Val: merged.F}
 }
 
 func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorComparison bool) (*promql.Sample, error) {
@@ -1280,11 +1502,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V += right.Point.V
+			res := *left
+			res.F += right.F
 			return &res
 		}
 
@@ -1293,11 +1512,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V -= right.Point.V
+			res := *left
+			res.F -= right.F
 			return &res
 		}
 
@@ -1306,11 +1522,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V *= right.Point.V
+			res := *left
+			res.F *= right.F
 			return &res
 		}
 
@@ -1319,16 +1532,12 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			// guard against divide by zero
-			if right.Point.V == 0 {
-				res.Point.V = math.NaN()
+			if right.F == 0 {
+				res.F = math.NaN()
 			} else {
-				res.Point.V /= right.Point.V
+				res.F /= right.F
 			}
 			return &res
 		}
@@ -1338,15 +1547,12 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 			if left == nil || right == nil {
 				return nil
 			}
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
+			res := *left
 			// guard against divide by zero
-			if right.Point.V == 0 {
-				res.Point.V = math.NaN()
+			if right.F == 0 {
+				res.F = math.NaN()
 			} else {
-				res.Point.V = math.Mod(res.Point.V, right.Point.V)
+				res.F = math.Mod(res.F, right.F)
 			}
 			return &res
 		}
@@ -1357,11 +1563,8 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-			res.Point.V = math.Pow(left.Point.V, right.Point.V)
+			res := *left
+			res.F = math.Pow(left.F, right.F)
 			return &res
 		}
 
@@ -1371,19 +1574,16 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
+			res := *left
 
 			val := 0.
-			if left.Point.V == right.Point.V {
+			if left.F == right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeNEQ:
@@ -1392,19 +1592,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V != right.Point.V {
+			if left.F != right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeGT:
@@ -1413,19 +1609,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V > right.Point.V {
+			if left.F > right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeGTE:
@@ -1434,19 +1626,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V >= right.Point.V {
+			if left.F >= right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeLT:
@@ -1455,19 +1643,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V < right.Point.V {
+			if left.F < right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	case OpTypeLTE:
@@ -1476,19 +1660,15 @@ func MergeBinOp(op string, left, right *promql.Sample, filter, isVectorCompariso
 				return nil
 			}
 
-			res := &promql.Sample{
-				Metric: left.Metric,
-				Point:  left.Point,
-			}
-
+			res := *left
 			val := 0.
-			if left.Point.V <= right.Point.V {
+			if left.F <= right.F {
 				val = 1.
 			} else if filter {
 				return nil
 			}
-			res.Point.V = val
-			return res
+			res.F = val
+			return &res
 		}
 
 	default:
@@ -1755,7 +1935,7 @@ func (e *VectorExpr) Value() (float64, error) {
 
 func (e *VectorExpr) Selector() (LogSelectorExpr, error)      { return e, e.err }
 func (e *VectorExpr) HasFilter() bool                         { return false }
-func (e *VectorExpr) Shardable() bool                         { return true }
+func (e *VectorExpr) Shardable() bool                         { return false }
 func (e *VectorExpr) Walk(f WalkFn)                           { f(e) }
 func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNoopPipeline(), nil }
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }

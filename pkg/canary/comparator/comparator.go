@@ -249,8 +249,8 @@ func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
 	// Use a random tick up to the interval for the first tick
 	firstMt := true
-	rand.Seed(time.Now().UnixNano())
-	mt := time.NewTicker(time.Duration(rand.Int63n(c.metricTestInterval.Nanoseconds())))
+	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano()))
+	mt := time.NewTicker(time.Duration(randomGenerator.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
 		t.Stop()

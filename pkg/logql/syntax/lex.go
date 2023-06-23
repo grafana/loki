@@ -70,11 +70,15 @@ var tokens = map[string]int{
 	OpFmtLine:  LINE_FMT,
 
 	// filter functions
-	OpFilterIP:   IP,
-	OpDecolorize: DECOLORIZE,
+	OpFilterIP:       IP,
+	OpDecolorize:     DECOLORIZE,
+	OpFilterDistinct: DISTINCT,
 
 	// drop labels
 	OpDrop: DROP,
+
+	// keep labels
+	OpKeep: KEEP,
 }
 
 // functionTokens are tokens that needs to be suffixes with parenthesis
@@ -121,7 +125,7 @@ var functionTokens = map[string]int{
 }
 
 type lexer struct {
-	scanner.Scanner
+	Scanner
 	errs    []logqlmodel.ParseError
 	builder strings.Builder
 }
@@ -132,6 +136,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 	switch r {
 	case '#':
 		// Scan until a newline or EOF is encountered
+		//nolint:revive
 		for next := l.Peek(); !(next == '\n' || next == scanner.EOF); next = l.Next() {
 		}
 
@@ -157,6 +162,12 @@ func (l *lexer) Lex(lval *exprSymType) int {
 
 		lval.str = numberText
 		return NUMBER
+	case '-': // handle negative durations
+		tokenText := l.TokenText()
+		if duration, ok := tryScanDuration(tokenText, &l.Scanner); ok {
+			lval.duration = duration
+			return DURATION
+		}
 
 	case scanner.String, scanner.RawString:
 		var err error
@@ -229,7 +240,7 @@ func (l *lexer) Error(msg string) {
 	l.errs = append(l.errs, logqlmodel.NewParseError(msg, l.Line, l.Column))
 }
 
-func tryScanDuration(number string, l *scanner.Scanner) (time.Duration, bool) {
+func tryScanDuration(number string, l *Scanner) (time.Duration, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
 	// copy the scanner to avoid advancing it in case it's not a duration.
@@ -291,7 +302,7 @@ func isDurationRune(r rune) bool {
 	}
 }
 
-func tryScanBytes(number string, l *scanner.Scanner) (uint64, bool) {
+func tryScanBytes(number string, l *Scanner) (uint64, bool) {
 	var sb strings.Builder
 	sb.WriteString(number)
 	// copy the scanner to avoid advancing it in case it's not a duration.
@@ -334,7 +345,7 @@ func isBytesSizeRune(r rune) bool {
 
 // isFunction check if the next runes are either an open parenthesis
 // or by/without tokens. This allows to dissociate functions and identifier correctly.
-func isFunction(sc scanner.Scanner) bool {
+func isFunction(sc Scanner) bool {
 	var sb strings.Builder
 	sc = trimSpace(sc)
 	for r := sc.Next(); r != scanner.EOF; r = sc.Next() {
@@ -350,7 +361,7 @@ func isFunction(sc scanner.Scanner) bool {
 	return false
 }
 
-func trimSpace(l scanner.Scanner) scanner.Scanner {
+func trimSpace(l Scanner) Scanner {
 	for n := l.Peek(); n != scanner.EOF; n = l.Peek() {
 		if unicode.IsSpace(n) {
 			l.Next()

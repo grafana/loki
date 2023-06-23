@@ -86,10 +86,32 @@ func (c Core) ListMultipartUploads(ctx context.Context, bucket, prefix, keyMarke
 	return c.listMultipartUploadsQuery(ctx, bucket, keyMarker, uploadIDMarker, prefix, delimiter, maxUploads)
 }
 
+// PutObjectPartOptions contains options for PutObjectPart API
+type PutObjectPartOptions struct {
+	Md5Base64, Sha256Hex  string
+	SSE                   encrypt.ServerSide
+	CustomHeader, Trailer http.Header
+}
+
 // PutObjectPart - Upload an object part.
-func (c Core) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int, data io.Reader, size int64, md5Base64, sha256Hex string, sse encrypt.ServerSide) (ObjectPart, error) {
-	streamSha256 := true
-	return c.uploadPart(ctx, bucket, object, uploadID, data, partID, md5Base64, sha256Hex, size, sse, streamSha256)
+func (c Core) PutObjectPart(ctx context.Context, bucket, object, uploadID string, partID int,
+	data io.Reader, size int64, opts PutObjectPartOptions,
+) (ObjectPart, error) {
+	p := uploadPartParams{
+		bucketName:   bucket,
+		objectName:   object,
+		uploadID:     uploadID,
+		reader:       data,
+		partNumber:   partID,
+		md5Base64:    opts.Md5Base64,
+		sha256Hex:    opts.Sha256Hex,
+		size:         size,
+		sse:          opts.SSE,
+		streamSha256: true,
+		customHeader: opts.CustomHeader,
+		trailer:      opts.Trailer,
+	}
+	return c.uploadPart(ctx, p)
 }
 
 // ListObjectParts - List uploaded parts of an incomplete upload.x
@@ -98,11 +120,11 @@ func (c Core) ListObjectParts(ctx context.Context, bucket, object, uploadID stri
 }
 
 // CompleteMultipartUpload - Concatenate uploaded parts and commit to an object.
-func (c Core) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []CompletePart, opts PutObjectOptions) (string, error) {
+func (c Core) CompleteMultipartUpload(ctx context.Context, bucket, object, uploadID string, parts []CompletePart, opts PutObjectOptions) (UploadInfo, error) {
 	res, err := c.completeMultipartUpload(ctx, bucket, object, uploadID, completeMultipartUpload{
 		Parts: parts,
 	}, opts)
-	return res.ETag, err
+	return res, err
 }
 
 // AbortMultipartUpload - Abort an incomplete upload.

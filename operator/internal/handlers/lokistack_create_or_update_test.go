@@ -10,7 +10,6 @@ import (
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/status"
@@ -81,7 +80,7 @@ var (
 			Kind: "ConfigMap",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-stack-rules",
+			Name:      "my-stack-rules-0",
 			Namespace: "some-ns",
 		},
 	}
@@ -1386,6 +1385,78 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 	require.Equal(t, degradedErr, err)
 }
 
+func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: `Error parsing query timeout: time: invalid duration "invalid"`,
+		Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+		Requeue: false,
+	}
+
+	stack := &lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV12,
+						EffectiveDate: "2023-05-22",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: "openshift",
+			},
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
+						QueryTimeout: "invalid",
+					},
+				},
+			},
+		},
+	}
+
+	// Create looks up the CR first, so we need to return our fake stack
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+		}
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
 func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
@@ -1445,7 +1516,7 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 	}
 
 	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		_, ok := out.(*lokiv1beta1.RulerConfig)
+		_, ok := out.(*lokiv1.RulerConfig)
 		if ok {
 			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
 		}
@@ -1476,6 +1547,18 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 		return nil
 	}
 
+	k.ListStub = func(_ context.Context, list client.ObjectList, options ...client.ListOption) error {
+		switch list.(type) {
+		case *corev1.ConfigMapList:
+			k.SetClientObjectList(list, &corev1.ConfigMapList{
+				Items: []corev1.ConfigMap{
+					rulesCM,
+				},
+			})
+		}
+		return nil
+	}
+
 	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
@@ -1490,7 +1573,7 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 
 	// Get should return ruler resources
 	k.GetStub = func(_ context.Context, name types.NamespacedName, out client.Object, _ ...client.GetOption) error {
-		_, ok := out.(*lokiv1beta1.RulerConfig)
+		_, ok := out.(*lokiv1.RulerConfig)
 		if ok {
 			return apierrors.NewNotFound(schema.GroupResource{}, "no ruler config")
 		}
