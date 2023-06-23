@@ -1,5 +1,8 @@
 {{- if and .Values.gateway.enabled }}
-{{- if gt (int .Values.gateway.replicas) 1 }}
+{{- if or 
+  (and (not .Values.gateway.autoscaling.enabled) (gt (int .Values.gateway.replicas) 1)) 
+  (and .Values.gateway.autoscaling.enabled (gt (int .Values.gateway.autoscaling.minReplicas) 1))
+}}
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
