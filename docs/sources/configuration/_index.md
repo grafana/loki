@@ -3933,18 +3933,18 @@ embedded_cache:
 
 lru_cache:
   # Maximum memory size of the whole cache. A unit suffix (KB, MB, GB) may be
-  # applied.
+  # applied. Default: 1GB.
   # CLI flag: -<prefix>.lrucache.max-size-bytes
   [max_size_bytes: <int> | default = 0B]
 
   # Maximum memory size of a single item in the cache. A unit suffix (KB, MB,
-  # GB) may be applied.
+  # GB) may be applied. Default: 100MB.
   # CLI flag: -<prefix>.lrucache.max-item-size-bytes
   [max_item_size_bytes: <int> | default = 0B]
 
   # Maximum items in the cache.
   # CLI flag: -<prefix>.lrucache.max-items
-  [max_items: <int> | default = 5000]
+  [max_items: <int> | default = 50000]
 
   # Whether LRUCache should be enabled or not.
   # CLI flag: -<prefix>.lrucache.enabled
