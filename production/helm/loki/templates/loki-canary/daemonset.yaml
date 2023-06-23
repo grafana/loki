@@ -13,9 +13,9 @@ spec:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
     {{- with .updateStrategy }}
-    updateStrategy:
-      {{- toYaml . | nindent 6 }}
-    {{- end }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   template:
     metadata:
       annotations:
