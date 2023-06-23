@@ -7,7 +7,13 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
+type MockCache interface {
+	Cache
+	NumKeyUpdates() int
+}
+
 type mockCache struct {
+	numKeyUpdates int
 	sync.Mutex
 	cache map[string][]byte
 }
@@ -17,6 +23,7 @@ func (m *mockCache) Store(_ context.Context, keys []string, bufs [][]byte) error
 	defer m.Unlock()
 	for i := range keys {
 		m.cache[keys[i]] = bufs[i]
+		m.numKeyUpdates++
 	}
 	return nil
 }
@@ -43,8 +50,12 @@ func (m *mockCache) GetCacheType() stats.CacheType {
 	return "mock"
 }
 
+func (m *mockCache) NumKeyUpdates() int {
+	return m.numKeyUpdates
+}
+
 // NewMockCache makes a new MockCache.
-func NewMockCache() Cache {
+func NewMockCache() MockCache {
 	return &mockCache{
 		cache: map[string][]byte{},
 	}
