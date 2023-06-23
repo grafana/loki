@@ -7,6 +7,8 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
@@ -18,7 +20,7 @@ import (
 var (
 	errEndBeforeStart   = errors.New("end timestamp must not be before or equal to start time")
 	errNegativeStep     = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 	errNegativeInterval = errors.New("interval must be >= 0")
 )
 
@@ -342,4 +344,36 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+func ParseSeriesVolumeQuery(r *http.Request) (*RangeQuery, error) {
+	err := labelVolumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func labelVolumeLimit(r *http.Request) error {
+	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
+	if err != nil {
+		return err
+	}
+
+	if l == 0 {
+		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
+		return nil
+	}
+
+	if l <= 0 {
+		return errors.New("limit must be a positive value")
+	}
+
+	return nil
 }

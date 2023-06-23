@@ -16,10 +16,14 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/storage/bucket/swift"
+	"github.com/grafana/loki/pkg/storage/chunk/client/alibaba"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/openstack"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/cfg"
@@ -720,58 +724,6 @@ storage_config:
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 		})
 
-		t.Run("when common object store config is provided, compactor shared store is defaulted to use it", func(t *testing.T) {
-			for _, tt := range []struct {
-				configString string
-				expected     string
-			}{
-				{
-					configString: `common:
-  storage:
-    s3:
-      s3: s3://foo-bucket/example
-      access_key_id: abc123
-      secret_access_key: def789`,
-					expected: config.StorageTypeS3,
-				},
-				{
-					configString: `common:
-  storage:
-    gcs:
-      bucket_name: foobar`,
-					expected: config.StorageTypeGCS,
-				},
-				{
-					configString: `common:
-  storage:
-    azure:
-      account_name: 3rd_planet
-      account_key: water`,
-					expected: config.StorageTypeAzure,
-				},
-				{
-					configString: `common:
-  storage:
-    swift:
-      username: steve
-      password: supersecret`,
-					expected: config.StorageTypeSwift,
-				},
-				{
-					configString: `common:
-  storage:
-    filesystem:
-      chunks_directory: /tmp/chunks
-      rules_directory: /tmp/rules`,
-					expected: config.StorageTypeFileSystem,
-				},
-			} {
-				config, _ := testContext(tt.configString, nil)
-
-				assert.Equal(t, tt.expected, config.CompactorConfig.SharedStoreType)
-			}
-		})
-
 		t.Run("explicit compactor shared_store config is preserved", func(t *testing.T) {
 			configString := `common:
   storage:
@@ -788,38 +740,6 @@ compactor:
 	})
 
 	t.Run("when using boltdb storage type", func(t *testing.T) {
-		t.Run("default storage_config.boltdb.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: s3
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeS3, cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType)
-		})
-
-		t.Run("default compactor.shared_store to the value of current_schema.object_store", func(t *testing.T) {
-			const boltdbSchemaConfig = `---
-schema_config:
-  configs:
-    - from: 2021-08-01
-      store: boltdb-shipper
-      object_store: gcs
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h`
-			cfg, _ := testContext(boltdbSchemaConfig, nil)
-
-			assert.Equal(t, config.StorageTypeGCS, cfg.CompactorConfig.SharedStoreType)
-		})
-
 		t.Run("shared store types provided via config file take precedence", func(t *testing.T) {
 			const boltdbSchemaConfig = `---
 schema_config:
@@ -1043,8 +963,8 @@ query_range:
         endpoint: endpoint.redis.org`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, config.QueryRange.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
+			assert.EqualValues(t, config.QueryRange.ResultsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
@@ -1056,13 +976,46 @@ query_range:
         host: memcached.host.org`
 
 			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
-			assert.EqualValues(t, "memcached.host.org", config.QueryRange.CacheConfig.MemcacheClient.Host)
-			assert.False(t, config.QueryRange.CacheConfig.EnableFifoCache)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.ResultsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
 		})
 
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-			assert.True(t, config.QueryRange.CacheConfig.EnableFifoCache)
+			assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+	})
+
+	t.Run("for the index stats results cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  index_stats_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, config.QueryRange.StatsCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  index_stats_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
 		})
 	})
 }
@@ -1094,10 +1047,10 @@ func Test_applyIngesterRingConfig(t *testing.T) {
 	t.Run("Attempt to catch changes to a RingConfig", func(t *testing.T) {
 		msgf := "%s has changed, this is a crude attempt to catch mapping errors missed in config_wrapper.applyIngesterRingConfig when a ring config changes. Please add a new mapping and update the expected value in this test."
 
-		assert.Equal(t, 8,
+		assert.Equal(t, 9,
 			reflect.TypeOf(distributor.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(distributor.RingConfig{}).String()))
-		assert.Equal(t, 12,
+		assert.Equal(t, 13,
 			reflect.TypeOf(util.RingConfig{}).NumField(),
 			fmt.Sprintf(msgf, reflect.TypeOf(util.RingConfig{}).String()))
 	})
@@ -1569,6 +1522,8 @@ func Test_instanceAddr(t *testing.T) {
 ingester:
   lifecycler:
     address: myingester
+memberlist:
+  advertise_addr: mymemberlist
 ruler:
   ring:
     instance_addr: myruler
@@ -1591,6 +1546,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "mydistributor", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "myingester", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "mymemberlist", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "myruler", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "myscheduler", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "myqueryfrontend", config.Frontend.FrontendV2.Addr)
@@ -1605,6 +1561,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "99.99.99.99", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr)
 		assert.Equal(t, "99.99.99.99", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr)
@@ -1622,6 +1579,7 @@ common:
 		assert.NoError(t, err)
 		assert.Equal(t, "22.22.22.22", config.Distributor.DistributorRing.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.Ingester.LifecyclerConfig.Addr)
+		assert.Equal(t, "99.99.99.99", config.MemberlistKV.AdvertiseAddr) /// not a ring.
 		assert.Equal(t, "22.22.22.22", config.Ruler.Ring.InstanceAddr)
 		assert.Equal(t, "22.22.22.22", config.QueryScheduler.SchedulerRing.InstanceAddr)
 		assert.Equal(t, "99.99.99.99", config.Frontend.FrontendV2.Addr) // not a ring.
@@ -1746,5 +1704,138 @@ common:
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.QueryScheduler.SchedulerRing.InstanceInterfaceNames)
 		assert.Equal(t, []string{"ringsshouldntusethis"}, config.Frontend.FrontendV2.InfNames) // not a ring.
 		assert.Equal(t, []string{"ringsshouldusethis"}, config.CompactorConfig.CompactorRing.InstanceInterfaceNames)
+	})
+}
+
+func TestNamedStores_applyDefaults(t *testing.T) {
+	namedStoresConfig := `storage_config:
+  named_stores:
+    aws:
+      store-1:
+        s3: "s3.test"
+        storage_class: GLACIER
+        dynamodb:
+          dynamodb_url: "dynamo.test"
+    azure:
+      store-2:
+        environment: AzureGermanCloud
+        account_name: foo
+        container_name: bar
+    bos:
+      store-3:
+        bucket_name: foobar
+    gcs:
+      store-4:
+        bucket_name: foobar
+        enable_http2: false
+    cos:
+      store-5:
+        endpoint: cos.test
+        http_config:
+          idle_conn_timeout: 30s
+    filesystem:
+      store-6:
+        directory: foobar
+    swift:
+      store-7:
+        container_name: foobar
+        request_timeout: 30s
+    alibabacloud:
+      store-8:
+        bucket: foobar
+        endpoint: oss.test
+`
+	// make goconst happy
+	bucketName := "foobar"
+
+	config, defaults, err := configWrapperFromYAML(t, namedStoresConfig, nil)
+	require.NoError(t, err)
+
+	nsCfg := config.StorageConfig.NamedStores
+
+	t.Run("aws", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.AWS, 1)
+
+		// expect the defaults to be set on named store config
+		expected := defaults.StorageConfig.AWSStorageConfig
+		assert.NoError(t, expected.DynamoDB.Set("dynamo.test"))
+		assert.NoError(t, expected.S3.Set("s3.test"))
+		// override defaults
+		expected.StorageClass = "GLACIER"
+
+		assert.Equal(t, expected, (aws.StorageConfig)(nsCfg.AWS["store-1"]))
+	})
+
+	t.Run("azure", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.Azure, 1)
+
+		expected := defaults.StorageConfig.AzureStorageConfig
+		expected.StorageAccountName = "foo"
+		expected.ContainerName = "bar"
+		// override defaults
+		expected.Environment = "AzureGermanCloud"
+
+		assert.Equal(t, expected, (azure.BlobStorageConfig)(nsCfg.Azure["store-2"]))
+	})
+
+	t.Run("bos", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.BOS, 1)
+
+		expected := defaults.StorageConfig.BOSStorageConfig
+		expected.BucketName = bucketName
+
+		assert.Equal(t, expected, (baidubce.BOSStorageConfig)(nsCfg.BOS["store-3"]))
+	})
+
+	t.Run("gcs", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.GCS, 1)
+
+		expected := defaults.StorageConfig.GCSConfig
+		expected.BucketName = bucketName
+		// override defaults
+		expected.EnableHTTP2 = false
+
+		assert.Equal(t, expected, (gcp.GCSConfig)(nsCfg.GCS["store-4"]))
+	})
+
+	t.Run("cos", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.COS, 1)
+
+		expected := defaults.StorageConfig.COSConfig
+		expected.Endpoint = "cos.test"
+		// override defaults
+		expected.HTTPConfig.IdleConnTimeout = 30 * time.Second
+
+		assert.Equal(t, expected, (ibmcloud.COSConfig)(nsCfg.COS["store-5"]))
+	})
+
+	t.Run("filesystem", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.Filesystem, 1)
+
+		expected := defaults.StorageConfig.FSConfig
+		expected.Directory = bucketName
+
+		assert.Equal(t, expected, (local.FSConfig)(nsCfg.Filesystem["store-6"]))
+	})
+
+	t.Run("swift", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.Swift, 1)
+
+		expected := defaults.StorageConfig.Swift
+		expected.ContainerName = bucketName
+		// override defaults
+		expected.RequestTimeout = 30 * time.Second
+
+		assert.Equal(t, expected, (openstack.SwiftConfig)(nsCfg.Swift["store-7"]))
+	})
+
+	t.Run("alibabacloud", func(t *testing.T) {
+		assert.Len(t, config.StorageConfig.NamedStores.AlibabaCloud, 1)
+
+		expected := defaults.StorageConfig.AlibabaStorageConfig
+		expected.Bucket = bucketName
+		expected.Endpoint = "oss.test"
+
+		assert.Equal(t, expected, (alibaba.OssConfig)(nsCfg.AlibabaCloud["store-8"]))
 	})
 }

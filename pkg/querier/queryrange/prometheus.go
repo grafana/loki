@@ -25,8 +25,8 @@ var (
 type PrometheusExtractor struct{}
 
 // Extract wraps the original prometheus cache extractor
-func (PrometheusExtractor) Extract(start, end int64, from queryrangebase.Response) queryrangebase.Response {
-	response := extractor.Extract(start, end, from.(*LokiPromResponse).Response)
+func (PrometheusExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
+	response := extractor.Extract(start, end, res.(*LokiPromResponse).Response, resStart, resEnd)
 	return &LokiPromResponse{
 		Response: response.(*queryrangebase.PrometheusResponse),
 	}

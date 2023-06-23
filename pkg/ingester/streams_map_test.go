@@ -27,6 +27,7 @@ func TestStreamsMap(t *testing.T) {
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
+			nil,
 		),
 		newStream(
 			defaultConfig(),
@@ -39,6 +40,7 @@ func TestStreamsMap(t *testing.T) {
 			true,
 			NewStreamRateCalculator(),
 			NilMetrics,
+			nil,
 		),
 	}
 	var s *stream

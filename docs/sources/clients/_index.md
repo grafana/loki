@@ -7,16 +7,16 @@ weight: 600
 
 Grafana Loki supports the following official clients for sending logs:
 
-- [Promtail]({{<relref "promtail">}})
-- [Docker Driver]({{<relref "docker-driver">}})
-- [Fluentd]({{<relref "fluentd">}})
-- [Fluent Bit]({{<relref "fluentbit">}})
-- [Logstash]({{<relref "logstash">}})
-- [Lambda Promtail]({{<relref "lambda-promtail">}})
+- [Promtail]({{< relref "./promtail" >}})
+- [Docker Driver]({{< relref "./docker-driver" >}})
+- [Fluentd]({{< relref "./fluentd" >}})
+- [Fluent Bit]({{< relref "./fluentbit" >}})
+- [Logstash]({{< relref "./logstash" >}})
+- [Lambda Promtail]({{< relref "./lambda-promtail" >}})
 
 There are also a number of third-party clients, see [Unofficial clients](#unofficial-clients).
 
-The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki]({{<relref "k6">}}).
+The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki]({{< relref "./k6" >}}).
 
 ## Picking a client
 
@@ -59,17 +59,18 @@ By adding our output plugin you can quickly try Loki without doing big configura
 
 ### Lambda Promtail
 
-This is a workflow combining the Promtail push-api [scrape config]({{<relref "promtail/configuration#loki_push_api">}}) and the [lambda-promtail]({{<relref "lambda-promtail">}}) AWS Lambda function which pipes logs from Cloudwatch to Loki.
+This is a workflow combining the Promtail push-api [scrape config]({{< relref "./promtail/configuration#loki_push_api" >}}) and the [lambda-promtail]({{< relref "./lambda-promtail" >}}) AWS Lambda function which pipes logs from Cloudwatch to Loki.
 
 This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki.
 
 ## Unofficial clients
 
-Please note that the Loki API is not stable yet, so breaking changes might occur
+Note that the Loki API is not stable yet, so breaking changes might occur
 when using or writing a third-party client.
 
 - [promtail-client](https://github.com/afiskon/promtail-client) (Go)
 - [push-to-loki.py](https://github.com/sleleko/devops-kb/blob/master/python/push-to-loki.py) (Python 3)
+- [python-logging-loki](https://pypi.org/project/python-logging-loki/) (Python 3)
 - [Serilog-Sinks-Loki](https://github.com/JosephWoodward/Serilog-Sinks-Loki) (C#)
 - [NLog-Targets-Loki](https://github.com/corentinaltepe/nlog.loki) (C#)
 - [loki-logback-appender](https://github.com/loki4j/loki-logback-appender) (Java)
@@ -78,3 +79,5 @@ when using or writing a third-party client.
 - [LokiLogger.jl](https://github.com/JuliaLogging/LokiLogger.jl) (Julia)
 - [winston-loki](https://github.com/JaniAnttonen/winston-loki) (JS)
 - [ilogtail](https://github.com/alibaba/ilogtail) (Go)
+- [Vector Loki Sink](https://vector.dev/docs/reference/configuration/sinks/loki/)
+- [Cribl Loki Destination](https://docs.cribl.io/stream/destinations-loki)

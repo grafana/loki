@@ -256,6 +256,7 @@ func BenchmarkPipeline(b *testing.B) {
 			b.ResetTimer()
 
 			go func() {
+				//nolint:revive
 				for range out {
 				}
 			}()

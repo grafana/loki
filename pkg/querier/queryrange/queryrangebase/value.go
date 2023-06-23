@@ -36,8 +36,13 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 		res := make([]SampleStream, 0, len(v))
 		for _, sample := range v {
 			res = append(res, SampleStream{
-				Labels:  mapLabels(sample.Metric),
-				Samples: mapPoints(sample.Point),
+				Labels: mapLabels(sample.Metric),
+				Samples: []logproto.LegacySample{
+					{
+						Value:       sample.F,
+						TimestampMs: sample.T,
+					},
+				},
 			})
 		}
 		return res, nil
@@ -47,7 +52,7 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 		for _, series := range v {
 			res = append(res, SampleStream{
 				Labels:  mapLabels(series.Metric),
-				Samples: mapPoints(series.Points...),
+				Samples: mapPoints(series.Floats...),
 			})
 		}
 		return res, nil
@@ -66,12 +71,12 @@ func mapLabels(ls labels.Labels) []logproto.LabelAdapter {
 	return result
 }
 
-func mapPoints(pts ...promql.Point) []logproto.LegacySample {
+func mapPoints(pts ...promql.FPoint) []logproto.LegacySample {
 	result := make([]logproto.LegacySample, 0, len(pts))
 
 	for _, pt := range pts {
 		result = append(result, logproto.LegacySample{
-			Value:       pt.V,
+			Value:       pt.F,
 			TimestampMs: pt.T,
 		})
 	}

@@ -735,6 +735,25 @@ func BenchmarkSortIterator(b *testing.B) {
 		}
 	})
 
+	b.Run("merge sort dedupe", func(b *testing.B) {
+		b.ReportAllocs()
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			b.StopTimer()
+			var itrs []EntryIterator
+			for i := 0; i < streamsCount; i++ {
+				itrs = append(itrs, NewStreamIterator(streams[i]))
+				itrs = append(itrs, NewStreamIterator(streams[i]))
+			}
+			b.StartTimer()
+			it := NewMergeEntryIterator(ctx, itrs, logproto.BACKWARD)
+			for it.Next() {
+				it.Entry()
+			}
+			it.Close()
+		}
+	})
+
 	b.Run("sort", func(b *testing.B) {
 		b.ReportAllocs()
 		b.ResetTimer()

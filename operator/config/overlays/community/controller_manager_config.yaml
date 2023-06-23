@@ -11,7 +11,7 @@ leaderElection:
   resourceName: e3716011.grafana.com
 featureGates:
   lokiStackGateway: true
-  runtimeSeccompProfile: false
+  restrictedPodSecurityStandard: false
   #
   # Webhook feature gates
   #

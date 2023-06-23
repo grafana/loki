@@ -17,6 +17,6 @@ metadata:
   namespace: {{ .namespace | default $.Release.Namespace }}
 spec:
   groups:
-  {{- include "loki.ruleGroupToYaml" ($.Files.Get "src/alerts.yaml" | fromYaml).groups | indent 4 }}
+  {{- include "loki.ruleGroupToYaml" (tpl ($.Files.Get "src/alerts.yaml.tpl") $ | fromYaml).groups | indent 4 }}
 {{- end }}
 {{- end }}

@@ -272,3 +272,35 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
         name: lokistack-dev-swift
         type: swift
   ```
+
+## AlibabaCloud OSS
+
+### Requirements
+
+* Create a [bucket](https://www.alibabacloud.com/help/en/object-storage-service/latest/create-buckets-2) on AlibabaCloud.
+
+### Installation
+
+* Deploy the Loki Operator to your cluster.
+
+* Create an Object Storage secret with keys as follows:
+
+    ```console
+    kubectl create secret generic lokistack-dev-alibabacloud \
+      --from-literal=bucket="<BUCKET_NAME>" \
+      --from-literal=endpoint="<OSS_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<OSS_ACCESS_KEY_ID>" \
+      --from-literal=secret_access_key="<OSS_ACCESS_KEY_SECRET>"
+    ```
+
+    where `lokistack-dev-alibabacloud` is the secret name.
+
+* Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `alibabacloud`:
+
+  ```yaml
+  spec:
+    storage:
+      secret:
+        name: lokistack-dev-alibabacloud
+        type: alibabacloud
+  ```

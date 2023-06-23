@@ -339,27 +339,38 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}
-					for retry := 10; retry >= 0; retry-- {
-						chks, err = f.FetchChunks(m.ctx, chks, keys)
-						if err != nil {
-							if retry == 0 {
-								log.Println(threadID, "Final error retrieving chunks, giving up:", err)
-								errCh <- err
-								return
+					finalChks := make([]chunk.Chunk, 0, len(chunks))
+					for i := range chks {
+						onechunk := []chunk.Chunk{chunks[i]}
+						onekey := []string{keys[i]}
+						var retry int
+						for retry = 10; retry >= 0; retry-- {
+							onechunk, err = f.FetchChunks(m.ctx, onechunk, onekey)
+							if err != nil {
+								if retry == 0 {
+									log.Println(threadID, "Final error retrieving chunks, giving up:", err)
+								}
+								log.Println(threadID, "Error fetching chunks, will retry:", err)
+								onechunk = []chunk.Chunk{chunks[i]}
+								time.Sleep(5 * time.Second)
+							} else {
+								break
 							}
-							log.Println(threadID, "Error fetching chunks, will retry:", err)
-							time.Sleep(5 * time.Second)
-						} else {
-							break
 						}
+
+						if retry < 0 {
+							continue
+						}
+
+						finalChks = append(finalChks, onechunk[0])
 					}
 
-					totalChunks += uint64(len(chks))
+					totalChunks += uint64(len(finalChks))
 
-					output := make([]chunk.Chunk, 0, len(chks))
+					output := make([]chunk.Chunk, 0, len(finalChks))
 
 					// Calculate some size stats and change the tenant ID if necessary
-					for i, chk := range chks {
+					for i, chk := range finalChks {
 						if enc, err := chk.Encoded(); err == nil {
 							totalBytes += uint64(len(enc))
 						} else {
@@ -378,7 +389,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 							}
 							output = append(output, nc)
 						} else {
-							output = append(output, chks[i])
+							output = append(output, finalChks[i])
 						}
 
 					}

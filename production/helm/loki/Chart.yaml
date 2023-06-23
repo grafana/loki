@@ -2,8 +2,8 @@ apiVersion: v2
 name: loki
 description: Helm chart for Grafana Loki in simple, scalable mode
 type: application
-appVersion: 2.7.5
-version: 4.10.0
+appVersion: 2.8.2
+version: 5.8.4
 home: https://grafana.github.io/helm-charts
 sources:
   - https://github.com/grafana/loki

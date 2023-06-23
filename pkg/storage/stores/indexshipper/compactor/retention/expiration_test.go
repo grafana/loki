@@ -158,6 +158,7 @@ func Test_expirationChecker_Expired_zeroValue(t *testing.T) {
 		})
 	}
 }
+
 func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 
 	// Set a default retention of 24h
@@ -199,6 +200,43 @@ func Test_expirationChecker_Expired_zeroValueOverride(t *testing.T) {
 			actual, nonDeletedIntervalFilters := e.Expired(tt.ref, model.Now())
 			require.Equal(t, tt.want, actual)
 			require.Nil(t, nonDeletedIntervalFilters)
+		})
+	}
+}
+
+func Test_expirationChecker_DropFromIndex_zeroValue(t *testing.T) {
+	// Default retention should be zero
+	d := defaultLimitsTestConfig()
+
+	// Override tenant 2 to have 24 hour retention
+	tl := defaultLimitsTestConfig()
+	dur, _ := model.ParseDuration("24h")
+	tl.RetentionPeriod = dur
+	f := fakeOverrides{
+		tenantLimits: map[string]*validation.Limits{
+			"2": &tl,
+		},
+	}
+	o, err := overridesTestConfig(d, f)
+	require.NoError(t, err)
+	e := NewExpirationChecker(o)
+
+	chunkFrom := model.Now().Add(-3 * time.Hour)
+	chunkThrough := model.Now().Add(-2 * time.Hour)
+	tests := []struct {
+		name         string
+		ref          ChunkEntry
+		tableEndTime model.Time
+		want         bool
+	}{
+		{"tenant with no override should not delete", newChunkEntry("1", `{foo="buzz"}`, chunkFrom, chunkThrough), model.Now().Add(-48 * time.Hour), false},
+		{"tenant with override tableEndTime within retention period should not delete", newChunkEntry("2", `{foo="buzz"}`, chunkFrom, chunkThrough), model.Now().Add(-1 * time.Hour), false},
+		{"tenant with override should delete", newChunkEntry("2", `{foo="buzz"}`, chunkFrom, chunkThrough), model.Now().Add(-48 * time.Hour), true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			actual := e.DropFromIndex(tt.ref, tt.tableEndTime, model.Now())
+			require.Equal(t, tt.want, actual)
 		})
 	}
 }

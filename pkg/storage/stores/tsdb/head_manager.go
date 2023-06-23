@@ -87,6 +87,7 @@ tsdb/
 */
 
 type HeadManager struct {
+	name    string
 	log     log.Logger
 	dir     string
 	metrics *Metrics
@@ -110,9 +111,10 @@ type HeadManager struct {
 	cancel chan struct{}
 }
 
-func NewHeadManager(logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
+func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
 	shards := defaultHeadManagerStripeSize
 	m := &HeadManager{
+		name:        name,
 		log:         log.With(logger, "component", "tsdb-head-manager"),
 		dir:         dir,
 		metrics:     metrics,
@@ -238,7 +240,7 @@ func (m *HeadManager) Append(userID string, ls labels.Labels, fprint uint64, chk
 	// labels when writing across index buckets.
 	b := labels.NewBuilder(ls)
 	b.Del(labels.MetricName)
-	ls = b.Labels(nil)
+	ls = b.Labels()
 
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
@@ -252,22 +254,49 @@ func (m *HeadManager) Start() error {
 		return errors.Wrap(err, "removing tsdb scratch dir")
 	}
 
-	for _, d := range managerRequiredDirs(m.dir) {
+	for _, d := range managerRequiredDirs(m.name, m.dir) {
 		if err := util.EnsureDirectory(d); err != nil {
 			return errors.Wrapf(err, "ensuring required directory exists: %s", d)
 		}
 	}
 
-	walsByPeriod, err := walsByPeriod(m.dir, m.period)
-	if err != nil {
-		return err
+	// build tsdb from legacy WALs in the common wal dir, these would've been generated before the TSDB multi-store support was added.
+	if err := m.buildTSDBFromWALs(true); err != nil {
+		return errors.Wrap(err, "building tsdb from legacy WAL files")
 	}
-	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	// Load the shipper with any previously built TSDBs
 	if err := m.tsdbManager.Start(); err != nil {
 		return errors.Wrap(err, "failed to start tsdb manager")
 	}
+
+	// build tsdb from store specific WAL files
+	if err := m.buildTSDBFromWALs(false); err != nil {
+		return errors.Wrap(err, "building tsdb from old WAL files")
+	}
+
+	err := m.Rotate(time.Now())
+	if err != nil {
+		return errors.Wrap(err, "rotating tsdb head")
+	}
+
+	m.wg.Add(1)
+	go m.loop()
+
+	return nil
+}
+
+func (m *HeadManager) buildTSDBFromWALs(legacy bool) error {
+	walDir := managerWalDir(m.name, m.dir)
+	if legacy {
+		walDir = managerLegacyWalDir(m.dir)
+	}
+
+	walsByPeriod, err := walsByPeriod(walDir, m.period)
+	if err != nil {
+		return errors.Wrap(err, "loading wals by period")
+	}
+	level.Info(m.log).Log("msg", "loaded wals by period", "groups", len(walsByPeriod))
 
 	// Build any old WALs into a TSDB for the shipper
 	var allWALs []WALIdentifier
@@ -279,31 +308,32 @@ func (m *HeadManager) Start() error {
 	if err := m.tsdbManager.BuildFromWALs(
 		now,
 		allWALs,
+		legacy,
 	); err != nil {
-		return errors.Wrap(err, "building tsdb")
+		return errors.Wrap(err, "building tsdb from WALs")
 	}
 
-	if err := os.RemoveAll(managerWalDir(m.dir)); err != nil {
-		m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
-		return errors.New("cleaning (removing) wal dir")
+	if legacy {
+		for _, grp := range walsByPeriod {
+			if err := m.removeLegacyWALGroup(grp); err != nil {
+				return errors.Wrapf(err, "removing legacy TSDB WALs for period %d", grp.period)
+			}
+		}
+	} else {
+		if err := os.RemoveAll(managerWalDir(m.name, m.dir)); err != nil {
+			m.metrics.walTruncations.WithLabelValues(statusFailure).Inc()
+			return errors.Wrap(err, "cleaning (removing) wal dir")
+		}
+		m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
 	}
-	m.metrics.walTruncations.WithLabelValues(statusSuccess).Inc()
-
-	err = m.Rotate(now)
-	if err != nil {
-		return errors.Wrap(err, "rotating tsdb head")
-	}
-
-	m.wg.Add(1)
-	go m.loop()
 
 	return nil
 }
 
-func managerRequiredDirs(parent string) []string {
+func managerRequiredDirs(name, parent string) []string {
 	return []string{
 		managerScratchDir(parent),
-		managerWalDir(parent),
+		managerWalDir(name, parent),
 		managerMultitenantDir(parent),
 		managerPerTenantDir(parent),
 	}
@@ -312,7 +342,11 @@ func managerScratchDir(parent string) string {
 	return filepath.Join(parent, "scratch")
 }
 
-func managerWalDir(parent string) string {
+func managerWalDir(name, parent string) string {
+	return filepath.Join(parent, "wal", name)
+}
+
+func managerLegacyWalDir(parent string) string {
 	return filepath.Join(parent, "wal")
 }
 
@@ -326,7 +360,7 @@ func managerPerTenantDir(parent string) string {
 
 func (m *HeadManager) Rotate(t time.Time) (err error) {
 	// create new wal
-	nextWALPath := walPath(m.dir, t)
+	nextWALPath := walPath(m.name, m.dir, t)
 	nextWAL, err := newHeadWAL(m.log, nextWALPath, t)
 	if err != nil {
 		return errors.Wrapf(err, "creating tsdb wal: %s during rotation", nextWALPath)
@@ -385,7 +419,7 @@ func (m *HeadManager) truncateWALForPeriod(period int) (err error) {
 		m.metrics.walTruncations.WithLabelValues(status).Inc()
 	}()
 
-	grp, _, err := walsForPeriod(m.dir, m.period, period)
+	grp, _, err := walsForPeriod(managerWalDir(m.name, m.dir), m.period, period)
 	if err != nil {
 		return errors.Wrap(err, "listing wals")
 	}
@@ -405,7 +439,6 @@ type WalGroup struct {
 }
 
 func walsByPeriod(dir string, period period) ([]WalGroup, error) {
-
 	groupsMap, err := walGroups(dir, period)
 	if err != nil {
 		return nil, err
@@ -422,7 +455,7 @@ func walsByPeriod(dir string, period period) ([]WalGroup, error) {
 }
 
 func walGroups(dir string, period period) (map[int]*WalGroup, error) {
-	files, err := os.ReadDir(managerWalDir(dir))
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -468,27 +501,48 @@ func walsForPeriod(dir string, period period, offset int) (WalGroup, bool, error
 
 func (m *HeadManager) removeWALGroup(grp WalGroup) error {
 	for _, wal := range grp.wals {
-		if err := os.RemoveAll(walPath(m.dir, wal.ts)); err != nil {
-			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.dir, wal.ts))
+		if err := os.RemoveAll(walPath(m.name, m.dir, wal.ts)); err != nil {
+			return errors.Wrapf(err, "removing tsdb wal: %s", walPath(m.name, m.dir, wal.ts))
 		}
 	}
 	return nil
 }
 
-func walPath(parent string, t time.Time) string {
+func (m *HeadManager) removeLegacyWALGroup(grp WalGroup) error {
+	for _, wal := range grp.wals {
+		if err := os.RemoveAll(legacyWalPath(m.dir, wal.ts)); err != nil {
+			return errors.Wrapf(err, "removing tsdb wal: %s", legacyWalPath(m.dir, wal.ts))
+		}
+	}
+	return nil
+}
+
+func walPath(name, parent string, t time.Time) string {
 	return filepath.Join(
-		managerWalDir(parent),
+		managerWalDir(name, parent),
+		fmt.Sprintf("%d", t.Unix()),
+	)
+}
+
+func legacyWalPath(parent string, t time.Time) string {
+	return filepath.Join(
+		managerLegacyWalDir(parent),
 		fmt.Sprintf("%d", t.Unix()),
 	)
 }
 
 // recoverHead recovers from all WALs belonging to some period
 // and inserts it into the active *tenantHeads
-func recoverHead(dir string, heads *tenantHeads, wals []WALIdentifier) error {
+func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, legacy bool) error {
 	for _, id := range wals {
 		// use anonymous function for ease of cleanup
 		if err := func(id WALIdentifier) error {
-			reader, closer, err := wal.NewWalReader(walPath(dir, id.ts), -1)
+			walPath := walPath(name, dir, id.ts)
+			if legacy {
+				walPath = legacyWalPath(dir, id.ts)
+			}
+
+			reader, closer, err := wal.NewWalReader(walPath, -1)
 			if err != nil {
 				return err
 			}
@@ -684,7 +738,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
@@ -694,7 +748,7 @@ func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, thr
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
-func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, _ []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
@@ -727,6 +781,14 @@ func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through mo
 		return nil
 	}
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+}
+
+func (t *tenantHeads) SeriesVolume(ctx context.Context, userID string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil
+	}
+	return idx.SeriesVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
 // helper only used in building TSDBs

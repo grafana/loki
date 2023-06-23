@@ -47,6 +47,7 @@ type WorkerServiceConfig struct {
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
+	queryRouterPathPrefix string,
 	queryRoutesToHandlers map[string]http.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
@@ -64,6 +65,9 @@ func InitWorkerService(
 	)
 
 	internalRouter := mux.NewRouter()
+	if queryRouterPathPrefix != "" {
+		internalRouter = internalRouter.PathPrefix(queryRouterPathPrefix).Subrouter()
+	}
 	for route, handler := range queryRoutesToHandlers {
 		internalRouter.Path(route).Methods("GET", "POST").Handler(handler)
 	}
@@ -93,9 +97,9 @@ func InitWorkerService(
 			externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(internalRouter))
 		}
 
-		//If no frontend or scheduler address has been configured, then there is no place for the
+		//If no scheduler ring or frontend or scheduler address has been configured, then there is no place for the
 		//querier worker to request work from, so no need to start a worker service
-		if (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
+		if cfg.SchedulerRing == nil && (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
 			return nil, nil
 		}
 
