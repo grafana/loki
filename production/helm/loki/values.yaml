@@ -661,6 +661,12 @@ monitoring:
       digest: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
+    # -- Update strategy for the `loki-canary` Daemonset pods
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
+
 # Configuration for the write pod(s)
 write:
   # -- Number of replicas for the write
