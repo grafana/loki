@@ -1,9 +1,10 @@
 package seriesvolume
 
 import (
-	"github.com/grafana/loki/pkg/logproto"
 	"sort"
 	"sync"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (

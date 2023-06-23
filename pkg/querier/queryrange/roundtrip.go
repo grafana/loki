@@ -3,11 +3,12 @@ package queryrange
 import (
 	"context"
 	"flag"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 
 	"github.com/weaveworks/common/user"
 

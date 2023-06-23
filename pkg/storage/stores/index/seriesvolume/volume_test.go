@@ -1,8 +1,9 @@
 package seriesvolume
 
 import (
-	"github.com/stretchr/testify/require"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
