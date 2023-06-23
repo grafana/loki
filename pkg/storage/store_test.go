@@ -1021,7 +1021,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 				BoltDBShipperConfig: shipper.Config{
 					Config: shipperConfig,
 				},
-				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
+				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
 				NamedStores: NamedStores{
 					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
