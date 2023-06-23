@@ -58,6 +58,7 @@ const (
 	ChunkCache       CacheType = "chunk" //nolint:staticcheck
 	IndexCache                 = "index"
 	ResultCache                = "result"
+	StatsResultCache           = "stats-result"
 	WriteDedupeCache           = "write-dedupe"
 )
 
@@ -176,6 +177,11 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
 }
 
+func (s *Summary) Merge(m Summary) {
+	s.Splits += m.Splits
+	s.Shards += m.Shards
+}
+
 func (q *Querier) Merge(m Querier) {
 	q.Store.Merge(m.Store)
 }
@@ -208,13 +214,17 @@ func (c *Cache) CacheDownloadTime() time.Duration {
 	return time.Duration(c.DownloadTime)
 }
 
+func (r *Result) MergeSplit(m Result) {
+	m.Summary.Splits = 1
+	r.Merge(m)
+}
+
 // Merge merges two results of statistics.
-// This will increase the total number of Subqueries.
 func (r *Result) Merge(m Result) {
-	r.Summary.Subqueries++
 	r.Querier.Merge(m.Querier)
 	r.Ingester.Merge(m.Ingester)
 	r.Caches.Merge(m.Caches)
+	r.Summary.Merge(m.Summary)
 	r.ComputeSummary(ConvertSecondsToNanoseconds(r.Summary.ExecTime+m.Summary.ExecTime),
 		ConvertSecondsToNanoseconds(r.Summary.QueueTime+m.Summary.QueueTime), int(r.Summary.TotalEntriesReturned))
 }
@@ -370,6 +380,10 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	}
 
 	atomic.AddInt32(&stats.Requests, int32(i))
+}
+
+func (c *Context) AddSplitQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {

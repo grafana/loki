@@ -57,9 +57,20 @@ func (m *ValueMatcher) validate(all bool) error {
 
 	var errors []error
 
-	switch m.MatchPattern.(type) {
-
+	oneofMatchPatternPresent := false
+	switch v := m.MatchPattern.(type) {
 	case *ValueMatcher_NullMatch_:
+		if v == nil {
+			err := ValueMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 
 		if all {
 			switch v := interface{}(m.GetNullMatch()).(type) {
@@ -91,6 +102,17 @@ func (m *ValueMatcher) validate(all bool) error {
 		}
 
 	case *ValueMatcher_DoubleMatch:
+		if v == nil {
+			err := ValueMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 
 		if all {
 			switch v := interface{}(m.GetDoubleMatch()).(type) {
@@ -122,6 +144,17 @@ func (m *ValueMatcher) validate(all bool) error {
 		}
 
 	case *ValueMatcher_StringMatch:
+		if v == nil {
+			err := ValueMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 
 		if all {
 			switch v := interface{}(m.GetStringMatch()).(type) {
@@ -153,12 +186,43 @@ func (m *ValueMatcher) validate(all bool) error {
 		}
 
 	case *ValueMatcher_BoolMatch:
+		if v == nil {
+			err := ValueMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 		// no validation rules for BoolMatch
-
 	case *ValueMatcher_PresentMatch:
+		if v == nil {
+			err := ValueMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 		// no validation rules for PresentMatch
-
 	case *ValueMatcher_ListMatch:
+		if v == nil {
+			err := ValueMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 
 		if all {
 			switch v := interface{}(m.GetListMatch()).(type) {
@@ -190,6 +254,9 @@ func (m *ValueMatcher) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofMatchPatternPresent {
 		err := ValueMatcherValidationError{
 			field:  "MatchPattern",
 			reason: "value is required",
@@ -198,7 +265,6 @@ func (m *ValueMatcher) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -300,9 +366,20 @@ func (m *ListMatcher) validate(all bool) error {
 
 	var errors []error
 
-	switch m.MatchPattern.(type) {
-
+	oneofMatchPatternPresent := false
+	switch v := m.MatchPattern.(type) {
 	case *ListMatcher_OneOf:
+		if v == nil {
+			err := ListMatcherValidationError{
+				field:  "MatchPattern",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofMatchPatternPresent = true
 
 		if all {
 			switch v := interface{}(m.GetOneOf()).(type) {
@@ -334,6 +411,9 @@ func (m *ListMatcher) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofMatchPatternPresent {
 		err := ListMatcherValidationError{
 			field:  "MatchPattern",
 			reason: "value is required",
@@ -342,7 +422,6 @@ func (m *ListMatcher) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

@@ -218,7 +218,7 @@ func isTailerOpenStreamsConsumed(tailer *Tailer) bool {
 	tailer.streamMtx.Lock()
 	defer tailer.streamMtx.Unlock()
 
-	return tailer.openStreamIterator.Len() == 0 || tailer.openStreamIterator.Peek() == time.Unix(0, 0)
+	return tailer.openStreamIterator.IsEmpty() || tailer.openStreamIterator.Peek() == time.Unix(0, 0)
 }
 
 func countEntriesInStreams(streams []logproto.Stream) int {

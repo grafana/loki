@@ -41,11 +41,11 @@ type Config struct {
 	// Deprecated: SplitQueriesByInterval will be removed in the next major release
 	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval" doc:"deprecated|description=Use -querier.split-queries-by-interval instead. CLI flag: -querier.split-queries-by-day. Split queries by day and execute in parallel."`
 
-	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
-	ResultsCacheConfig   `yaml:"results_cache"`
-	CacheResults         bool `yaml:"cache_results"`
-	MaxRetries           int  `yaml:"max_retries"`
-	ShardedQueries       bool `yaml:"parallelise_shardable_queries"`
+	AlignQueriesWithStep bool               `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   ResultsCacheConfig `yaml:"results_cache"`
+	CacheResults         bool               `yaml:"cache_results"`
+	MaxRetries           int                `yaml:"max_retries"`
+	ShardedQueries       bool               `yaml:"parallelise_shardable_queries"`
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 }
@@ -67,7 +67,7 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.CacheResults {
 		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
-			return errors.Wrap(err, "invalid ResultsCache config")
+			return errors.Wrap(err, "invalid results_cache config")
 		}
 	}
 	return nil
@@ -122,9 +122,8 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 type roundTripper struct {
-	next    http.RoundTripper
+	roundTripperHandler
 	handler Handler
-	codec   Codec
 	headers []string
 }
 
@@ -132,8 +131,10 @@ type roundTripper struct {
 // using the codec to translate requests and responses.
 func NewRoundTripper(next http.RoundTripper, codec Codec, headers []string, middlewares ...Middleware) http.RoundTripper {
 	transport := roundTripper{
-		next:    next,
-		codec:   codec,
+		roundTripperHandler: roundTripperHandler{
+			next:  next,
+			codec: codec,
+		},
 		headers: headers,
 	}
 	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
@@ -159,8 +160,22 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	return q.codec.EncodeResponse(r.Context(), response)
 }
 
+type roundTripperHandler struct {
+	next  http.RoundTripper
+	codec Codec
+}
+
+// NewRoundTripperHandler returns a handler that translates Loki requests into http requests
+// and passes down these to the next RoundTripper.
+func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
+	return roundTripperHandler{
+		next:  next,
+		codec: codec,
+	}
+}
+
 // Do implements Handler.
-func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
+func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error) {
 	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err

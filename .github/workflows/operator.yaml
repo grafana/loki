@@ -16,20 +16,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.19']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Lint
-      uses: golangci/golangci-lint-action@v3.4.0
+      uses: golangci/golangci-lint-action@v3.5.0
       with:
-        version: v1.50.0
+        version: v1.51.2
         args: --timeout=4m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -42,16 +42,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.19']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Build Manager
       working-directory: ./operator
       run: |-
@@ -63,16 +63,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.19']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Build Broker
       working-directory: ./operator
       run: |-
@@ -84,16 +84,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.19']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...

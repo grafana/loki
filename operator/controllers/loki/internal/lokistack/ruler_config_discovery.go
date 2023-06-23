@@ -19,23 +19,48 @@ const (
 // to the named Lokistack in the same namespace of the RulerConfig. If no LokiStack is found, then
 // skip reconciliation.
 func AnnotateForRulerConfig(ctx context.Context, k k8s.Client, name, namespace string) error {
-	var s lokiv1.LokiStack
 	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := k.Get(ctx, key, &s); err != nil {
-		if apierrors.IsNotFound(err) {
-			// Do nothing
-			return nil
-		}
-
-		return kverrors.Wrap(err, "failed to get lokistack", "key", key)
+	ss, err := getLokiStack(ctx, k, key)
+	if ss == nil || err != nil {
+		return err
 	}
 
-	ss := s.DeepCopy()
 	timeStamp := time.Now().UTC().Format(time.RFC3339)
 	if err := updateAnnotation(ctx, k, ss, annotationRulerConfigDiscoveredAt, timeStamp); err != nil {
 		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
 	}
 
 	return nil
+}
+
+// RemoveRulerConfigAnnotation removes the `loki.grafana.com/rulerConfigDiscoveredAt` annotation
+// from the named Lokistack in the same namespace of the RulerConfig. If no LokiStack is found, then
+// skip reconciliation.
+func RemoveRulerConfigAnnotation(ctx context.Context, k k8s.Client, name, namespace string) error {
+	key := client.ObjectKey{Name: name, Namespace: namespace}
+	ss, err := getLokiStack(ctx, k, key)
+	if ss == nil || err != nil {
+		return err
+	}
+
+	if err := removeAnnotation(ctx, k, ss, annotationRulerConfigDiscoveredAt); err != nil {
+		return kverrors.Wrap(err, "failed to update lokistack `rulerConfigDiscoveredAt` annotation", "key", key)
+	}
+
+	return nil
+}
+
+func getLokiStack(ctx context.Context, k k8s.Client, key client.ObjectKey) (*lokiv1.LokiStack, error) {
+	var s lokiv1.LokiStack
+
+	if err := k.Get(ctx, key, &s); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Do nothing
+			return nil, nil
+		}
+
+		return nil, kverrors.Wrap(err, "failed to get lokistack", "key", key)
+	}
+
+	return s.DeepCopy(), nil
 }

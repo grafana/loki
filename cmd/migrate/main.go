@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -93,9 +94,17 @@ func main() {
 	// Don't keep fetched index files for very long
 	sourceConfig.StorageConfig.BoltDBShipperConfig.CacheTTL = 30 * time.Minute
 
+	sourceConfig.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+
 	// Shorten these timers up so we resync a little faster and clear index files a little quicker
 	destConfig.StorageConfig.IndexCacheValidity = 1 * time.Minute
 	destConfig.StorageConfig.BoltDBShipperConfig.ResyncInterval = 1 * time.Minute
+	destConfig.StorageConfig.TSDBShipperConfig.ResyncInterval = 1 * time.Minute
+
+	// Don't want to use the index gateway for this, this makes sure the index files are properly uploaded when the store is stopped.
+	sourceConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+	destConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
 	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
@@ -330,27 +339,38 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}
-					for retry := 10; retry >= 0; retry-- {
-						chks, err = f.FetchChunks(m.ctx, chks, keys)
-						if err != nil {
-							if retry == 0 {
-								log.Println(threadID, "Final error retrieving chunks, giving up:", err)
-								errCh <- err
-								return
+					finalChks := make([]chunk.Chunk, 0, len(chunks))
+					for i := range chks {
+						onechunk := []chunk.Chunk{chunks[i]}
+						onekey := []string{keys[i]}
+						var retry int
+						for retry = 10; retry >= 0; retry-- {
+							onechunk, err = f.FetchChunks(m.ctx, onechunk, onekey)
+							if err != nil {
+								if retry == 0 {
+									log.Println(threadID, "Final error retrieving chunks, giving up:", err)
+								}
+								log.Println(threadID, "Error fetching chunks, will retry:", err)
+								onechunk = []chunk.Chunk{chunks[i]}
+								time.Sleep(5 * time.Second)
+							} else {
+								break
 							}
-							log.Println(threadID, "Error fetching chunks, will retry:", err)
-							time.Sleep(5 * time.Second)
-						} else {
-							break
 						}
+
+						if retry < 0 {
+							continue
+						}
+
+						finalChks = append(finalChks, onechunk[0])
 					}
 
-					totalChunks += uint64(len(chks))
+					totalChunks += uint64(len(finalChks))
 
-					output := make([]chunk.Chunk, 0, len(chks))
+					output := make([]chunk.Chunk, 0, len(finalChks))
 
 					// Calculate some size stats and change the tenant ID if necessary
-					for i, chk := range chks {
+					for i, chk := range finalChks {
 						if enc, err := chk.Encoded(); err == nil {
 							totalBytes += uint64(len(enc))
 						} else {
@@ -369,7 +389,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 							}
 							output = append(output, nc)
 						} else {
-							output = append(output, chks[i])
+							output = append(output, finalChks[i])
 						}
 
 					}

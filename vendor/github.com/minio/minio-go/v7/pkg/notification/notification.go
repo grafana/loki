@@ -21,6 +21,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/minio/minio-go/v7/pkg/set"
 )
@@ -29,22 +30,23 @@ import (
 type EventType string
 
 // The role of all event types are described in :
-// 	http://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html#notification-how-to-event-types-and-destinations
+//
+//	http://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html#notification-how-to-event-types-and-destinations
 const (
 	ObjectCreatedAll                     EventType = "s3:ObjectCreated:*"
-	ObjectCreatedPut                               = "s3:ObjectCreated:Put"
-	ObjectCreatedPost                              = "s3:ObjectCreated:Post"
-	ObjectCreatedCopy                              = "s3:ObjectCreated:Copy"
-	ObjectCreatedCompleteMultipartUpload           = "s3:ObjectCreated:CompleteMultipartUpload"
-	ObjectAccessedGet                              = "s3:ObjectAccessed:Get"
-	ObjectAccessedHead                             = "s3:ObjectAccessed:Head"
-	ObjectAccessedAll                              = "s3:ObjectAccessed:*"
-	ObjectRemovedAll                               = "s3:ObjectRemoved:*"
-	ObjectRemovedDelete                            = "s3:ObjectRemoved:Delete"
-	ObjectRemovedDeleteMarkerCreated               = "s3:ObjectRemoved:DeleteMarkerCreated"
-	ObjectReducedRedundancyLostObject              = "s3:ReducedRedundancyLostObject"
-	BucketCreatedAll                               = "s3:BucketCreated:*"
-	BucketRemovedAll                               = "s3:BucketRemoved:*"
+	ObjectCreatedPut                     EventType = "s3:ObjectCreated:Put"
+	ObjectCreatedPost                    EventType = "s3:ObjectCreated:Post"
+	ObjectCreatedCopy                    EventType = "s3:ObjectCreated:Copy"
+	ObjectCreatedCompleteMultipartUpload EventType = "s3:ObjectCreated:CompleteMultipartUpload"
+	ObjectAccessedGet                    EventType = "s3:ObjectAccessed:Get"
+	ObjectAccessedHead                   EventType = "s3:ObjectAccessed:Head"
+	ObjectAccessedAll                    EventType = "s3:ObjectAccessed:*"
+	ObjectRemovedAll                     EventType = "s3:ObjectRemoved:*"
+	ObjectRemovedDelete                  EventType = "s3:ObjectRemoved:Delete"
+	ObjectRemovedDeleteMarkerCreated     EventType = "s3:ObjectRemoved:DeleteMarkerCreated"
+	ObjectReducedRedundancyLostObject    EventType = "s3:ReducedRedundancyLostObject"
+	BucketCreatedAll                     EventType = "s3:BucketCreated:*"
+	BucketRemovedAll                     EventType = "s3:BucketRemoved:*"
 )
 
 // FilterRule - child of S3Key, a tag in the notification xml which
@@ -85,6 +87,27 @@ func NewArn(partition, service, region, accountID, resource string) Arn {
 		AccountID: accountID,
 		Resource:  resource,
 	}
+}
+
+var (
+	// ErrInvalidArnPrefix is returned when ARN string format does not start with 'arn'
+	ErrInvalidArnPrefix = errors.New("invalid ARN format, must start with 'arn:'")
+	// ErrInvalidArnFormat is returned when ARN string format is not valid
+	ErrInvalidArnFormat = errors.New("invalid ARN format, must be 'arn:<partition>:<service>:<region>:<accountID>:<resource>'")
+)
+
+// NewArnFromString parses string representation of ARN into Arn object.
+// Returns an error if the string format is incorrect.
+func NewArnFromString(arn string) (Arn, error) {
+	parts := strings.Split(arn, ":")
+	if len(parts) != 6 {
+		return Arn{}, ErrInvalidArnFormat
+	}
+	if parts[0] != "arn" {
+		return Arn{}, ErrInvalidArnPrefix
+	}
+
+	return NewArn(parts[1], parts[2], parts[3], parts[4], parts[5]), nil
 }
 
 // String returns the string format of the ARN

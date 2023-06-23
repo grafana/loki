@@ -13,10 +13,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	logql_stats "github.com/grafana/loki/pkg/logqlmodel/stats"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -72,10 +72,10 @@ var (
 		Help:      "Total count of lines sent from ingesters while executing LogQL queries.",
 	})
 
-	bytePerSecondMetricUsage = usagestats.NewStatistics("query_metric_bytes_per_second")
-	bytePerSecondLogUsage    = usagestats.NewStatistics("query_log_bytes_per_second")
-	linePerSecondMetricUsage = usagestats.NewStatistics("query_metric_lines_per_second")
-	linePerSecondLogUsage    = usagestats.NewStatistics("query_log_lines_per_second")
+	bytePerSecondMetricUsage = analytics.NewStatistics("query_metric_bytes_per_second")
+	bytePerSecondLogUsage    = analytics.NewStatistics("query_log_bytes_per_second")
+	linePerSecondMetricUsage = analytics.NewStatistics("query_metric_lines_per_second")
+	linePerSecondLogUsage    = analytics.NewStatistics("query_log_lines_per_second")
 )
 
 func RecordRangeAndInstantQueryMetrics(
@@ -127,10 +127,13 @@ func RecordRangeAndInstantQueryMetrics(
 		"returned_lines", returnedLines,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"lines_per_second", stats.Summary.LinesProcessedPerSecond,
+		"total_lines", stats.Summary.TotalLinesProcessed,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
-		"subqueries", stats.Summary.Subqueries,
+		"splits", stats.Summary.Splits,
+		"shards", stats.Summary.Shards,
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
 		"cache_chunk_bytes_stored", stats.Caches.Chunk.BytesSent,
@@ -174,7 +177,7 @@ func RecordLabelQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
 	start, end time.Time,
-	label, status string,
+	label, query, status string,
 	stats logql_stats.Result,
 ) {
 	var (
@@ -196,6 +199,8 @@ func RecordLabelQueryMetrics(
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"label", label,
+		"query", query,
+		"splits", stats.Summary.Splits,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"total_entries", stats.Summary.TotalEntriesReturned,
@@ -246,6 +251,7 @@ func RecordSeriesQueryMetrics(
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"match", PrintMatches(match),
+		"splits", stats.Summary.Splits,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
 		"total_entries", stats.Summary.TotalEntriesReturned,

@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3.3.0
+        uses: actions/checkout@v3
 
       - name: Check Docs
         run: |
@@ -23,6 +23,9 @@ jobs:
               echo "Documentation not up to date. Please run helm-docs and commit changes!" >&2
               exit 1
           fi
+
+      - name: Lint Yaml
+        run: make helm-lint
 
       - name: Lint Code Base
         uses: docker://github/super-linter:v3.12.0
@@ -40,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3.3.0
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
@@ -57,21 +60,21 @@ jobs:
           python-version: 3.7
 
       - name: Set up chart-testing
-        uses: helm/chart-testing-action@v2.3.1
+        uses: helm/chart-testing-action@v2.4.0
 
       - name: Run chart-testing (list-changed)
         id: list-changed
         run: |
           changed=$(ct list-changed --config "${CT_CONFIGFILE}")
           if [[ -n "$changed" ]]; then
-            echo "::set-output name=changed::true"
+            echo "changed=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Run chart-testing (lint)
         run: ct lint --config "${CT_CONFIGFILE}" --check-version-increment=false
 
       - name: Create kind cluster
-        uses: helm/kind-action@v1.5.0
+        uses: helm/kind-action@v1.7.0
         if: steps.list-changed.outputs.changed == 'true'
 
       - name: Install prometheus operator

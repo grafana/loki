@@ -65,10 +65,11 @@ type Provider interface {
 // provider's struct.
 //
 // Example:
-//     type IAMCredentialProvider struct {
-//         Expiry
-//         ...
-//     }
+//
+//	type IAMCredentialProvider struct {
+//	    Expiry
+//	    ...
+//	}
 type Expiry struct {
 	// The date/time when to expire on
 	expiration time.Time

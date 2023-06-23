@@ -50,7 +50,7 @@ func recordQueryMetrics(data *queryData) {
 	case queryTypeLog, queryTypeMetric:
 		logql.RecordRangeAndInstantQueryMetrics(data.ctx, logger, data.params, data.status, *data.statistics, data.result)
 	case queryTypeLabel:
-		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.status, *data.statistics)
+		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.Query(), data.status, *data.statistics)
 	case queryTypeSeries:
 		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
 	default:
@@ -111,7 +111,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			start := time.Now()
 
 			// start a new statistics context to be used by middleware, which we will merge with the response's statistics
-			st, statsCtx := stats.NewContext(ctx)
+			middlewareStats, statsCtx := stats.NewContext(ctx)
 
 			// execute the request
 			resp, err := next.Do(statsCtx, req)
@@ -120,7 +120,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			}
 
 			// collect stats and status
-			var statistics *stats.Result
+			var responseStats *stats.Result
 			var res promql_parser.Value
 			var queryType string
 			var totalEntries int
@@ -128,21 +128,21 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			if resp != nil {
 				switch r := resp.(type) {
 				case *LokiResponse:
-					statistics = &r.Statistics
+					responseStats = &r.Statistics
 					totalEntries = int(logqlmodel.Streams(r.Data.Result).Lines())
 					queryType = queryTypeLog
 				case *LokiPromResponse:
-					statistics = &r.Statistics
+					responseStats = &r.Statistics
 					if r.Response != nil {
 						totalEntries = len(r.Response.Data.Result)
 					}
 					queryType = queryTypeMetric
 				case *LokiSeriesResponse:
-					statistics = &r.Statistics
+					responseStats = &r.Statistics
 					totalEntries = len(r.Data)
 					queryType = queryTypeSeries
 				case *LokiLabelNamesResponse:
-					statistics = &r.Statistics
+					responseStats = &r.Statistics
 					totalEntries = len(r.Data)
 					queryType = queryTypeLabel
 				default:
@@ -150,19 +150,19 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 				}
 			}
 
-			if statistics != nil {
+			if responseStats != nil {
 				// merge the response's statistics with the stats collected by the middleware
-				statistics.Merge(st.Result(time.Since(start), 0, totalEntries))
+				responseStats.Merge(middlewareStats.Result(time.Since(start), 0, totalEntries))
 
 				// Re-calculate the summary: the queueTime result is already merged so should not be updated
 				// Log and record metrics for the current query
-				statistics.ComputeSummary(time.Since(start), 0, totalEntries)
-				statistics.Log(level.Debug(logger))
+				responseStats.ComputeSummary(time.Since(start), 0, totalEntries)
+				responseStats.Log(level.Debug(logger))
 			}
 			ctxValue := ctx.Value(ctxKey)
 			if data, ok := ctxValue.(*queryData); ok {
 				data.recorded = true
-				data.statistics = statistics
+				data.statistics = responseStats
 				data.result = res
 				data.queryType = queryType
 				p, errReq := paramsFromRequest(req)

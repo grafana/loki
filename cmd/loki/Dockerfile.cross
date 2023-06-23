@@ -1,8 +1,8 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.27.1
+ARG BUILD_IMAGE=grafana/loki-build-image:0.29.0
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile .
-FROM golang:1.19.5-alpine as goenv
+FROM golang:1.20.4-alpine as goenv
 RUN go env GOARCH > /goarch && \
     go env GOARM > /goarm
 
@@ -12,7 +12,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && GOARCH=$(cat /goarch) GOARM=$(cat /goarm) make BUILD_IN_CONTAINER=false loki
 
-FROM alpine:3.16.2
+FROM alpine:3.16.5
 
 RUN apk add --no-cache ca-certificates
 
@@ -23,9 +23,6 @@ RUN addgroup -g 10001 -S loki && \
     adduser -u 10001 -S loki -G loki
 RUN mkdir -p /loki && \
     chown -R loki:loki /etc/loki /loki
-
-# See https://github.com/grafana/loki/issues/1928
-RUN [ ! -e /etc/nsswitch.conf ] && echo 'hosts: files dns' > /etc/nsswitch.conf
 
 USER 10001
 EXPOSE 3100

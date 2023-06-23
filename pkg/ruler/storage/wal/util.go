@@ -127,12 +127,17 @@ func (c *walDataCollector) StoreSeries(series []record.RefSeries, _ int) {
 	c.series = append(c.series, series...)
 }
 
-func (c *walDataCollector) AppendHistograms(histograms []record.RefHistogramSample) bool {
+func (c *walDataCollector) AppendHistograms(_ []record.RefHistogramSample) bool {
 	// TODO: support native histograms
 	return true
 }
 
-func (c *walDataCollector) UpdateSeriesSegment(series []record.RefSeries, index int) {}
+func (c *walDataCollector) AppendFloatHistograms(_ []record.RefFloatHistogramSample) bool {
+	// TODO: support native histograms
+	return true
+}
+
+func (c *walDataCollector) UpdateSeriesSegment(_ []record.RefSeries, _ int) {}
 
 func (c *walDataCollector) SeriesReset(_ int) {}
 

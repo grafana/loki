@@ -7,7 +7,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
+	"os"
 )
 
 // TLSConfig configures the options for TLS connections.
@@ -60,7 +60,7 @@ func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 
 // readCAFile reads the CA cert file from disk.
 func readCAFile(f string) ([]byte, error) {
-	data, err := ioutil.ReadFile(f)
+	data, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load specified CA cert %s: %s", f, err)
 	}

@@ -57,8 +57,9 @@ func Test_ResponseToSamples(t *testing.T) {
 
 	setCt := 0
 
+	var iter chunkenc.Iterator
 	for set.Next() {
-		iter := set.At().Iterator()
+		iter = set.At().Iterator(iter)
 		require.Nil(t, set.Err())
 
 		sampleCt := 0

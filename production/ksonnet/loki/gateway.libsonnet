@@ -50,7 +50,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
             listen               80;
             auth_basic           “Prometheus”;
             auth_basic_user_file /etc/nginx/secrets/.htpasswd;
-            proxy_set_header     X-Scope-OrgID %(gateway_tenant_id);
+            proxy_set_header     X-Scope-OrgID %(gateway_tenant_id)s;
 
             location = /api/prom/push {
               proxy_pass       http://distributor.%(namespace)s.svc.cluster.local:%(http_listen_port)s$request_uri;

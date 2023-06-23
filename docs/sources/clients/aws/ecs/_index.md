@@ -10,7 +10,7 @@ After this tutorial you will able to query all your logs in one place using Graf
 
 <!-- TOC -->
 
-- [Sending Logs From AWS Elastic Container Service (ECS)](#ecs)
+- [ECS](#ecs)
   - [Requirements](#requirements)
   - [Setting up the ECS cluster](#setting-up-the-ecs-cluster)
   - [Creating your task definition](#creating-your-task-definition)
@@ -44,7 +44,7 @@ We will also need an [IAM Role to run containers][ecs iam] with, let's create a 
 > You might already have this `ecsTaskExecutionRole` role in your AWS account if that's the case you can skip this step.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ecs/ecs-role.json > ecs-role.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-role.json > ecs-role.json
 aws iam create-role --role-name ecsTaskExecutionRole  --assume-role-policy-document file://ecs-role.json
 
 {
@@ -93,7 +93,7 @@ Our [task definition][task] will be made of two containers, the [Firelens][Firel
 Let's download the task definition, we'll go through the most important parts.
 
 ```bash
-curl https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
+curl https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/ecs/ecs-task.json > ecs-task.json
 ```
 
 ```json
@@ -135,7 +135,7 @@ The `log_router` container image is the [Fluent bit Loki docker image][fluentbit
     "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-            "Name": "grafana-loki",
+            "Name": "loki",
             "Url": "https://<userid>:<grafancloud apikey>@<grafanacloud host>/loki/api/v1/push",
             "Labels": "{job=\"firelens\"}",
             "RemoveKeys": "container_id,ecs_task_arn",
@@ -242,4 +242,4 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [routing]: https://fluentbit.io/documentation/0.13/getting_started/routing.html
 [grafanacloud account]: https://grafana.com/login
 [grafana logs firelens]: ./ecs-grafana.png
-[logql]: ../../../logql
+[logql]: ../../../query

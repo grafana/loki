@@ -176,5 +176,4 @@ func benchmarkRunner(b *testing.B, logger log.Logger, f func(log.Logger)) {
 
 var (
 	baseMessage = func(logger log.Logger) { logger.Log("foo_key", "foo_value") }
-	withMessage = func(logger log.Logger) { log.With(logger, "a", "b").Log("c", "d") }
 )

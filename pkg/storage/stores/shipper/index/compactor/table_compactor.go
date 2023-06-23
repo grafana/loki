@@ -472,7 +472,7 @@ func openBoltdbFileWithNoSync(path string) (*bbolt.DB, error) {
 }
 
 // readFile reads an index file and sends batch of index to writeBatch func.
-func readFile(logger log.Logger, db downloadedDb, writeBatch func(userID string, batch []indexEntry) error) error {
+func readFile(_ log.Logger, db downloadedDb, writeBatch func(userID string, batch []indexEntry) error) error {
 	batch := make([]indexEntry, 0, batchSize)
 
 	return db.db.View(func(tx *bbolt.Tx) error {

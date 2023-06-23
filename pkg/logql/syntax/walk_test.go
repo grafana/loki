@@ -49,7 +49,7 @@ func Test_AppendMatchers(t *testing.T) {
 		{
 			desc: "vector range query",
 			expr: `sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
-			want: `sum by(cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
+			want: `sum by (cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
 			matchers: []*labels.Matcher{
 				{
 					Name:  "namespace",
@@ -61,7 +61,7 @@ func Test_AppendMatchers(t *testing.T) {
 		{
 			desc: "bin op query",
 			expr: `sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by(cluster)(rate({job="foo"} |= "bar" | logfmt | bazz="buzz"[5m]))`,
-			want: `(sum by(cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by(cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m])))`,
+			want: `(sum by (cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m])) / sum by (cluster)(rate({job="foo", namespace="a"} |= "bar" | logfmt | bazz="buzz"[5m])))`,
 			matchers: []*labels.Matcher{
 				{
 					Name:  "namespace",

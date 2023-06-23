@@ -1089,9 +1089,20 @@ func (m *Http1ProtocolOptions_HeaderKeyFormat) validate(all bool) error {
 
 	var errors []error
 
-	switch m.HeaderFormat.(type) {
-
+	oneofHeaderFormatPresent := false
+	switch v := m.HeaderFormat.(type) {
 	case *Http1ProtocolOptions_HeaderKeyFormat_ProperCaseWords_:
+		if v == nil {
+			err := Http1ProtocolOptions_HeaderKeyFormatValidationError{
+				field:  "HeaderFormat",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofHeaderFormatPresent = true
 
 		if all {
 			switch v := interface{}(m.GetProperCaseWords()).(type) {
@@ -1123,6 +1134,9 @@ func (m *Http1ProtocolOptions_HeaderKeyFormat) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofHeaderFormatPresent {
 		err := Http1ProtocolOptions_HeaderKeyFormatValidationError{
 			field:  "HeaderFormat",
 			reason: "value is required",
@@ -1131,7 +1145,6 @@ func (m *Http1ProtocolOptions_HeaderKeyFormat) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

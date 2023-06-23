@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -28,7 +29,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
 	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
@@ -45,10 +45,6 @@ import (
 var (
 	supportedShardingStrategies = []string{util.ShardingStrategyDefault, util.ShardingStrategyShuffle}
 	supportedShardingAlgos      = []string{util.ShardingAlgoByGroup, util.ShardingAlgoByRule}
-
-	// Validation errors.
-	errInvalidShardingStrategy = errors.New("invalid sharding strategy")
-	errInvalidTenantShardSize  = errors.New("invalid tenant shard size, the value must be greater than 0")
 )
 
 const (
@@ -80,6 +76,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// This is used for template expansion in alerts, and represents the corresponding Grafana datasource UID.
+	DatasourceUID string `yaml:"datasource_uid"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
@@ -162,7 +160,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
-	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "Base URL of the Grafana instance.")
+	f.StringVar(&cfg.DatasourceUID, "ruler.datasource-uid", "", "Datasource UID for the dashboard.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
 
@@ -378,11 +377,41 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
+type query struct {
+	Expr       string      `json:"expr"`
+	QueryType  string      `json:"queryType"`
+	Datasource *datasource `json:"datasource,omitempty"`
+}
+
+type datasource struct {
+	Type string `json:"type"`
+	UID  string `json:"uid"`
+}
+
+func grafanaLinkForExpression(expr, datasourceUID string) string {
+	exprStruct := query{
+		Expr:      expr,
+		QueryType: "range",
+	}
+
+	if datasourceUID != "" {
+		exprStruct.Datasource = &datasource{
+			Type: "loki",
+			UID:  datasourceUID,
+		}
+	}
+
+	marshaledExpression, _ := json.Marshal(exprStruct)
+	escapedExpression := url.QueryEscape(string(marshaledExpression))
+	str := `/explore?left={"queries":[%s]}`
+	return fmt.Sprintf(str, escapedExpression)
+}
+
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -391,7 +420,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: externalURL + grafanaLinkForExpression(expr, datasourceUID),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt
@@ -677,7 +706,7 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 	var result = make([]*rulespb.RuleGroupDesc, 0, len(ruleGroups))
 
 	for _, g := range ruleGroups {
-		logger = log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
+		glog := log.With(logger, "user", userID, "namespace", g.Namespace, "group", g.Name)
 
 		switch shardingAlgo {
 
@@ -686,15 +715,15 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 			owned, err := instanceOwnsRuleGroup(ring, g, instanceAddr)
 			if err != nil {
 				ringCheckErrors.Inc()
-				level.Error(logger).Log("msg", "failed to check if the ruler replica owns the rule group", "err", err)
+				level.Error(glog).Log("msg", "failed to check if the ruler replica owns the rule group", "err", err)
 				continue
 			}
 
 			if owned {
-				level.Debug(logger).Log("msg", "rule group owned")
+				level.Debug(glog).Log("msg", "rule group owned")
 				result = append(result, g)
 			} else {
-				level.Debug(logger).Log("msg", "rule group not owned, ignoring")
+				level.Debug(glog).Log("msg", "rule group not owned, ignoring")
 			}
 
 			continue
@@ -702,7 +731,7 @@ func filterRules(shardingAlgo string, userID string, ruleGroups []*rulespb.RuleG
 		// if we are sharding by rule, we need to create rule groups for each rule to comply with Prometheus' rule engine's expectations
 		case util.ShardingAlgoByRule:
 			for _, r := range g.Rules {
-				rlog := log.With(logger, "rule", getRuleIdentifier(r))
+				rlog := log.With(glog, "rule", getRuleIdentifier(r))
 
 				owned, err := instanceOwnsRule(ring, g, r, instanceAddr)
 				if err != nil {
@@ -937,7 +966,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 }
 
 // Rules implements the rules service
-func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) Rules(ctx context.Context, _ *RulesRequest) (*RulesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")

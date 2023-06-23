@@ -105,6 +105,7 @@ message LokiLabelNamesRequest {
     (gogoproto.nullable) = false
   ];
   string path = 3;
+  string query = 4;
 }
 
 message LokiLabelNamesResponse {
@@ -138,6 +139,26 @@ message LokiPromResponse {
 
 message IndexStatsResponse {
   logproto.IndexStatsResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.IndexStatsResponse"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
+message VolumeRequest {
+  repeated string match = 1;
+  google.protobuf.Timestamp startTs = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp endTs = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+message VolumeResponse {
+  logproto.VolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.VolumeResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"

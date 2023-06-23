@@ -113,7 +113,7 @@ func TestSetStorageSchemaStatus_WhenStorageStatusExists_OverwriteStorageStatus(t
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
 
-	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.UpdateOption) error {
+	sw.UpdateStub = func(_ context.Context, obj client.Object, _ ...client.SubResourceUpdateOption) error {
 		stack := obj.(*lokiv1.LokiStack)
 		require.Equal(t, expected, stack.Status.Storage.Schemas)
 		return nil

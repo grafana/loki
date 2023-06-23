@@ -10,12 +10,15 @@ import (
 	"strings"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -209,8 +212,19 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	log, ctx := spanlogger.New(ctx, "query.Exec")
-	defer log.Finish()
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
+	defer sp.Finish()
+	spLogger := spanlogger.FromContext(ctx)
+	defer spLogger.Finish()
+
+	sp.LogKV(
+		"type", GetRangeType(q.params),
+		"query", q.params.Query(),
+		"start", q.params.Start(),
+		"end", q.params.End(),
+		"step", q.params.Step(),
+		"length", q.params.End().Sub(q.params.Start()),
+	)
 
 	if q.logExecQuery {
 		queryHash := HashedQuery(q.params.Query())
@@ -235,7 +249,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	statResult.Log(level.Debug(log))
+	statResult.Log(level.Debug(spLogger))
 
 	status := "200"
 	if err != nil {
@@ -262,8 +276,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	tenants, _ := tenant.TenantIDs(ctx)
-	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
-
+	timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
@@ -299,7 +313,7 @@ func (q *query) checkBlocked(ctx context.Context, tenants []string) bool {
 	blocker := newQueryBlocker(ctx, q)
 
 	for _, tenant := range tenants {
-		if blocker.isBlocked(tenant) {
+		if blocker.isBlocked(ctx, tenant) {
 			QueriesBlocked.WithLabelValues(tenant).Inc()
 			return true
 		}
@@ -317,7 +331,21 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return q.evalVector(ctx, vec)
 	}
 
-	expr, err := optimizeSampleExpr(expr)
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	maxIntervalCapture := func(id string) time.Duration { return q.limits.MaxQueryRange(ctx, id) }
+	maxQueryInterval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, maxIntervalCapture)
+	if maxQueryInterval != 0 {
+		err = q.checkIntervalLimit(expr, maxQueryInterval)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	expr, err = optimizeSampleExpr(expr)
 	if err != nil {
 		return nil, err
 	}
@@ -328,11 +356,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	tenantIDs, err := tenant.TenantIDs(ctx)
-	if err != nil {
-		return nil, err
-	}
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, q.limits.MaxQuerySeries)
+	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
@@ -373,13 +398,13 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			if !ok {
 				series = &promql.Series{
 					Metric: p.Metric,
-					Points: make([]promql.Point, 0, stepCount),
+					Floats: make([]promql.FPoint, 0, stepCount),
 				}
 				seriesIndex[hash] = series
 			}
-			series.Points = append(series.Points, promql.Point{
+			series.Floats = append(series.Floats, promql.FPoint{
 				T: ts,
-				V: p.V,
+				F: p.F,
 			})
 		}
 		// as we slowly build the full query for each steps, make sure we don't go over the limit of unique series.
@@ -400,6 +425,20 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	sort.Sort(result)
 
 	return result, stepEvaluator.Error()
+}
+
+func (q *query) checkIntervalLimit(expr syntax.SampleExpr, limit time.Duration) error {
+	var err error
+	expr.Walk(func(e interface{}) {
+		switch e := e.(type) {
+		case *syntax.RangeAggregationExpr:
+			if e.Left == nil || e.Left.Interval <= limit {
+				return
+			}
+			err = fmt.Errorf("%w: [%s] > [%s]", logqlmodel.ErrIntervalLimit, model.Duration(e.Left.Interval), model.Duration(limit))
+		}
+	})
+	return err
 }
 
 func (q *query) evalLiteral(_ context.Context, expr *syntax.LiteralExpr) (promql_parser.Value, error) {
@@ -430,7 +469,11 @@ func (q *query) evalVector(_ context.Context, expr *syntax.VectorExpr) (promql_p
 	}
 
 	if GetRangeType(q.params) == InstantType {
-		return s, nil
+		return promql.Vector{promql.Sample{
+			T:      q.params.Start().UnixMilli(),
+			F:      value,
+			Metric: labels.Labels{},
+		}}, nil
 	}
 
 	return PopulateMatrixFromScalar(s, q.params), nil
@@ -442,8 +485,8 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 		end    = params.End()
 		step   = params.Step()
 		series = promql.Series{
-			Points: make(
-				[]promql.Point,
+			Floats: make(
+				[]promql.FPoint,
 				0,
 				// allocate enough space for all needed entries
 				int(end.Sub(start)/step)+1,
@@ -452,9 +495,9 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	)
 
 	for ts := start; !ts.After(end); ts = ts.Add(step) {
-		series.Points = append(series.Points, promql.Point{
+		series.Floats = append(series.Floats, promql.FPoint{
 			T: ts.UnixNano() / int64(time.Millisecond),
-			V: data.V,
+			F: data.V,
 		})
 	}
 	return promql.Matrix{series}

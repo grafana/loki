@@ -1,3 +1,4 @@
+//go:build go1.7
 // +build go1.7
 
 package oss
@@ -30,6 +31,7 @@ func newTransport(conn *Conn, config *Config) *http.Transport {
 		},
 		MaxIdleConns:          httpMaxConns.MaxIdleConns,
 		MaxIdleConnsPerHost:   httpMaxConns.MaxIdleConnsPerHost,
+		MaxConnsPerHost:       httpMaxConns.MaxConnsPerHost,
 		IdleConnTimeout:       httpTimeOut.IdleConnTimeout,
 		ResponseHeaderTimeout: httpTimeOut.HeaderTimeout,
 	}

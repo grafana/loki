@@ -81,6 +81,8 @@ var emptyStats = `"stats": {
 		"execTime": 0,
 		"linesProcessedPerSecond": 0,
 		"queueTime": 0,
+		"splits": 0,
+		"shards": 0,
 		"subqueries": 0,
 		"totalBytesProcessed":0,
 		"totalEntriesReturned":0,

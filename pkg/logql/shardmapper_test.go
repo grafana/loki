@@ -105,7 +105,7 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			mapped, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 			require.Equal(t, tc.out, mapped)
 		})
@@ -299,7 +299,7 @@ func TestMappingStrings(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
@@ -1205,7 +1205,7 @@ func TestMapping(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())
@@ -1274,7 +1274,7 @@ func TestStringTrimming(t *testing.T) {
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
 			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics)
-			_, mappedExpr, err := m.Parse(tc.expr)
+			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})

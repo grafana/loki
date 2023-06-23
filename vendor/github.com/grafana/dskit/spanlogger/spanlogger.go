@@ -69,7 +69,7 @@ func FromContext(ctx context.Context, fallback log.Logger, resolver TenantResolv
 	}
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
-		sp = defaultNoopSpan
+		sp = opentracing.NoopTracer{}.StartSpan("noop")
 	}
 	lwc, sampled := withContext(ctx, logger, resolver)
 	return &SpanLogger{

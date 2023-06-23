@@ -265,7 +265,7 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) error {
+func (c *FifoCache) Store(_ context.Context, keys []string, values [][]byte) error {
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
@@ -348,7 +348,7 @@ func (c *FifoCache) put(key string, value []byte) {
 }
 
 // Get returns the stored value against the key and when the key was last updated.
-func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
+func (c *FifoCache) Get(_ context.Context, key string) ([]byte, bool) {
 	c.totalGets.Inc()
 
 	c.lock.RLock()

@@ -21,7 +21,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
@@ -141,6 +140,9 @@ func (i *STSCertificateIdentity) Retrieve() (Value, error) {
 	if err != nil {
 		return Value{}, err
 	}
+	if req.Form == nil {
+		req.Form = url.Values{}
+	}
 	req.Form.Add("DurationSeconds", strconv.FormatUint(uint64(livetime.Seconds()), 10))
 
 	resp, err := i.Client.Do(req)
@@ -152,7 +154,7 @@ func (i *STSCertificateIdentity) Retrieve() (Value, error) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		var errResp ErrorResponse
-		buf, err := ioutil.ReadAll(resp.Body)
+		buf, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return Value{}, err
 		}

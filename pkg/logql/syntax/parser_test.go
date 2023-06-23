@@ -349,7 +349,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in:  `rate({ foo = "bar" }[5minutes])`,
-			err: logqlmodel.NewParseError(`not a valid duration string: "5minutes"`, 0, 21),
+			err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 		},
 		{
 			in:  `label_replace(rate({ foo = "bar" }[5m]),"")`,
@@ -1855,6 +1855,17 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `max_over_time({app="foo"} | unwrap bar [5m] offset -5m) without (foo,bar)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", ""),
+					newOffsetExpr(-5*time.Minute)),
+				OpRangeTypeMax, &Grouping{Without: true, Groups: []string{"foo", "bar"}}, nil,
+			),
+		},
+		{
 			in: `max_over_time(({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo )[5m])`,
 			exp: newRangeAggregationExpr(
@@ -2954,8 +2965,8 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("bob", `top.sub["index"]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("bob", `top.sub["index"]`),
 					}),
 				},
 			},
@@ -2965,8 +2976,8 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("bob", `top.params[0]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("bob", `top.params[0]`),
 					}),
 				},
 			},
@@ -2976,9 +2987,9 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("response_code", `response.code`),
-						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("response_code", `response.code`),
+						log.NewLabelExtractionExpr("api_key", `request.headers["X-API-KEY"]`),
 					}),
 				},
 			},
@@ -2988,10 +2999,10 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("response_code", `response_code`),
-						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
-						log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("response_code", `response_code`),
+						log.NewLabelExtractionExpr("api_key", `request.headers["X-API-KEY"]`),
+						log.NewLabelExtractionExpr("layer7_something_specific", `layer7_something_specific`),
 					}),
 				},
 			},
@@ -3002,8 +3013,8 @@ func TestParse(t *testing.T) {
 				Left: &LogRange{
 					Left: &PipelineExpr{
 						MultiStages: MultiStageExpr{
-							newJSONExpressionParser([]log.JSONExpression{
-								log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+							newJSONExpressionParser([]log.LabelExtractionExpr{
+								log.NewLabelExtractionExpr("layer7_something_specific", `layer7_something_specific`),
 							}),
 						},
 						Left: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
@@ -3039,6 +3050,64 @@ func TestParse(t *testing.T) {
 				),
 				NewVectorExpr("1"),
 			),
+		},
+		{
+			in: `{app="foo"} | logfmt message="msg"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("message", `msg`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err `,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+						log.NewLabelExtractionExpr("err", `err`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err="error"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+						log.NewLabelExtractionExpr("err", `error`),
+					}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg="message", apiKey="api_key"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `message`),
+						log.NewLabelExtractionExpr("apiKey", `api_key`),
+					}),
+				},
+			},
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
@@ -3136,12 +3205,12 @@ func Test_PipelineCombined(t *testing.T) {
 
 	p, err := expr.Pipeline()
 	require.Nil(t, err)
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 	line, lbs, matches := sp.Process(0, []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`))
 	require.True(t, matches)
 	require.Equal(
 		t,
-		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
 		lbs.Labels(),
 	)
 	require.Equal(t, string([]byte(`1.5s|POST|200`)), string(line))
@@ -3155,7 +3224,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 
 	p, err := expr.Pipeline()
 	require.Nil(b, err)
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 	var (
 		line    []byte
 		lbs     log.LabelsResult
@@ -3171,7 +3240,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 	require.True(b, matches)
 	require.Equal(
 		b,
-		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
 		lbs.Labels(),
 	)
 	require.Equal(b, string([]byte(`1.5s|POST|200`)), string(line))
@@ -3185,7 +3254,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 
 	p, err := expr.Extractor()
 	require.Nil(b, err)
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 	var (
 		v       float64
 		lbs     log.LabelsResult
@@ -3200,7 +3269,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	require.True(b, matches)
 	require.Equal(
 		b,
-		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
 		lbs.Labels(),
 	)
 	require.Equal(b, 1.0, v)
@@ -3283,6 +3352,10 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
 		},
+		{
+			in:  `count without (rate({namespace="apps"}[15s]))`,
+			err: logqlmodel.NewParseError("syntax error: unexpected RATE, expecting IDENTIFIER or )", 1, 16),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			_, err := ParseSampleExpr(tc.in)
@@ -3337,12 +3410,12 @@ func TestParseLabels(t *testing.T) {
 		{
 			desc:   "basic",
 			input:  `{job="foo"}`,
-			output: []labels.Label{{Name: "job", Value: "foo"}},
+			output: labels.FromStrings("job", "foo"),
 		},
 		{
 			desc:   "strip empty label value",
 			input:  `{job="foo", bar=""}`,
-			output: []labels.Label{{Name: "job", Value: "foo"}},
+			output: labels.FromStrings("job", "foo"),
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
@@ -3350,4 +3423,15 @@ func TestParseLabels(t *testing.T) {
 			require.Equal(t, tc.output, got)
 		})
 	}
+}
+
+func TestNoOpLabelToString(t *testing.T) {
+	logExpr := `{container_name="app"} | foo=~".*"`
+	l, err := ParseLogSelector(logExpr, false)
+	require.NoError(t, err)
+	require.Equal(t, `{container_name="app"} | foo=~".*"`, l.String())
+
+	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	require.NoError(t, err)
+	require.Len(t, stages, 0)
 }

@@ -65,6 +65,10 @@ func removeLineformat(expr syntax.SampleExpr) {
 					found = true
 					break
 				}
+				if _, ok := pipelineExpr.MultiStages[j].(*syntax.LogfmtExpressionParser); ok {
+					found = true
+					break
+				}
 			}
 			if found {
 				// we cannot remove safely the linefmtExpr.

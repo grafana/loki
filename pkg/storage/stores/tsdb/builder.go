@@ -24,6 +24,7 @@ import (
 type Builder struct {
 	streams         map[string]*stream
 	chunksFinalized bool
+	version         int
 }
 
 type stream struct {
@@ -32,8 +33,11 @@ type stream struct {
 	chunks index.ChunkMetas
 }
 
-func NewBuilder() *Builder {
-	return &Builder{streams: make(map[string]*stream)}
+func NewBuilder(version int) *Builder {
+	return &Builder{
+		streams: make(map[string]*stream),
+		version: version,
+	}
 }
 
 func (b *Builder) AddSeries(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
@@ -107,7 +111,9 @@ func (b *Builder) Build(
 	name := fmt.Sprintf("%s-%x.staging", index.IndexFilename, rng)
 	tmpPath := filepath.Join(scratchDir, name)
 
-	writer, err := index.NewWriter(ctx, tmpPath)
+	var writer *index.Writer
+
+	writer, err = index.NewWriterWithVersion(ctx, b.version, tmpPath)
 	if err != nil {
 		return id, err
 	}
