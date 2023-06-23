@@ -590,6 +590,23 @@ func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAff
 	}
 }
 
+func checkEnvVarStarupProbe() *corev1.Probe {
+	return &corev1.Probe{
+		ProbeHandler: corev1.ProbeHandler{
+			Exec: &corev1.ExecAction{
+				Command: []string{
+					"sh",
+					"-c",
+					fmt.Sprintf(
+						`if [ -z "${%s}" ]; then exit 1;else exit 0; fi`, availibilityZoneEnvVarName),
+				},
+			},
+		},
+		PeriodSeconds:    2,
+		FailureThreshold: 3,
+	}
+}
+
 func lokiLivenessProbe() *corev1.Probe {
 	return &corev1.Probe{
 		ProbeHandler: corev1.ProbeHandler{

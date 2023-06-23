@@ -148,6 +148,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		if len(opts.Stack.Replication.Zones) > 0 {
 			resetEnvVar(&podSpec, availibilityZoneEnvVarName)
 			podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
+			podSpec.Containers[0].StartupProbe = checkEnvVarStarupProbe()
 		}
 	}
 
