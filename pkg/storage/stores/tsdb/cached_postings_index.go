@@ -159,7 +159,7 @@ func CanonicalLabelMatchersKey(ms []*labels.Matcher) string {
 		sb.WriteString(m.Name)
 		sb.WriteString(m.Type.String())
 		sb.WriteString(m.Value)
-		sb.WriteByte(0)
+		sb.WriteByte(',')
 	}
 	return sb.String()
 }
