@@ -304,7 +304,7 @@ func (d *Decbuf) ConsumePadding() {
 	}
 }
 
-func (d *Decbuf) Err() error  { return d.E }
+func (d *Decbuf) Err() error  { return fmt.Errorf("decbuf err: %w", d.E) }
 func (d *Decbuf) Len() int    { return len(d.B) }
 func (d *Decbuf) Get() []byte { return d.B }
 

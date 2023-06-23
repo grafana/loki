@@ -94,6 +94,9 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error)
 }
 
 func decodeToPostings(b []byte) index.Postings {
+	if len(b) <= 0 {
+		return index.EmptyPostings()
+	}
 	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
 	postingsLen := decoder.Uvarint32()
 	refs := make([]storage.SeriesRef, 0, postingsLen)
