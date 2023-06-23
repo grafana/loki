@@ -129,12 +129,7 @@ func (c *cachedPostingsReader) fetchPostings(ctx context.Context, key string) (i
 	}
 
 	if len(found) > 0 {
-		var postings []index.Postings
-		for _, b := range bufs {
-			postings = append(postings, decodeToPostings(b))
-		}
-
-		return index.Merge(postings...), true
+		return decodeToPostings(bufs[0]), true
 	}
 
 	return nil, false
