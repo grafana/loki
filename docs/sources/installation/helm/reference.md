@@ -2463,10 +2463,10 @@ null
 			<td>Update strategy for the `loki-canary` Daemonset pods</td>
 			<td><pre lang="json">
 {
-  "type": "RollingUpdate",
   "rollingUpdate": {
     "maxUnavailable": 1
-  }
+  },
+  "type": "RollingUpdate"
 }
 </pre>
 </td>
