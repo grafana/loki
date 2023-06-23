@@ -12,6 +12,10 @@ spec:
   selector:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
+    {{- with .updateStrategy }}
+    updateStrategy:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
   template:
     metadata:
       annotations:
@@ -97,10 +101,6 @@ spec:
       {{- end }}
       {{- with .tolerations }}
       tolerations:
-        {{- toYaml . | nindent 8 }}
-      {{- end }}
-      {{- with .updateStrategy }}
-      updateStrategy:
         {{- toYaml . | nindent 8 }}
       {{- end }}
 {{- end }}
