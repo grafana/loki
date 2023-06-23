@@ -316,7 +316,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 		for p.Next() {
 			fp, stats, err := i.reader.ChunkStats(p.At(), int64(from), int64(through), &ls)
 			if err != nil {
-				return fmt.Errorf("chunk stats: %w", err)
+				return fmt.Errorf("stats: chunk stats: %w", err)
 			}
 
 			// skip series that belong to different shards
