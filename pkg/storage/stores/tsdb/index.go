@@ -2,6 +2,7 @@ package tsdb
 
 import (
 	"context"
+	"flag"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -27,6 +28,12 @@ type IndexCfg struct {
 	indexshipper.Config `yaml:",inline"`
 
 	CachePostings bool `yaml:"cache_postings"`
+}
+
+func (cfg *IndexCfg) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.CachePostings, prefix+"cache-postings", false, "Whether TSDB should cache postings or not.")
+
+	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // Compares by (Start, End)

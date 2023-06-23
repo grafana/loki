@@ -77,7 +77,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 
 	sharedCacheClient = idxCache
 
-	usePostingsCache := indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil
+	usePostingsCache := indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil
 	openFn := func(p string) (indexshipper_index.Index, error) {
 		return OpenShippableTSDB(p, IndexOpts{UsePostingsCache: usePostingsCache})
 	}
