@@ -3,6 +3,7 @@ package tsdb
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"sort"
 	"strings"
 
@@ -48,20 +49,22 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 
 	p, err := PostingsForMatchers(c.reader, nil, matchers...)
 	if err != nil {
-		return err
+		return fmt.Errorf("cached postings reader for postings: %w", err)
 	}
 
 	expandedPosts, err := index.ExpandPostings(p)
 	if err != nil {
-		return err
+		return fmt.Errorf("expanded postings: %w", err)
 	}
 
 	if err := c.storePostings(ctx, expandedPosts, key); err != nil {
 		level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
 	}
 
+	idx := index.NewShardedPostings(index.NewListPostings(expandedPosts), index.ShardAnnotation{}, nil)
+
 	// `index.ExpandedPostings` makes the iterator to walk, so we have to reset it by instantiating a new NewListPostings.
-	return fn(index.NewListPostings(expandedPosts))
+	return fn(idx)
 }
 
 // diffVarintEncodeNoHeader encodes postings into diff+varint representation.
