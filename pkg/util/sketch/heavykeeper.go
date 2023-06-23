@@ -182,16 +182,50 @@ func (t *HeavyKeeperTopK) InTopk(event string) bool {
 	return ok
 }
 
+func (t *HeavyKeeperTopK) query(event string) uint32 {
+	max := uint32(0)
+	h1, h2 := hashn(event)
+
+	var pos uint32
+	for i := 0; i < len(t.sketch); i++ {
+		pos = (h1 + uint32(i)*h2) % uint32(len(t.sketch[0]))
+		if t.sketch[i][pos].count > max {
+			max = t.sketch[i][pos].count
+		}
+	}
+	return max
+}
+
 func (t *HeavyKeeperTopK) Topk() TopKResult {
 	res := make(TopKResult, 0, len(t.currentTop))
-	for e, c := range t.currentTop {
+	for _, e := range t.heap {
 		res = append(res, element{
-			Event: e,
-			Count: int64(c),
+			Event: e.event,
+			Count: int64(e.count),
 		})
 	}
 	sort.Sort(res)
 	return res
+}
+
+// Merge the given sketch into this one.
+// The sketches must have the same dimensions.
+func (t *HeavyKeeperTopK) Merge(from *HeavyKeeperTopK) error {
+	// merging via using the same logic as observe to decay or increment counters
+	// or via this merge extension of the currentTop map doesn't seem to be consistently
+	// as accurate as if we'd just used a single HK sketch
+	for e := range from.currentTop {
+		if _, ok := t.currentTop[e]; ok {
+			t.heap.update(e, from.query(e))
+			continue
+		}
+		t.heap.Push(&node{
+			event: e,
+			count: from.query(e),
+		})
+	}
+
+	return nil
 }
 
 // returns the estimated cardinality of the input plus whether the HK sketch size

@@ -2,7 +2,6 @@ package sketch
 
 import (
 	"container/heap"
-	"fmt"
 	"sort"
 
 	"github.com/axiomhq/hyperloglog"
@@ -13,12 +12,13 @@ import (
 // Topk is a structure that uses a Count Min Sketch, Min-Heap, and map of string -> uint32,
 // the latter two of which have len(k), to track the top k events by frequency.
 type Topk struct {
-	max               int
-	currentTop        map[string]uint32
-	heap              MinHeap
-	sketch            *CountMinSketch
-	hashfuncs, rowlen int
-	hll               *hyperloglog.Sketch
+	max                 int
+	currentTop          map[string]uint32
+	heap                MinHeap
+	sketch              *CountMinSketch
+	hashfuncs, rowlen   int
+	hll                 *hyperloglog.Sketch
+	expectedCardinality int
 }
 
 // get the correct sketch width based on the expected cardinality of the set
@@ -34,36 +34,29 @@ func getCMSWidth(l log.Logger, c int) int {
 		}
 	case c >= 1000000:
 		width = 409600
-		fmt.Println("creating for 5")
-
 	case c >= 100000:
 		width = 65536
-		fmt.Println("creating for 4")
-
 	case c >= 10000:
 		width = 5120
-		fmt.Println("creating for 3")
-
 	case c >= 1000:
 		width = 640
-		fmt.Println("creating for 2")
-
 	case c >= 100:
 		width = 48
-
-		fmt.Println("creating for 1")
 	}
 	return width
 }
 
-func NewCMSTopkForCardinality(l log.Logger, decay float64, k, c int) HeavyKeeperTopK {
+func NewCMSTopkForCardinality(l log.Logger, k, c int) (Topk, error) {
 	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
 	w := getCMSWidth(l, c)
 	d := 4
 
-	sk := NewHeavyKeeperTopK(decay, k, w, d)
+	sk, err := NewCMSTopK(k, w, d)
+	if err != nil {
+		return Topk{}, err
+	}
 	sk.expectedCardinality = c
-	return sk
+	return sk, nil
 }
 
 func NewCMSTopK(k, w, d int) (Topk, error) {
@@ -114,6 +107,28 @@ func (t *Topk) Observe(event string) {
 	}
 }
 
+// Merge the given sketch into this one.
+// The sketches must have the same dimensions.
+func (t *Topk) Merge(from *Topk) error {
+	err := t.sketch.Merge(from.sketch)
+	if err != nil {
+		return err
+	}
+	// do we want to update the heap, or just merge the topk maps
+	// and get the new list, with a length > k, and sort then get the real
+	// topk, we will have to benchmark and check accuracy
+
+	// merge them all in
+	for e := range from.currentTop {
+		if _, ok := t.currentTop[e]; ok {
+			continue
+		}
+		t.currentTop[e] = 0
+	}
+
+	return nil
+}
+
 // InTopk checks to see if an event is already in the topk for this query
 func (t *Topk) InTopk(event string) bool {
 	_, ok := t.currentTop[event]
@@ -149,6 +164,9 @@ func (t *Topk) Topk() TopKResult {
 	return res[:n]
 }
 
-func (t *Topk) Cardinality() uint64 {
-	return t.hll.Estimate()
+// returns the estimated cardinality of the input plus whether the HK sketch size
+// was big enough for that estimated cardinality.
+func (t *Topk) Cardinality() (uint64, bool) {
+	est := t.hll.Estimate()
+	return t.hll.Estimate(), (est >= uint64(float64(t.expectedCardinality)*0.98)) && (est <= uint64(float64(t.expectedCardinality)*1.02))
 }

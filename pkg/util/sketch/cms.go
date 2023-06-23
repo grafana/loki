@@ -90,3 +90,18 @@ func (s *CountMinSketch) Count(event string) uint32 {
 	}
 	return min
 }
+
+// Merge the given sketch into this one.
+// The sketches must have the same dimensions.
+func (s *CountMinSketch) Merge(from *CountMinSketch) error {
+	if s.depth != from.depth || s.width != from.width {
+		return fmt.Errorf("Can't merge different sketches with different dimensions")
+	}
+
+	for i, l := range from.counters {
+		for j, v := range l {
+			s.counters[i][j] += v
+		}
+	}
+	return nil
+}

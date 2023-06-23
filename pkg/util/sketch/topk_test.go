@@ -28,11 +28,9 @@ type event struct {
 }
 
 func TestTopK(t *testing.T) {
-	nStreams := 1000
+	nStreams := 10000
 	k := 100
-	width := 512
-	depth := 2
-	maxPerStream := 100
+	maxPerStream := 1000
 	events := make([]event, 0)
 	max := 0
 
@@ -49,7 +47,7 @@ func TestTopK(t *testing.T) {
 		events = append(events, event{name: strconv.Itoa(i), count: n})
 	}
 
-	topk, err := NewCMSTopK(k, width, depth)
+	topk, err := NewCMSTopkForCardinality(nil, k, nStreams)
 	assert.NoError(t, err, "error creating topk")
 	for _, e := range events {
 		for i := 0; i < e.count; i++ {
@@ -177,7 +175,7 @@ func TestCMSTopk(t *testing.T) {
 			worst := 0
 			oTotal := 0
 			for i := 0; i < tc.iterations; i++ {
-				hk, _ := NewCMSTopK(tc.k, tc.w, tc.d)
+				topk, _ := NewCMSTopK(tc.k, tc.w, tc.d)
 				itMissing := 0
 				max := int64(0)
 				events := make([]event, 0)
@@ -210,11 +208,11 @@ func TestCMSTopk(t *testing.T) {
 
 				for _, e := range events {
 					for i := 0; i < e.count; i++ {
-						hk.Observe(e.name)
+						topk.Observe(e.name)
 					}
 				}
 
-				top := hk.Topk()
+				top := topk.Topk()
 				var eventName string
 			outer:
 				for i := tc.numStreams - tc.k; i < tc.numStreams; i++ {
@@ -234,7 +232,7 @@ func TestCMSTopk(t *testing.T) {
 				}
 				require.LessOrEqualf(t, itMissing, tc.acceptableMisses, "more than acceptable misses: %d > %d", itMissing, tc.acceptableMisses)
 
-				sketchSize += size.Of(hk)
+				sketchSize += size.Of(topk)
 			}
 
 			//fmt.Println("avg missing per test: ", float64(missing)/float64(tc.it))
@@ -254,7 +252,97 @@ func TestTopkCardinality(t *testing.T) {
 			topk.Observe(strconv.Itoa(i))
 		}
 		// hll has a typical error accuracy of 2%
-		c := topk.Cardinality()
-		assert.True(t, (c > uint64(float64(max)*0.98)) || (c < uint64(float64(max)*1.02)), "cardinality %d", c)
+		_, bigEnough := topk.Cardinality()
+		assert.True(t, bigEnough)
 	}
+}
+
+func TestTopK_Merge(t *testing.T) {
+	nStreams := 1000
+	k := 100
+	maxPerStream := 1000
+	events := make([]event, 0)
+	max := int64(0)
+
+	for i := 0; i < nStreams-k; i++ {
+		num := int64(maxPerStream)
+		n := rand.Int63n(num) + 1
+		if n > max {
+			max = n
+		}
+		for j := 0; j < int(n); j++ {
+			events = append(events, event{name: strconv.Itoa(i), count: 1})
+		}
+	}
+	// then another set of things more than the max of the previous entries
+	for i := nStreams - k; i < nStreams; i++ {
+		n := int64(rand.Int63n(int64(maxPerStream)) + 1 + max)
+		for j := 0; j < int(n); j++ {
+			events = append(events, event{name: strconv.Itoa(i), count: 1})
+		}
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
+
+	topk1, err := NewCMSTopkForCardinality(nil, k, nStreams)
+	topk2, err := NewCMSTopkForCardinality(nil, k, nStreams)
+	assert.NoError(t, err, "error creating topk")
+	for i := 0; i < (len(events) / 2); i++ {
+		for j := 0; j < events[i].count; j++ {
+			topk1.Observe(events[i].name)
+		}
+	}
+
+	for i := len(events) / 2; i < len(events); i++ {
+		for j := 0; j < events[i].count; j++ {
+			topk2.Observe(events[i].name)
+		}
+	}
+
+	// merge
+	topk1.Merge(&topk2)
+
+	mergedTopk := topk1.Topk()
+	var eventName string
+	mergedMissing := 0
+outer:
+	for i := nStreams - k; i < nStreams; i++ {
+		eventName = strconv.Itoa(i)
+		for j := 0; j < len(mergedTopk); j++ {
+			if mergedTopk[j].Event == eventName {
+				continue outer
+			}
+		}
+
+		mergedMissing++
+	}
+
+	require.LessOrEqualf(t, mergedMissing, 2, "more than acceptable misses: %d > %d", mergedMissing, 2)
+
+	// observe the same events into a single sketch
+	topk3, _ := NewCMSTopkForCardinality(nil, k, nStreams)
+	for _, e := range events {
+		for j := 0; j < e.count; j++ {
+			topk3.Observe(e.name)
+		}
+	}
+
+	singleTopk := topk3.Topk()
+
+	singleMissing := 0
+outer2:
+	for i := nStreams - k; i < nStreams; i++ {
+		eventName = strconv.Itoa(i)
+		for j := 0; j < len(singleTopk); j++ {
+			if singleTopk[j].Event == eventName {
+				continue outer2
+			}
+		}
+
+		singleMissing++
+	}
+
+	require.LessOrEqualf(t, singleMissing, 2, "more than acceptable misses: %d > %d", mergedMissing, 2)
+	require.LessOrEqualf(t, mergedMissing, singleMissing, "merged sketch should be at least as accurate as a single sketch")
 }
