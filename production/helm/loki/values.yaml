@@ -663,8 +663,8 @@ monitoring:
       pullPolicy: IfNotPresent
     # -- Update strategy for the `loki-canary` Daemonset pods
     updateStrategy:
+      type: RollingUpdate
       rollingUpdate:
-        maxSurge: 0
         maxUnavailable: 1
 
 # Configuration for the write pod(s)
