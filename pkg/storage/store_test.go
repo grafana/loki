@@ -1006,7 +1006,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	cfg := Config{
 		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		TSDBShipperConfig: shipperConfig,
+		TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
 		NamedStores: NamedStores{
 			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
