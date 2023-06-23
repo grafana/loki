@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -755,7 +757,26 @@ func NewSeriesVolumeTripperware(cfg Config,
 ) (queryrangebase.Tripperware, error) {
 	labelVolumeCfg := cfg
 	labelVolumeCfg.CacheIndexStatsResults = false
-	return NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	statsTw, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(next http.RoundTripper) http.RoundTripper {
+		nextRt := statsTw(next)
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				return nil, err
+			}
+
+			if !limits.VolumeEnabled(userID) {
+				return nil, httpgrpc.Errorf(http.StatusNotFound, "not found")
+			}
+
+			return nextRt.RoundTrip(r)
+		})
+	}, nil
 }
 
 func NewIndexStatsTripperware(

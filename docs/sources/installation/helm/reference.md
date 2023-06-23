@@ -2431,6 +2431,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for loki-canary pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -2445,6 +2454,20 @@ null
 			<td>Tolerations for canary pods</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.updateStrategy</td>
+			<td>object</td>
+			<td>Update strategy for the `loki-canary` Daemonset pods</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "maxUnavailable": 1
+  },
+  "type": "RollingUpdate"
+}
 </pre>
 </td>
 		</tr>
@@ -2544,6 +2567,15 @@ true
 			<td>Additional Grafana Agent labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for GrafanaAgent pods</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>

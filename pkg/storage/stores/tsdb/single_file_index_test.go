@@ -431,8 +431,8 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{fizz="fizz", foo="bar"}`, Value: "", Volume: (30 + 40) * 1024},
-				{Name: `{fizz="buzz", foo="bar"}`, Value: "", Volume: (10 + 20) * 1024},
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
 			},
 			Limit:   10,
 			From:    from,
@@ -450,8 +450,8 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{fizz="fizz", foo="bar"}`, Value: "", Volume: (30 + 40) * 1024},
-				{Name: `{fizz="buzz", foo="bar"}`, Value: "", Volume: (10 + 20) * 1024},
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
 			},
 			Limit:   10,
 			From:    from,
@@ -479,7 +479,7 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{foo="bar"}`, Value: "", Volume: (10 + 20 + 30 + 40) * 1024},
+				{Name: `{foo="bar"}`, Volume: (10 + 20 + 30 + 40) * 1024},
 			},
 			Limit:   10,
 			From:    from,
@@ -497,8 +497,8 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{fizz="fizz", foo="bar"}`, Value: "", Volume: (30 + 40) * 1024},
-				{Name: `{fizz="buzz", foo="bar"}`, Value: "", Volume: (10 + 20) * 1024},
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
 			},
 			Limit:   10,
 			From:    from,
@@ -516,7 +516,7 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{fizz="fizz", foo="bar"}`, Value: "", Volume: (30 + 40) * 1024},
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
 				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
 			},
 			Limit:   10,
