@@ -349,7 +349,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 	t.Run("it gets label volumes from all the ingesters", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{foo="bar"}`, Value: "", Volume: 38},
+				{Name: `{foo="bar"}`, Volume: 38},
 			},
 			Limit: 10,
 		}
@@ -369,7 +369,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{foo="bar"}`, Value: "", Volume: 76},
+			{Name: `{foo="bar"}`, Volume: 76},
 		}, volumes.Volumes)
 	})
 
