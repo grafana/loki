@@ -285,7 +285,6 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 			}
 		}()
 
-
 		c.chunkClient = client.NewClient(objectClient, encoder, schemaConfig)
 
 		c.retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention")
@@ -308,7 +307,7 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 		}
 		if err != nil {
 			return err
-    }
+		}
 	}
 
 	c.storeContainers = make(map[string]storeContainer, len(objectStoreClients))
@@ -451,12 +450,14 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 }
 
 func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
-	if exceeded, err := c.sizeBasedRetention.ThresholdExceeded(); !exceeded {
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg",
-				"Failed to calculate compaction storage threshold", "err", err)
-			return nil
-		}
+	exceeded, err := c.sizeBasedRetention.ThresholdExceeded()
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg",
+			"Failed to calculate compaction storage threshold", "err", err)
+		return nil
+	}
+
+	if !exceeded {
 		return nil
 	}
 
