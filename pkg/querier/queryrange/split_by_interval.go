@@ -200,7 +200,10 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 		sp.LogFields(otlog.Int("n_intervals", len(intervals)))
 	}
 
-	if len(intervals) == 1 {
+	// We always need to merge VolumeRequests as that's how they get turned into
+	// Prometheus style metric responses. For all other types we can skip merging
+	// if there is only one interval.
+	if _, ok := r.(*logproto.VolumeRequest); len(intervals) == 1 && !ok {
 		return h.next.Do(ctx, intervals[0])
 	}
 
@@ -213,7 +216,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 				intervals[i], intervals[j] = intervals[j], intervals[i]
 			}
 		}
-	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest, *logproto.LabelVolumeRequest:
+	case *LokiSeriesRequest, *LokiLabelNamesRequest, *logproto.IndexStatsRequest, *logproto.VolumeRequest:
 		// Set this to 0 since this is not used in Series/Labels/Index Request.
 		limit = 0
 	default:
@@ -290,11 +293,11 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Matchers: r.GetMatchers(),
 			})
 		})
-	case *logproto.LabelVolumeRequest:
+	case *logproto.VolumeRequest:
 		startTS := model.Time(r.GetStart()).Time()
 		endTS := model.Time(r.GetEnd()).Time()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
-			reqs = append(reqs, &logproto.LabelVolumeRequest{
+			reqs = append(reqs, &logproto.VolumeRequest{
 				From:     model.TimeFromUnix(start.Unix()),
 				Through:  model.TimeFromUnix(end.Unix()),
 				Matchers: r.GetMatchers(),

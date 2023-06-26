@@ -489,9 +489,9 @@ Params:
 */}}
 {{- define "loki.ingress.serviceName" -}}
 {{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.fullname" .ctx) }}
+{{- printf "%s" (include "loki.name" .ctx) }}
 {{- else }}
-{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
+{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
 {{- end -}}
 

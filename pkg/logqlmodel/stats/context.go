@@ -69,15 +69,6 @@ func NewContext(ctx context.Context) (*Context, context.Context) {
 	return contextData, ctx
 }
 
-func GetOrCreateContext(ctx context.Context) (*Context, context.Context) {
-	v, ok := ctx.Value(statsKey).(*Context)
-	if !ok {
-		return NewContext(ctx)
-	}
-
-	return v, ctx
-}
-
 // FromContext returns the statistics context.
 func FromContext(ctx context.Context) *Context {
 	v, ok := ctx.Value(statsKey).(*Context)
@@ -207,7 +198,6 @@ func (c *Caches) Merge(m Caches) {
 	c.Chunk.Merge(m.Chunk)
 	c.Index.Merge(m.Index)
 	c.Result.Merge(m.Result)
-	c.StatsResult.Merge(m.StatsResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -392,6 +382,10 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	atomic.AddInt32(&stats.Requests, int32(i))
 }
 
+func (c *Context) AddSplitQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.Splits, num)
+}
+
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	var stats *Cache
 	switch t {
@@ -401,8 +395,6 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.Index
 	case ResultCache:
 		stats = &c.caches.Result
-	case StatsResultCache:
-		stats = &c.caches.StatsResult
 	default:
 		return nil
 	}
@@ -467,13 +459,6 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Index.BytesSent", humanize.Bytes(uint64(c.Index.BytesSent)),
 		"Cache.Index.BytesReceived", humanize.Bytes(uint64(c.Index.BytesReceived)),
 		"Cache.Index.DownloadTime", c.Index.CacheDownloadTime(),
-		"Cache.StatsResult.Requests", c.StatsResult.Requests,
-		"Cache.StatsResult.EntriesRequested", c.StatsResult.EntriesRequested,
-		"Cache.StatsResult.EntriesFound", c.StatsResult.EntriesFound,
-		"Cache.StatsResult.EntriesStored", c.StatsResult.EntriesStored,
-		"Cache.StatsResult.BytesSent", humanize.Bytes(uint64(c.StatsResult.BytesSent)),
-		"Cache.StatsResult.BytesReceived", humanize.Bytes(uint64(c.StatsResult.BytesReceived)),
-		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
 		"Cache.Result.EntriesFound", c.Result.EntriesFound,

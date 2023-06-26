@@ -442,32 +442,32 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// LabelVolumeHandler queries the index label volumes related to the passed matchers
-func (q *QuerierAPI) LabelVolumeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseLabelVolumeQuery(r)
+// SeriesVolumeHandler queries the index label volumes related to the passed matchers
+func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
-	req := &logproto.LabelVolumeRequest{
+	req := &logproto.VolumeRequest{
 		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
 		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
 		Matchers: rawReq.Query,
 		Limit:    int32(rawReq.Limit),
 	}
 
-	resp, err := q.querier.LabelVolume(r.Context(), req)
+	resp, err := q.querier.SeriesVolume(r.Context(), req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
 
 	if resp == nil { // Some stores don't implement this
-		resp = &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{}}
+		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
 	}
 
-	if marshal.WriteLabelVolumeResponseJSON(resp, w) != nil {
+	if marshal.WriteSeriesVolumeResponseJSON(resp, w) != nil {
 		serverutil.WriteError(err, w)
 		return
 	}

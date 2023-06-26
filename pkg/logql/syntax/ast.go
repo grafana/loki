@@ -546,6 +546,46 @@ func (e *DropLabelsExpr) String() string {
 }
 func (e *DropLabelsExpr) Walk(f WalkFn) { f(e) }
 
+type KeepLabelsExpr struct {
+	keepLabels []log.KeepLabel
+	implicit
+}
+
+func newKeepLabelsExpr(keepLabels []log.KeepLabel) *KeepLabelsExpr {
+	return &KeepLabelsExpr{keepLabels: keepLabels}
+}
+
+func (e *KeepLabelsExpr) Shardable() bool { return true }
+
+func (e *KeepLabelsExpr) Stage() (log.Stage, error) {
+	return log.NewKeepLabels(e.keepLabels), nil
+}
+
+func (e *KeepLabelsExpr) String() string {
+	var sb strings.Builder
+
+	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpKeep))
+
+	for i, keepLabel := range e.keepLabels {
+		if keepLabel.Matcher != nil {
+			sb.WriteString(keepLabel.Matcher.String())
+			if i+1 != len(e.keepLabels) {
+				sb.WriteString(",")
+			}
+		}
+		if keepLabel.Name != "" {
+			sb.WriteString(keepLabel.Name)
+			if i+1 != len(e.keepLabels) {
+				sb.WriteString(",")
+			}
+		}
+	}
+	str := sb.String()
+	return str
+}
+
+func (e *KeepLabelsExpr) Walk(f WalkFn) { f(e) }
+
 func (e *LineFmtExpr) Shardable() bool { return true }
 
 func (e *LineFmtExpr) Walk(f WalkFn) { f(e) }
@@ -920,6 +960,9 @@ const (
 
 	// drop labels
 	OpDrop = "drop"
+
+	// keep labels
+	OpKeep = "keep"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -950,6 +993,8 @@ type SampleExpr interface {
 	Expr
 }
 
+// RangeAggregationExpr not all range vector aggregation expressions support grouping by/without label(s),
+// therefore the Grouping struct can be nil.
 type RangeAggregationExpr struct {
 	Left      *LogRange
 	Operation string
@@ -1074,6 +1119,13 @@ func (e *RangeAggregationExpr) Walk(f WalkFn) {
 	e.Left.Walk(f)
 }
 
+// Grouping struct represents the grouping by/without label(s) for vector aggregators and range vector aggregators.
+// The representation is as follows:
+//   - No Grouping (labels dismissed): <operation> (<expr>) => Grouping{Without: false, Groups: nil}
+//   - Grouping by empty label set: <operation> by () (<expr>) => Grouping{Without: false, Groups: []}
+//   - Grouping by label set: <operation> by (<labels...>) (<expr>) => Grouping{Without: false, Groups: [<labels...>]}
+//   - Grouping without empty label set: <operation> without () (<expr>) => Grouping{Without: true, Groups: []}
+//   - Grouping without label set: <operation> without (<labels...>) (<expr>) => Grouping{Without: true, Groups: [<labels...>]}
 type Grouping struct {
 	Groups  []string
 	Without bool
@@ -1105,6 +1157,8 @@ func (g Grouping) String() string {
 	return sb.String()
 }
 
+// VectorAggregationExpr all vector aggregation expressions support grouping by/without label(s),
+// therefore the Grouping struct can never be nil.
 type VectorAggregationExpr struct {
 	Left SampleExpr
 

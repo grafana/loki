@@ -105,13 +105,13 @@ func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChu
 	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
 }
 
-func (c *querierClientMock) GetLabelVolume(ctx context.Context, in *logproto.LabelVolumeRequest, opts ...grpc.CallOption) (*logproto.LabelVolumeResponse, error) {
+func (c *querierClientMock) GetSeriesVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	args := c.Called(ctx, in, opts)
 	res := args.Get(0)
 	if res == nil {
-		return (*logproto.LabelVolumeResponse)(nil), args.Error(1)
+		return (*logproto.VolumeResponse)(nil), args.Error(1)
 	}
-	return res.(*logproto.LabelVolumeResponse), args.Error(1)
+	return res.(*logproto.VolumeResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Context() context.Context {
@@ -365,9 +365,9 @@ func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	return nil, nil
 }
 
-func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (s *storeMock) SeriesVolume(ctx context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }
 
 func (s *storeMock) Stop() {
@@ -536,8 +536,8 @@ func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*sta
 	return nil, nil
 }
 
-func (q *querierMock) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
-	args := q.MethodCalled("LabelVolume", ctx, req)
+func (q *querierMock) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	args := q.MethodCalled("SeriesVolume", ctx, req)
 
 	resp := args.Get(0)
 	err := args.Error(1)
@@ -545,5 +545,5 @@ func (q *querierMock) LabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	return resp.(*logproto.LabelVolumeResponse), err
+	return resp.(*logproto.VolumeResponse), err
 }

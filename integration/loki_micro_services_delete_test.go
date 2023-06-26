@@ -18,7 +18,7 @@ import (
 
 func TestMicroServicesDeleteRequest(t *testing.T) {
 	storage.ResetBoltDBIndexClientsWithShipper()
-	clu := cluster.New(nil, cluster.WithAdditionalBoltDBPeriod)
+	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 		storage.ResetBoltDBIndexClientsWithShipper()

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // implements stores.Index
@@ -48,9 +47,9 @@ type IndexStatsAccumulator interface {
 	Stats() stats.Stats
 }
 
-type LabelVolumeAccumulator interface {
-	AddVolumes(map[string]map[string]uint64)
-	Volumes() *logproto.LabelVolumeResponse
+type SeriesVolumeAccumulator interface {
+	AddVolumes(map[string]uint64)
+	Volumes(from, through time.Time) *logproto.VolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -102,12 +101,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.GetChunkRefs")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	var kvps []interface{}
 	defer func() {
-		log.Log(kvps...)
+		sp.LogKV(kvps...)
 	}()
 
 	matchers, shard, err := cleanMatchers(matchers...)
@@ -243,7 +240,10 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
-func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.SeriesVolume")
+	defer sp.Finish()
+
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -258,18 +258,27 @@ func (c *IndexClient) LabelVolume(ctx context.Context, userID string, from, thro
 		})
 	})
 
-	acc := labelvolume.NewAccumulator(limit)
+	acc := seriesvolume.NewAccumulator(limit)
 	for _, interval := range intervals {
-		if err := c.idx.LabelVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := c.idx.SeriesVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
 			return nil, err
 		}
 	}
+
+	sp.LogKV(
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"intervals", len(intervals),
+		"limit", limit,
+	)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return acc.Volumes(), nil
+	return acc.Volumes(from.Time(), through.Time()), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.

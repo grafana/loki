@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -166,7 +168,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	labelVolumeTripperware, err := NewLabelVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -315,12 +317,12 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
 
 		return r.indexStats.RoundTrip(req)
-	case LabelVolumeOp:
-		volumeQuery, err := loghttp.ParseLabelVolumeQuery(req)
+	case SeriesVolumeOp:
+		volumeQuery, err := loghttp.ParseSeriesVolumeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		level.Info(logger).Log("msg", "executing query", "type", "label_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
+		level.Info(logger).Log("msg", "executing query", "type", "series_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
 
 		return r.labelVolume.RoundTrip(req)
 	default:
@@ -353,7 +355,7 @@ const (
 	SeriesOp       = "series"
 	LabelNamesOp   = "labels"
 	IndexStatsOp   = "index_stats"
-	LabelVolumeOp  = "label_volume"
+	SeriesVolumeOp = "series_volume"
 )
 
 func getOperation(path string) string {
@@ -368,8 +370,8 @@ func getOperation(path string) string {
 		return InstantQueryOp
 	case path == "/loki/api/v1/index/stats":
 		return IndexStatsOp
-	case path == "/loki/api/v1/index/label_volume":
-		return LabelVolumeOp
+	case path == "/loki/api/v1/index/series_volume":
+		return SeriesVolumeOp
 	default:
 		return ""
 	}
@@ -743,7 +745,7 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
-func NewLabelVolumeTripperware(cfg Config,
+func NewSeriesVolumeTripperware(cfg Config,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -755,7 +757,26 @@ func NewLabelVolumeTripperware(cfg Config,
 ) (queryrangebase.Tripperware, error) {
 	labelVolumeCfg := cfg
 	labelVolumeCfg.CacheIndexStatsResults = false
-	return NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	statsTw, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	if err != nil {
+		return nil, err
+	}
+
+	return func(next http.RoundTripper) http.RoundTripper {
+		nextRt := statsTw(next)
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				return nil, err
+			}
+
+			if !limits.VolumeEnabled(userID) {
+				return nil, httpgrpc.Errorf(http.StatusNotFound, "not found")
+			}
+
+			return nextRt.RoundTrip(r)
+		})
+	}, nil
 }
 
 func NewIndexStatsTripperware(

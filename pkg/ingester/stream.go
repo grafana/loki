@@ -16,6 +16,7 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -71,6 +72,8 @@ type stream struct {
 
 	unorderedWrites      bool
 	streamRateCalculator *StreamRateCalculator
+
+	writeFailures *writefailures.Manager
 }
 
 type chunkDesc struct {
@@ -88,7 +91,7 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics) *stream {
+func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics, writeFailures *writefailures.Manager) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
@@ -104,6 +107,7 @@ func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.
 		streamRateCalculator: streamRateCalculator,
 
 		unorderedWrites: unorderedWrites,
+		writeFailures:   writeFailures,
 	}
 }
 
@@ -312,6 +316,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 
 		chunk.lastUpdated = time.Now()
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
+			s.writeFailures.Log(s.tenant, err)
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
 				outOfOrderSamples++
@@ -365,6 +370,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		now := time.Now()
 		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
+			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			rateLimitedSamples++
 			rateLimitedBytes += lineBytes
 			continue
@@ -374,6 +380,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
+			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
 			outOfOrderSamples++
 			outOfOrderBytes += lineBytes
 			continue

@@ -96,6 +96,9 @@ loki:
     {{- end}}
 
     memberlist:
+    {{- if .Values.loki.memberlistConfig }}
+      {{- toYaml .Values.loki.memberlistConfig | nindent 2 }}
+    {{- else }}
     {{- if .Values.loki.extraMemberlistConfig}}
     {{- toYaml .Values.loki.extraMemberlistConfig | nindent 2}}
     {{- end }}
@@ -106,6 +109,7 @@ loki:
         - {{ .memberlistService }}
         {{- end }}
         {{- end }}
+    {{- end }}
 
     {{- with .Values.loki.ingester }}
     ingester:
@@ -145,7 +149,7 @@ loki:
     {{- end }}
     {{- end }}
 
-    {{- if .Values.loki.schemaConfig}}
+    {{- if .Values.loki.schemaConfig }}
     schema_config:
     {{- toYaml .Values.loki.schemaConfig | nindent 2}}
     {{- else }}
@@ -227,7 +231,9 @@ loki:
     {{- end }}
   # Should authentication be enabled
   auth_enabled: true
-  #  Extra memberlist configuration
+  # -- memberlist configuration (overrides embedded default)
+  memberlistConfig: {}
+  # -- Extra memberlist configuration
   extraMemberlistConfig: {}
   # -- Tenants list to be created on nginx htpasswd file, with name and password keys
   tenants: []
@@ -533,6 +539,8 @@ monitoring:
     annotations: {}
     # -- Additional labels for the rules PrometheusRule resource
     labels: {}
+    # -- Additional labels for PrometheusRule alerts
+    additionalRuleLabels: {}
     # -- Additional groups to add to the rules file
     additionalGroups: []
     # - name: additional-loki-rules
@@ -602,6 +610,8 @@ monitoring:
       labels: {}
       # -- Enable the config read api on port 8080 of the agent
       enableConfigReadAPI: false
+      # -- The name of the PriorityClass for GrafanaAgent pods
+      priorityClassName: null
     # PodLogs configuration
     podLogs:
       # -- PodLogs annotations
@@ -639,6 +649,8 @@ monitoring:
     nodeSelector: {}
     # -- Tolerations for canary pods
     tolerations: []
+    # -- The name of the PriorityClass for loki-canary pods
+    priorityClassName: null
     # -- Image to use for loki canary
     image:
       # -- The Docker registry
@@ -651,6 +663,12 @@ monitoring:
       digest: null
       # -- Docker image pull policy
       pullPolicy: IfNotPresent
+    # -- Update strategy for the `loki-canary` Daemonset pods
+    updateStrategy:
+      type: RollingUpdate
+      rollingUpdate:
+        maxUnavailable: 1
+
 # Configuration for the write pod(s)
 write:
   # -- Number of replicas for the write
@@ -1182,7 +1200,7 @@ gateway:
     # -- The gateway image repository
     repository: nginxinc/nginx-unprivileged
     # -- The gateway image tag
-    tag: 1.19-alpine
+    tag: 1.23-alpine
     # -- Overrides the gateway image tag with an image digest
     digest: null
     # -- The gateway image pull policy

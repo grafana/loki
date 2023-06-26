@@ -6,7 +6,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -54,8 +54,6 @@ type Gateway struct {
 
 	cfg Config
 	log log.Logger
-
-	shipper IndexQuerier
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
@@ -75,7 +73,7 @@ func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQ
 		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
 	})
 
-	g.Service = services.NewIdleService(nil, func(failureCase error) error {
+	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
 		for _, indexClient := range g.indexClients {
 			indexClient.Stop()
@@ -138,11 +136,7 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 				return server.Send(response)
 			})
 
-			if innerErr != nil {
-				return false
-			}
-
-			return true
+			return innerErr == nil
 		})
 
 		if innerErr != nil {
@@ -298,18 +292,18 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
-func (g *Gateway) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (g *Gateway) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil && req.Matchers != labelvolume.MatchAny {
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
-	return g.indexQuerier.LabelVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
+	return g.indexQuerier.SeriesVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
 }
 
 type failingIndexClient struct{}

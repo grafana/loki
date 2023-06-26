@@ -63,7 +63,7 @@ type RingCfg struct {
 // RegisterFlagsWithPrefix register all Index Gateway flags related to its ring but with a proper store prefix to avoid conflicts.
 func (cfg *RingCfg) RegisterFlags(prefix, storePrefix string, f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix(prefix, storePrefix, f)
-	f.IntVar(&cfg.ReplicationFactor, "replication-factor", 3, "How many index gateway instances are assigned to each tenant.")
+	f.IntVar(&cfg.ReplicationFactor, "replication-factor", 3, "Deprecated: How many index gateway instances are assigned to each tenant. Use -index-gateway.shard-size instead. The shard size is also a per-tenant setting.")
 }
 
 // Config configures an Index Gateway server.

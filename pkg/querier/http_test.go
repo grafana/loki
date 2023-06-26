@@ -198,71 +198,86 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 	})
 }
 
-func TestLabelVolumeHandler(t *testing.T) {
+func TestSeriesVolumeHandler(t *testing.T) {
+	now := time.Now()
+	t1 := model.TimeFromUnix(now.Add(-time.Hour).Unix())
+	t2 := model.TimeFromUnix(now.Add(-time.Minute).Unix())
+
 	t.Run("it returns label volumes from the querier", func(t *testing.T) {
-		ret := &logproto.LabelVolumeResponse{Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 38},
-		}}
+		ret := &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 38},
+			},
+			From:    t1,
+			Through: t2,
+		}
 
 		querier := newQuerierMock()
-		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(ret, nil)
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
 
 		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
 
-		req := httptest.NewRequest(http.MethodGet, "/label_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 		err := req.ParseForm()
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		api.LabelVolumeHandler(w, req)
+		api.SeriesVolumeHandler(w, req)
 
-		calls := querier.GetMockedCallsByMethod("LabelVolume")
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
-		require.Equal(t, &logproto.LabelVolumeRequest{
+		require.Equal(t, &logproto.VolumeRequest{
 			From:     0,
 			Through:  1000,
 			Matchers: `{foo="bar"}`,
 			Limit:    100,
 		}, calls[0].Arguments[1])
 
-		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[{"name":"foo","value":"bar","volume":38}]}`)
+		require.Equal(
+			t,
+			fmt.Sprintf(
+				`{"volumes":[{"name":"{foo=\"bar\"}","volume":38}],"from":%s,"through":%s}`,
+				t1, t2,
+			),
+			strings.TrimSpace(w.Body.String()),
+		)
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
 	t.Run("it returns nothing when a store doesn't support label volumes", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(nil, nil)
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, nil)
 
 		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
 
-		req := httptest.NewRequest(http.MethodGet, "/label_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 		err := req.ParseForm()
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		api.LabelVolumeHandler(w, req)
+		api.SeriesVolumeHandler(w, req)
 
-		calls := querier.GetMockedCallsByMethod("LabelVolume")
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
 
-		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[]}`)
+		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[],"from":0,"through":0}`)
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
 	t.Run("it returns error when there's an error in the querier", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("LabelVolume", mock.Anything, mock.Anything).Return(nil, errors.New("something bad"))
+		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, errors.New("something bad"))
 
 		api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
 
-		req := httptest.NewRequest(http.MethodGet, "/label_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+		req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 		err := req.ParseForm()
 		require.NoError(t, err)
 
 		w := httptest.NewRecorder()
-		api.LabelVolumeHandler(w, req)
+		api.SeriesVolumeHandler(w, req)
 
-		calls := querier.GetMockedCallsByMethod("LabelVolume")
+		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
 
 		require.Equal(t, strings.TrimSpace(w.Body.String()), `something bad`)

@@ -187,77 +187,95 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	if cachedRequest.StartTs.UnixNano() <= lokiReq.StartTs.UnixNano() && cachedRequest.EndTs.UnixNano() >= lokiReq.EndTs.UnixNano() {
 		return result, nil
 	}
-	// we could be missing data at the start and the end.
-	// so we're going to fetch what is missing.
-	var (
-		startRequest, endRequest *LokiRequest
-		startResp, endResp       *LokiResponse
-		updateCache              bool
-		ok                       bool
-	)
-	g, ctx := errgroup.WithContext(ctx)
 
-	// if we're missing data at the start, start fetching from the start to the cached start.
-	if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
-		g.Go(func() error {
-			startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
-			resp, err := l.next.Do(ctx, startRequest)
-			if err != nil {
-				return err
-			}
-			startResp, ok = resp.(*LokiResponse)
-			if !ok {
-				return fmt.Errorf("unexpected response type %T", resp)
-			}
-			return nil
-		})
-	}
-
-	// if we're missing data at the end, start fetching from the cached end to the end.
-	if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
-		g.Go(func() error {
-			endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
-			resp, err := l.next.Do(ctx, endRequest)
-			if err != nil {
-				return err
-			}
-			endResp, ok = resp.(*LokiResponse)
-			if !ok {
-				return fmt.Errorf("unexpected response type %T", resp)
-			}
-			return nil
-		})
-	}
-
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
-
-	// if we have data at the start, we need to merge it with the cached data if it's empty and update the cache.
-	// If it's not empty only merge the response.
-	if startResp != nil {
-		if isEmpty(startResp) {
-			cachedRequest = cachedRequest.WithStartEndTime(startRequest.GetStartTs(), cachedRequest.GetEndTs())
-			updateCache = true
-		} else {
-			if startResp.Status != loghttp.QueryStatusSuccess {
-				return startResp, nil
-			}
-			result = mergeLokiResponse(extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), startResp), result)
+	updateCache := false
+	// if the query does not overlap cached interval, do not try to fill the gap since it requires extending the queries beyond what is requested in the query.
+	// Extending the queries beyond what is requested could result in empty responses due to response limit set in the queries.
+	if !overlap(lokiReq.StartTs, lokiReq.EndTs, cachedRequest.StartTs, cachedRequest.EndTs) {
+		resp, err := l.next.Do(ctx, lokiReq)
+		if err != nil {
+			return nil, err
 		}
-	}
+		result = resp.(*LokiResponse)
 
-	// if we have data at the end, we need to merge it with the cached data if it's empty and update the cache.
-	// If it's not empty only merge the response.
-	if endResp != nil {
-		if isEmpty(endResp) {
-			cachedRequest = cachedRequest.WithStartEndTime(cachedRequest.GetStartTs(), endRequest.GetEndTs())
+		// if the response is empty and the query is larger than what is cached, update the cache
+		if isEmpty(result) && (lokiReq.EndTs.UnixNano()-lokiReq.StartTs.UnixNano() > cachedRequest.EndTs.UnixNano()-cachedRequest.StartTs.UnixNano()) {
+			cachedRequest = cachedRequest.WithStartEndTime(lokiReq.GetStartTs(), lokiReq.GetEndTs())
 			updateCache = true
-		} else {
-			if endResp.Status != loghttp.QueryStatusSuccess {
-				return endResp, nil
+		}
+	} else {
+		// we could be missing data at the start and the end.
+		// so we're going to fetch what is missing.
+		var (
+			startRequest, endRequest *LokiRequest
+			startResp, endResp       *LokiResponse
+		)
+		g, ctx := errgroup.WithContext(ctx)
+
+		// if we're missing data at the start, start fetching from the start to the cached start.
+		if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
+			g.Go(func() error {
+				startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
+				resp, err := l.next.Do(ctx, startRequest)
+				if err != nil {
+					return err
+				}
+				var ok bool
+				startResp, ok = resp.(*LokiResponse)
+				if !ok {
+					return fmt.Errorf("unexpected response type %T", resp)
+				}
+				return nil
+			})
+		}
+
+		// if we're missing data at the end, start fetching from the cached end to the end.
+		if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
+			g.Go(func() error {
+				endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
+				resp, err := l.next.Do(ctx, endRequest)
+				if err != nil {
+					return err
+				}
+				var ok bool
+				endResp, ok = resp.(*LokiResponse)
+				if !ok {
+					return fmt.Errorf("unexpected response type %T", resp)
+				}
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
+			return nil, err
+		}
+
+		// if we have data at the start, we need to merge it with the cached data if it's empty and update the cache.
+		// If it's not empty only merge the response.
+		if startResp != nil {
+			if isEmpty(startResp) {
+				cachedRequest = cachedRequest.WithStartEndTime(startRequest.GetStartTs(), cachedRequest.GetEndTs())
+				updateCache = true
+			} else {
+				if startResp.Status != loghttp.QueryStatusSuccess {
+					return startResp, nil
+				}
+				result = mergeLokiResponse(startResp, result)
 			}
-			result = mergeLokiResponse(extractLokiResponse(lokiReq.GetStartTs(), lokiReq.GetEndTs(), endResp), result)
+		}
+
+		// if we have data at the end, we need to merge it with the cached data if it's empty and update the cache.
+		// If it's not empty only merge the response.
+		if endResp != nil {
+			if isEmpty(endResp) {
+				cachedRequest = cachedRequest.WithStartEndTime(cachedRequest.GetStartTs(), endRequest.GetEndTs())
+				updateCache = true
+			} else {
+				if endResp.Status != loghttp.QueryStatusSuccess {
+					return endResp, nil
+				}
+				result = mergeLokiResponse(endResp, result)
+			}
 		}
 	}
 
@@ -332,4 +350,12 @@ func emptyResponse(lokiReq *LokiRequest) *LokiResponse {
 			Result:     []logproto.Stream{},
 		},
 	}
+}
+
+func overlap(aFrom, aThrough, bFrom, bThrough time.Time) bool {
+	if aFrom.After(bThrough) || bFrom.After(aThrough) {
+		return false
+	}
+
+	return true
 }

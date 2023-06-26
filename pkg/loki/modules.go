@@ -257,6 +257,9 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 }
 
 func (t *Loki) initOverrides() (_ services.Service, err error) {
+	if t.Cfg.LimitsConfig.IndexGatewayShardSize == 0 {
+		t.Cfg.LimitsConfig.IndexGatewayShardSize = t.Cfg.IndexGateway.Ring.ReplicationFactor
+	}
 	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides are not a service, since they don't have any operational state.
 	return nil, err
@@ -336,12 +339,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		return nil, err
 	}
 
-	store := t.Store
-	if !t.Cfg.Querier.QueryStoreOnly {
-		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
-	}
-
-	q, err := querier.New(t.Cfg.Querier, store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -416,9 +414,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/labels":              labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/loki/api/v1/label/{name}/values": labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 
-		"/loki/api/v1/series":             querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
-		"/loki/api/v1/index/stats":        indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
-		"/loki/api/v1/index/label_volume": querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.LabelVolumeHandler)),
+		"/loki/api/v1/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
+		"/loki/api/v1/index/stats":         indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+		"/loki/api/v1/index/series_volume": querier.WrapQuerySpanAndTimeout("query.SeriesVolume", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesVolumeHandler)),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
@@ -447,6 +445,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
+		t.Cfg.Server.PathPrefix,
 		queryHandlers,
 		alwaysExternalHandlers,
 		t.Server.HTTP,
@@ -473,7 +472,7 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 		level.Warn(util_log.Logger).Log("msg", "The config setting shutdown marker path is not set. The /ingester/prepare_shutdown endpoint won't work")
 	}
 
-	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer)
+	t.Ingester, err = ingester.New(t.Cfg.Ingester, t.Cfg.IngesterClient, t.Store, t.Overrides, t.tenantConfigs, prometheus.DefaultRegisterer, t.Cfg.Distributor.WriteFailuresLogging)
 	if err != nil {
 		return
 	}
@@ -607,6 +606,8 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 	}
 
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
+		var asyncStore bool
+
 		shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
 		iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
 		if iTy != config.BoltDBShipperType && iTy != config.TSDBType {
@@ -637,6 +638,10 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 				break
 			}
 
+			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
+			// Only queriers should use the AsyncStore, it should never be used in ingesters.
+			asyncStore = true
+
 			// The legacy Read target includes the index gateway, so disable the index-gateway client in that configuration.
 			if t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read) {
 				t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
@@ -664,12 +669,16 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 			t.Cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
 		}
 
-		t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
-			IngesterQuerier: t.ingesterQuerier,
-			QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
-				t.Cfg.Querier.QueryIngestersWithin,
-				minIngesterQueryStoreDuration,
-			),
+		if asyncStore {
+			t.Cfg.StorageConfig.EnableAsyncStore = true
+
+			t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
+				IngesterQuerier: t.ingesterQuerier,
+				QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
+					t.Cfg.Querier.QueryIngestersWithin,
+					minIngesterQueryStoreDuration,
+				),
+			}
 		}
 	}
 
@@ -868,7 +877,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
-	t.Server.HTTP.Path("/loki/api/v1/index/label_volume").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/index/series_volume").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
@@ -1164,8 +1173,12 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	shardingStrategy := indexgateway.GetShardingStrategy(t.Cfg.IndexGateway, t.indexGatewayRingManager, t.Overrides)
+
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
+		period := period
+
 		if period.IndexType != config.BoltDBShipperType {
 			continue
 		}
@@ -1176,7 +1189,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 
-		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant,
+		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, shardingStrategy,
 			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
 		)
 		if err != nil {
@@ -1368,12 +1381,7 @@ func (t *Loki) createRulerQueryEngine(logger log.Logger) (eng *logql.Engine, err
 		return nil, fmt.Errorf("could not create delete requests store: %w", err)
 	}
 
-	store := t.Store
-	if !t.Cfg.Querier.QueryStoreOnly {
-		store = storage.NewAsyncStore(t.Cfg.StorageConfig.AsyncStoreConfig, t.Store, t.Cfg.SchemaConfig)
-	}
-
-	q, err := querier.New(t.Cfg.Querier, store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
+	q, err := querier.New(t.Cfg.Querier, t.Store, t.ingesterQuerier, t.Overrides, deleteStore, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create querier: %w", err)
 	}

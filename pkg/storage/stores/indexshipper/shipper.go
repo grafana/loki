@@ -145,7 +145,7 @@ type indexShipper struct {
 // it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
+	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -157,7 +157,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 		logger:            logger,
 	}
 
-	err := shipper.init(storageClient, limits, ownsTenantFn, tableRangeToHandle, reg)
+	err := shipper.init(storageClient, limits, tenantFilter, tableRangeToHandle, reg)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 }
 
 func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRangeToHandle config.TableRange, reg prometheus.Registerer) error {
+	tenantFilter downloads.TenantFilter, tableRangeToHandle config.TableRange, reg prometheus.Registerer) error {
 	indexStorageClient := storage.NewIndexStorageClient(storageClient, s.cfg.SharedStoreKeyPrefix)
 
 	if s.cfg.Mode != ModeReadOnly {
@@ -192,7 +192,7 @@ func (s *indexShipper) init(storageClient client.ObjectClient, limits downloads.
 			QueryReadyNumDays: s.cfg.QueryReadyNumDays,
 			Limits:            limits,
 		}
-		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, ownsTenantFn, tableRangeToHandle, reg, s.logger)
+		downloadsManager, err := downloads.NewTableManager(cfg, s.openIndexFileFunc, indexStorageClient, tenantFilter, tableRangeToHandle, reg, s.logger)
 		if err != nil {
 			return err
 		}
