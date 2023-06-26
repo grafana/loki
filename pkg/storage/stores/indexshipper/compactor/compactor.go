@@ -631,7 +631,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	var tables []string
 	for _, sc := range c.storeContainers {
 		// refresh index list cache since previous compaction would have changed the index files in the object store
-		sc.indexStorageClient.RefreshIndexListCache(ctx)
+		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 		tbls, err := sc.indexStorageClient.ListTables(ctx)
 		if err != nil {
 			status = statusFailure
