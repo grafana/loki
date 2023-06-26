@@ -66,6 +66,7 @@ import (
 	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -104,6 +105,7 @@ const (
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
 	IndexGatewayRing         string = "index-gateway-ring"
+	IndexGatewayInterceptors string = "index-gateway-interceptors"
 	QueryScheduler           string = "query-scheduler"
 	QuerySchedulerRing       string = "query-scheduler-ring"
 	All                      string = "all"
@@ -1240,6 +1242,15 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	}
 
 	return t.indexGatewayRingManager, nil
+}
+
+func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
+	// Only expose per-tenant metric if index gateway runs as standalone service
+	if util.StringsContain(t.Cfg.Target, IndexGateway) {
+		interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
+	}
+	return nil, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
