@@ -12,7 +12,9 @@
     using_boltdb_shipper: true,
     using_tsdb_shipper: false,
     using_store: $._config.using_boltdb_shipper || $._config.using_tsdb_shipper,
-    shared_store: error 'must define shared_store when using_store=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
+
+    boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store when using_boltdb_shipper=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
+    tsdb_shipper_shared_store: error 'must define tsdb_shipper_shared_store when using_tsdb_shipper=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
 
     // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
     stateful_ingesters: if self.using_store then true else super.stateful_ingesters,
@@ -24,19 +26,19 @@
     loki+: if self.using_store then {
       storage_config+: {
         boltdb_shipper+: {
-          shared_store: $._config.shared_store,
+          shared_store: self.boltdb_shipper_shared_store,
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
         },
         tsdb_shipper+: {
-          shared_store: $._config.shared_store,
+          shared_store: self.tsdb_shipper_shared_store,
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',
         },
       },
       compactor+: {
         working_directory: '/data/compactor',
-        shared_store: $._config.shared_store,
+        shared_store: if self.using_boltdb_shipper then self.boltdb_shipper_shared_store else self.tsdb_shipper_shared_store,
       },
     } else {},
   },
