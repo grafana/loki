@@ -26,12 +26,12 @@
     loki+: if self.using_store then {
       storage_config+: {
         boltdb_shipper+: {
-          shared_store: self.boltdb_shipper_shared_store,
+          shared_store: $._config.boltdb_shipper_shared_store,
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
         },
         tsdb_shipper+: {
-          shared_store: self.tsdb_shipper_shared_store,
+          shared_store: $._config.tsdb_shipper_shared_store,
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',
         },
