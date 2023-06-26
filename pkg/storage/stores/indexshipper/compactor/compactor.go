@@ -156,7 +156,7 @@ type Compactor struct {
 	DeleteRequestsHandler     *deletion.DeleteRequestHandler
 	DeleteRequestsGRPCHandler *deletion.GRPCRequestHandler
 	deleteRequestsManager     *deletion.DeleteRequestsManager
-	//expirationChecker         retention.ExpirationChecker
+
 	sizeBasedRetention *retention.SizeBasedRetentionCleaner
 	metrics            *metrics
 	running            bool
