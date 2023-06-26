@@ -15,6 +15,10 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
+const(
+	ProtobufType                = `application/vnd.google.protobuf`
+)
+
 // WriteQueryResponseProtobuf marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseProtobuf(params logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {

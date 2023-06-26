@@ -12,7 +12,6 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/expfmt"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -99,7 +98,9 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == expfmt.ProtoType {
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		// TODO: should this rather be: application/vnd.google.protobuf; proto=queryrange.QueryResponse
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
 	} else {
 		err = marshal.WriteQueryResponseJSON(result, w)
@@ -141,16 +142,15 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if r.Header.Get("Accept") == expfmt.ProtoType {
-		if err := queryrange.WriteQueryResponseProtobuf(params, result, w); err != nil {
-			serverutil.WriteError(err, w)
-			return
-		}
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
+		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
+	} else {
+		err = marshal.WriteQueryResponseJSON(result, w)
 	}
 
-	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+	if err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -203,7 +203,8 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == expfmt.ProtoType {
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
 	} else {
 		err = marshal_legacy.WriteQueryResponseJSON(result, w)
@@ -253,7 +254,8 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	version := loghttp.GetVersion(r.RequestURI)
-	if r.Header.Get("Accept") == expfmt.ProtoType {
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteLabelResponseProtobuf(version, *resp, w)
 	} else if version == loghttp.VersionV1 {
 		err = marshal.WriteLabelResponseJSON(*resp, w)
@@ -428,7 +430,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == expfmt.ProtoType {
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
 		err = queryrange.WriteSeriesResponseProtobuf(loghttp.GetVersion(r.RequestURI), *resp, w)
 	} else {
 		err = marshal.WriteSeriesResponseJSON(*resp, w)
@@ -459,24 +461,8 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// TODO: extract
-	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
-		p := queryrange.QueryResponse{
-			Response: &queryrange.QueryResponse_Stats{
-				Stats: &queryrange.IndexStatsResponse{
-					Response: resp,
-				}},
-		}
-		buf, err := p.Marshal()
-		if err != nil {
-			serverutil.WriteError(err, w)
-			return
-		}
-		w.Write(buf)
-		return
-	}
-
-	if r.Header.Get("Accept") == expfmt.ProtoType {
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteIndexStatsResponseProtobuf(resp, w)
 	} else {
 		err = marshal.WriteIndexStatsResponseJSON(resp, w)
@@ -511,7 +497,8 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
 	}
 
-	if r.Header.Get("Accept") == expfmt.ProtoType {
+	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteSeriesVolumeResponseProtobuf(resp, w)
 	} else {
 		err = marshal.WriteSeriesVolumeResponseJSON(resp, w) 
