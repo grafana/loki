@@ -44,6 +44,8 @@ type cachedPostingsReader struct {
 func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
 	if postings, got := c.fetchPostings(ctx, key); got {
+		// call PostingsForMatchers just to populate things.
+		PostingsForMatchers(c.reader, nil, matchers...)
 		return fn(postings)
 	}
 
@@ -52,22 +54,17 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 		return fmt.Errorf("cached postings reader for postings: %w", err)
 	}
 
-	// expandedPosts, err := index.ExpandPostings(p)
-	// if err != nil {
-	// 	return fmt.Errorf("expanded postings: %w", err)
-	// }
+	expandedPosts, err := index.ExpandPostings(p)
+	if err != nil {
+		return fmt.Errorf("expanded postings: %w", err)
+	}
 
-	// if err := c.storePostings(ctx, expandedPosts, key); err != nil {
-	// 	level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
-	// }
+	if err := c.storePostings(ctx, expandedPosts, key); err != nil {
+		level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
+	}
 
-	// p, err = PostingsForMatchers(c.reader, nil, matchers...)
-	// if err != nil {
-	// 	return fmt.Errorf("cached postings reader for postings: %w", err)
-	// }
-
-	// `index.ExpandedPostings` makes the iterator to walk, so we have to reset it by instantiating a new NewListPostings.
-	return fn(p)
+	// because `index.ExpandedPostings` walks with the iterator, so we have to reset it by instantiating a new ListPostings.
+	return fn(index.NewListPostings(expandedPosts))
 }
 
 // diffVarintEncodeNoHeader encodes postings into diff+varint representation.

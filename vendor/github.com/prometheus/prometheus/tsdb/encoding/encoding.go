@@ -148,7 +148,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 	// We never have to access this method at the far end of the byte slice. Thus just checking
 	// against the MaxVarintLen32 is sufficient.
 	if bs.Len() < off+binary.MaxVarintLen32 {
-		return Decbuf{E: ErrInvalidSize}
+		return Decbuf{E: fmt.Errorf("bs.Len() < off+binary.MaxVarintLen32: %w", ErrInvalidSize)}
 	}
 	b := bs.Range(off, off+binary.MaxVarintLen32)
 
@@ -158,7 +158,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 	}
 
 	if bs.Len() < off+n+int(l)+4 {
-		return Decbuf{E: ErrInvalidSize}
+		return Decbuf{E: fmt.Errorf("bs.Len() < off+n+int(l)+4: %w", ErrInvalidSize)}
 	}
 
 	// Load bytes holding the contents plus a CRC32 checksum.
@@ -166,7 +166,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 	dec := Decbuf{B: b[:len(b)-4]}
 
 	if dec.Crc32(castagnoliTable) != binary.BigEndian.Uint32(b[len(b)-4:]) {
-		return Decbuf{E: ErrInvalidChecksum}
+		return Decbuf{E: fmt.Errorf("dec.Crc32() != binary.BigEndian: %w", ErrInvalidChecksum)}
 	}
 	return dec
 }

@@ -1846,7 +1846,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
-		return 0, ChunkStats{}, errors.Wrap(d.Err(), "chunk stats")
+		return 0, ChunkStats{}, errors.Wrap(d.Err(), "reader chunk stats")
 	}
 
 	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls)
