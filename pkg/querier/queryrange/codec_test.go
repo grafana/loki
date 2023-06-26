@@ -1628,11 +1628,6 @@ func BenchmarkResponseMerge(b *testing.B) {
 			mergeOrderedStreams,
 		},
 		{
-			"mergeOrderedNonOverlappingStreams unlimited",
-			uint32(streams * logsPerStream),
-			mergeOrderedNonOverlappingStreams,
-		},
-		{
 			"mergeStreams limited",
 			uint32(streams*logsPerStream - 1),
 			mergeStreams,
@@ -1641,11 +1636,6 @@ func BenchmarkResponseMerge(b *testing.B) {
 			"mergeOrderedStreams limited",
 			uint32(streams*logsPerStream - 1),
 			mergeOrderedStreams,
-		},
-		{
-			"mergeOrderedNonOverlappingStreams limited",
-			uint32(streams*logsPerStream - 1),
-			mergeOrderedNonOverlappingStreams,
 		},
 	} {
 		input := mkResps(resps, streams, logsPerStream, logproto.FORWARD)
