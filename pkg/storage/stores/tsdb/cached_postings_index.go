@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/encoding"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type PostingsReader interface {
@@ -45,11 +44,11 @@ type cachedPostingsReader struct {
 
 func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
-	if _, got := c.fetchPostings(ctx, key); got {
+	if postings, got := c.fetchPostings(ctx, key); got {
 		// call PostingsForMatchers just to populate things.
-		p, _ := PostingsForMatchers(c.reader, nil, matchers...)
+		// p, _ := PostingsForMatchers(c.reader, nil, matchers...)
 
-		return fn(p)
+		return fn(postings)
 	}
 
 	p, err := PostingsForMatchers(c.reader, nil, matchers...)
@@ -102,7 +101,7 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int, k string) ([]by
 		refsStr.WriteString(",")
 	}
 
-	level.Warn(util_log.Logger).Log("msg", "series to be encoded", "key", k, "refs", refsStr.String())
+	// level.Warn(util_log.Logger).Log("msg", "series to be encoded", "key", k, "refs", refsStr.String())
 
 	return buf.B, nil
 }
@@ -127,7 +126,7 @@ func decodeToPostings(b []byte, k string) index.Postings {
 		refsStr.WriteString(",")
 	}
 
-	level.Warn(util_log.Logger).Log("msg", "refs from postings", "key", k, "refs", refsStr.String())
+	// level.Warn(util_log.Logger).Log("msg", "refs from postings", "key", k, "refs", refsStr.String())
 
 	return index.NewListPostings(refs)
 }
