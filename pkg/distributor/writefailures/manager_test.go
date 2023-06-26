@@ -2,6 +2,7 @@ package writefailures
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -48,6 +49,29 @@ func TestWriteFailuresLogging(t *testing.T) {
 		require.NotContains(t, content, "bad-tenant")
 		require.NotContains(t, content, "unknown-tenant")
 	})
+}
+
+func TestInternalErrorsAreIgnored(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	logger := log.NewLogfmtLogger(buf)
+
+	f := func(tenantID string) *runtime.Config {
+		return &runtime.Config{LimitedLogPushErrors: true}
+	}
+
+	runtimeCfg, err := runtime.NewTenantConfigs(f)
+	require.NoError(t, err)
+	manager := NewManager(logger, Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg)
+
+	ctx, cancelFunc := context.WithCancel(context.Background())
+	cancelFunc()
+
+	err = ctx.Err()
+	require.Error(t, err)
+
+	manager.Log("fake", fmt.Errorf("internal error happened: %w", err))
+	content := buf.String()
+	require.Empty(t, content)
 }
 
 func TestWriteFailuresRateLimiting(t *testing.T) {
