@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -17,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/encoding"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type PostingsReader interface {
@@ -46,6 +48,7 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 	if _, got := c.fetchPostings(ctx, key); got {
 		// call PostingsForMatchers just to populate things.
 		p, _ := PostingsForMatchers(c.reader, nil, matchers...)
+
 		return fn(p)
 	}
 
@@ -71,6 +74,7 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 // It doesn't add any header to the output bytes.
 // Length argument is expected number of postings, used for preallocating buffer.
 func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error) {
+
 	buf := encoding.Encbuf{}
 	buf.PutUvarint32(uint32(length))
 
@@ -82,6 +86,7 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error)
 
 	buf.PutUvarint32(uint32(length)) // first we put the postings length so we can use it when decoding.
 
+	refsStr := strings.Builder{}
 	prev := storage.SeriesRef(0)
 	for _, ref := range p {
 		if ref < prev {
@@ -91,7 +96,13 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error)
 		// This is the 'diff' part -- compute difference from previous value.
 		buf.PutUvarint32(uint32(ref - prev))
 		prev = ref
+
+		nitString := strconv.Itoa(int(ref))
+		refsStr.WriteString(nitString)
+		refsStr.WriteString(",")
 	}
+
+	level.Debug(util_log.Logger).Log("msg", "series to be encoded", "refs", refsStr.String())
 
 	return buf.B, nil
 }
@@ -104,12 +115,19 @@ func decodeToPostings(b []byte) index.Postings {
 	postingsLen := decoder.Uvarint32()
 	refs := make([]storage.SeriesRef, 0, postingsLen)
 	prev := storage.SeriesRef(0)
+	refsStr := strings.Builder{}
 
 	for i := 0; i < int(postingsLen); i++ {
 		v := storage.SeriesRef(decoder.Uvarint32())
 		refs = append(refs, v+prev)
 		prev = v
+
+		nitString := strconv.Itoa(int(v + prev))
+		refsStr.WriteString(nitString)
+		refsStr.WriteString(",")
 	}
+
+	level.Debug(util_log.Logger).Log("msg", "refs from postings", "refs", refsStr.String())
 
 	return index.NewListPostings(refs)
 }
