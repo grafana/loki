@@ -73,7 +73,7 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 // diffVarintEncodeNoHeader encodes postings into diff+varint representation.
 // It doesn't add any header to the output bytes.
 // Length argument is expected number of postings, used for preallocating buffer.
-func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error) {
+func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int, k string) ([]byte, error) {
 
 	buf := encoding.Encbuf{}
 	buf.PutUvarint32(uint32(length))
@@ -102,12 +102,12 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int) ([]byte, error)
 		refsStr.WriteString(",")
 	}
 
-	level.Debug(util_log.Logger).Log("msg", "series to be encoded", "refs", refsStr.String())
+	level.Warn(util_log.Logger).Log("msg", "series to be encoded", "key", k, "refs", refsStr.String())
 
 	return buf.B, nil
 }
 
-func decodeToPostings(b []byte) index.Postings {
+func decodeToPostings(b []byte, k string) index.Postings {
 	if len(b) <= 0 {
 		return index.EmptyPostings()
 	}
@@ -118,22 +118,22 @@ func decodeToPostings(b []byte) index.Postings {
 	refsStr := strings.Builder{}
 
 	for i := 0; i < int(postingsLen); i++ {
-		v := storage.SeriesRef(decoder.Uvarint32())
-		refs = append(refs, v+prev)
+		v := storage.SeriesRef(decoder.Uvarint32()) + prev
+		refs = append(refs, v)
 		prev = v
 
-		nitString := strconv.Itoa(int(v + prev))
+		nitString := strconv.Itoa(int(v))
 		refsStr.WriteString(nitString)
 		refsStr.WriteString(",")
 	}
 
-	level.Debug(util_log.Logger).Log("msg", "refs from postings", "refs", refsStr.String())
+	level.Warn(util_log.Logger).Log("msg", "refs from postings", "key", k, "refs", refsStr.String())
 
 	return index.NewListPostings(refs)
 }
 
 func (c *cachedPostingsReader) storePostings(ctx context.Context, expandedPostings []storage.SeriesRef, canonicalMatchers string) error {
-	dataToCache, err := diffVarintEncodeNoHeader(expandedPostings, len(expandedPostings))
+	dataToCache, err := diffVarintEncodeNoHeader(expandedPostings, len(expandedPostings), canonicalMatchers)
 	if err != nil {
 		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
 	}
@@ -150,7 +150,7 @@ func (c *cachedPostingsReader) fetchPostings(ctx context.Context, key string) (i
 	}
 
 	if len(found) > 0 {
-		return decodeToPostings(bufs[0]), true
+		return decodeToPostings(bufs[0], key), true
 	}
 
 	return nil, false
