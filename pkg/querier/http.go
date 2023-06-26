@@ -7,15 +7,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -25,10 +23,12 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -98,9 +98,15 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
-	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
+	} else {
+		err = marshal.WriteQueryResponseJSON(result, w)
+	}
+
+	if err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -133,6 +139,13 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
+	}
+
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		if err := queryrange.WriteQueryResponseProtobuf(params, result, w); err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
 	}
 
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
@@ -190,9 +203,14 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
+	} else {
+		err = marshal_legacy.WriteQueryResponseJSON(result, w)
+	}
+
+	if err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -234,14 +252,16 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
+	version := loghttp.GetVersion(r.RequestURI)
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		err = queryrange.WriteLabelResponseProtobuf(version, *resp, w)
+	} else if version == loghttp.VersionV1 {
 		err = marshal.WriteLabelResponseJSON(*resp, w)
 	} else {
 		err = marshal_legacy.WriteLabelResponseJSON(*resp, w)
 	}
 	if err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -408,7 +428,11 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = marshal.WriteSeriesResponseJSON(*resp, w)
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		err = queryrange.WriteSeriesResponseProtobuf(loghttp.GetVersion(r.RequestURI), *resp, w)
+	} else {
+		err = marshal.WriteSeriesResponseJSON(*resp, w)
+	}
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -435,10 +459,30 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = marshal.WriteIndexStatsResponseJSON(resp, w)
+	// TODO: extract
+	if r.Header.Get("Accept") == "application/vnd.google.protobuf" {
+		p := queryrange.QueryResponse{
+			Response: &queryrange.QueryResponse_Stats{
+				Stats: &queryrange.IndexStatsResponse{
+					Response: resp,
+				}},
+		}
+		buf, err := p.Marshal()
+		if err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+		w.Write(buf)
+		return
+	}
+
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		err = queryrange.WriteIndexStatsResponseProtobuf(resp, w)
+	} else {
+		err = marshal.WriteIndexStatsResponseJSON(resp, w)
+	}
 	if err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -467,9 +511,13 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
 	}
 
-	if marshal.WriteSeriesVolumeResponseJSON(resp, w) != nil {
+	if r.Header.Get("Accept") == expfmt.ProtoType {
+		err = queryrange.WriteSeriesVolumeResponseProtobuf(resp, w)
+	} else {
+		err = marshal.WriteSeriesVolumeResponseJSON(resp, w) 
+	}
+	if err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 

@@ -138,11 +138,11 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					}
 					queryType = queryTypeMetric
 				case *LokiSeriesResponse:
-					responseStats = &r.Statistics
+					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
 					queryType = queryTypeSeries
 				case *LokiLabelNamesResponse:
-					responseStats = &r.Statistics
+					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
 					queryType = queryTypeLabel
 				default:
