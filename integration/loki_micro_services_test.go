@@ -2,6 +2,8 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 	"time"
 
@@ -707,7 +709,7 @@ func TestNonIndexedMetadata(t *testing.T) {
 			},
 		},
 		// TODO: Uncomment once keep is implemented.
-		//{
+		// {
 		//	name:          "metadata-and-keep",
 		//	query:         `{job="fake"} | keep job, user`,
 		//	expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
@@ -717,8 +719,7 @@ func TestNonIndexedMetadata(t *testing.T) {
 		//		`{job="fake", user="c"}`,
 		//		`{job="fake", user="d"}`,
 		//	},
-		//},
-		// TODO: Add test for metric queries and metadata.
+		// },
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Run("ingest-logs", func(t *testing.T) {
@@ -727,22 +728,43 @@ func TestNonIndexedMetadata(t *testing.T) {
 				}
 			})
 
+			// queries ingesters with the default lookback period (3h)
 			t.Run("query-ingesters", func(t *testing.T) {
-				// queries ingesters with the default lookback period (3h)
-				resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query)
-				require.NoError(t, err)
-				assert.Equal(t, "streams", resp.Data.ResultType)
+				t.Run("log", func(t *testing.T) {
+					resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query)
+					require.NoError(t, err)
+					assert.Equal(t, "streams", resp.Data.ResultType)
 
-				var lines []string
-				var streams []string
-				for _, stream := range resp.Data.Stream {
-					streams = append(streams, labels.FromMap(stream.Stream).String())
-					for _, val := range stream.Values {
-						lines = append(lines, val[1])
+					var lines []string
+					var streams []string
+					for _, stream := range resp.Data.Stream {
+						streams = append(streams, labels.FromMap(stream.Stream).String())
+						for _, val := range stream.Values {
+							lines = append(lines, val[1])
+						}
 					}
-				}
-				assert.ElementsMatch(t, tc.expectedLines, lines)
-				assert.ElementsMatch(t, tc.expectedStreams, streams)
+					assert.ElementsMatch(t, tc.expectedLines, lines)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+				})
+				t.Run("metric", func(t *testing.T) {
+					query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+					resp, err := cliQueryFrontend.RunQuery(context.Background(), query)
+					require.NoError(t, err)
+					assert.Equal(t, "vector", resp.Data.ResultType)
+
+					var sumValues int
+					var streams []string
+					for _, stream := range resp.Data.Vector {
+						streams = append(streams, labels.FromMap(stream.Metric).String())
+						valueInt, err := strconv.Atoi(stream.Value)
+						require.NoError(t, err)
+						sumValues += valueInt
+					}
+					assert.Equal(t, len(tc.expectedLines), sumValues)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+				})
 			})
 
 			t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
@@ -757,21 +779,40 @@ func TestNonIndexedMetadata(t *testing.T) {
 
 			// Query lines
 			t.Run("query-storage", func(t *testing.T) {
-				resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query)
-				require.NoError(t, err)
-				assert.Equal(t, "streams", resp.Data.ResultType)
+				t.Run("log", func(t *testing.T) {
+					resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query)
+					require.NoError(t, err)
+					assert.Equal(t, "streams", resp.Data.ResultType)
 
-				var lines []string
-				var streams []string
-				for _, stream := range resp.Data.Stream {
-					streams = append(streams, labels.FromMap(stream.Stream).String())
-					for _, val := range stream.Values {
-						lines = append(lines, val[1])
+					var lines []string
+					var streams []string
+					for _, stream := range resp.Data.Stream {
+						streams = append(streams, labels.FromMap(stream.Stream).String())
+						for _, val := range stream.Values {
+							lines = append(lines, val[1])
+						}
 					}
-				}
 
-				assert.ElementsMatch(t, tc.expectedLines, lines)
-				assert.ElementsMatch(t, tc.expectedStreams, streams)
+					assert.ElementsMatch(t, tc.expectedLines, lines)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+				})
+				t.Run("metric", func(t *testing.T) {
+					query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+					resp, err := cliQueryFrontend.RunQuery(context.Background(), query)
+					require.NoError(t, err)
+					assert.Equal(t, "vector", resp.Data.ResultType)
+
+					var sumValues int
+					var streams []string
+					for _, stream := range resp.Data.Vector {
+						streams = append(streams, labels.FromMap(stream.Metric).String())
+						valueInt, err := strconv.Atoi(stream.Value)
+						require.NoError(t, err)
+						sumValues += valueInt
+					}
+					assert.Equal(t, len(tc.expectedLines), sumValues)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+				})
 			})
 		})
 	}

@@ -1076,8 +1076,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		// TODO: Support metadata in samples
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.nonIndexedLabels...)
 		if !ok {
 			continue
 		}
@@ -1143,8 +1142,8 @@ type bufferedIterator struct {
 	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
-	metaLabelsBuf      [][]byte // The buffer for a single entry's metadata labels.
-	currMetadataLabels [][]byte // The current labels.
+	metaLabelsBuf      [][]byte      // The buffer for a single entry's metadata labels.
+	currMetadataLabels labels.Labels // The current labels.
 
 	closed bool
 }
@@ -1176,7 +1175,7 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, metaLabels, ok := si.moveNext()
+	ts, line, metaLabelsBuff, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
@@ -1184,6 +1183,17 @@ func (si *bufferedIterator) Next() bool {
 	// we decode always the line length and ts as varint
 	si.stats.AddDecompressedBytes(int64(len(line)) + 2*binary.MaxVarintLen64)
 	si.stats.AddDecompressedLines(1)
+
+	if len(metaLabelsBuff)%2 != 0 {
+		si.err = fmt.Errorf("expected even number of metadata labels, got %d", len(si.currMetadataLabels))
+		return false
+	}
+
+	metaLabels := make(labels.Labels, len(metaLabelsBuff)/2)
+	for i := 0; i < len(metaLabelsBuff); i += 2 {
+		metaLabels[i/2].Name = string(metaLabelsBuff[i])
+		metaLabels[i/2].Value = string(metaLabelsBuff[i+1])
+	}
 
 	si.currTs = ts
 	si.currLine = line
@@ -1433,27 +1443,13 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		if len(e.currMetadataLabels)%2 != 0 {
-			e.err = fmt.Errorf("expected even number of metadata labels, got %d", len(e.currMetadataLabels))
-			return false
-		}
-
-		var nonIndexedLabels []logproto.LabelAdapter
-		if len(e.currMetadataLabels) > 0 {
-			nonIndexedLabels = make([]logproto.LabelAdapter, len(e.currMetadataLabels)/2)
-			for i := 0; i < len(e.currMetadataLabels); i += 2 {
-				nonIndexedLabels[i/2].Name = string(e.currMetadataLabels[i])
-				nonIndexedLabels[i/2].Value = string(e.currMetadataLabels[i+1])
-			}
-		}
-
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, metaLabels...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currMetadataLabels...)
 		if !matches {
 			continue
 		}
 
 		e.currLabels = lbs
-		e.cur.NonIndexedLabels = nonIndexedLabels
+		e.cur.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(e.currMetadataLabels)
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 		return true
@@ -1480,8 +1476,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		// TODO: Support metadata labels for samples.
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currMetadataLabels...)
 		if !ok {
 			continue
 		}
