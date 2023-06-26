@@ -2,18 +2,13 @@ package seriesvolume
 
 import (
 	"testing"
-	"time"
 
-	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
 
 func Test_AddVolumes(t *testing.T) {
-	now := time.Now()
-	t1 := now.Add(-time.Hour)
-	t2 := now.Add(-time.Minute)
 	volumes := map[string]uint64{
 		`{job: "loki"}`:       5,
 		`{job: "prometheus"}`: 10,
@@ -25,7 +20,7 @@ func Test_AddVolumes(t *testing.T) {
 		acc := NewAccumulator(4)
 		acc.AddVolumes(volumes)
 
-		resp := acc.Volumes(t1, t2)
+		resp := acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
@@ -45,14 +40,12 @@ func Test_AddVolumes(t *testing.T) {
 					Volume: 5,
 				},
 			},
-			Limit:   4,
-			From:    model.TimeFromUnixNano(t1.UnixNano()),
-			Through: model.TimeFromUnixNano(t2.UnixNano()),
+			Limit: 4,
 		}, resp)
 
 		acc.AddVolumes(volumes)
 
-		resp = acc.Volumes(t1, t2)
+		resp = acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
@@ -72,9 +65,7 @@ func Test_AddVolumes(t *testing.T) {
 					Volume: 10,
 				},
 			},
-			Limit:   4,
-			From:    model.TimeFromUnixNano(t1.UnixNano()),
-			Through: model.TimeFromUnixNano(t2.UnixNano()),
+			Limit: 4,
 		}, resp)
 	})
 
@@ -82,7 +73,7 @@ func Test_AddVolumes(t *testing.T) {
 		acc := NewAccumulator(5)
 		acc.AddVolumes(volumes)
 
-		resp := acc.Volumes(t1, t2)
+		resp := acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
@@ -102,9 +93,7 @@ func Test_AddVolumes(t *testing.T) {
 					Volume: 5,
 				},
 			},
-			Limit:   5,
-			From:    model.TimeFromUnixNano(t1.UnixNano()),
-			Through: model.TimeFromUnixNano(t2.UnixNano()),
+			Limit: 5,
 		}, resp)
 	})
 
@@ -124,7 +113,7 @@ func Test_AddVolumes(t *testing.T) {
 		}
 		acc.AddVolumes(volumes)
 
-		resp := acc.Volumes(t1, t2)
+		resp := acc.Volumes()
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
 				{
@@ -136,9 +125,7 @@ func Test_AddVolumes(t *testing.T) {
 					Volume: 25,
 				},
 			},
-			Limit:   2,
-			From:    model.TimeFromUnixNano(t1.UnixNano()),
-			Through: model.TimeFromUnixNano(t2.UnixNano()),
+			Limit: 2,
 		}, resp)
 	})
 }
@@ -196,9 +183,7 @@ func Test_Merge(t *testing.T) {
 					Volume: 15,
 				},
 			},
-			Limit:   limit,
-			From:    0,
-			Through: 0,
+			Limit: limit,
 		}, mergedResponse)
 	})
 
@@ -250,18 +235,12 @@ func Test_Merge(t *testing.T) {
 					Volume: 50,
 				},
 			},
-			Limit:   limit,
-			From:    0,
-			Through: 0,
+			Limit: limit,
 		}, mergedResponse)
 	})
 
 	t.Run("aggregates responses into earliest from and latest through timestamp of input", func(t *testing.T) {
 		limit := int32(5)
-		now := time.Now()
-		oneHourFromNow := now.Add(time.Hour)
-		oneHourAgo := now.Add(-time.Hour)
-
 		responses := []*logproto.VolumeResponse{
 			{
 				Volumes: []logproto.Volume{
@@ -274,9 +253,7 @@ func Test_Merge(t *testing.T) {
 						Volume: 50,
 					},
 				},
-				Limit:   limit,
-				From:    5,
-				Through: model.TimeFromUnixNano(oneHourAgo.UnixNano()),
+				Limit: limit,
 			},
 			{
 				Volumes: []logproto.Volume{
@@ -293,9 +270,7 @@ func Test_Merge(t *testing.T) {
 						Volume: 50,
 					},
 				},
-				Limit:   limit,
-				From:    10,
-				Through: model.TimeFromUnixNano(oneHourFromNow.UnixNano()),
+				Limit: limit,
 			},
 		}
 
@@ -316,9 +291,7 @@ func Test_Merge(t *testing.T) {
 					Volume: 15,
 				},
 			},
-			Limit:   limit,
-			From:    5,
-			Through: model.TimeFromUnixNano(oneHourFromNow.UnixNano()),
+			Limit: limit,
 		}, mergedResponse)
 	})
 }

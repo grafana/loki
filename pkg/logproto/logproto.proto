@@ -397,14 +397,6 @@ message VolumeRequest {
 message VolumeResponse {
   repeated Volume volumes = 1 [(gogoproto.nullable) = false];
   int32 limit = 2;
-  int64 from = 3 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  int64 through = 4 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
 }
 
 message Volume {

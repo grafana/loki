@@ -135,9 +135,7 @@ var (
 			{Name: `{foo="bar"}`, Volume: 1024},
 			{Name: `{bar="baz"}`, Volume: 3350},
 		},
-		From:    model.TimeFromUnix(testTime.Add(-4 * time.Hour).Unix()),
-		Through: model.TimeFromUnix(testTime.Add(-1 * time.Hour).Unix()),
-		Limit:   5,
+		Limit: 5,
 	}
 )
 
@@ -576,7 +574,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := labelVolumeResult(seriesVolume)
+	count, h := seriesVolumeResult(seriesVolume)
 	rt.setHandler(h)
 
 	resp, err := tpw(rt).RoundTrip(req)
@@ -596,7 +594,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 				}},
 				Samples: []logproto.LegacySample{{
 					Value:       6700,
-					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
+					TimestampMs: testTime.Unix() * 1e3,
 				}},
 			},
 			{
@@ -606,7 +604,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 				}},
 				Samples: []logproto.LegacySample{{
 					Value:       2048,
-					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
+					TimestampMs: testTime.Unix() * 1e3,
 				}},
 			},
 		},
@@ -1412,7 +1410,7 @@ func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
 	})
 }
 
-func labelVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
+func seriesVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

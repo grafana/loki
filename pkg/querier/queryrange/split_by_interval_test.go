@@ -864,7 +864,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		).Wrap(next)
 	}
 
-	t.Run("label volumes", func(t *testing.T) {
+	t.Run("series volumes", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 
@@ -875,9 +875,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{bar="baz"}`, Volume: 28},
 					},
-					From:    from,
-					Through: through,
-					Limit:   2},
+					Limit: 2},
 				Headers: nil,
 			}, nil
 		})
@@ -892,20 +890,18 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
-		response := res.(*LokiPromResponse)
-
-		require.Len(t, response.Response.Data.Result, 2)
-		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 76}},
-		})
-		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{{Name: "bar", Value: "baz"}},
-			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 56}},
+		response := res.(*VolumeResponse)
+		require.Len(t, response.Response.Volumes, 2)
+		require.Equal(t, response.Response, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: "{foo=\"bar\"}", Volume: 76},
+				{Name: "{bar=\"baz\"}", Volume: 56},
+			},
+			Limit: 2,
 		})
 	})
 
-	t.Run("label volumes with limits", func(t *testing.T) {
+	t.Run("series volumes with limits", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -917,9 +913,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 						{Name: `{foo="bar"}`, Volume: 38},
 						{Name: `{fizz="buzz"}`, Volume: 28},
 					},
-					From:    from,
-					Through: through,
-					Limit:   1},
+					Limit: 1},
 				Headers: nil,
 			}, nil
 		})
@@ -934,12 +928,13 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
-		response := res.(*LokiPromResponse)
-
-		require.Len(t, response.Response.Data.Result, 1)
-		require.Contains(t, response.Response.Data.Result, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{{Name: "foo", Value: "bar"}},
-			Samples: []logproto.LegacySample{{TimestampMs: end.Unix() * 1e3, Value: 152}},
+		response := res.(*VolumeResponse)
+		require.Len(t, response.Response.Volumes, 1)
+		require.Equal(t, response.Response, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: "{foo=\"bar\"}", Volume: 152},
+			},
+			Limit: 1,
 		})
 	})
 }
