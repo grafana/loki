@@ -452,6 +452,7 @@ func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangeb
 		return decodeResponseProtobuf(r, req)
 	}
 
+	// Default to JSON.
 	return decodeResponseJSON(r, req)
 }
 
@@ -629,7 +630,16 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 	}
 }
 
-func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
+	if req.Header.Get("Accept") == ProtobufType {
+		return encodeResponseProtobuf(ctx, res)
+	}
+
+	// Default to JSON.
+	return encodeResponseJSON(ctx, res)
+}
+
+func encodeResponseJSON(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -696,6 +706,42 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 			"Content-Type": []string{"application/json"},
 		},
 		Body:       io.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
+}
+
+func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
+	defer sp.Finish()
+
+	p := QueryResponse{}
+
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		p.Response = &QueryResponse_Prom{response}
+	case *LokiResponse:
+		p.Response = &QueryResponse_Streams{response}
+	case *LokiSeriesResponse:
+		p.Response = &QueryResponse_Series{response}
+	case *LokiLabelNamesResponse:
+		p.Response = &QueryResponse_Labels{response}
+	case *IndexStatsResponse:
+		p.Response = &QueryResponse_Stats{response}
+	default:
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+	}
+
+	buf, err := p.Marshal()
+	if err != nil {
+		return nil, err
+	}
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{ProtobufType},
+		},
+		Body:       io.NopCloser(bytes.NewBuffer(buf)),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil

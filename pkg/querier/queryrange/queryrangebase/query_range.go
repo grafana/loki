@@ -277,7 +277,8 @@ func bodyBuffer(res *http.Response) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.Response, error) {
+// TODO(karsten): remove prometheusCodec from code base since only MergeResponse is used.
+func (prometheusCodec) EncodeResponse(ctx context.Context, _ *http.Request, res Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 
