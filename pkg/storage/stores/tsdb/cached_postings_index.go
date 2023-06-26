@@ -43,10 +43,10 @@ type cachedPostingsReader struct {
 
 func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
-	if postings, got := c.fetchPostings(ctx, key); got {
+	if _, got := c.fetchPostings(ctx, key); got {
 		// call PostingsForMatchers just to populate things.
-		PostingsForMatchers(c.reader, nil, matchers...)
-		return fn(postings)
+		p, _ := PostingsForMatchers(c.reader, nil, matchers...)
+		return fn(p)
 	}
 
 	p, err := PostingsForMatchers(c.reader, nil, matchers...)
