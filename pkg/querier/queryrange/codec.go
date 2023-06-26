@@ -448,6 +448,15 @@ func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangeb
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
 
+	if r.Header.Get("Content-Type") == ProtobufType {
+		return decodeResponseProtobuf(r, req)
+	}
+
+	return decodeResponseJSON(r, req)
+}
+
+func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+
 	var buf []byte
 	var err error
 	if buffer, ok := r.Body.(Buffer); ok {
@@ -581,6 +590,41 @@ func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangeb
 			}, nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%s)", string(resp.Data.ResultType))
+		}
+	}
+}
+
+func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+	var buf []byte
+	var err error
+	if buffer, ok := r.Body.(Buffer); ok {
+		buf = buffer.Bytes()
+	} else {
+		buf, err = io.ReadAll(r.Body)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+	}
+
+	resp := &QueryResponse{}
+	resp.Unmarshal(buf)
+
+	headers := httpResponseHeadersToPromResponseHeaders(r.Header)
+	switch req.(type) {
+	case *LokiSeriesRequest:
+		return resp.GetSeries().WithHeaders(headers), nil
+	case *LokiLabelNamesRequest:
+		return resp.GetLabels().WithHeaders(headers), nil
+	case *logproto.IndexStatsRequest:
+		return resp.GetStats().WithHeaders(headers), nil
+	default:
+		switch concrete := resp.Response.(type) {
+		case *QueryResponse_Prom:
+			return concrete.Prom.WithHeaders(headers), nil
+		case *QueryResponse_Streams:
+			return concrete.Streams.WithHeaders(headers), nil
+		default:
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
 		}
 	}
 }
