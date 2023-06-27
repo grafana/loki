@@ -15,7 +15,6 @@ package encoding
 
 import (
 	"encoding/binary"
-	"fmt"
 	"hash"
 	"hash/crc32"
 	"math"
@@ -148,7 +147,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 	// We never have to access this method at the far end of the byte slice. Thus just checking
 	// against the MaxVarintLen32 is sufficient.
 	if bs.Len() < off+binary.MaxVarintLen32 {
-		return Decbuf{E: fmt.Errorf("bs.Len() < off+binary.MaxVarintLen32: %w", ErrInvalidSize)}
+		return Decbuf{E: ErrInvalidSize}
 	}
 	b := bs.Range(off, off+binary.MaxVarintLen32)
 
@@ -158,7 +157,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 	}
 
 	if bs.Len() < off+n+int(l)+4 {
-		return Decbuf{E: fmt.Errorf("bs.Len() < off+n+int(l)+4: %w", ErrInvalidSize)}
+		return Decbuf{E: ErrInvalidSize}
 	}
 
 	// Load bytes holding the contents plus a CRC32 checksum.
@@ -166,7 +165,7 @@ func NewDecbufUvarintAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Dec
 	dec := Decbuf{B: b[:len(b)-4]}
 
 	if dec.Crc32(castagnoliTable) != binary.BigEndian.Uint32(b[len(b)-4:]) {
-		return Decbuf{E: fmt.Errorf("dec.Crc32() != binary.BigEndian: %w", ErrInvalidChecksum)}
+		return Decbuf{E: ErrInvalidChecksum}
 	}
 	return dec
 }
@@ -242,7 +241,7 @@ func (d *Decbuf) Uvarint64() uint64 {
 	}
 	x, n := varint.Uvarint(d.B)
 	if n < 1 {
-		d.E = fmt.Errorf("Uvarint64: %w", ErrInvalidSize)
+		d.E = ErrInvalidSize
 		return 0
 	}
 	d.B = d.B[n:]
@@ -304,13 +303,7 @@ func (d *Decbuf) ConsumePadding() {
 	}
 }
 
-func (d *Decbuf) Err() error {
-	if d.E != nil {
-		return fmt.Errorf("decbuf err: %w", d.E)
-	}
-	return nil
-}
-
+func (d *Decbuf) Err() error  { return d.E }
 func (d *Decbuf) Len() int    { return len(d.B) }
 func (d *Decbuf) Get() []byte { return d.B }
 
