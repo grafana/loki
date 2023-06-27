@@ -175,4 +175,3 @@ message QueryResponse {
     VolumeResponse volume = 6;
   }
 }
-
