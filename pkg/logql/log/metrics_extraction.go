@@ -251,7 +251,7 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte, metadataLabels ...labels.Label) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, _ ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -266,7 +266,7 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, metadataLabel
 	return sp.extractor.Process(ts, line)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, metadataLabels ...labels.Label) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, _ ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
