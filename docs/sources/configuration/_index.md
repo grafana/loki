@@ -2028,7 +2028,9 @@ tsdb_shipper:
 
   [ingesterdbretainperiod: <duration>]
 
-  [cache_postings: <boolean>]
+  # Experimental. Whether TSDB should cache postings or not.
+  # CLI flag: -tsdb.cache-postings
+  [cache_postings: <boolean> | default = false]
 ```
 
 ### chunk_store_config
