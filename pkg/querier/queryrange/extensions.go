@@ -1,4 +1,3 @@
-
 package queryrange
 
 import "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"

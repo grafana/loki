@@ -6,17 +6,18 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/prometheus/prometheus/promql"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/prometheus/prometheus/promql"
 )
 
-const(
-	ProtobufType                = `application/vnd.google.protobuf`
+const (
+	ProtobufType = `application/vnd.google.protobuf`
 )
 
 // WriteQueryResponseProtobuf marshals the promql.Value to v1 loghttp JSON and then
@@ -35,14 +36,14 @@ func WriteQueryResponseProtobuf(params logql.LiteralParams, v logqlmodel.Result,
 	return err
 }
 
-// WriteLabelResponseProtobuf marshals a logproto.LabelResponse to queryrange LokiLabelNamesResponse 
+// WriteLabelResponseProtobuf marshals a logproto.LabelResponse to queryrange LokiLabelNamesResponse
 // and then writes it to the provided io.Writer.
 func WriteLabelResponseProtobuf(version loghttp.Version, l logproto.LabelResponse, w io.Writer) error {
 	p := QueryResponse{
 		Response: &QueryResponse_Labels{
-			Labels: &LokiLabelNamesResponse {
-				Status:     "success",
-				Data:       l.Values,
+			Labels: &LokiLabelNamesResponse{
+				Status:  "success",
+				Data:    l.Values,
 				Version: uint32(version),
 				// Statistics: statResult,
 			},
@@ -62,9 +63,9 @@ func WriteSeriesResponseProtobuf(version loghttp.Version, r logproto.SeriesRespo
 	p := QueryResponse{
 		Response: &QueryResponse_Series{
 			Series: &LokiSeriesResponse{
-				Status:     "success",
-				Version:    uint32(version),
-				Data:       r.Series,
+				Status:  "success",
+				Version: uint32(version),
+				Data:    r.Series,
 				// Statistics: statResult,
 			}},
 	}
@@ -131,7 +132,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*Qu
 					},
 					Statistics: result.Statistics,
 				},
-				},
+			},
 		}, nil
 	case promql.Matrix:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -150,7 +151,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*Qu
 					},
 					Statistics: result.Statistics,
 				},
-				},
+			},
 		}, nil
 	case promql.Scalar:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -170,7 +171,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*Qu
 					},
 					Statistics: result.Statistics,
 				},
-				},
+			},
 		}, nil
 	case logqlmodel.Streams:
 		return &QueryResponse{

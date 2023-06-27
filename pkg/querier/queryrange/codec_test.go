@@ -446,7 +446,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 	}{
 		{"error", "/loki/api/v1/query_range", &badResponse{}, "", true},
 		{
-			"prom", "/loki/api/v1/query_range", 
+			"prom", "/loki/api/v1/query_range",
 			&LokiPromResponse{
 				Response: &queryrangebase.PrometheusResponse{
 					Status: loghttp.QueryStatusSuccess,
@@ -456,7 +456,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					},
 				},
 				Statistics: statsResult,
-		}, matrixString, false},
+			}, matrixString, false},
 		{
 			"loki v1", "/loki/api/v1/query_range",
 			&LokiResponse{
@@ -536,9 +536,9 @@ func Test_codec_EncodeResponse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			u := &url.URL{Path: tt.path}
 			req := &http.Request{
-					Method:     "GET",
-					RequestURI: u.String(),
-					URL: u,
+				Method:     "GET",
+				RequestURI: u.String(),
+				URL:        u,
 			}
 			got, err := DefaultCodec.EncodeResponse(context.TODO(), req, tt.res)
 			if (err != nil) != tt.wantErr {
@@ -1400,9 +1400,9 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 	ctx := context.Background()
 	u := &url.URL{Path: "/loki/api/v1/query_range"}
 	req := &http.Request{
-			Method:     "GET",
-			RequestURI: u.String(), // This is what the httpgrpc code looks at.
-			URL: u,
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
 	}
 	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
@@ -1444,9 +1444,9 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 	ctx := context.Background()
 	u := &url.URL{Path: "/loki/api/v1/query_range"}
 	req := &http.Request{
-			Method:     "GET",
-			RequestURI: u.String(), // This is what the httpgrpc code looks at.
-			URL: u,
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
 	}
 	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiPromResponse{
 		Response: &queryrangebase.PrometheusResponse{

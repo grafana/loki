@@ -502,7 +502,7 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteSeriesVolumeResponseProtobuf(resp, w)
 	} else {
-		err = marshal.WriteSeriesVolumeResponseJSON(resp, w) 
+		err = marshal.WriteSeriesVolumeResponseJSON(resp, w)
 	}
 	if err != nil {
 		serverutil.WriteError(err, w)

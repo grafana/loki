@@ -52,7 +52,6 @@ type Config struct {
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 
-	
 	// Accepted format for querier responses
 	AcceptedQueryResponseFormat string `yaml:"accepted_query_response_format"`
 }

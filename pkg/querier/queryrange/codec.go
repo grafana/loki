@@ -37,7 +37,7 @@ import (
 
 var DefaultCodec = &Codec{}
 
-type Codec struct {}
+type Codec struct{}
 
 type RequestProtobufCodec struct {
 	Codec
@@ -451,8 +451,6 @@ func (p RequestProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebas
 	req.Header.Set("Accept", "application/vnd.google.protobuf")
 	return req, nil
 }
-
-
 
 type Buffer interface {
 	Bytes() []byte

@@ -61,7 +61,7 @@ func InitWorkerService(
 		serverutil.RecoveryHTTPMiddleware,
 		authMiddleware,
 		serverutil.NewPrepopulateMiddleware(),
-		//serverutil.ResponseJSONMiddleware(),
+		serverutil.ResponseJSONMiddleware(),
 	)
 
 	internalRouter := mux.NewRouter()
