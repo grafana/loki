@@ -1453,7 +1453,7 @@ func (r *Reader) PostingsRanges() (map[labels.Label]Range, error) {
 		}
 		d := encoding.DecWrap(tsdb_enc.NewDecbufAt(r.b, int(off), castagnoliTable))
 		if d.Err() != nil {
-			return errors.Wrap(d.Err(), "postings ranges")
+			return d.Err()
 		}
 		m[labels.Label{Name: key[0], Value: key[1]}] = Range{
 			Start: int64(off) + 4,
@@ -1499,7 +1499,7 @@ func NewSymbols(bs ByteSlice, version, off int) (*Symbols, error) {
 		s.seen++
 	}
 	if d.Err() != nil {
-		return nil, errors.Wrap(d.Err(), "new symbols")
+		return nil, d.Err()
 	}
 	return s, nil
 }
@@ -1599,7 +1599,7 @@ func (s *symbolsIter) Next() bool {
 	s.cur = yoloString(s.d.UvarintBytes())
 	s.cnt--
 	if s.d.Err() != nil {
-		s.err = errors.Wrap(s.d.Err(), "symbols iter err")
+		s.err = s.d.Err()
 		return false
 	}
 	return true
@@ -1635,7 +1635,7 @@ func ReadOffsetTable(bs ByteSlice, off uint64, f func([]string, uint64, int) err
 		}
 		cnt--
 	}
-	return errors.Wrap(d.Err(), "read offset table")
+	return d.Err()
 }
 
 func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, error) {
@@ -1648,7 +1648,7 @@ func readFingerprintOffsetsTable(bs ByteSlice, off uint64) (FingerprintOffsets, 
 		cnt--
 	}
 
-	return res, errors.Wrap(d.Err(), "read fingerprint offsets table")
+	return res, d.Err()
 
 }
 
@@ -1827,7 +1827,7 @@ func (r *Reader) Series(id storage.SeriesRef, from int64, through int64, lbls *l
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
-		return 0, errors.Wrap(d.Err(), "series")
+		return 0, d.Err()
 	}
 
 	fprint, err := r.dec.Series(r.version, d.Get(), id, from, through, lbls, chks)
@@ -1846,7 +1846,7 @@ func (r *Reader) ChunkStats(id storage.SeriesRef, from, through int64, lbls *lab
 	}
 	d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(r.b, int(offset), castagnoliTable))
 	if d.Err() != nil {
-		return 0, ChunkStats{}, errors.Wrap(d.Err(), "reader chunk stats")
+		return 0, ChunkStats{}, d.Err()
 	}
 
 	return r.dec.ChunkStats(r.version, d.Get(), id, from, through, lbls)
