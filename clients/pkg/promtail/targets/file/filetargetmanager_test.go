@@ -43,7 +43,7 @@ func newTestPositions(logger log.Logger, filePath string) (positions.Positions, 
 	return pos, nil
 }
 
-func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positions positions.Positions, observePath string) (*FileTargetManager, error) {
+func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positions positions.Positions, observePath string, excludePath string) (*FileTargetManager, error) {
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
 			"localhost": "",
@@ -55,6 +55,10 @@ func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positi
 		},
 		Source: "",
 	}
+	if len(excludePath) > 0 {
+		targetGroup.Labels["__path_exclude__"] = model.LabelValue(excludePath)
+	}
+
 	sc := scrapeconfig.Config{
 		JobName:        "",
 		PipelineStages: nil,
@@ -92,7 +96,7 @@ func TestLongPositionsSyncDelayStillSavesCorrectPosition(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,7 +156,7 @@ func TestWatchEntireDirectory(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +216,7 @@ func TestFileRolls(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*", logDirName+"/*.1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -232,7 +236,7 @@ func TestFileRolls(t *testing.T) {
 		return len(client.Received()) == 10
 	}, time.Second*10, time.Millisecond*1)
 
-	// Rename the log file to something not in the pattern, then create a new file with the same name.
+	// Rename the log file to something excluded, then create a new file with the same name.
 	err = os.Rename(logFile, filepath.Join(logDirName, "test.log.1"))
 	if err != nil {
 		t.Fatal("Failed to rename log file for test", err)
@@ -285,7 +289,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -315,7 +319,7 @@ func TestResumesWhereLeftOff(t *testing.T) {
 	}
 
 	// Create a new target manager, keep the same client so we can track what was sent through the handler.
-	ftm2, err := newTestFileTargetManager(logger, client, ps2, logDirName+"/*.log")
+	ftm2, err := newTestFileTargetManager(logger, client, ps2, logDirName+"/*.log", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,7 +369,7 @@ func TestGlobWithMultipleFiles(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log")
+	ftm, err := newTestFileTargetManager(logger, client, ps, logDirName+"/*.log", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -484,7 +488,7 @@ func TestDeadlockStartWatchingDuringSync(t *testing.T) {
 	client := fake.New(func() {})
 	defer client.Stop()
 
-	ftm, err := newTestFileTargetManager(logger, client, ps, oldLogDir+"/*")
+	ftm, err := newTestFileTargetManager(logger, client, ps, oldLogDir+"/*", "")
 	assert.NoError(t, err)
 
 	done := make(chan struct{})
