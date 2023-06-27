@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -63,14 +64,34 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 				}
 			})
 
-			resps := map[time.Time]*VolumeResponse{}
-			for bucket, req := range reqs {
-				resp, err := next.Do(ctx, req)
-				if err != nil {
-					return nil, err
-				}
+			type f func(context.Context) (time.Time, definitions.Response, error)
+			var jobs []f
 
-				resps[bucket] = resp.(*VolumeResponse)
+			for bucket, req := range reqs {
+				b, r := bucket, req
+				jobs = append(jobs, f(func(ctx context.Context) (time.Time, definitions.Response, error) {
+					resp, err := next.Do(ctx, r)
+					if err != nil {
+						return b, nil, err
+					}
+
+					return b, resp, nil
+				}))
+			}
+
+			resps := map[time.Time]*VolumeResponse{}
+			err := concurrency.ForEachJob(
+				ctx,
+				len(jobs),
+				len(jobs),
+				func(ctx context.Context, i int) error {
+					bucket, resp, err := jobs[i](ctx)
+					resps[bucket] = resp.(*VolumeResponse)
+					return err
+				})
+
+			if err != nil {
+				return nil, err
 			}
 
 			promResp := toPrometheusResponse(resps)
