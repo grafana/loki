@@ -66,7 +66,6 @@ import (
 	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -1246,7 +1245,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 
 func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 	// Only expose per-tenant metric if index gateway runs as standalone service
-	if util.StringsContain(t.Cfg.Target, IndexGateway) {
+	if t.Cfg.isModuleEnabled(IndexGateway) {
 		interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
 	}
