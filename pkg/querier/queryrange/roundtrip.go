@@ -132,6 +132,10 @@ func NewTripperware(
 		}
 	}
 
+	if cfg.AcceptedQueryResponseFormat == "protobuf" {
+		LokiCodec.accept.Store("protobuf")
+	}
+
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, LokiCodec, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {

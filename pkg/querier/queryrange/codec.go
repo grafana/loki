@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"sort"
 	strings "strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
@@ -37,7 +38,9 @@ import (
 
 var LokiCodec = &Codec{}
 
-type Codec struct{}
+type Codec struct{
+	accept atomic.Value
+}
 
 func (r *LokiRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
@@ -288,7 +291,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 	}
 }
 
-func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
+func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
@@ -298,6 +301,10 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
 		header.Set(httpreq.LokiActorPathHeader, actor)
+	}
+
+	if c.accept.Load() == "protobuf" {
+		header.Set("Accept", ProtobufType)
 	}
 
 	switch request := r.(type) {

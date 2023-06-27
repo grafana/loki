@@ -23,10 +23,13 @@ func NewPrepopulateMiddleware() middleware.Interface {
 	})
 }
 
+// ResponseJSONMiddleware sets the Content-Type header to JSON if it's not set.
 func ResponseJSONMiddleware() middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			if w.Header().Get("Content-Type") == "" {
+				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
+			}
 			next.ServeHTTP(w, req)
 		})
 	})
