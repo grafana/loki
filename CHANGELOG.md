@@ -53,7 +53,7 @@
 * [9495](https://github.com/grafana/loki/pull/9495) **thampiotr**: Promtail: Fix potential goroutine leak in file tailer.
 * [9650](https://github.com/grafana/loki/pull/9650) **ashwanthgoli**: Config: ensure storage config defaults apply to named stores.
 * [9629](https://github.com/grafana/loki/pull/9629) **periklis**: Fix duplicate label values from ingester streams.
-* [9705](https://github.com/grafana/loki/pull/9629) **honganan**: Fix pagination problem.
+* [9705](https://github.com/grafana/loki/pull/9629) **honganan**: Fix a bug in the query frontend where in certain cases of log query with limit can yield incorrect topN limits leading to skipped log lines when doing pagination based on timestamp.
 
 ##### Changes
 
