@@ -91,7 +91,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Query:   `{foo="bar"}`,
 		}, false},
 		{"index_stats", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
+			return DefaultCodec.EncodeRequest(context.Background(), &logproto.IndexStatsRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
@@ -102,7 +102,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Matchers: `{job="foo"}`,
 		}, false},
 		{"series_volume", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
@@ -115,7 +115,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Limit:    3,
 		}, false},
 		{"series_volume_default_limit", func() (*http.Request, error) {
-			return LokiCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
@@ -133,7 +133,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := LokiCodec.DecodeRequest(context.TODO(), req, nil)
+			got, err := DefaultCodec.DecodeRequest(context.TODO(), req, nil)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -274,7 +274,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LokiCodec.DecodeResponse(context.TODO(), tt.res, tt.req)
+			got, err := DefaultCodec.DecodeResponse(context.TODO(), tt.res, tt.req)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.DecodeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -286,7 +286,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 
 func Test_codec_EncodeRequest(t *testing.T) {
 	// we only accept LokiRequest.
-	got, err := LokiCodec.EncodeRequest(context.TODO(), &queryrangebase.PrometheusRequest{})
+	got, err := DefaultCodec.EncodeRequest(context.TODO(), &queryrangebase.PrometheusRequest{})
 	require.Error(t, err)
 	require.Nil(t, got)
 
@@ -301,7 +301,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 		StartTs:   start,
 		EndTs:     end,
 	}
-	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
+	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/query_range", got.URL.Path)
@@ -314,7 +314,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "10000.000000", got.URL.Query().Get("interval"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Query, req.(*LokiRequest).Query)
 	require.Equal(t, toEncode.Step, req.(*LokiRequest).Step)
@@ -327,7 +327,7 @@ func Test_codec_EncodeRequest(t *testing.T) {
 }
 
 func Test_codec_series_EncodeRequest(t *testing.T) {
-	got, err := LokiCodec.EncodeRequest(context.TODO(), &queryrangebase.PrometheusRequest{})
+	got, err := DefaultCodec.EncodeRequest(context.TODO(), &queryrangebase.PrometheusRequest{})
 	require.Error(t, err)
 	require.Nil(t, got)
 
@@ -338,7 +338,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 		StartTs: start,
 		EndTs:   end,
 	}
-	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
+	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/series", got.URL.Path)
@@ -347,7 +347,7 @@ func Test_codec_series_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("match[]"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.Match, req.(*LokiSeriesRequest).Match)
 	require.Equal(t, toEncode.StartTs, req.(*LokiSeriesRequest).StartTs)
@@ -362,7 +362,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 		StartTs: start,
 		EndTs:   end,
 	}
-	got, err := LokiCodec.EncodeRequest(ctx, toEncode)
+	got, err := DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/labels", got.URL.Path)
@@ -370,7 +370,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
 
 	// testing a full roundtrip
-	req, err := LokiCodec.DecodeRequest(context.TODO(), got, nil)
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
@@ -383,7 +383,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 		EndTs:   end,
 		Query:   `{foo="bar"}`,
 	}
-	got, err = LokiCodec.EncodeRequest(ctx, toEncode)
+	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
@@ -392,7 +392,7 @@ func Test_codec_labels_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{foo="bar"}`, got.URL.Query().Get("query"))
 
 	// testing a full roundtrip
-	req, err = LokiCodec.DecodeRequest(context.TODO(), got, nil)
+	req, err = DefaultCodec.DecodeRequest(context.TODO(), got, nil)
 	require.NoError(t, err)
 	require.Equal(t, toEncode.StartTs, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, toEncode.EndTs, req.(*LokiLabelNamesRequest).EndTs)
@@ -406,14 +406,14 @@ func Test_codec_labels_DecodeRequest(t *testing.T) {
 	require.NoError(t, err)
 
 	r := &http.Request{URL: u}
-	req, err := LokiCodec.DecodeRequest(context.TODO(), r, nil)
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), r, nil)
 	require.NoError(t, err)
 	require.Equal(t, start, req.(*LokiLabelNamesRequest).StartTs)
 	require.Equal(t, end, req.(*LokiLabelNamesRequest).EndTs)
 	require.Equal(t, `{foo="bar"}`, req.(*LokiLabelNamesRequest).Query)
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", req.(*LokiLabelNamesRequest).Path)
 
-	got, err := LokiCodec.EncodeRequest(ctx, req)
+	got, err := DefaultCodec.EncodeRequest(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, ctx, got.Context())
 	require.Equal(t, "/loki/api/v1/labels/__name__/values", got.URL.Path)
@@ -429,7 +429,7 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 		Through:  through,
 		Matchers: `{job="foo"}`,
 	}
-	got, err := LokiCodec.EncodeRequest(context.Background(), toEncode)
+	got, err := DefaultCodec.EncodeRequest(context.Background(), toEncode)
 	require.Nil(t, err)
 	require.Equal(t, fmt.Sprintf("%d", from.UnixNano()), got.URL.Query().Get("start"))
 	require.Equal(t, fmt.Sprintf("%d", through.UnixNano()), got.URL.Query().Get("end"))
@@ -531,7 +531,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LokiCodec.EncodeResponse(context.TODO(), tt.res)
+			got, err := DefaultCodec.EncodeResponse(context.TODO(), tt.res)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.EncodeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1002,7 +1002,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := LokiCodec.MergeResponse(tt.responses...)
+			got, err := DefaultCodec.MergeResponse(tt.responses...)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.MergeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1389,7 +1389,7 @@ func (b *buffer) Bytes() []byte {
 
 func Benchmark_CodecDecodeLogs(b *testing.B) {
 	ctx := context.Background()
-	resp, err := LokiCodec.EncodeResponse(ctx, &LokiResponse{
+	resp, err := DefaultCodec.EncodeResponse(ctx, &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: logproto.BACKWARD,
 		Version:   uint32(loghttp.VersionV1),
@@ -1413,7 +1413,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		_, _ = reader.Seek(0, io.SeekStart)
-		result, err := LokiCodec.DecodeResponse(ctx, resp, &LokiRequest{
+		result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiRequest{
 			Limit:     100,
 			StartTs:   start,
 			EndTs:     end,
@@ -1427,7 +1427,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 
 func Benchmark_CodecDecodeSamples(b *testing.B) {
 	ctx := context.Background()
-	resp, err := LokiCodec.EncodeResponse(ctx, &LokiPromResponse{
+	resp, err := DefaultCodec.EncodeResponse(ctx, &LokiPromResponse{
 		Response: &queryrangebase.PrometheusResponse{
 			Status: loghttp.QueryStatusSuccess,
 			Data: queryrangebase.PrometheusData{
@@ -1447,7 +1447,7 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		_, _ = reader.Seek(0, io.SeekStart)
-		result, err := LokiCodec.DecodeResponse(ctx, resp, &LokiRequest{
+		result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiRequest{
 			Limit:     100,
 			StartTs:   start,
 			EndTs:     end,

@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"sort"
 	strings "strings"
-	"sync/atomic"
 	"time"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
@@ -36,10 +35,12 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
-var LokiCodec = &Codec{}
+var DefaultCodec = &Codec{}
 
-type Codec struct{
-	accept atomic.Value
+type Codec struct {}
+
+type RequestProtobufCodec struct {
+	Codec
 }
 
 func (r *LokiRequest) GetEnd() int64 {
@@ -303,10 +304,6 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(httpreq.LokiActorPathHeader, actor)
 	}
 
-	if c.accept.Load() == "protobuf" {
-		header.Set("Accept", ProtobufType)
-	}
-
 	switch request := r.(type) {
 	case *LokiRequest:
 		params := url.Values{
@@ -444,6 +441,18 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
 }
+
+func (p RequestProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
+	req, err := p.Codec.EncodeRequest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/vnd.google.protobuf")
+	return req, nil
+}
+
+
 
 type Buffer interface {
 	Bytes() []byte

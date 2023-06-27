@@ -132,50 +132,51 @@ func NewTripperware(
 		}
 	}
 
+	var codec queryrangebase.Codec = DefaultCodec
 	if cfg.AcceptedQueryResponseFormat == "protobuf" {
-		LokiCodec.accept.Store("protobuf")
+		codec = &RequestProtobufCodec{}
 	}
 
-	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, LokiCodec, statsCache,
+	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, resultsCache,
+	metricsTripperware, err := NewMetricTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache,
 		cacheGenNumLoader, retentionEnabled, PrometheusExtractor{}, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, metrics, indexStatsTripperware)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	// NOTE: When we would start caching response from non-metric queries we would have to consider cache gen headers as well in
 	// MergeResponse implementation for Loki codecs same as it is done in Cortex at https://github.com/cortexproject/cortex/blob/21bad57b346c730d684d6d0205efef133422ab28/pkg/querier/queryrange/query_range.go#L170
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, resultsCache, metrics, indexStatsTripperware)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, engineOpts, log, limits, schema, codec, resultsCache, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, LokiCodec, metrics, schema)
+	seriesTripperware, err := NewSeriesTripperware(cfg, log, limits, codec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, LokiCodec, metrics, schema)
+	labelsTripperware, err := NewLabelsTripperware(cfg, log, limits, codec, metrics, schema)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, LokiCodec, metrics, indexStatsTripperware)
+	instantMetricTripperware, err := NewInstantMetricTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, codec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -455,7 +456,7 @@ func NewLogFilterTripperware(
 		}
 
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, DefaultCodec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -537,7 +538,7 @@ func NewSeriesTripperware(
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, DefaultCodec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil
@@ -688,7 +689,7 @@ func NewMetricTripperware(
 
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			rt := NewLimitedRoundTripper(next, DefaultCodec, limits, schema.Configs, queryRangeMiddleware...)
 			return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 				if !strings.HasSuffix(r.URL.Path, "/query_range") {
 					return next.RoundTrip(r)
@@ -746,7 +747,7 @@ func NewInstantMetricTripperware(
 		}
 
 		if len(queryRangeMiddleware) > 0 {
-			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
+			return NewLimitedRoundTripper(next, DefaultCodec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
 	}, nil

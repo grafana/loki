@@ -188,7 +188,7 @@ func TestMetricsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -246,7 +246,7 @@ func TestMetricsTripperware(t *testing.T) {
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
-	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
 	// testing cache
@@ -256,7 +256,7 @@ func TestMetricsTripperware(t *testing.T) {
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
 	require.NoError(t, err)
-	lokiCacheResponse, err := LokiCodec.DecodeResponse(ctx, cacheResp, lreq)
+	lokiCacheResponse, err := DefaultCodec.DecodeResponse(ctx, cacheResp, lreq)
 	require.NoError(t, err)
 
 	require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
@@ -291,7 +291,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -307,7 +307,7 @@ func TestLogFilterTripperware(t *testing.T) {
 
 	// set the query length back to normal
 	lreq.StartTs = testTime.Add(-6 * time.Hour)
-	req, err = LokiCodec.EncodeRequest(ctx, lreq)
+	req, err = DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	// testing retry
@@ -368,7 +368,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -400,7 +400,7 @@ func TestInstantQueryTripperware(t *testing.T) {
 	require.Equal(t, 1, *count)
 	require.NoError(t, err)
 
-	lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 	require.IsType(t, &LokiPromResponse{}, lokiResponse)
 }
@@ -423,7 +423,7 @@ func TestSeriesTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -436,7 +436,7 @@ func TestSeriesTripperware(t *testing.T) {
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
-	lokiSeriesResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiSeriesResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	res, ok := lokiSeriesResponse.(*LokiSeriesResponse)
 	require.Equal(t, true, ok)
 
@@ -463,7 +463,7 @@ func TestLabelsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -484,7 +484,7 @@ func TestLabelsTripperware(t *testing.T) {
 	// verify 2 calls have been made to downstream.
 	require.Equal(t, 2, handler.count)
 	require.NoError(t, err)
-	lokiLabelsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	lokiLabelsResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	res, ok := lokiLabelsResponse.(*LokiLabelNamesResponse)
 	require.Equal(t, true, ok)
 	require.Equal(t, []string{"foo", "bar", "blop", "blip"}, res.Data)
@@ -509,7 +509,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -539,7 +539,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 	require.Equal(t, 0, *count)
 
 	// Test the response is the expected
-	indexStatsResponse, err := LokiCodec.DecodeResponse(ctx, resp, lreq)
+	indexStatsResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 	res, ok := indexStatsResponse.(*IndexStatsResponse)
 	require.Equal(t, true, ok)
@@ -568,7 +568,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -582,7 +582,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 2, *count) // 2 queries from splitting
 
-	volumeResp, err := LokiCodec.DecodeResponse(ctx, resp, nil)
+	volumeResp, err := DefaultCodec.DecodeResponse(ctx, resp, nil)
 	require.NoError(t, err)
 
 	expected := queryrangebase.PrometheusData{
@@ -780,7 +780,7 @@ func TestLogNoFilter(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -815,7 +815,7 @@ func TestRegexpParamsSupport(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	// fudge a regexp params
@@ -911,7 +911,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -961,7 +961,7 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := LokiCodec.EncodeRequest(ctx, lreq)
+			req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 			require.NoError(t, err)
 
 			req = req.WithContext(ctx)
@@ -1073,7 +1073,7 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := LokiCodec.EncodeRequest(ctx, lreq)
+			req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 			require.NoError(t, err)
 
 			req = req.WithContext(ctx)
@@ -1241,7 +1241,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 			require.NoError(t, err)
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := LokiCodec.EncodeRequest(ctx, tc.request)
+			req, err := DefaultCodec.EncodeRequest(ctx, tc.request)
 			require.NoError(t, err)
 
 			req = req.WithContext(ctx)
@@ -1257,7 +1257,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 			resp, err := tpw(rt).RoundTrip(req)
 			require.NoError(t, err)
 
-			lokiResponse, err := LokiCodec.DecodeResponse(ctx, resp, tc.request)
+			lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, tc.request)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.expectedSplitStats, lokiResponse.(*LokiPromResponse).Statistics.Summary.Splits)

@@ -635,7 +635,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
-		LokiCodec,
+		DefaultCodec,
 		splitByTime,
 		nilMetrics,
 	).Wrap(next)
@@ -808,7 +808,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
-		LokiCodec,
+		DefaultCodec,
 		splitByTime,
 		nilMetrics,
 	).Wrap(next)
@@ -858,7 +858,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		return SplitByIntervalMiddleware(
 			testSchemas,
 			l,
-			LokiCodec,
+			DefaultCodec,
 			splitByTime,
 			nilMetrics,
 		).Wrap(next)
@@ -978,7 +978,7 @@ func Test_ExitEarly(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
-		LokiCodec,
+		DefaultCodec,
 		splitByTime,
 		nilMetrics,
 	).Wrap(next)
@@ -1060,7 +1060,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 	split := SplitByIntervalMiddleware(
 		testSchemas,
 		l,
-		LokiCodec,
+		DefaultCodec,
 		splitByTime,
 		nilMetrics,
 	).Wrap(next)

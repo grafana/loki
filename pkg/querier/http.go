@@ -431,6 +431,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("Accept") == queryrange.ProtobufType {
+		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteSeriesResponseProtobuf(loghttp.GetVersion(r.RequestURI), *resp, w)
 	} else {
 		err = marshal.WriteSeriesResponseJSON(*resp, w)

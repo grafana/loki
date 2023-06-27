@@ -27,10 +27,8 @@ func NewPrepopulateMiddleware() middleware.Interface {
 func ResponseJSONMiddleware() middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			w.Header().Set("Content-Type", "application/json; charset=UTF-8")
 			next.ServeHTTP(w, req)
-			if w.Header().Get("Content-Type") == "" {
-				w.Header().Set("Content-Type", "application/json; charset=UTF-8")
-			}
 		})
 	})
 }
