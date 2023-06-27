@@ -72,7 +72,7 @@ func TestDistributor(t *testing.T) {
 			streams:          1,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, "100 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, "100 %s errors, example: %s", validation.LineTooLong, fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
 		},
 		{
 			lines:            100,
@@ -89,8 +89,8 @@ func TestDistributor(t *testing.T) {
 			expectedResponse: success,
 			expectedErrors: []error{
 				httpgrpc.Errorf(http.StatusBadRequest, ""),
-				fmt.Errorf("1 errors like: %s", fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")),
-				fmt.Errorf("10 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10)),
+				fmt.Errorf("1 %s errors, example: %s", validation.InvalidLabels, fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")),
+				fmt.Errorf("10 %s errors, example: %s", validation.LineTooLong, fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10)),
 			},
 		},
 	} {
@@ -119,7 +119,7 @@ func TestDistributor(t *testing.T) {
 			if len(tc.expectedErrors) > 0 {
 				for _, expectedError := range tc.expectedErrors {
 					if len(tc.expectedErrors) == 1 {
-						assert.Equal(t, err, expectedError)
+						assert.Equal(t, expectedError, err)
 					} else {
 						assert.Contains(t, err.Error(), expectedError.Error())
 					}

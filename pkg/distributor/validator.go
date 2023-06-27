@@ -87,7 +87,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		// for parity.
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
-		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
+		return validation.NewErrLineTooLongs(labels, len(entry.Line), maxSize)
 	}
 
 	return nil

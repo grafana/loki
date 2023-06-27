@@ -100,31 +100,58 @@ func (es MultiError) IsDeadlineExceeded() bool {
 	return true
 }
 
+type groupedErrorEntry struct {
+	example error
+	count   int
+}
+
 // GroupedErrors implements the error interface, and it contains the errors used to construct it
 // grouped by the error message.
-type GroupedErrors struct {
-	MultiError
+type GroupedError map[string]*groupedErrorEntry
+
+type GroupableError interface {
+	// Group returns the group name of the error.
+	Group() string
+}
+
+// Add adds the error to the error list if it is not nil.
+func (ge *GroupedError) Add(err error) {
+	if err == nil {
+		return
+	}
+
+	if *ge == nil {
+		*ge = make(GroupedError)
+	}
+
+	var errKey string
+	switch v := err.(type) {
+	case GroupableError:
+		errKey = v.Group()
+	default:
+		errKey = err.Error()
+	}
+
+	if _, exists := (*ge)[errKey]; !exists {
+		(*ge)[errKey] = &groupedErrorEntry{example: err, count: 0}
+	}
+	(*ge)[errKey].count++
 }
 
 // Error Returns a concatenated string of the errors grouped by the error message along with the number of occurrences
 // of each error message.
-func (es GroupedErrors) Error() string {
-	mapErrs := make(map[string]int, len(es.MultiError))
-	for _, err := range es.MultiError {
-		mapErrs[err.Error()]++
-	}
-
+func (ge GroupedError) Error() string {
 	var idx int
 	var buf bytes.Buffer
-	uniqueErrs := len(mapErrs)
-	for err, n := range mapErrs {
+	uniqueErrs := len(ge)
+	for group, entry := range ge {
 		if idx != 0 {
 			buf.WriteString("; ")
 		}
-		if uniqueErrs > 1 || n > 1 {
-			_, _ = fmt.Fprintf(&buf, "%d errors like: ", n)
+		if uniqueErrs > 1 || entry.count > 1 {
+			_, _ = fmt.Fprintf(&buf, "%d %s errors, example: ", entry.count, group)
 		}
-		buf.WriteString(err)
+		buf.WriteString(entry.example.Error())
 		idx++
 	}
 

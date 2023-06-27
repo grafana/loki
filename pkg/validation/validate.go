@@ -121,3 +121,45 @@ var LineLengthHist = promauto.NewHistogram(prometheus.HistogramOpts{
 	Help:      "The total number of bytes per line.",
 	Buckets:   prometheus.ExponentialBuckets(1, 8, 8), // 1B -> 16MB
 })
+
+type ErrInvalidLabels struct {
+	error
+	labels string
+}
+
+func NewErrInvalidLabels(labels string, err error) ErrInvalidLabels {
+	return ErrInvalidLabels{
+		error:  err,
+		labels: labels,
+	}
+}
+
+func (e ErrInvalidLabels) Error() string {
+	return fmt.Sprintf(InvalidLabelsErrorMsg, e.labels, e.error.Error())
+}
+
+func (e ErrInvalidLabels) Group() string {
+	return InvalidLabels
+}
+
+type ErrLineTooLong struct {
+	stream    string
+	length    int
+	maxLength int
+}
+
+func NewErrLineTooLongs(stream string, length, maxLength int) ErrLineTooLong {
+	return ErrLineTooLong{
+		stream:    stream,
+		length:    length,
+		maxLength: maxLength,
+	}
+}
+
+func (e ErrLineTooLong) Error() string {
+	return fmt.Sprintf(LineTooLongErrorMsg, e.maxLength, e.stream, e.length)
+}
+
+func (e ErrLineTooLong) Group() string {
+	return LineTooLong
+}
