@@ -5,7 +5,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/go-kit/log"
@@ -45,34 +44,32 @@ type cachedPostingsReader struct {
 func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	key := CanonicalLabelMatchersKey(matchers)
 	if postings, got := c.fetchPostings(ctx, key); got {
-		// call PostingsForMatchers just to populate things.
-		// p, _ := PostingsForMatchers(c.reader, nil, matchers...)
-
 		return fn(postings)
 	}
 
 	p, err := PostingsForMatchers(c.reader, nil, matchers...)
 	if err != nil {
-		return fmt.Errorf("cached postings reader for postings: %w", err)
+		return fmt.Errorf("failed to evaluate postings for matchers: %w", err)
 	}
 
 	expandedPosts, err := index.ExpandPostings(p)
 	if err != nil {
-		return fmt.Errorf("expanded postings: %w", err)
+		return fmt.Errorf("failed to expand postings: %w", err)
 	}
 
 	if err := c.storePostings(ctx, expandedPosts, key); err != nil {
 		level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
 	}
 
-	// because `index.ExpandedPostings` walks with the iterator, so we have to reset it by instantiating a new ListPostings.
+	// because `index.ExpandedPostings` walks with the iterator, we have to reset it current index by instantiating a new ListPostings.
 	return fn(index.NewListPostings(expandedPosts))
 }
 
 // diffVarintEncodeNoHeader encodes postings into diff+varint representation.
 // It doesn't add any header to the output bytes.
 // Length argument is expected number of postings, used for preallocating buffer.
-func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int, k string) ([]byte, error) {
+func diffVarintEncodeNoHeader(p []storage.SeriesRef) ([]byte, error) {
+	length := len(p)
 
 	buf := encoding.Encbuf{}
 	buf.PutUvarint32(uint32(length))
@@ -83,9 +80,8 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int, k string) ([]by
 		buf.B = make([]byte, 0, binary.MaxVarintLen32+5*length/4)
 	}
 
-	buf.PutUvarint32(uint32(length)) // first we put the postings length so we can use it when decoding.
+	buf.PutUvarint32(uint32(length)) // first we put the postings length used when decoding.
 
-	refsStr := strings.Builder{}
 	prev := storage.SeriesRef(0)
 	for _, ref := range p {
 		if ref < prev {
@@ -95,44 +91,32 @@ func diffVarintEncodeNoHeader(p []storage.SeriesRef, length int, k string) ([]by
 		// This is the 'diff' part -- compute difference from previous value.
 		buf.PutUvarint32(uint32(ref - prev))
 		prev = ref
-
-		nitString := strconv.Itoa(int(ref))
-		refsStr.WriteString(nitString)
-		refsStr.WriteString(",")
 	}
 
-	// level.Warn(util_log.Logger).Log("msg", "series to be encoded", "key", k, "refs", refsStr.String())
-
-	return buf.B, nil
+	return buf.Get(), nil
 }
 
-func decodeToPostings(b []byte, k string) index.Postings {
+func decodeToPostings(b []byte) index.Postings {
 	if len(b) <= 0 {
 		return index.EmptyPostings()
 	}
+
 	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
 	postingsLen := decoder.Uvarint32()
 	refs := make([]storage.SeriesRef, 0, postingsLen)
 	prev := storage.SeriesRef(0)
-	refsStr := strings.Builder{}
 
 	for i := 0; i < int(postingsLen); i++ {
 		v := storage.SeriesRef(decoder.Uvarint32()) + prev
 		refs = append(refs, v)
 		prev = v
-
-		nitString := strconv.Itoa(int(v))
-		refsStr.WriteString(nitString)
-		refsStr.WriteString(",")
 	}
-
-	// level.Warn(util_log.Logger).Log("msg", "refs from postings", "key", k, "refs", refsStr.String())
 
 	return index.NewListPostings(refs)
 }
 
 func (c *cachedPostingsReader) storePostings(ctx context.Context, expandedPostings []storage.SeriesRef, canonicalMatchers string) error {
-	dataToCache, err := diffVarintEncodeNoHeader(expandedPostings, len(expandedPostings), canonicalMatchers)
+	dataToCache, err := diffVarintEncodeNoHeader(expandedPostings)
 	if err != nil {
 		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
 	}
@@ -149,7 +133,8 @@ func (c *cachedPostingsReader) fetchPostings(ctx context.Context, key string) (i
 	}
 
 	if len(found) > 0 {
-		return decodeToPostings(bufs[0], key), true
+		// we only use a single key so we only care about index=0.
+		return decodeToPostings(bufs[0]), true
 	}
 
 	return nil, false
