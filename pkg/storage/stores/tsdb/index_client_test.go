@@ -280,14 +280,12 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{foo="bar"}`, Value: "", Volume: 200 * 1024},
-				{Name: `{fizz="buzz", foo="bar"}`, Value: "", Volume: 100 * 1024},
-				{Name: `{fizz="buzz"}`, Value: "", Volume: 100 * 1024},
-				{Name: `{ping="pong"}`, Value: "", Volume: 100 * 1024},
+				{Name: `{foo="bar"}`, Volume: 200 * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: 100 * 1024},
+				{Name: `{fizz="buzz"}`, Volume: 100 * 1024},
+				{Name: `{ping="pong"}`, Volume: 100 * 1024},
 			},
-			Limit:   10,
-			From:    from,
-			Through: through,
+			Limit: 10,
 		}, vol)
 	})
 
@@ -297,11 +295,9 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 
 		require.Equal(t, &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{foo="bar"}`, Value: "", Volume: 200 * 1024},
+				{Name: `{foo="bar"}`, Volume: 200 * 1024},
 			},
-			Limit:   1,
-			From:    from,
-			Through: through,
+			Limit: 1,
 		}, vol)
 	})
 }

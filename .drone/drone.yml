@@ -124,8 +124,7 @@ steps:
   image: grafana/loki-build-image:0.29.0
   name: test
 - commands:
-  - cd ../loki-target-branch
-  - BUILD_IN_CONTAINER=false make test
+  - cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test
   depends_on:
   - clone-target-branch
   environment: {}
@@ -1772,6 +1771,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 9959e5fb97ebc4800659a7cb733b06279c2acd3f87c8aae3c7d745ca91cfd055
+hmac: d9c0f096978f15bd7c2c213e6afa2971ebe0d9e0b28cadf51cb47c0c34e697c4
 
 ...

@@ -7,6 +7,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+
+	"github.com/weaveworks/common/user"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -743,7 +748,8 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
-func NewSeriesVolumeTripperware(cfg Config,
+func NewSeriesVolumeTripperware(
+	cfg Config,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -755,7 +761,102 @@ func NewSeriesVolumeTripperware(cfg Config,
 ) (queryrangebase.Tripperware, error) {
 	labelVolumeCfg := cfg
 	labelVolumeCfg.CacheIndexStatsResults = false
-	return NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	statsTw, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	if err != nil {
+		return nil, err
+	}
+
+	return volumeFeatureFlagRoundTripper(
+		volumeRangeTripperware(codec, statsTw),
+		limits,
+	), nil
+}
+
+func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tripperware) func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
+		nextRT := nextTW(next)
+
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			request, err := codec.DecodeRequest(r.Context(), r, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			resp, err := nextRT.RoundTrip(r)
+			if err != nil {
+				return nil, err
+			}
+
+			response, err := codec.DecodeResponse(r.Context(), resp, request)
+			if err != nil {
+				return nil, err
+			}
+
+			promResp := toPrometheusResponse(response.(*VolumeResponse), model.Time(request.GetEnd()))
+			return codec.EncodeResponse(r.Context(), promResp)
+		})
+	}
+}
+
+func toPrometheusResponse(resp *VolumeResponse, ts model.Time) *LokiPromResponse {
+	headers := make([]*definitions.PrometheusResponseHeader, len(resp.Headers))
+	for i, header := range resp.Headers {
+		h := header
+		headers[i] = &h
+	}
+
+	promResponse := queryrangebase.PrometheusResponse{
+		Status:  loghttp.QueryStatusSuccess,
+		Data:    toPrometheusSamples(resp, ts),
+		Headers: headers,
+	}
+
+	return &LokiPromResponse{
+		Response:   &promResponse,
+		Statistics: stats.Result{},
+	}
+}
+
+func toPrometheusSamples(r *VolumeResponse, ts model.Time) queryrangebase.PrometheusData {
+	result := make([]queryrangebase.SampleStream, 0, len(r.Response.Volumes))
+	for _, volume := range r.Response.Volumes {
+		lbls, err := syntax.ParseLabels(volume.Name)
+		if err != nil {
+			continue
+		}
+
+		result = append(result, queryrangebase.SampleStream{
+			Labels: logproto.FromLabelsToLabelAdapters(lbls),
+			Samples: []logproto.LegacySample{
+				{
+					Value:       float64(volume.Volume),
+					TimestampMs: ts.UnixNano() / 1e6,
+				}},
+		})
+	}
+
+	return queryrangebase.PrometheusData{
+		ResultType: loghttp.ResultTypeVector,
+		Result:     result,
+	}
+}
+
+func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Tripperware, limits Limits) func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
+		nextRt := nextTW(next)
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				return nil, err
+			}
+
+			if !limits.VolumeEnabled(userID) {
+				return nil, httpgrpc.Errorf(http.StatusNotFound, "not found")
+			}
+
+			return nextRt.RoundTrip(r)
+		})
+	}
 }
 
 func NewIndexStatsTripperware(

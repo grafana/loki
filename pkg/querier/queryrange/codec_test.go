@@ -260,12 +260,12 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelVolumeString))},
+			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
 			&logproto.VolumeRequest{},
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{foo="bar"}`, Volume: 38},
 					},
 					Limit: 100,
 				},
@@ -518,17 +518,15 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"label volume",
+			"series volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: `{foo="bar"}`, Value: "", Volume: 38},
+						{Name: `{foo="bar"}`, Volume: 38},
 					},
-					Limit:   100,
-					From:    0,
-					Through: 0,
+					Limit: 100,
 				},
-			}, labelVolumeString, false,
+			}, seriesVolumeString, false,
 		},
 	}
 	for _, tt := range tests {
@@ -1127,184 +1125,6 @@ func Test_codec_MergeResponse(t *testing.T) {
 	}
 }
 
-func Test_codec_MergeResponse_Volume(t *testing.T) {
-	now := time.Now()
-	from := model.TimeFromUnix(now.Add(-time.Hour).Unix())
-	through := model.TimeFromUnix(now.Add(-time.Minute).Unix())
-
-	t.Run("converts to prometheus response, merging results for the same timestamp", func(t *testing.T) {
-		responses := []queryrangebase.Response{
-			&VolumeResponse{
-				Response: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{
-						{
-							Name:   `{job="prometheus"}`,
-							Value:  "",
-							Volume: 150,
-						},
-						{
-							Name:   `{job="loki"}`,
-							Value:  "",
-							Volume: 300,
-						},
-					},
-					From:    from,
-					Through: through,
-					Limit:   5,
-				},
-			},
-			&VolumeResponse{
-				Response: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{
-						{
-							Name:   `{job="prometheus"}`,
-							Value:  "",
-							Volume: 100,
-						},
-						{
-							Name:   `{job="loki"}`,
-							Value:  "",
-							Volume: 200,
-						},
-					},
-					From:    from,
-					Through: through,
-					Limit:   5,
-				},
-			},
-		}
-
-		got, err := LokiCodec.MergeResponse(responses...)
-		require.NoError(t, err)
-
-		expected := got.(*LokiPromResponse).Response
-
-		require.Equal(t, expected.Status, "success")
-		require.Equal(t, expected.Data.ResultType, "vector")
-
-		require.Len(t, expected.Data.Result, 2)
-		require.Equal(t, expected.Data.Result, []queryrangebase.SampleStream{{
-			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "loki"}},
-			Samples: []logproto.LegacySample{{Value: 500, TimestampMs: through.Unix() * 1e3}},
-		}, {
-			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "prometheus"}},
-			Samples: []logproto.LegacySample{{Value: 250, TimestampMs: through.Unix() * 1e3}},
-		}})
-	})
-
-	t.Run("converts to prometheus response, aggregating all samples per series into the latest timestamp", func(t *testing.T) {
-		responses := []queryrangebase.Response{
-			&VolumeResponse{
-				Response: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{
-						{
-							Name:   `{job="prometheus"}`,
-							Value:  "",
-							Volume: 150,
-						},
-						{
-							Name:   `{job="loki"}`,
-							Value:  "",
-							Volume: 300,
-						},
-					},
-					From:    from,
-					Through: through,
-					Limit:   5,
-				},
-			},
-			&VolumeResponse{
-				Response: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{
-						{
-							Name:   `{job="prometheus"}`,
-							Value:  "",
-							Volume: 100,
-						},
-						{
-							Name:   `{job="loki"}`,
-							Value:  "",
-							Volume: 200,
-						},
-					},
-					From:    from,
-					Through: through,
-					Limit:   5,
-				},
-			},
-		}
-
-		got, err := LokiCodec.MergeResponse(responses...)
-		require.NoError(t, err)
-
-		expected := got.(*LokiPromResponse).Response
-
-		require.Len(t, expected.Data.Result, 2)
-		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "prometheus"}},
-			Samples: []logproto.LegacySample{{Value: 250, TimestampMs: through.Unix() * 1e3}},
-		})
-		require.Contains(t, expected.Data.Result, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{{Name: "job", Value: "loki"}},
-			Samples: []logproto.LegacySample{{Value: 500, TimestampMs: through.Unix() * 1e3}},
-		})
-	})
-
-	t.Run("limits number of series return to limit parameter", func(t *testing.T) {
-		responses := []queryrangebase.Response{
-			&VolumeResponse{
-				Response: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{
-						{
-							Name:   `{job="prometheus"}`,
-							Value:  "",
-							Volume: 150,
-						},
-						{
-							Name:   `{cluster="dev"}`,
-							Value:  "",
-							Volume: 300,
-						},
-					},
-					From:    from,
-					Through: through,
-					Limit:   1,
-				},
-			},
-			&VolumeResponse{
-				Response: &logproto.VolumeResponse{
-					Volumes: []logproto.Volume{
-						{
-							Name:   `{job="prometheus"}`,
-							Value:  "",
-							Volume: 100,
-						},
-						{
-							Name:   `{cluster="dev"}`,
-							Value:  "",
-							Volume: 200,
-						},
-					},
-					From:    from,
-					Through: through,
-					Limit:   1,
-				},
-			},
-		}
-
-		got, err := LokiCodec.MergeResponse(responses...)
-		require.NoError(t, err)
-
-		castedGot := got.(*LokiPromResponse).Response
-
-		require.Len(t, castedGot.Data.Result, 1)
-		require.Equal(t, queryrangebase.SampleStream{
-			Labels:  []logproto.LabelAdapter{{Name: "cluster", Value: "dev"}},
-			Samples: []logproto.LegacySample{{Value: 500, TimestampMs: through.Unix() * 1e3}},
-		}, castedGot.Data.Result[0])
-	})
-}
-
 type badResponse struct{}
 
 func (badResponse) Reset()                                                 {}
@@ -1541,14 +1361,11 @@ var (
 		"bytes": 3,
 		"entries": 4
 		}`
-	labelVolumeString = `{
-    "from": 0,
+	seriesVolumeString = `{
     "limit": 100,
-    "through": 0,
     "volumes": [
       {
         "name": "{foo=\"bar\"}",
-        "value": "",
         "volume": 38
       }
     ]

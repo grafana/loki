@@ -850,8 +850,8 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 90},
-			{Name: `{host="agent", job="3", log_stream="worker"}`, Value: "", Volume: 70},
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 70},
 		}, volumes.Volumes)
 	})
 
@@ -866,7 +866,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{log_stream="dispatcher"}`, Value: "", Volume: 90},
+			{Name: `{log_stream="dispatcher"}`, Volume: 90},
 		}, volumes.Volumes)
 	})
 
@@ -881,8 +881,8 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 45},
-			{Name: `{host="agent", job="3", log_stream="worker"}`, Value: "", Volume: 26},
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 45},
+			{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 26},
 		}, volumes.Volumes)
 	})
 
@@ -897,7 +897,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Value: "", Volume: 90},
+			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
 		}, volumes.Volumes)
 	})
 }

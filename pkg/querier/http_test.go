@@ -199,17 +199,11 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 }
 
 func TestSeriesVolumeHandler(t *testing.T) {
-	now := time.Now()
-	t1 := model.TimeFromUnix(now.Add(-time.Hour).Unix())
-	t2 := model.TimeFromUnix(now.Add(-time.Minute).Unix())
-
 	t.Run("it returns label volumes from the querier", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
-				{Name: `{foo="bar"}`, Value: "", Volume: 38},
+				{Name: `{foo="bar"}`, Volume: 38},
 			},
-			From:    t1,
-			Through: t2,
 		}
 
 		querier := newQuerierMock()
@@ -235,10 +229,7 @@ func TestSeriesVolumeHandler(t *testing.T) {
 
 		require.Equal(
 			t,
-			fmt.Sprintf(
-				`{"volumes":[{"name":"{foo=\"bar\"}","value":"","volume":38}],"from":%s,"through":%s}`,
-				t1, t2,
-			),
+			`{"volumes":[{"name":"{foo=\"bar\"}","volume":38}]}`,
 			strings.TrimSpace(w.Body.String()),
 		)
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
@@ -260,7 +251,7 @@ func TestSeriesVolumeHandler(t *testing.T) {
 		calls := querier.GetMockedCallsByMethod("SeriesVolume")
 		require.Len(t, calls, 1)
 
-		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[],"from":0,"through":0}`)
+		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[]}`)
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 
