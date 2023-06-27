@@ -132,9 +132,10 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 		for _, e := range s.Entries {
 			totalEntries++
-			entriesSize += int64(len(e.Line))
-			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(int64(len(e.Line))))
-			bytesReceivedStats.Inc(int64(len(e.Line)))
+			entrySize := int64(len(e.Line)) + int64(len(e.Labels))
+			entriesSize += entrySize
+			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entrySize))
+			bytesReceivedStats.Inc(entrySize)
 			if e.Timestamp.After(mostRecentEntry) {
 				mostRecentEntry = e.Timestamp
 			}
