@@ -439,23 +439,26 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 func Test_codec_EncodeResponse(t *testing.T) {
 	tests := []struct {
 		name    string
+		path    string
 		res     queryrangebase.Response
 		body    string
 		wantErr bool
 	}{
-		{"error", &badResponse{}, "", true},
-		{"prom", &LokiPromResponse{
-			Response: &queryrangebase.PrometheusResponse{
-				Status: loghttp.QueryStatusSuccess,
-				Data: queryrangebase.PrometheusData{
-					ResultType: loghttp.ResultTypeMatrix,
-					Result:     sampleStreams,
+		{"error", "/loki/api/v1/query_range", &badResponse{}, "", true},
+		{
+			"prom", "/loki/api/v1/query_range", 
+			&LokiPromResponse{
+				Response: &queryrangebase.PrometheusResponse{
+					Status: loghttp.QueryStatusSuccess,
+					Data: queryrangebase.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     sampleStreams,
+					},
 				},
-			},
-			Statistics: statsResult,
+				Statistics: statsResult,
 		}, matrixString, false},
 		{
-			"loki v1",
+			"loki v1", "/loki/api/v1/query_range",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
@@ -469,7 +472,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, streamsString, false,
 		},
 		{
-			"loki legacy",
+			"loki legacy", "/api/promt/query",
 			&LokiResponse{
 				Status:    loghttp.QueryStatusSuccess,
 				Direction: logproto.FORWARD,
@@ -483,7 +486,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, streamsStringLegacy, false,
 		},
 		{
-			"loki series",
+			"loki series", "/loki/api/v1/series",
 			&LokiSeriesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
@@ -491,7 +494,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, seriesString, false,
 		},
 		{
-			"loki labels",
+			"loki labels", "/loki/api/v1/labels",
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionV1),
@@ -499,7 +502,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, labelsString, false,
 		},
 		{
-			"loki labels legacy",
+			"loki labels legacy", "/api/prom/label",
 			&LokiLabelNamesResponse{
 				Status:  "success",
 				Version: uint32(loghttp.VersionLegacy),
@@ -507,7 +510,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, labelsLegacyString, false,
 		},
 		{
-			"index stats",
+			"index stats", "/loki/api/v1/index/stats",
 			&IndexStatsResponse{
 				Response: &logproto.IndexStatsResponse{
 					Streams: 1,
@@ -518,7 +521,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"series volume",
+			"series volume", "/loki/api/v1/index/series_volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -531,7 +534,13 @@ func Test_codec_EncodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := DefaultCodec.EncodeResponse(context.TODO(), tt.res)
+			u := &url.URL{Path: tt.path}
+			req := &http.Request{
+					Method:     "GET",
+					RequestURI: u.String(),
+					URL: u,
+			}
+			got, err := DefaultCodec.EncodeResponse(context.TODO(), req, tt.res)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("codec.EncodeResponse() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -1389,7 +1398,13 @@ func (b *buffer) Bytes() []byte {
 
 func Benchmark_CodecDecodeLogs(b *testing.B) {
 	ctx := context.Background()
-	resp, err := DefaultCodec.EncodeResponse(ctx, &LokiResponse{
+	u := &url.URL{Path: "/loki/api/v1/query_range"}
+	req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL: u,
+	}
+	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiResponse{
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: logproto.BACKWARD,
 		Version:   uint32(loghttp.VersionV1),
@@ -1418,7 +1433,7 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
-			Path:      "/loki/api/v1/query_range",
+			Path:      u.String(),
 		})
 		require.Nil(b, err)
 		require.NotNil(b, result)
@@ -1427,7 +1442,13 @@ func Benchmark_CodecDecodeLogs(b *testing.B) {
 
 func Benchmark_CodecDecodeSamples(b *testing.B) {
 	ctx := context.Background()
-	resp, err := DefaultCodec.EncodeResponse(ctx, &LokiPromResponse{
+	u := &url.URL{Path: "/loki/api/v1/query_range"}
+	req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL: u,
+	}
+	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiPromResponse{
 		Response: &queryrangebase.PrometheusResponse{
 			Status: loghttp.QueryStatusSuccess,
 			Data: queryrangebase.PrometheusData{
@@ -1452,7 +1473,7 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 			StartTs:   start,
 			EndTs:     end,
 			Direction: logproto.BACKWARD,
-			Path:      "/loki/api/v1/query_range",
+			Path:      u.String(),
 		})
 		require.Nil(b, err)
 		require.NotNil(b, result)
