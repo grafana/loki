@@ -100,10 +100,14 @@ func (es MultiError) IsDeadlineExceeded() bool {
 	return true
 }
 
+// GroupedErrors implements the error interface, and it contains the errors used to construct it
+// grouped by the error message.
 type GroupedErrors struct {
 	MultiError
 }
 
+// Error Returns a concatenated string of the errors grouped by the error message along with the number of occurrences
+// of each error message.
 func (es GroupedErrors) Error() string {
 	mapErrs := make(map[string]int, len(es.MultiError))
 	for _, err := range es.MultiError {
