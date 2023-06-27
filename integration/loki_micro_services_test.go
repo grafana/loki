@@ -68,6 +68,7 @@ func TestMicroServicesIngestQuery(t *testing.T) {
 			"-boltdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
 			"-common.compactor-address="+tCompactor.HTTPURL(),
 			"-querier.per-request-limits-enabled=true",
+			"-frontend.accepted-query-response-format=protobuf",
 		)
 		_ = clu.AddComponent(
 			"querier",

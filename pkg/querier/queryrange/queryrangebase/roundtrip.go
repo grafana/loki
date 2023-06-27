@@ -65,7 +65,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 
-	f.StringVar(&cfg.AcceptedQueryResponseFormat, "frontend.accepted-query-response-format", "json", "The downstream querier is requested to answer in the accepted format. Can be 'json' or 'protobuf'.")
+	f.StringVar(&cfg.AcceptedQueryResponseFormat, "frontend.accepted-query-response-format", "json", "The downstream querier is requested to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }

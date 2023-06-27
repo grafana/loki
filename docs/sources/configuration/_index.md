@@ -791,6 +791,11 @@ results_cache:
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
 
+# The downstream querier is requested to answer in the accepted format. Can be
+# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
+# CLI flag: -frontend.accepted-query-response-format
+[accepted_query_response_format: <string> | default = "json"]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]
