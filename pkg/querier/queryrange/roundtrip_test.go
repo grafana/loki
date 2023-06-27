@@ -35,6 +35,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
+	valid "github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -135,9 +136,7 @@ var (
 			{Name: `{foo="bar"}`, Volume: 1024},
 			{Name: `{bar="baz"}`, Volume: 3350},
 		},
-		From:    model.TimeFromUnix(testTime.Add(-4 * time.Hour).Unix()),
-		Through: model.TimeFromUnix(testTime.Add(-1 * time.Hour).Unix()),
-		Limit:   5,
+		Limit: 5,
 	}
 )
 
@@ -576,7 +575,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := labelVolumeResult(seriesVolume)
+	count, h := seriesVolumeResult(seriesVolume)
 	rt.setHandler(h)
 
 	resp, err := tpw(rt).RoundTrip(req)
@@ -596,7 +595,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 				}},
 				Samples: []logproto.LegacySample{{
 					Value:       6700,
-					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
+					TimestampMs: testTime.Unix() * 1e3,
 				}},
 			},
 			{
@@ -606,7 +605,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 				}},
 				Samples: []logproto.LegacySample{{
 					Value:       2048,
-					TimestampMs: testTime.Add(-1*time.Hour).Unix() * 1e3,
+					TimestampMs: testTime.Unix() * 1e3,
 				}},
 			},
 		},
@@ -1363,6 +1362,10 @@ func (f fakeLimits) VolumeEnabled(_ string) bool {
 	return f.volumeEnabled
 }
 
+func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
+	return valid.DefaultTSDBMaxBytesPerShard
+}
+
 func counter() (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
@@ -1412,7 +1415,7 @@ func indexStatsResult(v logproto.IndexStatsResponse) (*int, http.Handler) {
 	})
 }
 
-func labelVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
+func seriesVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
 	count := 0
 	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
