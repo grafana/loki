@@ -21,10 +21,6 @@ type Entry struct {
 	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
 }
 
-func (m Stream) Len() int           { return len(m.Entries) }
-func (m Stream) Swap(i, j int)      { m.Entries[i], m.Entries[j] = m.Entries[j], m.Entries[i] }
-func (m Stream) Less(i, j int) bool { return m.Entries[i].Timestamp.Before(m.Entries[j].Timestamp) }
-
 func (m *Stream) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)

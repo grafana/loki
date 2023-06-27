@@ -126,21 +126,6 @@ var testCases = []struct {
 	},
 }
 
-func TestSort(t *testing.T) {
-	at := func(s *List) uint64 { return s.At() }
-	less := func(a, b uint64) bool { return a < b }
-	args := []*List{NewList(1, 3), NewList(2, 4), NewList(5)}
-
-	numCloses := 0
-	closeFn := func(_ *List) {
-		numCloses++
-	}
-	tree := loser.New(args, math.MaxUint64, at, less, closeFn)
-	for tree.Next() {
-		t.Log(tree.Winner().At())
-	}
-}
-
 func TestMerge(t *testing.T) {
 	at := func(s *List) uint64 { return s.At() }
 	less := func(a, b uint64) bool { return a < b }
