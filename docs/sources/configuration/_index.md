@@ -2389,6 +2389,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 512]
 
+# Maximum number of bytes assigned to a single sharded query. Also expressible
+# in human readable forms (1GB, etc).
+# CLI flag: -querier.tsdb-max-bytes-per-shard
+[tsdb_max_bytes_per_shard: <int> | default = 600MB]
+
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
