@@ -710,7 +710,7 @@ func encodeResponseJSON(ctx context.Context, res queryrangebase.Response) (*http
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type": []string{"application/json; charset=UTF-8"},
 		},
 		Body:       io.NopCloser(&buf),
 		StatusCode: http.StatusOK,
