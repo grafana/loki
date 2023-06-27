@@ -562,7 +562,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
-	return DefaultCodec.EncodeResponse(ctx, r, response)
+	return rt.codec.EncodeResponse(ctx, r, response)
 }
 
 func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {

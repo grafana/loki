@@ -652,10 +652,11 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 	}
 
 	// Default to JSON.
-	return encodeResponseJSON(ctx, res)
+	version := loghttp.GetVersion(req.RequestURI)
+	return encodeResponseJSON(ctx, version, res)
 }
 
-func encodeResponseJSON(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -676,11 +677,13 @@ func encodeResponseJSON(ctx context.Context, res queryrangebase.Response) (*http
 			Data:       logqlmodel.Streams(streams),
 			Statistics: response.Statistics,
 		}
-		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
+		if version == loghttp.VersionLegacy {
+			// NOTE: This is called with proto buf flag :/
 			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
 			}
 		} else {
+			// NOTE: This is working wihtout content negotiation
 			if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
 			}

@@ -175,6 +175,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*Qu
 	case logqlmodel.Streams:
 		return &QueryResponse{
 			Response: &QueryResponse_Streams{
+				// Note: we are omitting the Version here because the Protobuf already defines a schema.
 				Streams: &LokiResponse{
 					Direction: params.Direction(),
 					Limit:     params.Limit(),
