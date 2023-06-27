@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
@@ -55,7 +56,14 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 			interval := time.Duration(volReq.Step * 1e6)
 
 			util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
-				reqs[end] = &logproto.VolumeRequest{
+				// Range query buckets are aligned to the starting timestamp
+				// Instant queries are for "this instant", which aligns to the end of the requested range
+				bucket := start
+				if interval == 0 {
+					bucket = end
+				}
+
+				reqs[bucket] = &logproto.VolumeRequest{
 					From:     model.TimeFromUnix(start.Unix()),
 					Through:  model.TimeFromUnix(end.Unix()),
 					Matchers: volReq.Matchers,
@@ -79,14 +87,14 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 				}))
 			}
 
-			resps := map[time.Time]*VolumeResponse{}
+			collector := newConcurrentVolumeResponseCollector(len(reqs))
 			err := concurrency.ForEachJob(
 				ctx,
 				len(jobs),
 				len(jobs),
 				func(ctx context.Context, i int) error {
 					bucket, resp, err := jobs[i](ctx)
-					resps[bucket] = resp.(*VolumeResponse)
+					collector.Add(bucket, resp.(*VolumeResponse))
 					return err
 				})
 
@@ -94,10 +102,28 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 				return nil, err
 			}
 
-			promResp := toPrometheusResponse(resps)
+			promResp := toPrometheusResponse(collector.responses)
 			return promResp, nil
 		})
 	})
+}
+
+type concurrentVolumeResponseCollector struct {
+	lock      sync.Mutex
+	responses map[time.Time]*VolumeResponse
+}
+
+func newConcurrentVolumeResponseCollector(capacity int) *concurrentVolumeResponseCollector {
+	return &concurrentVolumeResponseCollector{
+		lock:      sync.Mutex{},
+		responses: make(map[time.Time]*VolumeResponse, capacity),
+	}
+}
+
+func (c *concurrentVolumeResponseCollector) Add(bucket time.Time, resp *VolumeResponse) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	c.responses[bucket] = resp
 }
 
 func toPrometheusResponse(resps map[time.Time]*VolumeResponse) *LokiPromResponse {

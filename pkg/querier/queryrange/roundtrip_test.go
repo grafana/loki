@@ -671,10 +671,10 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 		require.NoError(t, err)
 
 		barBazExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
 			barBazExpectedSamples = append(barBazExpectedSamples, logproto.LegacySample{
 				Value:       3350,
-				TimestampMs: e.Unix() * 1e3,
+				TimestampMs: s.Unix() * 1e3,
 			})
 		})
 		sort.Slice(barBazExpectedSamples, func(i, j int) bool {
@@ -682,10 +682,10 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 		})
 
 		fooBarExpectedSamples := []logproto.LegacySample{}
-		util.ForInterval(time.Hour, start, end, true, func(_, e time.Time) {
+		util.ForInterval(time.Hour, start, end, true, func(s, _ time.Time) {
 			fooBarExpectedSamples = append(fooBarExpectedSamples, logproto.LegacySample{
 				Value:       1024,
-				TimestampMs: e.Unix() * 1e3,
+				TimestampMs: s.Unix() * 1e3,
 			})
 		})
 		sort.Slice(fooBarExpectedSamples, func(i, j int) bool {
