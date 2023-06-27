@@ -57,9 +57,20 @@ func (m *PathMatcher) validate(all bool) error {
 
 	var errors []error
 
-	switch m.Rule.(type) {
-
+	oneofRulePresent := false
+	switch v := m.Rule.(type) {
 	case *PathMatcher_Path:
+		if v == nil {
+			err := PathMatcherValidationError{
+				field:  "Rule",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofRulePresent = true
 
 		if m.GetPath() == nil {
 			err := PathMatcherValidationError{
@@ -102,6 +113,9 @@ func (m *PathMatcher) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofRulePresent {
 		err := PathMatcherValidationError{
 			field:  "Rule",
 			reason: "value is required",
@@ -110,7 +124,6 @@ func (m *PathMatcher) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

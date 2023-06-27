@@ -257,11 +257,11 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
-			out: `avg(avg_over_time({job=~"myapps(?-s:.)*?"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+			out: `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
 		},
 		{
 			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
-			out: `avg_over_time({job=~"myapps(?-s:.)*?"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
 		},
 		// should be noop if VectorExpr
 		{
@@ -271,28 +271,28 @@ func TestMappingStrings(t *testing.T) {
 		{
 			// or exprs aren't shardable
 			in:  `count_over_time({a=~".+"}[1s]) or count_over_time({a=~".+"}[1s])`,
-			out: `(downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>ordownstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>)`,
+			out: `(downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>ordownstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>)`,
 		},
 		{
 			// vector() exprs aren't shardable
 			in:  `sum(count_over_time({a=~".+"}[1s]) + vector(1))`,
-			out: `sum((downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>+vector(1.000000)))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>+vector(1.000000)))`,
 		},
 		{
 			// on() is never shardable as it can mutate labels
 			in:  `sum(count_over_time({a=~".+"}[1s]) * on () count_over_time({a=~".+"}[1s]))`,
-			out: `sum((downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>*on()downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*on()downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
 		},
 		{
 			// ignoring(<non-empty-labels>) is never shardable as it can mutate labels
 			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring (foo) count_over_time({a=~".+"}[1s]))`,
-			out: `sum((downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>*ignoring(foo)downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~"(?-s:.)+?"}[1s]),shard=1_of_2>))`,
+			out: `sum((downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>*ignoring(foo)downstream<count_over_time({a=~".+"}[1s]),shard=0_of_2>++downstream<count_over_time({a=~".+"}[1s]),shard=1_of_2>))`,
 		},
 		{
 			// ignoring () doesn't mutate labels and therefore can be shardable
 			// as long as the operation is shardable
 			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
-			out: `sum(downstream<sum((count_over_time({a=~"(?-s:.)+?"}[1s])*count_over_time({a=~"(?-s:.)+?"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~"(?-s:.)+?"}[1s])*count_over_time({a=~"(?-s:.)+?"}[1s]))),shard=1_of_2>)`,
+			out: `sum(downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=1_of_2>)`,
 		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

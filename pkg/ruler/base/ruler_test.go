@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -1645,6 +1646,7 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 }
 
 func TestSendAlerts(t *testing.T) {
+	escapedExpression := url.QueryEscape("{\"expr\":\"up\",\"queryType\":\"range\",\"datasource\":{\"type\":\"loki\",\"uid\":\"uid\"}}")
 	testCases := []struct {
 		in  []*promRules.Alert
 		exp []*notifier.Alert
@@ -1665,7 +1667,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
-					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1685,7 +1687,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
-					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1703,7 +1705,7 @@ func TestSendAlerts(t *testing.T) {
 				}
 				require.Equal(t, tc.exp, alerts)
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(senderFunc, "http://localhost:8080", "uid")(context.TODO(), "up", tc.in...)
 		})
 	}
 }
@@ -1716,11 +1718,11 @@ func (f *fakeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matche
 	return f.fn(sortSeries, hints, matchers...)
 }
 
-func (f *fakeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 
-func (f *fakeQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 func (f *fakeQuerier) Close() error { return nil }

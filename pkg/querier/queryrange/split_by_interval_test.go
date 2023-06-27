@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/common/model"
+
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
@@ -847,6 +849,94 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 			require.Equal(t, tt.want, res)
 		})
 	}
+}
+
+func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
+	ctx := user.InjectOrgID(context.Background(), "1")
+	setup := func(next queryrangebase.Handler) queryrangebase.Handler {
+		l := WithSplitByLimits(fakeLimits{maxQueryParallelism: 1}, time.Hour)
+		return SplitByIntervalMiddleware(
+			testSchemas,
+			l,
+			LokiCodec,
+			splitByTime,
+			nilMetrics,
+		).Wrap(next)
+	}
+
+	t.Run("series volumes", func(t *testing.T) {
+		from := model.TimeFromUnixNano(start.UnixNano())
+		through := model.TimeFromUnixNano(end.UnixNano())
+
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Volume: 38},
+						{Name: `{bar="baz"}`, Volume: 28},
+					},
+					Limit: 2},
+				Headers: nil,
+			}, nil
+		})
+		split := setup(next)
+		req := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: "{}",
+			Limit:    2,
+		}
+
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+
+		response := res.(*VolumeResponse)
+		require.Len(t, response.Response.Volumes, 2)
+		require.Equal(t, response.Response, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: "{foo=\"bar\"}", Volume: 76},
+				{Name: "{bar=\"baz\"}", Volume: 56},
+			},
+			Limit: 2,
+		})
+	})
+
+	t.Run("series volumes with limits", func(t *testing.T) {
+		from := model.TimeFromUnixNano(start.UnixNano())
+		through := model.TimeFromUnixNano(end.UnixNano())
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return &VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Volume: 38},
+						{Name: `{bar="baz"}`, Volume: 28},
+						{Name: `{foo="bar"}`, Volume: 38},
+						{Name: `{fizz="buzz"}`, Volume: 28},
+					},
+					Limit: 1},
+				Headers: nil,
+			}, nil
+		})
+		split := setup(next)
+		req := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: "{}",
+			Limit:    1,
+		}
+
+		res, err := split.Do(ctx, req)
+		require.NoError(t, err)
+
+		response := res.(*VolumeResponse)
+		require.Len(t, response.Response.Volumes, 1)
+		require.Equal(t, response.Response, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: "{foo=\"bar\"}", Volume: 152},
+			},
+			Limit: 1,
+		})
+	})
 }
 
 func Test_ExitEarly(t *testing.T) {

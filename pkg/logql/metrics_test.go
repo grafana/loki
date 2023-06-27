@@ -85,7 +85,7 @@ func TestLogSlowQuery(t *testing.T) {
 	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
-			`level=info org_id=foo traceID=%s latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
+			`level=info org_id=foo traceID=%s sampled=true latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		)),
 		buf.String())
@@ -111,7 +111,7 @@ func TestLogLabelsQuery(t *testing.T) {
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -137,7 +137,7 @@ func TestLogSeriesQuery(t *testing.T) {
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" splits=0 throughput=100kB total_bytes=100kB total_entries=10\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" splits=0 throughput=100kB total_bytes=100kB total_entries=10\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())

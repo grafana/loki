@@ -79,6 +79,26 @@ If release name contains chart name it will be used as a full name.
 {{- end }}
 {{- end }}
 
+{{/*
+Cluster label for rules and alerts.
+*/}}
+{{- define "loki.clusterLabel" -}}
+{{- if .Values.clusterLabelOverride }}
+{{- .Values.clusterLabelOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- if .Values.fullnameOverride }}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- $name := include "loki.name" . }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
 {{/* Create a default storage config that uses filesystem storage
 This is required for CI, but Loki will not be queryable with this default
 applied, thus it is encouraged that users override this.
@@ -135,11 +155,11 @@ Base template for building docker image reference
 {{- define "loki.baseImage" }}
 {{- $registry := .global.registry | default .service.registry | default "" -}}
 {{- $repository := .service.repository | default "" -}}
-{{- $tag := .service.tag | default .defaultVersion | toString -}}
+{{- $ref := ternary (printf ":%s" (.service.tag | default .defaultVersion | toString)) (printf "@%s" .service.digest) (empty .service.digest) -}}
 {{- if and $registry $repository -}}
-  {{- printf "%s/%s:%s" $registry $repository $tag -}}
+  {{- printf "%s/%s%s" $registry $repository $ref -}}
 {{- else -}}
-  {{- printf "%s%s:%s" $registry $repository $tag -}}
+  {{- printf "%s%s%s" $registry $repository $ref -}}
 {{- end -}}
 {{- end -}}
 
@@ -205,6 +225,9 @@ s3:
   {{- with .accessKeyId }}
   access_key_id: {{ . }}
   {{- end }}
+  {{- with .signatureVersion }}
+  signature_version: {{ . }}
+  {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
   {{- with .http_config}}
@@ -240,6 +263,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.chunks }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -306,6 +330,7 @@ azure:
   {{- end }}
   container_name: {{ $.Values.loki.storage.bucketNames.ruler }}
   use_managed_identity: {{ .useManagedIdentity }}
+  use_federated_token: {{ .useFederatedToken }}
   {{- with .userAssignedId }}
   user_assigned_id: {{ . }}
   {{- end }}
@@ -327,6 +352,29 @@ ruler:
 {{- toYaml .Values.loki.rulerConfig | nindent 2}}
 {{- end }}
 {{- end }}
+
+{{/*
+Calculate the config from structured and unstructred text input
+*/}}
+{{- define "loki.calculatedConfig" -}}
+{{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
+{{- end }}
+
+{{/*
+The volume to mount for loki configuration
+*/}}
+{{- define "loki.configVolume" -}}
+{{- if eq .Values.loki.configStorageType "Secret" -}}
+secret:
+  secretName: {{ tpl .Values.loki.externalConfigSecretName . }}
+{{- else if eq .Values.loki.configStorageType "ConfigMap" -}}
+configMap:
+  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  items:
+    - key: "config.yaml"
+      path: "config.yaml"
+{{- end -}}
+{{- end -}}
 
 {{/*
 Memcached Docker image
@@ -441,9 +489,9 @@ Params:
 */}}
 {{- define "loki.ingress.serviceName" -}}
 {{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.fullname" .ctx) }}
+{{- printf "%s" (include "loki.name" .ctx) }}
 {{- else }}
-{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
+{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
 {{- end -}}
 
@@ -454,15 +502,6 @@ Create the service endpoint including port for MinIO.
 {{- if .Values.minio.enabled -}}
 {{- printf "%s-%s.%s.svc:%s" .Release.Name "minio" .Release.Namespace (.Values.minio.service.port | toString) -}}
 {{- end -}}
-{{- end -}}
-
-{{/* Return the appropriate apiVersion for PodDisruptionBudget. */}}
-{{- define "loki.podDisruptionBudget.apiVersion" -}}
-  {{- if and (.Capabilities.APIVersions.Has "policy/v1") (semverCompare ">= 1.21-0" .Capabilities.KubeVersion.Version) -}}
-    {{- print "policy/v1" -}}
-  {{- else -}}
-    {{- print "policy/v1beta1" -}}
-  {{- end -}}
 {{- end -}}
 
 {{/* Determine if deployment is using object storage */}}
@@ -529,9 +568,9 @@ http {
   uwsgi_temp_path       /tmp/uwsgi_temp;
   scgi_temp_path        /tmp/scgi_temp;
 
-  client_max_body_size 4M;
+  client_max_body_size  4M;
 
-  proxy_read_timeout    600; ## 6 minutes
+  proxy_read_timeout    600; ## 10 minutes
   proxy_send_timeout    600;
   proxy_connect_timeout 600;
 
@@ -561,6 +600,7 @@ http {
 
   server {
     listen             8080;
+    listen             [::]:8080;
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";
@@ -600,74 +640,119 @@ http {
     {{- $backendUrl = .Values.gateway.nginxConfig.customBackendUrl }}
     {{- end }}
 
+
+    # Distributor
     location = /api/prom/push {
       proxy_pass       {{ $writeUrl }}$request_uri;
     }
+    location = /loki/api/v1/push {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+    location = /distributor/ring {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
 
+    # Ingester
+    location = /flush {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+    location ^~ /ingester/ {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+    location = /ingester {
+      internal;        # to suppress 301
+    }
+
+    # Ring
+    location = /ring {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+
+    # MemberListKV
+    location = /memberlist {
+      proxy_pass       {{ $writeUrl }}$request_uri;
+    }
+
+
+    # Ruler
+    location = /ruler/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /api/prom/rules {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location ^~ /api/prom/rules/ {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /loki/api/v1/rules {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location ^~ /loki/api/v1/rules/ {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /prometheus/api/v1/alerts {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /prometheus/api/v1/rules {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # Compactor
+    location = /compactor/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /loki/api/v1/delete {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /loki/api/v1/cache/generation_numbers {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # IndexGateway
+    location = /indexgateway/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    # QueryScheduler
+    location = /scheduler/ring {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+
+    {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
+    # Admin API
+    location ^~ /admin/api/ {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    location = /admin/api {
+      internal;        # to suppress 301
+    }
+    {{- end }}
+
+
+    # QueryFrontend, Querier
     location = /api/prom/tail {
       proxy_pass       {{ $readUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
-
-    location ~ /api/prom/.* {
-      proxy_pass       {{ $readUrl }}$request_uri;
-    }
-
-    location ~ /prometheus/api/v1/alerts.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-    location ~ /prometheus/api/v1/rules.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-    location ~ /ruler/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location = /loki/api/v1/push {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
     location = /loki/api/v1/tail {
       proxy_pass       {{ $readUrl }}$request_uri;
       proxy_set_header Upgrade $http_upgrade;
       proxy_set_header Connection "upgrade";
     }
-
-    location ~ /compactor/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location ~ /distributor/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
-    location ~ /ring {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
-    location ~ /ingester/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
-    }
-
-    location ~ /store-gateway/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location ~ /query-scheduler/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-    location ~ /scheduler/.* {
-      proxy_pass       {{ $backendUrl }}$request_uri;
-    }
-
-    location ~ /loki/api/.* {
+    location ^~ /api/prom/ {
       proxy_pass       {{ $readUrl }}$request_uri;
     }
-
-    location ~ /admin/api/.* {
-      proxy_pass       {{ $writeUrl }}$request_uri;
+    location = /api/prom {
+      internal;        # to suppress 301
     }
+    location ^~ /loki/api/v1/ {
+      proxy_pass       {{ $readUrl }}$request_uri;
+    }
+    location = /loki/api/v1 {
+      internal;        # to suppress 301
+    }
+
 
     {{- with .Values.gateway.nginxConfig.serverSnippet }}
     {{ . | nindent 4 }}
@@ -701,3 +786,12 @@ enableServiceLinks: false
 {{- printf "%s" $compactorAddress }}
 {{- end }}
 
+{{/* Determine query-scheduler address */}}
+{{- define "loki.querySchedulerAddress" -}}
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- $schedulerAddress := ""}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) -}}
+{{- $schedulerAddress = printf "query-scheduler-discovery.%s.svc.%s.:9095" .Release.Namespace .Values.global.clusterDomain -}}
+{{- end -}}
+{{- printf "%s" $schedulerAddress }}
+{{- end }}

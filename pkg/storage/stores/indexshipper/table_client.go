@@ -24,7 +24,7 @@ func (b *tableClient) ListTables(ctx context.Context) ([]string, error) {
 	return b.indexStorageClient.ListTables(ctx)
 }
 
-func (b *tableClient) CreateTable(ctx context.Context, desc config.TableDesc) error {
+func (b *tableClient) CreateTable(_ context.Context, _ config.TableDesc) error {
 	return nil
 }
 
@@ -48,12 +48,12 @@ func (b *tableClient) DeleteTable(ctx context.Context, tableName string) error {
 	return nil
 }
 
-func (b *tableClient) DescribeTable(ctx context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
+func (b *tableClient) DescribeTable(_ context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
 	return config.TableDesc{
 		Name: name,
 	}, true, nil
 }
 
-func (b *tableClient) UpdateTable(ctx context.Context, current, expected config.TableDesc) error {
+func (b *tableClient) UpdateTable(_ context.Context, _, _ config.TableDesc) error {
 	return nil
 }

@@ -58,6 +58,7 @@ func NewFileTargetManager(
 	client api.EntryHandler,
 	scrapeConfigs []scrapeconfig.Config,
 	targetConfig *Config,
+	watchConfig WatchConfig,
 ) (*FileTargetManager, error) {
 	reg := metrics.reg
 	if reg == nil {
@@ -126,6 +127,7 @@ func NewFileTargetManager(
 			hostname:          hostname,
 			entryHandler:      pipeline.Wrap(client),
 			targetConfig:      targetConfig,
+			watchConfig:       watchConfig,
 			fileEventWatchers: map[string]chan fsnotify.Event{},
 			encoding:          cfg.Encoding,
 			decompressCfg:     cfg.DecompressionCfg,
@@ -279,6 +281,7 @@ type targetSyncer struct {
 
 	relabelConfig []*relabel.Config
 	targetConfig  *Config
+	watchConfig   WatchConfig
 
 	decompressCfg *scrapeconfig.DecompressionConfig
 
@@ -402,7 +405,7 @@ func (s *targetSyncer) sync(groups []*targetgroup.Group, targetEventHandler chan
 			if !ok {
 				level.Warn(s.log).Log("msg", "failed to find file event watcher", "path", k)
 				continue
-			} else {
+			} else { //nolint:revive
 				if watcherUseCount[k]--; watcherUseCount[k] > 0 {
 					// Multiple targets are using this file watcher, leave it alone
 					continue
@@ -440,7 +443,7 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 }
 
 func (s *targetSyncer) newTarget(path, pathExclude string, labels model.LabelSet, discoveredLabels model.LabelSet, fileEventWatcher chan fsnotify.Event, targetEventHandler chan fileTargetEvent) (*FileTarget, error) {
-	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, fileEventWatcher, targetEventHandler, s.encoding, s.decompressCfg)
+	return NewFileTarget(s.metrics, s.log, s.entryHandler, s.positions, path, pathExclude, labels, discoveredLabels, s.targetConfig, s.watchConfig, fileEventWatcher, targetEventHandler, s.encoding, s.decompressCfg)
 }
 
 func (s *targetSyncer) DroppedTargets() []target.Target {

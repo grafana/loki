@@ -62,6 +62,7 @@ const (
 )
 
 type LokiChunk struct {
+	format   byte
 	encoding Encoding
 
 	blocks []LokiBlock
@@ -149,6 +150,7 @@ func parseLokiChunk(chunkHeader *ChunkHeader, r io.Reader) (*LokiChunk, error) {
 	metadata = metadata[n:]
 
 	lokiChunk := &LokiChunk{
+		format:                   f,
 		encoding:                 compression,
 		metadataChecksum:         metaChecksum,
 		computedMetadataChecksum: computedMetaChecksum,

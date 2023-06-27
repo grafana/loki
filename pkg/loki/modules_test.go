@@ -2,6 +2,7 @@ package loki
 
 import (
 	"fmt"
+	"path"
 	"path/filepath"
 	"testing"
 	"time"
@@ -369,8 +370,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 		BoltDBShipperConfig: shipper.Config{
 			Config: indexshipper.Config{
 				SharedStoreType:      config.StorageTypeFileSystem,
-				ActiveIndexDirectory: dir,
-				CacheLocation:        dir,
+				ActiveIndexDirectory: path.Join(dir, "index"),
+				CacheLocation:        path.Join(dir, "cache"),
 				Mode:                 indexshipper.ModeWriteOnly,
 				ResyncInterval:       24 * time.Hour,
 			},
@@ -380,10 +381,13 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.SchemaConfig = config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
-				IndexType:  config.StorageTypeInMemory,
+				IndexType:  config.BoltDBShipperType,
 				ObjectType: config.StorageTypeFileSystem,
-				RowShards:  16,
-				Schema:     "v11",
+				IndexTables: config.PeriodicTableConfig{
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+				Schema:    "v11",
 				From: config.DayTime{
 					Time: model.Now(),
 				},
@@ -397,12 +401,15 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	cfg.IndexGateway.Mode = indexgateway.SimpleMode
 	cfg.IndexGateway.Ring.InstanceAddr = localhost
 	cfg.CompactorConfig.CompactorRing.InstanceAddr = localhost
+	cfg.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
+	cfg.CompactorConfig.WorkingDirectory = path.Join(dir, "compactor")
 
 	cfg.Ruler.Config.Ring.InstanceAddr = localhost
 	cfg.Ruler.Config.StoreConfig.Type = config.StorageTypeLocal
 	cfg.Ruler.Config.StoreConfig.Local.Directory = dir
 
 	cfg.Common.CompactorAddress = "http://localhost:0"
+	cfg.Common.PathPrefix = dir
 
 	for _, transformer := range cfgTransformers {
 		if transformer != nil {

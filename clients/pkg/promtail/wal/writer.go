@@ -27,12 +27,17 @@ const (
 	minimumCleanSegmentsEvery = time.Second
 )
 
-// WriterEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
-// they can subscribe to events by adding themselves as subscribers on the Writer with writer.Subscribe.
-type WriterEventSubscriber interface {
-	// WriteCleanup is implemented by WriteTo, who can subscribe to these type of events for cleaning up the series cache
-	// entries that originated from deleted segments.
+// CleanupEventSubscriber is an interface that objects that want to receive events from the wal Writer can implement. After
+// they can subscribe to events by adding themselves as subscribers on the Writer with writer.SubscribeCleanup.
+type CleanupEventSubscriber interface {
 	WriteCleanup
+}
+
+// WriteEventSubscriber is an interface that objects that want to receive an event when Writer writes to the WAL can
+// implement, and later subscribe to the Writer via writer.SubscribeWrite.
+type WriteEventSubscriber interface {
+	// NotifyWrite allows others to be notifier when Writer writes to the underlying WAL.
+	NotifyWrite()
 }
 
 // Writer implements api.EntryHandler, exposing a channel were scraping targets can write to. Reading from there, it
@@ -47,8 +52,11 @@ type Writer struct {
 	wal         WAL
 	entryWriter *entryWriter
 
-	subscribersLock sync.Mutex
-	subscribers     []WriterEventSubscriber
+	cleanupSubscribersLock sync.RWMutex
+	cleanupSubscribers     []CleanupEventSubscriber
+
+	writeSubscribersLock sync.RWMutex
+	writeSubscribers     []WriteEventSubscriber
 
 	reclaimedOldSegmentsSpaceCounter *prometheus.CounterVec
 
@@ -96,7 +104,17 @@ func (wrt *Writer) start(maxSegmentAge time.Duration) {
 	go func() {
 		defer wrt.wg.Done()
 		for e := range wrt.entries {
-			wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log)
+			if err := wrt.entryWriter.WriteEntry(e, wrt.wal, wrt.log); err != nil {
+				level.Error(wrt.log).Log("msg", "failed to write entry", "err", err)
+				// if an error occurred while writing the wal, go to next entry and don't notify write subscribers
+				continue
+			}
+
+			wrt.writeSubscribersLock.RLock()
+			for _, s := range wrt.writeSubscribers {
+				s.NotifyWrite()
+			}
+			wrt.writeSubscribersLock.RUnlock()
 		}
 	}()
 	// WAL cleanup routine that cleans old segments
@@ -181,20 +199,27 @@ func (wrt *Writer) cleanSegments(maxAge time.Duration) error {
 	}
 	// if we reclaimed at least one segment, notify all subscribers
 	if maxReclaimed != -1 {
-		wrt.subscribersLock.Lock()
-		defer wrt.subscribersLock.Unlock()
-		for _, subscriber := range wrt.subscribers {
+		wrt.cleanupSubscribersLock.RLock()
+		defer wrt.cleanupSubscribersLock.RUnlock()
+		for _, subscriber := range wrt.cleanupSubscribers {
 			subscriber.SeriesReset(maxReclaimed)
 		}
 	}
 	return nil
 }
 
-// Subscribe adds a new WriterEventSubscriber that will receive Writer events.
-func (wrt *Writer) Subscribe(subscriber WriterEventSubscriber) {
-	wrt.subscribersLock.Lock()
-	defer wrt.subscribersLock.Unlock()
-	wrt.subscribers = append(wrt.subscribers, subscriber)
+// SubscribeCleanup adds a new CleanupEventSubscriber that will receive cleanup events.
+func (wrt *Writer) SubscribeCleanup(subscriber CleanupEventSubscriber) {
+	wrt.cleanupSubscribersLock.Lock()
+	defer wrt.cleanupSubscribersLock.Unlock()
+	wrt.cleanupSubscribers = append(wrt.cleanupSubscribers, subscriber)
+}
+
+// SubscribeWrite adds a new WriteEventSubscriber that will receive write events.
+func (wrt *Writer) SubscribeWrite(subscriber WriteEventSubscriber) {
+	wrt.writeSubscribersLock.Lock()
+	defer wrt.writeSubscribersLock.Unlock()
+	wrt.writeSubscribers = append(wrt.writeSubscribers, subscriber)
 }
 
 // entryWriter writes api.Entry to a WAL, keeping in memory a single Record object that's reused
@@ -215,17 +240,10 @@ func newEntryWriter() *entryWriter {
 
 // WriteEntry writes an api.Entry to a WAL. Note that since it's re-using the same Record object for every
 // write, it first has to be reset, and then overwritten accordingly. Therefore, WriteEntry is not thread-safe.
-func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
+func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, _ log.Logger) error {
 	// Reset wal record slices
 	ew.reusableWALRecord.RefEntries = ew.reusableWALRecord.RefEntries[:0]
 	ew.reusableWALRecord.Series = ew.reusableWALRecord.Series[:0]
-
-	defer func() {
-		err := wl.Log(ew.reusableWALRecord)
-		if err != nil {
-			level.Error(logger).Log("msg", "Failed to write entry to wal", "err", err)
-		}
-	}()
 
 	var fp uint64
 	lbs := labels.FromMap(util.ModelLabelSetToMap(entry.Labels))
@@ -243,6 +261,8 @@ func (ew *entryWriter) WriteEntry(entry api.Entry, wl WAL, logger log.Logger) {
 		Ref:    chunks.HeadSeriesRef(fp),
 		Labels: lbs,
 	})
+
+	return wl.Log(ew.reusableWALRecord)
 }
 
 type segmentRef struct {

@@ -52,9 +52,10 @@ local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publis
 local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
 local helm_chart_auto_update_config_template = secret('helm-chart-update-config-template', 'secret/data/common/loki-helm-chart-auto-update', 'on-loki-release-config.json');
 
-local run(name, commands, env={}) = {
+
+local run(name, commands, env={}, image='grafana/loki-build-image:%s' % build_image_version) = {
   name: name,
-  image: 'grafana/loki-build-image:%s' % build_image_version,
+  image: image,
   commands: commands,
   environment: env,
 };
@@ -66,6 +67,21 @@ local make(target, container=true, args=[]) = run(target, [
     target,
   ] + args),
 ]);
+
+// The only indication we have that we're running in a fork is the presence of a secret.
+// If a secret is blank, it means we're running in a fork.
+local skipMissingSecretPipelineStep(secretName) = run(
+  'skip pipeline if missing secret',
+  [
+    'if [ "$${#TEST_SECRET}" -eq 0 ]; then',
+    '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed as a branch in main grafana/loki repository in order to run." && exit 78',
+    'fi',
+  ],
+  image='alpine',
+  env={
+    TEST_SECRET: { from_secret: secretName },
+  },
+);
 
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
@@ -277,10 +293,13 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
 };
 
 local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
+  local skipStep = skipMissingSecretPipelineStep(ecr_key.name),  // Needs ECR secrets to run
+
   steps+: [
+    skipStep,
     // dry run for everything that is not tag or main
     lambda_promtail_ecr('lambda-promtail') {
-      depends_on: ['image-tag'],
+      depends_on: ['image-tag', skipStep.name],
       when: onPRs,
       settings+: {
         dry_run: true,
@@ -370,7 +389,7 @@ local manifest(apps) = pipeline('manifest') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.4.0',
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest.tmpl
@@ -403,7 +422,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.4.0',
       volumes: [{
         name: 'dockerconf',
         path: '/.docker',
@@ -453,7 +472,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.28.2',
+    local build_image_tag = '0.28.3',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -532,7 +551,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'cd -',
       ]) { depends_on: ['clone'], when: onPRs },
       make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
-      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
+      run('test-target-branch', commands=['cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
         'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
@@ -785,6 +804,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
     // Package and test the packages
     steps: [
+      skipMissingSecretPipelineStep(gpg_private_key.name),  // Needs GPG keys to run
       {
         name: 'fetch-tags',
         image: 'alpine',

@@ -7,8 +7,9 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type MockBatch struct {
@@ -16,14 +17,14 @@ type MockBatch struct {
 	size    int
 }
 
-func (b *MockBatch) add(ctx context.Context, e entry) error {
+func (b *MockBatch) add(_ context.Context, e entry) error {
 	b.streams[e.labels.String()] = &logproto.Stream{
 		Labels: e.labels.String(),
 	}
 	return nil
 }
 
-func (b *MockBatch) flushBatch(ctx context.Context) error {
+func (b *MockBatch) flushBatch(_ context.Context) error {
 	return nil
 }
 func (b *MockBatch) encode() ([]byte, int, error) {

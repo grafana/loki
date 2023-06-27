@@ -22,7 +22,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 )
 
@@ -108,7 +107,7 @@ const (
 func xmlDecodeAndBody(bodyReader io.Reader, v interface{}) ([]byte, error) {
 	// read the whole body (up to 1MB)
 	const maxBodyLength = 1 << 20
-	body, err := ioutil.ReadAll(io.LimitReader(bodyReader, maxBodyLength))
+	body, err := io.ReadAll(io.LimitReader(bodyReader, maxBodyLength))
 	if err != nil {
 		return nil, err
 	}
@@ -250,26 +249,6 @@ func errUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string)
 		Message:    msg,
 		BucketName: bucketName,
 		Key:        objectName,
-	}
-}
-
-// errInvalidBucketName - Invalid bucket name response.
-func errInvalidBucketName(message string) error {
-	return ErrorResponse{
-		StatusCode: http.StatusBadRequest,
-		Code:       "InvalidBucketName",
-		Message:    message,
-		RequestID:  "minio",
-	}
-}
-
-// errInvalidObjectName - Invalid object name response.
-func errInvalidObjectName(message string) error {
-	return ErrorResponse{
-		StatusCode: http.StatusNotFound,
-		Code:       "NoSuchKey",
-		Message:    message,
-		RequestID:  "minio",
 	}
 }
 

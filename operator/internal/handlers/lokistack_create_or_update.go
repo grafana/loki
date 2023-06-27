@@ -269,6 +269,16 @@ func CreateOrUpdateLokiStack(
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
 	}
 
+	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	if err != nil {
+		ll.Error(err, "failed to parse query timeout")
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
+			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
+		}
+	}
+
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
@@ -286,6 +296,7 @@ func CreateOrUpdateLokiStack(
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
 		},
+		Timeouts: timeoutConfig,
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
@@ -367,6 +378,7 @@ func CreateOrUpdateLokiStack(
 
 		depAnnotations, err := dependentAnnotations(ctx, k, obj)
 		if err != nil {
+			l.Error(err, "failed to set dependent annotations")
 			return err
 		}
 
@@ -395,7 +407,7 @@ func CreateOrUpdateLokiStack(
 
 	// 1x.extra-small is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall {
+	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 

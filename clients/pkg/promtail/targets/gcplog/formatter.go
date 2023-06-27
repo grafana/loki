@@ -13,10 +13,9 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/util"
 )
 
-// LogEntry that will be written to the pubsub topic.
+// GCPLogEntry that will be written to the pubsub topic.
 // According to the following spec.
 // https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry
 // nolint:revive
@@ -32,13 +31,22 @@ type GCPLogEntry struct {
 	// Its important that `Timestamp` is optional in GCE log entry.
 	ReceiveTimestamp string `json:"receiveTimestamp"`
 
+	// Optional. The severity of the log entry. The default value is DEFAULT.
+	// DEFAULT, DEBUG, INFO, NOTICE, WARNING, ERROR, CRITICAL, ALERT, EMERGENCY
+	// https://cloud.google.com/logging/docs/reference/v2/rest/v2/LogEntry#LogSeverity
+	Severity string `json:"severity"`
+
+	// Optional. A map of key, value pairs that provides additional information about the log entry.
+	// The labels can be user-defined or system-defined.
+	Labels map[string]string `json:"labels"`
+
 	TextPayload string `json:"textPayload"`
 
 	// NOTE(kavi): There are other fields on GCPLogEntry. but we need only need above fields for now
 	// anyway we will be sending the entire entry to Loki.
 }
 
-func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.Labels, useIncomingTimestamp bool, relabelConfig []*relabel.Config) (api.Entry, error) {
+func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.Labels, useIncomingTimestamp, useFullLine bool, relabelConfig []*relabel.Config) (api.Entry, error) {
 	var ge GCPLogEntry
 
 	if err := json.Unmarshal(data, &ge); err != nil {
@@ -50,19 +58,25 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 	lbs := labels.NewBuilder(otherInternal)
 	lbs.Set("__gcp_logname", ge.LogName)
 	lbs.Set("__gcp_resource_type", ge.Resource.Type)
+	lbs.Set("__gcp_severity", ge.Severity)
+
+	// resource labels from gcp log entry. Add it as internal labels
+	for k, v := range ge.Resource.Labels {
+		lbs.Set("__gcp_resource_labels_"+convertToLokiCompatibleLabel(k), v)
+	}
 
 	// labels from gcp log entry. Add it as internal labels
-	for k, v := range ge.Resource.Labels {
-		lbs.Set("__gcp_resource_labels_"+util.SnakeCase(k), v)
+	for k, v := range ge.Labels {
+		lbs.Set("__gcp_labels_"+convertToLokiCompatibleLabel(k), v)
 	}
 
 	var processed labels.Labels
 
 	// apply relabeling
 	if len(relabelConfig) > 0 {
-		processed, _ = relabel.Process(lbs.Labels(nil), relabelConfig...)
+		processed, _ = relabel.Process(lbs.Labels(), relabelConfig...)
 	} else {
-		processed = lbs.Labels(nil)
+		processed = lbs.Labels()
 	}
 
 	// final labelset that will be sent to loki
@@ -101,8 +115,8 @@ func parseGCPLogsEntry(data []byte, other model.LabelSet, otherInternal labels.L
 		}
 	}
 
-	// Send only `ge.textPaylload` as log line if its present.
-	if strings.TrimSpace(ge.TextPayload) != "" {
+	// Send only `ge.textPayload` as log line if its present and user don't explicitly ask for the whole log.
+	if !useFullLine && strings.TrimSpace(ge.TextPayload) != "" {
 		line = ge.TextPayload
 	}
 

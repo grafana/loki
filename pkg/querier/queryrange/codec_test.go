@@ -101,6 +101,31 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
+		{"series_volume", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+				Limit:    3,
+			})
+		}, &logproto.VolumeRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
+			Limit:    3,
+		}, false},
+		{"series_volume_default_limit", func() (*http.Request, error) {
+			return LokiCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+			})
+		}, &logproto.VolumeRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
+			Limit:    100,
+		}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -231,6 +256,18 @@ func Test_codec_DecodeResponse(t *testing.T) {
 					Chunks:  2,
 					Bytes:   3,
 					Entries: 4,
+				},
+			}, false,
+		},
+		{
+			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
+			&logproto.VolumeRequest{},
+			&VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Volume: 38},
+					},
+					Limit: 100,
 				},
 			}, false,
 		},
@@ -479,6 +516,17 @@ func Test_codec_EncodeResponse(t *testing.T) {
 					Entries: 4,
 				},
 			}, indexStatsString, false,
+		},
+		{
+			"series volume",
+			&VolumeResponse{
+				Response: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{
+						{Name: `{foo="bar"}`, Volume: 38},
+					},
+					Limit: 100,
+				},
+			}, seriesVolumeString, false,
 		},
 	}
 	for _, tt := range tests {
@@ -973,7 +1021,7 @@ func (badResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader { ret
 
 type badReader struct{}
 
-func (badReader) Read(p []byte) (n int, err error) {
+func (badReader) Read(_ []byte) (n int, err error) {
 	return 0, errors.New("")
 }
 
@@ -1200,6 +1248,15 @@ var (
 		"bytes": 3,
 		"entries": 4
 		}`
+	seriesVolumeString = `{
+    "limit": 100,
+    "volumes": [
+      {
+        "name": "{foo=\"bar\"}",
+        "volume": 38
+      }
+    ]
+  }`
 	labelsData  = []string{"foo", "bar"}
 	statsResult = stats.Result{
 		Summary: stats.Summary{

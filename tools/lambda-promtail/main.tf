@@ -242,7 +242,7 @@ resource "aws_lambda_permission" "allow_s3_invoke_lambda_promtail" {
 }
 
 resource "aws_s3_bucket_notification" "this" {
-  for_each = var.bucket_names
+  for_each = var.sqs_enabled ? [] : var.bucket_names
 
   bucket = each.value
 

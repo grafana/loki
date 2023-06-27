@@ -3,6 +3,7 @@ package distributor
 import (
 	"context"
 	"flag"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/limiter"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
@@ -30,14 +32,15 @@ import (
 	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor/clientpool"
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -45,11 +48,13 @@ import (
 
 const (
 	ringKey = "distributor"
+
+	ringAutoForgetUnhealthyPeriods = 10
 )
 
 var (
 	maxLabelCacheSize = 100000
-	rfStats           = usagestats.NewInt("distributor_replication_factor")
+	rfStats           = analytics.NewInt("distributor_replication_factor")
 )
 
 // Config for a Distributor.
@@ -60,18 +65,23 @@ type Config struct {
 	// For testing.
 	factory ring_client.PoolFactory `yaml:"-"`
 
+	// RateStore customizes the rate storing used by stream sharding.
 	RateStore RateStoreConfig `yaml:"rate_store"`
+
+	// WriteFailuresLoggingCfg customizes write failures logging behavior.
+	WriteFailuresLogging writefailures.Cfg `yaml:"write_failures_logging" doc:"description=Experimental. Customize the logging of write failures."`
 }
 
 // RegisterFlags registers distributor-related flags.
 func (cfg *Config) RegisterFlags(fs *flag.FlagSet) {
 	cfg.DistributorRing.RegisterFlags(fs)
 	cfg.RateStore.RegisterFlagsWithPrefix("distributor.rate-store", fs)
+	cfg.WriteFailuresLogging.RegisterFlagsWithPrefix("distributor.write-failures-logging", fs)
 }
 
 // RateStore manages the ingestion rate of streams, populated by data fetched from ingesters.
 type RateStore interface {
-	RateFor(tenantID string, streamHash uint64) int64
+	RateFor(tenantID string, streamHash uint64) (int64, float64)
 }
 
 // Distributor coordinates replicates and distribution of log streams.
@@ -91,7 +101,9 @@ type Distributor struct {
 
 	// The global rate limiter requires a distributors ring to count
 	// the number of healthy instances.
-	distributorsLifecycler *ring.Lifecycler
+	distributorsLifecycler *ring.BasicLifecycler
+	distributorsRing       *ring.Ring
+	healthyInstancesCount  *atomic.Uint32
 
 	rateLimitStrat string
 
@@ -100,6 +112,10 @@ type Distributor struct {
 	// Per-user rate limiter.
 	ingestionRateLimiter *limiter.RateLimiter
 	labelCache           *lru.Cache
+
+	// Push failures rate limiter.
+	writeFailuresManager *writefailures.Manager
+
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
 	ingesterAppendFailures *prometheus.CounterVec
@@ -136,45 +152,29 @@ func New(
 
 	// Create the configured ingestion rate limit strategy (local or global).
 	var ingestionRateStrategy limiter.RateLimiterStrategy
-	var distributorsLifecycler *ring.Lifecycler
-	rateLimitStrat := validation.LocalIngestionRateStrategy
+	var distributorsLifecycler *ring.BasicLifecycler
+	var distributorsRing *ring.Ring
 
 	var servs []services.Service
-	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
-		rateLimitStrat = validation.GlobalIngestionRateStrategy
-		if err != nil {
-			return nil, errors.Wrap(err, "create distributor KV store client")
-		}
 
-		distributorsLifecycler, err = ring.NewLifecycler(cfg.DistributorRing.ToLifecyclerConfig(), nil, "distributor", ringKey, false, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", registerer))
-		if err != nil {
-			return nil, errors.Wrap(err, "create distributor lifecycler")
-		}
-
-		servs = append(servs, distributorsLifecycler)
-		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, distributorsLifecycler)
-	} else {
-		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
-	}
-
+	rateLimitStrat := validation.LocalIngestionRateStrategy
 	labelCache, err := lru.New(maxLabelCacheSize)
 	if err != nil {
 		return nil, err
 	}
 
-	d := Distributor{
-		cfg:                    cfg,
-		clientCfg:              clientCfg,
-		tenantConfigs:          configs,
-		tenantsRetention:       retention.NewTenantsRetention(overrides),
-		ingestersRing:          ingestersRing,
-		distributorsLifecycler: distributorsLifecycler,
-		validator:              validator,
-		pool:                   clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
-		ingestionRateLimiter:   limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second),
-		labelCache:             labelCache,
-		shardTracker:           NewShardTracker(),
-		rateLimitStrat:         rateLimitStrat,
+	d := &Distributor{
+		cfg:                   cfg,
+		clientCfg:             clientCfg,
+		tenantConfigs:         configs,
+		tenantsRetention:      retention.NewTenantsRetention(overrides),
+		ingestersRing:         ingestersRing,
+		validator:             validator,
+		pool:                  clientpool.NewPool(clientCfg.PoolConfig, ingestersRing, factory, util_log.Logger),
+		labelCache:            labelCache,
+		shardTracker:          NewShardTracker(),
+		healthyInstancesCount: atomic.NewUint32(0),
+		rateLimitStrat:        rateLimitStrat,
 		ingesterAppends: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
 			Name:      "distributor_ingester_appends_total",
@@ -195,7 +195,28 @@ func New(
 			Name:      "stream_sharding_count",
 			Help:      "Total number of times the distributor has sharded streams",
 		}),
+		writeFailuresManager: writefailures.NewManager(util_log.Logger, cfg.WriteFailuresLogging, configs),
 	}
+
+	if overrides.IngestionRateStrategy() == validation.GlobalIngestionRateStrategy {
+		d.rateLimitStrat = validation.GlobalIngestionRateStrategy
+
+		distributorsRing, distributorsLifecycler, err = newRingAndLifecycler(cfg.DistributorRing, d.healthyInstancesCount, util_log.Logger, registerer)
+		if err != nil {
+			return nil, err
+		}
+
+		servs = append(servs, distributorsLifecycler, distributorsRing)
+
+		ingestionRateStrategy = newGlobalIngestionRateStrategy(overrides, d)
+	} else {
+		ingestionRateStrategy = newLocalIngestionRateStrategy(overrides)
+	}
+
+	d.ingestionRateLimiter = limiter.NewRateLimiter(ingestionRateStrategy, 10*time.Second)
+	d.distributorsRing = distributorsRing
+	d.distributorsLifecycler = distributorsLifecycler
+
 	d.replicationFactor.Set(float64(ingestersRing.ReplicationFactor()))
 	rfStats.Set(int64(ingestersRing.ReplicationFactor()))
 
@@ -222,7 +243,7 @@ func New(
 	d.subservicesWatcher.WatchManager(d.subservices)
 	d.Service = services.NewBasicService(d.starting, d.running, d.stopping)
 
-	return &d, nil
+	return d, nil
 }
 
 func (d *Distributor) starting(ctx context.Context) error {
@@ -280,7 +301,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedLineSize := 0
 	validatedLineCount := 0
 
-	var validationErr error
+	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
 	func() {
@@ -302,7 +323,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
-				validationErr = err
+				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
 				bytes := 0
 				for _, e := range stream.Entries {
@@ -313,10 +334,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 
 			n := 0
-			streamSize := 0
+			pushSize := 0
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
-					validationErr = err
+					d.writeFailuresManager.Log(tenantID, err)
+					validationErrors.Add(err)
 					continue
 				}
 
@@ -337,13 +359,13 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				n++
 				validatedLineSize += len(entry.Line)
 				validatedLineCount++
-				streamSize += len(entry.Line)
+				pushSize += len(entry.Line)
 			}
 			stream.Entries = stream.Entries[:n]
 
 			shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 			if shardStreamsCfg.Enabled {
-				derivedKeys, derivedStreams := d.shardStream(stream, streamSize, tenantID)
+				derivedKeys, derivedStreams := d.shardStream(stream, pushSize, tenantID)
 				keys = append(keys, derivedKeys...)
 				streams = append(streams, derivedStreams...)
 			} else {
@@ -352,6 +374,11 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			}
 		}
 	}()
+
+	var validationErr error
+	if validationErrors.Err() != nil {
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
+	}
 
 	// Return early if none of the streams contained entries
 	if len(streams) == 0 {
@@ -363,7 +390,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		// Return a 429 to indicate to the client they are being rate limited
 		validation.DiscardedSamples.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineCount))
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+
+		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
+		d.writeFailuresManager.Log(tenantID, err)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 
 	const maxExpectedReplicationSet = 5 // typical replication factor 3 plus one for inactive plus one for luck
@@ -431,10 +461,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 // streams and their associated keys for hashing to ingesters.
 //
 // The number of shards is limited by the number of entries.
-func (d *Distributor) shardStream(stream logproto.Stream, streamSize int, tenantID string) ([]uint32, []streamTracker) {
+func (d *Distributor) shardStream(stream logproto.Stream, pushSize int, tenantID string) ([]uint32, []streamTracker) {
 	shardStreamsCfg := d.validator.Limits.ShardStreams(tenantID)
 	logger := log.With(util_log.WithUserID(tenantID, util_log.Logger), "stream", stream.Labels)
-	shardCount := d.shardCountFor(logger, &stream, streamSize, tenantID, shardStreamsCfg)
+	shardCount := d.shardCountFor(logger, &stream, pushSize, tenantID, shardStreamsCfg)
 
 	if shardCount <= 1 {
 		return []uint32{util.TokenFor(tenantID, stream.Labels)}, []streamTracker{{stream: stream}}
@@ -470,10 +500,16 @@ func (d *Distributor) createShards(stream logproto.Stream, totalShards int, tena
 		streamCount = streamCount(totalShards, stream)
 	)
 
+	if totalShards <= 0 {
+		level.Error(util_log.Logger).Log("msg", "attempt to create shard with zeroed total shards", "org_id", tenantID, "stream", stream.Labels, "entries_len", len(stream.Entries))
+		return derivedKeys, derivedStreams
+	}
+
+	entriesPerShard := int(math.Ceil(float64(len(stream.Entries)) / float64(totalShards)))
 	startShard := d.shardTracker.LastShardNum(tenantID, stream.Hash)
 	for i := 0; i < streamCount; i++ {
 		shardNum := (startShard + i) % totalShards
-		shard := d.createShard(streamLabels, streamPattern, shardNum)
+		shard := d.createShard(streamLabels, streamPattern, shardNum, entriesPerShard)
 
 		derivedKeys = append(derivedKeys, util.TokenFor(tenantID, shard.Labels))
 		derivedStreams = append(derivedStreams, streamTracker{stream: shard})
@@ -512,7 +548,7 @@ func labelTemplate(lbls string) labels.Labels {
 	return streamLabels
 }
 
-func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber int) logproto.Stream {
+func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shardNumber, numOfEntries int) logproto.Stream {
 	shardLabel := strconv.Itoa(shardNumber)
 	for i := 0; i < len(lbls); i++ {
 		if lbls[i].Name == ingester.ShardLbName {
@@ -524,7 +560,7 @@ func (d *Distributor) createShard(lbls labels.Labels, streamPattern string, shar
 	return logproto.Stream{
 		Labels:  strings.Replace(streamPattern, ingester.ShardLbPlaceholder, shardLabel, 1),
 		Hash:    lbls.Hash(),
-		Entries: make([]logproto.Entry, 0, 1024),
+		Entries: make([]logproto.Entry, 0, numOfEntries),
 	}
 }
 
@@ -623,7 +659,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 
 	ls, err := syntax.ParseLabels(key)
 	if err != nil {
-		return "", 0, httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, key, err)
+		return "", 0, fmt.Errorf(validation.InvalidLabelsErrorMsg, key, err)
 	}
 
 	if err := d.validator.ValidateLabels(vContext, ls, *stream); err != nil {
@@ -643,7 +679,7 @@ func (d *Distributor) parseStreamLabels(vContext validationContext, key string, 
 // based on the rate stored in the rate store and will store the new evaluated number of shards.
 //
 // desiredRate is expected to be given in bytes.
-func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, streamSize int, tenantID string, streamShardcfg *shardstreams.Config) int {
+func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, pushSize int, tenantID string, streamShardcfg *shardstreams.Config) int {
 	if streamShardcfg.DesiredRate.Val() <= 0 {
 		if streamShardcfg.LoggingEnabled {
 			level.Error(logger).Log("msg", "invalid desired rate", "desired_rate", streamShardcfg.DesiredRate.String())
@@ -651,8 +687,20 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 		return 1
 	}
 
-	rate := d.rateStore.RateFor(tenantID, stream.Hash)
-	shards := calculateShards(rate, streamSize, streamShardcfg.DesiredRate.Val())
+	rate, pushRate := d.rateStore.RateFor(tenantID, stream.Hash)
+	if pushRate == 0 {
+		// first push, don't shard until the rate is understood
+		return 1
+	}
+
+	if pushRate > 1 {
+		// High throughput. Let stream sharding do its job and
+		// don't attempt to amortize the push size over the
+		// real rate
+		pushRate = 1
+	}
+
+	shards := calculateShards(rate, int(float64(pushSize)*pushRate), streamShardcfg.DesiredRate.Val())
 	if shards == 0 {
 		// 1 shard is enough for the given stream.
 		return 1
@@ -661,10 +709,50 @@ func (d *Distributor) shardCountFor(logger log.Logger, stream *logproto.Stream, 
 	return shards
 }
 
-func calculateShards(rate int64, streamSize, desiredRate int) int {
-	shards := float64(rate+int64(streamSize)) / float64(desiredRate)
+func calculateShards(rate int64, pushSize, desiredRate int) int {
+	shards := float64(rate+int64(pushSize)) / float64(desiredRate)
 	if shards <= 1 {
 		return 1
 	}
 	return int(math.Ceil(shards))
+}
+
+// newRingAndLifecycler creates a new distributor ring and lifecycler with all required lifecycler delegates
+func newRingAndLifecycler(cfg RingConfig, instanceCount *atomic.Uint32, logger log.Logger, reg prometheus.Registerer) (*ring.Ring, *ring.BasicLifecycler, error) {
+	kvStore, err := kv.NewClient(cfg.KVStore, ring.GetCodec(), kv.RegistererWithKVName(reg, "distributor-lifecycler"), logger)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize distributors' KV store")
+	}
+
+	lifecyclerCfg, err := cfg.ToBasicLifecyclerConfig(logger)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to build distributors' lifecycler config")
+	}
+
+	var delegate ring.BasicLifecyclerDelegate
+	delegate = ring.NewInstanceRegisterDelegate(ring.ACTIVE, 1)
+	delegate = newHealthyInstanceDelegate(instanceCount, cfg.HeartbeatTimeout, delegate)
+	delegate = ring.NewLeaveOnStoppingDelegate(delegate, logger)
+	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*cfg.HeartbeatTimeout, delegate, logger)
+
+	distributorsLifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "distributor", ringKey, kvStore, delegate, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize distributors' lifecycler")
+	}
+
+	distributorsRing, err := ring.New(cfg.ToRingConfig(), "distributor", ringKey, logger, prometheus.WrapRegistererWithPrefix("cortex_", reg))
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "failed to initialize distributors' ring client")
+	}
+
+	return distributorsRing, distributorsLifecycler, nil
+}
+
+// HealthyInstancesCount implements the ReadLifecycler interface.
+//
+// We use a ring lifecycler delegate to count the number of members of the
+// ring. The count is then used to enforce rate limiting correctly for each
+// distributor. $EFFECTIVE_RATE_LIMIT = $GLOBAL_RATE_LIMIT / $NUM_INSTANCES.
+func (d *Distributor) HealthyInstancesCount() int {
+	return int(d.healthyInstancesCount.Load())
 }

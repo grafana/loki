@@ -67,7 +67,7 @@ func main() {
 		panic(err)
 	}
 
-	builder := tsdb.NewBuilder()
+	builder := tsdb.NewBuilder(index.LiveFormat)
 
 	log.Println("Loading index into memory")
 

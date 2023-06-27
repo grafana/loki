@@ -407,6 +407,10 @@ type GcplogTargetConfig struct {
 
 	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
 	Server server.Config `yaml:"server"`
+
+	// UseFullLine force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+	// By default, if `textPayload` is present in the line, then it's used as log line.
+	UseFullLine bool `yaml:"use_full_line"`
 }
 
 // HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.

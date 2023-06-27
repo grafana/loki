@@ -5,12 +5,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Config struct {
@@ -31,19 +31,21 @@ type tableManager struct {
 	tables    map[string]Table
 	tablesMtx sync.RWMutex
 	metrics   *metrics
+	logger    log.Logger
 
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 }
 
-func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Registerer) (TableManager, error) {
+func NewTableManager(cfg Config, storageClient storage.Client, reg prometheus.Registerer, logger log.Logger) (TableManager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	tm := tableManager{
 		cfg:           cfg,
 		storageClient: storageClient,
 		tables:        map[string]Table{},
 		metrics:       newMetrics(reg),
+		logger:        logger,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -72,7 +74,7 @@ func (tm *tableManager) loop() {
 }
 
 func (tm *tableManager) Stop() {
-	level.Info(util_log.Logger).Log("msg", "stopping table manager")
+	level.Info(tm.logger).Log("msg", "stopping table manager")
 
 	tm.cancel()
 	tm.wg.Wait()
@@ -131,14 +133,14 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 	tm.tablesMtx.RLock()
 	defer tm.tablesMtx.RUnlock()
 
-	level.Info(util_log.Logger).Log("msg", "uploading tables")
+	level.Info(tm.logger).Log("msg", "uploading tables")
 
 	status := statusSuccess
 	for _, table := range tm.tables {
 		err := table.Upload(ctx)
 		if err != nil {
 			status = statusFailure
-			level.Error(util_log.Logger).Log("msg", "failed to upload table", "table", table.Name(), "err", err)
+			level.Error(tm.logger).Log("msg", "failed to upload table", "table", table.Name(), "err", err)
 			continue
 		}
 
@@ -146,7 +148,7 @@ func (tm *tableManager) uploadTables(ctx context.Context) {
 		err = table.Cleanup(tm.cfg.DBRetainPeriod)
 		if err != nil {
 			// we do not want to stop uploading of dbs due to failures in cleaning them up so logging just the error here.
-			level.Error(util_log.Logger).Log("msg", "failed to cleanup uploaded index past their retention period", "table", table.Name(), "err", err)
+			level.Error(tm.logger).Log("msg", "failed to cleanup uploaded index past their retention period", "table", table.Name(), "err", err)
 		}
 	}
 

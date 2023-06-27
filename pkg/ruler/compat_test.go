@@ -45,11 +45,12 @@ func TestNonMetricQuery(t *testing.T) {
 	overrides, err := validation.NewOverrides(validation.Limits{}, nil)
 	require.Nil(t, err)
 
-	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log.Logger)
-	eval, err := NewLocalEvaluator(engine, log.Logger)
+	log := log.Logger
+	engine := logql.NewEngine(logql.EngineOpts{}, &FakeQuerier{}, overrides, log)
+	eval, err := NewLocalEvaluator(engine, log)
 	require.NoError(t, err)
 
-	queryFunc := queryFunc(eval, overrides, fakeChecker{}, "fake")
+	queryFunc := queryFunc(eval, overrides, fakeChecker{}, "fake", log)
 
 	_, err = queryFunc(context.TODO(), `{job="nginx"}`, time.Now())
 	require.Error(t, err, "rule result is not a vector or scalar")
@@ -67,6 +68,6 @@ func (q *FakeQuerier) SelectSamples(context.Context, logql.SelectSampleParams) (
 
 type fakeChecker struct{}
 
-func (f fakeChecker) isReady(tenant string) bool {
+func (f fakeChecker) isReady(_ string) bool {
 	return true
 }

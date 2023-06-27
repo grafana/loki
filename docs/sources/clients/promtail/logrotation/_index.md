@@ -4,7 +4,7 @@ description: Promtail and Log Rotation
 ---
 # Promtail and Log Rotation
 
-## Why does log rotation matters?
+## Why does log rotation matter?
 
 At any point in time, there may be three processes working on a log file as shown in the image below.
 ![block_diagram](./logrotation-components.png)
@@ -19,7 +19,7 @@ One of the critical components here is the log rotator. Let's understand how it 
 
 In general, when a software program rotates a log, it can be done in two ways internally.
 
-Given a log file `error.log`
+Given a log file named `error.log`
 
 1. Copy the log file with a different name, for example, `error.log.1` and truncate the original log file `error.log`.
 2. Rename the log file with a different name, for example,  `error.log.1` and create a new log file with the original name `error.log`.
@@ -34,11 +34,11 @@ These two methods of log rotation are shown in the following images.
 ### Rename and Create
 ![block_diagram](./logrotation-rename-and-create.png)
 
-Both types of log rotation seem to give the same result. However, there are some subtle differences.
+Both types of log rotation produce the same result. However, there are some subtle differences.
 
 Copy and Truncate(1) favors the `appender` as its descriptor for the original log file `error.log` doesn't change. Therefore, it can keep writing to the same file descriptor. In other words, re-opening the file is not needed.
 
-However (1) has a serious problem if we bring the `tailer` into account. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
+However, (1) has a serious problem when considering the `tailer`. There is a race between truncating the file and the `tailer` finishing reading that log file. Meaning, there is a high chance of the log rotation mechanism truncating the file `error.log` before the `tailer` reads everything from it.
 
 This is where Rename and Create(2) can help. Here, when the log file `error.log` is renamed to `error.log.1`, the `tailer` still holds the file descriptor of `error.log.1`. Therefore, it can continue reading the log file until it is completed. But that comes with the tradeoff: with (2), you have to signal the `appender` to reopen `error.log` (and `appender` should be able to reopen it). Otherwise, it would keep writing to `error.log.1` as the file descriptor won't change. The good news is that most of the popular `appender` solutions (for example, Syslog, Kubelet, Docker log driver) support reopening log files when they are renamed.
 
@@ -77,12 +77,12 @@ Here `copytruncate` mode works exactly like (1) explained above.
         create
 }
 ```
-Here `create` mode works like (2) explained above. The `create` mode is optional because it's the default mode in `logrotate`.
+Here, the `create` mode works as explained in (2) above. The `create` mode is optional because it's the default mode in `logrotate`.
 
 
 ### Kubernetes
 
-[Kubernetes Service Discovery in Promtail]({{<relref "../scraping#kubernetes-discovery">}}) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes the pod logs from the node files.
+[Kubernetes Service Discovery in Promtail]({{< relref "../scraping#kubernetes-discovery" >}}) also uses file-based scraping. Meaning, logs from your pods are stored on the nodes and Promtail scrapes the pod logs from the node files.
 
 You can [configure](https://kubernetes.io/docs/concepts/cluster-administration/logging/#log-rotation) the `kubelet` process running on each node to manage log rotation via two configuration settings.
 
@@ -139,4 +139,4 @@ If neither `kubelet` nor `CRI` is configured for rotating logs, then the `logrot
 
 Promtail uses `polling` to watch for file changes. A `polling` mechanism combined with a [copy and truncate](#copy-and-truncate) log rotation may result in losing some logs. As explained earlier in this topic, this happens when the file is truncated before Promtail reads all the log lines from such a file.
 
-Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{<relref "../configuration#clients">}}) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.
+Therefore, for a long-term solution, we strongly recommend changing the log rotation strategy to [rename and create](#rename-and-create). Alternatively, as a workaround in the short term, you can tweak the promtail client's `batchsize` [config]({{< relref "../configuration#clients" >}}) to set higher values (like 5M or 8M). This gives Promtail more room to read loglines without frequently waiting for push responses from the Loki server.

@@ -25,9 +25,9 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Lint
-      uses: golangci/golangci-lint-action@v3.4.0
+      uses: golangci/golangci-lint-action@v3.5.0
       with:
         version: v1.51.2
         args: --timeout=4m
@@ -51,7 +51,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Build Manager
       working-directory: ./operator
       run: |-
@@ -72,7 +72,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Build Broker
       working-directory: ./operator
       run: |-
@@ -93,7 +93,7 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Run tests
       working-directory: ./operator
       run: go test -coverprofile=profile.cov ./...

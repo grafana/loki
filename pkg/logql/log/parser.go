@@ -86,7 +86,7 @@ func (j *JSONParser) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, 
 	return line, true
 }
 
-func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueType, offset int) error {
+func (j *JSONParser) parseObject(key, value []byte, dataType jsonparser.ValueType, _ int) error {
 	var err error
 	switch dataType {
 	case jsonparser.String, jsonparser.Number, jsonparser.Boolean:
@@ -586,7 +586,7 @@ func (j *JSONExpressionParser) Process(_ int64, line []byte, lbs *LabelsBuilder)
 		case jsonparser.Null:
 			lbs.Set(key, "")
 		default:
-			lbs.Set(key, unsafeGetString(data))
+			lbs.Set(key, unescapeJSONString(data))
 		}
 
 		matches++
@@ -702,7 +702,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 			}
 
 			// append to the buffer of labels
-			u.lbsBuffer = append(u.lbsBuffer, key, unescapeJSONString(value))
+			u.lbsBuffer = append(u.lbsBuffer, sanitizeLabelKey(key, true), unescapeJSONString(value))
 		default:
 			return nil
 		}

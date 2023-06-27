@@ -77,7 +77,7 @@ func (h *Handler) GenerateHelmValues(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (h *Handler) Nodes(w http.ResponseWriter, req *http.Request) {
+func (h *Handler) Nodes(w http.ResponseWriter, _ *http.Request) {
 	var nodes []string
 	for cloud, n := range NodeTypesByProvider {
 		for nodeType := range n {

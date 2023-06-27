@@ -624,7 +624,7 @@ func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
 	m.addReqs = reqs
 	if m.returnZeroDeleteRequests {
 		return []DeleteRequest{}, m.addErr
@@ -632,22 +632,22 @@ func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, req
 	return m.addReqs, m.addErr
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+func (m *mockDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, reqs []DeleteRequest) error {
 	m.removeReqs = reqs
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, userID, requestID string) ([]DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
 	return m.getResult, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
 	m.getAllUser = userID
 	return m.getAllResult, m.getAllErr
 }
 
-func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
 	return m.genNumber, m.getErr
 }

@@ -39,7 +39,7 @@ func (l *listener) Terminated(from services.State) {
 }
 
 // Failed is called when the service transitions to the FAILED state.
-func (l *listener) Failed(from services.State, failure error) {
+func (l *listener) Failed(from services.State, _ error) {
 	if from == services.Stopping || from == services.Terminated || from == services.Failed {
 		// no need to do anything
 		return

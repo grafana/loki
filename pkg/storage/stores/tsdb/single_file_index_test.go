@@ -7,6 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -253,4 +258,285 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 		require.NoError(b, err)
 		require.Len(b, chkRefs, numChunksToMatch*2)
 	}
+}
+
+func TestTSDBIndex_Stats(t *testing.T) {
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 2,
+					Entries:  20,
+					KB:       20,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+				{
+					MinTime:  10,
+					MaxTime:  20,
+					Checksum: 4,
+					Entries:  40,
+					KB:       40,
+				},
+			},
+		},
+	}
+
+	// Create the TSDB index
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series)
+
+	// Create the test cases
+	testCases := []struct {
+		name        string
+		from        model.Time
+		through     model.Time
+		expected    stats.Stats
+		expectedErr error
+	}{
+		{
+			name:    "from at the beginning of one chunk and through at the end of another chunk",
+			from:    0,
+			through: 20,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10 + 20 + 30 + 40) * 1024,
+				Entries: 10 + 20 + 30 + 40,
+			},
+		},
+		{
+			name:    "from inside one chunk and through inside another chunk",
+			from:    5,
+			through: 15,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10*0.5 + 20*0.5 + 30*0.5 + 40*0.5) * 1024,
+				Entries: 10*0.5 + 20*0.5 + 30*0.5 + 40*0.5,
+			},
+		},
+		{
+			name:    "from inside one chunk and through at the end of another chunk",
+			from:    5,
+			through: 20,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10*0.5 + 20 + 30*0.5 + 40) * 1024,
+				Entries: 10*0.5 + 20 + 30*0.5 + 40,
+			},
+		},
+		{
+			name:    "from at the beginning of one chunk and through inside another chunk",
+			from:    0,
+			through: 15,
+			expected: stats.Stats{
+				Streams: 2,
+				Chunks:  4,
+				Bytes:   (10 + 20*0.5 + 30 + 40*0.5) * 1024,
+				Entries: 10 + 20*0.5 + 30 + 40*0.5,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			acc := &stats.Stats{}
+			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+			require.Equal(t, tc.expectedErr, err)
+			require.Equal(t, tc.expected, *acc)
+		})
+	}
+}
+
+func TestTSDBIndex_SeriesVolume(t *testing.T) {
+	now := time.Now()
+	t1 := now.Add(-time.Hour)
+	t2 := now.Add(-time.Minute)
+
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz", __loki_tenant__="fake"}`),
+
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  t1.UnixMilli(),
+					MaxTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+				{
+					MinTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					MaxTime:  t2.UnixMilli(),
+					Checksum: 2,
+					Entries:  20,
+					KB:       20,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="fizz", __loki_tenant__="fake"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  t1.UnixMilli(),
+					MaxTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+				{
+					MinTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					MaxTime:  t2.UnixMilli(),
+					Checksum: 4,
+					Entries:  40,
+					KB:       40,
+				},
+			},
+		},
+	}
+
+	// Create the TSDB index
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series)
+
+	from := model.TimeFromUnixNano(t1.UnixNano())
+	through := model.TimeFromUnixNano(t2.UnixNano())
+
+	t.Run("it matches all the series when the match all matcher is passed", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it ignores the tenant label matcher", func(t *testing.T) {
+		matcher := []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+"),
+			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+		}
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, withTenantLabelMatcher("fake", matcher)...)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it matches none of the series", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "baz")
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{},
+			Limit:   10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it only returns results for the labels in the matcher", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: (10 + 20 + 30 + 40) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it returns results for label names in matchers", func(t *testing.T) {
+		matchers := []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+			labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+"),
+		}
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, matchers...)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it returns results for label names in matchers", func(t *testing.T) {
+		matchers := []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+			labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+"),
+		}
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, matchers...)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it can filter chunks", func(t *testing.T) {
+		tsdbIndex.SetChunkFilterer(&filterAll{})
+		defer tsdbIndex.SetChunkFilterer(nil)
+
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, matcher)
+
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{},
+			Limit:   10,
+		}, acc.Volumes())
+	})
+}
+
+type filterAll struct{}
+
+func (f *filterAll) ForRequest(_ context.Context) chunk.Filterer {
+	return &filterAllFilterer{}
+}
+
+type filterAllFilterer struct{}
+
+func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
+	return true
 }

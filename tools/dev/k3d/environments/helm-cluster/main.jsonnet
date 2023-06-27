@@ -133,8 +133,8 @@ local tenant = 'loki';
 
   local dashboardsPrefix = if enterprise then 'enterprise-logs' else 'loki',
   local grafanaImage = if enterprise then
-    grafana.withImage('grafana/grafana-enterprise:8.2.5') else
-    grafana.withImage('grafana/grafana:8.2.5'),
+    grafana.withImage('grafana/grafana-enterprise:9.5.1') else
+    grafana.withImage('grafana/grafana:9.5.1'),
   grafana+: grafana
             + grafana.withAnonymous()
             + grafanaImage
@@ -217,7 +217,7 @@ local tenant = 'loki';
                       + k.core.v1.secret.metadata.withNamespace('loki'),
     grafana+: grafana.withEnterpriseLicenseText(importstr '../../secrets/grafana.jwt')
               + grafana.addPlugin(
-                'https://storage.googleapis.com/grafana-enterprise-logs/dev/grafana-enterprise-logs-app-9515528.zip'
+                'https://storage.googleapis.com/grafana-enterprise-logs/dev/grafana-enterprise-logs-app-9515528.zip;grafana-enterprise-logs-app'
               ) + {
       grafana_deployment+:
         k.apps.v1.deployment.spec.template.spec.withInitContainersMixin([

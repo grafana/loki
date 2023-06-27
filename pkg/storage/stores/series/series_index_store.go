@@ -266,7 +266,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 				continue outer
 			}
 
-			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels(nil))
+			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {
@@ -712,6 +712,11 @@ func (c *indexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID
 }
 
 // old index stores do not implement stats -- skip
-func (c *indexReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *indexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
+	return nil, nil
+}
+
+// old index stores do not implement label volume -- skip
+func (c *indexReaderWriter) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }

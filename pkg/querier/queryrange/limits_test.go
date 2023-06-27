@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/math"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -23,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 func TestLimits(t *testing.T) {
@@ -53,9 +53,10 @@ func TestLimits(t *testing.T) {
 func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
 	cfg.CacheResults = false
+	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewTripperware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -112,10 +113,10 @@ func Test_seriesLimiter(t *testing.T) {
 		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{
 			Data: promql.Matrix{
 				{
-					Points: []promql.Point{
+					Floats: []promql.FPoint{
 						{
 							T: toMs(testTime.Add(-4 * time.Hour)),
-							V: 0.013333333333333334,
+							F: 0.013333333333333334,
 						},
 					},
 					Metric: []labels.Label{
@@ -242,7 +243,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -597,8 +598,8 @@ func Test_MaxQuerySize(t *testing.T) {
 			require.NoError(t, err)
 
 			middlewares := []queryrangebase.Middleware{
-				NewQuerySizeLimiterMiddleware(schemas, util_log.Logger, tc.limits, LokiCodec, queryStatsHandler),
-				NewQuerierSizeLimiterMiddleware(schemas, util_log.Logger, tc.limits, LokiCodec, querierStatsHandler),
+				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 
 			_, err = queryrangebase.NewRoundTripper(fakeRT, LokiCodec, nil, middlewares...).RoundTrip(req)
@@ -614,4 +615,59 @@ func Test_MaxQuerySize(t *testing.T) {
 		})
 	}
 
+}
+
+func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
+	engineOpts := testEngineOpts
+	engineOpts.MaxLookBackPeriod = 1 * time.Hour
+
+	lim := fakeLimits{
+		maxQueryBytesRead:   1 << 10,
+		maxQuerierBytesRead: 1 << 10,
+	}
+
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		// This is the actual check that we're testing.
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{
+				Bytes: 1 << 10,
+			},
+		}, nil
+	})
+
+	for _, tc := range []struct {
+		desc       string
+		middleware queryrangebase.Middleware
+	}{
+		{
+			desc:       "QuerySizeLimiter",
+			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+		},
+		{
+			desc:       "QuerierSizeLimiter",
+			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			lokiReq := &LokiInstantRequest{
+				Query:     `{cluster="dev-us-central-0"}`,
+				Limit:     1000,
+				TimeTs:    testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query",
+			}
+
+			handler := tc.middleware.Wrap(
+				queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+					return &LokiResponse{}, nil
+				}),
+			)
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			_, err := handler.Do(ctx, lokiReq)
+			require.NoError(t, err)
+		})
+	}
 }
