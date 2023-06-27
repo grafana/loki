@@ -386,61 +386,6 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 	}
 }
 
-func TestBla(t *testing.T) {
-	runTSDBIndexCache(t)
-	defer sharedCacheClient.Stop()
-	series := []LoadableSeries{
-		{
-			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
-			Chunks: []index.ChunkMeta{
-				{
-					MinTime:  0,
-					MaxTime:  10,
-					Checksum: 1,
-					Entries:  10,
-					KB:       10,
-				},
-				{
-					MinTime:  10,
-					MaxTime:  20,
-					Checksum: 2,
-					Entries:  20,
-					KB:       20,
-				},
-			},
-		},
-		{
-			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
-			Chunks: []index.ChunkMeta{
-				{
-					MinTime:  0,
-					MaxTime:  10,
-					Checksum: 3,
-					Entries:  30,
-					KB:       30,
-				},
-				{
-					MinTime:  10,
-					MaxTime:  20,
-					Checksum: 4,
-					Entries:  40,
-					KB:       40,
-				},
-			},
-		},
-	}
-	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
-	acc := &stats.Stats{}
-	acc2 := []ChunkRef{}
-
-	tsdbIndex.Stats(context.Background(), "fake", 5, 15, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
-	tsdbIndex.Stats(context.Background(), "fake", 5, 15, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
-	tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 15, acc2, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-	tsdbIndex.Stats(context.Background(), "fake", 5, 15, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
-	tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 15, acc2, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-}
-
 func BenchmarkSeriesRepetitive(b *testing.B) {
 	runTSDBIndexCache(b)
 	defer sharedCacheClient.Stop()
