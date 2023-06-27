@@ -465,6 +465,8 @@ func (m *mockIndexStorageClient) ListFiles(_ context.Context, tableName string, 
 	return []storage.IndexFile{}, m.userIndexesInTables[tableName], nil
 }
 
+func (m *mockIndexStorageClient) RefreshIndexTableNamesCache(_ context.Context) {}
+
 func buildTableNumber(idx int) int64 {
 	return getActiveTableNumber() - int64(idx)
 }
