@@ -200,9 +200,11 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 
 func TestSeriesVolumeHandler(t *testing.T) {
 	t.Run("it returns label volumes from the querier", func(t *testing.T) {
-		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
-			{Name: "foo", Value: "bar", Volume: 38},
-		}}
+		ret := &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 38},
+			},
+		}
 
 		querier := newQuerierMock()
 		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
@@ -225,7 +227,11 @@ func TestSeriesVolumeHandler(t *testing.T) {
 			Limit:    100,
 		}, calls[0].Arguments[1])
 
-		require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[{"name":"foo","value":"bar","volume":38}]}`)
+		require.Equal(
+			t,
+			`{"volumes":[{"name":"{foo=\"bar\"}","volume":38}]}`,
+			strings.TrimSpace(w.Body.String()),
+		)
 		require.Equal(t, http.StatusOK, w.Result().StatusCode)
 	})
 

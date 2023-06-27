@@ -401,6 +401,5 @@ message VolumeResponse {
 
 message Volume {
   string name = 1 [(gogoproto.jsontag) = "name"];
-  string value = 2 [(gogoproto.jsontag) = "value"];
   uint64 volume = 3 [(gogoproto.jsontag) = "volume"];
 }

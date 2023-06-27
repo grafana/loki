@@ -370,6 +370,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// range with offset
 		{`rate({a=~".+"}[2s] offset 2s)`, time.Second},
+		{`rate({a=~".+"}[4s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[5s] offset 0s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset -1s)`, 2 * time.Second},
 
 		// label_replace
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "", "", "", "")`, time.Second},
@@ -404,7 +408,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)

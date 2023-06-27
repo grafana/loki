@@ -260,12 +260,12 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(labelVolumeString))},
+			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
 			&logproto.VolumeRequest{},
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 38},
+						{Name: `{foo="bar"}`, Volume: 38},
 					},
 					Limit: 100,
 				},
@@ -518,15 +518,15 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"label volume",
+			"series volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
-						{Name: "foo", Value: "bar", Volume: 38},
+						{Name: `{foo="bar"}`, Volume: 38},
 					},
 					Limit: 100,
 				},
-			}, labelVolumeString, false,
+			}, seriesVolumeString, false,
 		},
 	}
 	for _, tt := range tests {
@@ -1248,16 +1248,15 @@ var (
 		"bytes": 3,
 		"entries": 4
 		}`
-	labelVolumeString = `{
-		  "volumes": [
-			{
-			  "name": "foo",
-			  "value": "bar",
-			  "volume": 38
-			}
-		  ],
-		  "limit": 100
-		}`
+	seriesVolumeString = `{
+    "limit": 100,
+    "volumes": [
+      {
+        "name": "{foo=\"bar\"}",
+        "volume": 38
+      }
+    ]
+  }`
 	labelsData  = []string{"foo", "bar"}
 	statsResult = stats.Result{
 		Summary: stats.Summary{

@@ -104,6 +104,7 @@ const (
 	Compactor                string = "compactor"
 	IndexGateway             string = "index-gateway"
 	IndexGatewayRing         string = "index-gateway-ring"
+	IndexGatewayInterceptors string = "index-gateway-interceptors"
 	QueryScheduler           string = "query-scheduler"
 	QuerySchedulerRing       string = "query-scheduler-ring"
 	All                      string = "all"
@@ -257,6 +258,9 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 }
 
 func (t *Loki) initOverrides() (_ services.Service, err error) {
+	if t.Cfg.LimitsConfig.IndexGatewayShardSize == 0 {
+		t.Cfg.LimitsConfig.IndexGatewayShardSize = t.Cfg.IndexGateway.Ring.ReplicationFactor
+	}
 	t.Overrides, err = validation.NewOverrides(t.Cfg.LimitsConfig, t.TenantLimits)
 	// overrides are not a service, since they don't have any operational state.
 	return nil, err
@@ -442,6 +446,7 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	svc, err := querier.InitWorkerService(
 		querierWorkerServiceConfig,
 		prometheus.DefaultRegisterer,
+		t.Cfg.Server.PathPrefix,
 		queryHandlers,
 		alwaysExternalHandlers,
 		t.Server.HTTP,
@@ -1163,8 +1168,12 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initIndexGateway() (services.Service, error) {
 	t.Cfg.IndexGateway.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
 
+	shardingStrategy := indexgateway.GetShardingStrategy(t.Cfg.IndexGateway, t.indexGatewayRingManager, t.Overrides)
+
 	var indexClients []indexgateway.IndexClientWithRange
 	for i, period := range t.Cfg.SchemaConfig.Configs {
+		period := period
+
 		if period.IndexType != config.BoltDBShipperType {
 			continue
 		}
@@ -1175,7 +1184,7 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		}
 		tableRange := period.GetIndexTableNumberRange(periodEndTime)
 
-		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, t.indexGatewayRingManager.IndexGatewayOwnsTenant,
+		indexClient, err := storage.NewIndexClient(period, tableRange, t.Cfg.StorageConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, shardingStrategy,
 			prometheus.DefaultRegisterer, log.With(util_log.Logger, "index-store", fmt.Sprintf("%s-%s", period.IndexType, period.From.String())),
 		)
 		if err != nil {
@@ -1232,6 +1241,15 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	}
 
 	return t.indexGatewayRingManager, nil
+}
+
+func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
+	// Only expose per-tenant metric if index gateway runs as standalone service
+	if t.Cfg.isModuleEnabled(IndexGateway) {
+		interceptors := indexgateway.NewServerInterceptors(prometheus.DefaultRegisterer)
+		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
+	}
+	return nil, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {

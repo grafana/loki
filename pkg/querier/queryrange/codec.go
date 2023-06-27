@@ -755,7 +755,6 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: seriesvolume.Merge(resps, resp0.Response.Limit),
 			Headers:  headers,
 		}, nil
-
 	default:
 		return nil, errors.New("unknown response in merging responses")
 	}

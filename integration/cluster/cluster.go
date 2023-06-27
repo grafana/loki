@@ -188,6 +188,10 @@ func (c *Cluster) Run() error {
 	return nil
 }
 
+func (c *Cluster) ResetSchemaConfig() {
+	c.periodCfgs = nil
+}
+
 func (c *Cluster) Restart() error {
 	if err := c.stop(false); err != nil {
 		return err
