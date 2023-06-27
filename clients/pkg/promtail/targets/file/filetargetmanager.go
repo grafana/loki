@@ -438,7 +438,20 @@ func (s *targetSyncer) sendFileCreateEvent(event fsnotify.Event) {
 			level.Debug(s.log).Log("msg", "new file does not match glob", "filename", event.Name)
 			continue
 		}
-		watcher <- event
+		for _, target := range s.targets {
+			if target.path == path {
+				matchedExclude, err := doublestar.Match(target.pathExclude, event.Name)
+				if err != nil {
+					level.Error(s.log).Log("msg", "failed to exclude file", "error", err, "filename", event.Name)
+					continue
+				}
+				if matchedExclude {
+					level.Debug(s.log).Log("msg", "new file is excluded glob", "filename", event.Name)
+					continue
+				}
+				watcher <- event
+			}
+		}
 	}
 }
 
