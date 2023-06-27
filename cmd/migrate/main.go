@@ -103,7 +103,10 @@ func main() {
 	destConfig.StorageConfig.TSDBShipperConfig.ResyncInterval = 1 * time.Minute
 
 	// Don't want to use the index gateway for this, this makes sure the index files are properly uploaded when the store is stopped.
+	sourceConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	sourceConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+
+	destConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 	destConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
