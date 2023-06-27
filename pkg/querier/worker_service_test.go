@@ -114,6 +114,7 @@ func Test_InitQuerierService(t *testing.T) {
 			externalRouter, _ := testContext(config, nil)
 
 			recorder := httptest.NewRecorder()
+			recorder.Header().Del("Content-Type")
 			request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
 			externalRouter.ServeHTTP(recorder, request)
 
