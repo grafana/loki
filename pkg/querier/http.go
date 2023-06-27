@@ -454,6 +454,7 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
 		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
 		Matchers: rawReq.Query,
+		Step:     rawReq.Step.Milliseconds(),
 		Limit:    int32(rawReq.Limit),
 	}
 

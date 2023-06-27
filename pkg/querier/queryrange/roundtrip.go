@@ -4,11 +4,13 @@ import (
 	"context"
 	"flag"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/weaveworks/common/user"
 
@@ -171,37 +173,37 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	seriesVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		var (
-			metricRT      = metricsTripperware(next)
-			limitedRT     = limitedTripperware(next)
-			logFilterRT   = logFilterTripperware(next)
-			seriesRT      = seriesTripperware(next)
-			labelsRT      = labelsTripperware(next)
-			instantRT     = instantMetricTripperware(next)
-			statsRT       = indexStatsTripperware(next)
-			labelVolumeRT = labelVolumeTripperware(next)
+			metricRT       = metricsTripperware(next)
+			limitedRT      = limitedTripperware(next)
+			logFilterRT    = logFilterTripperware(next)
+			seriesRT       = seriesTripperware(next)
+			labelsRT       = labelsTripperware(next)
+			instantRT      = instantMetricTripperware(next)
+			statsRT        = indexStatsTripperware(next)
+			seriesVolumeRT = seriesVolumeTripperware(next)
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, labelVolumeRT, limits)
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
 	}, StopperWrapper{resultsCache, statsCache}, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
 		logger:        logger,
 		limited:       limited,
@@ -212,7 +214,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		labels:        labels,
 		instantMetric: instantMetric,
 		indexStats:    indexStats,
-		labelVolume:   labelVolume,
+		seriesVolume:  seriesVolume,
 		next:          next,
 	}
 }
@@ -321,13 +323,45 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		return r.indexStats.RoundTrip(req)
 	case SeriesVolumeOp:
+		queryReq, err := LokiCodec.DecodeRequest(req.Context(), req, nil)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		volReq, ok := queryReq.(*logproto.VolumeRequest)
+		if !ok {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		volReq.Step = 0
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "series_volume",
+			"query", volReq.Matchers,
+			"length", volReq.Through.Sub(volReq.From),
+			"step", volReq.Step,
+			"limit", volReq.Limit)
+
+		instantReq, err := LokiCodec.EncodeRequest(req.Context(), volReq)
+		if !ok {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+
+		return r.seriesVolume.RoundTrip(instantReq)
+	case SeriesVolumeRangeOp:
 		volumeQuery, err := loghttp.ParseSeriesVolumeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		level.Info(logger).Log("msg", "executing query", "type", "series_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
+		level.Info(logger).Log(
+      "msg", "executing query", 
+      "type", "series_volume_range", 
+      "query", volumeQuery.Query, 
+      "length", volumeQuery.End.Sub(volumeQuery.Start), 
+      "step", volumeQuery.Step,
+      "limit", volumeQuery.Limit)
 
-		return r.labelVolume.RoundTrip(req)
+		return r.seriesVolume.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -353,12 +387,13 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 }
 
 const (
-	InstantQueryOp = "instant_query"
-	QueryRangeOp   = "query_range"
-	SeriesOp       = "series"
-	LabelNamesOp   = "labels"
-	IndexStatsOp   = "index_stats"
-	SeriesVolumeOp = "series_volume"
+	InstantQueryOp      = "instant_query"
+	QueryRangeOp        = "query_range"
+	SeriesOp            = "series"
+	LabelNamesOp        = "labels"
+	IndexStatsOp        = "index_stats"
+	SeriesVolumeOp      = "series_volume"
+	SeriesVolumeRangeOp = "series_volume_range"
 )
 
 func getOperation(path string) string {
@@ -375,6 +410,8 @@ func getOperation(path string) string {
 		return IndexStatsOp
 	case path == "/loki/api/v1/index/series_volume":
 		return SeriesVolumeOp
+	case path == "/loki/api/v1/index/series_volume_range":
+		return SeriesVolumeRangeOp
 	default:
 		return ""
 	}
@@ -748,6 +785,9 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
+// TODO:
+// 1. Move what we can to a new file
+// 2. Better understand the full path from the top, how do we register these on different paths allowing us to hardcode the step?
 func NewSeriesVolumeTripperware(
 	cfg Config,
 	log log.Logger,
@@ -782,32 +822,97 @@ func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tr
 				return nil, err
 			}
 
-			resp, err := nextRT.RoundTrip(r)
+			middleware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+				return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+					volReq, ok := req.(*logproto.VolumeRequest)
+
+					if !ok {
+						return next.Do(ctx, req)
+					}
+
+					reqs := map[time.Time]queryrangebase.Request{}
+					startTS := volReq.From.Time()
+					endTS := volReq.Through.Time()
+					interval := time.Duration(volReq.Step * 1e6)
+
+					util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
+						reqs[end] = &logproto.VolumeRequest{
+							From:     model.TimeFromUnix(start.Unix()),
+							Through:  model.TimeFromUnix(end.Unix()),
+							Matchers: volReq.Matchers,
+							Limit:    volReq.Limit,
+							Step:     volReq.Step,
+						}
+					})
+
+					resps := map[time.Time]*VolumeResponse{}
+					for bucket, req := range reqs {
+						resp, err := next.Do(ctx, req)
+						if err != nil {
+							return nil, err
+						}
+
+						resps[bucket] = resp.(*VolumeResponse)
+					}
+
+					promResp := toPrometheusResponse(resps)
+					return promResp, nil
+				})
+			})
+
+			// wrap nextRT with our new middleware
+			response, err := middleware.Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				request, err := codec.EncodeRequest(ctx, req)
+				if err != nil {
+					return nil, err
+				}
+
+				if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
+					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+				}
+
+				resp, err := nextRT.RoundTrip(request)
+				if err != nil {
+					return nil, err
+				}
+
+				return codec.DecodeResponse(ctx, resp, req)
+			})).Do(r.Context(), request)
+
 			if err != nil {
 				return nil, err
 			}
 
-			response, err := codec.DecodeResponse(r.Context(), resp, request)
-			if err != nil {
-				return nil, err
-			}
-
-			promResp := toPrometheusResponse(response.(*VolumeResponse), model.Time(request.GetEnd()))
-			return codec.EncodeResponse(r.Context(), promResp)
+			return codec.EncodeResponse(r.Context(), response)
 		})
 	}
 }
 
-func toPrometheusResponse(resp *VolumeResponse, ts model.Time) *LokiPromResponse {
-	headers := make([]*definitions.PrometheusResponseHeader, len(resp.Headers))
-	for i, header := range resp.Headers {
-		h := header
-		headers[i] = &h
+func toPrometheusResponse(resps map[time.Time]*VolumeResponse) *LokiPromResponse {
+	var headers []*definitions.PrometheusResponseHeader
+	samplesByName := make(map[string][]logproto.LegacySample)
+
+	for bucket, resp := range resps {
+		if headers == nil {
+			headers := make([]*definitions.PrometheusResponseHeader, len(resp.Headers))
+			for i, header := range resp.Headers {
+				h := header
+				headers[i] = &h
+			}
+		}
+
+		for _, volume := range resp.Response.Volumes {
+			if _, ok := samplesByName[volume.Name]; !ok {
+				samplesByName[volume.Name] = make([]logproto.LegacySample, 0, 1)
+			}
+
+			samplesByName[volume.Name] = append(samplesByName[volume.Name], toPrometheusSample(volume, bucket))
+		}
 	}
 
 	promResponse := queryrangebase.PrometheusResponse{
 		Status:  loghttp.QueryStatusSuccess,
-		Data:    toPrometheusSamples(resp, ts),
+		Data:    toPrometheusData(samplesByName),
 		Headers: headers,
 	}
 
@@ -817,26 +922,57 @@ func toPrometheusResponse(resp *VolumeResponse, ts model.Time) *LokiPromResponse
 	}
 }
 
-func toPrometheusSamples(r *VolumeResponse, ts model.Time) queryrangebase.PrometheusData {
-	result := make([]queryrangebase.SampleStream, 0, len(r.Response.Volumes))
-	for _, volume := range r.Response.Volumes {
-		lbls, err := syntax.ParseLabels(volume.Name)
+func toPrometheusSample(volume logproto.Volume, t time.Time) logproto.LegacySample {
+	ts := model.TimeFromUnix(t.Unix())
+	return logproto.LegacySample{
+		Value:       float64(volume.Volume),
+		TimestampMs: ts.UnixNano() / 1e6,
+	}
+}
+
+type sortableSampleStream struct {
+	labels  labels.Labels
+	samples []logproto.LegacySample
+}
+
+func toPrometheusData(series map[string][]logproto.LegacySample) queryrangebase.PrometheusData {
+	resultType := loghttp.ResultTypeVector
+	sortableResult := make([]sortableSampleStream, 0, len(series))
+
+	for name, samples := range series {
+		if resultType == loghttp.ResultTypeVector && len(samples) > 1 {
+			resultType = loghttp.ResultTypeMatrix
+		}
+
+		lbls, err := syntax.ParseLabels(name)
 		if err != nil {
 			continue
 		}
 
+		sort.Slice(samples, func(i, j int) bool {
+			return samples[i].TimestampMs < samples[j].TimestampMs
+		})
+
+		sortableResult = append(sortableResult, sortableSampleStream{
+			labels:  lbls,
+			samples: samples,
+		})
+	}
+
+	sort.Slice(sortableResult, func(i, j int) bool {
+		return sortableResult[i].labels.String() < sortableResult[j].labels.String()
+	})
+
+	result := make([]queryrangebase.SampleStream, 0, len(sortableResult))
+	for _, r := range sortableResult {
 		result = append(result, queryrangebase.SampleStream{
-			Labels: logproto.FromLabelsToLabelAdapters(lbls),
-			Samples: []logproto.LegacySample{
-				{
-					Value:       float64(volume.Volume),
-					TimestampMs: ts.UnixNano() / 1e6,
-				}},
+			Labels:  logproto.FromLabelsToLabelAdapters(r.labels),
+			Samples: r.samples,
 		})
 	}
 
 	return queryrangebase.PrometheusData{
-		ResultType: loghttp.ResultTypeVector,
+		ResultType: resultType,
 		Result:     result,
 	}
 }

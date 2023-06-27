@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	errEndBeforeStart   = errors.New("end timestamp must not be before or equal to start time")
-	errNegativeStep     = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
-	errNegativeInterval = errors.New("interval must be >= 0")
+	errEndBeforeStart     = errors.New("end timestamp must not be before or equal to start time")
+	errZeroOrNegativeStep = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errNegativeStep       = errors.New("negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall       = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
+	errNegativeInterval   = errors.New("interval must be >= 0")
 )
 
 // QueryStatus holds the status of a query
@@ -317,7 +318,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	}
 
 	if result.Step <= 0 {
-		return nil, errNegativeStep
+		return nil, errZeroOrNegativeStep
 	}
 
 	result.Shards = shards(r)
@@ -347,33 +348,63 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 }
 
 func ParseSeriesVolumeQuery(r *http.Request) (*RangeQuery, error) {
-	err := labelVolumeLimit(r)
+	var result RangeQuery
+	var err error
+
+	result.Limit, err = labelVolumeLimit(r)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := ParseRangeQuery(r)
+	result.Query = query(r)
+	result.Start, result.End, err = bounds(r)
 	if err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	if result.End.Before(result.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	result.Limit, err = labelVolumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result.Step, err = seriesVolumeStep(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if result.Step < 0 {
+		return nil, errNegativeStep
+	}
+
+	return &result, nil
 }
 
-func labelVolumeLimit(r *http.Request) error {
+func seriesVolumeStep(r *http.Request) (time.Duration, error) {
+	step := r.Form.Get("step")
+	if step == "" {
+		return 0, nil
+
+	}
+	return parseSecondsOrDuration(step)
+}
+
+func labelVolumeLimit(r *http.Request) (uint32, error) {
 	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	if l == 0 {
-		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
-		return nil
+		return seriesvolume.DefaultLimit, nil
 	}
 
 	if l <= 0 {
-		return errors.New("limit must be a positive value")
+		return 0, errors.New("limit must be a positive value")
 	}
 
-	return nil
+	return uint32(l), nil
 }
