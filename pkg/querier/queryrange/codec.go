@@ -624,7 +624,10 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 	}
 
 	resp := &QueryResponse{}
-	resp.Unmarshal(buf)
+	err = resp.Unmarshal(buf)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
 
 	headers := httpResponseHeadersToPromResponseHeaders(r.Header)
 	switch req.(type) {

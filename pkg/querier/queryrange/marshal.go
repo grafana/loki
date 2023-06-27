@@ -31,8 +31,8 @@ func WriteQueryResponseProtobuf(params logql.LiteralParams, v logqlmodel.Result,
 	if err != nil {
 		return err
 	}
-	w.Write(buf)
-	return nil
+	_, err = w.Write(buf)
+	return err
 }
 
 // WriteLabelResponseProtobuf marshals a logproto.LabelResponse to queryrange LokiLabelNamesResponse 
