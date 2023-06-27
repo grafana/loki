@@ -301,7 +301,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedLineSize := 0
 	validatedLineCount := 0
 
-	var validationErrors util.MultiError
+	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
 	func() {
@@ -376,7 +376,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}()
 
 	var validationErr error
-	if validationErrors != nil {
+	if validationErrors.Err() != nil {
 		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
 	}
 
