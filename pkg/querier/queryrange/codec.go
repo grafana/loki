@@ -5,13 +5,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/grafana/loki/pkg/util/loser"
 	io "io"
 	"net/http"
 	"net/url"
 	"sort"
 	strings "strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/util/loser"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
@@ -759,7 +760,6 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		return nil, errors.New("unknown response in merging responses")
 	}
 }
-
 
 type sortedEntry struct {
 	labels     string
