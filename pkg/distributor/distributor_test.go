@@ -52,29 +52,42 @@ func TestDistributor(t *testing.T) {
 	for i, tc := range []struct {
 		lines            int
 		maxLineSize      uint64
-		mangleLabels     bool
+		streams          int
+		mangleLabels     int
 		expectedResponse *logproto.PushResponse
 		expectedError    error
 	}{
 		{
 			lines:            10,
+			streams:          1,
 			expectedResponse: success,
 		},
 		{
 			lines:         100,
+			streams:       1,
 			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000),
 		},
 		{
 			lines:            100,
+			streams:          1,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10),
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "100 errors: %s", strings.Repeat(fmt.Sprintf(validation.LineTooLongErrorMsg+"; ", 1, "{foo=\"bar\"}", 10), 99)),
 		},
 		{
 			lines:            100,
-			mangleLabels:     true,
+			streams:          1,
+			mangleLabels:     1,
 			expectedResponse: success,
 			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string"),
+		},
+		{
+			lines:            10,
+			streams:          2,
+			mangleLabels:     1,
+			maxLineSize:      1,
+			expectedResponse: success,
+			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, "11 errors: %s; %s", fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string"), strings.Repeat(fmt.Sprintf(validation.LineTooLongErrorMsg+"; ", 1, "{foo=\"bar\"}", 10), 9)),
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
@@ -87,15 +100,23 @@ func TestDistributor(t *testing.T) {
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
-			request := makeWriteRequest(tc.lines, 10)
-
-			if tc.mangleLabels {
-				request.Streams[0].Labels = `{ab"`
+			var request logproto.PushRequest
+			for i := 0; i < tc.streams; i++ {
+				req := makeWriteRequest(tc.lines, 10)
+				request.Streams = append(request.Streams, req.Streams[0])
 			}
 
-			response, err := distributors[i%len(distributors)].Push(ctx, request)
+			for i := 0; i < tc.mangleLabels; i++ {
+				request.Streams[i].Labels = `{ab"`
+			}
+
+			response, err := distributors[i%len(distributors)].Push(ctx, &request)
 			assert.Equal(t, tc.expectedResponse, response)
-			assert.Equal(t, tc.expectedError, err)
+			if tc.expectedError != nil {
+				assert.Contains(t, err.Error(), tc.expectedError.Error())
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
