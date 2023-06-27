@@ -798,7 +798,7 @@ func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tr
 			}
 
 			promResp := toPrometheusResponse(response.(*VolumeResponse), model.Time(request.GetEnd()))
-			return codec.EncodeResponse(r.Context(), promResp)
+			return codec.EncodeResponse(r.Context(), r, promResp)
 		})
 	}
 }
