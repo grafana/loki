@@ -686,7 +686,7 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit), from, through)
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 
