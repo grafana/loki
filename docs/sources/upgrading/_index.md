@@ -85,6 +85,13 @@ A new config option `-boltdb.shipper.compactor.delete-request-store` decides whe
 
 In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
 
+#### logfmt parser non-strict parsing
+logfmt parser now performs non-strict parsing which helps scan semi-structured log lines.
+It skips invalid tokens and tries to extract as many key/value pairs as possible from the rest of the log line.
+If you have a use-case that relies on strict parsing where you expect the parser to throw an error, use `| logfmt --strict` to enable strict mode.
+
+logfmt parser doesn't include standalone keys(keys without a value) in the resulting label set anymore.
+You can use `--keep-empty` flag to retain them.
 
 ## 2.8.0
 

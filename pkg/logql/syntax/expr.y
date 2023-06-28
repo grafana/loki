@@ -39,9 +39,11 @@ import (
   BoolModifier            *BinOpOptions
   OnOrIgnoringModifier    *BinOpOptions
   LabelParser             *LabelParserExpr
+  LogfmtParser            *LogfmtParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
   DistinctLabel           []string
+  ParserFlags             []string
   DistinctFilter          *DistinctFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
@@ -99,6 +101,7 @@ import (
 %type <BoolModifier>          boolModifier
 %type <OnOrIgnoringModifier>  onOrIgnoringModifier
 %type <LabelParser>           labelParser
+%type <LogfmtParser>          logfmtParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
 %type <BytesFilter>           bytesFilter
@@ -109,6 +112,7 @@ import (
 %type <LineFilter>            lineFilter
 %type <DistinctFilter>        distinctFilter
 %type <DistinctLabel>         distinctLabel
+%type <ParserFlags>           parserFlags
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
 %type <DropLabelsExpr>        dropLabelsExpr
@@ -130,7 +134,7 @@ import (
 %type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
-%token <str>      IDENTIFIER STRING NUMBER
+%token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
@@ -268,6 +272,7 @@ pipelineExpr:
 
 pipelineStage:
    lineFilters                   { $$ = $1 }
+  | PIPE logfmtParser            { $$ = $2 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE logfmtExpressionParser  { $$ = $2 }
@@ -294,19 +299,30 @@ lineFilters:
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
+parserFlags:
+    PARSER_FLAG               { $$ = []string{ $1 } }
+  | parserFlags PARSER_FLAG   { $$ = append($1, $2) }
+  ;
+
+logfmtParser:
+    LOGFMT                   { $$ = newLogfmtParserExpr(nil) }
+  | LOGFMT parserFlags       { $$ = newLogfmtParserExpr($2) }
+  ;
+
 labelParser:
-    JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
-  | LOGFMT         { $$ = newLabelParserExpr(OpParserTypeLogfmt, "") }
-  | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
-  | UNPACK         { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
-  | PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
+    JSON                { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
+  | REGEXP STRING       { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
+  | UNPACK              { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
+  | PATTERN STRING      { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
   ;
 
 jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
 
 logfmtExpressionParser:
-    LOGFMT labelExtractionExpressionList { $$ = newLogfmtExpressionParser($2)}
+    LOGFMT parserFlags labelExtractionExpressionList  { $$ = newLogfmtExpressionParser($3, $2)}
+  | LOGFMT labelExtractionExpressionList              { $$ = newLogfmtExpressionParser($2, nil)}
+  ;
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
