@@ -42,6 +42,6 @@ func (m *Manager) Log(tenantID string, err error) {
 
 	errMsg := err.Error()
 	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
-		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg)
+		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID)
 	}
 }
