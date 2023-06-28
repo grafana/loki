@@ -7,8 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/weaveworks/common/user"
 
 	"github.com/go-kit/log"
@@ -320,33 +318,20 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		return r.indexStats.RoundTrip(req)
 	case SeriesVolumeOp:
-		queryReq, err := LokiCodec.DecodeRequest(req.Context(), req, nil)
+		volumeQuery, err := loghttp.ParseSeriesVolumeInstantQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-
-		volReq, ok := queryReq.(*logproto.VolumeRequest)
-		if !ok {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		volReq.Step = 0
 		level.Info(logger).Log(
 			"msg", "executing query",
 			"type", "series_volume",
-			"query", volReq.Matchers,
-			"length", volReq.Through.Sub(volReq.From),
-			"step", volReq.Step,
-			"limit", volReq.Limit)
+			"query", volumeQuery.Query,
+			"length", volumeQuery.Start.Sub(volumeQuery.End),
+			"limit", volumeQuery.Limit)
 
-		instantReq, err := LokiCodec.EncodeRequest(req.Context(), volReq)
-		if !ok {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		return r.seriesVolume.RoundTrip(instantReq)
+		return r.seriesVolume.RoundTrip(req)
 	case SeriesVolumeRangeOp:
-		volumeQuery, err := loghttp.ParseSeriesVolumeQuery(req)
+		volumeQuery, err := loghttp.ParseSeriesVolumeRangeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}

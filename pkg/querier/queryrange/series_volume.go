@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
@@ -88,14 +87,23 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 				}))
 			}
 
-			collector := newConcurrentVolumeResponseCollector(len(reqs))
+			collector := make(chan *bucketedVolumeResponse, len(jobs))
+			defer close(collector)
+
 			err := concurrency.ForEachJob(
 				ctx,
 				len(jobs),
 				len(jobs),
 				func(ctx context.Context, i int) error {
 					bucket, resp, err := jobs[i](ctx)
-					collector.Add(bucket, resp.(*VolumeResponse))
+					if resp == nil {
+						collector <- nil
+						return err
+					}
+
+					collector <- &bucketedVolumeResponse{
+						bucket, resp.(*VolumeResponse),
+					}
 					return err
 				})
 
@@ -103,35 +111,29 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 				return nil, err
 			}
 
-			promResp := toPrometheusResponse(collector.responses)
+			promResp := toPrometheusResponse(collector, len(jobs))
 			return promResp, nil
 		})
 	})
 }
 
-type concurrentVolumeResponseCollector struct {
-	lock      sync.Mutex
-	responses map[time.Time]*VolumeResponse
+type bucketedVolumeResponse struct {
+	bucket   time.Time
+	response *VolumeResponse
 }
 
-func newConcurrentVolumeResponseCollector(capacity int) *concurrentVolumeResponseCollector {
-	return &concurrentVolumeResponseCollector{
-		lock:      sync.Mutex{},
-		responses: make(map[time.Time]*VolumeResponse, capacity),
-	}
-}
-
-func (c *concurrentVolumeResponseCollector) Add(bucket time.Time, resp *VolumeResponse) {
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	c.responses[bucket] = resp
-}
-
-func toPrometheusResponse(resps map[time.Time]*VolumeResponse) *LokiPromResponse {
+func toPrometheusResponse(respsCh chan *bucketedVolumeResponse, totalResponses int) *LokiPromResponse {
 	var headers []*definitions.PrometheusResponseHeader
 	samplesByName := make(map[string][]logproto.LegacySample)
 
-	for bucket, resp := range resps {
+	for i := 0; i < totalResponses; i++ {
+		bucketedVolumeResponse := <-respsCh
+		if bucketedVolumeResponse == nil {
+			continue
+		}
+
+		bucket, resp := bucketedVolumeResponse.bucket, bucketedVolumeResponse.response
+
 		if headers == nil {
 			headers := make([]*definitions.PrometheusResponseHeader, len(resp.Headers))
 			for i, header := range resp.Headers {

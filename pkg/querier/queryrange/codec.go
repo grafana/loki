@@ -272,7 +272,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Matchers: req.Query,
 		}, err
 	case SeriesVolumeOp:
-		req, err := loghttp.ParseSeriesVolumeQuery(r)
+		req, err := loghttp.ParseSeriesVolumeInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -285,7 +285,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:     0,
 		}, err
 	case SeriesVolumeRangeOp:
-		req, err := loghttp.ParseSeriesVolumeQuery(r)
+		req, err := loghttp.ParseSeriesVolumeRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
