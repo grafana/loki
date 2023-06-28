@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	JSONType     = `application/json; charset=utf-8`
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
