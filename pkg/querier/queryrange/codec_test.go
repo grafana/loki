@@ -13,10 +13,15 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
@@ -282,6 +287,453 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			require.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
+	// test fixtures from pkg/util/marshal_test
+	var queryTests = []struct {
+		actual   parser.Value
+		expected string
+	}{
+		{
+			logqlmodel.Streams{
+				logproto.Stream{
+					Entries: []logproto.Entry{
+						{
+							Timestamp: time.Unix(0, 123456789012345),
+							Line:      "super line",
+						},
+					},
+					Labels: `{test="test"}`,
+				},
+			},
+			`{
+			"status": "success",
+			"data": {
+				"resultType": "streams",
+				"result": [
+					{
+						"stream": {
+							"test": "test"
+						},
+						"values":[
+							[ "123456789012345", "super line" ]
+						]
+					}
+				],
+				"stats" : {
+					"ingester" : {
+						"store": {
+							"chunksDownloadTime": 0,
+							"totalChunksRef": 0,
+							"totalChunksDownloaded": 0,
+							"chunk" :{
+								"compressedBytes": 0,
+								"decompressedBytes": 0,
+								"decompressedLines": 0,
+								"headChunkBytes": 0,
+								"headChunkLines": 0,
+								"totalDuplicates": 0
+							}
+						},
+						"totalBatches": 0,
+						"totalChunksMatched": 0,
+						"totalLinesSent": 0,
+						"totalReached": 0
+					},
+					"querier": {
+						"store": {
+							"chunksDownloadTime": 0,
+							"totalChunksRef": 0,
+							"totalChunksDownloaded": 0,
+							"chunk" :{
+								"compressedBytes": 0,
+								"decompressedBytes": 0,
+								"decompressedLines": 0,
+								"headChunkBytes": 0,
+								"headChunkLines": 0,
+								"totalDuplicates": 0
+							}
+						}
+					},
+					"cache": {
+						"chunk": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
+						},
+						"index": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
+						},
+						"result": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
+						}
+					},
+					"summary": {
+						"bytesProcessedPerSecond": 0,
+						"execTime": 0,
+						"linesProcessedPerSecond": 0,
+						"queueTime": 0,
+                        "shards": 0,
+                        "splits": 0,
+						"subqueries": 0,
+						"totalBytesProcessed":0,
+                                                "totalEntriesReturned":0,
+						"totalLinesProcessed":0
+					}
+				}
+			}
+		}`,
+		},
+		// vector test
+		{
+			promql.Vector{
+				{
+					T: 1568404331324,
+					F: 0.013333333333333334,
+					Metric: []labels.Label{
+						{
+							Name:  "filename",
+							Value: `/var/hostlog/apport.log`,
+						},
+						{
+							Name:  "job",
+							Value: "varlogs",
+						},
+					},
+				},
+				{
+					T: 1568404331324,
+					F: 3.45,
+					Metric: []labels.Label{
+						{
+							Name:  "filename",
+							Value: `/var/hostlog/syslog`,
+						},
+						{
+							Name:  "job",
+							Value: "varlogs",
+						},
+					},
+				},
+			},
+			`{
+			"data": {
+			  "resultType": "vector",
+			  "result": [
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/apport.log",
+					"job": "varlogs"
+				  },
+				  "value": [
+					1568404331.324,
+					"0.013333333333333334"
+				  ]
+				},
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/syslog",
+					"job": "varlogs"
+				  },
+				  "value": [
+					1568404331.324,
+					"3.45"
+				  ]
+				}
+			  ],
+			  "stats" : {
+				"ingester" : {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					},
+					"totalBatches": 0,
+					"totalChunksMatched": 0,
+					"totalLinesSent": 0,
+					"totalReached": 0
+				},
+				"querier": {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					}
+				},
+				"cache": {
+					"chunk": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"result": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					}
+				},
+				"summary": {
+					"bytesProcessedPerSecond": 0,
+					"execTime": 0,
+					"linesProcessedPerSecond": 0,
+					"queueTime": 0,
+                    "shards": 0,
+                    "splits": 0,
+					"subqueries": 0,
+					"totalBytesProcessed":0,
+                                        "totalEntriesReturned":0,
+					"totalLinesProcessed":0
+				}
+			  }
+			},
+			"status": "success"
+		  }`,
+		},
+		// matrix test
+		{
+			promql.Matrix{
+				{
+					Floats: []promql.FPoint{
+						{
+							T: 1568404331324,
+							F: 0.013333333333333334,
+						},
+					},
+					Metric: []labels.Label{
+						{
+							Name:  "filename",
+							Value: `/var/hostlog/apport.log`,
+						},
+						{
+							Name:  "job",
+							Value: "varlogs",
+						},
+					},
+				},
+				{
+					Floats: []promql.FPoint{
+						{
+							T: 1568404331324,
+							F: 3.45,
+						},
+						{
+							T: 1568404331339,
+							F: 4.45,
+						},
+					},
+					Metric: []labels.Label{
+						{
+							Name:  "filename",
+							Value: `/var/hostlog/syslog`,
+						},
+						{
+							Name:  "job",
+							Value: "varlogs",
+						},
+					},
+				},
+			},
+			`{
+			"data": {
+			  "resultType": "matrix",
+			  "result": [
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/apport.log",
+					"job": "varlogs"
+				  },
+				  "values": [
+					  [
+						1568404331.324,
+						"0.013333333333333334"
+					  ]
+					]
+				},
+				{
+				  "metric": {
+					"filename": "\/var\/hostlog\/syslog",
+					"job": "varlogs"
+				  },
+				  "values": [
+						[
+							1568404331.324,
+							"3.45"
+						],
+						[
+							1568404331.339,
+							"4.45"
+						]
+					]
+				}
+			  ],
+			  "stats" : {
+				"ingester" : {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					},
+					"totalBatches": 0,
+					"totalChunksMatched": 0,
+					"totalLinesSent": 0,
+					"totalReached": 0
+				},
+				"querier": {
+					"store": {
+						"chunksDownloadTime": 0,
+						"totalChunksRef": 0,
+						"totalChunksDownloaded": 0,
+						"chunk" :{
+							"compressedBytes": 0,
+							"decompressedBytes": 0,
+							"decompressedLines": 0,
+							"headChunkBytes": 0,
+							"headChunkLines": 0,
+							"totalDuplicates": 0
+						}
+					}
+				},
+				"cache": {
+					"chunk": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"result": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					}
+				},
+				"summary": {
+					"bytesProcessedPerSecond": 0,
+					"execTime": 0,
+					"linesProcessedPerSecond": 0,
+					"queueTime": 0,
+                    "shards": 0,
+                    "splits": 0,
+					"subqueries": 0,
+					"totalBytesProcessed":0,
+                                        "totalEntriesReturned":0,
+					"totalLinesProcessed":0
+				}
+			  }
+			},
+			"status": "success"
+		  }`,
+		},
+	}
+	codec := RequestProtobufCodec{}
+	for i, queryTest := range queryTests {
+		u := &url.URL{Path: "/loki/api/v1/query_range"}
+		httpReq := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(),
+			URL:        u,
+		}
+		req, err := codec.DecodeRequest(context.TODO(), httpReq, nil)
+		require.NoError(t, err)
+
+		// parser.Value -> queryrange.QueryResponse
+		var b bytes.Buffer
+		result := logqlmodel.Result{Data: queryTest.actual}
+		err = WriteQueryResponseProtobuf(logql.LiteralParams{}, result, &b)
+		require.NoError(t, err)
+
+		// queryrange.QueryResponse -> queryrangebase.Response
+		querierResp := &http.Response{
+			StatusCode: 200,
+			Body:       io.NopCloser(&b),
+			Header: http.Header{
+				"Content-Type": []string{ProtobufType},
+			},
+		}
+		resp, err := codec.DecodeResponse(context.TODO(), querierResp, req)
+		require.NoError(t, err)
+
+		// queryrange.Response -> JSON
+		httpResp, err := codec.EncodeResponse(context.TODO(), httpReq, resp)
+		require.NoError(t, err)
+
+		body, _ := io.ReadAll(httpResp.Body)
+		require.JSONEqf(t, queryTest.expected, string(body), "Protobuf Decode Query Test %d failed", i)
+	}
+
 }
 
 func Test_codec_EncodeRequest(t *testing.T) {
