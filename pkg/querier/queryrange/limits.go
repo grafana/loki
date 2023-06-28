@@ -59,6 +59,9 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
+	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
+	TSDBMaxBytesPerShard(string) int
+
 	RequiredLabels(context.Context, string) []string
 	RequiredNumberLabels(context.Context, string) int
 	MaxQueryBytesRead(context.Context, string) int

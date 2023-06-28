@@ -34,11 +34,15 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1")`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict b="foo" | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty b="foo" | b=ip("127.0.0.1") | level="error"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
@@ -84,7 +88,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | json [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
-		`sum(count_over_time({job="mysql"} | logfmt [5m] offset 10m))`,
+		`sum(count_over_time({job="mysql"} | logfmt --strict [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | pattern "<foo> bar <buzz>" | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | unpack | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
@@ -518,7 +522,6 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}{
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
-		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false, false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false, false},
@@ -558,7 +561,6 @@ func Test_parserExpr_String(t *testing.T) {
 		{"empty regexp", OpParserTypeRegexp, "", `| regexp ""`},
 		{"valid pattern", OpParserTypePattern, "buzz", `| pattern "buzz"`},
 		{"empty pattern", OpParserTypePattern, "", `| pattern ""`},
-		{"valid logfmt", OpParserTypeLogfmt, "", `| logfmt`},
 		{"valid json", OpParserTypeJSON, "", `| json`},
 	}
 

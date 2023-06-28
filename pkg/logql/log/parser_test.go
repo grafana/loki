@@ -2,6 +2,7 @@ package log
 
 import (
 	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -137,7 +138,7 @@ func TestKeyShortCircuit(t *testing.T) {
 	}{
 		{"json", jsonLine, NewJSONParser(), labels.MustNewMatcher(labels.MatchEqual, "response_latency_seconds", "nope")},
 		{"unpack", packedLike, NewUnpackParser(), labels.MustNewMatcher(labels.MatchEqual, "pod", "nope")},
-		{"logfmt", logfmtLine, NewLogfmtParser(), labels.MustNewMatcher(labels.MatchEqual, "info", "nope")},
+		{"logfmt", logfmtLine, NewLogfmtParser(false, false), labels.MustNewMatcher(labels.MatchEqual, "info", "nope")},
 		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
 		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
 	} {
@@ -177,8 +178,8 @@ func TestLabelShortCircuit(t *testing.T) {
 		line []byte
 	}{
 		{"json", NewJSONParser(), simpleJsn},
-		{"logfmt", NewLogfmtParser(), logFmt},
-		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")})), logFmt},
+		{"logfmt", NewLogfmtParser(false, false), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
 	}
 	for _, tt := range tests {
 		lbs.Reset()
@@ -566,7 +567,7 @@ func Benchmark_Parser(b *testing.B) {
 		{"jsonParser-not json line", nginxline, NewJSONParser(), []string{"response_latency_seconds"}, labels.MustNewMatcher(labels.MatchEqual, "the_real_ip", "nope")},
 		{"unpack", packedLike, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
 		{"unpack-not json line", nginxline, NewUnpackParser(), []string{"pod"}, labels.MustNewMatcher(labels.MatchEqual, "app", "nope")},
-		{"logfmt", logfmtLine, NewLogfmtParser(), []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
+		{"logfmt", logfmtLine, NewLogfmtParser(false, false), []string{"info", "throughput", "org_id"}, labels.MustNewMatcher(labels.MatchEqual, "latency", "nope")},
 		{"regex greedy", nginxline, mustStage(NewRegexpParser(`GET (?P<path>.*?)/\?`)), []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "path", "nope")},
 		{"regex status digits", nginxline, mustStage(NewRegexpParser(`HTTP/1.1" (?P<statuscode>\d{3}) `)), []string{"statuscode"}, labels.MustNewMatcher(labels.MatchEqual, "status_code", "nope")},
 		{"pattern", nginxline, mustStage(NewPatternParser(`<_> "<method> <path> <_>"<_>`)), []string{"path"}, labels.MustNewMatcher(labels.MatchEqual, "method", "nope")},
@@ -626,8 +627,8 @@ func BenchmarkKeyExtraction(b *testing.B) {
 		line []byte
 	}{
 		{"json", NewJSONParser(), simpleJsn},
-		{"logfmt", NewLogfmtParser(), logFmt},
-		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")})), logFmt},
+		{"logfmt", NewLogfmtParser(false, false), logFmt},
+		{"logfmt-expression", mustStage(NewLogfmtExpressionParser([]LabelExtractionExpr{NewLabelExtractionExpr("name", "name")}, false)), logFmt},
 	}
 	for _, bb := range benchmarks {
 		b.Run(bb.name, func(b *testing.B) {
@@ -726,17 +727,19 @@ func Test_regexpParser_Parse(t *testing.T) {
 	}
 }
 
-func Test_logfmtParser_Parse(t *testing.T) {
+func TestLogfmtParser_parse(t *testing.T) {
 	tests := []struct {
-		name  string
-		line  []byte
-		lbs   labels.Labels
-		want  labels.Labels
-		hints ParserHint
+		name       string
+		line       []byte
+		lbs        labels.Labels
+		want       labels.Labels
+		wantStrict labels.Labels
+		hints      ParserHint
 	}{
 		{
 			"not logfmt",
 			[]byte("foobar====wqe=sdad1r"),
+			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				"__error__", "LogfmtParserErr",
@@ -747,6 +750,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 		{
 			"not logfmt with hints",
 			[]byte("foobar====wqe=sdad1r"),
+			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
 				"__error__", "LogfmtParserErr",
@@ -759,9 +763,8 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			"utf8 error rune",
 			[]byte(`buzz=foo bar=�f`),
 			labels.EmptyLabels(),
-			labels.FromStrings("buzz", "foo",
-				"bar", "",
-			),
+			labels.FromStrings("buzz", "foo"),
+			nil,
 			noParserHints,
 		},
 		{
@@ -769,9 +772,8 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			[]byte("buzz bar=foo"),
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar",
-				"bar", "foo",
-				"buzz", "",
-			),
+				"bar", "foo"),
+			nil,
 			noParserHints,
 		},
 		{
@@ -781,6 +783,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"foobar", "foo bar",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -790,6 +793,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo\nbar\tbaz",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -799,6 +803,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo\nbar\tbaz",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -808,6 +813,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", `foo ba\r baz`,
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -817,6 +823,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.FromStrings("a", "b",
 				"foobar", "foo bar\nb\\az",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -827,6 +834,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 				"foobar", "foo bar",
 				"latency", "10ms",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -836,6 +844,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			labels.FromStrings("foo", "bar",
 				"foobar", "10ms",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -846,6 +855,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 				"foo_extracted", "foo bar",
 				"foobar", "10ms",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -857,6 +867,7 @@ func Test_logfmtParser_Parse(t *testing.T) {
 				"foo_bar", "10ms",
 				"test_dash", "foo",
 			),
+			nil,
 			noParserHints,
 		},
 		{
@@ -864,16 +875,162 @@ func Test_logfmtParser_Parse(t *testing.T) {
 			nil,
 			labels.FromStrings("foo", "bar"),
 			labels.FromStrings("foo", "bar"),
+			nil,
+			noParserHints,
+		},
+		{
+			"empty key",
+			[]byte(`foo="foo bar" =notkey bar=10ms`),
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+				"bar", "10ms",
+			),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+				"__error__", "LogfmtParserErr",
+				"__error_details__", "logfmt syntax error at pos 15 : unexpected '='",
+			),
+			noParserHints,
+		},
+		{
+			"error rune in key",
+			[]byte(`foo="foo bar" b�r=10ms`),
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+			),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+				"__error__", "LogfmtParserErr",
+				"__error_details__", "logfmt syntax error at pos 20 : invalid key",
+			),
+			noParserHints,
+		},
+		{
+			"double quote in key",
+			[]byte(`foo="foo bar" bu"zz=10ms`),
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+			),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+				"__error__", "LogfmtParserErr",
+				"__error_details__", `logfmt syntax error at pos 17 : unexpected '"'`,
+			),
+			noParserHints,
+		},
+		{
+			"= in value",
+			[]byte(`bar=bu=zz foo="foo bar"`),
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "foo bar",
+			),
+			labels.FromStrings("foo", "bar",
+				"__error__", "LogfmtParserErr",
+				"__error_details__", `logfmt syntax error at pos 7 : unexpected '='`,
+			),
 			noParserHints,
 		},
 	}
-	p := NewLogfmtParser()
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
-			b.Reset()
-			_, _ = p.Process(0, tt.line, b)
-			require.Equal(t, tt.want, b.LabelsResult().Labels())
+
+	{
+		p := NewLogfmtParser(false, false)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+				b.Reset()
+				_, _ = p.Process(0, tt.line, b)
+				require.Equal(t, tt.want, b.LabelsResult().Labels())
+			})
+		}
+	}
+
+	t.Run("strict", func(t *testing.T) {
+		p := NewLogfmtParser(true, false)
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				b := NewBaseLabelsBuilderWithGrouping(nil, tt.hints, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+				b.Reset()
+				_, _ = p.Process(0, tt.line, b)
+
+				want := tt.want
+				if tt.wantStrict != nil {
+					want = tt.wantStrict
+				}
+				sort.Sort(want)
+				require.Equal(t, want, b.LabelsResult().Labels())
+			})
+		}
+	})
+}
+
+func TestLogfmtParser_keepEmpty(t *testing.T) {
+	tests := []struct {
+		name      string
+		line      []byte
+		keepEmpty bool
+		lbs       labels.Labels
+		want      labels.Labels
+	}{
+		{
+			"without keep empty",
+			[]byte("foo bar=buzz"),
+			false,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"bar", "buzz"),
+		},
+		{
+			"with keep empty",
+			[]byte("foo bar=buzz"),
+			true,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "",
+				"bar", "buzz"),
+		},
+		{
+			"utf8 error rune without keep empty",
+			[]byte("foo=b�r bar=buzz"),
+			false,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"bar", "buzz"),
+		},
+		{
+			"utf8 error rune with keep empty",
+			[]byte("foo=b�r bar=buzz"),
+			true,
+			labels.FromStrings("foo", "bar"),
+			labels.FromStrings("foo", "bar",
+				"foo_extracted", "",
+				"bar", "buzz"),
+		},
+	}
+
+	for _, strict := range []bool{false, true} {
+		name := "strict"
+		if !strict {
+			name = "not " + name
+		}
+
+		t.Run(name, func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					b := NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(tt.lbs, tt.lbs.Hash())
+					b.Reset()
+
+					p := NewLogfmtParser(strict, tt.keepEmpty)
+					_, _ = p.Process(0, tt.line, b)
+
+					want := tt.want
+					sort.Sort(want)
+					require.Equal(t, want, b.LabelsResult().Labels())
+				})
+			}
 		})
 	}
 }
@@ -988,7 +1145,7 @@ func TestLogfmtExpressionParser(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l, err := NewLogfmtExpressionParser(tt.expressions)
+			l, err := NewLogfmtExpressionParser(tt.expressions, false)
 			if err != nil {
 				t.Fatalf("cannot create logfmt expression parser: %s", err.Error())
 			}
@@ -1015,7 +1172,7 @@ func TestXExpressionParserFailures(t *testing.T) {
 	for _, tt := range tests {
 
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression})
+			_, err := NewLogfmtExpressionParser([]LabelExtractionExpr{tt.expression}, false)
 
 			require.NotNil(t, err)
 			require.Equal(t, err.Error(), fmt.Sprintf("cannot parse expression [%s]: syntax error: %s", tt.expression.Expression, tt.error))
