@@ -679,12 +679,10 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 			Statistics: response.Statistics,
 		}
 		if version == loghttp.VersionLegacy {
-			// NOTE: This is called with proto buf flag :/
 			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
 			}
 		} else {
-			// NOTE: This is working wihtout content negotiation
 			if err := marshal.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
 			}
