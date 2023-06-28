@@ -752,7 +752,7 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 
 	buf, err := p.Marshal()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("could not marshal protobuf: %w", err)
 	}
 
 	resp := http.Response{

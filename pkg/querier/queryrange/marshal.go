@@ -21,7 +21,7 @@ const (
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
-// WriteQueryResponseProtobuf marshals the promql.Value to v1 loghttp JSON and then
+// WriteQueryResponseProtobuf marshals the promql.Value to queryrange QueryResonse and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseProtobuf(params logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
 	p, err := ResultToResponse(v, params)
