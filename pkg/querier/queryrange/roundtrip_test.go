@@ -37,6 +37,7 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
+	valid "github.com/grafana/loki/pkg/validation"
 )
 
 var (
@@ -1462,6 +1463,10 @@ func (f fakeLimits) MaxStatsCacheFreshness(_ context.Context, _ string) time.Dur
 
 func (f fakeLimits) VolumeEnabled(_ string) bool {
 	return f.volumeEnabled
+}
+
+func (f fakeLimits) TSDBMaxBytesPerShard(_ string) int {
+	return valid.DefaultTSDBMaxBytesPerShard
 }
 
 func counter() (*int, http.Handler) {
