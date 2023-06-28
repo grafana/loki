@@ -172,6 +172,7 @@ func toPrometheusSample(volume logproto.Volume, t time.Time) logproto.LegacySamp
 }
 
 type sortableSampleStream struct {
+	name    string
 	labels  labels.Labels
 	samples []logproto.LegacySample
 }
@@ -195,13 +196,14 @@ func toPrometheusData(series map[string][]logproto.LegacySample) queryrangebase.
 		})
 
 		sortableResult = append(sortableResult, sortableSampleStream{
+			name:    name,
 			labels:  lbls,
 			samples: samples,
 		})
 	}
 
 	sort.Slice(sortableResult, func(i, j int) bool {
-		return sortableResult[i].labels.String() < sortableResult[j].labels.String()
+		return sortableResult[i].name < sortableResult[j].name
 	})
 
 	result := make([]queryrangebase.SampleStream, 0, len(sortableResult))
