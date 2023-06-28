@@ -69,15 +69,6 @@ func NewContext(ctx context.Context) (*Context, context.Context) {
 	return contextData, ctx
 }
 
-func GetOrCreateContext(ctx context.Context) (*Context, context.Context) {
-	v, ok := ctx.Value(statsKey).(*Context)
-	if !ok {
-		return NewContext(ctx)
-	}
-
-	return v, ctx
-}
-
 // FromContext returns the statistics context.
 func FromContext(ctx context.Context) *Context {
 	v, ok := ctx.Value(statsKey).(*Context)
