@@ -941,9 +941,9 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		})
 	})
 
-  // This will never happen because we hardcode 24h spit by for this code path
-  // in the middleware. However, that split by is not validated here, so we either
-  // need to support this case or error.
+	// This will never happen because we hardcode 24h spit by for this code path
+	// in the middleware. However, that split by is not validated here, so we either
+	// need to support this case or error.
 	t.Run("series volumes with a query split by of 0", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())

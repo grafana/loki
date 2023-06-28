@@ -8,6 +8,11 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -15,10 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 func SeriesVolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {

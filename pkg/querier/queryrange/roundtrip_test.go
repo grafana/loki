@@ -641,7 +641,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 			Matchers: `{job="varlogs"}`,
 			From:     model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Step:     int64((1 * time.Hour).Milliseconds()),
+			Step:     time.Hour.Milliseconds(),
 			Limit:    10,
 		}
 
