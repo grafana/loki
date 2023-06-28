@@ -42,7 +42,8 @@ type cachedPostingsReader struct {
 }
 
 func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
-	key := CanonicalLabelMatchersKey(matchers)
+	checksum := c.reader.Checksum()
+	key := fmt.Sprintf("%s:%d", CanonicalLabelMatchersKey(matchers), checksum)
 	if postings, got := c.fetchPostings(ctx, key); got {
 		return fn(postings)
 	}

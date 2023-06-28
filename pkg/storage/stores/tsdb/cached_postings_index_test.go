@@ -437,3 +437,63 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 		tsdbIndex.Stats(context.Background(), "fake", 5, 15, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
 	}
 }
+
+func TestMultipleIndexesFiles(t *testing.T) {
+	runTSDBIndexCache(t)
+	defer sharedCacheClient.Stop()
+	series := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 1,
+					Entries:  10,
+					KB:       10,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  10,
+					Checksum: 3,
+					Entries:  30,
+					KB:       30,
+				},
+			},
+		},
+	}
+	tempDir := t.TempDir()
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
+
+	refs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
+	require.NoError(t, err)
+	require.Len(t, refs, 2)
+
+	// repeat the same index, it hits the cache.
+	refs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
+	require.NoError(t, err)
+	require.Len(t, refs, 2)
+
+	// completely change the index now
+	series = []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Chunks: []index.ChunkMeta{},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Chunks: []index.ChunkMeta{},
+		},
+	}
+
+	tempDir = t.TempDir()
+	tsdbIndex = BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
+	refs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
+	require.NoError(t, err)
+	require.Len(t, refs, 0)
+}
