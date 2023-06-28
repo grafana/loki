@@ -33,7 +33,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	"github.com/grafana/loki/pkg/util/server"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -243,7 +242,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		status, _ = server.ClientHTTPStatusAndError(err)
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
@@ -421,7 +420,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		status, _ = server.ClientHTTPStatusAndError(err)
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
