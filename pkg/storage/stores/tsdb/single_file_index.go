@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -385,17 +384,7 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 					seriesNames[hash] = seriesLabels.String()
 				}
 
-				size := stats.KB << 10 // Return bytes
-
-				idxFromNs, idxThroughNs := i.reader.Bounds()
-				idxFrom, idxThrough := model.Time(idxFromNs), model.Time(idxThroughNs)
-
-				if from.Before(idxFrom) || through.After(idxThrough) {
-					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), idxFromNs, idxThroughNs)
-					size = uint64(float64(size) * factor)
-				}
-
-				volumes[seriesNames[hash]] += size
+				volumes[seriesNames[hash]] += stats.KB << 10 // Return bytes
 			}
 		}
 		return p.Err()
