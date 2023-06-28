@@ -17,8 +17,6 @@
 // Package longrunning is an auto-generated package for the
 // Long Running Operations API.
 //
-//	NOTE: This package is in alpha. It is not stable, and is likely to change.
-//
 // # General documentation
 //
 // For information about setting deadlines, reusing contexts, and more
