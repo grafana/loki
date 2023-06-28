@@ -88,8 +88,6 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 			}
 
 			collector := make(chan *bucketedVolumeResponse, len(jobs))
-			defer close(collector)
-
 			err := concurrency.ForEachJob(
 				ctx,
 				len(jobs),
@@ -106,12 +104,13 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 					}
 					return err
 				})
+			close(collector)
 
 			if err != nil {
 				return nil, err
 			}
 
-			promResp := toPrometheusResponse(collector, len(jobs))
+			promResp := toPrometheusResponse(collector)
 			return promResp, nil
 		})
 	})
@@ -122,12 +121,11 @@ type bucketedVolumeResponse struct {
 	response *VolumeResponse
 }
 
-func toPrometheusResponse(respsCh chan *bucketedVolumeResponse, totalResponses int) *LokiPromResponse {
+func toPrometheusResponse(respsCh chan *bucketedVolumeResponse) *LokiPromResponse {
 	var headers []*definitions.PrometheusResponseHeader
 	samplesByName := make(map[string][]logproto.LegacySample)
 
-	for i := 0; i < totalResponses; i++ {
-		bucketedVolumeResponse := <-respsCh
+	for bucketedVolumeResponse := range respsCh {
 		if bucketedVolumeResponse == nil {
 			continue
 		}
