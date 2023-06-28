@@ -527,6 +527,20 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 			Limit:   10,
 		}, acc.Volumes())
 	})
+
+	t.Run("only gets factor of stream size within time bounds", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+		acc := seriesvolume.NewAccumulator(10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through.Add(-30*time.Minute), acc, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (29) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (9) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
 }
 
 type filterAll struct{}

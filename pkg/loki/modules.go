@@ -415,9 +415,10 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/loki/api/v1/labels":              labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/loki/api/v1/label/{name}/values": labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 
-		"/loki/api/v1/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
-		"/loki/api/v1/index/stats":         indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
-		"/loki/api/v1/index/series_volume": querier.WrapQuerySpanAndTimeout("query.SeriesVolume", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesVolumeHandler)),
+		"/loki/api/v1/series":                    querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
+		"/loki/api/v1/index/stats":               indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
+		"/loki/api/v1/index/series_volume":       querier.WrapQuerySpanAndTimeout("query.SeriesVolumeInstant", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesVolumeInstantHandler)),
+		"/loki/api/v1/index/series_volume_range": querier.WrapQuerySpanAndTimeout("query.SeriesVolumeRange", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesVolumeRangeHandler)),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
@@ -879,6 +880,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/loki/api/v1/series").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/stats").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/loki/api/v1/index/series_volume").Methods("GET", "POST").Handler(frontendHandler)
+	t.Server.HTTP.Path("/loki/api/v1/index/series_volume_range").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/query").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label").Methods("GET", "POST").Handler(frontendHandler)
 	t.Server.HTTP.Path("/api/prom/label/{name}/values").Methods("GET", "POST").Handler(frontendHandler)
