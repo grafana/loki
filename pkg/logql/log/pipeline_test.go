@@ -145,7 +145,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__",
 			[]Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(true, false),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -182,7 +182,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__ with matching value",
 			[]Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(true, false),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -245,7 +245,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 		{
 			name: "keep all",
 			stages: []Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(false, false),
 				NewKeepLabels([]KeepLabel{}),
 			},
 			lines: [][]byte{
@@ -281,7 +281,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 		{
 			name: "keep by name",
 			stages: []Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(false, false),
 				NewKeepLabels([]KeepLabel{
 					{
 						nil,
@@ -312,7 +312,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 		{
 			name: "keep by matcher",
 			stages: []Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(false, false),
 				NewKeepLabels([]KeepLabel{
 					{
 						labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
@@ -357,7 +357,7 @@ func Benchmark_Pipeline(b *testing.B) {
 
 	stages := []Stage{
 		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
-		NewLogfmtParser(),
+		NewLogfmtParser(false, false),
 		NewAndLabelFilter(
 			NewDurationLabelFilter(LabelFilterGreaterThan, "duration", 10*time.Millisecond),
 			NewNumericLabelFilter(LabelFilterEqual, "status", 200.0),
@@ -550,13 +550,13 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkLogfmtParser(b *testing.B) {
-	logfmtBenchmark(b, NewLogfmtParser())
+	logfmtBenchmark(b, NewLogfmtParser(false, false))
 }
 
 func BenchmarkLogfmtExpressionParser(b *testing.B) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("timestamp", "ts"),
-	})
+	}, false)
 	if err != nil {
 		b.Fatal("cannot create new logfmt expression parser:", err.Error())
 	}
