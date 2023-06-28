@@ -98,7 +98,6 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		// TODO: should this rather be: application/vnd.google.protobuf; proto=queryrange.QueryResponse
 		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
 	} else {
