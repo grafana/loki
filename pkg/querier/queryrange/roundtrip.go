@@ -133,7 +133,7 @@ func NewTripperware(
 	}
 
 	var codec queryrangebase.Codec = DefaultCodec
-	if cfg.AcceptedQueryResponseFormat == "protobuf" {
+	if cfg.RequestedQueryResponseFormat == "protobuf" {
 		codec = &RequestProtobufCodec{}
 	}
 
