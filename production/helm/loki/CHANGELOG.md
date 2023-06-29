@@ -12,7 +12,12 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
-## 5.8.6
+
+## 5.8.7
+
+- [ENHANCEMENT] Add loki.storage.azure.endpointSuffix to support azure private endpoint
+
+## 5.8.6
 
 - [ENHANCEMENT] Add serviceMonitor.metricRelabelings to support metric relabelings
 
