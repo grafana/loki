@@ -331,7 +331,21 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteStringWithHTMLEscaped(e.Line)
 		if e.Labels != "" {
 			s.WriteMore()
-			s.WriteString(e.Labels)
+			s.WriteObjectStart()
+			labels, err = parser.ParseMetric(e.Labels)
+			if err != nil {
+				return err
+			}
+
+			for i, l := range labels {
+				if i > 0 {
+					s.WriteMore()
+				}
+
+				s.WriteObjectField(l.Name)
+				s.WriteString(l.Value)
+			}
+			s.WriteObjectEnd()
 		}
 		s.WriteArrayEnd()
 

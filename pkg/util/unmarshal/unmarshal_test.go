@@ -52,7 +52,7 @@ var pushTests = []struct {
 					{
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
-						Labels:    `{foo="bar"}`,
+						Labels:    `{a="1", b="2"}`,
 					},
 				},
 				Labels: `{test="test"}`,
@@ -65,7 +65,7 @@ var pushTests = []struct {
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line", {"foo":"bar"} ]
+						[ "123456789012345", "super line", { "a": "1", "b": "2" } ]
 					]
 				}
 			]
