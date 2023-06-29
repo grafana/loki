@@ -350,6 +350,20 @@ func (t *FileTarget) startTailing(ps []string) {
 			continue
 		}
 
+		if t.pathExclude != "" {
+			matched, err := doublestar.Match(t.pathExclude, p)
+			if err != nil {
+				level.Error(t.logger).Log("msg", "ignoring file, exclude pattern match failed", "error", err, "filename", p, "pathExclude", t.pathExclude)
+				t.metrics.totalBytes.DeleteLabelValues(p)
+				continue
+			}
+			if matched {
+				level.Info(t.logger).Log("msg", "ignoring file", "error", "file matches exclude pattern", "filename", p, "pathExclude", t.pathExclude)
+				t.metrics.totalBytes.DeleteLabelValues(p)
+				continue
+			}
+		}
+
 		var reader Reader
 		if t.decompressCfg != nil && t.decompressCfg.Enabled {
 			level.Debug(t.logger).Log("msg", "reading from compressed file", "filename", p)
