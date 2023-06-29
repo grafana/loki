@@ -565,9 +565,9 @@ type QueryLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
 	QueryTimeout string `json:"queryTimeout,omitempty"`
 
-	// CardinalityLimit defines the limit for index queries.
+	// CardinalityLimit defines the cardinality limit for index queries.
 	//
-	// + optional
+	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Cardinality Limit"
 	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
