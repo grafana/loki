@@ -405,6 +405,7 @@ func TestTableManager_loadTables(t *testing.T) {
 type mockLimits struct {
 	queryReadyIndexNumDaysDefault int
 	queryReadyIndexNumDaysByUser  map[string]int
+	volumeMaxSeries               int
 }
 
 func (m *mockLimits) AllByUserID() map[string]*validation.Limits {
@@ -422,6 +423,10 @@ func (m *mockLimits) DefaultLimits() *validation.Limits {
 	return &validation.Limits{
 		QueryReadyIndexNumDays: m.queryReadyIndexNumDaysDefault,
 	}
+}
+
+func (m *mockLimits) VolumeMaxSeries(_ string) int {
+	return m.volumeMaxSeries
 }
 
 type mockTable struct {
