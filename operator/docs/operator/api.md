@@ -2625,7 +2625,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>
@@ -6356,7 +6356,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>
