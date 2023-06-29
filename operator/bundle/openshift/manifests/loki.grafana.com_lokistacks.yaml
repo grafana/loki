@@ -145,6 +145,11 @@ spec:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
                         properties:
+                          cardinalityLimit:
+                            description: CardinalityLimit defines the cardinality
+                              limit for index queries.
+                            format: int32
+                            type: integer
                           maxChunksPerQuery:
                             description: MaxChunksPerQuery defines the maximum number
                               of chunks that can be fetched by a single query.
@@ -267,6 +272,11 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            cardinalityLimit:
+                              description: CardinalityLimit defines the cardinality
+                                limit for index queries.
+                              format: int32
+                              type: integer
                             maxChunksPerQuery:
                               description: MaxChunksPerQuery defines the maximum number
                                 of chunks that can be fetched by a single query.
