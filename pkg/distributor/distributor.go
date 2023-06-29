@@ -323,7 +323,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
-				d.writeFailuresManager.Log(tenantID, err)
+				d.writeFailuresManager.Log(tenantID, err, writefailures.InvalidLabelErr)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
 				bytes := 0
@@ -338,7 +338,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			pushSize := 0
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
-					d.writeFailuresManager.Log(tenantID, err)
+					d.writeFailuresManager.Log(tenantID, err, writefailures.InvalidEntryErr)
 					validationErrors.Add(err)
 					continue
 				}
@@ -393,7 +393,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		validation.DiscardedBytes.WithLabelValues(validation.RateLimited, tenantID).Add(float64(validatedLineSize))
 
 		err = fmt.Errorf(validation.RateLimitedErrorMsg, tenantID, int(d.ingestionRateLimiter.Limit(now, tenantID)), validatedLineCount, validatedLineSize)
-		d.writeFailuresManager.Log(tenantID, err)
+		d.writeFailuresManager.Log(tenantID, err, writefailures.RateLimitErr)
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, err.Error())
 	}
 

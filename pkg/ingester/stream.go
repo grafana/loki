@@ -318,7 +318,7 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
-				s.writeFailures.Log(s.tenant, err)
+				s.writeFailures.Log(s.tenant, err, writefailures.InvalidEntryErr)
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}
@@ -370,7 +370,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		now := time.Now()
 		if !rateLimitWholeStream && !s.limiter.AllowN(now, len(entries[i].Line)) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(lineBytes)}})
-			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
+			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e, writefailures.RateLimitErr)
 			rateLimitedSamples++
 			rateLimitedBytes += lineBytes
 			continue
@@ -380,7 +380,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		cutoff := highestTs.Add(-s.cfg.MaxChunkAge / 2)
 		if !isReplay && s.unorderedWrites && !highestTs.IsZero() && cutoff.After(entries[i].Timestamp) {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&entries[i], chunkenc.ErrTooFarBehind(cutoff)})
-			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e)
+			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e, writefailures.InvalidEntryErr)
 			outOfOrderSamples++
 			outOfOrderBytes += lineBytes
 			continue
@@ -407,6 +407,7 @@ func (s *stream) validateEntries(entries []logproto.Entry, isReplay, rateLimitWh
 		failedEntriesWithError = make([]entryWithError, 0, len(toStore))
 		for i := 0; i < len(toStore); i++ {
 			failedEntriesWithError = append(failedEntriesWithError, entryWithError{&toStore[i], &validation.ErrStreamRateLimit{RateLimit: flagext.ByteSize(limit), Labels: s.labelsString, Bytes: flagext.ByteSize(len(toStore[i].Line))}})
+			s.writeFailures.Log(s.tenant, failedEntriesWithError[len(failedEntriesWithError)-1].e, writefailures.RateLimitErr)
 			rateLimitedBytes += len(toStore[i].Line)
 		}
 	}

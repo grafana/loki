@@ -10,6 +10,15 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 )
 
+type ErrCategory string
+
+const (
+	InvalidEntryErr   ErrCategory = "invalid-entry"
+	InvalidLabelErr               = "invalid-label"
+	InvalidRequestErr             = "invalid-request"
+	RateLimitErr                  = "rate-limit"
+)
+
 type Manager struct {
 	limiter    *limiter.RateLimiter
 	logger     log.Logger
@@ -31,7 +40,7 @@ func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Man
 	}
 }
 
-func (m *Manager) Log(tenantID string, err error) {
+func (m *Manager) Log(tenantID string, err error, category ErrCategory) {
 	if m == nil {
 		return
 	}
@@ -42,6 +51,6 @@ func (m *Manager) Log(tenantID string, err error) {
 
 	errMsg := err.Error()
 	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
-		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID)
+		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID, "category", category)
 	}
 }

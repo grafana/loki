@@ -8,6 +8,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/weaveworks/common/httpgrpc"
 
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/dskit/tenant"
@@ -35,7 +36,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
-		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err), writefailures.InvalidRequestErr)
 
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
