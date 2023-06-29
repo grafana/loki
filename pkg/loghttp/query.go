@@ -18,10 +18,11 @@ import (
 )
 
 var (
-	errEndBeforeStart   = errors.New("end timestamp must not be before or equal to start time")
-	errNegativeStep     = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
-	errNegativeInterval = errors.New("interval must be >= 0")
+	errEndBeforeStart     = errors.New("end timestamp must not be before or equal to start time")
+	errZeroOrNegativeStep = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errNegativeStep       = errors.New("negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall       = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
+	errNegativeInterval   = errors.New("interval must be >= 0")
 )
 
 // QueryStatus holds the status of a query
@@ -317,7 +318,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	}
 
 	if result.Step <= 0 {
-		return nil, errNegativeStep
+		return nil, errZeroOrNegativeStep
 	}
 
 	result.Shards = shards(r)
@@ -346,7 +347,53 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	return ParseRangeQuery(r)
 }
 
-func ParseSeriesVolumeQuery(r *http.Request) (*RangeQuery, error) {
+type SeriesVolumeInstantQuery struct {
+	Start time.Time
+	End   time.Time
+	Query string
+	Ts    time.Time
+	Limit uint32
+}
+
+func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, error) {
+	err := labelVolumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ParseInstantQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	svInstantQuery := SeriesVolumeInstantQuery{
+		Query: result.Query,
+		Ts:    result.Ts,
+		Limit: result.Limit,
+	}
+
+	svInstantQuery.Start, svInstantQuery.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if svInstantQuery.End.Before(svInstantQuery.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	return &svInstantQuery, nil
+}
+
+type SeriesVolumeRangeQuery struct {
+	Start    time.Time
+	End      time.Time
+	Step     time.Duration
+	Interval time.Duration
+	Query    string
+	Limit    uint32
+}
+
+func ParseSeriesVolumeRangeQuery(r *http.Request) (*SeriesVolumeRangeQuery, error) {
 	err := labelVolumeLimit(r)
 	if err != nil {
 		return nil, err
@@ -357,7 +404,14 @@ func ParseSeriesVolumeQuery(r *http.Request) (*RangeQuery, error) {
 		return nil, err
 	}
 
-	return result, nil
+	return &SeriesVolumeRangeQuery{
+		Start:    result.Start,
+		End:      result.End,
+		Step:     result.Step,
+		Interval: result.Interval,
+		Query:    result.Query,
+		Limit:    result.Limit,
+	}, nil
 }
 
 func labelVolumeLimit(r *http.Request) error {

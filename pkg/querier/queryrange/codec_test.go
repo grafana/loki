@@ -112,12 +112,14 @@ func Test_codec_DecodeRequest(t *testing.T) {
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 				Limit:    3,
+				Step:     0,
 			})
 		}, &logproto.VolumeRequest{
 			From:     model.TimeFromUnixNano(start.UnixNano()),
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 			Limit:    3,
+			Step:     0,
 		}, false},
 		{"series_volume_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
@@ -130,6 +132,36 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 			Limit:    100,
+			Step:     0,
+		}, false},
+		{"series_volume_range", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+				Limit:    3,
+				Step:     30 * 1e3,
+			})
+		}, &logproto.VolumeRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
+			Limit:    3,
+			Step:     30 * 1e3, // step is expected in ms
+		}, false},
+		{"series_volume_range_default_limit", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+				From:     model.TimeFromUnixNano(start.UnixNano()),
+				Through:  model.TimeFromUnixNano(end.UnixNano()),
+				Matchers: `{job="foo"}`,
+				Step:     30 * 1e3, // step is expected in ms
+			})
+		}, &logproto.VolumeRequest{
+			From:     model.TimeFromUnixNano(start.UnixNano()),
+			Through:  model.TimeFromUnixNano(end.UnixNano()),
+			Matchers: `{job="foo"}`,
+			Limit:    100,
+			Step:     30 * 1e3, // step is expected in ms; default is 0 or no step
 		}, false},
 	}
 	for _, tt := range tests {
@@ -888,6 +920,24 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
 }
 
+func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
+	from, through := util.RoundToMilliseconds(start, end)
+	toEncode := &logproto.VolumeRequest{
+		From:     from,
+		Through:  through,
+		Matchers: `{job="foo"}`,
+		Limit:    20,
+		Step:     30 * 1e6,
+	}
+	got, err := DefaultCodec.EncodeRequest(context.Background(), toEncode)
+	require.Nil(t, err)
+	require.Equal(t, fmt.Sprintf("%d", from.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", through.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
+	require.Equal(t, "20", got.URL.Query().Get("limit"))
+	require.Equal(t, fmt.Sprintf("%f", float64(toEncode.Step/1e3)), got.URL.Query().Get("step"))
+}
+
 func Test_codec_EncodeResponse(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -1533,6 +1583,15 @@ var (
 				"downloadTime": 0
 			},
 			"index": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0
+			},
+		    "statsResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,

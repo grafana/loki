@@ -436,9 +436,13 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// SeriesVolumeHandler queries the index label volumes related to the passed matchers
-func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseSeriesVolumeQuery(r)
+//TODO(trevorwhitney): add test for the handler split
+
+// SeriesVolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns N values where N is the time range / step.
+func (q *QuerierAPI) SeriesVolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -448,10 +452,36 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
 		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
 		Matchers: rawReq.Query,
+		Step:     rawReq.Step.Milliseconds(),
 		Limit:    int32(rawReq.Limit),
 	}
 
-	resp, err := q.querier.SeriesVolume(r.Context(), req)
+	q.seriesVolumeHandler(r.Context(), r, req, w)
+}
+
+// SeriesVolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns a single value for the time range.
+func (q *QuerierAPI) SeriesVolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeInstantQuery(r)
+
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	req := &logproto.VolumeRequest{
+		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers: rawReq.Query,
+		Step:     0,
+		Limit:    int32(rawReq.Limit),
+	}
+
+	q.seriesVolumeHandler(r.Context(), r, req, w)
+}
+
+func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
+	resp, err := q.querier.SeriesVolume(ctx, req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
