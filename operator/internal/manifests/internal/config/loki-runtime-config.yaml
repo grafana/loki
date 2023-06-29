@@ -47,7 +47,7 @@ overrides:
     query_timeout: {{ $spec.QueryLimits.QueryTimeout }}
     {{- end }}
     {{- if $spec.QueryLimits.CardinalityLimit }}
-    cardinality_limit: {{ $spec.QueryLimit.CardinalityLimit }}
+    cardinality_limit: {{ $spec.QueryLimits.CardinalityLimit }}
     {{- end }}
   {{- end -}}
   {{- with $spec.Retention }}
