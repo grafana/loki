@@ -340,98 +340,22 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 				},
 			},
 			`{
-			"status": "success",
-			"data": {
-				"resultType": "streams",
-				"result": [
-					{
-						"stream": {
-							"test": "test"
-						},
-						"values":[
-							[ "123456789012345", "super line" ]
-						]
-					}
-				],
-				"stats" : {
-					"ingester" : {
-						"store": {
-							"chunksDownloadTime": 0,
-							"totalChunksRef": 0,
-							"totalChunksDownloaded": 0,
-							"chunk" :{
-								"compressedBytes": 0,
-								"decompressedBytes": 0,
-								"decompressedLines": 0,
-								"headChunkBytes": 0,
-								"headChunkLines": 0,
-								"totalDuplicates": 0
-							}
-						},
-						"totalBatches": 0,
-						"totalChunksMatched": 0,
-						"totalLinesSent": 0,
-						"totalReached": 0
-					},
-					"querier": {
-						"store": {
-							"chunksDownloadTime": 0,
-							"totalChunksRef": 0,
-							"totalChunksDownloaded": 0,
-							"chunk" :{
-								"compressedBytes": 0,
-								"decompressedBytes": 0,
-								"decompressedLines": 0,
-								"headChunkBytes": 0,
-								"headChunkLines": 0,
-								"totalDuplicates": 0
-							}
+				"status": "success",
+				"data": {
+					` + statsResultString + `
+					"resultType": "streams",
+					"result": [
+						{
+							"stream": {
+								"test": "test"
+							},
+							"values":[
+								[ "123456789012345", "super line" ]
+							]
 						}
-					},
-					"cache": {
-						"chunk": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						},
-						"index": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						},
-						"result": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						}
-					},
-					"summary": {
-						"bytesProcessedPerSecond": 0,
-						"execTime": 0,
-						"linesProcessedPerSecond": 0,
-						"queueTime": 0,
-                        "shards": 0,
-                        "splits": 0,
-						"subqueries": 0,
-						"totalBytesProcessed":0,
-                                                "totalEntriesReturned":0,
-						"totalLinesProcessed":0
-					}
+					]
 				}
-			}
-		}`,
+			}`,
 		},
 		// vector test
 		{
@@ -466,110 +390,34 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 				},
 			},
 			`{
-			"data": {
-			  "resultType": "vector",
-			  "result": [
-				{
-				  "metric": {
-					"filename": "\/var\/hostlog\/apport.log",
-					"job": "varlogs"
-				  },
-				  "value": [
-					1568404331.324,
-					"0.013333333333333334"
-				  ]
-				},
-				{
-				  "metric": {
-					"filename": "\/var\/hostlog\/syslog",
-					"job": "varlogs"
-				  },
-				  "value": [
-					1568404331.324,
-					"3.45"
-				  ]
-				}
-			  ],
-			  "stats" : {
-				"ingester" : {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"totalDuplicates": 0
+				"data": {
+					` + statsResultString + `
+					"resultType": "vector",
+					"result": [
+						{
+						"metric": {
+							"filename": "\/var\/hostlog\/apport.log",
+							"job": "varlogs"
+						},
+						"value": [
+							1568404331.324,
+							"0.013333333333333334"
+						]
+						},
+						{
+						"metric": {
+							"filename": "\/var\/hostlog\/syslog",
+							"job": "varlogs"
+						},
+						"value": [
+							1568404331.324,
+							"3.45"
+							]
 						}
-					},
-					"totalBatches": 0,
-					"totalChunksMatched": 0,
-					"totalLinesSent": 0,
-					"totalReached": 0
+					]
 				},
-				"querier": {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"totalDuplicates": 0
-						}
-					}
-				},
-				"cache": {
-					"chunk": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"index": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"result": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					}
-				},
-				"summary": {
-					"bytesProcessedPerSecond": 0,
-					"execTime": 0,
-					"linesProcessedPerSecond": 0,
-					"queueTime": 0,
-                    "shards": 0,
-                    "splits": 0,
-					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
-				}
-			  }
-			},
-			"status": "success"
-		  }`,
+				"status": "success"
+			}`,
 		},
 		// matrix test
 		{
@@ -616,118 +464,42 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 				},
 			},
 			`{
-			"data": {
-			  "resultType": "matrix",
-			  "result": [
-				{
-				  "metric": {
-					"filename": "\/var\/hostlog\/apport.log",
-					"job": "varlogs"
-				  },
-				  "values": [
-					  [
-						1568404331.324,
-						"0.013333333333333334"
-					  ]
+				"data": {
+					` + statsResultString + `
+					"resultType": "matrix",
+					"result": [
+						{
+						"metric": {
+							"filename": "\/var\/hostlog\/apport.log",
+							"job": "varlogs"
+						},
+						"values": [
+							[
+								1568404331.324,
+								"0.013333333333333334"
+							]
+							]
+						},
+						{
+						"metric": {
+							"filename": "\/var\/hostlog\/syslog",
+							"job": "varlogs"
+						},
+						"values": [
+								[
+									1568404331.324,
+									"3.45"
+								],
+								[
+									1568404331.339,
+									"4.45"
+								]
+							]
+						}
 					]
 				},
-				{
-				  "metric": {
-					"filename": "\/var\/hostlog\/syslog",
-					"job": "varlogs"
-				  },
-				  "values": [
-						[
-							1568404331.324,
-							"3.45"
-						],
-						[
-							1568404331.339,
-							"4.45"
-						]
-					]
-				}
-			  ],
-			  "stats" : {
-				"ingester" : {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"totalDuplicates": 0
-						}
-					},
-					"totalBatches": 0,
-					"totalChunksMatched": 0,
-					"totalLinesSent": 0,
-					"totalReached": 0
-				},
-				"querier": {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"totalDuplicates": 0
-						}
-					}
-				},
-				"cache": {
-					"chunk": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"index": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"result": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					}
-				},
-				"summary": {
-					"bytesProcessedPerSecond": 0,
-					"execTime": 0,
-					"linesProcessedPerSecond": 0,
-					"queueTime": 0,
-                    "shards": 0,
-                    "splits": 0,
-					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
-				}
-			  }
-			},
-			"status": "success"
-		  }`,
+				"status": "success"
+			}`,
 		},
 	}
 	codec := RequestProtobufCodec{}
@@ -743,7 +515,10 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 
 		// parser.Value -> queryrange.QueryResponse
 		var b bytes.Buffer
-		result := logqlmodel.Result{Data: queryTest.actual}
+		result := logqlmodel.Result{
+			Data:       queryTest.actual,
+			Statistics: statsResult,
+		}
 		err = WriteQueryResponseProtobuf(&logql.LiteralParams{}, result, &b)
 		require.NoError(t, err)
 
