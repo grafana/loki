@@ -37,9 +37,9 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v int
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		return WriteQueryResponseProtobuf(params, result, w)
-	case logproto.LabelResponse:
+	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(req.RequestURI)
-		return WriteLabelResponseProtobuf(version, result, w)
+		return WriteLabelResponseProtobuf(version, *result, w)
 	case logproto.SeriesResponse:
 		version := loghttp.GetVersion(req.RequestURI)
 		return WriteSeriesResponseProtobuf(version, result, w)
@@ -48,7 +48,7 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v int
 	case *logproto.VolumeResponse:
 		return WriteSeriesVolumeResponseProtobuf(result, w)
 	}
-	return nil
+	return fmt.Errorf("unknown response type %T", v)
 }
 
 // WriteQueryResponseProtobuf marshals the promql.Value to queryrange QueryResonse and then

@@ -22,13 +22,13 @@ func WriteResponseJSON(r *http.Request, v interface{}, w http.ResponseWriter) er
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		return WriteQueryResponseJSON(result, w)
-	case logproto.LabelResponse:
+	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(r.RequestURI)
 		if version == loghttp.VersionV1 {
-			return WriteLabelResponseJSON(result, w)
+			return WriteLabelResponseJSON(*result, w)
 		}
 
-		return marshal_legacy.WriteLabelResponseJSON(result, w)
+		return marshal_legacy.WriteLabelResponseJSON(*result, w)
 	case logproto.SeriesResponse:
 		return WriteSeriesResponseJSON(result, w)
 	case *stats.Stats:
@@ -36,7 +36,7 @@ func WriteResponseJSON(r *http.Request, v interface{}, w http.ResponseWriter) er
 	case *logproto.VolumeResponse:
 		return WriteSeriesVolumeResponseJSON(result, w)
 	}
-	return nil
+	return fmt.Errorf("unknown response type %T", v)
 }
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
