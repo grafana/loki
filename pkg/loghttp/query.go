@@ -71,7 +71,10 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 		switch string(key) {
 		case "stream":
 			labels := make(LabelSet)
-			err := jsonparser.ObjectEach(val, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+			err := jsonparser.ObjectEach(val, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
+				if dataType != jsonparser.String {
+					return jsonparser.MalformedStringError
+				}
 				labels[yoloString(key)] = yoloString(val)
 				return nil
 			})
@@ -99,7 +102,7 @@ func unmarshalHTTPToLogProtoEntries(data []byte) ([]logproto.Entry, error) {
 		entries    []logproto.Entry
 		parseError error
 	)
-	_, err := jsonparser.ArrayEach(data, func(value []byte, ty jsonparser.ValueType, _ int, err error) {
+	if _, err := jsonparser.ArrayEach(data, func(value []byte, ty jsonparser.ValueType, _ int, err error) {
 		if err != nil || parseError != nil {
 			return
 		}
@@ -112,11 +115,11 @@ func unmarshalHTTPToLogProtoEntries(data []byte) ([]logproto.Entry, error) {
 			return
 		}
 		entries = append(entries, e)
-	})
-	if parseError != nil {
-		return nil, parseError
+	}); err != nil {
+		parseError = err
 	}
-	if err != nil {
+
+	if parseError != nil {
 		return nil, parseError
 	}
 
@@ -155,7 +158,10 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 			e.Line = v
 		case 2: // labels
 			labels := make(LabelSet)
-			err := jsonparser.ObjectEach(value, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
+				if dataType != jsonparser.String {
+					return jsonparser.MalformedStringError
+				}
 				labels[yoloString(key)] = yoloString(val)
 				return nil
 			})
