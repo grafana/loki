@@ -254,6 +254,11 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.global.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -331,6 +336,11 @@ spec:
           Units MB.
         displayName: Maximum burst bytes per stream (in MB)
         path: limits.tenants.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.tenants.queries.cardinalityLimit
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can

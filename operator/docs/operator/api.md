@@ -2641,6 +2641,17 @@ string
 <p>Timeout when querying ingesters or storage during the execution of a query request.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>cardinalityLimit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<p>CardinalityLimit defines the limit for index queries.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
