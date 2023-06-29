@@ -2709,6 +2709,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.serviceMonitor.metricRelabelings</td>
+			<td>list</td>
+			<td>ServiceMonitor metric relabel configs to apply to samples before ingestion https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#endpoint</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.serviceMonitor.metricsInstance</td>
 			<td>object</td>
 			<td>If defined, will create a MetricsInstance for the Grafana Agent Operator.</td>
