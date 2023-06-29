@@ -101,7 +101,14 @@ func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extr
 }
 
 func (c *Client) PushLogLineWithTimestampAndMetadata(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, labels.FromMap(logLabels), extraLabelList...)
+	// If the logLabels map is empty, labels.FromMap will allocate some empty slices.
+	// Since this code is executed for every log line we receive, as an optimization
+	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.
+	var lbls labels.Labels
+	if len(logLabels) > 0 {
+		lbls = labels.FromMap(logLabels)
+	}
+	return c.pushLogLine(line, timestamp, lbls, extraLabelList...)
 }
 
 func formatTS(ts time.Time) string {
