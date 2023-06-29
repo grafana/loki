@@ -153,14 +153,14 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: map[string]string{"foo": "bar"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2"},
+						{Timestamp: time.Unix(0, 2), Line: "2", Labels: LabelSet{"foo": "bar"}},
 					},
 				},
 				{
 					Labels: map[string]string{"foo": "bar", "lvl": "error"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4"},
+						{Timestamp: time.Unix(0, 4), Line: "4", Labels: LabelSet{"foo": "bar"}},
 					},
 				},
 			},
@@ -169,14 +169,14 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: `{foo="bar"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2"},
+						{Timestamp: time.Unix(0, 2), Line: "2", Labels: LabelSet{"foo": "bar"}.String()},
 					},
 				},
 				{
 					Labels: `{foo="bar", lvl="error"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4"},
+						{Timestamp: time.Unix(0, 4), Line: "4", Labels: LabelSet{"foo": "bar"}.String()},
 					},
 				},
 			},
@@ -210,7 +210,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "1"},
-							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2", Labels: LabelSet{"foo": "bar"}},
 						},
 					},
 				},
@@ -230,7 +230,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "log line 1"},
-							{Timestamp: time.Unix(0, 2), Line: "some log line 2"},
+							{Timestamp: time.Unix(0, 2), Line: "some log line 2", Labels: LabelSet{"foo": "bar"}},
 						},
 					},
 					Stream{
@@ -240,7 +240,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
-							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2", Labels: LabelSet{"foo": "bar"}},
 						},
 					},
 				},

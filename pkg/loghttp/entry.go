@@ -180,9 +180,14 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	if len(e.Labels) > 0 {
 		stream.WriteMore()
 		stream.WriteObjectStart()
+		var idx int
 		for lName, lValue := range e.Labels {
+			if idx > 0 {
+				stream.WriteMore()
+			}
 			stream.WriteObjectField(lName)
 			stream.WriteString(lValue)
+			idx++
 		}
 		stream.WriteObjectEnd()
 	}
