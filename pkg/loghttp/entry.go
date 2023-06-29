@@ -132,7 +132,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 				}
 				return true
 			default:
-				iter.ReportError("error reading entry", "array must contains 2 values")
+				iter.ReportError("error reading entry", "array must have at least 2 and up to 3 values")
 				return false
 			}
 		})
