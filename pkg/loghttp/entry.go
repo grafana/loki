@@ -8,6 +8,8 @@ import (
 	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/modern-go/reflect2"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func init() {
@@ -18,7 +20,21 @@ func init() {
 type Entry struct {
 	Timestamp time.Time
 	Line      string
-	Labels    string
+	Labels    LabelSet
+}
+
+func (e Entry) ToProto() logproto.Entry {
+	// If there are no labels, we return empty string instead of '{}'.
+	var labels string
+	if len(e.Labels) > 0 {
+		labels = e.Labels.String()
+	}
+
+	return logproto.Entry{
+		Timestamp: e.Timestamp,
+		Line:      e.Line,
+		Labels:    labels,
+	}
 }
 
 func (e *Entry) UnmarshalJSON(data []byte) error {
@@ -28,12 +44,12 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 	)
 	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
 		// assert that both items in array are of type string
-		if t != jsonparser.String {
-			parseError = jsonparser.MalformedStringError
-			return
-		}
 		switch i {
 		case 0: // timestamp
+			if t != jsonparser.String {
+				parseError = jsonparser.MalformedStringError
+				return
+			}
 			ts, err := jsonparser.ParseInt(value)
 			if err != nil {
 				parseError = err
@@ -41,6 +57,10 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 			}
 			e.Timestamp = time.Unix(0, ts)
 		case 1: // value
+			if t != jsonparser.String {
+				parseError = jsonparser.MalformedStringError
+				return
+			}
 			v, err := jsonparser.ParseString(value)
 			if err != nil {
 				parseError = err
@@ -48,12 +68,21 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 			}
 			e.Line = v
 		case 2: // labels
-			il, err := jsonparser.ParseString(value)
-			if err != nil {
+			if t != jsonparser.Object {
+				parseError = jsonparser.MalformedObjectError
+				return
+			}
+			e.Labels = make(LabelSet)
+			if err := jsonparser.ObjectEach(value, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
+				if dataType != jsonparser.String {
+					return jsonparser.MalformedStringError
+				}
+				e.Labels[yoloString(key)] = yoloString(value)
+				return nil
+			}); err != nil {
 				parseError = err
 				return
 			}
-			e.Labels = il
 		}
 		i++
 	})
@@ -75,7 +104,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		i := 0
 		var ts time.Time
 		var line string
-		var labels string
+		var labels LabelSet
 		ok := iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
 			var ok bool
 			switch i {
@@ -91,7 +120,12 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 				}
 				return true
 			case 2:
-				labels = iter.ReadString()
+				labels = make(LabelSet)
+				iter.ReadMapCB(func(iter *jsoniter.Iterator, labelName string) bool {
+					labelValue := iter.ReadString()
+					labels[labelName] = labelValue
+					return true
+				})
 				i++
 				if iter.Error != nil {
 					return false
@@ -143,8 +177,15 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteRaw(`"`)
 	stream.WriteMore()
 	stream.WriteStringWithHTMLEscaped(e.Line)
-	stream.WriteMore()
-	stream.WriteString(e.Labels)
+	if len(e.Labels) > 0 {
+		stream.WriteMore()
+		stream.WriteObjectStart()
+		for lName, lValue := range e.Labels {
+			stream.WriteObjectField(lName)
+			stream.WriteString(lValue)
+		}
+		stream.WriteObjectEnd()
+	}
 	stream.WriteArrayEnd()
 }
 

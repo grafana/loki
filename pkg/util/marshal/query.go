@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -96,18 +97,31 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	}
 
 	for i, e := range s.Entries {
-		ret.Entries[i] = NewEntry(e)
+		ret.Entries[i], err = NewEntry(e)
+		if err != nil {
+			return loghttp.Stream{}, err
+		}
 	}
 
 	return ret, nil
 }
 
 // NewEntry constructs an Entry from a logproto.Entry
-func NewEntry(e logproto.Entry) loghttp.Entry {
+func NewEntry(e logproto.Entry) (loghttp.Entry, error) {
+	var labels loghttp.LabelSet
+	if e.Labels != "" {
+		lbls, err := syntax.ParseLabels(e.Labels)
+		if err != nil {
+			return loghttp.Entry{}, errors.Wrapf(err, "err while creating labelset for entry %s", e.Labels)
+		}
+		labels = lbls.Map()
+	}
+
 	return loghttp.Entry{
 		Timestamp: e.Timestamp,
 		Line:      e.Line,
-	}
+		Labels:    labels,
+	}, nil
 }
 
 func NewScalar(s promql.Scalar) loghttp.Scalar {
@@ -315,8 +329,10 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
-		s.WriteMore()
-		s.WriteString(e.Labels)
+		if e.Labels != "" {
+			s.WriteMore()
+			s.WriteString(e.Labels)
+		}
 		s.WriteArrayEnd()
 
 		s.Flush()
