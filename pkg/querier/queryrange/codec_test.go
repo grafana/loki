@@ -712,7 +712,7 @@ func Test_codec_DecodeProtobufResponseParity(t *testing.T) {
 		// parser.Value -> queryrange.QueryResponse
 		var b bytes.Buffer
 		result := logqlmodel.Result{Data: queryTest.actual}
-		err = WriteQueryResponseProtobuf(logql.LiteralParams{}, result, &b)
+		err = WriteQueryResponseProtobuf(&logql.LiteralParams{}, result, &b)
 		require.NoError(t, err)
 
 		// queryrange.QueryResponse -> queryrangebase.Response

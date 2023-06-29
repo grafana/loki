@@ -5,6 +5,7 @@ package queryrange
 import (
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/prometheus/prometheus/promql"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util/marshal"
 )
 
 const (
@@ -21,9 +23,37 @@ const (
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
+func WriteResponse(req *http.Request, params *logql.LiteralParams, v interface{}, w http.ResponseWriter) error {
+	if req.Header.Get("Accept") == ProtobufType {
+		w.Header().Add("Content-Type", ProtobufType)
+		return WriteResponseProtobuf(req, params, v, w)
+	}
+
+	w.Header().Add("Content-Type", JSONType)
+	return marshal.WriteResponseJSON(req, v, w)
+}
+
+func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v interface{}, w http.ResponseWriter) error {
+	switch result := v.(type) {
+	case logqlmodel.Result:
+		return WriteQueryResponseProtobuf(params, result, w)
+	case logproto.LabelResponse:
+		version := loghttp.GetVersion(req.RequestURI)
+		return WriteLabelResponseProtobuf(version, result, w)
+	case logproto.SeriesResponse:
+		version := loghttp.GetVersion(req.RequestURI)
+		return WriteSeriesResponseProtobuf(version, result, w)
+	case *stats.Stats:
+		return WriteIndexStatsResponseProtobuf(result, w)
+	case *logproto.VolumeResponse:
+		return WriteSeriesVolumeResponseProtobuf(result, w)
+	}
+	return nil
+}
+
 // WriteQueryResponseProtobuf marshals the promql.Value to queryrange QueryResonse and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseProtobuf(params logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
+func WriteQueryResponseProtobuf(params *logql.LiteralParams, v logqlmodel.Result, w io.Writer) error {
 	p, err := ResultToResponse(v, params)
 	if err != nil {
 		return err
@@ -113,7 +143,7 @@ func WriteSeriesVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) 
 }
 
 // ResultToResponse is the reverse of ResponseToResult in downstreamer.
-func ResultToResponse(result logqlmodel.Result, params logql.LiteralParams) (*QueryResponse, error) {
+func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*QueryResponse, error) {
 	switch data := result.Data.(type) {
 	case promql.Vector:
 		sampleStream, err := queryrangebase.FromValue(data)

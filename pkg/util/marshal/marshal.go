@@ -5,6 +5,7 @@ package marshal
 import (
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
@@ -14,7 +15,29 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
+
+func WriteResponseJSON(r *http.Request, v interface{}, w http.ResponseWriter) error {
+	switch result := v.(type) {
+	case logqlmodel.Result:
+		return WriteQueryResponseJSON(result, w)
+	case logproto.LabelResponse:
+		version := loghttp.GetVersion(r.RequestURI)
+		if version == loghttp.VersionV1 {
+			return WriteLabelResponseJSON(result, w)
+		}
+
+		return marshal_legacy.WriteLabelResponseJSON(result, w)
+	case logproto.SeriesResponse:
+		return WriteSeriesResponseJSON(result, w)
+	case *stats.Stats:
+		return WriteIndexStatsResponseJSON(result, w)
+	case *logproto.VolumeResponse:
+		return WriteSeriesVolumeResponseJSON(result, w)
+	}
+	return nil
+}
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.

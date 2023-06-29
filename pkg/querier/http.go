@@ -97,15 +97,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal.WriteQueryResponseJSON(result, w)
-	}
-
-	if err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
@@ -141,15 +133,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal.WriteQueryResponseJSON(result, w)
-	}
-
-	if err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
@@ -205,7 +189,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Header.Get("Accept") == queryrange.ProtobufType {
 		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteQueryResponseProtobuf(params, result, w)
+		err = queryrange.WriteQueryResponseProtobuf(&params, result, w)
 	} else {
 		w.Header().Add("Content-Type", queryrange.JSONType)
 		err = marshal_legacy.WriteQueryResponseJSON(result, w)
@@ -254,18 +238,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	version := loghttp.GetVersion(r.RequestURI)
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteLabelResponseProtobuf(version, *resp, w)
-	} else if version == loghttp.VersionV1 {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal.WriteLabelResponseJSON(*resp, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal_legacy.WriteLabelResponseJSON(*resp, w)
-	}
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
@@ -433,16 +406,8 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteSeriesResponseProtobuf(loghttp.GetVersion(r.RequestURI), *resp, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal.WriteSeriesResponseJSON(*resp, w)
-	}
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -466,14 +431,7 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteIndexStatsResponseProtobuf(resp, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal.WriteIndexStatsResponseJSON(resp, w)
-	}
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
@@ -503,14 +461,7 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
 	}
 
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteSeriesVolumeResponseProtobuf(resp, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal.WriteSeriesVolumeResponseJSON(resp, w)
-	}
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }
