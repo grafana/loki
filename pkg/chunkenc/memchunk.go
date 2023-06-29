@@ -1122,7 +1122,7 @@ type bufferedIterator struct {
 	readBufValid int      // How many bytes are left in readBuf from previous read.
 
 	buf      []byte // The buffer for a single entry.
-	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
+	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
 	closed bool

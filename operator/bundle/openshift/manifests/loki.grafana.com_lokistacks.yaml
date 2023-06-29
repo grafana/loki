@@ -161,7 +161,7 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
+                            description: MaxQuerySeries defines the maximum of
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
@@ -289,7 +289,7 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
+                              description: MaxQuerySeries defines the maximum
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
@@ -4068,7 +4068,7 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
+                            description: MaxQuerySeries defines the maximum of
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
@@ -4139,7 +4139,7 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
+                              description: MaxQuerySeries defines the maximum
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer

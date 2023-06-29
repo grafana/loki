@@ -271,7 +271,7 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
@@ -355,7 +355,7 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
@@ -809,7 +809,7 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
@@ -872,7 +872,7 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
