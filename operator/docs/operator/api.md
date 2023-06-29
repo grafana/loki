@@ -2649,7 +2649,8 @@ int32
 </em>
 </td>
 <td>
-<p>CardinalityLimit defines the limit for index queries.</p>
+<em>(Optional)</em>
+<p>CardinalityLimit defines the cardinality limit for index queries.</p>
 </td>
 </tr>
 </tbody>

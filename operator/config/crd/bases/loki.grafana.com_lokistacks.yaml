@@ -129,8 +129,8 @@ spec:
                           log streams.
                         properties:
                           cardinalityLimit:
-                            description: CardinalityLimit defines the limit for index
-                              queries.
+                            description: CardinalityLimit defines the cardinality
+                              limit for index queries.
                             format: int32
                             type: integer
                           maxChunksPerQuery:
@@ -256,8 +256,8 @@ spec:
                             log streams.
                           properties:
                             cardinalityLimit:
-                              description: CardinalityLimit defines the limit for
-                                index queries.
+                              description: CardinalityLimit defines the cardinality
+                                limit for index queries.
                               format: int32
                               type: integer
                             maxChunksPerQuery:

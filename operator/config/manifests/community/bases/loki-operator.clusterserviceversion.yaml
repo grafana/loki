@@ -254,7 +254,7 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: CardinalityLimit defines the limit for index queries.
+      - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.global.queries.cardinalityLimit
         x-descriptors:
@@ -338,7 +338,7 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: CardinalityLimit defines the limit for index queries.
+      - description: CardinalityLimit defines the cardinality limit for index queries.
         displayName: Cardinality Limit
         path: limits.tenants.queries.cardinalityLimit
         x-descriptors:
