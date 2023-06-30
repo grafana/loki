@@ -6,7 +6,7 @@ description: Promtail Scraping (Service Discovery)
 
 Promtail currently supports scraping from the following sources:
 - {{< relref "#file-target-discovery" >}}
-- Kubernetes Discovery
+- {{< relref "#kubernetes-discovery" >}}
 - Journal (Linux Only)
 - GCP Logs
 - Syslog
