@@ -75,7 +75,9 @@ See the [AWS deployment section]({{<relref "../../storage/#aws-deployment-s3-sin
 
 ### DynamoDB
 
-Please note that DynamoDB support is deprecated and will be removed in a future release.
+{{% admonition type="note" %}}
+DynamoDB support is deprecated and will be removed in a future release.
+{{% /admonition %}}
 
 When using DynamoDB for the index, the following permissions are needed:
 
