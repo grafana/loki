@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.8.8
 
-- [ENHANCEMENT] Add loki.storage.azure.endpointSuffix to support azure private endpoint
+- [ENHANCEMENT] Add loki.storage.azure.endpointSuffix to support Azure private endpoint
 
 ## 5.8.7
 
