@@ -69,7 +69,7 @@ func (r *LokiStackZoneAwarePodReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 func (r *LokiStackZoneAwarePodReconciler) buildController(bld k8s.Builder) error {
 	return bld.
-		Named("LokiPod").
+		Named("ZoneAwarePod").
 		Watches(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, createOrUpdatePred).
 		Complete(r)
 }
