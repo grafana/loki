@@ -40,20 +40,7 @@ type LokiStackZoneAwarePodReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	// managed, err := state.IsManaged(ctx, req, r.Client)
-	// if err != nil {
-	// 	return ctrl.Result{}, err
-	// }
-	// if !managed {
-	// 	r.Log.Info("Skipping reconciliation for unmanaged LokiStack resource", "name", req.String())
-	// 	// Stop requeueing for unmanaged LokiStack custom resources
-	// 	return ctrl.Result{}, nil
-	// }
-
-	// var stack lokiv1.LokiStack
-
 	var lokiPod corev1.Pod
-
 	if err := r.Client.Get(ctx, req.NamespacedName, &lokiPod); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -61,7 +48,6 @@ func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
 	}
 
-	// if len(stack.Spec.Replication.Zones) > 0 {
 	labels := lokiPod.GetLabels()
 	for key, value := range labels {
 		if key == "loki.grafana.com/zoneaware" {
@@ -83,53 +69,7 @@ func (r *LokiStackZoneAwarePodReconciler) SetupWithManager(mgr ctrl.Manager) err
 
 func (r *LokiStackZoneAwarePodReconciler) buildController(bld k8s.Builder) error {
 	return bld.
-		// For(&lokiv1.LokiStack{}).
 		Named("LokiPod").
 		Watches(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, createOrUpdatePred).
 		Complete(r)
 }
-
-/* func (r *LokiStackZoneAwarePodReconciler) enqueueForPodBinding() handler.EventHandler {
-	ctx := context.TODO()
-	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
-		//lokiPod := &corev1.Pod{}
-		labels := obj.GetLabels()
-		var requests []reconcile.Request
-
-		for key, value := range labels {
-			if key == "loki.grafana.com/zoneaware" && value == "enabled" {
-				requests = append(requests, reconcile.Request{
-					NamespacedName: types.NamespacedName{
-						Namespace: stack.Namespace,
-						Name:      stack.Name,
-					},
-				})
-			}
-		}
-		r.Log.Info("Enqueued requests for LokiStack because Zone Aware Pod was created or updated", "LokiStack", stack.Name, "Pod", obj.GetName())
-		return requests
-
-
-
-		// if err := r.Client.List(ctx, lokiStacks); err != nil {
-		// 	r.Log.Error(err, "Error getting LokiStack resources in event handler")
-		// 	return nil
-		// }
-
-		// var requests []reconcile.Request
-
-		// for _, stack := range lokiStacks.Items {
-		// 	if obj.GetNamespace() == stack.Namespace && len(stack.Spec.Replication.Zones) > 0 {
-		// 		requests = append(requests, reconcile.Request{
-		// 			NamespacedName: types.NamespacedName{
-		// 				Namespace: stack.Namespace,
-		// 				Name:      stack.Name,
-		// 			},
-		// 		})
-		// 		r.Log.Info("Enqueued requests for LokiStack because Zone Aware Pod was created or updated", "LokiStack", stack.Name, "Pod", obj.GetName())
-
-		// 		return requests
-		// 	}
-		// }
-	})
-} */

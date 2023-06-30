@@ -24,8 +24,6 @@ const (
 	protocolTCP      = "TCP"
 
 	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
-	// availibilityZoneEnvVarName    = "INSTANCE_AVAILIBILITY_ZONE"
-	// concatenatedZonePodAnnotation = "metadata.annotations['loki_instance_availability_zone']"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -178,28 +176,6 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 	}
 	return annotations
 }
-
-/* func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
-	var tsc []corev1.TopologySpreadConstraint
-	if len(spec.Zones) > 0 {
-		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
-		for i, z := range spec.Zones {
-			tsc[i] = corev1.TopologySpreadConstraint{
-				MaxSkew:           int32(z.MaxSkew),
-				TopologyKey:       z.TopologyKey,
-				WhenUnsatisfiable: corev1.DoNotSchedule,
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						kubernetesComponentLabel: component,
-						kubernetesInstanceLabel:  stackName,
-					},
-				},
-			}
-		}
-	}
-
-	return tsc
-} */
 
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func ComponentLabels(component, stackName string) labels.Set {

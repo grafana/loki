@@ -151,11 +151,6 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 
 	if opts.Stack.Replication != nil {
 		configureReplication(&podSpec, *opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
-		// podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
-		// if len(opts.Stack.Replication.Zones) > 0 {
-		// 	resetEnvVar(&podSpec, availibilityZoneEnvVarName)
-		// 	podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
-		// }
 	}
 
 	return &appsv1.StatefulSet{

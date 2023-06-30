@@ -16,8 +16,6 @@ const (
 	AnnotationLokiZoneAware string = "loki.grafana.com/zoneawareannotation"
 )
 
-// var zoneEnvNames = []string{}
-
 func configureReplication(podSpec *corev1.PodSpec, replication lokiv1.ReplicationSpec, component string, name string) {
 	podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(replication, component, name)...)
 }
@@ -25,9 +23,7 @@ func configureReplication(podSpec *corev1.PodSpec, replication lokiv1.Replicatio
 func configureZoneAwareEnv(podSpec *corev1.PodSpec, replication lokiv1.ReplicationSpec) error {
 	if len(replication.Zones) > 0 {
 		// set the Zone Aware Label on the pod
-		// setZoneAwareLabel(name)
 		resetEnvVar(podSpec, availabilityZoneEnvVarName)
-		// podSpec.Containers[0].Env = append(podSpec.Containers[0].Env, getInstanceAvailabilityZoneEnvVar())
 
 		src := corev1.Container{
 			Env: getInstanceAvailabilityZoneEnvVar(),
@@ -41,19 +37,6 @@ func configureZoneAwareEnv(podSpec *corev1.PodSpec, replication lokiv1.Replicati
 		}
 	}
 	return nil
-}
-
-// CheckZoneawareComponent returns true if the Component pod is either in the read/write path or gateway.
-func CheckZoneawareComponent(pod *corev1.Pod) bool {
-	podLabels := pod.Labels
-
-	switch podLabels[kubernetesComponentLabel] {
-	case LabelDistributorComponent, LabelIndexGatewayComponent,
-		LabelIngesterComponent, LabelQuerierComponent,
-		LabelQueryFrontendComponent:
-		return true
-	}
-	return false
 }
 
 func getInstanceAvailabilityZoneEnvVar() []corev1.EnvVar {
@@ -93,7 +76,6 @@ func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, st
 	return tsc
 }
 
-// ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
 func setZoneAwareLabelAnnotation(zones []lokiv1.ZoneSpec, component, stackName, cfgSHA1, CertRotationRequiredAt string) (labels.Set, map[string]string) {
 	var topologykey string
 	for _, zone := range zones {
@@ -110,18 +92,3 @@ func setZoneAwareLabelAnnotation(zones []lokiv1.ZoneSpec, component, stackName, 
 	a[AnnotationLokiZoneAware] = topologykey
 	return l, a
 }
-
-// ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
-// func setZoneAwareAnnotation(component, stackName string, zones []lokiv1.ZoneSpec) labels.Set {
-// 	var topologykey string
-// 	for _, zone := range zones {
-// 		if topologykey != "" {
-// 			topologykey = topologykey + "-" + zone.TopologyKey
-// 		} else {
-// 			topologykey = zone.TopologyKey
-// 		}
-// 	}
-// 	return labels.Merge(ComponentLabels(component, stackName), map[string]string{
-// 		labelZoneAwarePod: topologykey,
-// 	})
-// }
