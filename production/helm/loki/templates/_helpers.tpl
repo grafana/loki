@@ -270,6 +270,9 @@ azure:
   {{- with .requestTimeout }}
   request_timeout: {{ . }}
   {{- end }}
+  {{- with .endpointSuffix }}
+  endpoint_suffix: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
@@ -336,6 +339,9 @@ azure:
   {{- end }}
   {{- with .requestTimeout }}
   request_timeout: {{ . }}
+  {{- end }}
+  {{- with .endpointSuffix }}
+  endpoint_suffix: {{ . }}
   {{- end }}
 {{- end -}}
 {{- else }}
