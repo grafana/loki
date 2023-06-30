@@ -47,7 +47,7 @@ type Config struct {
 	MaxRetries           int                `yaml:"max_retries"`
 	ShardedQueries       bool               `yaml:"parallelise_shardable_queries"`
 
-	// TODO(karsten): remove used optoon ForwardHeaders with Loki 3.0 since
+	// TODO(karsten): remove used option ForwardHeaders with Loki 3.0 since
 	// it's a breaking change.
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`

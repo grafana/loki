@@ -187,6 +187,8 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Do not use queryrange.WriteResponse(...) because the LogQueryHandler
+	// requires the legacy marshalling.
 	if r.Header.Get("Accept") == queryrange.ProtobufType {
 		w.Header().Add("Content-Type", queryrange.ProtobufType)
 		err = queryrange.WriteQueryResponseProtobuf(&params, result, w)
