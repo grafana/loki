@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weaveworks/common/user"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
@@ -166,37 +168,37 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	labelVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	seriesVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, LokiCodec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		var (
-			metricRT      = metricsTripperware(next)
-			limitedRT     = limitedTripperware(next)
-			logFilterRT   = logFilterTripperware(next)
-			seriesRT      = seriesTripperware(next)
-			labelsRT      = labelsTripperware(next)
-			instantRT     = instantMetricTripperware(next)
-			statsRT       = indexStatsTripperware(next)
-			labelVolumeRT = labelVolumeTripperware(next)
+			metricRT       = metricsTripperware(next)
+			limitedRT      = limitedTripperware(next)
+			logFilterRT    = logFilterTripperware(next)
+			seriesRT       = seriesTripperware(next)
+			labelsRT       = labelsTripperware(next)
+			instantRT      = instantMetricTripperware(next)
+			statsRT        = indexStatsTripperware(next)
+			seriesVolumeRT = seriesVolumeTripperware(next)
 		)
 
-		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, labelVolumeRT, limits)
+		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
 	}, StopperWrapper{resultsCache, statsCache}, nil
 }
 
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume http.RoundTripper
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, labelVolume http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume http.RoundTripper, limits Limits) roundTripper {
 	return roundTripper{
 		logger:        logger,
 		limited:       limited,
@@ -207,7 +209,7 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 		labels:        labels,
 		instantMetric: instantMetric,
 		indexStats:    indexStats,
-		labelVolume:   labelVolume,
+		seriesVolume:  seriesVolume,
 		next:          next,
 	}
 }
@@ -316,13 +318,32 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 		return r.indexStats.RoundTrip(req)
 	case SeriesVolumeOp:
-		volumeQuery, err := loghttp.ParseSeriesVolumeQuery(req)
+		volumeQuery, err := loghttp.ParseSeriesVolumeInstantQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
-		level.Info(logger).Log("msg", "executing query", "type", "series_volume", "query", volumeQuery.Query, "length", volumeQuery.End.Sub(volumeQuery.Start), "limit", volumeQuery.Limit)
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "series_volume",
+			"query", volumeQuery.Query,
+			"length", volumeQuery.Start.Sub(volumeQuery.End),
+			"limit", volumeQuery.Limit)
 
-		return r.labelVolume.RoundTrip(req)
+		return r.seriesVolume.RoundTrip(req)
+	case SeriesVolumeRangeOp:
+		volumeQuery, err := loghttp.ParseSeriesVolumeRangeQuery(req)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		level.Info(logger).Log(
+			"msg", "executing query",
+			"type", "series_volume_range",
+			"query", volumeQuery.Query,
+			"length", volumeQuery.End.Sub(volumeQuery.Start),
+			"step", volumeQuery.Step,
+			"limit", volumeQuery.Limit)
+
+		return r.seriesVolume.RoundTrip(req)
 	default:
 		return r.next.RoundTrip(req)
 	}
@@ -348,12 +369,13 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 }
 
 const (
-	InstantQueryOp = "instant_query"
-	QueryRangeOp   = "query_range"
-	SeriesOp       = "series"
-	LabelNamesOp   = "labels"
-	IndexStatsOp   = "index_stats"
-	SeriesVolumeOp = "series_volume"
+	InstantQueryOp      = "instant_query"
+	QueryRangeOp        = "query_range"
+	SeriesOp            = "series"
+	LabelNamesOp        = "labels"
+	IndexStatsOp        = "index_stats"
+	SeriesVolumeOp      = "series_volume"
+	SeriesVolumeRangeOp = "series_volume_range"
 )
 
 func getOperation(path string) string {
@@ -370,6 +392,8 @@ func getOperation(path string) string {
 		return IndexStatsOp
 	case path == "/loki/api/v1/index/series_volume":
 		return SeriesVolumeOp
+	case path == "/loki/api/v1/index/series_volume_range":
+		return SeriesVolumeRangeOp
 	default:
 		return ""
 	}
@@ -743,7 +767,8 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
-func NewSeriesVolumeTripperware(cfg Config,
+func NewSeriesVolumeTripperware(
+	cfg Config,
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
@@ -755,7 +780,63 @@ func NewSeriesVolumeTripperware(cfg Config,
 ) (queryrangebase.Tripperware, error) {
 	labelVolumeCfg := cfg
 	labelVolumeCfg.CacheIndexStatsResults = false
-	return NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	statsTw, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	if err != nil {
+		return nil, err
+	}
+
+	return volumeFeatureFlagRoundTripper(
+		volumeRangeTripperware(codec, statsTw),
+		limits,
+	), nil
+}
+
+func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tripperware) func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
+		nextRT := nextTW(next)
+
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			request, err := codec.DecodeRequest(r.Context(), r, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			seriesVolumeMiddlewares := []queryrangebase.Middleware{
+				NewSeriesVolumeMiddleware(),
+			}
+
+			// wrap nextRT with our new middleware
+			response, err := queryrangebase.MergeMiddlewares(
+				seriesVolumeMiddlewares...,
+			).Wrap(
+				SeriesVolumeDownstreamHandler(nextRT, codec),
+			).Do(r.Context(), request)
+
+			if err != nil {
+				return nil, err
+			}
+
+			return codec.EncodeResponse(r.Context(), response)
+		})
+	}
+}
+
+func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Tripperware, limits Limits) func(next http.RoundTripper) http.RoundTripper {
+	return func(next http.RoundTripper) http.RoundTripper {
+		nextRt := nextTW(next)
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			userID, err := user.ExtractOrgID(r.Context())
+			if err != nil {
+				return nil, err
+			}
+
+			if !limits.VolumeEnabled(userID) {
+				return nil, httpgrpc.Errorf(http.StatusNotFound, "not found")
+			}
+
+			return nextRt.RoundTrip(r)
+		})
+	}
 }
 
 func NewIndexStatsTripperware(

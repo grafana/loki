@@ -1173,7 +1173,7 @@ func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		ctx,
 		len(jobs),
 		2,
-		func(ctx context.Context, idx int) error {
+		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
 			resps[idx] = res
 			return err

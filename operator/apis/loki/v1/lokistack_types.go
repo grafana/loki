@@ -549,7 +549,7 @@ type QueryLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Chunk per Query"
 	MaxChunksPerQuery int32 `json:"maxChunksPerQuery,omitempty"`
 
-	// MaxQuerySeries defines the the maximum of unique series
+	// MaxQuerySeries defines the maximum of unique series
 	// that is returned by a metric query.
 	//
 	// + optional
@@ -564,6 +564,13 @@ type QueryLimitSpec struct {
 	// +kubebuilder:default:="3m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
 	QueryTimeout string `json:"queryTimeout,omitempty"`
+
+	// CardinalityLimit defines the cardinality limit for index queries.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Cardinality Limit"
+	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.

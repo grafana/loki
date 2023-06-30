@@ -1067,7 +1067,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.19-alpine"
+"1.23-alpine"
 </pre>
 </td>
 		</tr>
@@ -2431,6 +2431,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for loki-canary pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -2449,11 +2458,34 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.updateStrategy</td>
+			<td>object</td>
+			<td>Update strategy for the `loki-canary` Daemonset pods</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "maxUnavailable": 1
+  },
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleLabels</td>
+			<td>object</td>
+			<td>Additional labels for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2544,6 +2576,15 @@ true
 			<td>Additional Grafana Agent labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for GrafanaAgent pods</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2664,6 +2705,15 @@ true
 			<td>Additional ServiceMonitor labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.metricRelabelings</td>
+			<td>list</td>
+			<td>ServiceMonitor metric relabel configs to apply to samples before ingestion https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#endpoint</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>

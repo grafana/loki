@@ -301,7 +301,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	validatedLineSize := 0
 	validatedLineCount := 0
 
-	var validationErr error
+	var validationErrors util.GroupedErrors
 	validationContext := d.validator.getValidationContextForTime(time.Now(), tenantID)
 
 	func() {
@@ -323,7 +323,8 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
-				validationErr = err
+				d.writeFailuresManager.Log(tenantID, err)
+				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
 				bytes := 0
 				for _, e := range stream.Entries {
@@ -338,7 +339,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
-					validationErr = err
+					validationErrors.Add(err)
 					continue
 				}
 
@@ -375,8 +376,9 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 		}
 	}()
 
-	if validationErr != nil {
-		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErr.Error())
+	var validationErr error
+	if validationErrors.Err() != nil {
+		validationErr = httpgrpc.Errorf(http.StatusBadRequest, validationErrors.Error())
 	}
 
 	// Return early if none of the streams contained entries

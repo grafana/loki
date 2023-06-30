@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-06-12T17:36:51Z"
+    createdAt: "2023-06-29T17:58:20Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -354,6 +354,11 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.global.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -366,7 +371,7 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
@@ -433,6 +438,11 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.tenants.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -445,7 +455,7 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
