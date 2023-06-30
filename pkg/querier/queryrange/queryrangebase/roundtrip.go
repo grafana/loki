@@ -52,8 +52,8 @@ type Config struct {
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
 
-	// Requested format for querier responses
-	RequestedQueryResponseFormat string `yaml:"requested_query_response_format"`
+	// Required format for querier responses
+	RequiredQueryResponseFormat string `yaml:"required_query_response_format"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -64,7 +64,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 
-	f.StringVar(&cfg.RequestedQueryResponseFormat, "frontend.requested-query-response-format", "json", "The downstream querier is requested to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
+	f.StringVar(&cfg.RequiredQueryResponseFormat, "frontend.required-query-response-format", "json", "The downstream querier is required to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
