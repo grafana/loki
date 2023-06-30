@@ -47,12 +47,16 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
+type Engine interface {
+	Query(logql.Params) logql.Query
+}
+
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
 	limits  Limits
-	engine  *logql.Engine
+	engine  Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
