@@ -26,15 +26,15 @@
     loki+: if self.using_shipper_store then {
       storage_config+: {
         boltdb_shipper+: if $._config.using_tsdb_shipper then ({
-          shared_store: $._config.boltdb_shipper_shared_store,
-          active_index_directory: '/data/index',
-          cache_location: '/data/boltdb-cache',
-        }) else {},
+                                                                 shared_store: $._config.boltdb_shipper_shared_store,
+                                                                 active_index_directory: '/data/index',
+                                                                 cache_location: '/data/boltdb-cache',
+                                                               }) else {},
         tsdb_shipper+: if $._config.using_tsdb_shipper then ({
-          shared_store: $._config.tsdb_shipper_shared_store,
-          active_index_directory: '/data/tsdb-index',
-          cache_location: '/data/tsdb-cache',
-        }) else {},
+                                                               shared_store: $._config.tsdb_shipper_shared_store,
+                                                               active_index_directory: '/data/tsdb-index',
+                                                               cache_location: '/data/tsdb-cache',
+                                                             }) else {},
       },
       compactor+: {
         working_directory: '/data/compactor',
