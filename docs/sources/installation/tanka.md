@@ -112,4 +112,4 @@ loki + promtail + gateway {
 
 Run `tk show environments/loki` to see the manifests that will be deployed to
 the cluster. Run `tk apply environments/loki` to deploy the manifests.
-To delete the environment from cluster,run `tk delete environments/loki`
+To delete the environment from cluster, run `tk delete environments/loki`.
