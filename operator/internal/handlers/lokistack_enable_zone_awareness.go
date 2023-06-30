@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -28,7 +29,7 @@ func isPodScheduled(pod *corev1.Pod) (bool, string) {
 	return false, ""
 }
 
-func AnnotatePodsWithNodeLabels(ctx context.Context, log logr.Logger, c k8s.Client, pod corev1.Pod, lokiLabelValue string) error {
+func AnnotatePodsWithNodeLabels(ctx context.Context, log logr.Logger, c k8s.Client, pod corev1.Pod) error {
 	var err error
 
 	ll := log.WithValues("lokistack-pod-zone-annotation event", "createOrUpdatePred", "pod", pod.Name)
@@ -44,17 +45,14 @@ func AnnotatePodsWithNodeLabels(ctx context.Context, log logr.Logger, c k8s.Clie
 		return kverrors.Wrap(err, "failed to lookup node", "name", nodeName)
 	}
 
-	annotations := pod.GetAnnotations()
-	var topologykeys []string
-
-	for key := range annotations {
-		if key == lokiv1.AnnotationAvailabilityZoneLabels {
-			topologykeys = strings.Split(annotations[lokiv1.AnnotationAvailabilityZoneLabels], ",")
-		}
+	labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
+	if !ok {
+		return fmt.Errorf("zone-aware pod is missing node-labels annotation: %s", lokiv1.AnnotationAvailabilityZoneLabels)
 	}
-	// topologykeys := strings.Split(lokiLabelValue, "-")
 
-	podAnnotations, err := getPodAnnotations(&pod, topologykeys, node.Labels)
+	topologyKeys := strings.Split(labelsAnnotation, ",")
+
+	podAnnotations, err := getPodAnnotations(&pod, topologyKeys, node.Labels)
 	if err != nil {
 		ll.Error(err, "failed to set the pod annotations", "name", pod.Name)
 		return kverrors.Wrap(err, "failed to set the pod annotations", "name", pod.Name)

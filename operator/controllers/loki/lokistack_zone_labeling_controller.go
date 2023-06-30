@@ -49,14 +49,9 @@ func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctr
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to get pod", "name", req.NamespacedName)
 	}
 
-	labels := lokiPod.GetLabels()
-	for key, value := range labels {
-		if key == lokiv1.LabelZoneAwarePod {
-			err := handlers.AnnotatePodsWithNodeLabels(ctx, r.Log, r.Client, lokiPod, value)
-			if err != nil {
-				return ctrl.Result{}, err
-			}
-		}
+	err := handlers.AnnotatePodsWithNodeLabels(ctx, r.Log, r.Client, lokiPod)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
