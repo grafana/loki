@@ -23,8 +23,8 @@ import (
 )
 
 var createOrUpdatePred = builder.WithPredicates(predicate.Funcs{
-	UpdateFunc:  func(e event.UpdateEvent) bool { return true },
-	CreateFunc:  func(e event.CreateEvent) bool { return true },
+	UpdateFunc:  func(e event.UpdateEvent) bool { return eventPodHasLabel(e.ObjectNew) },
+	CreateFunc:  func(e event.CreateEvent) bool { return eventPodHasLabel(e.Object) },
 	DeleteFunc:  func(e event.DeleteEvent) bool { return false },
 	GenericFunc: func(e event.GenericEvent) bool { return false },
 })
@@ -73,4 +73,14 @@ func (r *LokiStackZoneAwarePodReconciler) buildController(bld k8s.Builder) error
 		Named("ZoneAwarePod").
 		Watches(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, createOrUpdatePred).
 		Complete(r)
+}
+
+func eventPodHasLabel(object client.Object) bool {
+	pod, isPod := object.(*corev1.Pod)
+	if !isPod {
+		return false
+	}
+
+	_, hasLabel := pod.Labels[lokiv1.LabelZoneAwarePod]
+	return hasLabel
 }
