@@ -9,11 +9,8 @@ import (
 )
 
 const (
-	availabilityZoneEnvVarName    = "INSTANCE_AVAILABILITY_ZONE"
-	concatenatedZonePodAnnotation = "metadata.annotations['loki_instance_availability_zone']"
-	// labelZoneAwarePod is label to set on pods that have zone aware enabled
-	labelZoneAwarePod       string = "loki.grafana.com/zoneaware"
-	AnnotationLokiZoneAware string = "loki.grafana.com/zoneawareannotation"
+	availabilityZoneEnvVarName = "INSTANCE_AVAILABILITY_ZONE"
+	availabilityZoneFieldPath  = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
 )
 
 func configureReplication(podSpec *corev1.PodSpec, replication lokiv1.ReplicationSpec, component string, name string) {
@@ -46,7 +43,7 @@ func getInstanceAvailabilityZoneEnvVar() []corev1.EnvVar {
 			Name: availabilityZoneEnvVarName,
 			ValueFrom: &corev1.EnvVarSource{
 				FieldRef: &corev1.ObjectFieldSelector{
-					FieldPath: concatenatedZonePodAnnotation,
+					FieldPath: availabilityZoneFieldPath,
 				},
 			},
 		},
@@ -86,9 +83,9 @@ func setZoneAwareLabelAnnotation(zones []lokiv1.ZoneSpec, component, stackName, 
 		}
 	}
 	l := labels.Merge(ComponentLabels(component, stackName), map[string]string{
-		labelZoneAwarePod: "enabled",
+		lokiv1.LabelZoneAwarePod: "enabled",
 	})
 	a := commonAnnotations(cfgSHA1, CertRotationRequiredAt)
-	a[AnnotationLokiZoneAware] = topologykey
+	a[lokiv1.AnnotationAvailabilityZoneLabels] = topologykey
 	return l, a
 }

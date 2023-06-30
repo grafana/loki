@@ -6,6 +6,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
 
@@ -50,7 +51,7 @@ func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctr
 
 	labels := lokiPod.GetLabels()
 	for key, value := range labels {
-		if key == "loki.grafana.com/zoneaware" {
+		if key == lokiv1.LabelZoneAwarePod {
 			err := handlers.AnnotatePodsWithNodeLabels(ctx, r.Log, r.Client, lokiPod, value)
 			if err != nil {
 				return ctrl.Result{}, err

@@ -12,11 +12,8 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
-)
-
-const (
-	LokiInstanceAZ = "loki.grafana.com/availability-zone"
 )
 
 // isPodScheduled returns if the Pod is scheduled. If true it also returns the node name.
@@ -51,8 +48,8 @@ func AnnotatePodsWithNodeLabels(ctx context.Context, log logr.Logger, c k8s.Clie
 	var topologykeys []string
 
 	for key := range annotations {
-		if key == "loki.grafana.com/zoneawareannotation" {
-			topologykeys = strings.Split(annotations["loki.grafana.com/zoneawareannotation"], ",")
+		if key == lokiv1.AnnotationAvailabilityZoneLabels {
+			topologykeys = strings.Split(annotations[lokiv1.AnnotationAvailabilityZoneLabels], ",")
 		}
 	}
 	// topologykeys := strings.Split(lokiLabelValue, "-")
@@ -121,13 +118,13 @@ func getPodAnnotations(pod *corev1.Pod, expectedAnnotations []string, nodeLabels
 
 	// Concatenate the labels as region_zone_hostname when using the common topology labels in kubernetes
 	if region {
-		podAnnotations[LokiInstanceAZ] = nodeLabels[corev1.LabelTopologyRegion]
+		podAnnotations[lokiv1.AnnotationAvailabilityZone] = nodeLabels[corev1.LabelTopologyRegion]
 	}
 	if zone {
-		podAnnotations[LokiInstanceAZ] = concatenatePodAnnotation(corev1.LabelTopologyZone, podAnnotations[LokiInstanceAZ], nodeLabels)
+		podAnnotations[lokiv1.AnnotationAvailabilityZone] = concatenatePodAnnotation(corev1.LabelTopologyZone, podAnnotations[lokiv1.AnnotationAvailabilityZone], nodeLabels)
 	}
 	if hostname {
-		podAnnotations[LokiInstanceAZ] = concatenatePodAnnotation(corev1.LabelHostname, podAnnotations[LokiInstanceAZ], nodeLabels)
+		podAnnotations[lokiv1.AnnotationAvailabilityZone] = concatenatePodAnnotation(corev1.LabelHostname, podAnnotations[lokiv1.AnnotationAvailabilityZone], nodeLabels)
 	}
 
 	if other {
@@ -138,7 +135,7 @@ func getPodAnnotations(pod *corev1.Pod, expectedAnnotations []string, nodeLabels
 			case corev1.LabelTopologyRegion:
 				continue
 			default:
-				podAnnotations[LokiInstanceAZ] = concatenatePodAnnotation(expectedAnnotation, podAnnotations[LokiInstanceAZ], nodeLabels)
+				podAnnotations[lokiv1.AnnotationAvailabilityZone] = concatenatePodAnnotation(expectedAnnotation, podAnnotations[lokiv1.AnnotationAvailabilityZone], nodeLabels)
 			}
 		}
 	}
