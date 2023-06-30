@@ -62,9 +62,7 @@ type PushRequest struct {
 
 // LogProtoStream helps with unmarshalling of each log stream for push request.
 // This might look un-necessary but without it the CPU usage in benchmarks was increasing by ~25% :shrug:
-type LogProtoStream struct {
-	logproto.Stream
-}
+type LogProtoStream logproto.Stream
 
 func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
