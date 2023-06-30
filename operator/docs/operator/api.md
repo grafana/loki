@@ -2625,7 +2625,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>
@@ -2639,6 +2639,18 @@ string
 <td>
 <em>(Optional)</em>
 <p>Timeout when querying ingesters or storage during the execution of a query request.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cardinalityLimit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CardinalityLimit defines the cardinality limit for index queries.</p>
 </td>
 </tr>
 </tbody>
@@ -6356,7 +6368,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>

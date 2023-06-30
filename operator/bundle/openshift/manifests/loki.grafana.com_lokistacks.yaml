@@ -145,6 +145,11 @@ spec:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
                         properties:
+                          cardinalityLimit:
+                            description: CardinalityLimit defines the cardinality
+                              limit for index queries.
+                            format: int32
+                            type: integer
                           maxChunksPerQuery:
                             description: MaxChunksPerQuery defines the maximum number
                               of chunks that can be fetched by a single query.
@@ -156,7 +161,7 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
+                            description: MaxQuerySeries defines the maximum of
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
@@ -267,6 +272,11 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            cardinalityLimit:
+                              description: CardinalityLimit defines the cardinality
+                                limit for index queries.
+                              format: int32
+                              type: integer
                             maxChunksPerQuery:
                               description: MaxChunksPerQuery defines the maximum number
                                 of chunks that can be fetched by a single query.
@@ -279,7 +289,7 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
+                              description: MaxQuerySeries defines the maximum
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
@@ -4058,7 +4068,7 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
+                            description: MaxQuerySeries defines the maximum of
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
@@ -4129,7 +4139,7 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
+                              description: MaxQuerySeries defines the maximum
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
