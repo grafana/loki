@@ -18,10 +18,15 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
-func WriteResponseJSON(r *http.Request, v interface{}, w http.ResponseWriter) error {
+func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
-		return WriteQueryResponseJSON(result, w)
+		version := loghttp.GetVersion(r.RequestURI)
+		if version == loghttp.VersionV1 {
+			return WriteQueryResponseJSON(result, w)
+		}
+
+		return marshal_legacy.WriteQueryResponseJSON(result, w)
 	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(r.RequestURI)
 		if version == loghttp.VersionV1 {

@@ -187,17 +187,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Do not use queryrange.WriteResponse(...) because the LogQueryHandler
-	// requires the legacy marshalling.
-	if r.Header.Get("Accept") == queryrange.ProtobufType {
-		w.Header().Add("Content-Type", queryrange.ProtobufType)
-		err = queryrange.WriteQueryResponseProtobuf(&params, result, w)
-	} else {
-		w.Header().Add("Content-Type", queryrange.JSONType)
-		err = marshal_legacy.WriteQueryResponseJSON(result, w)
-	}
-
-	if err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
 	}
 }

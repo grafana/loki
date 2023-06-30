@@ -23,7 +23,7 @@ const (
 	ProtobufType = `application/vnd.google.protobuf`
 )
 
-func WriteResponse(req *http.Request, params *logql.LiteralParams, v interface{}, w http.ResponseWriter) error {
+func WriteResponse(req *http.Request, params *logql.LiteralParams, v any, w http.ResponseWriter) error {
 	if req.Header.Get("Accept") == ProtobufType {
 		w.Header().Add("Content-Type", ProtobufType)
 		return WriteResponseProtobuf(req, params, v, w)
@@ -33,7 +33,7 @@ func WriteResponse(req *http.Request, params *logql.LiteralParams, v interface{}
 	return marshal.WriteResponseJSON(req, v, w)
 }
 
-func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v interface{}, w http.ResponseWriter) error {
+func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		return WriteQueryResponseProtobuf(params, result, w)
