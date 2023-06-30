@@ -117,7 +117,7 @@ func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex
 
 func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDir string, ts time.Time) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
-	b := NewBuilder()
+	b := NewBuilder(index.LiveFormat)
 	for userID, streams := range userStreams {
 		for _, stream := range streams {
 			lb := labels.NewBuilder(stream.labels)
@@ -132,7 +132,7 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 		}
 	}
 
-	dst := newPrefixedIdentifier(
+	dst := NewPrefixedIdentifier(
 		MultitenantTSDBIdentifier{
 			nodeName: "test",
 			ts:       ts,
@@ -155,7 +155,7 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 
 func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time.Time) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
-	b := NewBuilder()
+	b := NewBuilder(index.LiveFormat)
 	for _, stream := range streams {
 		b.AddSeries(
 			stream.labels,
@@ -174,7 +174,7 @@ func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time
 				Through:  through,
 				Checksum: checksum,
 			}
-			return newPrefixedIdentifier(id, destDir, "")
+			return NewPrefixedIdentifier(id, destDir, "")
 		},
 	)
 
@@ -881,7 +881,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	userID := buildUserID(0)
 
 	buildCompactedIndex := func() *compactedIndex {
-		builder := NewBuilder()
+		builder := NewBuilder(index.LiveFormat)
 		stream := buildStream(lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10)), "")
 		builder.AddSeries(stream.labels, stream.fp, stream.chunks)
 

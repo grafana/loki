@@ -58,7 +58,7 @@ type NoopCollector struct{}
 func (c *NoopCollector) Register() {}
 
 // Before implements instrument.Collector.
-func (c *NoopCollector) Before(ctx context.Context, method string, start time.Time) {}
+func (c *NoopCollector) Before(_ context.Context, _ string, _ time.Time) {}
 
 // After implements instrument.Collector.
-func (c *NoopCollector) After(ctx context.Context, method, statusCode string, start time.Time) {}
+func (c *NoopCollector) After(_ context.Context, _, _ string, _ time.Time) {}

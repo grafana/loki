@@ -33,8 +33,6 @@ import (
 )
 
 var (
-	wrapRegistryOnce sync.Once
-
 	configTemplate = template.Must(template.New("").Parse(`
 auth_enabled: true
 
@@ -78,7 +76,6 @@ storage_config:
 
 compactor:
   working_directory: {{.dataPath}}/retention
-  shared_store: filesystem
   retention_enabled: true
 
 analytics:
@@ -109,18 +106,18 @@ ruler:
 `))
 )
 
-func wrapRegistry() {
-	wrapRegistryOnce.Do(func() {
-		prometheus.DefaultRegisterer = &wrappedRegisterer{Registerer: prometheus.DefaultRegisterer}
-	})
+func resetMetricRegistry() {
+	registry := &wrappedRegisterer{Registry: prometheus.NewRegistry()}
+	prometheus.DefaultRegisterer = registry
+	prometheus.DefaultGatherer = registry
 }
 
 type wrappedRegisterer struct {
-	prometheus.Registerer
+	*prometheus.Registry
 }
 
 func (w *wrappedRegisterer) Register(collector prometheus.Collector) error {
-	if err := w.Registerer.Register(collector); err != nil {
+	if err := w.Registry.Register(collector); err != nil {
 		var aErr prometheus.AlreadyRegisteredError
 		if errors.As(err, &aErr) {
 			return nil
@@ -152,7 +149,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		util_log.Logger = level.NewFilter(log.NewLogfmtLogger(os.Stderr), level.Allow(logLevel))
 	}
 
-	wrapRegistry()
+	resetMetricRegistry()
 	sharedPath, err := os.MkdirTemp("", "loki-shared-data")
 	if err != nil {
 		panic(err.Error())
@@ -189,6 +186,10 @@ func (c *Cluster) Run() error {
 		}
 	}
 	return nil
+}
+
+func (c *Cluster) ResetSchemaConfig() {
+	c.periodCfgs = nil
 }
 
 func (c *Cluster) Restart() error {

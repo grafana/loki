@@ -7,16 +7,22 @@ import (
 // QueryPagesCallback from an IndexQuery.
 type QueryPagesCallback func(Query, ReadBatchResult) bool
 
-// Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).
-type Client interface {
-	Stop()
+// Client for the read path.
+type ReadClient interface {
+	QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error
+}
 
-	// For the write path.
+// Client for the write path.
+type WriteClient interface {
 	NewWriteBatch() WriteBatch
 	BatchWrite(context.Context, WriteBatch) error
+}
 
-	// For the read path.
-	QueryPages(ctx context.Context, queries []Query, callback QueryPagesCallback) error
+// Client is a client for the storage of the index (e.g. DynamoDB or Bigtable).
+type Client interface {
+	ReadClient
+	WriteClient
+	Stop()
 }
 
 // ReadBatchResult represents the results of a QueryPages.

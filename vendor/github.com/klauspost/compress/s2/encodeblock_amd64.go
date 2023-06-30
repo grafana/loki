@@ -212,7 +212,17 @@ func matchLen(a []byte, b []byte) int
 //go:noescape
 func cvtLZ4BlockAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)
 
-// cvtLZ4Block converts an LZ4 block to S2
+// cvtLZ4sBlock converts an LZ4s block to S2
+//
+//go:noescape
+func cvtLZ4sBlockAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)
+
+// cvtLZ4Block converts an LZ4 block to Snappy
 //
 //go:noescape
 func cvtLZ4BlockSnappyAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)
+
+// cvtLZ4sBlock converts an LZ4s block to Snappy
+//
+//go:noescape
+func cvtLZ4sBlockSnappyAsm(dst []byte, src []byte) (uncompressed int, dstUsed int)

@@ -1,18 +1,19 @@
-package manifests_test
+package manifests
 
 import (
 	"testing"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
-	ss := manifests.NewQuerierDeployment(manifests.Options{
+	ss := NewQuerierDeployment(Options{
 		Name:       "abcd",
 		Namespace:  "efgh",
 		ConfigSHA1: "deadbeef",
@@ -33,7 +34,7 @@ func TestNewQuerierDeployment_HasTemplateConfigHashAnnotation(t *testing.T) {
 }
 
 func TestNewQuerierDeployment_HasTemplateCertRotationRequiredAtAnnotation(t *testing.T) {
-	ss := manifests.NewQuerierDeployment(manifests.Options{
+	ss := NewQuerierDeployment(Options{
 		Name:                   "abcd",
 		Namespace:              "efgh",
 		CertRotationRequiredAt: "deadbeef",
@@ -59,7 +60,7 @@ func TestNewQuerierDeployment_SelectorMatchesLabels(t *testing.T) {
 	// failing to specify a matching Pod Selector will result in a validation error
 	// during Deployment creation.
 	// See https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/#pod-selector
-	ss := manifests.NewQuerierDeployment(manifests.Options{
+	ss := NewQuerierDeployment(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -82,12 +83,12 @@ func TestNewQuerierDeployment_SelectorMatchesLabels(t *testing.T) {
 func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 	tt := []struct {
 		name string
-		opts manifests.Options
+		opts Options
 		want policyv1.PodDisruptionBudget
 	}{
 		{
 			name: "Querier with 1 replica",
-			opts: manifests.Options{
+			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
 				Stack: lokiv1.LokiStackSpec{
@@ -102,19 +103,19 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "abcd-querier",
 					Namespace: "efgh",
-					Labels:    manifests.ComponentLabels(manifests.LabelQuerierComponent, "abcd"),
+					Labels:    ComponentLabels(LabelQuerierComponent, "abcd"),
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
 					MinAvailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 					Selector: &metav1.LabelSelector{
-						MatchLabels: manifests.ComponentLabels(manifests.LabelQuerierComponent, "abcd"),
+						MatchLabels: ComponentLabels(LabelQuerierComponent, "abcd"),
 					},
 				},
 			},
 		},
 		{
 			name: "Querier with 2 replicas",
-			opts: manifests.Options{
+			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
 				Stack: lokiv1.LokiStackSpec{
@@ -129,19 +130,19 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "abcd-querier",
 					Namespace: "efgh",
-					Labels:    manifests.ComponentLabels(manifests.LabelQuerierComponent, "abcd"),
+					Labels:    ComponentLabels(LabelQuerierComponent, "abcd"),
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
 					MinAvailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
 					Selector: &metav1.LabelSelector{
-						MatchLabels: manifests.ComponentLabels(manifests.LabelQuerierComponent, "abcd"),
+						MatchLabels: ComponentLabels(LabelQuerierComponent, "abcd"),
 					},
 				},
 			},
 		},
 		{
 			name: "Querier with 3 replicas",
-			opts: manifests.Options{
+			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
 				Stack: lokiv1.LokiStackSpec{
@@ -156,12 +157,12 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "abcd-querier",
 					Namespace: "efgh",
-					Labels:    manifests.ComponentLabels(manifests.LabelQuerierComponent, "abcd"),
+					Labels:    ComponentLabels(LabelQuerierComponent, "abcd"),
 				},
 				Spec: policyv1.PodDisruptionBudgetSpec{
 					MinAvailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 2},
 					Selector: &metav1.LabelSelector{
-						MatchLabels: manifests.ComponentLabels(manifests.LabelQuerierComponent, "abcd"),
+						MatchLabels: ComponentLabels(LabelQuerierComponent, "abcd"),
 					},
 				},
 			},
@@ -172,7 +173,7 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			objs, err := manifests.BuildQuerier(tc.opts)
+			objs, err := BuildQuerier(tc.opts)
 			require.NoError(t, err)
 			require.Len(t, objs, 4)
 
@@ -180,6 +181,99 @@ func TestBuildQuerier_PodDisruptionBudget(t *testing.T) {
 			require.NotNil(t, pdb)
 			require.Equal(t, tc.want.ObjectMeta, pdb.ObjectMeta)
 			require.Equal(t, tc.want.Spec, pdb.Spec)
+		})
+	}
+}
+
+func TestNewQuerierDeployment_TopologySpreadConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		Name                            string
+		Replication                     *lokiv1.ReplicationSpec
+		ExpectedTopologySpreadContraint []corev1.TopologySpreadConstraint
+	}{
+		{
+			Name: "default",
+			ExpectedTopologySpreadContraint: []corev1.TopologySpreadConstraint{
+				{
+					MaxSkew:     1,
+					TopologyKey: "kubernetes.io/hostname",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "querier",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+					WhenUnsatisfiable: corev1.ScheduleAnyway,
+				},
+			},
+		},
+		{
+			Name: "replication_defined",
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     3,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     2,
+					},
+				},
+				Factor: 1,
+			},
+			ExpectedTopologySpreadContraint: []corev1.TopologySpreadConstraint{
+				{
+					MaxSkew:     1,
+					TopologyKey: "kubernetes.io/hostname",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "querier",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+					WhenUnsatisfiable: corev1.ScheduleAnyway,
+				},
+				{
+					MaxSkew:           3,
+					TopologyKey:       "zone",
+					WhenUnsatisfiable: "DoNotSchedule",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "querier",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+				},
+				{
+					MaxSkew:           2,
+					TopologyKey:       "region",
+					WhenUnsatisfiable: "DoNotSchedule",
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							"app.kubernetes.io/component": "querier",
+							"app.kubernetes.io/instance":  "abcd",
+						},
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.Name, func(t *testing.T) {
+			depl := NewQuerierDeployment(Options{
+				Name:      "abcd",
+				Namespace: "efgh",
+				Stack: lokiv1.LokiStackSpec{
+					Template: &lokiv1.LokiTemplateSpec{
+						Querier: &lokiv1.LokiComponentSpec{
+							Replicas: 1,
+						},
+					},
+					Replication: tc.Replication,
+				},
+			})
+
+			require.Equal(t, tc.ExpectedTopologySpreadContraint, depl.Spec.Template.Spec.TopologySpreadConstraints)
 		})
 	}
 }

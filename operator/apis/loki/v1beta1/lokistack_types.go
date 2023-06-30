@@ -447,7 +447,7 @@ type QueryLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Chunk per Query"
 	MaxChunksPerQuery int32 `json:"maxChunksPerQuery,omitempty"`
 
-	// MaxQuerySeries defines the the maximum of unique series
+	// MaxQuerySeries defines the maximum of unique series
 	// that is returned by a metric query.
 	//
 	// + optional

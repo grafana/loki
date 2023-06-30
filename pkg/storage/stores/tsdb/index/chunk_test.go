@@ -529,6 +529,58 @@ func TestSearchWithPageMarkers(t *testing.T) {
 					{MinTime: 15, MaxTime: 30},
 				},
 			},
+			{
+				desc: "second half of chunks",
+				chks: []ChunkMeta{
+					{MinTime: 0, MaxTime: 1},
+					{MinTime: 1, MaxTime: 2},
+					{MinTime: 2, MaxTime: 3},
+					{MinTime: 3, MaxTime: 4},
+					{MinTime: 4, MaxTime: 5},
+					{MinTime: 5, MaxTime: 6},
+					{MinTime: 6, MaxTime: 7},
+					{MinTime: 7, MaxTime: 8},
+					{MinTime: 8, MaxTime: 9},
+				},
+				mint: 6,
+				maxt: 100,
+				exp: []ChunkMeta{
+					{MinTime: 5, MaxTime: 6},
+					{MinTime: 6, MaxTime: 7},
+					{MinTime: 7, MaxTime: 8},
+					{MinTime: 8, MaxTime: 9},
+				},
+			},
+			{
+				desc: "second half of chunks, out of order support",
+				chks: []ChunkMeta{
+					{MinTime: 0, MaxTime: 1},
+					{MinTime: 1, MaxTime: 2},
+
+					// when batchsize=2, the first chunk in this page
+					// has the highest maxt, so it will be the page marker's maxt.
+					// this test will error returning a different chunk than expected
+					// unless we account for this (chunks are delta encoded against the previous)
+					{MinTime: 2, MaxTime: 4},
+					{MinTime: 3, MaxTime: 3},
+
+					{MinTime: 4, MaxTime: 5},
+					{MinTime: 5, MaxTime: 6},
+
+					{MinTime: 6, MaxTime: 7},
+					{MinTime: 7, MaxTime: 8},
+
+					{MinTime: 8, MaxTime: 9},
+				},
+				mint: 6,
+				maxt: 100,
+				exp: []ChunkMeta{
+					{MinTime: 5, MaxTime: 6},
+					{MinTime: 6, MaxTime: 7},
+					{MinTime: 7, MaxTime: 8},
+					{MinTime: 8, MaxTime: 9},
+				},
+			},
 		} {
 			t.Run(fmt.Sprintf("%s-pagesize-%d", tc.desc, pageSize), func(t *testing.T) {
 				var w Writer

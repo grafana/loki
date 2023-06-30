@@ -17,14 +17,14 @@ format](#chunk-format) for how chunks are stored internally.
 The **index** stores each stream's label set and links them to the individual
 chunks.
 
-Refer to Loki's [configuration]({{<relref "../../configuration/">}}) for details on
+Refer to Loki's [configuration]({{< relref "../../configuration" >}}) for details on
 how to configure the storage and the index.
 
 For more information:
 
-1. [Table Manager]({{<relref "table-manager">}})
-1. [Retention]({{<relref "retention">}})
-1. [Logs Deletion]({{<relref "logs-deletion">}})
+1. [Table Manager]({{< relref "./table-manager" >}})
+1. [Retention]({{< relref "./retention" >}})
+1. [Logs Deletion]({{< relref "./logs-deletion" >}})
 
 ## Supported Stores
 
@@ -32,6 +32,9 @@ The following are supported for the index:
 
 - [TSDB]({{<relref "tsdb">}}) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
 - [Single Store (boltdb-shipper)]({{<relref "boltdb-shipper">}}) index store which stores boltdb index files in the object store. 
+- [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+- [Google Bigtable](https://cloud.google.com/bigtable)
+- [Apache Cassandra](https://cassandra.apache.org)
 - [BoltDB](https://github.com/boltdb/bolt) (doesn't work when clustering Loki)
 
 The following are deprecated for the index and will be removed in a future release:
@@ -44,6 +47,7 @@ The following are supported and recommended for the chunks:
 
 - [Amazon S3](https://aws.amazon.com/s3)
 - [Google Cloud Storage](https://cloud.google.com/storage/)
+- [Filesystem]({{< relref "./filesystem" >}}) (please read more about the filesystem to understand the pros/cons before using with production data)
 - [Baidu Object Storage](https://cloud.baidu.com/product/bos.html)
 - [IBM Cloud Object Storage](https://www.ibm.com/cloud/object-storage)
 
@@ -71,7 +75,7 @@ When using S3 as object storage, the following permissions are needed:
 
 Resources: `arn:aws:s3:::<bucket_name>`, `arn:aws:s3:::<bucket_name>/*`
 
-See the [AWS deployment section]({{<relref "../../storage/#aws-deployment-s3-single-store">}}) on the storage page for a detailed setup guide.
+See the [AWS deployment section]({{< relref "../../storage#aws-deployment-s3-single-store" >}}) on the storage page for a detailed setup guide.
 
 ### DynamoDB
 
@@ -129,7 +133,7 @@ Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
 
-See the [IBM Cloud Object Storage section]({{<relref "../../storage/#ibm-cloud-object-storage">}}) on the storage page for a detailed setup guide.
+See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-object-storage" >}}) on the storage page for a detailed setup guide.
 
 ## Chunk Format
 

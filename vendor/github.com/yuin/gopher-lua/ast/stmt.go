@@ -93,3 +93,15 @@ type ReturnStmt struct {
 type BreakStmt struct {
 	StmtBase
 }
+
+type LabelStmt struct {
+	StmtBase
+
+	Name string
+}
+
+type GotoStmt struct {
+	StmtBase
+
+	Label string
+}

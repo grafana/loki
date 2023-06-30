@@ -47,7 +47,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 		}
 	}()
 
-	builder := NewBuilder()
+	builder := NewBuilder(index.LiveFormat)
 	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
@@ -193,7 +193,7 @@ func (t *tableCompactor) CompactTable() error {
 // It combines the users index from multiTenantIndexes and its existing compacted index(es)
 func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
-	builder := NewBuilder()
+	builder := NewBuilder(index.LiveFormat)
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
@@ -381,7 +381,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, c.workingDir, "")
+		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})
 	if err != nil {
 		return nil, err

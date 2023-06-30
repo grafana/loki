@@ -717,3 +717,11 @@ func cvtLZ4BlockAsm(dst []byte, src []byte) (uncompressed int, dstUsed int) {
 func cvtLZ4BlockSnappyAsm(dst []byte, src []byte) (uncompressed int, dstUsed int) {
 	panic("cvtLZ4BlockSnappyAsm should be unreachable")
 }
+
+func cvtLZ4sBlockAsm(dst []byte, src []byte) (uncompressed int, dstUsed int) {
+	panic("cvtLZ4sBlockAsm should be unreachable")
+}
+
+func cvtLZ4sBlockSnappyAsm(dst []byte, src []byte) (uncompressed int, dstUsed int) {
+	panic("cvtLZ4sBlockSnappyAsm should be unreachable")
+}

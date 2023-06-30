@@ -33,7 +33,7 @@ type MockQuerier struct {
 	streams []logproto.Stream
 }
 
-func (q MockQuerier) SelectLogs(ctx context.Context, req SelectLogParams) (iter.EntryIterator, error) {
+func (q MockQuerier) SelectLogs(_ context.Context, req SelectLogParams) (iter.EntryIterator, error) {
 	expr, err := req.LogSelector()
 	if err != nil {
 		return nil, err
@@ -153,7 +153,7 @@ func processSeries(in []logproto.Stream, ex log.SampleExtractor) []logproto.Seri
 	return series
 }
 
-func (q MockQuerier) SelectSamples(ctx context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
+func (q MockQuerier) SelectSamples(_ context.Context, req SelectSampleParams) (iter.SampleIterator, error) {
 	selector, err := req.LogSelector()
 	if err != nil {
 		return nil, err

@@ -128,7 +128,7 @@ func (m *tsdbManager) Start() (err error) {
 			}
 			indices++
 
-			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
+			prefixed := NewPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
 			loaded, err := NewShippableTSDBFile(prefixed)
 
 			if err != nil {
@@ -175,7 +175,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 		for pd, matchingChks := range pds {
 			b, ok := periods[pd]
 			if !ok {
-				b = NewBuilder()
+				b = NewBuilder(index.LiveFormat)
 				periods[pd] = b
 			}
 
@@ -196,7 +196,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 
 	for p, b := range periods {
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dst := newPrefixedIdentifier(
+		dst := NewPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
 				ts:       heads.start,

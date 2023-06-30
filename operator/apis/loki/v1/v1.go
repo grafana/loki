@@ -28,6 +28,11 @@ const (
 	StorageSchemaUpdateBuffer = time.Hour * 2
 )
 
+const (
+	// The AnnotationDisableTenantValidation annotation can contain a boolean value that, if true, disables the tenant-ID validation.
+	AnnotationDisableTenantValidation = "loki.grafana.com/disable-tenant-validation"
+)
+
 var (
 	// ErrGroupNamesNotUnique is the error type when loki groups have not unique names.
 	ErrGroupNamesNotUnique = errors.New("Group names are not unique")
@@ -57,6 +62,12 @@ var (
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
 	ErrHeaderAuthCredentialsConflict = errors.New("credentials and credentialsFile cannot be used at the same time")
+	// ErrReplicationZonesNodes when there is an error retrieving nodes with replication zones labels.
+	ErrReplicationZonesNodes = errors.New("Failed to retrieve nodes for zone replication")
+	// ErrReplicationFactorToZonesRatio when the replication factor defined is greater than the number of available zones.
+	ErrReplicationFactorToZonesRatio = errors.New("replication factor is greater than the number of available zones")
+	// ErrReplicationSpecConflict when both the ReplicationSpec and depricated ReplicationFactor are used.
+	ErrReplicationSpecConflict = errors.New("replicationSpec and replicationFactor (deprecated) cannot be used at the same time")
 
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.

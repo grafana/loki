@@ -665,6 +665,10 @@ func (c *S3) CreateBucketRequest(input *CreateBucketInput) (req *request.Request
 //
 // The following operations are related to CreateBucket:
 //
+//    * Object Lock - If ObjectLockEnabledForBucket is set to true in your CreateBucket
+//    request, s3:PutBucketObjectLockConfiguration and s3:PutBucketVersioning
+//    permissions are required.
+//
 //    * PutObject (https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html)
 //
 //    * DeleteBucket (https://docs.aws.amazon.com/AmazonS3/latest/API/API_DeleteBucket.html)
@@ -2946,6 +2950,249 @@ func (c *S3) GetObjectAcl(input *GetObjectAclInput) (*GetObjectAclOutput, error)
 // for more information on using Contexts.
 func (c *S3) GetObjectAclWithContext(ctx aws.Context, input *GetObjectAclInput, opts ...request.Option) (*GetObjectAclOutput, error) {
 	req, out := c.GetObjectAclRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opGetObjectLegalHold = "GetObjectLegalHold"
+
+// GetObjectLegalHoldRequest generates a "aws/request.Request" representing the
+// client's request for the GetObjectLegalHold operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetObjectLegalHold for more information on using the GetObjectLegalHold
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the GetObjectLegalHoldRequest method.
+//    req, resp := client.GetObjectLegalHoldRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectLegalHold
+func (c *S3) GetObjectLegalHoldRequest(input *GetObjectLegalHoldInput) (req *request.Request, output *GetObjectLegalHoldOutput) {
+	op := &request.Operation{
+		Name:       opGetObjectLegalHold,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}/{Key+}?legal-hold",
+	}
+
+	if input == nil {
+		input = &GetObjectLegalHoldInput{}
+	}
+
+	output = &GetObjectLegalHoldOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetObjectLegalHold API operation for Amazon Simple Storage Service.
+//
+// Gets an object's current legal hold status. For more information, see Locking
+// Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+//
+// This action is not supported by Amazon S3 on Outposts.
+//
+// The following action is related to GetObjectLegalHold:
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation GetObjectLegalHold for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectLegalHold
+func (c *S3) GetObjectLegalHold(input *GetObjectLegalHoldInput) (*GetObjectLegalHoldOutput, error) {
+	req, out := c.GetObjectLegalHoldRequest(input)
+	return out, req.Send()
+}
+
+// GetObjectLegalHoldWithContext is the same as GetObjectLegalHold with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetObjectLegalHold for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) GetObjectLegalHoldWithContext(ctx aws.Context, input *GetObjectLegalHoldInput, opts ...request.Option) (*GetObjectLegalHoldOutput, error) {
+	req, out := c.GetObjectLegalHoldRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opGetObjectLockConfiguration = "GetObjectLockConfiguration"
+
+// GetObjectLockConfigurationRequest generates a "aws/request.Request" representing the
+// client's request for the GetObjectLockConfiguration operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetObjectLockConfiguration for more information on using the GetObjectLockConfiguration
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the GetObjectLockConfigurationRequest method.
+//    req, resp := client.GetObjectLockConfigurationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectLockConfiguration
+func (c *S3) GetObjectLockConfigurationRequest(input *GetObjectLockConfigurationInput) (req *request.Request, output *GetObjectLockConfigurationOutput) {
+	op := &request.Operation{
+		Name:       opGetObjectLockConfiguration,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}?object-lock",
+	}
+
+	if input == nil {
+		input = &GetObjectLockConfigurationInput{}
+	}
+
+	output = &GetObjectLockConfigurationOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetObjectLockConfiguration API operation for Amazon Simple Storage Service.
+//
+// Gets the Object Lock configuration for a bucket. The rule specified in the
+// Object Lock configuration will be applied by default to every new object
+// placed in the specified bucket. For more information, see Locking Objects
+// (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+//
+// The following action is related to GetObjectLockConfiguration:
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation GetObjectLockConfiguration for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectLockConfiguration
+func (c *S3) GetObjectLockConfiguration(input *GetObjectLockConfigurationInput) (*GetObjectLockConfigurationOutput, error) {
+	req, out := c.GetObjectLockConfigurationRequest(input)
+	return out, req.Send()
+}
+
+// GetObjectLockConfigurationWithContext is the same as GetObjectLockConfiguration with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetObjectLockConfiguration for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) GetObjectLockConfigurationWithContext(ctx aws.Context, input *GetObjectLockConfigurationInput, opts ...request.Option) (*GetObjectLockConfigurationOutput, error) {
+	req, out := c.GetObjectLockConfigurationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opGetObjectRetention = "GetObjectRetention"
+
+// GetObjectRetentionRequest generates a "aws/request.Request" representing the
+// client's request for the GetObjectRetention operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetObjectRetention for more information on using the GetObjectRetention
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the GetObjectRetentionRequest method.
+//    req, resp := client.GetObjectRetentionRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectRetention
+func (c *S3) GetObjectRetentionRequest(input *GetObjectRetentionInput) (req *request.Request, output *GetObjectRetentionOutput) {
+	op := &request.Operation{
+		Name:       opGetObjectRetention,
+		HTTPMethod: "GET",
+		HTTPPath:   "/{Bucket}/{Key+}?retention",
+	}
+
+	if input == nil {
+		input = &GetObjectRetentionInput{}
+	}
+
+	output = &GetObjectRetentionOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetObjectRetention API operation for Amazon Simple Storage Service.
+//
+// Retrieves an object's retention settings. For more information, see Locking
+// Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+//
+// This action is not supported by Amazon S3 on Outposts.
+//
+// The following action is related to GetObjectRetention:
+//
+//    * GetObjectAttributes (https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html)
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation GetObjectRetention for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/GetObjectRetention
+func (c *S3) GetObjectRetention(input *GetObjectRetentionInput) (*GetObjectRetentionOutput, error) {
+	req, out := c.GetObjectRetentionRequest(input)
+	return out, req.Send()
+}
+
+// GetObjectRetentionWithContext is the same as GetObjectRetention with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetObjectRetention for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) GetObjectRetentionWithContext(ctx aws.Context, input *GetObjectRetentionInput, opts ...request.Option) (*GetObjectRetentionOutput, error) {
+	req, out := c.GetObjectRetentionRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -5650,6 +5897,260 @@ func (c *S3) PutObjectAclWithContext(ctx aws.Context, input *PutObjectAclInput, 
 	return out, req.Send()
 }
 
+const opPutObjectLegalHold = "PutObjectLegalHold"
+
+// PutObjectLegalHoldRequest generates a "aws/request.Request" representing the
+// client's request for the PutObjectLegalHold operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See PutObjectLegalHold for more information on using the PutObjectLegalHold
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the PutObjectLegalHoldRequest method.
+//    req, resp := client.PutObjectLegalHoldRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutObjectLegalHold
+func (c *S3) PutObjectLegalHoldRequest(input *PutObjectLegalHoldInput) (req *request.Request, output *PutObjectLegalHoldOutput) {
+	op := &request.Operation{
+		Name:       opPutObjectLegalHold,
+		HTTPMethod: "PUT",
+		HTTPPath:   "/{Bucket}/{Key+}?legal-hold",
+	}
+
+	if input == nil {
+		input = &PutObjectLegalHoldInput{}
+	}
+
+	output = &PutObjectLegalHoldOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
+	return
+}
+
+// PutObjectLegalHold API operation for Amazon Simple Storage Service.
+//
+// Applies a legal hold configuration to the specified object. For more information,
+// see Locking Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+//
+// This action is not supported by Amazon S3 on Outposts.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation PutObjectLegalHold for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutObjectLegalHold
+func (c *S3) PutObjectLegalHold(input *PutObjectLegalHoldInput) (*PutObjectLegalHoldOutput, error) {
+	req, out := c.PutObjectLegalHoldRequest(input)
+	return out, req.Send()
+}
+
+// PutObjectLegalHoldWithContext is the same as PutObjectLegalHold with the addition of
+// the ability to pass a context and additional request options.
+//
+// See PutObjectLegalHold for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) PutObjectLegalHoldWithContext(ctx aws.Context, input *PutObjectLegalHoldInput, opts ...request.Option) (*PutObjectLegalHoldOutput, error) {
+	req, out := c.PutObjectLegalHoldRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opPutObjectLockConfiguration = "PutObjectLockConfiguration"
+
+// PutObjectLockConfigurationRequest generates a "aws/request.Request" representing the
+// client's request for the PutObjectLockConfiguration operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See PutObjectLockConfiguration for more information on using the PutObjectLockConfiguration
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the PutObjectLockConfigurationRequest method.
+//    req, resp := client.PutObjectLockConfigurationRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutObjectLockConfiguration
+func (c *S3) PutObjectLockConfigurationRequest(input *PutObjectLockConfigurationInput) (req *request.Request, output *PutObjectLockConfigurationOutput) {
+	op := &request.Operation{
+		Name:       opPutObjectLockConfiguration,
+		HTTPMethod: "PUT",
+		HTTPPath:   "/{Bucket}?object-lock",
+	}
+
+	if input == nil {
+		input = &PutObjectLockConfigurationInput{}
+	}
+
+	output = &PutObjectLockConfigurationOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
+	return
+}
+
+// PutObjectLockConfiguration API operation for Amazon Simple Storage Service.
+//
+// Places an Object Lock configuration on the specified bucket. The rule specified
+// in the Object Lock configuration will be applied by default to every new
+// object placed in the specified bucket. For more information, see Locking
+// Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+//
+//    * The DefaultRetention settings require both a mode and a period.
+//
+//    * The DefaultRetention period can be either Days or Years but you must
+//    select one. You cannot specify Days and Years at the same time.
+//
+//    * You can only enable Object Lock for new buckets. If you want to turn
+//    on Object Lock for an existing bucket, contact Amazon Web Services Support.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation PutObjectLockConfiguration for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutObjectLockConfiguration
+func (c *S3) PutObjectLockConfiguration(input *PutObjectLockConfigurationInput) (*PutObjectLockConfigurationOutput, error) {
+	req, out := c.PutObjectLockConfigurationRequest(input)
+	return out, req.Send()
+}
+
+// PutObjectLockConfigurationWithContext is the same as PutObjectLockConfiguration with the addition of
+// the ability to pass a context and additional request options.
+//
+// See PutObjectLockConfiguration for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) PutObjectLockConfigurationWithContext(ctx aws.Context, input *PutObjectLockConfigurationInput, opts ...request.Option) (*PutObjectLockConfigurationOutput, error) {
+	req, out := c.PutObjectLockConfigurationRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opPutObjectRetention = "PutObjectRetention"
+
+// PutObjectRetentionRequest generates a "aws/request.Request" representing the
+// client's request for the PutObjectRetention operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See PutObjectRetention for more information on using the PutObjectRetention
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//
+//    // Example sending a request using the PutObjectRetentionRequest method.
+//    req, resp := client.PutObjectRetentionRequest(params)
+//
+//    err := req.Send()
+//    if err == nil { // resp is now filled
+//        fmt.Println(resp)
+//    }
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutObjectRetention
+func (c *S3) PutObjectRetentionRequest(input *PutObjectRetentionInput) (req *request.Request, output *PutObjectRetentionOutput) {
+	op := &request.Operation{
+		Name:       opPutObjectRetention,
+		HTTPMethod: "PUT",
+		HTTPPath:   "/{Bucket}/{Key+}?retention",
+	}
+
+	if input == nil {
+		input = &PutObjectRetentionInput{}
+	}
+
+	output = &PutObjectRetentionOutput{}
+	req = c.newRequest(op, input, output)
+	req.Handlers.Build.PushBackNamed(request.NamedHandler{
+		Name: "contentMd5Handler",
+		Fn:   checksum.AddBodyContentMD5Handler,
+	})
+	return
+}
+
+// PutObjectRetention API operation for Amazon Simple Storage Service.
+//
+// Places an Object Retention configuration on an object. For more information,
+// see Locking Objects (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+// Users or accounts require the s3:PutObjectRetention permission in order to
+// place an Object Retention configuration on objects. Bypassing a Governance
+// Retention configuration requires the s3:BypassGovernanceRetention permission.
+//
+// Ignored by COS.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Simple Storage Service's
+// API operation PutObjectRetention for usage and error information.
+// See also, https://docs.aws.amazon.com/goto/WebAPI/s3-2006-03-01/PutObjectRetention
+func (c *S3) PutObjectRetention(input *PutObjectRetentionInput) (*PutObjectRetentionOutput, error) {
+	req, out := c.PutObjectRetentionRequest(input)
+	return out, req.Send()
+}
+
+// PutObjectRetentionWithContext is the same as PutObjectRetention with the addition of
+// the ability to pass a context and additional request options.
+//
+// See PutObjectRetention for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *S3) PutObjectRetentionWithContext(ctx aws.Context, input *PutObjectRetentionInput, opts ...request.Option) (*PutObjectRetentionOutput, error) {
+	req, out := c.PutObjectRetentionRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opPutObjectTagging = "PutObjectTagging"
 
 // PutObjectTaggingRequest generates a "aws/request.Request" representing the
@@ -7861,6 +8362,15 @@ type CopyObjectInput struct {
 	// with metadata provided in the request.
 	MetadataDirective *string `location:"header" locationName:"x-amz-metadata-directive" type:"string" enum:"MetadataDirective"`
 
+	// Specifies whether you want to apply a Legal Hold to the copied object.
+	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
+
+	// The Object Lock mode that you want to apply to the copied object.
+	ObjectLockMode *string `location:"header" locationName:"x-amz-object-lock-mode" type:"string" enum:"ObjectLockMode"`
+
+	// The date and time when you want the copied object's Object Lock to expire.
+	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
+
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
 	// about downloading objects from requester pays buckets, see Downloading Objects
@@ -8146,6 +8656,24 @@ func (s *CopyObjectInput) SetMetadata(v map[string]*string) *CopyObjectInput {
 // SetMetadataDirective sets the MetadataDirective field's value.
 func (s *CopyObjectInput) SetMetadataDirective(v string) *CopyObjectInput {
 	s.MetadataDirective = &v
+	return s
+}
+
+// SetObjectLockLegalHoldStatus sets the ObjectLockLegalHoldStatus field's value.
+func (s *CopyObjectInput) SetObjectLockLegalHoldStatus(v string) *CopyObjectInput {
+	s.ObjectLockLegalHoldStatus = &v
+	return s
+}
+
+// SetObjectLockMode sets the ObjectLockMode field's value.
+func (s *CopyObjectInput) SetObjectLockMode(v string) *CopyObjectInput {
+	s.ObjectLockMode = &v
+	return s
+}
+
+// SetObjectLockRetainUntilDate sets the ObjectLockRetainUntilDate field's value.
+func (s *CopyObjectInput) SetObjectLockRetainUntilDate(v time.Time) *CopyObjectInput {
+	s.ObjectLockRetainUntilDate = &v
 	return s
 }
 
@@ -8514,6 +9042,9 @@ type CreateBucketInput struct {
 	//
 	// Only Valid for IBM IAM Authentication
 	IBMServiceInstanceId *string `location:"header" locationName:"ibm-service-instance-id" type:"string"`
+
+	// Specifies whether you want S3 Object Lock to be enabled for the new bucket.
+	ObjectLockEnabledForBucket *bool `location:"header" locationName:"x-amz-bucket-object-lock-enabled" type:"boolean"`
 }
 
 // String returns the string representation.
@@ -8620,6 +9151,12 @@ func (s *CreateBucketInput) SetIBMSSEKPEncryptionAlgorithm(v string) *CreateBuck
 // SetIBMServiceInstanceId sets the IBMServiceInstanceId field's value.
 func (s *CreateBucketInput) SetIBMServiceInstanceId(v string) *CreateBucketInput {
 	s.IBMServiceInstanceId = &v
+	return s
+}
+
+// SetObjectLockEnabledForBucket sets the ObjectLockEnabledForBucket field's value.
+func (s *CreateBucketInput) SetObjectLockEnabledForBucket(v bool) *CreateBucketInput {
+	s.ObjectLockEnabledForBucket = &v
 	return s
 }
 
@@ -8731,6 +9268,15 @@ type CreateMultipartUploadInput struct {
 
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
+
+	// Specifies whether you want to apply a Legal Hold to the uploaded object.
+	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
+
+	// Specifies the Object Lock mode that you want to apply to the uploaded object.
+	ObjectLockMode *string `location:"header" locationName:"x-amz-object-lock-mode" type:"string" enum:"ObjectLockMode"`
+
+	// Specifies the date and time when you want the Object Lock to expire.
+	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
@@ -8920,6 +9466,24 @@ func (s *CreateMultipartUploadInput) SetKey(v string) *CreateMultipartUploadInpu
 // SetMetadata sets the Metadata field's value.
 func (s *CreateMultipartUploadInput) SetMetadata(v map[string]*string) *CreateMultipartUploadInput {
 	s.Metadata = v
+	return s
+}
+
+// SetObjectLockLegalHoldStatus sets the ObjectLockLegalHoldStatus field's value.
+func (s *CreateMultipartUploadInput) SetObjectLockLegalHoldStatus(v string) *CreateMultipartUploadInput {
+	s.ObjectLockLegalHoldStatus = &v
+	return s
+}
+
+// SetObjectLockMode sets the ObjectLockMode field's value.
+func (s *CreateMultipartUploadInput) SetObjectLockMode(v string) *CreateMultipartUploadInput {
+	s.ObjectLockMode = &v
+	return s
+}
+
+// SetObjectLockRetainUntilDate sets the ObjectLockRetainUntilDate field's value.
+func (s *CreateMultipartUploadInput) SetObjectLockRetainUntilDate(v time.Time) *CreateMultipartUploadInput {
+	s.ObjectLockRetainUntilDate = &v
 	return s
 }
 
@@ -9137,6 +9701,65 @@ func (s *CreateMultipartUploadOutput) SetServerSideEncryption(v string) *CreateM
 // SetUploadId sets the UploadId field's value.
 func (s *CreateMultipartUploadOutput) SetUploadId(v string) *CreateMultipartUploadOutput {
 	s.UploadId = &v
+	return s
+}
+
+// The container element for specifying the default Object Lock retention settings
+// for new objects placed in the specified bucket.
+//
+//    * The DefaultRetention settings require both a mode and a period.
+//
+//    * The DefaultRetention period can be either Days or Years but you must
+//    select one. You cannot specify Days and Years at the same time.
+type DefaultRetention struct {
+	_ struct{} `type:"structure"`
+
+	// The number of days that you want to specify for the default retention period.
+	// Must be used with Mode.
+	Days *int64 `type:"integer"`
+
+	// The default Object Lock retention mode you want to apply to new objects placed
+	// in the specified bucket. Must be used with either Days or Years.
+	Mode *string `type:"string" enum:"ObjectLockRetentionMode"`
+
+	// The number of years that you want to specify for the default retention period.
+	// Must be used with Mode.
+	Years *int64 `type:"integer"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DefaultRetention) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s DefaultRetention) GoString() string {
+	return s.String()
+}
+
+// SetDays sets the Days field's value.
+func (s *DefaultRetention) SetDays(v int64) *DefaultRetention {
+	s.Days = &v
+	return s
+}
+
+// SetMode sets the Mode field's value.
+func (s *DefaultRetention) SetMode(v string) *DefaultRetention {
+	s.Mode = &v
+	return s
+}
+
+// SetYears sets the Years field's value.
+func (s *DefaultRetention) SetYears(v int64) *DefaultRetention {
+	s.Years = &v
 	return s
 }
 
@@ -9898,6 +10521,10 @@ type DeleteObjectInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Indicates whether S3 Object Lock should bypass Governance-mode restrictions
+	// to process this operation.
+	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
+
 	// Ignored by COS.
 	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
 
@@ -9974,6 +10601,12 @@ func (s *DeleteObjectInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetBypassGovernanceRetention sets the BypassGovernanceRetention field's value.
+func (s *DeleteObjectInput) SetBypassGovernanceRetention(v bool) *DeleteObjectInput {
+	s.BypassGovernanceRetention = &v
+	return s
 }
 
 // SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
@@ -10219,6 +10852,11 @@ type DeleteObjectsInput struct {
 	// Bucket is a required field
 	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
 
+	// Specifies whether you want to delete this object even if it has a Governance-type
+	// Object Lock in place. You must have sufficient permissions to perform this
+	// operation.
+	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
+
 	// Container for the request.
 	//
 	// Delete is a required field
@@ -10294,6 +10932,12 @@ func (s *DeleteObjectsInput) getBucket() (v string) {
 		return v
 	}
 	return *s.Bucket
+}
+
+// SetBypassGovernanceRetention sets the BypassGovernanceRetention field's value.
+func (s *DeleteObjectsInput) SetBypassGovernanceRetention(v bool) *DeleteObjectsInput {
+	s.BypassGovernanceRetention = &v
+	return s
 }
 
 // SetDelete sets the Delete field's value.
@@ -12529,6 +13173,248 @@ func (s *GetObjectInput) SetVersionId(v string) *GetObjectInput {
 	return s
 }
 
+type GetObjectLegalHoldInput struct {
+	_ struct{} `locationName:"GetObjectLegalHoldRequest" type:"structure"`
+
+	// The bucket name containing the object whose Legal Hold status you want to
+	// retrieve.
+	//
+	// When using this action with an access point, you must direct requests to
+	// the access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
+	// When using this action with an access point through the AWS SDKs, you provide
+	// the access point ARN in place of the bucket name. For more information about
+	// access point ARNs, see Using Access Points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Ignored by COS.
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+
+	// The key name for the object whose Legal Hold status you want to retrieve.
+	//
+	// Key is a required field
+	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
+
+	// Ignored by COS.
+	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// The version ID of the object whose Legal Hold status you want to retrieve.
+	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLegalHoldInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLegalHoldInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetObjectLegalHoldInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetObjectLegalHoldInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Key == nil {
+		invalidParams.Add(request.NewErrParamRequired("Key"))
+	}
+	if s.Key != nil && len(*s.Key) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Key", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *GetObjectLegalHoldInput) SetBucket(v string) *GetObjectLegalHoldInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *GetObjectLegalHoldInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *GetObjectLegalHoldInput) SetExpectedBucketOwner(v string) *GetObjectLegalHoldInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+// SetKey sets the Key field's value.
+func (s *GetObjectLegalHoldInput) SetKey(v string) *GetObjectLegalHoldInput {
+	s.Key = &v
+	return s
+}
+
+// SetRequestPayer sets the RequestPayer field's value.
+func (s *GetObjectLegalHoldInput) SetRequestPayer(v string) *GetObjectLegalHoldInput {
+	s.RequestPayer = &v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *GetObjectLegalHoldInput) SetVersionId(v string) *GetObjectLegalHoldInput {
+	s.VersionId = &v
+	return s
+}
+
+type GetObjectLegalHoldOutput struct {
+	_ struct{} `type:"structure" payload:"LegalHold"`
+
+	// The current Legal Hold status for the specified object.
+	LegalHold *ObjectLockLegalHold `type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLegalHoldOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLegalHoldOutput) GoString() string {
+	return s.String()
+}
+
+// SetLegalHold sets the LegalHold field's value.
+func (s *GetObjectLegalHoldOutput) SetLegalHold(v *ObjectLockLegalHold) *GetObjectLegalHoldOutput {
+	s.LegalHold = v
+	return s
+}
+
+type GetObjectLockConfigurationInput struct {
+	_ struct{} `locationName:"GetObjectLockConfigurationRequest" type:"structure"`
+
+	// The bucket whose Object Lock configuration you want to retrieve.
+	//
+	// When using this action with an access point, you must direct requests to
+	// the access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
+	// When using this action with an access point through the AWS SDKs, you provide
+	// the access point ARN in place of the bucket name. For more information about
+	// access point ARNs, see Using Access Points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Ignored by COS.
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLockConfigurationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLockConfigurationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetObjectLockConfigurationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetObjectLockConfigurationInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *GetObjectLockConfigurationInput) SetBucket(v string) *GetObjectLockConfigurationInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *GetObjectLockConfigurationInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *GetObjectLockConfigurationInput) SetExpectedBucketOwner(v string) *GetObjectLockConfigurationInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+type GetObjectLockConfigurationOutput struct {
+	_ struct{} `type:"structure" payload:"ObjectLockConfiguration"`
+
+	// The specified bucket's Object Lock configuration.
+	ObjectLockConfiguration *ObjectLockConfiguration `type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLockConfigurationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectLockConfigurationOutput) GoString() string {
+	return s.String()
+}
+
+// SetObjectLockConfiguration sets the ObjectLockConfiguration field's value.
+func (s *GetObjectLockConfigurationOutput) SetObjectLockConfiguration(v *ObjectLockConfiguration) *GetObjectLockConfigurationOutput {
+	s.ObjectLockConfiguration = v
+	return s
+}
+
 type GetObjectOutput struct {
 	_ struct{} `type:"structure" payload:"Body"`
 
@@ -12601,6 +13487,16 @@ type GetObjectOutput struct {
 	// supports more flexible metadata than the REST API. For example, using SOAP,
 	// you can create metadata whose values are not legal HTTP headers.
 	MissingMeta *int64 `location:"header" locationName:"x-amz-missing-meta" type:"integer"`
+
+	// Indicates whether this object has an active legal hold. This field is only
+	// returned if you have permission to view an object's legal hold status.
+	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
+
+	// The Object Lock mode currently in place for this object.
+	ObjectLockMode *string `location:"header" locationName:"x-amz-object-lock-mode" type:"string" enum:"ObjectLockMode"`
+
+	// The date and time when this object's Object Lock will expire.
+	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
 
 	// The count of parts this object has.
 	PartsCount *int64 `location:"header" locationName:"x-amz-mp-parts-count" type:"integer"`
@@ -12796,6 +13692,24 @@ func (s *GetObjectOutput) SetMissingMeta(v int64) *GetObjectOutput {
 	return s
 }
 
+// SetObjectLockLegalHoldStatus sets the ObjectLockLegalHoldStatus field's value.
+func (s *GetObjectOutput) SetObjectLockLegalHoldStatus(v string) *GetObjectOutput {
+	s.ObjectLockLegalHoldStatus = &v
+	return s
+}
+
+// SetObjectLockMode sets the ObjectLockMode field's value.
+func (s *GetObjectOutput) SetObjectLockMode(v string) *GetObjectOutput {
+	s.ObjectLockMode = &v
+	return s
+}
+
+// SetObjectLockRetainUntilDate sets the ObjectLockRetainUntilDate field's value.
+func (s *GetObjectOutput) SetObjectLockRetainUntilDate(v time.Time) *GetObjectOutput {
+	s.ObjectLockRetainUntilDate = &v
+	return s
+}
+
 // SetPartsCount sets the PartsCount field's value.
 func (s *GetObjectOutput) SetPartsCount(v int64) *GetObjectOutput {
 	s.PartsCount = &v
@@ -12883,6 +13797,145 @@ func (s *GetObjectOutput) SetVersionId(v string) *GetObjectOutput {
 // SetWebsiteRedirectLocation sets the WebsiteRedirectLocation field's value.
 func (s *GetObjectOutput) SetWebsiteRedirectLocation(v string) *GetObjectOutput {
 	s.WebsiteRedirectLocation = &v
+	return s
+}
+
+type GetObjectRetentionInput struct {
+	_ struct{} `locationName:"GetObjectRetentionRequest" type:"structure"`
+
+	// The bucket name containing the object whose retention settings you want to
+	// retrieve.
+	//
+	// When using this action with an access point, you must direct requests to
+	// the access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
+	// When using this action with an access point through the AWS SDKs, you provide
+	// the access point ARN in place of the bucket name. For more information about
+	// access point ARNs, see Using Access Points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Ignored by COS.
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+
+	// The key name for the object whose retention settings you want to retrieve.
+	//
+	// Key is a required field
+	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
+
+	// Ignored by COS.
+	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// The version ID for the object whose retention settings you want to retrieve.
+	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectRetentionInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectRetentionInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetObjectRetentionInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetObjectRetentionInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Key == nil {
+		invalidParams.Add(request.NewErrParamRequired("Key"))
+	}
+	if s.Key != nil && len(*s.Key) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Key", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *GetObjectRetentionInput) SetBucket(v string) *GetObjectRetentionInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *GetObjectRetentionInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *GetObjectRetentionInput) SetExpectedBucketOwner(v string) *GetObjectRetentionInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+// SetKey sets the Key field's value.
+func (s *GetObjectRetentionInput) SetKey(v string) *GetObjectRetentionInput {
+	s.Key = &v
+	return s
+}
+
+// SetRequestPayer sets the RequestPayer field's value.
+func (s *GetObjectRetentionInput) SetRequestPayer(v string) *GetObjectRetentionInput {
+	s.RequestPayer = &v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *GetObjectRetentionInput) SetVersionId(v string) *GetObjectRetentionInput {
+	s.VersionId = &v
+	return s
+}
+
+type GetObjectRetentionOutput struct {
+	_ struct{} `type:"structure" payload:"Retention"`
+
+	// The container element for an object's retention settings.
+	Retention *ObjectLockRetention `type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectRetentionOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetObjectRetentionOutput) GoString() string {
+	return s.String()
+}
+
+// SetRetention sets the Retention field's value.
+func (s *GetObjectRetentionOutput) SetRetention(v *ObjectLockRetention) *GetObjectRetentionOutput {
+	s.Retention = v
 	return s
 }
 
@@ -13771,6 +14824,22 @@ type HeadObjectOutput struct {
 	// you can create metadata whose values are not legal HTTP headers.
 	MissingMeta *int64 `location:"header" locationName:"x-amz-missing-meta" type:"integer"`
 
+	// Specifies whether a legal hold is in effect for this object. This header
+	// is only returned if the requester has the s3:GetObjectLegalHold permission.
+	// This header is not returned if the specified version of this object has never
+	// had a legal hold applied. For more information about S3 Object Lock, see
+	// Object Lock (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
+
+	// The Object Lock mode, if any, that's in effect for this object. This header
+	// is only returned if the requester has the s3:GetObjectRetention permission.
+	// For more information about S3 Object Lock, see Object Lock (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+	ObjectLockMode *string `location:"header" locationName:"x-amz-object-lock-mode" type:"string" enum:"ObjectLockMode"`
+
+	// The date and time when the Object Lock retention period expires. This header
+	// is only returned if the requester has the s3:GetObjectRetention permission.
+	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
+
 	// The count of parts this object has.
 	PartsCount *int64 `location:"header" locationName:"x-amz-mp-parts-count" type:"integer"`
 
@@ -13994,6 +15063,24 @@ func (s *HeadObjectOutput) SetMetadata(v map[string]*string) *HeadObjectOutput {
 // SetMissingMeta sets the MissingMeta field's value.
 func (s *HeadObjectOutput) SetMissingMeta(v int64) *HeadObjectOutput {
 	s.MissingMeta = &v
+	return s
+}
+
+// SetObjectLockLegalHoldStatus sets the ObjectLockLegalHoldStatus field's value.
+func (s *HeadObjectOutput) SetObjectLockLegalHoldStatus(v string) *HeadObjectOutput {
+	s.ObjectLockLegalHoldStatus = &v
+	return s
+}
+
+// SetObjectLockMode sets the ObjectLockMode field's value.
+func (s *HeadObjectOutput) SetObjectLockMode(v string) *HeadObjectOutput {
+	s.ObjectLockMode = &v
+	return s
+}
+
+// SetObjectLockRetainUntilDate sets the ObjectLockRetainUntilDate field's value.
+func (s *HeadObjectOutput) SetObjectLockRetainUntilDate(v time.Time) *HeadObjectOutput {
+	s.ObjectLockRetainUntilDate = &v
 	return s
 }
 
@@ -16757,6 +17844,159 @@ func (s *ObjectIdentifier) SetVersionId(v string) *ObjectIdentifier {
 	return s
 }
 
+// The container element for Object Lock configuration parameters.
+type ObjectLockConfiguration struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether this bucket has an Object Lock configuration enabled. Enable
+	// ObjectLockEnabled when you apply ObjectLockConfiguration to a bucket.
+	ObjectLockEnabled *string `type:"string" enum:"ObjectLockEnabled"`
+
+	// Specifies the Object Lock rule for the specified object. Enable the this
+	// rule when you apply ObjectLockConfiguration to a bucket. Bucket settings
+	// require both a mode and a period. The period can be either Days or Years
+	// but you must select one. You cannot specify Days and Years at the same time.
+	Rule *ObjectLockRule `type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockConfiguration) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockConfiguration) GoString() string {
+	return s.String()
+}
+
+// SetObjectLockEnabled sets the ObjectLockEnabled field's value.
+func (s *ObjectLockConfiguration) SetObjectLockEnabled(v string) *ObjectLockConfiguration {
+	s.ObjectLockEnabled = &v
+	return s
+}
+
+// SetRule sets the Rule field's value.
+func (s *ObjectLockConfiguration) SetRule(v *ObjectLockRule) *ObjectLockConfiguration {
+	s.Rule = v
+	return s
+}
+
+// A Legal Hold configuration for an object.
+type ObjectLockLegalHold struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates whether the specified object has a Legal Hold in place.
+	Status *string `type:"string" enum:"ObjectLockLegalHoldStatus"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockLegalHold) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockLegalHold) GoString() string {
+	return s.String()
+}
+
+// SetStatus sets the Status field's value.
+func (s *ObjectLockLegalHold) SetStatus(v string) *ObjectLockLegalHold {
+	s.Status = &v
+	return s
+}
+
+// A Retention configuration for an object.
+type ObjectLockRetention struct {
+	_ struct{} `type:"structure"`
+
+	// Indicates the Retention mode for the specified object.
+	Mode *string `type:"string" enum:"ObjectLockRetentionMode"`
+
+	// The date on which this Object Lock Retention will expire.
+	RetainUntilDate *time.Time `type:"timestamp" timestampFormat:"iso8601"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockRetention) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockRetention) GoString() string {
+	return s.String()
+}
+
+// SetMode sets the Mode field's value.
+func (s *ObjectLockRetention) SetMode(v string) *ObjectLockRetention {
+	s.Mode = &v
+	return s
+}
+
+// SetRetainUntilDate sets the RetainUntilDate field's value.
+func (s *ObjectLockRetention) SetRetainUntilDate(v time.Time) *ObjectLockRetention {
+	s.RetainUntilDate = &v
+	return s
+}
+
+// The container element for an Object Lock rule.
+type ObjectLockRule struct {
+	_ struct{} `type:"structure"`
+
+	// The default Object Lock retention mode and period that you want to apply
+	// to new objects placed in the specified bucket. Bucket settings require both
+	// a mode and a period. The period can be either Days or Years but you must
+	// select one. You cannot specify Days and Years at the same time.
+	DefaultRetention *DefaultRetention `type:"structure"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockRule) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ObjectLockRule) GoString() string {
+	return s.String()
+}
+
+// SetDefaultRetention sets the DefaultRetention field's value.
+func (s *ObjectLockRule) SetDefaultRetention(v *DefaultRetention) *ObjectLockRule {
+	s.DefaultRetention = v
+	return s
+}
+
 // The version of an object.
 type ObjectVersion struct {
 	_ struct{} `type:"structure"`
@@ -18355,6 +19595,16 @@ type PutObjectInput struct {
 	// A map of metadata to store with the object in S3.
 	Metadata map[string]*string `location:"headers" locationName:"x-amz-meta-" type:"map"`
 
+	// Specifies whether a legal hold will be applied to this object. For more information
+	// about S3 Object Lock, see Object Lock (https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html).
+	ObjectLockLegalHoldStatus *string `location:"header" locationName:"x-amz-object-lock-legal-hold" type:"string" enum:"ObjectLockLegalHoldStatus"`
+
+	// The Object Lock mode that you want to apply to this object.
+	ObjectLockMode *string `location:"header" locationName:"x-amz-object-lock-mode" type:"string" enum:"ObjectLockMode"`
+
+	// The date and time when you want this object's Object Lock to expire.
+	ObjectLockRetainUntilDate *time.Time `location:"header" locationName:"x-amz-object-lock-retain-until-date" type:"timestamp" timestampFormat:"iso8601"`
+
 	// Confirms that the requester knows that they will be charged for the request.
 	// Bucket owners need not specify this parameter in their requests. For information
 	// about downloading objects from requester pays buckets, see Downloading Objects
@@ -18603,6 +19853,24 @@ func (s *PutObjectInput) SetMetadata(v map[string]*string) *PutObjectInput {
 	return s
 }
 
+// SetObjectLockLegalHoldStatus sets the ObjectLockLegalHoldStatus field's value.
+func (s *PutObjectInput) SetObjectLockLegalHoldStatus(v string) *PutObjectInput {
+	s.ObjectLockLegalHoldStatus = &v
+	return s
+}
+
+// SetObjectLockMode sets the ObjectLockMode field's value.
+func (s *PutObjectInput) SetObjectLockMode(v string) *PutObjectInput {
+	s.ObjectLockMode = &v
+	return s
+}
+
+// SetObjectLockRetainUntilDate sets the ObjectLockRetainUntilDate field's value.
+func (s *PutObjectInput) SetObjectLockRetainUntilDate(v time.Time) *PutObjectInput {
+	s.ObjectLockRetainUntilDate = &v
+	return s
+}
+
 // SetRequestPayer sets the RequestPayer field's value.
 func (s *PutObjectInput) SetRequestPayer(v string) *PutObjectInput {
 	s.RequestPayer = &v
@@ -18679,6 +19947,280 @@ func (s *PutObjectInput) SetTagging(v string) *PutObjectInput {
 // SetWebsiteRedirectLocation sets the WebsiteRedirectLocation field's value.
 func (s *PutObjectInput) SetWebsiteRedirectLocation(v string) *PutObjectInput {
 	s.WebsiteRedirectLocation = &v
+	return s
+}
+
+type PutObjectLegalHoldInput struct {
+	_ struct{} `locationName:"PutObjectLegalHoldRequest" type:"structure" payload:"LegalHold"`
+
+	// The bucket name containing the object that you want to place a Legal Hold
+	// on.
+	//
+	// When using this action with an access point, you must direct requests to
+	// the access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
+	// When using this action with an access point through the AWS SDKs, you provide
+	// the access point ARN in place of the bucket name. For more information about
+	// access point ARNs, see Using Access Points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Ignored by COS.
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+
+	// The key name for the object that you want to place a Legal Hold on.
+	//
+	// Key is a required field
+	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
+
+	// Container element for the Legal Hold configuration you want to apply to the
+	// specified object.
+	LegalHold *ObjectLockLegalHold `locationName:"LegalHold" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
+
+	// Ignored by COS.
+	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// The version ID of the object that you want to place a Legal Hold on.
+	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLegalHoldInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLegalHoldInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *PutObjectLegalHoldInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "PutObjectLegalHoldInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Key == nil {
+		invalidParams.Add(request.NewErrParamRequired("Key"))
+	}
+	if s.Key != nil && len(*s.Key) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Key", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *PutObjectLegalHoldInput) SetBucket(v string) *PutObjectLegalHoldInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *PutObjectLegalHoldInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *PutObjectLegalHoldInput) SetExpectedBucketOwner(v string) *PutObjectLegalHoldInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+// SetKey sets the Key field's value.
+func (s *PutObjectLegalHoldInput) SetKey(v string) *PutObjectLegalHoldInput {
+	s.Key = &v
+	return s
+}
+
+// SetLegalHold sets the LegalHold field's value.
+func (s *PutObjectLegalHoldInput) SetLegalHold(v *ObjectLockLegalHold) *PutObjectLegalHoldInput {
+	s.LegalHold = v
+	return s
+}
+
+// SetRequestPayer sets the RequestPayer field's value.
+func (s *PutObjectLegalHoldInput) SetRequestPayer(v string) *PutObjectLegalHoldInput {
+	s.RequestPayer = &v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *PutObjectLegalHoldInput) SetVersionId(v string) *PutObjectLegalHoldInput {
+	s.VersionId = &v
+	return s
+}
+
+type PutObjectLegalHoldOutput struct {
+	_ struct{} `type:"structure"`
+
+	// If present, indicates that the requester was successfully charged for the
+	// request.
+	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLegalHoldOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLegalHoldOutput) GoString() string {
+	return s.String()
+}
+
+// SetRequestCharged sets the RequestCharged field's value.
+func (s *PutObjectLegalHoldOutput) SetRequestCharged(v string) *PutObjectLegalHoldOutput {
+	s.RequestCharged = &v
+	return s
+}
+
+type PutObjectLockConfigurationInput struct {
+	_ struct{} `locationName:"PutObjectLockConfigurationRequest" type:"structure" payload:"ObjectLockConfiguration"`
+
+	// The bucket whose Object Lock configuration you want to create or replace.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Ignored by COS.
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+
+	// The Object Lock configuration that you want to apply to the specified bucket.
+	ObjectLockConfiguration *ObjectLockConfiguration `locationName:"ObjectLockConfiguration" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
+
+	// Ignored by COS.
+	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// Ignored by COS.
+	Token *string `location:"header" locationName:"x-amz-bucket-object-lock-token" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLockConfigurationInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLockConfigurationInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *PutObjectLockConfigurationInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "PutObjectLockConfigurationInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *PutObjectLockConfigurationInput) SetBucket(v string) *PutObjectLockConfigurationInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *PutObjectLockConfigurationInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *PutObjectLockConfigurationInput) SetExpectedBucketOwner(v string) *PutObjectLockConfigurationInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+// SetObjectLockConfiguration sets the ObjectLockConfiguration field's value.
+func (s *PutObjectLockConfigurationInput) SetObjectLockConfiguration(v *ObjectLockConfiguration) *PutObjectLockConfigurationInput {
+	s.ObjectLockConfiguration = v
+	return s
+}
+
+// SetRequestPayer sets the RequestPayer field's value.
+func (s *PutObjectLockConfigurationInput) SetRequestPayer(v string) *PutObjectLockConfigurationInput {
+	s.RequestPayer = &v
+	return s
+}
+
+// SetToken sets the Token field's value.
+func (s *PutObjectLockConfigurationInput) SetToken(v string) *PutObjectLockConfigurationInput {
+	s.Token = &v
+	return s
+}
+
+type PutObjectLockConfigurationOutput struct {
+	_ struct{} `type:"structure"`
+
+	// If present, indicates that the requester was successfully charged for the
+	// request.
+	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLockConfigurationOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectLockConfigurationOutput) GoString() string {
+	return s.String()
+}
+
+// SetRequestCharged sets the RequestCharged field's value.
+func (s *PutObjectLockConfigurationOutput) SetRequestCharged(v string) *PutObjectLockConfigurationOutput {
+	s.RequestCharged = &v
 	return s
 }
 
@@ -18792,6 +20334,166 @@ func (s *PutObjectOutput) SetServerSideEncryption(v string) *PutObjectOutput {
 // SetVersionId sets the VersionId field's value.
 func (s *PutObjectOutput) SetVersionId(v string) *PutObjectOutput {
 	s.VersionId = &v
+	return s
+}
+
+type PutObjectRetentionInput struct {
+	_ struct{} `locationName:"PutObjectRetentionRequest" type:"structure" payload:"Retention"`
+
+	// The bucket name that contains the object you want to apply this Object Retention
+	// configuration to.
+	//
+	// When using this action with an access point, you must direct requests to
+	// the access point hostname. The access point hostname takes the form AccessPointName-AccountId.s3-accesspoint.Region.amazonaws.com.
+	// When using this action with an access point through the AWS SDKs, you provide
+	// the access point ARN in place of the bucket name. For more information about
+	// access point ARNs, see Using Access Points (https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html)
+	// in the Amazon S3 User Guide.
+	//
+	// Bucket is a required field
+	Bucket *string `location:"uri" locationName:"Bucket" type:"string" required:"true"`
+
+	// Ignored by COS.
+	BypassGovernanceRetention *bool `location:"header" locationName:"x-amz-bypass-governance-retention" type:"boolean"`
+
+	// Ignored by COS.
+	ExpectedBucketOwner *string `location:"header" locationName:"x-amz-expected-bucket-owner" type:"string"`
+
+	// The key name for the object that you want to apply this Object Retention
+	// configuration to.
+	//
+	// Key is a required field
+	Key *string `location:"uri" locationName:"Key" min:"1" type:"string" required:"true"`
+
+	// Ignored by COS.
+	RequestPayer *string `location:"header" locationName:"x-amz-request-payer" type:"string" enum:"RequestPayer"`
+
+	// The container element for the Object Retention configuration.
+	Retention *ObjectLockRetention `locationName:"Retention" type:"structure" xmlURI:"http://s3.amazonaws.com/doc/2006-03-01/"`
+
+	// The version ID for the object that you want to apply this Object Retention
+	// configuration to.
+	VersionId *string `location:"querystring" locationName:"versionId" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectRetentionInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectRetentionInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *PutObjectRetentionInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "PutObjectRetentionInput"}
+	if s.Bucket == nil {
+		invalidParams.Add(request.NewErrParamRequired("Bucket"))
+	}
+	if s.Bucket != nil && len(*s.Bucket) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Bucket", 1))
+	}
+	if s.Key == nil {
+		invalidParams.Add(request.NewErrParamRequired("Key"))
+	}
+	if s.Key != nil && len(*s.Key) < 1 {
+		invalidParams.Add(request.NewErrParamMinLen("Key", 1))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetBucket sets the Bucket field's value.
+func (s *PutObjectRetentionInput) SetBucket(v string) *PutObjectRetentionInput {
+	s.Bucket = &v
+	return s
+}
+
+func (s *PutObjectRetentionInput) getBucket() (v string) {
+	if s.Bucket == nil {
+		return v
+	}
+	return *s.Bucket
+}
+
+// SetBypassGovernanceRetention sets the BypassGovernanceRetention field's value.
+func (s *PutObjectRetentionInput) SetBypassGovernanceRetention(v bool) *PutObjectRetentionInput {
+	s.BypassGovernanceRetention = &v
+	return s
+}
+
+// SetExpectedBucketOwner sets the ExpectedBucketOwner field's value.
+func (s *PutObjectRetentionInput) SetExpectedBucketOwner(v string) *PutObjectRetentionInput {
+	s.ExpectedBucketOwner = &v
+	return s
+}
+
+// SetKey sets the Key field's value.
+func (s *PutObjectRetentionInput) SetKey(v string) *PutObjectRetentionInput {
+	s.Key = &v
+	return s
+}
+
+// SetRequestPayer sets the RequestPayer field's value.
+func (s *PutObjectRetentionInput) SetRequestPayer(v string) *PutObjectRetentionInput {
+	s.RequestPayer = &v
+	return s
+}
+
+// SetRetention sets the Retention field's value.
+func (s *PutObjectRetentionInput) SetRetention(v *ObjectLockRetention) *PutObjectRetentionInput {
+	s.Retention = v
+	return s
+}
+
+// SetVersionId sets the VersionId field's value.
+func (s *PutObjectRetentionInput) SetVersionId(v string) *PutObjectRetentionInput {
+	s.VersionId = &v
+	return s
+}
+
+type PutObjectRetentionOutput struct {
+	_ struct{} `type:"structure"`
+
+	// If present, indicates that the requester was successfully charged for the
+	// request.
+	RequestCharged *string `location:"header" locationName:"x-amz-request-charged" type:"string" enum:"RequestCharged"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectRetentionOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s PutObjectRetentionOutput) GoString() string {
+	return s.String()
+}
+
+// SetRequestCharged sets the RequestCharged field's value.
+func (s *PutObjectRetentionOutput) SetRequestCharged(v string) *PutObjectRetentionOutput {
+	s.RequestCharged = &v
 	return s
 }
 
@@ -21251,6 +22953,66 @@ func ObjectCannedACL_Values() []string {
 		ObjectCannedACLAwsExecRead,
 		ObjectCannedACLBucketOwnerRead,
 		ObjectCannedACLBucketOwnerFullControl,
+	}
+}
+
+const (
+	// ObjectLockEnabledEnabled is a ObjectLockEnabled enum value
+	ObjectLockEnabledEnabled = "Enabled"
+)
+
+// ObjectLockEnabled_Values returns all elements of the ObjectLockEnabled enum
+func ObjectLockEnabled_Values() []string {
+	return []string{
+		ObjectLockEnabledEnabled,
+	}
+}
+
+const (
+	// ObjectLockLegalHoldStatusOn is a ObjectLockLegalHoldStatus enum value
+	ObjectLockLegalHoldStatusOn = "ON"
+
+	// ObjectLockLegalHoldStatusOff is a ObjectLockLegalHoldStatus enum value
+	ObjectLockLegalHoldStatusOff = "OFF"
+)
+
+// ObjectLockLegalHoldStatus_Values returns all elements of the ObjectLockLegalHoldStatus enum
+func ObjectLockLegalHoldStatus_Values() []string {
+	return []string{
+		ObjectLockLegalHoldStatusOn,
+		ObjectLockLegalHoldStatusOff,
+	}
+}
+
+const (
+	// ObjectLockModeGovernance is a ObjectLockMode enum value
+	ObjectLockModeGovernance = "GOVERNANCE"
+
+	// ObjectLockModeCompliance is a ObjectLockMode enum value
+	ObjectLockModeCompliance = "COMPLIANCE"
+)
+
+// ObjectLockMode_Values returns all elements of the ObjectLockMode enum
+func ObjectLockMode_Values() []string {
+	return []string{
+		ObjectLockModeGovernance,
+		ObjectLockModeCompliance,
+	}
+}
+
+const (
+	// ObjectLockRetentionModeGovernance is a ObjectLockRetentionMode enum value
+	ObjectLockRetentionModeGovernance = "GOVERNANCE"
+
+	// ObjectLockRetentionModeCompliance is a ObjectLockRetentionMode enum value
+	ObjectLockRetentionModeCompliance = "COMPLIANCE"
+)
+
+// ObjectLockRetentionMode_Values returns all elements of the ObjectLockRetentionMode enum
+func ObjectLockRetentionMode_Values() []string {
+	return []string{
+		ObjectLockRetentionModeGovernance,
+		ObjectLockRetentionModeCompliance,
 	}
 }
 

@@ -5,7 +5,7 @@ weight: 60
 ---
 # Fluentd
 
-Grafana Loki has a [Fluentd](https://www.fluentd.org/) output plugin called
+The [Fluentd output plugin](https://www.fluentd.org/) for Grafana Loki is called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki
 instance or [Grafana Cloud](/products/cloud/).
 
@@ -27,7 +27,7 @@ The Docker image `grafana/fluent-plugin-loki:master` contains [default configura
 
 This image also uses `LOKI_URL`, `LOKI_USERNAME`, and `LOKI_PASSWORD` environment variables to specify the Loki's endpoint, user, and password (you can leave the USERNAME and PASSWORD blank if they're not used).
 
-This image will start an instance of Fluentd to forward incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin]({{<relref "../docker-driver/">}}) to ship logs without needing Fluentd.
+This image starts an instance of Fluentd that forwards incoming logs to the specified Loki URL. As an alternate, containerized applications can also use [docker driver plugin]({{< relref "../docker-driver" >}}) to ship logs without needing Fluentd.
 
 ### Example
 
@@ -68,7 +68,7 @@ services:
 
 **Note**: use either `<label>...</label>` or `extra_labels` to set at least one label.
 
-In your Fluentd configuration, use `@type loki`. Additional configuration is optional. Default values would look like this:
+In your Fluentd configuration, add `@type loki`. Additional configuration is optional. Default values would look like this:
 
 ```conf
 <match **>
@@ -126,7 +126,7 @@ You can use [record accessor](https://docs.fluentd.org/plugin-helper-overview/ap
 
 ### Extracting Kubernetes labels
 
-As Kubernetes labels are a list of nested key-value pairs there is a separate option to extract them.
+Since Kubernetes labels are a list of nested key-value pairs, a separate option is available to extract them.
 Note that special characters like "`. - /`" will be overwritten with `_`.
 Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
 
@@ -147,7 +147,7 @@ Use with the `remove_keys kubernetes` option to eliminate metadata from the log.
 
 ### Multi-worker usage
 
-Out-of-order inserts are enabled by default in Loki; refer to [accept out-of-order writes]({{<relref "../../configuration/#accept-out-of-order-writes">}}).
+Loki enables out-of-order inserts by default; refer to [accept out-of-order writes]({{< relref "../../configuration#accept-out-of-order-writes" >}}).
 If out-of-order inserts are _disabled_, attempting to insert a log entry with an earlier timestamp after a log entry with identical labels but a later timestamp, the insert will fail with `HTTP status code: 500, message: rpc error: code = Unknown desc = Entry out of order`. Therefore, in order to use this plugin in a multi worker Fluentd setup, you'll need to include the worker ID in the labels or otherwise [ensure log streams are always sent to the same worker](https://docs.fluentd.org/deployment/multi-process-workers#less-than-worker-n-greater-than-directive).
 
 For example, using [fluent-plugin-record-modifier](https://github.com/repeatedly/fluent-plugin-record-modifier):
@@ -182,7 +182,7 @@ This plugin automatically adds a `fluentd_thread` label with the name of the buf
 
 ### `url`
 
-The URL of the Loki server to send logs to.  When sending data, the publish path (`../api/loki/v1/push`) will automatically be appended.
+The URL of the Loki server to send logs to.  When sending data, the publish path (`../reference/api/loki/v1/push`) will automatically be appended.
 By default the url is set to `https://logs-prod-us-central1.grafana.net`, the url of the Grafana Labs [hosted Loki](/products/cloud/) service.
 
 #### Proxy Support
@@ -191,15 +191,15 @@ Starting with version 0.8.0, this gem uses [excon, which supports proxy with env
 
 ### `username` / `password`
 
-Specify a username and password if the Loki server requires authentication.
+If the Loki server requires authentication, specify a username and password.
 If using the GrafanaLab's hosted Loki, the username needs to be set to your instanceId and the password should be a Grafana.com api key.
 
 ### tenant
 
-Loki is a multi-tenant log storage platform and all requests sent must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.
+All requests sent to Loki, a multi-tenant log storage platform, must include a tenant.  For some installations the tenant will be set automatically by an authenticating proxy.  Otherwise you can define a tenant to be passed through.
 The tenant can be any string value.
 
-The tenant field also supports placeholders, so it can dynamically change based on tag and record fields. Each placeholder must be added as a buffer chunk key. The following is an example of setting the tenant based on a k8s pod label:
+The tenant field also supports placeholders, allowing it to dynamically change based on tag and record fields. Each placeholder must be added as a buffer chunk key. The following is an example of setting the tenant based on a k8s pod label:
 
 ```conf
 <match **>
@@ -216,7 +216,7 @@ The tenant field also supports placeholders, so it can dynamically change based 
 
 ### Client certificate verification
 
-Specify a pair of client certificate and private key with `cert` and `key` if a reverse proxy with client certificate verification is configured in front of Loki. `ca_cert` can also be specified if the server uses custom certificate authority.
+If a reverse proxy with client certificate verification is configured in front of Loki, specify a pair of client certificate and private key with `cert` and `key`. `ca_cert` can also be specified if the server uses custom certificate authority.
 
 ```conf
 <match **>
@@ -234,7 +234,7 @@ Specify a pair of client certificate and private key with `cert` and `key` if a 
 
 ### Server certificate verification
 
-A flag to disable a server certificate verification. By default the `insecure_tls` is set to false.
+A flag to disable server certificate verification. By default the `insecure_tls` is set to false.
 
 ```conf
 <match **>
@@ -252,7 +252,7 @@ A flag to disable a server certificate verification. By default the `insecure_tl
 
 Loki is intended to index and group log streams using only a small set of labels.  It is not intended for full-text indexing.  When sending logs to Loki the majority of log message will be sent as a single log "line".
 
-There are few configurations settings to control the output format.
+Several configuration settings are available to control the output format.
 
 - extra_labels: (default: nil) set of labels to include with every Loki stream. eg `{"env":"dev", "datacenter": "dc1"}`
 - remove_keys: (default: nil) comma separated list of needless record keys to remove. All other keys will be placed into the log line. You can use [record_accessor syntax](https://docs.fluentd.org/plugin-helper-overview/api-plugin-helper-record_accessor#syntax).
