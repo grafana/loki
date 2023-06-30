@@ -20,7 +20,7 @@ func NewTableClient(objectClient client.ObjectClient, storageKeyPrefix string) i
 }
 
 func (b *tableClient) ListTables(ctx context.Context) ([]string, error) {
-	b.indexStorageClient.RefreshIndexListCache(ctx)
+	b.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 	return b.indexStorageClient.ListTables(ctx)
 }
 
