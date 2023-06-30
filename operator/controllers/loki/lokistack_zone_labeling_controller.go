@@ -41,15 +41,15 @@ type LokiStackZoneAwarePodReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var lokiPod corev1.Pod
-	if err := r.Client.Get(ctx, req.NamespacedName, &lokiPod); err != nil {
+	lokiPod := &corev1.Pod{}
+	if err := r.Client.Get(ctx, req.NamespacedName, lokiPod); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to get pod", "name", req.NamespacedName)
 	}
 
-	err := handlers.AnnotatePodsWithNodeLabels(ctx, r.Log, r.Client, lokiPod)
+	err := handlers.AnnotatePodWithAvailabilityZone(ctx, r.Log, r.Client, lokiPod)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
