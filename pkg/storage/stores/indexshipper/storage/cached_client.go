@@ -187,6 +187,9 @@ func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([
 		return nil, nil, tbl.err
 	}
 
+	tbl.mtx.RLock()
+	defer tbl.mtx.RUnlock()
+
 	return tbl.commonObjects, tbl.userIDs, nil
 }
 
@@ -210,6 +213,9 @@ func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName
 		return nil, c.err
 	}
 
+	tbl.mtx.RLock()
+	defer tbl.mtx.RUnlock()
+
 	if objects, ok := tbl.userObjects[userID]; ok {
 		return objects, nil
 	}
@@ -217,10 +223,16 @@ func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName
 	return []client.StorageObject{}, nil
 }
 
-func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context, forceRefresh bool) error {
+func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context, forceRefresh bool) (err error) {
 	if !forceRefresh && time.Since(c.tableNamesCacheBuiltAt) < cacheTimeout {
 		return nil
 	}
+
+	defer func() {
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to build table names cache", "err", c.err)
+		}
+	}()
 
 	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
 	level.Info(logger).Log("msg", "building table names cache")
@@ -270,10 +282,16 @@ func (c *cachedObjectClient) getTable(tableName string) *table {
 	return c.tables[tableName]
 }
 
-func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient, forceRefresh bool) error {
+func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient, forceRefresh bool) (err error) {
 	if !forceRefresh && time.Since(t.cacheBuiltAt) < cacheTimeout {
 		return nil
 	}
+
+	defer func() {
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to build table cache", "table_name", t.name, "err", c.err)
+		}
+	}()
 
 	logger := spanlogger.FromContextWithFallback(ctx, util_log.Logger)
 	level.Info(logger).Log("msg", "building table cache")
