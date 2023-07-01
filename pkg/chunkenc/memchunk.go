@@ -60,12 +60,12 @@ func (f HeadBlockFmt) String() string {
 	}
 }
 
-func (f HeadBlockFmt) NewBlock() HeadBlock {
+func (f HeadBlockFmt) NewBlock(chunkDataFormat byte) HeadBlock {
 	switch {
 	case f < UnorderedHeadBlockFmt:
-		return &headBlock{}
+		return &headBlock{chunkDataFormat: chunkDataFormat}
 	default:
-		return newUnorderedHeadBlock()
+		return newUnorderedHeadBlock(chunkDataFormat)
 	}
 }
 
@@ -77,6 +77,9 @@ const (
 	_
 	OrderedHeadBlockFmt
 	UnorderedHeadBlockFmt
+
+	// head block format that stores chunk format version as well as type of head block (ordered/unordered)
+	VersionedHeadBlockFmtV1 byte = 128
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -131,6 +134,7 @@ type block struct {
 // This block holds the un-compressed entries. Once it has enough data, this is
 // emptied into a block with only compressed entries.
 type headBlock struct {
+	chunkDataFormat byte
 	// This is the list of raw entries.
 	entries []entry
 	size    int // size of uncompressed bytes.
@@ -138,7 +142,13 @@ type headBlock struct {
 	mint, maxt int64
 }
 
-func (hb *headBlock) Format() HeadBlockFmt { return OrderedHeadBlockFmt }
+func (hb *headBlock) Format() HeadBlockFmt {
+	return OrderedHeadBlockFmt
+}
+
+func (hb *headBlock) ChunkDataFormat() byte {
+	return hb.chunkDataFormat
+}
 
 func (hb *headBlock) IsEmpty() bool {
 	return len(hb.entries) == 0
@@ -227,6 +237,30 @@ func (hb *headBlock) CheckpointSize() int {
 	return size
 }
 
+type headBlockVersionWriter func(hb HeadBlock, eb *encbuf, w io.Writer) error
+
+var defaultHeadBlockVersionWriter = legacyHeadBlockVersionWriter
+
+var legacyHeadBlockVersionWriter = func(hb HeadBlock, eb *encbuf, w io.Writer) error {
+	return writeHeadBlockVersion([]byte{hb.Format().Byte()}, eb, w)
+}
+
+var versionedHeadBlockVersionWriter = func(hb HeadBlock, eb *encbuf, w io.Writer) error {
+	data := []byte{VersionedHeadBlockFmtV1, byte(hb.Format()), hb.ChunkDataFormat()}
+	return writeHeadBlockVersion(data, eb, w)
+}
+
+func writeHeadBlockVersion(data []byte, eb *encbuf, w io.Writer) error {
+	for _, b := range data {
+		eb.putByte(b)
+	}
+	_, err := w.Write(eb.get())
+	if err != nil {
+		return errors.Wrap(err, "error writing head block format metadata")
+	}
+	return nil
+}
+
 // CheckpointTo serializes a headblock to a `io.Writer`. see `CheckpointBytes`.
 func (hb *headBlock) CheckpointTo(w io.Writer) error {
 	eb := EncodeBufferPool.Get().(*encbuf)
@@ -234,10 +268,9 @@ func (hb *headBlock) CheckpointTo(w io.Writer) error {
 
 	eb.reset()
 
-	eb.putByte(byte(hb.Format()))
-	_, err := w.Write(eb.get())
+	err := defaultHeadBlockVersionWriter(hb, eb, w)
 	if err != nil {
-		return errors.Wrap(err, "write headBlock version")
+		return err
 	}
 	eb.reset()
 
@@ -269,6 +302,33 @@ func (hb *headBlock) CheckpointTo(w io.Writer) error {
 	return nil
 }
 
+type headFormatMetadata struct {
+	headBlockFormat    byte
+	chunkFormatVersion byte
+}
+
+func getHeadFormatMetadata(db *decbuf) (headFormatMetadata, error) {
+	firstByte := db.byte()
+	if db.err() != nil {
+		return headFormatMetadata{}, errors.Wrap(db.err(), "verifying headblock header")
+	}
+	version := firstByte
+	// chunkFormatV3 is the last version of the chunk format that was not included into head block.
+	// Starting from V4, chunkFormat version will be added to head block explicitly.
+	chunkFormatVersion := chunkFormatV3
+	if firstByte == VersionedHeadBlockFmtV1 {
+		version = db.byte()
+		if db.err() != nil {
+			return headFormatMetadata{}, errors.Wrap(db.err(), "error while reading the second byte of the head to get headBlockFormat")
+		}
+		chunkFormatVersion = db.byte()
+		if db.err() != nil {
+			return headFormatMetadata{}, errors.Wrap(db.err(), "error while reading the third byte of the head to get chunkFormatVersion")
+		}
+	}
+	return headFormatMetadata{headBlockFormat: version, chunkFormatVersion: chunkFormatVersion}, nil
+}
+
 func (hb *headBlock) LoadBytes(b []byte) error {
 	if len(b) < 1 {
 		return nil
@@ -276,14 +336,16 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 
 	db := decbuf{b: b}
 
-	version := db.byte()
-	if db.err() != nil {
-		return errors.Wrap(db.err(), "verifying headblock header")
+	formatMetadata, err := getHeadFormatMetadata(&db)
+	if err != nil {
+		return errors.Wrap(err, "error while reading head block format metadata")
 	}
-	switch version {
+	hb.chunkDataFormat = formatMetadata.chunkFormatVersion
+
+	switch formatMetadata.chunkFormatVersion {
 	case chunkFormatV1, chunkFormatV2, chunkFormatV3:
 	default:
-		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", version)
+		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", formatMetadata.chunkFormatVersion)
 	}
 
 	ln := db.uvarint()
@@ -315,7 +377,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	if version < UnorderedHeadBlockFmt {
 		return hb, nil
 	}
-	out := newUnorderedHeadBlock()
+	out := newUnorderedHeadBlock(hb.chunkDataFormat)
 
 	for _, e := range hb.entries {
 		if err := out.Append(e.t, e.s); err != nil {
@@ -332,13 +394,14 @@ type entry struct {
 
 // NewMemChunk returns a new in-mem chunk.
 func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	chunkFormat := DefaultChunkFormat
 	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
-		format: DefaultChunkFormat,
-		head:   head.NewBlock(),
+		format: chunkFormat,
+		head:   head.NewBlock(chunkFormat),
 
 		encoding: enc,
 		headFmt:  head,

@@ -1339,3 +1339,47 @@ func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matching
 
 	return chk
 }
+
+func Test_getHeadFormatMetadata(t *testing.T) {
+	tests := map[string]struct {
+		headData                   []byte
+		expectedChunkFormatVersion byte
+		expectedHeadBlockFormat    HeadBlockFmt
+		expectedError              error
+	}{
+		"expected ordered chunk data format if head block was written using legacy writer": {
+			headData:                []byte{OrderedHeadBlockFmt.Byte()},
+			expectedHeadBlockFormat: OrderedHeadBlockFmt,
+			// chunk format V3 is hardcoded because it's the last version of the chunk that was not explicitly added to chunk head.
+			expectedChunkFormatVersion: chunkFormatV3,
+		},
+		"expected unordered chunk data format if head block was written using legacy writer": {
+			headData:                []byte{UnorderedHeadBlockFmt.Byte()},
+			expectedHeadBlockFormat: UnorderedHeadBlockFmt,
+			// chunk format V3 is hardcoded because it's the last version of the chunk that was not explicitly added to chunk head.
+			expectedChunkFormatVersion: chunkFormatV3,
+		},
+		"expected unordered chunk data format to be extracted from the second byte if head block was written using new versioned writer": {
+			headData:                   []byte{VersionedHeadBlockFmtV1, UnorderedHeadBlockFmt.Byte(), chunkFormatV3},
+			expectedHeadBlockFormat:    UnorderedHeadBlockFmt,
+			expectedChunkFormatVersion: chunkFormatV3,
+		},
+		"expected ordered chunk data format to be extracted from the second byte if head block was written using new versioned writer": {
+			headData:                   []byte{VersionedHeadBlockFmtV1, OrderedHeadBlockFmt.Byte(), chunkFormatV2},
+			expectedHeadBlockFormat:    OrderedHeadBlockFmt,
+			expectedChunkFormatVersion: chunkFormatV2,
+		},
+	}
+	for name, data := range tests {
+		t.Run(name, func(t *testing.T) {
+			db := &decbuf{b: data.headData}
+			got, err := getHeadFormatMetadata(db)
+			if data.expectedError != nil {
+				require.ErrorIs(t, err, data.expectedError)
+			} else {
+				require.Equal(t, data.expectedHeadBlockFormat.Byte(), got.headBlockFormat)
+				require.Equal(t, data.expectedChunkFormatVersion, got.chunkFormatVersion)
+			}
+		})
+	}
+}

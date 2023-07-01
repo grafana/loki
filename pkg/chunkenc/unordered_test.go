@@ -30,7 +30,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 }
 
 func Test_forEntriesEarlyReturn(t *testing.T) {
-	hb := newUnorderedHeadBlock()
+	hb := newUnorderedHeadBlock(DefaultChunkFormat)
 	for i := 0; i < 10; i++ {
 		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i)))
 	}
@@ -163,7 +163,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hb := newUnorderedHeadBlock()
+			hb := newUnorderedHeadBlock(DefaultChunkFormat)
 			for _, e := range tc.input {
 				require.Nil(t, hb.Append(e.t, e.s))
 			}
@@ -225,7 +225,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hb := newUnorderedHeadBlock()
+			hb := newUnorderedHeadBlock(DefaultChunkFormat)
 			for _, e := range tc.input {
 				require.Nil(t, hb.Append(e.t, e.s))
 			}
@@ -244,37 +244,50 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 }
 
 func TestHeadBlockInterop(t *testing.T) {
-	unordered, ordered := newUnorderedHeadBlock(), &headBlock{}
-	for i := 0; i < 100; i++ {
-		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i)))
-		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i)))
+	for name, writer := range map[string]headBlockVersionWriter{
+		"expected head block is written with the legacy writer to be readable": legacyHeadBlockVersionWriter,
+		"head block is written with the new versioned writer to be readable":   versionedHeadBlockVersionWriter,
+	} {
+		t.Run(name, func(t *testing.T) {
+			originHeadBlockVersionWriter := defaultHeadBlockVersionWriter
+			defaultHeadBlockVersionWriter = writer
+			t.Cleanup(func() {
+				defaultHeadBlockVersionWriter = originHeadBlockVersionWriter
+			})
+
+			unordered, ordered := newUnorderedHeadBlock(DefaultChunkFormat), &headBlock{chunkDataFormat: DefaultChunkFormat}
+			for i := 0; i < 100; i++ {
+				require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i)))
+				require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i)))
+			}
+
+			// turn to bytes
+			b1, err := ordered.CheckpointBytes(nil)
+			require.Nil(t, err)
+			b2, err := unordered.CheckpointBytes(nil)
+			require.Nil(t, err)
+
+			// Ensure we can recover ordered checkpoint into ordered headblock
+			recovered, err := HeadFromCheckpoint(b1, OrderedHeadBlockFmt)
+			require.Nil(t, err)
+			require.Equal(t, ordered, recovered)
+
+			// Ensure we can recover ordered checkpoint into unordered headblock
+			recovered, err = HeadFromCheckpoint(b1, UnorderedHeadBlockFmt)
+			require.Nil(t, err)
+			require.Equal(t, unordered, recovered)
+
+			// Ensure we can recover unordered checkpoint into ordered headblock
+			recovered, err = HeadFromCheckpoint(b2, OrderedHeadBlockFmt)
+			require.Nil(t, err)
+			require.Equal(t, ordered, recovered)
+
+			// Ensure we can recover unordered checkpoint into unordered headblock
+			recovered, err = HeadFromCheckpoint(b2, UnorderedHeadBlockFmt)
+			require.Nil(t, err)
+			require.Equal(t, unordered, recovered)
+		})
 	}
-
-	// turn to bytes
-	b1, err := ordered.CheckpointBytes(nil)
-	require.Nil(t, err)
-	b2, err := unordered.CheckpointBytes(nil)
-	require.Nil(t, err)
-
-	// Ensure we can recover ordered checkpoint into ordered headblock
-	recovered, err := HeadFromCheckpoint(b1, OrderedHeadBlockFmt)
-	require.Nil(t, err)
-	require.Equal(t, ordered, recovered)
-
-	// Ensure we can recover ordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(b1, UnorderedHeadBlockFmt)
-	require.Nil(t, err)
-	require.Equal(t, unordered, recovered)
-
-	// Ensure we can recover unordered checkpoint into ordered headblock
-	recovered, err = HeadFromCheckpoint(b2, OrderedHeadBlockFmt)
-	require.Nil(t, err)
-	require.Equal(t, ordered, recovered)
-
-	// Ensure we can recover unordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(b2, UnorderedHeadBlockFmt)
-	require.Nil(t, err)
-	require.Equal(t, unordered, recovered)
 }
 
 // ensure backwards compatibility from when chunk format
@@ -292,14 +305,14 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	nWrites := (256 << 10) / 50
 
 	headBlockFn := func() func(int64, string) {
-		hb := &headBlock{}
+		hb := &headBlock{chunkDataFormat: DefaultChunkFormat}
 		return func(ts int64, line string) {
 			_ = hb.Append(ts, line)
 		}
 	}
 
 	unorderedHeadBlockFn := func() func(int64, string) {
-		hb := newUnorderedHeadBlock()
+		hb := newUnorderedHeadBlock(DefaultChunkFormat)
 		return func(ts int64, line string) {
 			_ = hb.Append(ts, line)
 		}
@@ -638,7 +651,7 @@ func Test_HeadIteratorHash(t *testing.T) {
 	}
 
 	for name, b := range map[string]HeadBlock{
-		"unordered": newUnorderedHeadBlock(),
+		"unordered": newUnorderedHeadBlock(DefaultChunkFormat),
 		"ordered":   &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {

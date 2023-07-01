@@ -49,9 +49,11 @@ type HeadBlock interface {
 		extractor log.StreamSampleExtractor,
 	) iter.SampleIterator
 	Format() HeadBlockFmt
+	ChunkDataFormat() byte
 }
 
 type unorderedHeadBlock struct {
+	chunkDataFormat byte
 	// Opted for range tree over skiplist for space reduction.
 	// Inserts: O(log(n))
 	// Scans: (O(k+log(n))) where k=num_scanned_entries & n=total_entries
@@ -62,13 +64,18 @@ type unorderedHeadBlock struct {
 	mint, maxt int64 // upper and lower bounds
 }
 
-func newUnorderedHeadBlock() *unorderedHeadBlock {
+func newUnorderedHeadBlock(chunkDataFormat byte) *unorderedHeadBlock {
 	return &unorderedHeadBlock{
-		rt: rangetree.New(1),
+		chunkDataFormat: chunkDataFormat,
+		rt:              rangetree.New(1),
 	}
 }
 
 func (hb *unorderedHeadBlock) Format() HeadBlockFmt { return UnorderedHeadBlockFmt }
+
+func (hb *unorderedHeadBlock) ChunkDataFormat() byte {
+	return hb.chunkDataFormat
+}
 
 func (hb *unorderedHeadBlock) IsEmpty() bool {
 	return hb.size == 0
@@ -87,7 +94,7 @@ func (hb *unorderedHeadBlock) UncompressedSize() int {
 }
 
 func (hb *unorderedHeadBlock) Reset() {
-	x := newUnorderedHeadBlock()
+	x := newUnorderedHeadBlock(hb.chunkDataFormat)
 	*hb = *x
 }
 
@@ -369,10 +376,10 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 }
 
 func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
-	if version > OrderedHeadBlockFmt {
+	if version == UnorderedHeadBlockFmt {
 		return hb, nil
 	}
-	out := version.NewBlock()
+	out := version.NewBlock(hb.chunkDataFormat)
 
 	err := hb.forEntries(
 		context.Background(),
@@ -454,7 +461,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 
 func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 	// ensure it's empty
-	*hb = *newUnorderedHeadBlock()
+	*hb = *newUnorderedHeadBlock(hb.chunkDataFormat)
 
 	if len(b) < 1 {
 		return nil
@@ -462,13 +469,13 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 
 	db := decbuf{b: b}
 
-	version := db.byte()
-	if db.err() != nil {
-		return errors.Wrap(db.err(), "verifying headblock header")
+	formatMetadata, err := getHeadFormatMetadata(&db)
+	if err != nil {
+		return errors.Wrap(err, "error while reading head block format metadata")
 	}
 
-	if version != UnorderedHeadBlockFmt.Byte() {
-		return errors.Errorf("incompatible headBlock version (%v), only V4 is currently supported", version)
+	if formatMetadata.headBlockFormat != UnorderedHeadBlockFmt.Byte() {
+		return errors.Errorf("incompatible headBlock version (%v), only V4 is currently supported", formatMetadata.headBlockFormat)
 	}
 
 	n := db.uvarint()
@@ -498,21 +505,21 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 // such as after enabling unordered writes.
 func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
 	if len(b) == 0 {
-		return desired.NewBlock(), nil
+		return desired.NewBlock(DefaultChunkFormat), nil
 	}
 
 	db := decbuf{b: b}
 
-	version := db.byte()
-	if db.err() != nil {
-		return nil, errors.Wrap(db.err(), "verifying headblock header")
+	metadata, err := getHeadFormatMetadata(&db)
+	if err != nil {
+		return nil, errors.Wrap(err, "error while reading head block metadata")
 	}
-	format := HeadBlockFmt(version)
+	format := HeadBlockFmt(metadata.headBlockFormat)
 	if format > UnorderedHeadBlockFmt {
 		return nil, fmt.Errorf("unexpected head block version: %v", format)
 	}
 
-	decodedBlock := format.NewBlock()
+	decodedBlock := format.NewBlock(metadata.chunkFormatVersion)
 	if err := decodedBlock.LoadBytes(b); err != nil {
 		return nil, err
 	}
