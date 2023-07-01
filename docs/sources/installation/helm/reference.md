@@ -2001,7 +2001,9 @@ null
 			<td>object</td>
 			<td>Optional querier configuration</td>
 			<td><pre lang="json">
-{}
+{
+  "max_concurrent": 16
+}
 </pre>
 </td>
 		</tr>
@@ -2010,7 +2012,9 @@ null
 			<td>object</td>
 			<td>Additional query scheduler config</td>
 			<td><pre lang="json">
-{}
+{
+  "max_outstanding_requests_per_tenant": 32768
+}
 </pre>
 </td>
 		</tr>
@@ -2082,7 +2086,30 @@ null
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas</td>
 			<td><pre lang="json">
-{}
+{
+  "configs": [
+    {
+      "from": "2022-01-11",
+      "index": {
+        "period": "24h",
+        "prefix": "loki_index_"
+      },
+      "object_store": "{{ .Values.loki.storage.type }}",
+      "schema": "v12",
+      "store": "boltdb-shipper"
+    },
+    {
+      "from": "2023-07-01",
+      "index": {
+        "period": "24h",
+        "prefix": "tsdb_index_"
+      },
+      "object_store": "{{ .Values.loki.storage.type }}",
+      "schema": "v12",
+      "store": "tsdb"
+    }
+  ]
+}
 </pre>
 </td>
 		</tr>

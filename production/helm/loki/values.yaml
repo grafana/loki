@@ -149,20 +149,8 @@ loki:
     {{- end }}
     {{- end }}
 
-    {{- if .Values.loki.schemaConfig }}
     schema_config:
     {{- toYaml .Values.loki.schemaConfig | nindent 2}}
-    {{- else }}
-    schema_config:
-      configs:
-        - from: 2022-01-11
-          store: boltdb-shipper
-          object_store: {{ .Values.loki.storage.type }}
-          schema: v12
-          index:
-            prefix: loki_index_
-            period: 24h
-    {{- end }}
 
     {{ include "loki.rulerConfig" . }}
 
@@ -303,13 +291,32 @@ loki:
       timeout: "500ms"
       default_validity: "12h"
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
-  schemaConfig: {}
+  schemaConfig:
+    configs:
+      - from: 2022-01-11
+        store: boltdb-shipper
+        object_store: "{{ .Values.loki.storage.type }}"
+        schema: v12
+        index:
+          prefix: loki_index_
+          period: 24h
+        # -- check https://grafana.com/docs/loki/latest/operations/storage/tsdb
+      - from: 2023-07-01 # The starting date for applying the new schema
+        store: tsdb
+        object_store: "{{ .Values.loki.storage.type }}"
+        schema: v12
+        index:
+          prefix: tsdb_index_
+          period: 24h
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
   rulerConfig: {}
   # -- Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`
   structuredConfig: {}
   # -- Additional query scheduler config
-  query_scheduler: {}
+  query_scheduler:
+    # the TSDB index dispatches many more, but each individually smaller, requests.
+    # We increase the pending request queue sizes to compensate.
+    max_outstanding_requests_per_tenant: 32768
   # -- Additional storage config
   storage_config:
     hedging:
@@ -321,7 +328,12 @@ loki:
   # --  Optional analytics configuration
   analytics: {}
   # --  Optional querier configuration
-  querier: {}
+  querier:
+    # Each `querier` component process runs a number of parallel workers to process queries simultaneously.
+    # You may want to adjust this up or down depending on your resource usage
+    # (more available cpu and memory can tolerate higher values and vice versa),
+    # but we find the most success running at around `16` with tsdb
+    max_concurrent: 16
   # --  Optional ingester configuration
   ingester: {}
   # --  Optional index gateway configuration
