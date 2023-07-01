@@ -144,3 +144,34 @@ message IndexStatsResponse {
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
 }
+
+message VolumeRequest {
+  repeated string match = 1;
+  google.protobuf.Timestamp startTs = 2 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp endTs = 3 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+}
+
+message VolumeResponse {
+  logproto.VolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.VolumeResponse"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
+message QueryResponse {
+  oneof response {
+    LokiSeriesResponse series = 1;
+    LokiLabelNamesResponse labels = 2;
+    IndexStatsResponse stats = 3;
+    LokiPromResponse prom = 4;
+    LokiResponse streams = 5;
+    VolumeResponse volume = 6;
+  }
+}

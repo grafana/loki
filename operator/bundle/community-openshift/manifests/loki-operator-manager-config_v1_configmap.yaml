@@ -38,7 +38,7 @@ data:
       # Component feature gates
       #
       lokiStackGateway: true
-      runtimeSeccompProfile: true
+      restrictedPodSecurityStandard: true
       defaultNodeAffinity: true
       #
       # Webhook feature gates

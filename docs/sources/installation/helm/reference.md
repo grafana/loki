@@ -1067,7 +1067,7 @@ null
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.19-alpine"
+"1.23-alpine"
 </pre>
 </td>
 		</tr>
@@ -1113,6 +1113,15 @@ false
 			<td>Ingress Class Name. MAY be required for Kubernetes versions >= 1.18</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.ingress.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway ingress</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1818,7 +1827,7 @@ true
 		<tr>
 			<td>loki.extraMemberlistConfig</td>
 			<td>object</td>
-			<td></td>
+			<td>Extra memberlist configuration</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1919,6 +1928,15 @@ null
   "reject_old_samples_max_age": "168h",
   "split_queries_by_interval": "15m"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.memberlistConfig</td>
+			<td>object</td>
+			<td>memberlist configuration (overrides embedded default)</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2089,6 +2107,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,
     "useManagedIdentity": false,
@@ -2404,6 +2423,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `loki-canary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for loki-canary pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -2422,11 +2459,34 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.updateStrategy</td>
+			<td>object</td>
+			<td>Update strategy for the `loki-canary` Daemonset pods</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "maxUnavailable": 1
+  },
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleLabels</td>
+			<td>object</td>
+			<td>Additional labels for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2517,6 +2577,15 @@ true
 			<td>Additional Grafana Agent labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for GrafanaAgent pods</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2637,6 +2706,15 @@ true
 			<td>Additional ServiceMonitor labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.metricRelabelings</td>
+			<td>list</td>
+			<td>ServiceMonitor metric relabel configs to apply to samples before ingestion https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#endpoint</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -3269,7 +3347,7 @@ Hard node and soft zone anti-affinity
 		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
-			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
+			<td>Enable autoscaling</td>
 			<td><pre lang="json">
 false
 </pre>
@@ -3695,6 +3773,24 @@ null
 			<td>Resource requests and limits for the table-manager</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_deletes_enabled</td>
+			<td>bool</td>
+			<td>Enable deletes by retention</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_period</td>
+			<td>int</td>
+			<td>Set retention period</td>
+			<td><pre lang="json">
+0
 </pre>
 </td>
 		</tr>

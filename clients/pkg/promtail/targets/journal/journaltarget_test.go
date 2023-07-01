@@ -39,7 +39,7 @@ func (r *mockJournalReader) Close() error {
 	return nil
 }
 
-func (r *mockJournalReader) Follow(until <-chan time.Time, writer io.Writer) error {
+func (r *mockJournalReader) Follow(until <-chan time.Time, _ io.Writer) error {
 	<-until
 	return nil
 }

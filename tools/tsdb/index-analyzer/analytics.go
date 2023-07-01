@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []string) error {

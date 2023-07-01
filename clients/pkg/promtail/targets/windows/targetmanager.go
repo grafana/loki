@@ -18,10 +18,10 @@ type TargetManager struct{}
 
 // NewTargetManager creates a new Windows managers.
 func NewTargetManager(
-	reg prometheus.Registerer,
+	_ prometheus.Registerer,
 	logger log.Logger,
-	client api.EntryHandler,
-	scrapeConfigs []scrapeconfig.Config,
+	_ api.EntryHandler,
+	_ []scrapeconfig.Config,
 ) (*TargetManager, error) {
 	level.Warn(logger).Log("msg", "WARNING!!! Windows target was configured but support for reading the windows event is not compiled into this build of promtail!")
 	return &TargetManager{}, nil

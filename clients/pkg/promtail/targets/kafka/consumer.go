@@ -101,7 +101,7 @@ func (c *consumer) ConsumeClaim(session sarama.ConsumerGroupSession, claim saram
 }
 
 // Setup is run at the beginning of a new session, before ConsumeClaim
-func (c *consumer) Setup(session sarama.ConsumerGroupSession) error {
+func (c *consumer) Setup(_ sarama.ConsumerGroupSession) error {
 	c.resetTargets()
 	return nil
 }

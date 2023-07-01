@@ -100,6 +100,37 @@ func (es MultiError) IsDeadlineExceeded() bool {
 	return true
 }
 
+// GroupedErrors implements the error interface, and it contains the errors used to construct it
+// grouped by the error message.
+type GroupedErrors struct {
+	MultiError
+}
+
+// Error Returns a concatenated string of the errors grouped by the error message along with the number of occurrences
+// of each error message.
+func (es GroupedErrors) Error() string {
+	mapErrs := make(map[string]int, len(es.MultiError))
+	for _, err := range es.MultiError {
+		mapErrs[err.Error()]++
+	}
+
+	var idx int
+	var buf bytes.Buffer
+	uniqueErrs := len(mapErrs)
+	for err, n := range mapErrs {
+		if idx != 0 {
+			buf.WriteString("; ")
+		}
+		if uniqueErrs > 1 || n > 1 {
+			_, _ = fmt.Fprintf(&buf, "%d errors like: ", n)
+		}
+		buf.WriteString(err)
+		idx++
+	}
+
+	return buf.String()
+}
+
 // IsConnCanceled returns true, if error is from a closed gRPC connection.
 // copied from https://github.com/etcd-io/etcd/blob/7f47de84146bdc9225d2080ec8678ca8189a2d2b/clientv3/client.go#L646
 func IsConnCanceled(err error) bool {

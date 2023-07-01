@@ -126,7 +126,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		if tenantsRetention != nil {
 			lbs, err := syntax.ParseLabels(s.Labels)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
 			retentionHours = fmt.Sprintf("%d", int64(math.Floor(tenantsRetention.RetentionPeriodFor(userID, lbs).Hours())))
 		}

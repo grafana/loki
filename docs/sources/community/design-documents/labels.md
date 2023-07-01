@@ -180,7 +180,7 @@ scrape_configs:
 
 You can define a more complicated regular expression with multiple capture groups to extract many labels and/or the output log message in one entry parser.  This has the advantage of being more performant, however, the regular expression will also get much more complicated.
 
-Please also note the regex for `message` is incomplete and would do a terrible job of matching any standard log message which might contain spaces or non alpha characters.
+Note the regex for `message` is incomplete and would do a terrible job of matching any standard log message which might contain spaces or non alpha characters.
 
 ### Concerns
 - Debugging, especially if a pipeline stage is mutating the log entry.

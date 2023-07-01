@@ -119,7 +119,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			name: "dynamic label, convert duration",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser()}, NoopStage,
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser(false, false)}, NoopStage,
 			)),
 			in:      labels.FromStrings("bar", "foo"),
 			want:    0.1234,
@@ -130,7 +130,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 		{
 			name: "dynamic label, not convertable",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
-				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser()}, NoopStage,
+				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, []Stage{NewLogfmtParser(false, false)}, NoopStage,
 			)),
 			in: labels.FromStrings("bar", "foo"),
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
@@ -186,7 +186,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			name: "with just logfmt and stringlabelfilter",
 			// {foo="bar"} | logfmt | subqueries != "0" (note: "0", a stringlabelfilter)
 			extractor: mustSampleExtractor(
-				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0"))}, NoopStage),
+				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(false, false), NewStringLabelFilter(labels.MustNewMatcher(labels.MatchNotEqual, "subqueries", "0"))}, NoopStage),
 			),
 			checkLines: []checkLine{
 				{logLine: "msg=hello subqueries=5", skip: false, sample: 5},
@@ -198,7 +198,7 @@ func TestLabelExtractorWithStages(t *testing.T) {
 			name: "with just logfmt and numeric labelfilter",
 			// {foo="bar"} | logfmt | subqueries != 0 (note: "0", a numericLabelFilter)
 			extractor: mustSampleExtractor(
-				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(), NewNumericLabelFilter(LabelFilterNotEqual, "subqueries", 0)}, NoopStage),
+				LabelExtractorWithStages("subqueries", ConvertFloat, []string{"foo"}, false, false, []Stage{NewLogfmtParser(false, false), NewNumericLabelFilter(LabelFilterNotEqual, "subqueries", 0)}, NoopStage),
 			),
 			checkLines: []checkLine{
 				{logLine: "msg=hello subqueries=5", skip: false, sample: 5},
@@ -314,7 +314,7 @@ type stubExtractor struct {
 	sp *stubStreamExtractor
 }
 
-func (p *stubExtractor) ForStream(labels labels.Labels) StreamSampleExtractor {
+func (p *stubExtractor) ForStream(_ labels.Labels) StreamSampleExtractor {
 	return p.sp
 }
 
@@ -325,10 +325,10 @@ func (p *stubStreamExtractor) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (p *stubStreamExtractor) Process(_ int64, _ []byte) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }
 
-func (p *stubStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (p *stubStreamExtractor) ProcessString(_ int64, _ string) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }

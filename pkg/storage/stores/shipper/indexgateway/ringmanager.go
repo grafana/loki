@@ -13,8 +13,6 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-
-	loki_util "github.com/grafana/loki/pkg/util"
 )
 
 const (
@@ -58,7 +56,7 @@ type RingManager struct {
 
 	RingLifecycler *ring.BasicLifecycler
 	Ring           *ring.Ring
-	managerMode    ManagerMode
+	Mode           ManagerMode
 
 	cfg Config
 
@@ -68,9 +66,9 @@ type RingManager struct {
 // NewRingManager is the recommended way of instantiating a RingManager.
 //
 // The other functions will assume the RingManager was instantiated through this function.
-func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
+func NewRingManager(mode ManagerMode, cfg Config, log log.Logger, registerer prometheus.Registerer) (*RingManager, error) {
 	rm := &RingManager{
-		cfg: cfg, log: log, managerMode: managerMode,
+		cfg: cfg, log: log, Mode: mode,
 	}
 
 	if cfg.Mode != RingMode {
@@ -95,7 +93,7 @@ func NewRingManager(managerMode ManagerMode, cfg Config, log log.Logger, registe
 		return nil, errors.Wrap(err, "index gateway ring manager create ring client")
 	}
 
-	if managerMode == ServerMode {
+	if mode == ServerMode {
 		if err := rm.startServerMode(ringStore, registerer); err != nil {
 			return nil, err
 		}
@@ -225,24 +223,6 @@ func (rm *RingManager) running(ctx context.Context) error {
 func (rm *RingManager) stopping(_ error) error {
 	level.Debug(rm.log).Log("msg", "stopping index gateway ring manager")
 	return services.StopManagerAndAwaitStopped(context.Background(), rm.subservices)
-}
-
-// IndexGatewayOwnsTenant dictates if a given tenant should be ignored by an IndexGateway or not.
-//
-// It fallbacks to true so that the IndexGateway will only skip tenants if it is certain of that.
-// This implementation relies on the tokens assigned to an IndexGateway instance to define if a tenant
-// is assigned or not.
-func (rm *RingManager) IndexGatewayOwnsTenant(tenant string) bool {
-	if rm.cfg.Mode != RingMode {
-		return true
-	}
-
-	if rm.managerMode == ClientMode {
-		level.Error(rm.log).Log("msg", "ring manager in client mode doesn't support tenant in boundaries interface")
-		return true
-	}
-
-	return loki_util.IsAssignedKey(rm.Ring, rm.RingLifecycler.GetInstanceAddr(), tenant)
 }
 
 // ServeHTTP serves the HTTP route /indexgateway/ring.

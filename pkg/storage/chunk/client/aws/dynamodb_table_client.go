@@ -90,7 +90,7 @@ func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Contex
 				level.Warn(log.WithContext(ctx, log.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
 				backoff.Wait()
 				continue
-			} else {
+			} else { //nolint:revive
 				return err
 			}
 		}
