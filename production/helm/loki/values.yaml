@@ -692,9 +692,9 @@ write:
     # -- Enable autoscaling for the write.
     enabled: false
     # -- Minimum autoscaling replicas for the write.
-    minReplicas: 1
+    minReplicas: 2
     # -- Maximum autoscaling replicas for the write.
-    maxReplicas: 3
+    maxReplicas: 6
     # -- Target CPU utilisation percentage for the write.
     targetCPUUtilizationPercentage: 60
     # -- Target memory utilization percentage for the write.
@@ -864,9 +864,9 @@ read:
     # -- Enable autoscaling for the read, this is only used if `queryIndex.enabled: true`
     enabled: false
     # -- Minimum autoscaling replicas for the read
-    minReplicas: 1
+    minReplicas: 2
     # -- Maximum autoscaling replicas for the read
-    maxReplicas: 3
+    maxReplicas: 6
     # -- Target CPU utilisation percentage for the read
     targetCPUUtilizationPercentage: 60
     # -- Target memory utilisation percentage for the read
@@ -964,9 +964,9 @@ backend:
     # -- Enable autoscaling for the backend.
     enabled: false
     # -- Minimum autoscaling replicas for the backend.
-    minReplicas: 1
+    minReplicas: 2
     # -- Maximum autoscaling replicas for the backend.
-    maxReplicas: 3
+    maxReplicas: 6
     # -- Target CPU utilization percentage for the backend.
     targetCPUUtilizationPercentage: 60
     # -- Target memory utilization percentage for the backend.

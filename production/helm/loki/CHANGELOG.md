@@ -64,6 +64,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.8.10
 
 - [ENHANCEMENT] Canary labelname can now be configured via monitoring.lokiCanary.labelname
+## 5.8.10
+
+- [BUGFIX] Increase default minReplicas to 2 and maxReplicas to 6
 
 ## 5.8.9
 
