@@ -4,7 +4,7 @@ menuTitle: Configure storage
 description: Configure Loki storage
 aliases:
   - /docs/installation/helm/storage
-weight: 100
+weight: 500
 keywords:
   - object store
   - filesystem
@@ -13,9 +13,9 @@ keywords:
 
 # Configure storage
 
-The [scalable]({{<relref "../install-scalable">}}) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary]({{<relref "../install-monolithic">}}) installation can only use the filesystem for storage.
+The [scalable]({{< relref "../install-scalable" >}}) installation requires a managed object store such as AWS S3 or Google Cloud Storage or a self-hosted store such as Minio. The [single binary]({{< relref "../install-monolithic" >}}) installation can only use the filesystem for storage.
 
-This guide assumes Loki will be installed in on of the modes above and that a `values.yaml ` has been created.
+This guide assumes Loki will be installed in one of the modes above and that a `values.yaml ` has been created.
 
 **To use a managed object store:**
 
@@ -37,7 +37,7 @@ This guide assumes Loki will be installed in on of the modes above and that a `v
 
 **To grant access to S3 via an IAM role without providing credentials:**
 
-1. Provision an IAM role, policy and S3 bucket as described in [Storage]({{<relref "../../../storage/#aws-deployment-s3-single-store">}}).
+1. Provision an IAM role, policy and S3 bucket as described in [Storage]({{< relref "../../../storage#aws-deployment-s3-single-store" >}}).
    - If the Terraform module was used note the annotation emitted by `terraform output -raw annotation`.
 
 2. Add the IAM role annotation to the service account in `values.yaml`:

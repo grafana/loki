@@ -1,9 +1,10 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
 {{- if and $isSimpleScalable (gt (int .Values.backend.replicas) 1) (not .Values.read.legacyReadTarget ) }}
-apiVersion: {{ include "loki.podDisruptionBudget.apiVersion" . }}
+apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "loki.backendFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.backendLabels" . | nindent 4 }}
 spec:

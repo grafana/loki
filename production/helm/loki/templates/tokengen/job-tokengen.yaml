@@ -4,6 +4,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: {{ template "enterprise-logs.tokengenFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "enterprise-logs.tokengenLabels" . | nindent 4 }}
     {{- with .Values.enterprise.tokengen.labels }}

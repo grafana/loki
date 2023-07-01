@@ -1,5 +1,12 @@
+# Adapted from https://www.thapaliya.com/en/writings/well-documented-makefiles/
+.PHONY: help
+help: ## Display this help and any documented user-facing targets. Other undocumented targets may be present in the Makefile.
+help:
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-45s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources format
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
+.PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
@@ -30,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.1
+BUILD_IMAGE_VERSION := 0.29.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -43,7 +50,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
@@ -113,7 +120,7 @@ binfmt:
 ################
 # Main Targets #
 ################
-all: promtail logcli loki loki-canary
+all: promtail logcli loki loki-canary ## build all executables (loki, logcli, promtail, loki-canary)
 
 # This is really a check for the CI to make sure generated files are built and checked in manually
 check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -129,20 +136,23 @@ check-generated-files: yacc ragel fmt-proto protos clients/pkg/promtail/server/u
 # Logcli #
 ##########
 .PHONY: cmd/logcli/logcli
-logcli: cmd/logcli/logcli
+logcli: cmd/logcli/logcli ## build logcli executable
+logcli-debug: cmd/logcli/logcli-debug ## build debug logcli executable
 
-logcli-image:
+logcli-image: ## build logcli docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
 
 cmd/logcli/logcli:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./cmd/logcli
 
+cmd/logcli/logcli-debug:
+	CGO_ENABLED=0 go build $(DEBUG_GO_FLAGS) -o ./cmd/logcli/logcli-debug ./cmd/logcli
 ########
 # Loki #
 ########
 .PHONY: cmd/loki/loki cmd/loki/loki-debug
-loki: cmd/loki/loki
-loki-debug: cmd/loki/loki-debug
+loki: cmd/loki/loki ## build loki executable
+loki-debug: cmd/loki/loki-debug ## build loki debug executable
 
 cmd/loki/loki:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -154,7 +164,7 @@ cmd/loki/loki-debug:
 # Loki-Canary #
 ###############
 .PHONY: cmd/loki-canary/loki-canary
-loki-canary: cmd/loki-canary/loki-canary
+loki-canary: cmd/loki-canary/loki-canary ## build loki-canary executable
 
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -163,20 +173,20 @@ cmd/loki-canary/loki-canary:
 # Helm #
 ###############
 .PHONY: production/helm/loki/src/helm-test/helm-test
-helm-test: production/helm/loki/src/helm-test/helm-test
+helm-test: production/helm/loki/src/helm-test/helm-test ## run helm tests
 
 # Package Helm tests but do not run them.
 production/helm/loki/src/helm-test/helm-test:
 	CGO_ENABLED=0 go test $(GO_FLAGS) --tags=helm_test -c -o $@ ./$(@D)
 
-helm-lint:
+helm-lint: ## run helm linter
 	$(MAKE) -BC production/helm/loki lint
 
 #################
 # Loki-QueryTee #
 #################
 .PHONY: cmd/querytee/querytee
-loki-querytee: cmd/querytee/querytee
+loki-querytee: cmd/querytee/querytee ## build loki-querytee executable
 
 cmd/querytee/querytee:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
@@ -203,8 +213,8 @@ ifeq ($(PROMTAIL_JOURNAL_ENABLED), true)
 PROMTAIL_GO_TAGS = promtail_journal_enabled
 endif
 .PHONY: clients/cmd/promtail/promtail clients/cmd/promtail/promtail-debug
-promtail: clients/cmd/promtail/promtail
-promtail-debug: clients/cmd/promtail/promtail-debug
+promtail: clients/cmd/promtail/promtail ## build promtail executable
+promtail-debug: clients/cmd/promtail/promtail-debug ## build debug promtail executable
 
 promtail-clean-assets:
 	rm -rf clients/pkg/promtail/server/ui/assets_vfsdata.go
@@ -228,7 +238,7 @@ MIXIN_PATH := production/loki-mixin
 MIXIN_OUT_PATH := production/loki-mixin-compiled
 MIXIN_OUT_PATH_SSD := production/loki-mixin-compiled-ssd
 
-loki-mixin:
+loki-mixin: ## compile the loki mixin
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(SUDO) docker run $(RM) $(TTY) -i \
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
@@ -243,7 +253,7 @@ else
 	@mixtool generate all --output-alerts $(MIXIN_OUT_PATH_SSD)/alerts.yaml --output-rules $(MIXIN_OUT_PATH_SSD)/rules.yaml --directory $(MIXIN_OUT_PATH_SSD)/dashboards ${MIXIN_PATH}/mixin-ssd.libsonnet
 endif
 
-loki-mixin-check: loki-mixin
+loki-mixin-check: loki-mixin ## check the loki mixin is up to date
 	@echo "Checking diff"
 	@git diff --exit-code -- $(MIXIN_OUT_PATH) || (echo "Please build mixin by running 'make loki-mixin'" && false)
 	@git diff --exit-code -- $(MIXIN_OUT_PATH_SSD) || (echo "Please build mixin by running 'make loki-mixin'" && false)
@@ -269,7 +279,7 @@ dist: clean
 	CGO_ENABLED=0 $(GOX) -osarch="darwin/amd64 darwin/arm64 windows/amd64 windows/386 freebsd/amd64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/aarch64-linux-gnu/pkgconfig" CC="aarch64-linux-gnu-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm64" ./clients/cmd/promtail
 	PKG_CONFIG_PATH="/usr/lib/arm-linux-gnueabihf/pkgconfig" CC="arm-linux-gnueabihf-gcc" $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/arm" ./clients/cmd/promtail
-	CGO_ENABLED=1 $(CGO_GOX) -osarch="linux/amd64" ./clients/cmd/promtail
+	CGO_ENABLED=1 $(CGO_GOX)  -tags promtail_journal_enabled  -osarch="linux/amd64" ./clients/cmd/promtail
 	for i in dist/*; do zip -j -m $$i.zip $$i; done
 	pushd dist && sha256sum * > SHA256SUMS && popd
 
@@ -285,7 +295,7 @@ publish: packages
 
 # To run this efficiently on your workstation, run this from the root dir:
 # docker run --rm --tty -i -v $(pwd)/.cache:/go/cache -v $(pwd)/.pkg:/go/pkg -v $(pwd):/src/loki grafana/loki-build-image:0.24.1 lint
-lint:
+lint: ## run linters
 	go version
 	golangci-lint version
 	GO111MODULE=on golangci-lint run -v
@@ -295,7 +305,7 @@ lint:
 # Test #
 ########
 
-test: all
+test: all ## run the unit tests
 	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
 
 compare-coverage:
@@ -308,7 +318,7 @@ compare-coverage:
 clean-protos:
 	rm -rf $(PROTO_GOS)
 
-clean:
+clean: ## clean the generated files
 	rm -rf clients/cmd/promtail/promtail
 	rm -rf cmd/loki/loki
 	rm -rf cmd/logcli/logcli
@@ -417,7 +427,7 @@ define build-rootfs
 	docker rmi rootfsimage -f
 endef
 
-docker-driver: docker-driver-clean
+docker-driver: docker-driver-clean ## build the docker-driver executable
 	$(build-rootfs)
 	docker plugin create $(LOKI_DOCKER_DRIVER):$(PLUGIN_TAG)$(PLUGIN_ARCH) clients/cmd/docker-driver
 
@@ -450,13 +460,13 @@ docker-driver-clean:
 #####################
 # fluent-bit plugin #
 #####################
-fluent-bit-plugin:
+fluent-bit-plugin: ## build the fluent-bit plugin
 	go build $(DYN_GO_FLAGS) -buildmode=c-shared -o clients/cmd/fluent-bit/out_grafana_loki.so ./clients/cmd/fluent-bit/
 
-fluent-bit-image:
+fluent-bit-image: ## build the fluent-bit plugin docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
-fluent-bit-push:
+fluent-bit-push: ## push the fluent-bit plugin docker image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
@@ -468,17 +478,17 @@ fluent-bit-test:
 ##################
 # fluentd plugin #
 ##################
-fluentd-plugin:
+fluentd-plugin: ## build the fluentd plugin
 	$(MAKE) -BC clients/cmd/fluentd $@
 
-fluentd-plugin-push:
+fluentd-plugin-push: ## push the fluentd plugin
 	$(MAKE) -BC clients/cmd/fluentd $@
 
-fluentd-image:
+fluentd-image: ## build the fluentd docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG) -f clients/cmd/fluentd/Dockerfile .
 
 fluentd-push:
-fluentd-image-push:
+fluentd-image-push: ## push the fluentd docker image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-plugin-loki:$(IMAGE_TAG)
 
 fluentd-test: LOKI_URL ?= http://loki:3100
@@ -488,7 +498,7 @@ fluentd-test:
 ##################
 # logstash plugin #
 ##################
-logstash-image:
+logstash-image: ## build the logstash image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f clients/cmd/logstash/Dockerfile ./
 
 # Send 10 lines to the local Loki instance.
@@ -497,7 +507,7 @@ logstash-push-test-logs:
 	$(SUDO) docker run -e LOKI_URL="$(LOKI_URL)" -v `pwd`/clients/cmd/logstash/loki-test.conf:/home/logstash/loki.conf --rm \
 		$(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG) -f loki.conf
 
-logstash-push:
+logstash-push: ## push the logstash image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/logstash-output-loki:$(IMAGE_TAG)
 
 # Enter an env already configure to build and test logstash output plugin.
@@ -539,41 +549,41 @@ define push-image
 endef
 
 # promtail
-promtail-image:
+promtail-image: ## build the promtail docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile .
 promtail-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG) -f clients/cmd/promtail/Dockerfile.cross .
 
 promtail-debug-image: OCI_PLATFORMS=
-promtail-debug-image:
+promtail-debug-image: ## build the promtail debug docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/promtail:$(IMAGE_TAG)-debug -f clients/cmd/promtail/Dockerfile.debug .
 
 promtail-push: promtail-image-cross
 	$(call push-image,promtail)
 
 # loki
-loki-image:
+loki-image: ## build the loki docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile .
 loki-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG) -f cmd/loki/Dockerfile.cross .
 
 loki-debug-image: OCI_PLATFORMS=
-loki-debug-image:
+loki-debug-image: ## build the debug loki docker image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
 loki-push: loki-image-cross
 	$(call push-image,loki)
 
 # loki-canary
-loki-canary-image:
+loki-canary-image: ## build the loki canary docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
-helm-test-image:
+helm-test-image: ## build the helm test image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
-helm-test-push: helm-test-image
+helm-test-push: helm-test-image ## push the helm test image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG)
 
 # loki-querytee
@@ -589,17 +599,17 @@ migrate-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-migrate:$(IMAGE_TAG) -f cmd/migrate/Dockerfile .
 
 # LogQL Analyzer
-logql-analyzer-image:
+logql-analyzer-image: ## build the LogQL Analyzer image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/logql-analyzer:$(IMAGE_TAG) -f cmd/logql-analyzer/Dockerfile .
-logql-analyzer-push: logql-analyzer-image
+logql-analyzer-push: logql-analyzer-image ## push the LogQL Analyzer image
 	$(call push-image,logql-analyzer)
 
 
 # build-image (only amd64)
 build-image: OCI_PLATFORMS=
-build-image:
+build-image: ## build the docker build image
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-build-image:$(IMAGE_TAG) ./loki-build-image
-build-image-push: build-image
+build-image-push: build-image ## push the docker build image
 ifneq (,$(findstring WIP,$(IMAGE_TAG)))
 	@echo "Cannot push a WIP image, commit changes first"; \
 	false;
@@ -622,7 +632,7 @@ loki-operator-push: loki-operator-image-cross
 documentation-helm-reference-check:
 	@echo "Checking diff"
 	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
 
 ########
 # Misc #
@@ -738,9 +748,15 @@ test-fuzz:
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec gofmt -w -s {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+
+
+GIT_TARGET_BRANCH ?= main
+check-format: format
+	git diff --name-only HEAD origin/$(GIT_TARGET_BRANCH) -- "*.go" | xargs --no-run-if-empty git diff --exit-code -- \
+	|| (echo "Please format code by running 'make format' and committing the changes" && false)
 
 # Documentation related commands
 

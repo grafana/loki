@@ -195,7 +195,7 @@ func (m *mockDynamoDBClient) batchGetItemRequest(_ context.Context, input *dynam
 	}
 }
 
-func (m *mockDynamoDBClient) QueryPagesWithContext(ctx aws.Context, input *dynamodb.QueryInput, fn func(*dynamodb.QueryOutput, bool) bool, opts ...request.Option) error {
+func (m *mockDynamoDBClient) QueryPagesWithContext(_ aws.Context, input *dynamodb.QueryInput, fn func(*dynamodb.QueryOutput, bool) bool, _ ...request.Option) error {
 	result := &dynamodb.QueryOutput{
 		Items: []map[string]*dynamodb.AttributeValue{},
 	}
@@ -267,7 +267,7 @@ func (m *dynamoDBMockRequest) Retryable() bool {
 	return false
 }
 
-func (m *mockDynamoDBClient) ListTablesPagesWithContext(_ aws.Context, input *dynamodb.ListTablesInput, fn func(*dynamodb.ListTablesOutput, bool) bool, _ ...request.Option) error {
+func (m *mockDynamoDBClient) ListTablesPagesWithContext(_ aws.Context, _ *dynamodb.ListTablesInput, fn func(*dynamodb.ListTablesOutput, bool) bool, _ ...request.Option) error {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

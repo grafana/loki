@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/xml"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 
@@ -143,5 +143,5 @@ func (c *Client) getBucketLifecycle(ctx context.Context, bucketName string) ([]b
 		}
 	}
 
-	return ioutil.ReadAll(resp.Body)
+	return io.ReadAll(resp.Body)
 }

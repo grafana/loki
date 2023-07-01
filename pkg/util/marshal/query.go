@@ -133,7 +133,7 @@ func NewVector(v promql.Vector) loghttp.Vector {
 func NewSample(s promql.Sample) model.Sample {
 
 	ret := model.Sample{
-		Value:     model.SampleValue(s.V),
+		Value:     model.SampleValue(s.F),
 		Timestamp: model.Time(s.T),
 		Metric:    NewMetric(s.Metric),
 	}
@@ -156,12 +156,12 @@ func NewMatrix(m promql.Matrix) loghttp.Matrix {
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
 		Metric: NewMetric(s.Metric),
-		Values: make([]model.SamplePair, len(s.Points)),
+		Values: make([]model.SamplePair, len(s.Floats)),
 	}
 
-	for i, p := range s.Points {
+	for i, p := range s.Floats {
 		ret.Values[i].Timestamp = model.Time(p.T)
-		ret.Values[i].Value = model.SampleValue(p.V)
+		ret.Values[i].Value = model.SampleValue(p.F)
 	}
 
 	return ret
@@ -356,7 +356,7 @@ func encodeSample(sample promql.Sample, s *jsoniter.Stream) {
 
 	s.WriteMore()
 	s.WriteObjectField("value")
-	encodeValue(sample.T, sample.V, s)
+	encodeValue(sample.T, sample.F, s)
 }
 
 func encodeValue(T int64, V float64, s *jsoniter.Stream) {
@@ -403,11 +403,11 @@ func encodeSampleStream(stream promql.Series, s *jsoniter.Stream) {
 	s.WriteMore()
 	s.WriteObjectField("values")
 	s.WriteArrayStart()
-	for i, p := range stream.Points {
+	for i, p := range stream.Floats {
 		if i > 0 {
 			s.WriteMore()
 		}
-		encodeValue(p.T, p.V, s)
+		encodeValue(p.T, p.F, s)
 	}
 	s.WriteArrayEnd()
 }

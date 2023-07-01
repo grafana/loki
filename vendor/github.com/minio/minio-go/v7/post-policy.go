@@ -25,7 +25,7 @@ import (
 )
 
 // expirationDateFormat date format for expiration key in json policy.
-const expirationDateFormat = "2006-01-02T15:04:05.999Z"
+const expirationDateFormat = "2006-01-02T15:04:05.000Z"
 
 // policyCondition explanation:
 // http://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-HTTPPOSTConstructPolicy.html

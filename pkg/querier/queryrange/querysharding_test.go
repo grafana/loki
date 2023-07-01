@@ -165,7 +165,9 @@ func Test_astMapper(t *testing.T) {
 				RowShards: 2,
 			},
 		},
+		testEngineOpts,
 		handler,
+		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
@@ -179,7 +181,7 @@ func Test_astMapper(t *testing.T) {
 		{Name: "Header", Values: []string{"value"}},
 	}, resp.GetHeaders())
 
-	expected, err := LokiCodec.MergeResponse(lokiResps...)
+	expected, err := DefaultCodec.MergeResponse(lokiResps...)
 	sort.Sort(logproto.Streams(expected.(*LokiResponse).Data.Result))
 	require.Nil(t, err)
 	require.Equal(t, called, 2)
@@ -296,7 +298,9 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 						IndexType: config.TSDBType,
 					},
 				},
+				testEngineOpts,
 				handler,
+				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{
@@ -333,7 +337,9 @@ func Test_ShardingByPass(t *testing.T) {
 				RowShards: 2,
 			},
 		},
+		testEngineOpts,
 		handler,
+		nil,
 		log.NewNopLogger(),
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
@@ -404,14 +410,15 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, LokiCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, DefaultCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
 			maxQueryParallelism: 10,
 			queryTimeout:        time.Second,
 		},
-		0)
+		0,
+		nil)
 	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
@@ -468,7 +475,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		fakeLimits{
 			maxQueryParallelism: 10,
 		},
-		LokiCodec,
+		DefaultCodec,
 	)
 	ctx := user.InjectOrgID(context.Background(), "1")
 
@@ -689,7 +696,9 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 
 			mware := newASTMapperware(
 				confs,
+				testEngineOpts,
 				handler,
+				nil,
 				log.NewNopLogger(),
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
@@ -769,7 +778,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				fakeLimits{
 					maxQueryParallelism: 10,
 				},
-				LokiCodec,
+				DefaultCodec,
 			)
 
 			_, err := mware.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -791,4 +800,48 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 			require.Equal(t, tc.numExpectedShards, called)
 		})
 	}
+}
+
+func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
+	engineOpts := testEngineOpts
+	engineOpts.MaxLookBackPeriod = 1 * time.Hour
+
+	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		return &LokiResponse{}, nil
+	})
+
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		// This is the actual check that we're testing.
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{
+				Bytes: 1 << 10,
+			},
+		}, nil
+	})
+
+	mware := newASTMapperware(
+		testSchemasTSDB,
+		engineOpts,
+		queryHandler,
+		statsHandler,
+		log.NewNopLogger(),
+		nilShardingMetrics,
+		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
+		0,
+	)
+
+	lokiReq := &LokiInstantRequest{
+		Query:     `{cluster="dev-us-central-0"}`,
+		Limit:     1000,
+		TimeTs:    testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/loki/api/v1/query",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "foo")
+	_, err := mware.Do(ctx, lokiReq)
+	require.NoError(t, err)
+
 }

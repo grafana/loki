@@ -5,11 +5,11 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.11.3
   creationTimestamp: null
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.2.0
+    app.kubernetes.io/instance: loki-operator-v0.3.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: loki-operator
-    app.kubernetes.io/version: 0.2.0
+    app.kubernetes.io/version: 0.3.0
   name: rulerconfigs.loki.grafana.com
 spec:
   conversion:

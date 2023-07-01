@@ -16,6 +16,7 @@ metadata:
 spec:
   serviceAccountName: {{ include "loki.fullname" $ }}-grafana-agent
   enableConfigReadAPI: {{ .enableConfigReadAPI }}
+  {{- include "grafana-agent.priorityClassName" $ | nindent 2 }}
   logs:
     instanceSelector:
       matchLabels:

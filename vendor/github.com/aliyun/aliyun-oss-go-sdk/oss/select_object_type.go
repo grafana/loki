@@ -107,6 +107,7 @@ func (sr *SelectObjectResponse) readFrames(p []byte) (int, error) {
 			if err != nil || !checkValid {
 				return nn, fmt.Errorf("%s", err.Error())
 			}
+			sr.Frame.OpenLine = false
 		} else if sr.Frame.FrameType == EndFrameType {
 			err = sr.analysisEndFrame()
 			if err != nil {

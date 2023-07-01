@@ -56,21 +56,25 @@ var defaultJournalReaderFunc = func(c sdjournal.JournalReaderConfig) (journalRea
 	return sdjournal.NewJournalReader(c)
 }
 
-var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor string) (*sdjournal.JournalEntry, error) {
-	var (
-		journal *sdjournal.Journal
-		err     error
-	)
+var defaultJournalEntryFunc = func(c sdjournal.JournalReaderConfig, cursor string) (entry *sdjournal.JournalEntry, err error) {
+	var journal *sdjournal.Journal
 
 	if c.Path != "" {
 		journal, err = sdjournal.NewJournalFromDir(c.Path)
 	} else {
 		journal, err = sdjournal.NewJournal()
 	}
-
 	if err != nil {
 		return nil, err
-	} else if err := journal.SeekCursor(cursor); err != nil {
+	}
+	defer func() {
+		if errClose := journal.Close(); err == nil {
+			err = errClose
+		}
+	}()
+
+	err = journal.SeekCursor(cursor)
+	if err != nil {
 		return nil, err
 	}
 
@@ -206,7 +210,7 @@ func journalTargetWithReader(
 					return
 				}
 
-				if err == syscall.EBADMSG || err == io.EOF {
+				if err == syscall.EBADMSG || err == io.EOF || strings.HasPrefix(err.Error(), "failed to iterate journal:") {
 					level.Error(t.logger).Log("msg", "unable to follow journal", "err", err.Error())
 					return
 				}

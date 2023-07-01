@@ -7,9 +7,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+
+	"github.com/grafana/dskit/flagext"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -32,43 +35,136 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
-	// BoltDB Shipper is supposed to be run as a singleton.
-	// This could also be done in NewBoltDBIndexClientWithShipper factory method but we are doing it here because that method is used
-	// in tests for creating multiple instances of it at a time.
-	boltDBIndexClientWithShipper index.Client
+	indexGatewayClient index.Client
+	// singleton for each period
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
 )
 
-// ResetBoltDBIndexClientWithShipper allows to reset the singleton.
+// ResetBoltDBIndexClientsWithShipper allows to reset the singletons.
 // MUST ONLY BE USED IN TESTS
-func ResetBoltDBIndexClientWithShipper() {
-	if boltDBIndexClientWithShipper == nil {
-		return
+func ResetBoltDBIndexClientsWithShipper() {
+	for _, client := range boltdbIndexClientsWithShipper {
+		client.Stop()
 	}
-	boltDBIndexClientWithShipper.Stop()
-	boltDBIndexClientWithShipper = nil
+
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+
+	if indexGatewayClient != nil {
+		indexGatewayClient.Stop()
+		indexGatewayClient = nil
+	}
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
 type StoreLimits interface {
 	downloads.Limits
 	stores.StoreLimits
+	indexgateway.Limits
 	CardinalityLimit(string) int
+}
+
+// Storage configs defined as Named stores don't get any defaults as they do not
+// register flags. To get around this we implement Unmarshaler interface that
+// assigns the defaults before calling unmarshal.
+
+// We cannot implement Unmarshaler directly on aws.StorageConfig or other stores
+// as it would end up overriding values set as part of ApplyDynamicConfig().
+// Note: we unmarshal a second time after applying dynamic configs
+//
+// Implementing the Unmarshaler for Named*StorageConfig types is fine as
+// we do not apply any dynamic config on them.
+
+type NamedAWSStorageConfig aws.StorageConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedAWSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*aws.StorageConfig)(cfg))
+	return unmarshal((*aws.StorageConfig)(cfg))
+}
+
+func (cfg *NamedAWSStorageConfig) Validate() error {
+	return (*aws.StorageConfig)(cfg).Validate()
+}
+
+type NamedBlobStorageConfig azure.BlobStorageConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedBlobStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*azure.BlobStorageConfig)(cfg))
+	return unmarshal((*azure.BlobStorageConfig)(cfg))
+}
+
+func (cfg *NamedBlobStorageConfig) Validate() error {
+	return (*azure.BlobStorageConfig)(cfg).Validate()
+}
+
+type NamedBOSStorageConfig baidubce.BOSStorageConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedBOSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*baidubce.BOSStorageConfig)(cfg))
+	return unmarshal((*baidubce.BOSStorageConfig)(cfg))
+}
+
+type NamedFSConfig local.FSConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedFSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*local.FSConfig)(cfg))
+	return unmarshal((*local.FSConfig)(cfg))
+}
+
+type NamedGCSConfig gcp.GCSConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedGCSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*gcp.GCSConfig)(cfg))
+	return unmarshal((*gcp.GCSConfig)(cfg))
+}
+
+type NamedOssConfig alibaba.OssConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedOssConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*alibaba.OssConfig)(cfg))
+	return unmarshal((*alibaba.OssConfig)(cfg))
+}
+
+type NamedSwiftConfig openstack.SwiftConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedSwiftConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*openstack.SwiftConfig)(cfg))
+	return unmarshal((*openstack.SwiftConfig)(cfg))
+}
+
+func (cfg *NamedSwiftConfig) Validate() error {
+	return (*openstack.SwiftConfig)(cfg).Validate()
+}
+
+type NamedCOSConfig ibmcloud.COSConfig
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (cfg *NamedCOSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	flagext.DefaultValues((*ibmcloud.COSConfig)(cfg))
+	return unmarshal((*ibmcloud.COSConfig)(cfg))
 }
 
 // NamedStores helps configure additional object stores from a given storage provider
 type NamedStores struct {
-	AWS          map[string]aws.StorageConfig         `yaml:"aws"`
-	Azure        map[string]azure.BlobStorageConfig   `yaml:"azure"`
-	BOS          map[string]baidubce.BOSStorageConfig `yaml:"bos"`
-	Filesystem   map[string]local.FSConfig            `yaml:"filesystem"`
-	GCS          map[string]gcp.GCSConfig             `yaml:"gcs"`
-	AlibabaCloud map[string]alibaba.OssConfig         `yaml:"alibabacloud"`
-	Swift        map[string]openstack.SwiftConfig     `yaml:"swift"`
-	COS          map[string]ibmcloud.COSConfig        `yaml:"cos"`
+	AWS          map[string]NamedAWSStorageConfig  `yaml:"aws"`
+	Azure        map[string]NamedBlobStorageConfig `yaml:"azure"`
+	BOS          map[string]NamedBOSStorageConfig  `yaml:"bos"`
+	Filesystem   map[string]NamedFSConfig          `yaml:"filesystem"`
+	GCS          map[string]NamedGCSConfig         `yaml:"gcs"`
+	AlibabaCloud map[string]NamedOssConfig         `yaml:"alibabacloud"`
+	Swift        map[string]NamedSwiftConfig       `yaml:"swift"`
+	COS          map[string]NamedCOSConfig         `yaml:"cos"`
 
 	// contains mapping from named store reference name to store type
 	storeType map[string]string `yaml:"-"`
@@ -252,8 +348,8 @@ func (cfg *Config) Validate() error {
 }
 
 // NewIndexClient makes a new index client of the desired type.
-func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, ownsTenantFn downloads.IndexGatewayOwnsTenant, registerer prometheus.Registerer) (index.Client, error) {
-	switch name {
+func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger) (index.Client, error) {
+	switch periodCfg.IndexType {
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
 		return store, nil
@@ -280,33 +376,47 @@ func NewIndexClient(name string, cfg Config, schemaCfg config.SchemaConfig, limi
 	case config.StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.BoltDBShipperType:
-		if boltDBIndexClientWithShipper != nil {
-			return boltDBIndexClientWithShipper, nil
-		}
-
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
-			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, util_log.Logger)
+			if indexGatewayClient != nil {
+				return indexGatewayClient, nil
+			}
+
+			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
 			if err != nil {
 				return nil, err
 			}
 
-			boltDBIndexClientWithShipper = gateway
+			indexGatewayClient = gateway
 			return gateway, nil
 		}
 
-		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
+		if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
+			return client, nil
+		}
+
+		objectType := periodCfg.ObjectType
+		if cfg.BoltDBShipperConfig.SharedStoreType != "" {
+			objectType = cfg.BoltDBShipperConfig.SharedStoreType
+		}
+
+		objectClient, err := NewObjectClient(objectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
 
-		tableRanges := getIndexStoreTableRanges(config.BoltDBShipperType, schemaCfg.Configs)
+		var filterFn downloads.TenantFilter
+		if shardingStrategy != nil {
+			filterFn = shardingStrategy.FilterTenants
+		}
+		shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+		if err != nil {
+			return nil, err
+		}
 
-		boltDBIndexClientWithShipper, err = shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits,
-			ownsTenantFn, tableRanges, registerer)
-
-		return boltDBIndexClientWithShipper, err
+		boltdbIndexClientsWithShipper[periodCfg.From] = shipper
+		return shipper, nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", periodCfg.IndexType, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
 	}
 }
 
@@ -493,43 +603,47 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 	case config.StorageTypeAlibabaCloud:
 		ossCfg := cfg.AlibabaStorageConfig
 		if namedStore != "" {
-			var ok bool
-			ossCfg, ok = cfg.NamedStores.AlibabaCloud[namedStore]
+			nsCfg, ok := cfg.NamedStores.AlibabaCloud[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named alibabacloud oss storage config %s", name)
 			}
+
+			ossCfg = (alibaba.OssConfig)(nsCfg)
 		}
 		return alibaba.NewOssObjectClient(context.Background(), ossCfg)
 	case config.StorageTypeGCS:
 		gcsCfg := cfg.GCSConfig
 		if namedStore != "" {
-			var ok bool
-			gcsCfg, ok = cfg.NamedStores.GCS[namedStore]
+			nsCfg, ok := cfg.NamedStores.GCS[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named gcs storage config %s", name)
 			}
+
+			gcsCfg = (gcp.GCSConfig)(nsCfg)
 		}
 
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 	case config.StorageTypeAzure:
 		azureCfg := cfg.AzureStorageConfig
 		if namedStore != "" {
-			var ok bool
-			azureCfg, ok = cfg.NamedStores.Azure[namedStore]
+			nsCfg, ok := cfg.NamedStores.Azure[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named azure storage config %s", name)
 			}
+
+			azureCfg = (azure.BlobStorageConfig)(nsCfg)
 		}
 
 		return azure.NewBlobStorage(&azureCfg, clientMetrics.AzureMetrics, cfg.Hedging)
 	case config.StorageTypeSwift:
 		swiftCfg := cfg.Swift
 		if namedStore != "" {
-			var ok bool
-			swiftCfg, ok = cfg.NamedStores.Swift[namedStore]
+			nsCfg, ok := cfg.NamedStores.Swift[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named swift storage config %s", name)
 			}
+
+			swiftCfg = (openstack.SwiftConfig)(nsCfg)
 		}
 
 		return openstack.NewSwiftObjectClient(swiftCfg, cfg.Hedging)
@@ -538,22 +652,24 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 	case config.StorageTypeFileSystem:
 		fsCfg := cfg.FSConfig
 		if namedStore != "" {
-			var ok bool
-			fsCfg, ok = cfg.NamedStores.Filesystem[namedStore]
+			nsCfg, ok := cfg.NamedStores.Filesystem[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named filesystem storage config %s", name)
 			}
+
+			fsCfg = (local.FSConfig)(nsCfg)
 		}
 
 		return local.NewFSObjectClient(fsCfg)
 	case config.StorageTypeBOS:
 		bosCfg := cfg.BOSStorageConfig
 		if namedStore != "" {
-			var ok bool
-			bosCfg, ok = cfg.NamedStores.BOS[namedStore]
+			nsCfg, ok := cfg.NamedStores.BOS[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named bos storage config %s", name)
 			}
+
+			bosCfg = (baidubce.BOSStorageConfig)(nsCfg)
 		}
 
 		return baidubce.NewBOSObjectStorage(&bosCfg)
@@ -561,11 +677,12 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 	case config.StorageTypeCOS:
 		cosCfg := cfg.COSConfig
 		if namedStore != "" {
-			var ok bool
-			cosCfg, ok = cfg.NamedStores.COS[namedStore]
+			nsCfg, ok := cfg.NamedStores.COS[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named cos storage config %s", name)
 			}
+
+			cosCfg = (ibmcloud.COSConfig)(nsCfg)
 		}
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 	default:

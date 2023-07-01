@@ -440,9 +440,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels(nil)
+		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels()
 	} else {
-		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels(nil)
+		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res
@@ -459,13 +459,13 @@ func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (st
 	if ok {
 		return s.s, s.ok
 	}
-	new, ok := createNew()
+	newStr, ok := createNew()
 	if len(i) >= MaxInternedStrings {
-		return new, ok
+		return newStr, ok
 	}
 	i[string(data)] = struct {
 		s  string
 		ok bool
-	}{s: new, ok: ok}
-	return new, ok
+	}{s: newStr, ok: ok}
+	return newStr, ok
 }

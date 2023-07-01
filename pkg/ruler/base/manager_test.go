@@ -118,7 +118,7 @@ func (m *mockRulesManager) Stop() {
 	close(m.done)
 }
 
-func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, ruleGroupPostProcessFunc promRules.RuleGroupPostProcessFunc) error {
+func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, _ promRules.GroupEvalIterationFunc) error {
 	return nil
 }
 

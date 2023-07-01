@@ -16,7 +16,7 @@ metadata:
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=5.4.0-0 <5.7.0'
+    olm.skipRange: '>=5.6.0-0 <5.8.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift
@@ -254,6 +254,23 @@ spec:
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.global.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -266,7 +283,7 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
@@ -321,6 +338,23 @@ spec:
         path: limits.tenants.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.tenants.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -333,7 +367,7 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
@@ -363,12 +397,37 @@ spec:
       - description: NoProxy configures the NO_PROXY/no_proxy env variable.
         displayName: NoProxy
         path: proxy.noProxy
-      - description: ReplicationFactor defines the policy for log stream replication.
+      - description: Replication defines the configuration for Loki data replication.
+        displayName: Replication Spec
+        path: replication
+      - description: Factor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replication.factor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
+        displayName: Zones Spec
+        path: replication.zones
+      - description: MaxSkew describes the maximum degree to which Pods can be unevenly
+          distributed.
+        displayName: Max Skew
+        path: replication.zones[0].maxSkew
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: TopologyKey is the key that defines a topology in the Nodes'
+          labels.
+        displayName: Topology Key
+        path: replication.zones[0].topologyKey
+      - description: 'Deprecated: Please use replication.factor instead. This field
+          will be removed in future versions of this CRD. ReplicationFactor defines
+          the policy for log stream replication.'
         displayName: Replication Factor
         path: replicationFactor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Rules defines the spec for the ruler component
+      - description: Rules defines the spec for the ruler component.
         displayName: Rules
         path: rules
         x-descriptors:
@@ -417,6 +476,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:gcs
         - urn:alm:descriptor:com.tectonic.ui:select:s3
         - urn:alm:descriptor:com.tectonic.ui:select:swift
+        - urn:alm:descriptor:com.tectonic.ui:select:alibabacloud
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
@@ -438,7 +498,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:StorageClass
       - description: Template defines the resource/limits/tolerations/nodeselectors
-          per component
+          per component.
         displayName: Node Placement
         path: template
         x-descriptors:
@@ -446,6 +506,12 @@ spec:
       - description: Compactor defines the compaction component spec.
         displayName: Compactor pods
         path: template.compactor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.compactor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.compactor.replicas
@@ -454,6 +520,12 @@ spec:
       - description: Distributor defines the distributor component spec.
         displayName: Distributor pods
         path: template.distributor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.distributor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.distributor.replicas
@@ -462,6 +534,12 @@ spec:
       - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.gateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.gateway.replicas
@@ -470,6 +548,12 @@ spec:
       - description: IndexGateway defines the index gateway component spec.
         displayName: Index Gateway pods
         path: template.indexGateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.indexGateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.indexGateway.replicas
@@ -478,6 +562,12 @@ spec:
       - description: Ingester defines the ingester component spec.
         displayName: Ingester pods
         path: template.ingester
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ingester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
@@ -486,6 +576,12 @@ spec:
       - description: Querier defines the querier component spec.
         displayName: Querier pods
         path: template.querier
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.querier.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.querier.replicas
@@ -494,6 +590,12 @@ spec:
       - description: QueryFrontend defines the query frontend component spec.
         displayName: Query Frontend pods
         path: template.queryFrontend
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.queryFrontend.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.queryFrontend.replicas
@@ -502,6 +604,12 @@ spec:
       - description: Ruler defines the ruler component spec.
         displayName: Ruler pods
         path: template.ruler
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ruler.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ruler.replicas
@@ -713,7 +821,7 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
@@ -776,7 +884,7 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
+      - description: MaxQuerySeries defines the maximum of unique series that
           is returned by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries

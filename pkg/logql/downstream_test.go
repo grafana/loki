@@ -370,6 +370,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// range with offset
 		{`rate({a=~".+"}[2s] offset 2s)`, time.Second},
+		{`rate({a=~".+"}[4s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[5s] offset 0s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset -1s)`, 2 * time.Second},
 
 		// label_replace
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "", "", "", "")`, time.Second},
@@ -404,7 +408,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)
@@ -429,13 +433,13 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
-		require.Equal(t, len(a.Points), len(b.Points))
+		require.Equal(t, len(a.Floats), len(b.Floats))
 
-		for j := 0; j < len(a.Points); j++ {
-			aSample := &a.Points[j]
-			aSample.V = math.Round(aSample.V*1e6) / 1e6
-			bSample := &b.Points[j]
-			bSample.V = math.Round(bSample.V*1e6) / 1e6
+		for j := 0; j < len(a.Floats); j++ {
+			aSample := &a.Floats[j]
+			aSample.F = math.Round(aSample.F*1e6) / 1e6
+			bSample := &b.Floats[j]
+			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
 		require.Equal(t, a, b)
 	}

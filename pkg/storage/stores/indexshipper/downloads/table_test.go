@@ -32,7 +32,7 @@ func newStorageClientWithFakeObjectsInList(storageClient storage.Client) storage
 	return storageClientWithFakeObjectsInList{storageClient}
 }
 
-func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]storage.IndexFile, []string, error) {
+func (o storageClientWithFakeObjectsInList) ListFiles(ctx context.Context, tableName string, _ bool) ([]storage.IndexFile, []string, error) {
 	files, userIDs, err := o.Client.ListFiles(ctx, tableName, true)
 	if err != nil {
 		return nil, nil, err
@@ -81,7 +81,7 @@ type mockIndexSet struct {
 	lastUsedAt  time.Time
 }
 
-func (m *mockIndexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallback) error {
+func (m *mockIndexSet) ForEach(_ context.Context, callback index.ForEachIndexCallback) error {
 	for _, idx := range m.indexes {
 		if err := callback(false, idx); err != nil {
 			return err
@@ -329,7 +329,7 @@ func TestTable_Sync(t *testing.T) {
 	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, newDB), []byte(newDB), 0755))
 
 	// sync the table
-	table.storageClient.RefreshIndexListCache(context.Background())
+	table.storageClient.RefreshIndexTableCache(context.Background(), table.name)
 	require.NoError(t, table.Sync(context.Background()))
 
 	// check that table got the new index and dropped the deleted index
@@ -362,7 +362,7 @@ func TestTable_Sync(t *testing.T) {
 	// first, let us add a new file and refresh the index list cache
 	oneMoreDB := "one-more-db"
 	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
-	table.storageClient.RefreshIndexListCache(context.Background())
+	table.storageClient.RefreshIndexTableCache(context.Background(), table.name)
 
 	// now, without syncing the table, let us compact the index in storage
 	compactedDBName := "compacted-db"

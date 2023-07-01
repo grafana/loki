@@ -2,12 +2,14 @@ package config
 
 import (
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+	"k8s.io/utils/pointer"
 
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/stretchr/testify/require"
-	"k8s.io/utils/pointer"
 )
 
 func TestBuild_ConfigAndRuntimeConfig_NoRuntimeConfigGenerated(t *testing.T) {
@@ -110,6 +112,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -150,8 +153,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -173,7 +177,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -184,12 +190,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -243,6 +252,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -350,6 +364,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -390,8 +405,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -418,7 +434,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -429,12 +447,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 				Tenants: map[string]lokiv1.LimitsTemplateSpec{
@@ -513,6 +534,11 @@ overrides:
 				},
 			},
 		},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -523,7 +549,9 @@ overrides:
 func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -534,6 +562,8 @@ func TestBuild_ConfigAndRuntimeConfig_CreateLokiConfigFailed(t *testing.T) {
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					// making it nil so that the template is not generated and error is returned
 					QueryLimits: nil,
@@ -695,6 +725,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -789,8 +820,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -812,7 +844,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -823,12 +857,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -929,6 +966,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -1036,6 +1078,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -1130,8 +1173,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -1153,7 +1197,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1164,12 +1210,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -1271,6 +1320,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -1378,6 +1432,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -1485,8 +1540,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -1508,7 +1564,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1519,12 +1577,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -1643,6 +1704,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -1758,6 +1824,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -1798,8 +1865,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -1831,7 +1899,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -1842,12 +1912,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 					Retention: &lokiv1.RetentionLimitSpec{
 						Days: 15,
@@ -1960,6 +2033,11 @@ overrides:
 			Enabled:           true,
 			DeleteWorkerCount: 50,
 		},
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -2067,6 +2145,7 @@ limits_config:
   query_timeout: 2m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -2187,8 +2266,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -2210,7 +2290,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2221,12 +2303,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "2m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -2362,6 +2447,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -2490,6 +2580,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -2547,8 +2638,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   tls_min_version: VersionTLS12
   tls_cipher_suites: cipher1,cipher2
   http_tls_config:
@@ -2590,7 +2682,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2601,12 +2695,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -2691,6 +2788,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -2798,6 +2900,7 @@ limits_config:
   query_timeout: 2m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -2918,8 +3021,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -2969,7 +3073,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -2980,12 +3086,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "2m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -3170,6 +3279,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)
@@ -3278,6 +3392,8 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_addr: ${HASH_RING_INSTANCE_ADDR}
+  advertise_port: 7946
   bind_port: 7946
   join_members:
     - loki-gossip-ring-lokistack-dev.default.svc.cluster.local:7946
@@ -3318,8 +3434,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: 30s
+  http_server_read_timeout: 30s
+  http_server_write_timeout: 10m0s
   log_level: info
 storage_config:
   boltdb_shipper:
@@ -3341,7 +3458,9 @@ overrides:
 `
 	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
-			ReplicationFactor: 1,
+			Replication: &lokiv1.ReplicationSpec{
+				Factor: 1,
+			},
 			Limits: &lokiv1.LimitsSpec{
 				Global: &lokiv1.LimitsTemplateSpec{
 					IngestionLimits: &lokiv1.IngestionLimitSpec{
@@ -3352,12 +3471,15 @@ overrides:
 						MaxLabelNamesPerSeries:    30,
 						MaxGlobalStreamsPerTenant: 0,
 						MaxLineSize:               256000,
+						PerStreamRateLimit:        3,
+						PerStreamRateLimitBurst:   15,
 					},
 					QueryLimits: &lokiv1.QueryLimitSpec{
 						MaxEntriesLimitPerQuery: 5000,
 						MaxChunksPerQuery:       2000000,
 						MaxQuerySeries:          500,
 						QueryTimeout:            "1m",
+						CardinalityLimit:        100000,
 					},
 				},
 			},
@@ -3412,6 +3534,11 @@ overrides:
 			},
 		},
 		EnableRemoteReporting: true,
+		HTTPTimeouts: HTTPTimeoutConfig{
+			IdleTimeout:  30 * time.Second,
+			ReadTimeout:  30 * time.Second,
+			WriteTimeout: 10 * time.Minute,
+		},
 	}
 	cfg, rCfg, err := Build(opts)
 	require.NoError(t, err)

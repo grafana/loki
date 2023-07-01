@@ -25,6 +25,8 @@ import (
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/instrument"
@@ -36,7 +38,6 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/querier/series"
 	"github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -253,14 +254,15 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 
 	fullBody := resp.Body
 	// created a limited reader to avoid logging the entire response body should it be very large
-	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 1024)
+	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 128)
 
 	// TODO(dannyk): consider retrying if the rule has a very high interval, or the rule is very sensitive to missing samples
 	//   i.e. critical alerts or recording rules producing crucial RemoteEvaluatorMetrics series
 	if resp.Code/100 != 2 {
 		r.metrics.failedEvals.WithLabelValues("upstream_error", orgID).Inc()
 
-		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", limitedBody)
+		respBod, _ := io.ReadAll(limitedBody)
+		level.Warn(log).Log("msg", "rule evaluation failed with non-2xx response", "response_code", resp.Code, "response_body", respBod)
 		return nil, fmt.Errorf("unsuccessful/unexpected response - status code %d", resp.Code)
 	}
 
@@ -298,8 +300,9 @@ func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTT
 
 		for _, s := range vec {
 			res = append(res, promql.Sample{
-				Metric: series.MetricToLabels(s.Metric),
-				Point:  promql.Point{V: float64(s.Value), T: int64(s.Timestamp)},
+				Metric: metricToLabels(s.Metric),
+				F:      float64(s.Value),
+				T:      int64(s.Timestamp),
 			})
 		}
 
@@ -324,6 +327,17 @@ func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTT
 	default:
 		return nil, fmt.Errorf("unsupported result type: %q", decoded.Data.ResultType)
 	}
+}
+
+func metricToLabels(m model.Metric) labels.Labels {
+	b := labels.NewScratchBuilder(len(m))
+	for k, v := range m {
+		b.Add(string(k), string(v))
+	}
+	// PromQL expects all labels to be sorted! In general, anyone constructing
+	// a labels.Labels list is responsible for sorting it during construction time.
+	b.Sort()
+	return b.Labels()
 }
 
 // QueryFrontendConfig defines query-frontend transport configuration.

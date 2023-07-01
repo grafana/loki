@@ -172,7 +172,7 @@ func Test_IPLabelFilterTy(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			lf := NewIPLabelFilter(c.pat, c.label, c.ty)
 
-			lbs := labels.Labels{labels.Label{Name: c.label, Value: string(c.val)}}
+			lbs := labels.FromStrings(c.label, string(c.val))
 			lbb := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 			_, ok := lf.Process(0, []byte("x"), lbb)
 			if c.fail {
