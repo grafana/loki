@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -19,7 +20,10 @@ import (
 	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/index"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -29,7 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/usagestats"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -53,6 +57,11 @@ var (
 		Name:      "ingester_memory_streams",
 		Help:      "The total number of streams in memory per tenant.",
 	}, []string{"tenant"})
+	memoryStreamsLabelsBytes = promauto.NewGauge(prometheus.GaugeOpts{
+		Namespace: "loki",
+		Name:      "ingester_memory_streams_labels_bytes",
+		Help:      "Total bytes of labels of the streams in memory.",
+	})
 	streamsCreatedTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "ingester_streams_created_total",
@@ -64,7 +73,7 @@ var (
 		Help:      "The total number of streams removed per tenant.",
 	}, []string{"tenant"})
 
-	streamsCountStats = usagestats.NewInt("ingester_streams_count")
+	streamsCountStats = analytics.NewInt("ingester_streams_count")
 )
 
 type instance struct {
@@ -97,6 +106,8 @@ type instance struct {
 
 	chunkFilter          chunk.RequestChunkFilterer
 	streamRateCalculator *StreamRateCalculator
+
+	writeFailures *writefailures.Manager
 }
 
 func newInstance(
@@ -110,6 +121,7 @@ func newInstance(
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
 	streamRateCalculator *StreamRateCalculator,
+	writeFailures *writefailures.Manager,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -136,6 +148,8 @@ func newInstance(
 		chunkFilter: chunkFilter,
 
 		streamRateCalculator: streamRateCalculator,
+
+		writeFailures: writeFailures,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -223,7 +237,7 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 	return appendErr
 }
 
-func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	// record is only nil when replaying WAL. We don't want to drop data when replaying a WAL after
 	// reducing the stream limits, for instance.
 	var err error
@@ -247,7 +261,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 			bytes += len(e.Line)
 		}
 		validation.DiscardedBytes.WithLabelValues(validation.StreamLimit, i.instanceID).Add(float64(bytes))
-		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg)
+		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, validation.StreamLimitErrorMsg, i.instanceID)
 	}
 
 	labels, err := syntax.ParseLabels(pushReqStream.Labels)
@@ -265,7 +279,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -279,6 +293,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 	}
 
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.streamsCreatedTotal.Inc()
 	i.addTailersToNewStream(s)
 	streamsCountStats.Add(1)
@@ -296,10 +311,11 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *WALRecord
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
+	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.addTailersToNewStream(s)
 
 	return s
@@ -308,7 +324,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 // getOrCreateStream returns the stream or creates it.
 // It's safe to use this function if returned stream is not consistency sensitive to streamsMap(e.g. ingesterRecoverer),
 // otherwise use streamsMap.LoadOrStoreNew with locking stream's chunkMtx inside.
-func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *WALRecord) (*stream, error) {
+func (i *instance) getOrCreateStream(pushReqStream logproto.Stream, record *wal.Record) (*stream, error) {
 	s, _, err := i.streams.LoadOrStoreNew(pushReqStream.Labels, func() (*stream, error) {
 		return i.createStream(pushReqStream, record)
 	}, nil)
@@ -322,6 +338,7 @@ func (i *instance) removeStream(s *stream) {
 		i.index.Delete(s.labels, s.fp)
 		i.streamsRemovedTotal.Inc()
 		memoryStreams.WithLabelValues(i.instanceID).Dec()
+		memoryStreamsLabelsBytes.Sub(float64(len(s.labels.String())))
 		streamsCountStats.Add(-1)
 	}
 }
@@ -416,11 +433,14 @@ func (i *instance) QuerySample(ctx context.Context, req logql.SelectSampleParams
 	if len(shards) == 1 {
 		shard = &shards[0]
 	}
-
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
 	err = i.forMatchingStreams(
 		ctx,
 		req.Start,
-		expr.Selector().Matchers(),
+		selector.Matchers(),
 		shard,
 		func(stream *stream) error {
 			iter, err := stream.SampleIterator(ctx, stats, req.Start, req.End, extractor.ForStream(stream.labels))
@@ -467,15 +487,15 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 		}, nil
 	}
 
-	labels := make([]string, 0)
+	labels := util.NewUniqueStrings(0)
 	err := i.forMatchingStreams(ctx, *req.Start, matchers, nil, func(s *stream) error {
 		for _, label := range s.labels {
 			if req.Values && label.Name == req.Name {
-				labels = append(labels, label.Value)
+				labels.Add(label.Value)
 				continue
 			}
 			if !req.Values {
-				labels = append(labels, label.Name)
+				labels.Add(label.Name)
 			}
 		}
 		return nil
@@ -485,7 +505,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 	}
 
 	return &logproto.LabelResponse{
-		Values: labels,
+		Values: labels.Strings(),
 	}, nil
 }
 
@@ -548,6 +568,9 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "instance.GetStats")
+	defer sp.Finish()
+
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil {
 		return nil, err
@@ -557,13 +580,10 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	from, through := req.From.Time(), req.Through.Time()
 
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
-		// checks for equality against chunk flush fields
-		var zeroValueTime time.Time
-
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
 			s.chunkMtx.RLock()
-			res.Streams++
+			var hasChunkOverlap bool
 			for _, chk := range s.chunks {
 				// Consider chunks which overlap our time range
 				// and haven't been flushed.
@@ -571,12 +591,17 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 				// by the TSDB manager+shipper
 				chkFrom, chkThrough := chk.chunk.Bounds()
 
-				if !chk.flushed.Equal(zeroValueTime) && from.Before(chkThrough) && through.After(chkFrom) {
+				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+					hasChunkOverlap = true
 					res.Chunks++
-					res.Entries += uint64(chk.chunk.Size())
-					res.Bytes += uint64(chk.chunk.UncompressedSize())
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					res.Entries += uint64(factor * float64(chk.chunk.Size()))
+					res.Bytes += uint64(factor * float64(chk.chunk.UncompressedSize()))
 				}
 
+			}
+			if hasChunkOverlap {
+				res.Streams++
 			}
 			s.chunkMtx.RUnlock()
 		}
@@ -585,6 +610,83 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
+	sp.LogKV(
+		"from", from,
+		"through", through,
+		"matchers", syntax.MatchersString(matchers),
+		"streams", res.Streams,
+		"chunks", res.Chunks,
+		"bytes", res.Bytes,
+		"entries", res.Entries,
+	)
+
+	return res, nil
+}
+
+func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	matchAny := len(matchers) == 0
+	labelsToMatch := make(map[string]struct{})
+	for _, m := range matchers {
+		if m.Name == "" {
+			matchAny = true
+			continue
+		}
+
+		labelsToMatch[m.Name] = struct{}{}
+	}
+
+	seriesNames := make(map[uint64]string)
+	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+
+	from, through := req.From.Time(), req.Through.Time()
+	volumes := make(map[string]uint64)
+	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
+		// Consider streams which overlap our time range
+		if shouldConsiderStream(s, from, through) {
+			s.chunkMtx.RLock()
+
+			var size uint64
+			for _, chk := range s.chunks {
+				// Consider chunks which overlap our time range
+				// and haven't been flushed.
+				// Flushed chunks will already be counted
+				// by the TSDB manager+shipper
+				chkFrom, chkThrough := chk.chunk.Bounds()
+
+				if chk.flushed.IsZero() && from.Before(chkThrough) && through.After(chkFrom) {
+					factor := util.GetFactorOfTime(from.UnixNano(), through.UnixNano(), chkFrom.UnixNano(), chkThrough.UnixNano())
+					size += uint64(float64(chk.chunk.UncompressedSize()) * factor)
+				}
+			}
+
+			seriesLabels = seriesLabels[:0]
+			for _, l := range s.labels {
+				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					seriesLabels = append(seriesLabels, l)
+				}
+			}
+
+			// If the labels are < 1k, this does not alloc
+			// https://github.com/prometheus/prometheus/pull/8025
+			hash := seriesLabels.Hash()
+			if _, ok := seriesNames[hash]; !ok {
+				seriesNames[hash] = seriesLabels.String()
+			}
+
+			volumes[seriesNames[hash]] += size
+			s.chunkMtx.RUnlock()
+		}
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 

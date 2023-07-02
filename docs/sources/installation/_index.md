@@ -1,5 +1,6 @@
 ---
 title: Installation
+description: Installation
 weight: 200
 ---
 
@@ -7,14 +8,15 @@ weight: 200
 
 There are several methods of installing Loki and Promtail:
 
-- [Install using Tanka (recommended)](tanka/)
-- [Install using Helm](helm/)
-- [Install through Docker or Docker Compose](docker/)
-- [Install and run locally](local/)
-- [Install from source](install-from-source/)
+- [Install using Helm (recommended)]({{< relref "./helm" >}})
+- [Install using Tanka]({{< relref "./tanka" >}})
+- [Install through Docker or Docker Compose]({{< relref "./docker" >}})
+- [Install and run locally]({{< relref "./local" >}})
+- [Install from source]({{< relref "./install-from-source" >}})
 
-The [Sizing Tool](sizing/) can be used to determine the proper cluster sizing
-given an expected ingestion rate and query performance. 
+The [Sizing Tool]({{< relref "./sizing" >}}) can be used to determine the proper cluster sizing
+given an expected ingestion rate and query performance.  It targets the Helm
+installation on Kubernetes.
 
 ## General process
 

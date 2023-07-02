@@ -48,14 +48,40 @@ func shards(r *http.Request) []string {
 
 func bounds(r *http.Request) (time.Time, time.Time, error) {
 	now := time.Now()
-	start, err := parseTimestamp(r.Form.Get("start"), now.Add(-defaultSince))
-	if err != nil {
-		return time.Time{}, time.Time{}, err
+	start := r.Form.Get("start")
+	end := r.Form.Get("end")
+	since := r.Form.Get("since")
+	return determineBounds(now, start, end, since)
+}
+
+func determineBounds(now time.Time, startString, endString, sinceString string) (time.Time, time.Time, error) {
+	since := defaultSince
+	if sinceString != "" {
+		d, err := model.ParseDuration(sinceString)
+		if err != nil {
+			return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'since' parameter")
+		}
+		since = time.Duration(d)
 	}
-	end, err := parseTimestamp(r.Form.Get("end"), now)
+
+	end, err := parseTimestamp(endString, now)
 	if err != nil {
-		return time.Time{}, time.Time{}, err
+		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'end' parameter")
 	}
+
+	// endOrNow is used to apply a default for the start time or an offset if 'since' is provided.
+	// we want to use the 'end' time so long as it's not in the future as this should provide
+	// a more intuitive experience when end time is in the future.
+	endOrNow := end
+	if end.After(now) {
+		endOrNow = now
+	}
+
+	start, err := parseTimestamp(startString, endOrNow.Add(-since))
+	if err != nil {
+		return time.Time{}, time.Time{}, errors.Wrap(err, "could not parse 'start' parameter")
+	}
+
 	return start, end, nil
 }
 
@@ -98,7 +124,7 @@ func parseInt(value string, def int) (int, error) {
 	return strconv.Atoi(value)
 }
 
-// parseUnixNano parses a ns unix timestamp from a string
+// parseTimestamp parses a ns unix timestamp from a string
 // if the value is empty it returns a default value passed as second parameter
 func parseTimestamp(value string, def time.Time) (time.Time, error) {
 	if value == "" {

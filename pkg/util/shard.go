@@ -6,10 +6,20 @@ import (
 	"math"
 )
 
+// Sharding strategies & algorithms.
 const (
-	// Sharding strategies.
+	// ShardingStrategyDefault shards rule groups across available rulers in the ring.
 	ShardingStrategyDefault = "default"
+	// ShardingStrategyShuffle shards tenants' rule groups across available rulers in the ring using a
+	// shuffle-sharding algorithm.
 	ShardingStrategyShuffle = "shuffle-sharding"
+
+	// ShardingAlgoByGroup is an alias of ShardingStrategyDefault.
+	ShardingAlgoByGroup = "by-group"
+	// ShardingAlgoByRule shards all rules evenly across available rules in the ring, regardless of group.
+	// This can be achieved because currently Loki recording/alerting rules cannot not any inter-dependency, unlike
+	// Prometheus rules, so there's really no need to shard by group. This will eventually become the new default strategy.
+	ShardingAlgoByRule = "by-rule" // this will eventually become the new default strategy.
 )
 
 var (

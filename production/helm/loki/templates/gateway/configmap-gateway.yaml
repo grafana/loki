@@ -1,12 +1,12 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and .Values.gateway.enabled $isSimpleScalable }}
+{{- if and .Values.gateway.enabled  }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
 data:
   nginx.conf: |
-    {{- tpl (ternary .Values.enterprise.nginxConfig.file .Values.gateway.nginxConfig.file .Values.enterprise.enabled) . | nindent 4 }}
+    {{- tpl .Values.gateway.nginxConfig.file . | indent 2 }}
 {{- end }}

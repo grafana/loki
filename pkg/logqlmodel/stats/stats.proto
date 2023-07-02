@@ -41,6 +41,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "result"
   ];
+  Cache statsResult = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "statsResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -61,10 +65,13 @@ message Summary {
   // In addition to internal calculations this is also returned by the HTTP API.
   // Grafana expects time values to be returned in seconds as float.
   double queueTime = 6 [(gogoproto.jsontag) = "queueTime"];
-  // Total of subqueries created to fulfill this query.
+  // Subqueries exists for backwards compatibility reasons and is deprecated. Do not use.
+  // Instead use splits and shards
   int64 subqueries = 7 [(gogoproto.jsontag) = "subqueries"];
   // Total number of result entries returned
   int64 totalEntriesReturned = 8 [(gogoproto.jsontag) = "totalEntriesReturned"];
+  int64 splits = 9 [(gogoproto.jsontag) = "splits"];
+  int64 shards = 10 [(gogoproto.jsontag) = "shards"];
 }
 
 message Querier {

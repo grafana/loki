@@ -45,7 +45,7 @@ type markerStorageWriter struct {
 }
 
 func NewMarkerStorageWriter(workingDir string) (MarkerStorageWriter, error) {
-	dir := filepath.Join(workingDir, markersFolder)
+	dir := filepath.Join(workingDir, MarkersFolder)
 	err := chunk_util.EnsureDirectory(dir)
 	if err != nil {
 		return nil, err
@@ -157,7 +157,7 @@ type markerProcessor struct {
 }
 
 func newMarkerStorageReader(workingDir string, maxParallelism int, minAgeFile time.Duration, sweeperMetrics *sweeperMetrics) (*markerProcessor, error) {
-	folder := filepath.Join(workingDir, markersFolder)
+	folder := filepath.Join(workingDir, MarkersFolder)
 	err := chunk_util.EnsureDirectory(folder)
 	if err != nil {
 		return nil, err
@@ -252,7 +252,7 @@ func (r *markerProcessor) processPath(path string, deleteFunc func(ctx context.C
 		queue = make(chan *keyPair)
 	)
 	// we use a copy to view the file so that we can read and update at the same time.
-	viewFile, err := os.CreateTemp("/tmp/", "marker-view-")
+	viewFile, err := os.CreateTemp("", "marker-view-")
 	if err != nil {
 		return err
 	}
@@ -377,7 +377,7 @@ func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 			return err
 		}
 
-		if d.IsDir() && d.Name() != markersFolder {
+		if d.IsDir() && d.Name() != MarkersFolder {
 			return filepath.SkipDir
 		}
 		if d.IsDir() {

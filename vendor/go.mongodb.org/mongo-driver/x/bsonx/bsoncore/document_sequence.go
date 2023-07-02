@@ -96,8 +96,8 @@ func (ds *DocumentSequence) Empty() bool {
 	}
 }
 
-//ResetIterator resets the iteration point for the Next method to the beginning of the document
-//sequence.
+// ResetIterator resets the iteration point for the Next method to the beginning of the document
+// sequence.
 func (ds *DocumentSequence) ResetIterator() {
 	if ds == nil {
 		return

@@ -931,7 +931,7 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 
 	for itr.Next() {
 		entry := itr.Entry()
-		if filter != nil && filter(entry.Line) {
+		if filter != nil && filter(entry.Timestamp, entry.Line) {
 			continue
 		}
 		if err := newChunk.Append(&entry); err != nil {
@@ -1122,7 +1122,7 @@ type bufferedIterator struct {
 	readBufValid int      // How many bytes are left in readBuf from previous read.
 
 	buf      []byte // The buffer for a single entry.
-	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
+	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
 	closed bool

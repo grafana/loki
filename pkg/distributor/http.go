@@ -1,6 +1,7 @@
 package distributor
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -34,6 +35,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
+
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

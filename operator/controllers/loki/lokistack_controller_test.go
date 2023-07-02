@@ -57,6 +57,7 @@ func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing
 
 	b.ForReturns(b)
 	b.OwnsReturns(b)
+	b.WatchesReturns(b)
 
 	err := c.buildController(b)
 	require.NoError(t, err)
@@ -110,13 +111,13 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			obj:           &appsv1.Deployment{},
 			index:         4,
 			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			pred:          updateOrDeleteWithStatusPred,
 		},
 		{
 			obj:           &appsv1.StatefulSet{},
 			index:         5,
 			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			pred:          updateOrDeleteWithStatusPred,
 		},
 		{
 			obj:           &rbacv1.ClusterRole{},
@@ -151,7 +152,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
-					GatewayRoute: false,
+					Enabled: false,
 				},
 			},
 			pred: updateOrDeleteOnlyPred,
@@ -162,7 +163,7 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 			ownCallsCount: 11,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
-					GatewayRoute: true,
+					Enabled: true,
 				},
 			},
 			pred: updateOrDeleteOnlyPred,
@@ -202,8 +203,8 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 	table := []test{
 		{
 			src:               &source.Kind{Type: &openshiftconfigv1.APIServer{}},
-			index:             0,
-			watchesCallsCount: 1,
+			index:             2,
+			watchesCallsCount: 3,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterTLSPolicy: true,
@@ -213,14 +214,28 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		},
 		{
 			src:               &source.Kind{Type: &openshiftconfigv1.Proxy{}},
-			index:             0,
-			watchesCallsCount: 1,
+			index:             2,
+			watchesCallsCount: 3,
 			featureGates: configv1.FeatureGates{
 				OpenShift: configv1.OpenShiftFeatureGates{
 					ClusterProxy: true,
 				},
 			},
 			pred: updateOrDeleteOnlyPred,
+		},
+		{
+			src:               &source.Kind{Type: &corev1.Service{}},
+			index:             0,
+			watchesCallsCount: 2,
+			featureGates:      configv1.FeatureGates{},
+			pred:              createUpdateOrDeletePred,
+		},
+		{
+			src:               &source.Kind{Type: &corev1.Secret{}},
+			index:             1,
+			watchesCallsCount: 2,
+			featureGates:      configv1.FeatureGates{},
+			pred:              createUpdateOrDeletePred,
 		},
 	}
 	for _, tst := range table {

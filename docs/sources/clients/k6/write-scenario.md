@@ -1,14 +1,15 @@
 ---
 title: Write path testing
+description: Write path testing with K6
 weight: 20
 ---
-# Write path load testing
+# Write path testing
 
 There are multiple considerations when
 load testing a Loki cluster's write path.
 
 The most important consideration is the setup of the target cluster.
-Keep these items in mind when writing your load test.
+Keep these items in mind when setting up your load test for the target cluster.
 
 - Deployment mode. The cluster might be deployed as
 a single-binary, as a simple scalable deployment, or as microservices
@@ -25,7 +26,7 @@ These parameters can be adjusted in the load test:
 * The quantity of distinct labels and their cardinality
 
     This will define how many active streams your load test will generate.
-    Start with only a few label values,
+    Start with a small number of label values,
     to keep the quantity of streams small enough,
     such that it does not overwhelm your cluster.
 
@@ -41,8 +42,8 @@ These parameters can be adjusted in the load test:
 * The number of virtual users (VUs)
 
     VUs can be used to control the amount of parallelism with which logs should
-    be pushed. Every VU runs it's own loop of iterations.
-    Therfore, the number of VUs has the most impact on
+    be pushed. Every VU runs its own loop of iterations.
+    Therefore, the number of VUs has the most impact on
     the generated log throughput.
     Since generating logs is CPU-intensive, there is a threshold above which
     increasing the number VUs does not result in a higher amount of log data.
@@ -54,14 +55,12 @@ These parameters can be adjusted in the load test:
 
 * The way to run k6
 
-    k6 can be run locally, self-managed in a distributed way,
-    or it can be run highly-scalable within the k6 cloud.
+    k6 supports three [execution modes](https://k6.io/docs/get-started/running-k6/#execution-modes) to run a test: local, distributed, and cloud.
     Whereas running your k6 load test from a single (local
     or remote) machine is easy to set up and fine for smaller Loki clusters,
     the single machine does not load test large Loki installations,
     because it cannot create the data to saturate the write path.
-    Therefore, it makes sense to run
-    the tests in the [k6 Cloud](https://k6.io/cloud/).
+    For larger tests, consider [these optimizations](https://k6.io/docs/testing-guides/running-large-tests/), or run them in [Grafana Cloud k6](/products/cloud/k6) or a Kubernetes cluster with the [k6 Operator](https://github.com/grafana/k6-operator).
 
 ## Metrics
 

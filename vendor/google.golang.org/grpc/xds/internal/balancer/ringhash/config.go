@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/serviceconfig"
 )
 
@@ -35,7 +36,7 @@ type LBConfig struct {
 
 const (
 	defaultMinSize = 1024
-	defaultMaxSize = 8 * 1024 * 1024 // 8M
+	defaultMaxSize = 4096
 )
 
 func parseConfig(c json.RawMessage) (*LBConfig, error) {
@@ -51,6 +52,12 @@ func parseConfig(c json.RawMessage) (*LBConfig, error) {
 	}
 	if cfg.MinRingSize > cfg.MaxRingSize {
 		return nil, fmt.Errorf("min %v is greater than max %v", cfg.MinRingSize, cfg.MaxRingSize)
+	}
+	if cfg.MinRingSize > envconfig.RingHashCap {
+		cfg.MinRingSize = envconfig.RingHashCap
+	}
+	if cfg.MaxRingSize > envconfig.RingHashCap {
+		cfg.MaxRingSize = envconfig.RingHashCap
 	}
 	return &cfg, nil
 }

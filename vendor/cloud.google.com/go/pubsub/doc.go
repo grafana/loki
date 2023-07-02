@@ -91,10 +91,11 @@ pull method.
 
 # Streams Management
 
-Streams used for streaming pull are managed by the gRPC connection pool setting.
+Streams used for streaming pull are configured by setting sub.ReceiveSettings.NumGoroutines.
+However, the total number of streams possible is capped by the gRPC connection pool setting.
 By default, the number of connections in the pool is min(4,GOMAXPROCS).
 
-If you have 4 or more CPU cores, the default setting allows 400 streams which is still a good default for most cases.
+If you have 4 or more CPU cores, the default setting allows a maximum of 400 streams which is still a good default for most cases.
 If you want to have more open streams (such as for low CPU core machines), you should pass in the grpc option as described below:
 
 	 opts := []option.ClientOption{

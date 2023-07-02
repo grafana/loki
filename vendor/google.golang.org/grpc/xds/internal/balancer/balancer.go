@@ -20,10 +20,11 @@
 package balancer
 
 import (
-	_ "google.golang.org/grpc/balancer/weightedtarget"               // Register the weighted_target balancer
-	_ "google.golang.org/grpc/xds/internal/balancer/cdsbalancer"     // Register the CDS balancer
-	_ "google.golang.org/grpc/xds/internal/balancer/clusterimpl"     // Register the xds_cluster_impl balancer
-	_ "google.golang.org/grpc/xds/internal/balancer/clustermanager"  // Register the xds_cluster_manager balancer
-	_ "google.golang.org/grpc/xds/internal/balancer/clusterresolver" // Register the xds_cluster_resolver balancer
-	_ "google.golang.org/grpc/xds/internal/balancer/priority"        // Register the priority balancer
+	_ "google.golang.org/grpc/balancer/weightedtarget"                // Register the weighted_target balancer
+	_ "google.golang.org/grpc/xds/internal/balancer/cdsbalancer"      // Register the CDS balancer
+	_ "google.golang.org/grpc/xds/internal/balancer/clusterimpl"      // Register the xds_cluster_impl balancer
+	_ "google.golang.org/grpc/xds/internal/balancer/clustermanager"   // Register the xds_cluster_manager balancer
+	_ "google.golang.org/grpc/xds/internal/balancer/clusterresolver"  // Register the xds_cluster_resolver balancer
+	_ "google.golang.org/grpc/xds/internal/balancer/outlierdetection" // Register the outlier_detection balancer
+	_ "google.golang.org/grpc/xds/internal/balancer/priority"         // Register the priority balancer
 )

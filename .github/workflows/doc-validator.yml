@@ -1,0 +1,30 @@
+name: "doc-validator"
+on:
+  pull_request:
+    paths: ["docs/sources/**"]
+  workflow_dispatch:
+jobs:
+  doc-validator:
+    runs-on: "ubuntu-latest"
+    container:
+      image: "grafana/doc-validator:v3.0.0"
+    steps:
+      - name: "Checkout code"
+        uses: "actions/checkout@v3"
+        with:
+          fetch-depth: 0
+      - name: "Run doc-validator"
+        run: |
+          doc-validator \
+            "--include=$(git config --global --add safe.directory $(realpath .); printf '^docs/sources/(%s)$' "$(git --no-pager diff --name-only --diff-filter=ACMRT origin/${{ github.event.pull_request.base.ref }}...${{ github.event.pull_request.head.sha }} -- docs/sources | sed 's/^docs\/sources\///' | awk -F'\n' '{if(NR == 1) {printf $0} else {printf "|"$0}}')")" \
+            '--skip-checks=^image' \
+            docs/sources \
+            /docs/loki/latest \
+            | reviewdog \
+              -f=rdjsonl \
+              --fail-on-error \
+              --filter-mode=nofilter \
+              --name=doc-validator \
+              --reporter=github-pr-review
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

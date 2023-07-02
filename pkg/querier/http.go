@@ -10,7 +10,9 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -20,20 +22,20 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	"github.com/grafana/loki/pkg/util/server"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -49,12 +51,12 @@ type QueryResponse struct {
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
-	limits  *validation.Overrides
+	limits  Limits
 	engine  *logql.Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
-func NewQuerierAPI(cfg Config, querier Querier, limits *validation.Overrides, logger log.Logger) *QuerierAPI {
+func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger) *QuerierAPI {
 	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
 	return &QuerierAPI{
 		cfg:     cfg,
@@ -73,7 +75,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -94,9 +96,9 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
-	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -109,7 +111,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -131,9 +133,8 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -163,7 +164,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	if err := q.validateEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
@@ -186,9 +187,8 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -220,24 +220,18 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		status, _ = server.ClientHTTPStatusAndError(err)
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
-	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, strconv.Itoa(status), statResult)
+	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
 	}
 
-	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-		err = marshal.WriteLabelResponseJSON(*resp, w)
-	} else {
-		err = marshal_legacy.WriteLabelResponseJSON(*resp, w)
-	}
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -395,7 +389,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		status, _ = server.ClientHTTPStatusAndError(err)
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
@@ -404,10 +398,8 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = marshal.WriteSeriesResponseJSON(*resp, w)
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -431,10 +423,68 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = marshal.WriteIndexStatsResponseJSON(resp, w)
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
+		serverutil.WriteError(err, w)
+	}
+}
+
+//TODO(trevorwhitney): add test for the handler split
+
+// SeriesVolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns N values where N is the time range / step.
+func (q *QuerierAPI) SeriesVolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	req := &logproto.VolumeRequest{
+		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers: rawReq.Query,
+		Step:     rawReq.Step.Milliseconds(),
+		Limit:    int32(rawReq.Limit),
+	}
+
+	q.seriesVolumeHandler(r.Context(), r, req, w)
+}
+
+// SeriesVolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns a single value for the time range.
+func (q *QuerierAPI) SeriesVolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeInstantQuery(r)
+
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	req := &logproto.VolumeRequest{
+		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers: rawReq.Query,
+		Step:     0,
+		Limit:    int32(rawReq.Limit),
+	}
+
+	q.seriesVolumeHandler(r.Context(), r, req, w)
+}
+
+func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
+	resp, err := q.querier.SeriesVolume(ctx, req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
+	}
+
+	if resp == nil { // Some stores don't implement this
+		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
+	}
+
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
+		serverutil.WriteError(err, w)
 	}
 }
 
@@ -457,7 +507,7 @@ func parseRegexQuery(httpRequest *http.Request) (string, error) {
 	return query, nil
 }
 
-func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, limit uint32) error {
+func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string, limit uint32) error {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -473,7 +523,8 @@ func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, li
 		return nil
 	}
 
-	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, q.limits.MaxEntriesLimitPerQuery)
+	maxEntriesCapture := func(id string) int { return q.limits.MaxEntriesLimitPerQuery(ctx, id) }
+	maxEntriesLimit := util_validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 	if int(limit) > maxEntriesLimit && maxEntriesLimit != 0 {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max entries limit per query exceeded, limit > max_entries_limit (%d > %d)", limit, maxEntriesLimit)
@@ -487,7 +538,11 @@ func (q *QuerierAPI) validateEntriesLimits(ctx context.Context, query string, li
 func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			log, ctx := spanlogger.New(req.Context(), call)
+			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
+			defer sp.Finish()
+			log := spanlogger.FromContext(req.Context())
+			defer log.Finish()
+
 			tenants, err := tenant.TenantIDs(ctx)
 			if err != nil {
 				level.Error(log).Log("msg", "couldn't fetch tenantID", "err", err)
@@ -495,7 +550,8 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				return
 			}
 
-			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, q.limits.QueryTimeout)
+			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 			// TODO: remove this clause once we remove the deprecated query-timeout flag.
 			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
 				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))

@@ -4,7 +4,6 @@ apiVersion: monitoring.grafana.com/v1alpha1
 kind: GrafanaAgent
 metadata:
   name: {{ include "loki.fullname" $ }}
-  namespace: {{ .namespace | default $.Release.Namespace }}
   labels:
     {{- include "loki.labels" $ | nindent 4 }}
     {{- with .labels }}
@@ -17,6 +16,7 @@ metadata:
 spec:
   serviceAccountName: {{ include "loki.fullname" $ }}-grafana-agent
   enableConfigReadAPI: {{ .enableConfigReadAPI }}
+  {{- include "grafana-agent.priorityClassName" $ | nindent 2 }}
   logs:
     instanceSelector:
       matchLabels:

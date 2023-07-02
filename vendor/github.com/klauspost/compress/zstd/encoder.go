@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"math"
 	rdebug "runtime/debug"
 	"sync"
 
@@ -276,23 +277,9 @@ func (e *Encoder) nextBlock(final bool) error {
 			s.eofWritten = true
 		}
 
-		err := errIncompressible
-		// If we got the exact same number of literals as input,
-		// assume the literals cannot be compressed.
-		if len(src) != len(blk.literals) || len(src) != e.o.blockSize {
-			err = blk.encode(src, e.o.noEntropy, !e.o.allLitEntropy)
-		}
-		switch err {
-		case errIncompressible:
-			if debugEncoder {
-				println("Storing incompressible block as raw")
-			}
-			blk.encodeRaw(src)
-			// In fast mode, we do not transfer offsets, so we don't have to deal with changing the.
-		case nil:
-		default:
-			s.err = err
-			return err
+		s.err = blk.encode(src, e.o.noEntropy, !e.o.allLitEntropy)
+		if s.err != nil {
+			return s.err
 		}
 		_, s.err = s.w.Write(blk.output)
 		s.nWritten += int64(len(blk.output))
@@ -342,22 +329,8 @@ func (e *Encoder) nextBlock(final bool) error {
 				}
 				s.wWg.Done()
 			}()
-			err := errIncompressible
-			// If we got the exact same number of literals as input,
-			// assume the literals cannot be compressed.
-			if len(src) != len(blk.literals) || len(src) != e.o.blockSize {
-				err = blk.encode(src, e.o.noEntropy, !e.o.allLitEntropy)
-			}
-			switch err {
-			case errIncompressible:
-				if debugEncoder {
-					println("Storing incompressible block as raw")
-				}
-				blk.encodeRaw(src)
-				// In fast mode, we do not transfer offsets, so we don't have to deal with changing the.
-			case nil:
-			default:
-				s.writeErr = err
+			s.writeErr = blk.encode(src, e.o.noEntropy, !e.o.allLitEntropy)
+			if s.writeErr != nil {
 				return
 			}
 			_, s.writeErr = s.w.Write(blk.output)
@@ -567,25 +540,15 @@ func (e *Encoder) EncodeAll(src, dst []byte) []byte {
 
 		// If we got the exact same number of literals as input,
 		// assume the literals cannot be compressed.
-		err := errIncompressible
 		oldout := blk.output
-		if len(blk.literals) != len(src) || len(src) != e.o.blockSize {
-			// Output directly to dst
-			blk.output = dst
-			err = blk.encode(src, e.o.noEntropy, !e.o.allLitEntropy)
-		}
+		// Output directly to dst
+		blk.output = dst
 
-		switch err {
-		case errIncompressible:
-			if debugEncoder {
-				println("Storing incompressible block as raw")
-			}
-			dst = blk.encodeRawTo(dst, src)
-		case nil:
-			dst = blk.output
-		default:
+		err := blk.encode(src, e.o.noEntropy, !e.o.allLitEntropy)
+		if err != nil {
 			panic(err)
 		}
+		dst = blk.output
 		blk.output = oldout
 	} else {
 		enc.Reset(e.o.dict, false)
@@ -604,25 +567,11 @@ func (e *Encoder) EncodeAll(src, dst []byte) []byte {
 			if len(src) == 0 {
 				blk.last = true
 			}
-			err := errIncompressible
-			// If we got the exact same number of literals as input,
-			// assume the literals cannot be compressed.
-			if len(blk.literals) != len(todo) || len(todo) != e.o.blockSize {
-				err = blk.encode(todo, e.o.noEntropy, !e.o.allLitEntropy)
-			}
-
-			switch err {
-			case errIncompressible:
-				if debugEncoder {
-					println("Storing incompressible block as raw")
-				}
-				dst = blk.encodeRawTo(dst, todo)
-				blk.popOffsets()
-			case nil:
-				dst = append(dst, blk.output...)
-			default:
+			err := blk.encode(todo, e.o.noEntropy, !e.o.allLitEntropy)
+			if err != nil {
 				panic(err)
 			}
+			dst = append(dst, blk.output...)
 			blk.reset(nil)
 		}
 	}
@@ -638,4 +587,38 @@ func (e *Encoder) EncodeAll(src, dst []byte) []byte {
 		}
 	}
 	return dst
+}
+
+// MaxEncodedSize returns the expected maximum
+// size of an encoded block or stream.
+func (e *Encoder) MaxEncodedSize(size int) int {
+	frameHeader := 4 + 2 // magic + frame header & window descriptor
+	if e.o.dict != nil {
+		frameHeader += 4
+	}
+	// Frame content size:
+	if size < 256 {
+		frameHeader++
+	} else if size < 65536+256 {
+		frameHeader += 2
+	} else if size < math.MaxInt32 {
+		frameHeader += 4
+	} else {
+		frameHeader += 8
+	}
+	// Final crc
+	if e.o.crc {
+		frameHeader += 4
+	}
+
+	// Max overhead is 3 bytes/block.
+	// There cannot be 0 blocks.
+	blocks := (size + e.o.blockSize) / e.o.blockSize
+
+	// Combine, add padding.
+	maxSz := frameHeader + 3*blocks + size
+	if e.o.pad > 1 {
+		maxSz += calcSkippableFrame(int64(maxSz), int64(e.o.pad))
+	}
+	return maxSz
 }

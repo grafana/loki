@@ -207,9 +207,9 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.NoError(t, err)
 
-	request.Start = request.End.Add(-3 * time.Minute)
+	request.Start = request.End.Add(-3*time.Minute - 2*time.Second)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m0s, limit: 2m0s)"), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m2s, limit: 2m)"), err)
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {
@@ -966,6 +966,30 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
+func TestQuerier_LabeleVolumes(t *testing.T) {
+	t.Run("it returns label volumes from the store", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		store := newStoreMock()
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		querier := SingleTenantQuerier{
+			store:  store,
+			limits: limits,
+		}
+
+		req := &logproto.VolumeRequest{From: 0, Through: 1000, Matchers: `{}`}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.SeriesVolume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+}
+
 func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
 	queryClient := newQueryClientMock()
 	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
@@ -1014,8 +1038,12 @@ type fakeTimeLimits struct {
 	maxQueryLength   time.Duration
 }
 
-func (f fakeTimeLimits) MaxQueryLookback(_ string) time.Duration { return f.maxQueryLookback }
-func (f fakeTimeLimits) MaxQueryLength(_ string) time.Duration   { return f.maxQueryLength }
+func (f fakeTimeLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
+	return f.maxQueryLookback
+}
+func (f fakeTimeLimits) MaxQueryLength(_ context.Context, _ string) time.Duration {
+	return f.maxQueryLength
+}
 
 func Test_validateQueryTimeRangeLimits(t *testing.T) {
 	now := time.Now()
@@ -1184,7 +1212,7 @@ type mockDeleteGettter struct {
 	results []deletion.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

@@ -1,9 +1,11 @@
 package log
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"math"
+	"net/http"
 	"os"
 	"time"
 
@@ -21,7 +23,9 @@ var (
 	// Prefer accepting a non-global logger as an argument.
 	Logger = log.NewNopLogger()
 
-	bufferedLogger *log.LineBufferedLogger
+	bufferedLogger *LineBufferedLogger
+
+	plogger *prometheusLogger
 )
 
 // InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
@@ -53,6 +57,7 @@ func Flush() error {
 
 // prometheusLogger exposes Prometheus counters for each of go-kit's log levels.
 type prometheusLogger struct {
+	baseLogger          log.Logger
 	logger              log.Logger
 	logMessages         *prometheus.CounterVec
 	internalLogMessages *prometheus.CounterVec
@@ -60,6 +65,54 @@ type prometheusLogger struct {
 
 	useBufferedLogger bool
 	useSyncLogger     bool
+}
+
+// LevelHandler returns an http handler function that returns the current log level.
+// The optional query parameter 'log_level' can be passed to change the log level at runtime.
+func LevelHandler(currentLogLevel *logging.Level) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		type logResponse struct {
+			Status  string `json:"status,omitempty"`
+			Message string `json:"message"`
+		}
+		var resp logResponse
+		status := http.StatusOK
+
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+		switch r.Method {
+		case "GET":
+			resp = logResponse{
+				Message: fmt.Sprintf("Current log level is %s", currentLogLevel.String()),
+			}
+		case "POST":
+			logLevel := r.FormValue("log_level")
+
+			// Update log level in config
+			err := currentLogLevel.Set(logLevel)
+			if err != nil {
+				status = http.StatusBadRequest
+				resp = logResponse{
+					Message: fmt.Sprintf("%v", err),
+					Status:  "failed",
+				}
+			} else {
+				plogger.Set(levelFilter(logLevel))
+
+				msg := fmt.Sprintf("Log level set to %s", logLevel)
+				level.Info(Logger).Log("msg", msg)
+				resp = logResponse{
+					Status:  "success",
+					Message: msg,
+				}
+			}
+		}
+
+		w.WriteHeader(status)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			level.Error(Logger).Log("msg", err)
+		}
+	}
 }
 
 // newPrometheusLogger creates a new instance of PrometheusLogger which exposes
@@ -94,10 +147,10 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	if buffered {
 		// retain a reference to this logger because it doesn't conform to the standard Logger interface,
 		// and we can't unwrap it to get the underlying logger when we flush on shutdown
-		bufferedLogger = log.NewLineBufferedLogger(os.Stderr, logEntries,
-			log.WithFlushPeriod(flushTimeout),
-			log.WithPrellocatedBuffer(logBufferSize),
-			log.WithFlushCallback(func(entries uint32) {
+		bufferedLogger = NewLineBufferedLogger(os.Stderr, logEntries,
+			WithFlushPeriod(flushTimeout),
+			WithPrellocatedBuffer(logBufferSize),
+			WithFlushCallback(func(entries uint32) {
 				logFlushes.Observe(float64(entries))
 			}),
 		)
@@ -111,13 +164,14 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 		writer = log.NewSyncWriter(writer)
 	}
 
-	logger := log.NewLogfmtLogger(writer)
+	baseLogger := log.NewLogfmtLogger(writer)
 	if format.String() == "json" {
-		logger = log.NewJSONLogger(writer)
+		baseLogger = log.NewJSONLogger(writer)
 	}
-	logger = level.NewFilter(logger, levelFilter(l.String()))
+	logger := level.NewFilter(baseLogger, levelFilter(l.String()))
 
-	plogger := &prometheusLogger{
+	plogger = &prometheusLogger{
+		baseLogger:          baseLogger,
 		logger:              logger,
 		logMessages:         logMessages,
 		internalLogMessages: internalLogMessages,
@@ -137,6 +191,11 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 
 	// return a Logger without caller information, shouldn't use directly
 	return log.With(plogger, "ts", log.DefaultTimestampUTC)
+}
+
+// Set overrides the log level of the logger.
+func (pl *prometheusLogger) Set(option level.Option) {
+	pl.logger = level.NewFilter(pl.baseLogger, option)
 }
 
 // Log increments the appropriate Prometheus counter depending on the log level.
@@ -169,8 +228,9 @@ func CheckFatal(location string, err error, logger log.Logger) {
 	fmt.Fprintln(os.Stderr, errStr)
 
 	logger.Log("err", errStr)
-	err = Flush()
-	fmt.Fprintln(os.Stderr, "Could not flush logger", err)
+	if err = Flush(); err != nil {
+		fmt.Fprintln(os.Stderr, "Could not flush logger", err)
+	}
 	os.Exit(1)
 }
 

@@ -21,7 +21,7 @@ import (
 	"google.golang.org/api/option"
 
 	vkit "cloud.google.com/go/pubsub/apiv1"
-	pb "google.golang.org/genproto/googleapis/pubsub/v1"
+	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 )
 
 // SchemaClient is a Pub/Sub schema client scoped to a single project.

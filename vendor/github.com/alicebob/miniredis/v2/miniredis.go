@@ -13,7 +13,6 @@
 //
 // For direct use you can select a Redis database with either `s.Select(12);
 // s.Get("foo")` or `s.DB(12).Get("foo")`.
-//
 package miniredis
 
 import (
@@ -77,6 +76,7 @@ type dbKey struct {
 }
 
 // connCtx has all state for a single connection.
+// (this struct was named before context.Context existed)
 type connCtx struct {
 	selectedDB       int            // selected DB
 	authenticated    bool           // auth enabled and a valid AUTH seen
@@ -85,6 +85,7 @@ type connCtx struct {
 	watch            map[dbKey]uint // WATCHed keys
 	subscriber       *Subscriber    // client is in PUBSUB mode if not nil
 	nested           bool           // this is called via Lua
+	nestedSHA        string         // set to the SHA of the nesting function
 }
 
 // NewMiniRedis makes a new, non-started, Miniredis object.
@@ -194,7 +195,6 @@ func (m *Miniredis) start(s *server.Server) error {
 	commandsScripting(m)
 	commandsGeo(m)
 	commandsCluster(m)
-	commandsCommand(m)
 	commandsHll(m)
 
 	return nil
@@ -347,9 +347,9 @@ func (m *Miniredis) Server() *server.Server {
 // Dump limits the maximum length of each key:value to "DumpMaxLineLen" characters.
 // To increase that, call something like:
 //
-//	    miniredis.DumpMaxLineLen = 1024
-//      mr, _ = miniredis.Run()
-// 		mr.Dump()
+//	miniredis.DumpMaxLineLen = 1024
+//	mr, _ = miniredis.Run()
+//	mr.Dump()
 func (m *Miniredis) Dump() string {
 	m.Lock()
 	defer m.Unlock()
@@ -419,8 +419,10 @@ func (m *Miniredis) SetTime(t time.Time) {
 }
 
 // make every command return this message. For example:
-//   LOADING Redis is loading the dataset in memory
-//   MASTERDOWN Link with MASTER is down and replica-serve-stale-data is set to 'no'.
+//
+//	LOADING Redis is loading the dataset in memory
+//	MASTERDOWN Link with MASTER is down and replica-serve-stale-data is set to 'no'.
+//
 // Clear it with an empty string. Don't add newlines.
 func (m *Miniredis) SetError(msg string) {
 	cb := server.Hook(nil)
@@ -431,6 +433,18 @@ func (m *Miniredis) SetError(msg string) {
 		}
 	}
 	m.srv.SetPreHook(cb)
+}
+
+// isValidCMD returns true if command is valid and can be executed.
+func (m *Miniredis) isValidCMD(c *server.Peer, cmd string) bool {
+	if !m.handleAuth(c) {
+		return false
+	}
+	if m.checkPubsub(c, cmd) {
+		return false
+	}
+
+	return true
 }
 
 // handleAuth returns false if connection has no access. It sends the reply.

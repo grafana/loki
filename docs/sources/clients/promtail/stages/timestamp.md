@@ -1,7 +1,8 @@
 ---
 title: timestamp
+description: timestamp stage
 ---
-# `timestamp` stage
+# timestamp
 
 The `timestamp` stage is an action stage that can change the timestamp of a log
 line before it is sent to Loki. When a `timestamp` stage is not present, the

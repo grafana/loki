@@ -128,6 +128,12 @@ func Contains[E comparable](s []E, v E) bool {
 	return Index(s, v) >= 0
 }
 
+// ContainsFunc reports whether at least one
+// element e of s satisfies f(e).
+func ContainsFunc[E any](s []E, f func(E) bool) bool {
+	return IndexFunc(s, f) >= 0
+}
+
 // Insert inserts the values v... into s at index i,
 // returning the modified slice.
 // In the returned slice r, r[i] == v[0].
@@ -165,6 +171,7 @@ func Delete[S ~[]E, E any](s S, i, j int) S {
 // Replace replaces the elements s[i:j] by the given v, and returns the
 // modified slice. Replace panics if s[i:j] is not a valid slice of s.
 func Replace[S ~[]E, E any](s S, i, j int, v ...E) S {
+	_ = s[i:j] // verify that i:j is a valid subslice
 	tot := len(s[:i]) + len(v) + len(s[j:])
 	if tot <= cap(s) {
 		s2 := s[:tot]
@@ -192,8 +199,11 @@ func Clone[S ~[]E, E any](s S) S {
 // Compact replaces consecutive runs of equal elements with a single copy.
 // This is like the uniq command found on Unix.
 // Compact modifies the contents of the slice s; it does not create a new slice.
+// When Compact discards m elements in total, it might not modify the elements
+// s[len(s)-m:len(s)]. If those elements contain pointers you might consider
+// zeroing those elements so that objects they reference can be garbage collected.
 func Compact[S ~[]E, E comparable](s S) S {
-	if len(s) == 0 {
+	if len(s) < 2 {
 		return s
 	}
 	i := 1
@@ -210,7 +220,7 @@ func Compact[S ~[]E, E comparable](s S) S {
 
 // CompactFunc is like Compact but uses a comparison function.
 func CompactFunc[S ~[]E, E any](s S, eq func(E, E) bool) S {
-	if len(s) == 0 {
+	if len(s) < 2 {
 		return s
 	}
 	i := 1

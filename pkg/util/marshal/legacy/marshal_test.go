@@ -97,6 +97,15 @@ var queryTests = []struct {
 						"requests": 0,
 						"downloadTime": 0
 					},
+					"statsResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
 					"result": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
@@ -112,6 +121,8 @@ var queryTests = []struct {
 					"execTime": 0,
 					"linesProcessedPerSecond": 0,
 					"queueTime": 0,
+                    "shards": 0,
+                    "splits": 0,
 					"subqueries": 0,
 					"totalBytesProcessed":0,
                                         "totalEntriesReturned":0,

@@ -1,0 +1,26 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.backendFullname" . }}-headless
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+    prometheus.io/service-monitor: "false"
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+{{- end }}

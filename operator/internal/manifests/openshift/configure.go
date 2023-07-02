@@ -76,6 +76,30 @@ func ConfigureGatewayDeployment(
 	return nil
 }
 
+// ConfigureGatewayDeploymentRulesAPI merges CLI argument to the gateway container
+// that allow only Rules API access with a valid namespace input for the tenant application.
+func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName string) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == containerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatcher),
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	return nil
+}
+
 // ConfigureGatewayService merges the OpenPolicyAgent sidecar metrics port into
 // the service spec. With this the metrics are exposed through the same service.
 func ConfigureGatewayService(s *corev1.ServiceSpec) error {
@@ -195,7 +219,25 @@ func ConfigureRulerStatefulSet(
 }
 
 // ConfigureOptions applies default configuration for the use of the cluster monitoring alertmanager.
-func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monitorServerName string) error {
+func ConfigureOptions(configOpt *config.Options, am, uwam bool, token, caPath, monitorServerName string) error {
+	if am {
+		err := configureDefaultMonitoringAM(configOpt)
+		if err != nil {
+			return err
+		}
+	}
+
+	if uwam {
+		err := configureUserWorkloadAM(configOpt, token, caPath, monitorServerName)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func configureDefaultMonitoringAM(configOpt *config.Options) error {
 	if configOpt.Ruler.AlertManager == nil {
 		configOpt.Ruler.AlertManager = &config.AlertManagerConfig{}
 	}
@@ -213,12 +255,10 @@ func ConfigureOptions(configOpt *config.Options, uwam bool, token, caPath, monit
 		}
 	}
 
-	// Check user workload is enbaled.
-	if !uwam {
-		return nil
-	}
+	return nil
+}
 
-	// Configure user-workload alertmanager when.
+func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorServerName string) error {
 	if len(configOpt.Overrides) == 0 {
 		configOpt.Overrides = map[string]config.LokiOverrides{}
 	}

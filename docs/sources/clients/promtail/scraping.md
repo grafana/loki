@@ -1,7 +1,8 @@
 ---
 title: Scraping
+description: Promtail Scraping (Service Discovery) 
 ---
-# Promtail Scraping (Service Discovery)
+# Scraping
 
 ## File Target Discovery
 
@@ -53,9 +54,9 @@ There are different types of labels present in Promtail:
 - The `__path__` label is a special label which Promtail uses after discovery to
   figure out where the file to read is located. Wildcards are allowed, for example `/var/log/*.log` to get all files with a `log` extension in the specified directory, and `/var/log/**/*.log` for matching files and directories recursively. For a full list of options check out the docs for the [library](https://github.com/bmatcuk/doublestar) Promtail uses.
 
-- The `__path_exclude__` label is another special label Promtail uses after 
-  discovery, to exclude a subset of the files discovered using `__path__` from 
-  being read in the current scrape_config block. It uses the same 
+- The `__path_exclude__` label is another special label Promtail uses after
+  discovery, to exclude a subset of the files discovered using `__path__` from
+  being read in the current scrape_config block. It uses the same
   [library](https://github.com/bmatcuk/doublestar) to enable usage of
   wildcards and glob patterns.
 
@@ -65,7 +66,7 @@ There are different types of labels present in Promtail:
 
 ### Kubernetes Discovery
 
-Note that while Promtail can utilize the Kubernetes API to discover pods as
+While Promtail can use the Kubernetes API to discover pods as
 targets, it can only read log files from pods that are running on the same node
 as the one Promtail is running on. Promtail looks for a `__host__` label on
 each target and validates that it is set to the same hostname as Promtail's
@@ -82,7 +83,7 @@ relabel_configs:
     target_label: '__host__'
 ```
 
-See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration]({{< relref "configuration.md#kubernetes_sd_config" >}}).
+See [Relabeling](#relabeling) for more information. For more information on how to configure the service discovery see the [Kubernetes Service Discovery configuration]({{< relref "./configuration#kubernetes_sd_config" >}}).
 
 ## Journal Scraping (Linux Only)
 
@@ -191,7 +192,10 @@ You can relabel default labels via [Relabeling](#relabeling) if required.
 Providing a path to a bookmark is mandatory, it will be used to persist the last event processed and allow
 resuming the target without skipping logs.
 
-see the [configuration]({{< relref "configuration.md#windows_events" >}}) section for more information.
+Read the [configuration]({{< relref "./configuration#windows_events" >}}) section for more information.
+
+See the [eventlogmessage]({{< relref "./stages/eventlogmessage" >}}) stage for extracting
+data from the `message`.
 
 ## GCP Log scraping
 
@@ -209,6 +213,7 @@ There are two kind of scraping strategies: `pull` and `push`.
       project_id: "my-gcp-project"
       subscription: "my-pubsub-subscription"
       use_incoming_timestamp: false # default rewrite timestamps.
+      use_full_line: false # default use textPayload as log line.
       labels:
         job: "gcplog"
     relabel_configs:
@@ -222,14 +227,16 @@ Here `project_id` and `subscription` are the only required fields.
 - `project_id` is the GCP project id.
 - `subscription` is the GCP pubsub subscription where Promtail can consume log entries from.
 
-Before using `gcplog` target, GCP should be [configured](../gcplog-cloud) with pubsub subscription to receive logs from.
+Before using `gcplog` target, GCP should be [configured]({{< relref "./gcplog-cloud" >}}) with pubsub subscription to receive logs from.
 
 It also supports `relabeling` and `pipeline` stages just like other targets.
 
 When Promtail receives GCP logs, various internal labels are made available for [relabeling](#relabeling):
   - `__gcp_logname`
+  - `__gcp_severity`
   - `__gcp_resource_type`
   - `__gcp_resource_labels_<NAME>`
+  - `__gcp_labels_<NAME>`
     In the example above, the `project_id` label from a GCP resource was transformed into a label called `project` through `relabel_configs`.
 
 ### Push
@@ -254,9 +261,9 @@ When Promtail receives GCP logs, various internal labels are made available for 
 When configuring the GCP Log push target, Promtail will start an HTTP server listening on port `8080`, as configured in the `server`
 section. This server exposes the single endpoint `POST /gcp/api/v1/push`, responsible for receiving logs from GCP.
 
-For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed 
+For Google's PubSub to be able to send logs, **Promtail server must be publicly accessible, and support HTTPS**. For that, Promtail can be deployed
 as part of a larger orchestration service like Kubernetes, which can handle HTTPS traffic through an ingress, or it can be hosted behind
-a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured](../gcplog-cloud)
+a proxy/gateway, offloading the HTTPS to that component and routing the request to Promtail. Once that's solved, GCP can be [configured]({{< relref "./gcplog-cloud" >}})
 to send logs to Promtail.
 
 It also supports `relabeling` and `pipeline` stages.
@@ -266,10 +273,12 @@ When Promtail receives GCP logs, various internal labels are made available for 
 - `__gcp_subscription_name`
 - `__gcp_attributes_<NAME>`
 - `__gcp_logname`
+- `__gcp_severity`
 - `__gcp_resource_type`
 - `__gcp_resource_labels_<NAME>`
+- `__gcp_labels_<NAME>`
 
-In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are 
+In the example above, the `__gcp_message_id` and the `__gcp_attributes_logging_googleapis_com_timestamp` labels are
 transformed to `message_id` and `incoming_ts` through `relabel_configs`. All other internal labels, for example some other attribute,
 will be dropped by the target if not transformed.
 
@@ -341,6 +350,31 @@ For sending messages via UDP:
 *.* action(type="omfwd" protocol="udp" target="<promtail_host>" port="<promtail_port>" Template="RSYSLOG_SyslogProtocol23Format")
 ```
 
+## Azure Event Hubs
+
+Promtail supports reading messages from Azure Event Hubs.
+Targets can be configured using the `azure_event_hubs` stanza:
+
+```yaml
+- job_name: azure_event_hubs
+  azure_event_hubs:
+    group_id: "mygroup"
+    fully_qualified_namespace: my-namespace.servicebus.windows.net:9093
+    connection_string: "my-connection-string"
+    event_hubs:
+      - event-hub-name
+    labels:
+      job: azure_event_hub
+  relabel_configs:
+    - action: replace
+      source_labels:
+        - __azure_event_hubs_category
+      target_label: category
+```
+
+Only `fully_qualified_namespace`, `connection_string` and `event_hubs` are required fields.
+Read the [configuration]({{< relref "./configuration#azure-event-hubs" >}}) section for more information.
+
 ## Kafka
 
 Promtail supports reading message from Kafka using a consumer group.
@@ -377,8 +411,9 @@ scrape_configs:
         target_label: message_key
 ```
 
-Only the `brokers` and `topics` is required.
-see the [configuration]({{< relref "configuration.md#kafka" >}}) section for more information.
+Only the `brokers` and `topics` are required.
+Read the [configuration]({{< relref "./configuration#kafka" >}}) section for more information.
+
 
 ## GELF
 
@@ -427,7 +462,7 @@ scrape_configs:
 ```
 
 Only `api_token` and `zone_id` are required.
-Refer to the [Cloudfare]({{< relref "configuration.md#cloudflare" >}}) configuration section for details.
+Refer to the [Cloudfare]({{< relref "./configuration#cloudflare" >}}) configuration section for details.
 
 ## Heroku Drain
 Promtail supports receiving logs from a Heroku application by using a [Heroku HTTPS Drain](https://devcenter.heroku.com/articles/log-drains#https-drains).
@@ -454,11 +489,11 @@ Configuration is specified in a`heroku_drain` block within the Promtail `scrape_
 ```
 Within the `scrape_configs` configuration for a Heroku Drain target, the `job_name` must be a Prometheus-compatible [metric name](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels).
 
-The [server]({{< relref "configuration.md#server" >}}) section configures the HTTP server created for receiving logs.
+The [server]({{< relref "./configuration#server" >}}) section configures the HTTP server created for receiving logs.
 `labels` defines a static set of label values added to each received log entry. `use_incoming_timestamp` can be used to pass
 the timestamp received from Heroku.
 
-Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening. 
+Before using a `heroku_drain` target, Heroku should be configured with the URL where the Promtail instance will be listening.
 Follow the steps in [Heroku HTTPS Drain docs](https://devcenter.heroku.com/articles/log-drains#https-drains) for using the Heroku CLI
 with a command like the following:
 
@@ -558,5 +593,5 @@ clients:
   - [ <client_option> ]
 ```
 
-Refer to [`client_config`]({{< relref "configuration.md#client_config" >}}) from the Promtail
+Refer to [`client_config`]({{< relref "./configuration#clients" >}}) from the Promtail
 Configuration reference for all available options.

@@ -97,9 +97,11 @@ func (e ConfigEntry) Description() string {
 }
 
 type RootBlock struct {
-	Name       string
-	Desc       string
-	StructType reflect.Type
+	Name string
+	Desc string
+	// multiple entries are useful if the root blocks share the same
+	// underlying type
+	StructType []reflect.Type
 }
 
 func Flags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
@@ -283,7 +285,7 @@ func config(block *ConfigBlock, cfg interface{}, flags map[uintptr]*flag.Flag, r
 			}
 		}
 
-		fieldType, err := getFieldType(field.Type)
+		fieldType, err := getFieldType(field.Type, rootBlocks)
 		if err != nil {
 			return nil, errors.Wrapf(err, "config=%s.%s", t.PkgPath(), t.Name())
 		}
@@ -375,9 +377,13 @@ func getFieldCustomType(t reflect.Type) (string, bool) {
 	}
 }
 
-func getFieldType(t reflect.Type) (string, error) {
+func getFieldType(t reflect.Type, rootBlocks []RootBlock) (string, error) {
 	if typ, isCustom := getFieldCustomType(t); isCustom {
 		return typ, nil
+	}
+
+	if rootName, _, isRoot := isRootBlock(t, rootBlocks); isRoot {
+		return rootName, nil
 	}
 
 	// Fallback to auto-detection of built-in data types
@@ -412,17 +418,21 @@ func getFieldType(t reflect.Type) (string, error) {
 		return fieldString, nil
 	case reflect.Slice:
 		// Get the type of elements
-		elemType, err := getFieldType(t.Elem())
+		elemType, err := getFieldType(t.Elem(), rootBlocks)
 		if err != nil {
 			return "", err
 		}
 		return "list of " + elemType + "s", nil
 	case reflect.Map:
-		return fmt.Sprintf("map of %s to %s", t.Key(), t.Elem().String()), nil
+		elemType, err := getFieldType(t.Elem(), rootBlocks)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("map of %s to %s", t.Key(), elemType), nil
 	case reflect.Struct:
 		return t.Name(), nil
 	case reflect.Ptr:
-		return getFieldType(t.Elem())
+		return getFieldType(t.Elem(), rootBlocks)
 	case reflect.Interface:
 		return t.Name(), nil
 	default:
@@ -621,8 +631,10 @@ func getFieldDescription(cfg interface{}, field reflect.StructField, fallback st
 
 func isRootBlock(t reflect.Type, rootBlocks []RootBlock) (string, string, bool) {
 	for _, rootBlock := range rootBlocks {
-		if t == rootBlock.StructType {
-			return rootBlock.Name, rootBlock.Desc, true
+		for _, structType := range rootBlock.StructType {
+			if t == structType {
+				return rootBlock.Name, rootBlock.Desc, true
+			}
 		}
 	}
 

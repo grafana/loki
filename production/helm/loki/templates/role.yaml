@@ -3,7 +3,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ include "loki.name" . }}
-  namespace: {{ .Release.Namespace }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 {{- if .Values.rbac.pspEnabled }}
@@ -15,7 +15,7 @@ rules:
     verbs:
       - use
     resourceNames:
-      - {{ include "loki.fullname" . }}
+      - {{ include "loki.name" . }}
 {{- end }}
 {{- if .Values.rbac.sccEnabled }}
 rules:
@@ -26,6 +26,6 @@ rules:
     verbs:
       - use
     resourceNames:
-      - {{ include "loki.fullname" . }}
+      - {{ include "loki.name" . }}
 {{- end }}
 {{- end }}

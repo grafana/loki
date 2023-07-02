@@ -72,3 +72,11 @@ func (f LazyIndex) Stats(ctx context.Context, userID string, from, through model
 	}
 	return i.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
+
+func (f LazyIndex) SeriesVolume(ctx context.Context, userID string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+	i, err := f()
+	if err != nil {
+		return err
+	}
+	return i.SeriesVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+}

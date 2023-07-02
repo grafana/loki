@@ -100,13 +100,24 @@ func (e *LineFilterExpr) Pretty(level int) string {
 	return s
 }
 
+func (e *LogfmtParserExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g:
-// `| logfmt`
 // `| json`
 // `| regexp`
 // `| pattern`
 // `| unpack`
 func (e *LabelParserExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
+func (e *DropLabelsExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
+func (e *KeepLabelsExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
@@ -121,7 +132,7 @@ func (e *LineFmtExpr) Pretty(level int) string {
 }
 
 // e.g: | decolorize
-func (e *DecolorizeExpr) Pretty(level int) string {
+func (e *DecolorizeExpr) Pretty(_ int) string {
 	return e.String()
 }
 
@@ -132,6 +143,11 @@ func (e *LabelFmtExpr) Pretty(level int) string {
 
 // e.g: | json label="expression", another="expression"
 func (e *JSONExpressionParser) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
+// e.g: | logfmt label="expression", another="expression"
+func (e *LogfmtExpressionParser) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 
@@ -175,7 +191,7 @@ func (e *LogRange) Pretty(level int) string {
 // e.g: count_over_time({foo="bar"}[5m] offset 3h)
 // TODO(kavi): why does offset not work in log queries? e.g: `{foo="bar"} offset 1h`? is it bug? or anything else?
 // NOTE: Also offset expression never to be indented. It always goes with its parent expression (usually RangeExpr).
-func (e *OffsetExpr) Pretty(level int) string {
+func (e *OffsetExpr) Pretty(_ int) string {
 	// using `model.Duration` as it can format ignoring zero units.
 	// e.g: time.Duration(2 * Hour) -> "2h0m0s"
 	// but model.Duration(2 * Hour) -> "2h"
@@ -324,6 +340,10 @@ func (e *LabelReplaceExpr) Pretty(level int) string {
 
 // e.g: vector(5)
 func (e *VectorExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
+func (e *DistinctFilterExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 

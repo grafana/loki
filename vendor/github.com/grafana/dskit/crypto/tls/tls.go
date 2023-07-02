@@ -11,7 +11,18 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 )
+
+type SecretReader interface {
+	ReadSecret(path string) ([]byte, error)
+}
+
+type fileReader struct{}
+
+func (f *fileReader) ReadSecret(path string) ([]byte, error) {
+	return os.ReadFile(path)
+}
 
 // ClientConfig is the config for client TLS.
 type ClientConfig struct {
@@ -22,6 +33,8 @@ type ClientConfig struct {
 	InsecureSkipVerify bool   `yaml:"tls_insecure_skip_verify" category:"advanced"`
 	CipherSuites       string `yaml:"tls_cipher_suites" category:"advanced" doc:"description_method=GetTLSCipherSuitesLongDescription"`
 	MinVersion         string `yaml:"tls_min_version" category:"advanced"`
+
+	Reader SecretReader `yaml:"-"`
 }
 
 var (
@@ -38,9 +51,12 @@ var (
 
 // RegisterFlagsWithPrefix registers flags with prefix.
 func (cfg *ClientConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.CertPath, prefix+".tls-cert-path", "", "Path to the client certificate file, which will be used for authenticating with the server. Also requires the key path to be configured.")
-	f.StringVar(&cfg.KeyPath, prefix+".tls-key-path", "", "Path to the key file for the client certificate. Also requires the client certificate to be configured.")
-	f.StringVar(&cfg.CAPath, prefix+".tls-ca-path", "", "Path to the CA certificates file to validate server certificate against. If not set, the host's root CA certificates are used.")
+	// Trim any trailing "." since we include our own here
+	prefix = strings.TrimRight(prefix, ".")
+
+	f.StringVar(&cfg.CertPath, prefix+".tls-cert-path", "", "Path to the client certificate, which will be used for authenticating with the server. Also requires the key path to be configured.")
+	f.StringVar(&cfg.KeyPath, prefix+".tls-key-path", "", "Path to the key for the client certificate. Also requires the client certificate to be configured.")
+	f.StringVar(&cfg.CAPath, prefix+".tls-ca-path", "", "Path to the CA certificates to validate server certificate against. If not set, the host's root CA certificates are used.")
 	f.StringVar(&cfg.ServerName, prefix+".tls-server-name", "", "Override the expected name on the server certificate.")
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+".tls-insecure-skip-verify", false, "Skip validating server certificate.")
 	f.StringVar(&cfg.CipherSuites, prefix+".tls-cipher-suites", "", cfg.GetTLSCipherSuitesShortDescription())
@@ -74,10 +90,16 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 		ServerName:         cfg.ServerName,
 	}
 
-	// read ca certificates
+	// If Reader interface not provided, default to reading from File
+	reader := cfg.Reader
+	if reader == nil {
+		reader = &fileReader{}
+	}
+
+	// Read CA Certificates
 	if cfg.CAPath != "" {
 		var caCertPool *x509.CertPool
-		caCert, err := os.ReadFile(cfg.CAPath)
+		caCert, err := reader.ReadSecret(cfg.CAPath)
 		if err != nil {
 			return nil, errors.Wrapf(err, "error loading ca cert: %s", cfg.CAPath)
 		}
@@ -87,7 +109,7 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 		config.RootCAs = caCertPool
 	}
 
-	// read client certificate
+	// Read Client Certificate
 	if cfg.CertPath != "" || cfg.KeyPath != "" {
 		if cfg.CertPath == "" {
 			return nil, errCertMissing
@@ -95,7 +117,17 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 		if cfg.KeyPath == "" {
 			return nil, errKeyMissing
 		}
-		clientCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
+
+		cert, err := reader.ReadSecret(cfg.CertPath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error loading client cert: %s", cfg.CertPath)
+		}
+		key, err := reader.ReadSecret(cfg.KeyPath)
+		if err != nil {
+			return nil, errors.Wrapf(err, "error loading client key: %s", cfg.KeyPath)
+		}
+
+		clientCert, err := tls.X509KeyPair(cert, key)
 		if err != nil {
 			return nil, errors.Wrapf(err, "failed to load TLS certificate %s,%s", cfg.CertPath, cfg.KeyPath)
 		}
@@ -126,7 +158,7 @@ func (cfg *ClientConfig) GetTLSConfig() (*tls.Config, error) {
 // GetGRPCDialOptions creates GRPC DialOptions for TLS
 func (cfg *ClientConfig) GetGRPCDialOptions(enabled bool) ([]grpc.DialOption, error) {
 	if !enabled {
-		return []grpc.DialOption{grpc.WithInsecure()}, nil
+		return []grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}, nil
 	}
 
 	tlsConfig, err := cfg.GetTLSConfig()

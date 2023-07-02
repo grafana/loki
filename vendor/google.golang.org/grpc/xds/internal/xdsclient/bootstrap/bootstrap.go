@@ -24,8 +24,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/url"
+	"os"
 	"strings"
 
 	"github.com/golang/protobuf/jsonpb"
@@ -53,6 +53,7 @@ const (
 
 	gRPCUserAgentName               = "gRPC Go"
 	clientFeatureNoOverprovisioning = "envoy.lb.does_not_support_overprovisioning"
+	clientFeatureResourceWrapper    = "xds.config.resource-in-sotw"
 )
 
 func init() {
@@ -63,7 +64,7 @@ func init() {
 var gRPCVersion = fmt.Sprintf("%s %s", gRPCUserAgentName, grpc.Version)
 
 // For overriding in unit tests.
-var bootstrapFileReadFunc = ioutil.ReadFile
+var bootstrapFileReadFunc = os.ReadFile
 
 // insecureCredsBuilder implements the `Credentials` interface defined in
 // package `xds/bootstrap` and encapsulates an insecure credential.
@@ -365,7 +366,7 @@ func newConfigFromContents(data []byte) (*Config, error) {
 
 	var jsonData map[string]json.RawMessage
 	if err := json.Unmarshal(data, &jsonData); err != nil {
-		return nil, fmt.Errorf("xds: Failed to parse bootstrap config: %v", err)
+		return nil, fmt.Errorf("xds: failed to parse bootstrap config: %v", err)
 	}
 
 	var node *v3corepb.Node
@@ -413,7 +414,7 @@ func newConfigFromContents(data []byte) (*Config, error) {
 				}
 				bc, err := parser.ParseConfig(nameAndConfig.Config)
 				if err != nil {
-					return nil, fmt.Errorf("xds: Config parsing for plugin %q failed: %v", name, err)
+					return nil, fmt.Errorf("xds: config parsing for plugin %q failed: %v", name, err)
 				}
 				configs[instance] = bc
 			}
@@ -451,13 +452,13 @@ func newConfigFromContents(data []byte) (*Config, error) {
 		config.ClientDefaultListenerResourceNameTemplate = "%s"
 	}
 	if config.XDSServer == nil {
-		return nil, fmt.Errorf("xds: Required field %q not found in bootstrap %s", "xds_servers", jsonData["xds_servers"])
+		return nil, fmt.Errorf("xds: required field %q not found in bootstrap %s", "xds_servers", jsonData["xds_servers"])
 	}
 	if config.XDSServer.ServerURI == "" {
-		return nil, fmt.Errorf("xds: Required field %q not found in bootstrap %s", "xds_servers.server_uri", jsonData["xds_servers"])
+		return nil, fmt.Errorf("xds: required field %q not found in bootstrap %s", "xds_servers.server_uri", jsonData["xds_servers"])
 	}
 	if config.XDSServer.Creds == nil {
-		return nil, fmt.Errorf("xds: Required field %q doesn't contain valid value in bootstrap %s", "xds_servers.channel_creds", jsonData["xds_servers"])
+		return nil, fmt.Errorf("xds: required field %q doesn't contain valid value in bootstrap %s", "xds_servers.channel_creds", jsonData["xds_servers"])
 	}
 	// Post-process the authorities' client listener resource template field:
 	// - if set, it must start with "xdstp://<authority_name>/"
@@ -499,7 +500,7 @@ func (c *Config) updateNodeProto(node *v3corepb.Node) error {
 	}
 	v3.UserAgentName = gRPCUserAgentName
 	v3.UserAgentVersionType = &v3corepb.Node_UserAgentVersion{UserAgentVersion: grpc.Version}
-	v3.ClientFeatures = append(v3.ClientFeatures, clientFeatureNoOverprovisioning)
+	v3.ClientFeatures = append(v3.ClientFeatures, clientFeatureNoOverprovisioning, clientFeatureResourceWrapper)
 
 	v3bytes, err := proto.Marshal(v3)
 	if err != nil {

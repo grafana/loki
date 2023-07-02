@@ -5,12 +5,17 @@ apiVersion: apps/v1
 kind: DaemonSet
 metadata:
   name: {{ include "loki-canary.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki-canary.labels" $ | nindent 4 }}
 spec:
   selector:
     matchLabels:
       {{- include "loki-canary.selectorLabels" $ | nindent 6 }}
+  {{- with .updateStrategy }}
+  updateStrategy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
   template:
     metadata:
       annotations:
@@ -19,6 +24,9 @@ spec:
         {{- end }}
       labels:
         {{- include "loki-canary.selectorLabels" $ | nindent 8 }}
+        {{- with .podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "loki-canary.fullname" $ }}
       {{- with $.Values.imagePullSecrets }}
@@ -41,8 +49,8 @@ spec:
             - -tenant-id=$(USER)
             - -pass=$(PASS)
             {{- else if $.Values.loki.auth_enabled }}
-            - -user={{ $.Values.monitoring.selfMonitoring.tenant }}
-            - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant }}
+            - -user={{ $.Values.monitoring.selfMonitoring.tenant.name }}
+            - -tenant-id={{ $.Values.monitoring.selfMonitoring.tenant.name }}
             {{- end }}
             {{- with .extraArgs }}
             {{- toYaml . | nindent 12 }}
@@ -62,12 +70,12 @@ spec:
             - name: USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "enterprise-logs.canarySecret" $ }}
+                  name: {{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}
                   key: username
             - name: PASS
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "enterprise-logs.canarySecret" $ }}
+                  name: {{ include "enterprise-logs.selfMonitoringTenantSecret" $ }}
                   key: password
             {{- end -}}
             {{- with .extraEnv }}

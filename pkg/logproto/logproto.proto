@@ -5,12 +5,9 @@ package logproto;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logqlmodel/stats/stats.proto";
+import "pkg/push/push.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";
-
-service Pusher {
-  rpc Push(PushRequest) returns (PushResponse) {}
-}
 
 service Querier {
   rpc Query(QueryRequest) returns (stream QueryResponse) {}
@@ -30,6 +27,9 @@ service Querier {
   // Note: this MUST be the same as the variant defined in
   // indexgateway.proto on the IndexGateway service.
   rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
+  // Note: this MUST be the same as the variant defined in
+  // indexgateway.proto on the IndexGateway service.
+  rpc GetSeriesVolume(VolumeRequest) returns (VolumeResponse) {}
 }
 
 service Ingester {
@@ -51,16 +51,8 @@ message StreamRate {
   uint64 streamHashNoShard = 2;
   int64 rate = 3; // rate in plain bytes.
   string tenant = 4;
+  uint32 pushes = 5;
 }
-
-message PushRequest {
-  repeated StreamAdapter streams = 1 [
-    (gogoproto.jsontag) = "streams",
-    (gogoproto.customtype) = "Stream"
-  ];
-}
-
-message PushResponse {}
 
 message QueryRequest {
   string selector = 1;
@@ -101,7 +93,7 @@ message Delete {
 
 message QueryResponse {
   repeated StreamAdapter streams = 1 [
-    (gogoproto.customtype) = "Stream",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream",
     (gogoproto.nullable) = true
   ];
   stats.Ingester stats = 2 [(gogoproto.nullable) = false];
@@ -131,29 +123,11 @@ message LabelRequest {
     (gogoproto.stdtime) = true,
     (gogoproto.nullable) = true
   ];
+  string query = 5; // Naming this query instead of match because this should be with queryrangebase.Request interface
 }
 
 message LabelResponse {
   repeated string values = 1;
-}
-
-message StreamAdapter {
-  string labels = 1 [(gogoproto.jsontag) = "labels"];
-  repeated EntryAdapter entries = 2 [
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "entries"
-  ];
-  // hash contains the original hash of the stream.
-  uint64 hash = 3 [(gogoproto.jsontag) = "-"];
-}
-
-message EntryAdapter {
-  google.protobuf.Timestamp timestamp = 1 [
-    (gogoproto.stdtime) = true,
-    (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "ts"
-  ];
-  string line = 2 [(gogoproto.jsontag) = "line"];
 }
 
 message Sample {
@@ -189,7 +163,7 @@ message TailRequest {
 }
 
 message TailResponse {
-  StreamAdapter stream = 1 [(gogoproto.customtype) = "Stream"];
+  StreamAdapter stream = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/push.Stream"];
   repeated DroppedStream droppedStreams = 2;
 }
 
@@ -405,4 +379,28 @@ message IndexStatsResponse {
   uint64 chunks = 2 [(gogoproto.jsontag) = "chunks"];
   uint64 bytes = 3 [(gogoproto.jsontag) = "bytes"];
   uint64 entries = 4 [(gogoproto.jsontag) = "entries"];
+}
+
+message VolumeRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  string matchers = 3;
+  int32 limit = 4;
+  int64 step = 5;
+}
+
+message VolumeResponse {
+  repeated Volume volumes = 1 [(gogoproto.nullable) = false];
+  int32 limit = 2;
+}
+
+message Volume {
+  string name = 1 [(gogoproto.jsontag) = "name"];
+  uint64 volume = 3 [(gogoproto.jsontag) = "volume"];
 }

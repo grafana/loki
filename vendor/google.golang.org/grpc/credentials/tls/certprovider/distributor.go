@@ -31,11 +31,11 @@ import (
 //
 // Provider implementations which choose to use a Distributor should do the
 // following:
-// - create a new Distributor using the NewDistributor() function.
-// - invoke the Set() method whenever they have new key material or errors to
-//   report.
-// - delegate to the distributor when handing calls to KeyMaterial().
-// - invoke the Stop() method when they are done using the distributor.
+//   - create a new Distributor using the NewDistributor() function.
+//   - invoke the Set() method whenever they have new key material or errors to
+//     report.
+//   - delegate to the distributor when handing calls to KeyMaterial().
+//   - invoke the Stop() method when they are done using the distributor.
 type Distributor struct {
 	// mu protects the underlying key material.
 	mu   sync.Mutex

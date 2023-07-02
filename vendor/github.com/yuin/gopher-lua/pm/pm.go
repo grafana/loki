@@ -210,7 +210,7 @@ func (pn *singleClass) Matches(ch int) bool {
 	case 'l', 'L':
 		ret = 'a' <= ch && ch <= 'z'
 	case 'p', 'P':
-		ret = (0x21 <= ch && ch <= 0x2f) || (0x30 <= ch && ch <= 0x40) || (0x5b <= ch && ch <= 0x60) || (0x7b <= ch && ch <= 0x7e)
+		ret = (0x21 <= ch && ch <= 0x2f) || (0x3a <= ch && ch <= 0x40) || (0x5b <= ch && ch <= 0x60) || (0x7b <= ch && ch <= 0x7e)
 	case 's', 'S':
 		switch ch {
 		case ' ', '\f', '\n', '\r', '\t', '\v':

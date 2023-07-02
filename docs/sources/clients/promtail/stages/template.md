@@ -1,7 +1,8 @@
 ---
 title: template
+description: template stage
 ---
-# `template` stage
+# template
 
 The `template` stage is a transform stage that lets use manipulate the values in
 the extracted map using [Go's template

@@ -10,12 +10,12 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
@@ -30,7 +30,7 @@ var logsEndpointRe = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.end
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
-	cm, sha1C, err := gatewayConfigMap(opts)
+	cm, tenantSecret, sha1C, err := gatewayConfigObjs(opts)
 	if err != nil {
 		return nil, err
 	}
@@ -39,13 +39,14 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	sa := NewServiceAccount(opts)
 	saToken := NewServiceAccountTokenSecret(opts)
 	svc := NewGatewayHTTPService(opts)
+	pdb := NewGatewayPodDisruptionBudget(opts)
 
 	ing, err := NewGatewayIngress(opts)
 	if err != nil {
 		return nil, err
 	}
 
-	objs := []client.Object{cm, dpl, sa, saToken, svc, ing}
+	objs := []client.Object{cm, tenantSecret, dpl, sa, saToken, svc, ing, pdb}
 
 	minTLSVersion := opts.TLSProfile.MinTLSVersion
 	ciphersList := opts.TLSProfile.Ciphers
@@ -54,6 +55,13 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
 		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
 			return nil, err
+		}
+
+		if opts.Stack.Tenants != nil {
+			mode := opts.Stack.Tenants.Mode
+			if err := configureGatewayDeploymentRulesAPIForMode(dpl, mode); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -80,16 +88,23 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&dpl.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
 
 	return objs, nil
 }
 
 // NewGatewayDeployment creates a deployment object for a lokiStack-gateway
 func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		ServiceAccountName: GatewayName(opts.Name),
-		Affinity:           defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		ServiceAccountName:        GatewayName(opts.Name),
+		Affinity:                  configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
+		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelGatewayComponent, opts.Name),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -104,10 +119,8 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			{
 				Name: "tenants",
 				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: GatewayName(opts.Name),
-						},
+					Secret: &corev1.SecretVolumeSource{
+						SecretName: GatewayName(opts.Name),
 					},
 				},
 			},
@@ -139,8 +152,11 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 					fmt.Sprintf("--logs.read.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.tail.endpoint=http://%s:%d", fqdn(serviceNameQueryFrontendHTTP(opts.Name), opts.Namespace), httpPort),
 					fmt.Sprintf("--logs.write.endpoint=http://%s:%d", fqdn(serviceNameDistributorHTTP(opts.Name), opts.Namespace), httpPort),
+					fmt.Sprintf("--logs.write-timeout=%s", opts.Timeouts.Gateway.UpstreamWriteTimeout),
 					fmt.Sprintf("--rbac.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayRbacFileName)),
 					fmt.Sprintf("--tenants.config=%s", path.Join(gateway.LokiGatewayMountDir, gateway.LokiGatewayTenantFileName)),
+					fmt.Sprintf("--server.read-timeout=%s", opts.Timeouts.Gateway.ReadTimeout),
+					fmt.Sprintf("--server.write-timeout=%s", opts.Timeouts.Gateway.WriteTimeout),
 				},
 				Ports: []corev1.ContainerPort{
 					{
@@ -200,8 +216,10 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 		},
 	}
 
-	l := ComponentLabels(LabelGatewayComponent, opts.Name)
-	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
+	if opts.Stack.Template != nil && opts.Stack.Template.Gateway != nil {
+		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
+		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
+	}
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -213,7 +231,7 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(1),
+			Replicas: pointer.Int32(opts.Stack.Template.Gateway.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: l,
 			},
@@ -349,36 +367,73 @@ func NewServiceAccountTokenSecret(opts Options) client.Object {
 	}
 }
 
-// gatewayConfigMap creates a configMap for rbac.yaml and tenants.yaml
-func gatewayConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
+// NewGatewayPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// Gateway pods.
+func NewGatewayPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelGatewayComponent, opts.Name)
+	mu := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      GatewayName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &mu,
+		},
+	}
+}
+
+// gatewayConfigObjs creates a configMap for rbac.yaml and a secret for tenants.yaml
+func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, error) {
 	cfg := gatewayConfigOptions(opt)
 	rbacConfig, tenantsConfig, regoConfig, err := gateway.Build(cfg)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 
 	s := sha1.New()
 	_, err = s.Write(tenantsConfig)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	sha1C := fmt.Sprintf("%x", s.Sum(nil))
 
 	return &corev1.ConfigMap{
-		TypeMeta: metav1.TypeMeta{
-			Kind:       "ConfigMap",
-			APIVersion: corev1.SchemeGroupVersion.String(),
-		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   GatewayName(opt.Name),
-			Labels: commonLabels(opt.Name),
-		},
-		BinaryData: map[string][]byte{
-			gateway.LokiGatewayRbacFileName:   rbacConfig,
-			gateway.LokiGatewayTenantFileName: tenantsConfig,
-			gateway.LokiGatewayRegoFileName:   regoConfig,
-		},
-	}, sha1C, nil
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: corev1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:   GatewayName(opt.Name),
+				Labels: commonLabels(opt.Name),
+			},
+			BinaryData: map[string][]byte{
+				gateway.LokiGatewayRbacFileName: rbacConfig,
+				gateway.LokiGatewayRegoFileName: regoConfig,
+			},
+		}, &corev1.Secret{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Secret",
+				APIVersion: corev1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      GatewayName(opt.Name),
+				Labels:    ComponentLabels(LabelGatewayComponent, opt.Name),
+				Namespace: opt.Namespace,
+			},
+			Data: map[string][]byte{
+				gateway.LokiGatewayTenantFileName: tenantsConfig,
+			},
+			Type: corev1.SecretTypeOpaque,
+		}, sha1C, nil
 }
 
 // gatewayConfigOptions converts Options to gateway.Options
@@ -552,15 +607,4 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	}
 
 	return nil
-}
-
-func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
-	podSpec := d.Spec.Template.Spec
-
-	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
-	for i := range podSpec.Containers {
-		podSpec.Containers[i].SecurityContext = containerSecurityContext()
-	}
-
-	d.Spec.Template.Spec = podSpec
 }

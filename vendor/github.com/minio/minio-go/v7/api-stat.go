@@ -70,6 +70,9 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 	if opts.Internal.ReplicationDeleteMarker {
 		headers.Set(minIOBucketReplicationDeleteMarker, "true")
 	}
+	if opts.Internal.IsReplicationReadyForDeleteMarker {
+		headers.Set(isMinioTgtReplicationReady, "true")
+	}
 
 	urlValues := make(url.Values)
 	if opts.VersionID != "" {
@@ -90,6 +93,7 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 
 	if resp != nil {
 		deleteMarker := resp.Header.Get(amzDeleteMarker) == "true"
+		replicationReady := resp.Header.Get(minioTgtReplicationReady) == "true"
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
 			if resp.StatusCode == http.StatusMethodNotAllowed && opts.VersionID != "" && deleteMarker {
 				errResp := ErrorResponse{
@@ -105,8 +109,9 @@ func (c *Client) StatObject(ctx context.Context, bucketName, objectName string, 
 				}, errResp
 			}
 			return ObjectInfo{
-				VersionID:      resp.Header.Get(amzVersionID),
-				IsDeleteMarker: deleteMarker,
+				VersionID:        resp.Header.Get(amzVersionID),
+				IsDeleteMarker:   deleteMarker,
+				ReplicationReady: replicationReady, // whether delete marker can be replicated
 			}, httpRespToErrorResponse(resp, bucketName, objectName)
 		}
 	}

@@ -25,7 +25,7 @@ if err != nil {
 	log.Fatal(err)
 }
 defer rc.Close()
-body, err := ioutil.ReadAll(rc)
+body, err := io.ReadAll(rc)
 if err != nil {
 	log.Fatal(err)
 }

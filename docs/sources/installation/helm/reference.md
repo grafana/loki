@@ -1,10 +1,8 @@
 ---
 title: Helm Chart Values
-menuTitle: Helm Chart Values
+menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-aliases:
-  - /docs/writers-toolkit/latest/templates/reference-template
-weight: 100
+weight: 200
 keywords: []
 ---
 
@@ -15,10 +13,16 @@ keywords: []
 <!-- The reference title is required. Use a noun-based title. -->
 <!-- vale Grafana.Quotes = YES -->
 
-This is the generade reference for the Loki Helm Chart values.
+This is the generated reference for the Loki Helm Chart values.
+
+> **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
+> If you are using the `grafana/loki-stack` Helm chart from the community repo,
+> please refer to the `values.yaml` of the respective Github repository
+> [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts/loki-stack).
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+{{< responsive-table >}}
 <table>
 	<thead>
 		<th>Key</th>
@@ -27,6 +31,312 @@ This is the generade reference for the Loki Helm Chart values.
 		<th>Default</th>
 	</thead>
 	<tbody>
+		<tr>
+			<td>backend.affinity</td>
+			<td>string</td>
+			<td>Affinity for backend pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td><pre lang="">
+Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.annotations</td>
+			<td>object</td>
+			<td>Annotations for backend StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the backend.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the backend.</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the backend.</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilization percentage for the backend.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilization percentage for the backend.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the backend</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the backend image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the backend image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the backend image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.selector</td>
+			<td>string</td>
+			<td>Selector for persistent disk</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.size</td>
+			<td>string</td>
+			<td>Size of persistent disk</td>
+			<td><pre lang="json">
+"10Gi"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.persistence.storageClass</td>
+			<td>string</td>
+			<td>Storage class to be used. If defined, storageClassName: <storageClass>. If set to "-", storageClassName: "", which disables dynamic provisioning. If empty or set to null, no storageClassName spec is set, choosing the default provisioner (gp2 on AWS, standard on GKE, AWS, and OpenStack).</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for backend pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.replicas</td>
+			<td>int</td>
+			<td>Number of replicas for the backend</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the backend</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.selectorLabels</td>
+			<td>object</td>
+			<td>Additional selector labels for each `backend` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for ingester service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.targetModule</td>
+			<td>string</td>
+			<td>Comma-separated list of Loki modules to load for the read</td>
+			<td><pre lang="json">
+"backend"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the backend to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so backends can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td><pre lang="json">
+300
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for backend pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>clusterLabelOverride</td>
+			<td>string</td>
+			<td>Overrides the chart's cluster label</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
 		<tr>
 			<td>enterprise.adminApi</td>
 			<td>object</td>
@@ -39,7 +349,16 @@ This is the generade reference for the Loki Helm Chart values.
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.adminTokenSecret</td>
+			<td>enterprise.adminToken.additionalNamespaces</td>
+			<td>list</td>
+			<td>Additional namespace to also create the token in. Useful if your Grafana instance is in a different namespace</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.adminToken.secret</td>
 			<td>string</td>
 			<td>Alternative name for admin token secret, needed by tokengen and provisioner jobs</td>
 			<td><pre lang="json">
@@ -102,6 +421,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>enterprise.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>enterprise.image.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -129,22 +457,22 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.license</td>
-			<td>object</td>
-			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'license.contents=./license.jwt'`</td>
+			<td>enterprise.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-{
-  "contents": "NOTAVALIDLICENSE"
-}
+null
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>enterprise.nginxConfig.file</td>
-			<td>string</td>
-			<td></td>
+			<td>enterprise.license</td>
+			<td>object</td>
+			<td>Grafana Enterprise Logs license In order to use Grafana Enterprise Logs features, you will need to provide the contents of your Grafana Enterprise Logs license, either by providing the contents of the license.jwt, or the name Kubernetes Secret that contains your license.jwt. To set the license contents, use the flag `--set-file 'enterprise.license.contents=./license.jwt'`</td>
 			<td><pre lang="json">
-"worker_processes  5;  ## Default: 1\nerror_log  /dev/stderr;\npid        /tmp/nginx.pid;\nworker_rlimit_nofile 8192;\n\nevents {\n  worker_connections  4096;  ## Default: 1024\n}\n\nhttp {\n  client_body_temp_path /tmp/client_temp;\n  proxy_temp_path       /tmp/proxy_temp_path;\n  fastcgi_temp_path     /tmp/fastcgi_temp;\n  uwsgi_temp_path       /tmp/uwsgi_temp;\n  scgi_temp_path        /tmp/scgi_temp;\n\n  proxy_http_version    1.1;\n\n  default_type application/octet-stream;\n  log_format   {{ .Values.gateway.nginxConfig.logFormat }}\n\n  {{- if .Values.gateway.verboseLogging }}\n  access_log   /dev/stderr  main;\n  {{- else }}\n\n  map $status $loggable {\n    ~^[23]  0;\n    default 1;\n  }\n  access_log   /dev/stderr  main  if=$loggable;\n  {{- end }}\n\n  sendfile     on;\n  tcp_nopush   on;\n  resolver {{ .Values.global.dnsService }}.{{ .Values.global.dnsNamespace }}.svc.{{ .Values.global.clusterDomain }}.;\n\n  {{- with .Values.gateway.nginxConfig.httpSnippet }}\n  {{ . | nindent 2 }}\n  {{- end }}\n\n  server {\n    listen             8080;\n\n    {{- if .Values.gateway.basicAuth.enabled }}\n    auth_basic           \"Loki\";\n    auth_basic_user_file /etc/nginx/secrets/.htpasswd;\n    {{- end }}\n\n    location = / {\n      return 200 'OK';\n      auth_basic off;\n    }\n\n    location = /api/prom/push {\n      proxy_pass       http://{{ include \"loki.writeFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location = /api/prom/tail {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n      proxy_set_header Upgrade $http_upgrade;\n      proxy_set_header Connection \"upgrade\";\n    }\n\n    location ~ /api/prom/.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /prometheus/api/v1/alerts.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /prometheus/api/v1/rules.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location = /loki/api/v1/push {\n      proxy_pass       http://{{ include \"loki.writeFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location = /loki/api/v1/tail {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n      proxy_set_header Upgrade $http_upgrade;\n      proxy_set_header Connection \"upgrade\";\n    }\n\n    location ~ /loki/api/.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /admin/api/.* {\n      proxy_pass       http://{{ include \"loki.writeFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /compactor/.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /distributor/.* {\n      proxy_pass       http://{{ include \"loki.writeFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /ring {\n      proxy_pass       http://{{ include \"loki.writeFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /ingester/.* {\n      proxy_pass       http://{{ include \"loki.writeFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /ruler/.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    location ~ /scheduler/.* {\n      proxy_pass       http://{{ include \"loki.readFullname\" . }}.{{ .Release.Namespace }}.svc.{{ .Values.global.clusterDomain }}:3100$request_uri;\n    }\n\n    {{- with .Values.gateway.nginxConfig.serverSnippet }}\n    {{ . | nindent 4 }}\n    {{- end }}\n  }\n}\n"
+{
+  "contents": "NOTAVALIDLICENSE"
+}
 </pre>
 </td>
 		</tr>
@@ -154,11 +482,13 @@ null
 			<td>Configuration for `provisioner` target</td>
 			<td><pre lang="json">
 {
+  "additionalTenants": [],
   "annotations": {},
   "enabled": true,
   "env": [],
   "extraVolumeMounts": [],
   "image": {
+    "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/enterprise-logs-provisioner",
@@ -166,15 +496,23 @@ null
   },
   "labels": {},
   "priorityClassName": null,
-  "provisionedSecretPrefix": "{{ include \"loki.name\" . }}-provisioned",
+  "provisionedSecretPrefix": null,
   "securityContext": {
     "fsGroup": 10001,
     "runAsGroup": 10001,
     "runAsNonRoot": true,
     "runAsUser": 10001
-  },
-  "tenants": []
+  }
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.additionalTenants</td>
+			<td>list</td>
+			<td>Additional tenants to be created. Each tenant will get a read and write policy and associated token. Tenant must have a name and a namespace for the secret containting the token to be created in. For example additionalTenants:   - name: loki     secretNamespace: grafana</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -220,11 +558,21 @@ true
 			<td>Provisioner image to Utilize</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/enterprise-logs-provisioner",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>enterprise.provisioner.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -287,7 +635,7 @@ null
 			<td>string</td>
 			<td>Name of the secret to store provisioned tokens in</td>
 			<td><pre lang="json">
-"{{ include \"loki.name\" . }}-provisioned"
+null
 </pre>
 </td>
 		</tr>
@@ -302,15 +650,6 @@ null
   "runAsNonRoot": true,
   "runAsUser": 10001
 }
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>enterprise.provisioner.tenants</td>
-			<td>list</td>
-			<td>Tenants to be created. Each tenant will get a read and write policy and associated token.</td>
-			<td><pre lang="json">
-[]
 </pre>
 </td>
 		</tr>
@@ -468,7 +807,16 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.6.0"
+"v1.7.2"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>extraObjects</td>
+			<td>list</td>
+			<td></td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -487,6 +835,24 @@ null
 			<td>Affinity for gateway pods. Passed through `tpl` and, thus, to be configured as string</td>
 			<td><pre lang="">
 Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.annotations</td>
+			<td>object</td>
+			<td>Annotations for gateway deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -556,9 +922,9 @@ null
 		<tr>
 			<td>gateway.basicAuth.htpasswd</td>
 			<td>string</td>
-			<td>Uses the specified username and password to compute a htpasswd using Sprig's `htpasswd` function. The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
+			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }}"
+"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -598,13 +964,11 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>gateway.deploymentStrategy</td>
-			<td>object</td>
-			<td>ref: https://kubernetes.io/docs/concepts/workloads/controllers/deployment/#strategy</td>
+			<td>gateway.deploymentStrategy.type</td>
+			<td>string</td>
+			<td></td>
 			<td><pre lang="json">
-{
-  "type": "RollingUpdate"
-}
+"RollingUpdate"
 </pre>
 </td>
 		</tr>
@@ -663,6 +1027,15 @@ true
 </td>
 		</tr>
 		<tr>
+			<td>gateway.image.digest</td>
+			<td>string</td>
+			<td>Overrides the gateway image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.image.pullPolicy</td>
 			<td>string</td>
 			<td>The gateway image pull policy</td>
@@ -694,7 +1067,7 @@ true
 			<td>string</td>
 			<td>The gateway image tag</td>
 			<td><pre lang="json">
-"1.19-alpine"
+"1.23-alpine"
 </pre>
 </td>
 		</tr>
@@ -744,6 +1117,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.ingress.labels</td>
+			<td>object</td>
+			<td>Labels for the gateway ingress</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
 			<td>TLS configuration for the gateway ingress</td>
@@ -760,6 +1142,42 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>gateway.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the gateway container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customBackendUrl</td>
+			<td>string</td>
+			<td>Override Backend URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customReadUrl</td>
+			<td>string</td>
+			<td>Override Read URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.nginxConfig.customWriteUrl</td>
+			<td>string</td>
+			<td>Override Write URL</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.nginxConfig.file</td>
 			<td>string</td>
 			<td>Config file contents for Nginx. Passed through the `tpl` function to allow templating</td>
@@ -771,9 +1189,9 @@ See values.yaml
 		<tr>
 			<td>gateway.nginxConfig.httpSnippet</td>
 			<td>string</td>
-			<td>Allows appending custom configuration to the http block</td>
+			<td>Allows appending custom configuration to the http block, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-""
+"{{ if .Values.loki.tenants }}proxy_set_header X-Scope-OrgID $remote_user;{{ end }}"
 </pre>
 </td>
 		</tr>
@@ -808,6 +1226,15 @@ See values.yaml
 			<td>gateway.podAnnotations</td>
 			<td>object</td>
 			<td>Annotations for gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for gateway pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1242,6 +1669,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>kubectlImage.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>kubectlImage.pullPolicy</td>
 			<td>string</td>
 			<td>Docker image pull policy</td>
@@ -1287,6 +1723,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.annotations</td>
+			<td>object</td>
+			<td>Common annotations for all deployments/StatefulSets</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.auth_enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -1301,6 +1746,7 @@ true
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#common_config for more info on how to provide a common configuration</td>
 			<td><pre lang="json">
 {
+  "compactor_address": "{{ include \"loki.compactorAddress\" . }}",
   "path_prefix": "/var/loki",
   "replication_factor": 3
 }
@@ -1326,6 +1772,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.configStorageType</td>
+			<td>string</td>
+			<td>Defines what kind of object stores the configuration, a ConfigMap or a Secret. In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration). Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).</td>
+			<td><pre lang="json">
+"ConfigMap"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.containerSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for Loki containers</td>
@@ -1343,11 +1798,65 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.enableServiceLinks</td>
+			<td>bool</td>
+			<td>Should enableServiceLinks be enabled. Default to enable</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.existingSecretForConfig</td>
 			<td>string</td>
 			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.externalConfigSecretName</td>
+			<td>string</td>
+			<td>Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).</td>
+			<td><pre lang="json">
+"{{ include \"loki.name\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.extraMemberlistConfig</td>
+			<td>object</td>
+			<td>Extra memberlist configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.frontend.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.frontend_worker.scheduler_address</td>
+			<td>string</td>
+			<td></td>
+			<td><pre lang="json">
+"{{ include \"loki.querySchedulerAddress\" . }}"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -1381,9 +1890,29 @@ See values.yaml
 		<tr>
 			<td>loki.image.tag</td>
 			<td>string</td>
-			<td>Overrides the image tag whose default is the chart's appVersion</td>
+			<td>Overrides the image tag whose default is the chart's appVersion TODO: needed for 3rd target backend functionality revert to null or latest once this behavior is relased</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.index_gateway</td>
+			<td>object</td>
+			<td>Optional index gateway configuration</td>
+			<td><pre lang="json">
+{
+  "mode": "ring"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.ingester</td>
+			<td>object</td>
+			<td>Optional ingester configuration</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1399,6 +1928,15 @@ null
   "reject_old_samples_max_age": "168h",
   "split_queries_by_interval": "15m"
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.memberlistConfig</td>
+			<td>object</td>
+			<td>memberlist configuration (overrides embedded default)</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1430,6 +1968,15 @@ null
 			<td>loki.podAnnotations</td>
 			<td>object</td>
 			<td>Common annotations for all pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.podLabels</td>
+			<td>object</td>
+			<td>Common labels for all pods</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -1522,6 +2069,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.runtimeConfig</td>
+			<td>object</td>
+			<td>Provides a reloadable runtime configuration file for some specific configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.schemaConfig</td>
 			<td>object</td>
 			<td>Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas</td>
@@ -1551,7 +2107,9 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "endpointSuffix": null,
     "requestTimeout": null,
+    "useFederatedToken": false,
     "useManagedIdentity": false,
     "userAssignedId": null
   },
@@ -1577,7 +2135,8 @@ null
     "region": null,
     "s3": null,
     "s3ForcePathStyle": false,
-    "secretAccessKey": null
+    "secretAccessKey": null,
+    "signatureVersion": null
   },
   "type": "s3"
 }
@@ -1605,6 +2164,24 @@ null
 			<td>Structured loki configuration, takes precedence over `loki.config`, `loki.schemaConfig`, `loki.storageConfig`</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.tenants</td>
+			<td>list</td>
+			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>memberlist.service.publishNotReadyAddresses</td>
+			<td>bool</td>
+			<td></td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -1646,7 +2223,7 @@ false
 		<tr>
 			<td>migrate.fromDistributed.memberlistService</td>
 			<td>string</td>
-			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join it's ring.</td>
+			<td>If migrating from a distributed service, provide the distributed deployment's memberlist service DNS so the new deployment can join its ring.</td>
 			<td><pre lang="json">
 ""
 </pre>
@@ -1714,9 +2291,11 @@ true
 		<tr>
 			<td>monitoring.dashboards.labels</td>
 			<td>object</td>
-			<td>Additional labels for the dashboards ConfigMap</td>
+			<td>Labels for the dashboards ConfigMap</td>
 			<td><pre lang="json">
-{}
+{
+  "grafana_dashboard": "1"
+}
 </pre>
 </td>
 		</tr>
@@ -1780,11 +2359,21 @@ true
 			<td>Image to use for loki canary</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-canary",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -1834,6 +2423,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `loki-canary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for loki-canary pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
@@ -1852,11 +2459,34 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.updateStrategy</td>
+			<td>object</td>
+			<td>Update strategy for the `loki-canary` Daemonset pods</td>
+			<td><pre lang="json">
+{
+  "rollingUpdate": {
+    "maxUnavailable": 1
+  },
+  "type": "RollingUpdate"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.rules.additionalGroups</td>
 			<td>list</td>
 			<td>Additional groups to add to the rules file</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.rules.additionalRuleLabels</td>
+			<td>object</td>
+			<td>Additional labels for PrometheusRule alerts</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -1899,7 +2529,7 @@ true
 		<tr>
 			<td>monitoring.rules.namespace</td>
 			<td>string</td>
-			<td>Alternative namespace to create recording rules PrometheusRule resource in</td>
+			<td>Alternative namespace to create PrometheusRule resources in</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1951,9 +2581,9 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.grafanaAgent.namespace</td>
+			<td>monitoring.selfMonitoring.grafanaAgent.priorityClassName</td>
 			<td>string</td>
-			<td>Alternative namespace for Grafana Agent resources</td>
+			<td>The name of the PriorityClass for GrafanaAgent pods</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -1987,15 +2617,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.logsInstance.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for LogsInstance resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.podLogs.annotations</td>
 			<td>object</td>
 			<td>PodLogs annotations</td>
@@ -2014,15 +2635,6 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>monitoring.selfMonitoring.podLogs.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for PodLogs resources</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>monitoring.selfMonitoring.podLogs.relabelings</td>
 			<td>list</td>
 			<td>PodLogs relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig</td>
@@ -2033,10 +2645,31 @@ null
 		</tr>
 		<tr>
 			<td>monitoring.selfMonitoring.tenant</td>
-			<td>string</td>
+			<td>object</td>
 			<td>Tenant to use for self monitoring</td>
 			<td><pre lang="json">
+{
+  "name": "self-monitoring",
+  "secretNamespace": "{{ .Release.Namespace }}"
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.name</td>
+			<td>string</td>
+			<td>Name of the tenant</td>
+			<td><pre lang="json">
 "self-monitoring"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.selfMonitoring.tenant.secretNamespace</td>
+			<td>string</td>
+			<td>Namespace to create additional tenant token secret in. Useful if your Grafana instance is in a separate namespace. Token will still be created in the canary namespace.</td>
+			<td><pre lang="json">
+"{{ .Release.Namespace }}"
 </pre>
 </td>
 		</tr>
@@ -2061,9 +2694,9 @@ true
 		<tr>
 			<td>monitoring.serviceMonitor.interval</td>
 			<td>string</td>
-			<td>ServiceMonitor scrape interval</td>
+			<td>ServiceMonitor scrape interval Default is 15s because included recording rules use a 1m rate, and scrape interval needs to be at least 1/4 rate interval.</td>
 			<td><pre lang="json">
-null
+"15s"
 </pre>
 </td>
 		</tr>
@@ -2073,6 +2706,15 @@ null
 			<td>Additional ServiceMonitor labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.metricRelabelings</td>
+			<td>list</td>
+			<td>ServiceMonitor metric relabel configs to apply to samples before ingestion https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#endpoint</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
@@ -2121,15 +2763,6 @@ true
 			<td>monitoring.serviceMonitor.metricsInstance.remoteWrite</td>
 			<td>string</td>
 			<td>If defined a MetricsInstance will be created to remote write metrics.</td>
-			<td><pre lang="json">
-null
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>monitoring.serviceMonitor.namespace</td>
-			<td>string</td>
-			<td>Alternative namespace for ServiceMonitor resources</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -2343,6 +2976,24 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>read.annotations</td>
+			<td>object</td>
+			<td>Annotations for read deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.autoscaling.enabled</td>
 			<td>bool</td>
 			<td>Enable autoscaling for the read, this is only used if `queryIndex.enabled: true`</td>
@@ -2460,11 +3111,38 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.legacyReadTarget</td>
+			<td>bool</td>
+			<td>Whether or not to use the 2 target type simple scalable mode (read, write) or the 3 target type (read, write, backend). Legacy refers to the 2 target type, so true will run two targets, false will run 3 targets.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the read container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for read pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -2505,6 +3183,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `read` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for read pods</td>
@@ -2534,7 +3230,7 @@ null
 		<tr>
 			<td>read.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selecto labels for each `read` pod</td>
+			<td>Additional selector labels for each `read` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2640,9 +3336,18 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.annotations</td>
+			<td>object</td>
+			<td>Annotations for single binary StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.autoscaling.enabled</td>
 			<td>bool</td>
-			<td>Enable autoscaling, this is only used if `queryIndex.enabled: true`</td>
+			<td>Enable autoscaling</td>
 			<td><pre lang="json">
 false
 </pre>
@@ -2688,6 +3393,15 @@ null
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.extraContainers</td>
+			<td>list</td>
+			<td>Extra containers to add to the single binary loki pod</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -2757,11 +3471,38 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the single binary pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for single binary pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.persistence.enabled</td>
+			<td>bool</td>
+			<td>Enable persistent disk</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
@@ -2802,6 +3543,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `single binary` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.priorityClassName</td>
 			<td>string</td>
 			<td>The name of the PriorityClass for single binary pods</td>
@@ -2815,7 +3565,7 @@ null
 			<td>int</td>
 			<td>Number of replicas for the single binary</td>
 			<td><pre lang="json">
-1
+0
 </pre>
 </td>
 		</tr>
@@ -2831,7 +3581,7 @@ null
 		<tr>
 			<td>singleBinary.selectorLabels</td>
 			<td>object</td>
-			<td>Additional selecto labels for each `single binary` pod</td>
+			<td>Additional selector labels for each `single binary` pod</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2865,6 +3615,213 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>tableManager.affinity</td>
+			<td>string</td>
+			<td>Affinity for table-manager pods. Passed through `tpl` and, thus, to be configured as string</td>
+			<td><pre lang="">
+Hard node and soft zone anti-affinity
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.annotations</td>
+			<td>object</td>
+			<td>Annotations for table-manager deployment</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.command</td>
+			<td>string</td>
+			<td>Command to execute instead of defined in Docker image</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.enabled</td>
+			<td>bool</td>
+			<td>Specifies whether the table-manager should be enabled</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraArgs</td>
+			<td>list</td>
+			<td>Additional CLI args for the table-manager</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraContainers</td>
+			<td>list</td>
+			<td>Containers to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraEnv</td>
+			<td>list</td>
+			<td>Environment variables to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraEnvFrom</td>
+			<td>list</td>
+			<td>Environment variables from secrets or configmaps to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraVolumeMounts</td>
+			<td>list</td>
+			<td>Volume mounts to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.extraVolumes</td>
+			<td>list</td>
+			<td>Volumes to add to the table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.registry</td>
+			<td>string</td>
+			<td>The Docker registry for the table-manager image. Overrides `loki.image.registry`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.repository</td>
+			<td>string</td>
+			<td>Docker image repository for the table-manager image. Overrides `loki.image.repository`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag for the table-manager image. Overrides `loki.image.tag`</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.nodeSelector</td>
+			<td>object</td>
+			<td>Node selector for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.podAnnotations</td>
+			<td>object</td>
+			<td>Annotations for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.podLabels</td>
+			<td>object</td>
+			<td>Labels for table-manager pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.priorityClassName</td>
+			<td>string</td>
+			<td>The name of the PriorityClass for table-manager pods</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the table-manager</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_deletes_enabled</td>
+			<td>bool</td>
+			<td>Enable deletes by retention</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.retention_period</td>
+			<td>int</td>
+			<td>Set retention period</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.serviceLabels</td>
+			<td>object</td>
+			<td>Labels for table-manager service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.terminationGracePeriodSeconds</td>
+			<td>int</td>
+			<td>Grace period to allow the table-manager to shutdown before it is killed</td>
+			<td><pre lang="json">
+30
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for table-manager pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>test</td>
 			<td>object</td>
 			<td>Section for configuring optional Helm test</td>
@@ -2873,6 +3830,7 @@ null
   "annotations": {},
   "enabled": true,
   "image": {
+    "digest": null,
     "pullPolicy": "IfNotPresent",
     "registry": "docker.io",
     "repository": "grafana/loki-helm-test",
@@ -2900,11 +3858,21 @@ null
 			<td>Image to use for loki canary</td>
 			<td><pre lang="json">
 {
+  "digest": null,
   "pullPolicy": "IfNotPresent",
   "registry": "docker.io",
   "repository": "grafana/loki-helm-test",
   "tag": null
 }
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>test.image.digest</td>
+			<td>string</td>
+			<td>Overrides the image tag with an image digest</td>
+			<td><pre lang="json">
+null
 </pre>
 </td>
 		</tr>
@@ -2990,6 +3958,106 @@ Hard node and soft zone anti-affinity
 </td>
 		</tr>
 		<tr>
+			<td>write.annotations</td>
+			<td>object</td>
+			<td>Annotations for write StatefulSet</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.behavior</td>
+			<td>object</td>
+			<td>Behavior policies while scaling.</td>
+			<td><pre lang="json">
+{
+  "scaleDown": {
+    "policies": [
+      {
+        "periodSeconds": 1800,
+        "type": "Pods",
+        "value": 1
+      }
+    ],
+    "stabilizationWindowSeconds": 3600
+  },
+  "scaleUp": {
+    "policies": [
+      {
+        "periodSeconds": 900,
+        "type": "Pods",
+        "value": 1
+      }
+    ]
+  }
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.behavior.scaleUp</td>
+			<td>object</td>
+			<td>see https://github.com/grafana/loki/blob/main/docs/sources/operations/storage/wal.md#how-to-scale-updown for scaledown details</td>
+			<td><pre lang="json">
+{
+  "policies": [
+    {
+      "periodSeconds": 900,
+      "type": "Pods",
+      "value": 1
+    }
+  ]
+}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.enabled</td>
+			<td>bool</td>
+			<td>Enable autoscaling for the write.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.maxReplicas</td>
+			<td>int</td>
+			<td>Maximum autoscaling replicas for the write.</td>
+			<td><pre lang="json">
+3
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.minReplicas</td>
+			<td>int</td>
+			<td>Minimum autoscaling replicas for the write.</td>
+			<td><pre lang="json">
+1
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.targetCPUUtilizationPercentage</td>
+			<td>int</td>
+			<td>Target CPU utilisation percentage for the write.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.autoscaling.targetMemoryUtilizationPercentage</td>
+			<td>string</td>
+			<td>Target memory utilization percentage for the write.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the write</td>
@@ -3011,6 +4079,15 @@ Hard node and soft zone anti-affinity
 			<td>write.extraEnvFrom</td>
 			<td>list</td>
 			<td>Environment variables from secrets or configmaps to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.extraVolumeClaimTemplates</td>
+			<td>list</td>
+			<td>volumeClaimTemplates to add to StatefulSet</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -3062,11 +4139,38 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>write.initContainers</td>
+			<td>list</td>
+			<td>Init containers to add to the write pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.lifecycle</td>
+			<td>object</td>
+			<td>Lifecycle for the write container</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>write.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.enableStatefulSetAutoDeletePVC</td>
+			<td>bool</td>
+			<td>Enable StatefulSetAutoDeletePVC feature</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>
@@ -3103,6 +4207,24 @@ null
 			<td>Annotations for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podLabels</td>
+			<td>object</td>
+			<td>Additional labels for each `write` pod</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.podManagementPolicy</td>
+			<td>string</td>
+			<td>The default is to deploy all pods in parallel.</td>
+			<td><pre lang="json">
+"Parallel"
 </pre>
 </td>
 		</tr>
@@ -3145,7 +4267,7 @@ null
 		<tr>
 			<td>write.serviceLabels</td>
 			<td>object</td>
-			<td>Labels for ingestor service</td>
+			<td>Labels for ingester service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3163,7 +4285,7 @@ null
 		<tr>
 			<td>write.terminationGracePeriodSeconds</td>
 			<td>int</td>
-			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingestor, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
+			<td>Grace period to allow the write to shutdown before it is killed. Especially for the ingester, this must be increased. It must be long enough so writes can be gracefully shutdown flushing/transferring all data and to successfully leave the member ring on shutdown.</td>
 			<td><pre lang="json">
 300
 </pre>
@@ -3180,4 +4302,5 @@ null
 		</tr>
 	</tbody>
 </table>
+{{< /responsive-table >}}
 

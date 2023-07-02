@@ -3,6 +3,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.memberlist" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" . | nindent 4 }}
 spec:
@@ -13,6 +14,9 @@ spec:
       port: 7946
       targetPort: http-memberlist
       protocol: TCP
+  {{- with .Values.memberlist.service.publishNotReadyAddresses }}
+  publishNotReadyAddresses: {{ . }}
+  {{- end }}
   selector:
     {{- include "loki.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist

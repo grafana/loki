@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/grafana/dskit/flagext"
 	"github.com/mattn/go-ieproxy"
@@ -32,6 +34,7 @@ import (
 const (
 	// Environment
 	azureGlobal       = "AzureGlobal"
+	azurePublicCloud  = "AzurePublicCloud"
 	azureChinaCloud   = "AzureChinaCloud"
 	azureGermanCloud  = "AzureGermanCloud"
 	azureUSGovernment = "AzureUSGovernment"
@@ -46,6 +49,11 @@ var (
 		azureChinaCloud:   "blob.core.chinacloudapi.cn",
 		azureGermanCloud:  "blob.core.cloudapi.de",
 		azureUSGovernment: "blob.core.usgovcloudapi.net",
+	}
+
+	defaultAuthFunctions = authFunctions{
+		NewOAuthConfigFunc: adal.NewOAuthConfig,
+		NewServicePrincipalTokenFromFederatedTokenFunc: adal.NewServicePrincipalTokenFromFederatedToken, //nolint:staticcheck // SA1019: use of deprecated function.
 	}
 
 	// default Azure http client.
@@ -79,6 +87,7 @@ type BlobStorageConfig struct {
 	ContainerName       string         `yaml:"container_name"`
 	Endpoint            string         `yaml:"endpoint_suffix"`
 	UseManagedIdentity  bool           `yaml:"use_managed_identity"`
+	UseFederatedToken   bool           `yaml:"use_federated_token"`
 	UserAssignedID      string         `yaml:"user_assigned_id"`
 	UseServicePrincipal bool           `yaml:"use_service_principal"`
 	ClientID            string         `yaml:"client_id"`
@@ -94,6 +103,11 @@ type BlobStorageConfig struct {
 	MaxRetryDelay       time.Duration  `yaml:"max_retry_delay"`
 }
 
+type authFunctions struct {
+	NewOAuthConfigFunc                             func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error)
+	NewServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)
+}
+
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (c *BlobStorageConfig) RegisterFlags(f *flag.FlagSet) {
 	c.RegisterFlagsWithPrefix("", f)
@@ -107,6 +121,7 @@ func (c *BlobStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagS
 	f.StringVar(&c.ContainerName, prefix+"azure.container-name", "loki", "Name of the storage account blob container used to store chunks. This container must be created before running cortex.")
 	f.StringVar(&c.Endpoint, prefix+"azure.endpoint-suffix", "", "Azure storage endpoint suffix without schema. The storage account name will be prefixed to this value to create the FQDN.")
 	f.BoolVar(&c.UseManagedIdentity, prefix+"azure.use-managed-identity", false, "Use Managed Identity to authenticate to the Azure storage account.")
+	f.BoolVar(&c.UseFederatedToken, prefix+"azure.use-federated-token", false, "Use Federated Token to authenticate to the Azure storage account.")
 	f.StringVar(&c.UserAssignedID, prefix+"azure.user-assigned-id", "", "User assigned identity ID to authenticate to the Azure storage account.")
 	f.StringVar(&c.ChunkDelimiter, prefix+"azure.chunk-delimiter", "-", "Chunk delimiter for blob ID to be used")
 	f.DurationVar(&c.RequestTimeout, prefix+"azure.request-timeout", 30*time.Second, "Timeout for requests made against azure blob storage.")
@@ -204,7 +219,7 @@ func (b *BlobStorage) Stop() {}
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if b.cfg.RequestTimeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, (time.Duration(b.cfg.MaxRetries)*b.cfg.RequestTimeout)+(time.Duration(b.cfg.MaxRetries-1)*b.cfg.MaxRetryDelay)) // timeout only after azure client's built in retries
 	}
 
 	var (
@@ -316,7 +331,7 @@ func (b *BlobStorage) newPipeline(hedgingCfg hedging.Config, hedging bool) (pipe
 		})
 	}
 
-	if !b.cfg.UseManagedIdentity && !b.cfg.UseServicePrincipal && b.cfg.UserAssignedID == "" {
+	if !b.cfg.UseFederatedToken && !b.cfg.UseManagedIdentity && !b.cfg.UseServicePrincipal && b.cfg.UserAssignedID == "" {
 		credential, err := azblob.NewSharedKeyCredential(b.cfg.StorageAccountName, b.cfg.StorageAccountKey.String())
 		if err != nil {
 			return nil, err
@@ -341,7 +356,7 @@ func (b *BlobStorage) getOAuthToken() (azblob.TokenCredential, error) {
 	if b.tc != nil {
 		return b.tc, nil
 	}
-	spt, err := b.getServicePrincipalToken()
+	spt, err := b.getServicePrincipalToken(defaultAuthFunctions)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +383,7 @@ func (b *BlobStorage) getOAuthToken() (azblob.TokenCredential, error) {
 	return b.tc, nil
 }
 
-func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, error) {
+func (b *BlobStorage) getServicePrincipalToken(authFunctions authFunctions) (*adal.ServicePrincipalToken, error) {
 	var endpoint string
 	if b.cfg.Endpoint != "" {
 		endpoint = b.cfg.Endpoint
@@ -377,6 +392,28 @@ func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, e
 	}
 
 	resource := fmt.Sprintf("https://%s.%s", b.cfg.StorageAccountName, endpoint)
+
+	if b.cfg.UseFederatedToken {
+		token, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
+		var customRefreshFunc adal.TokenRefresh = func(context context.Context, resource string) (*adal.Token, error) {
+			newToken, err := b.servicePrincipalTokenFromFederatedToken(resource, authFunctions.NewOAuthConfigFunc, authFunctions.NewServicePrincipalTokenFromFederatedTokenFunc)
+			if err != nil {
+				return nil, err
+			}
+
+			err = newToken.Refresh()
+			if err != nil {
+				return nil, err
+			}
+
+			token := newToken.Token()
+
+			return &token, nil
+		}
+
+		token.SetCustomRefreshFunc(customRefreshFunc)
+		return token, err
+	}
 
 	if b.cfg.UseServicePrincipal {
 		config := auth.NewClientCredentialsConfig(b.cfg.ClientID, b.cfg.ClientSecret.String(), b.cfg.TenantID)
@@ -393,6 +430,35 @@ func (b *BlobStorage) getServicePrincipalToken() (*adal.ServicePrincipalToken, e
 	}
 
 	return msiConfig.ServicePrincipalToken()
+}
+
+func (b *BlobStorage) servicePrincipalTokenFromFederatedToken(resource string, newOAuthConfigFunc func(activeDirectoryEndpoint, tenantID string) (*adal.OAuthConfig, error), newServicePrincipalTokenFromFederatedTokenFunc func(oauthConfig adal.OAuthConfig, clientID string, jwt string, resource string, callbacks ...adal.TokenRefreshCallback) (*adal.ServicePrincipalToken, error)) (*adal.ServicePrincipalToken, error) {
+	environmentName := azurePublicCloud
+	if b.cfg.Environment != azureGlobal {
+		environmentName = b.cfg.Environment
+	}
+
+	env, err := azure.EnvironmentFromName(environmentName)
+	if err != nil {
+		return nil, err
+	}
+
+	azClientID := os.Getenv("AZURE_CLIENT_ID")
+	azTenantID := os.Getenv("AZURE_TENANT_ID")
+
+	jwtBytes, err := os.ReadFile(os.Getenv("AZURE_FEDERATED_TOKEN_FILE"))
+	if err != nil {
+		return nil, err
+	}
+
+	jwt := string(jwtBytes)
+
+	oauthConfig, err := newOAuthConfigFunc(env.ActiveDirectoryEndpoint, azTenantID)
+	if err != nil {
+		return nil, err
+	}
+
+	return newServicePrincipalTokenFromFederatedTokenFunc(*oauthConfig, azClientID, jwt, resource)
 }
 
 // List implements chunk.ObjectClient.

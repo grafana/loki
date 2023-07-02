@@ -23,7 +23,9 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -65,9 +67,9 @@ func TestChunkFlushingShutdown(t *testing.T) {
 
 type fullWAL struct{}
 
-func (fullWAL) Log(_ *WALRecord) error { return &os.PathError{Err: syscall.ENOSPC} }
-func (fullWAL) Start()                 {}
-func (fullWAL) Stop() error            { return nil }
+func (fullWAL) Log(_ *wal.Record) error { return &os.PathError{Err: syscall.ENOSPC} }
+func (fullWAL) Start()                  {}
+func (fullWAL) Stop() error             { return nil }
 
 func Benchmark_FlushLoop(b *testing.B) {
 	var (
@@ -104,7 +106,7 @@ func Test_Flush(t *testing.T) {
 		lbs        = makeRandomLabels()
 		ctx        = user.InjectOrgID(context.Background(), "foo")
 	)
-	store.onPut = func(ctx context.Context, chunks []chunk.Chunk) error {
+	store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
 		for _, c := range chunks {
 			buf, err := c.Encoded()
 			require.Nil(t, err)
@@ -259,7 +261,7 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -315,7 +317,7 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 		if chunk.Metric.Has("__name__") {
 			labelsBuilder := labels.NewBuilder(chunk.Metric)
 			labelsBuilder.Del("__name__")
-			chunks[ix].Metric = labelsBuilder.Labels(nil)
+			chunks[ix].Metric = labelsBuilder.Labels()
 		}
 	}
 	s.chunks[userID] = append(s.chunks[userID], chunks...)
@@ -326,15 +328,15 @@ func (s *testStore) IsLocal() bool {
 	return false
 }
 
-func (s *testStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *testStore) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
 	return nil, nil
 }
 
-func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
 }
 
-func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *testStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -346,8 +348,12 @@ func (s *testStore) Stop() {}
 
 func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (s *testStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{}, nil
+}
+
+func (s *testStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return &logproto.VolumeResponse{}, nil
 }
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {

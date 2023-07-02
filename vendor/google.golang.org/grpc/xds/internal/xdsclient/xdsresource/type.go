@@ -20,6 +20,8 @@ package xdsresource
 import (
 	"time"
 
+	v3discoverypb "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v3"
+	"github.com/golang/protobuf/proto"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource/version"
 	"google.golang.org/protobuf/types/known/anypb"
 )
@@ -74,6 +76,21 @@ func IsClusterResource(url string) bool {
 // Endpoints resource.
 func IsEndpointsResource(url string) bool {
 	return url == version.V2EndpointsURL || url == version.V3EndpointsURL
+}
+
+// unwrapResource unwraps and returns the inner resource if it's in a resource
+// wrapper. The original resource is returned if it's not wrapped.
+func unwrapResource(r *anypb.Any) (*anypb.Any, error) {
+	url := r.GetTypeUrl()
+	if url != version.V2ResourceWrapperURL && url != version.V3ResourceWrapperURL {
+		// Not wrapped.
+		return r, nil
+	}
+	inner := &v3discoverypb.Resource{}
+	if err := proto.Unmarshal(r.GetValue(), inner); err != nil {
+		return nil, err
+	}
+	return inner.Resource, nil
 }
 
 // ServiceStatus is the status of the update.
@@ -147,4 +164,58 @@ func (r ResourceType) String() string {
 	default:
 		return "UnknownResource"
 	}
+}
+
+var v2ResourceTypeToURL = map[ResourceType]string{
+	ListenerResource:        version.V2ListenerURL,
+	HTTPConnManagerResource: version.V2HTTPConnManagerURL,
+	RouteConfigResource:     version.V2RouteConfigURL,
+	ClusterResource:         version.V2ClusterURL,
+	EndpointsResource:       version.V2EndpointsURL,
+}
+var v3ResourceTypeToURL = map[ResourceType]string{
+	ListenerResource:        version.V3ListenerURL,
+	HTTPConnManagerResource: version.V3HTTPConnManagerURL,
+	RouteConfigResource:     version.V3RouteConfigURL,
+	ClusterResource:         version.V3ClusterURL,
+	EndpointsResource:       version.V3EndpointsURL,
+}
+
+// URL returns the transport protocol specific resource type URL.
+func (r ResourceType) URL(v version.TransportAPI) string {
+	var mapping map[ResourceType]string
+	switch v {
+	case version.TransportV2:
+		mapping = v2ResourceTypeToURL
+	case version.TransportV3:
+		mapping = v3ResourceTypeToURL
+	default:
+		return "UnknownResource"
+	}
+	if url, ok := mapping[r]; ok {
+		return url
+	}
+	return "UnknownResource"
+}
+
+var urlToResourceType = map[string]ResourceType{
+	version.V2ListenerURL:        ListenerResource,
+	version.V2RouteConfigURL:     RouteConfigResource,
+	version.V2ClusterURL:         ClusterResource,
+	version.V2EndpointsURL:       EndpointsResource,
+	version.V2HTTPConnManagerURL: HTTPConnManagerResource,
+	version.V3ListenerURL:        ListenerResource,
+	version.V3RouteConfigURL:     RouteConfigResource,
+	version.V3ClusterURL:         ClusterResource,
+	version.V3EndpointsURL:       EndpointsResource,
+	version.V3HTTPConnManagerURL: HTTPConnManagerResource,
+}
+
+// ResourceTypeFromURL returns the xDS resource type associated with the given
+// resource type URL.
+func ResourceTypeFromURL(url string) ResourceType {
+	if typ, ok := urlToResourceType[url]; ok {
+		return typ
+	}
+	return UnknownResource
 }

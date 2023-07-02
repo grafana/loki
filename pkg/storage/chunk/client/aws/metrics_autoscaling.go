@@ -91,11 +91,11 @@ func newMetricsAutoScaling(cfg DynamoDBConfig) (*metricsData, error) {
 	}, nil
 }
 
-func (m *metricsData) PostCreateTable(ctx context.Context, desc config.TableDesc) error {
+func (m *metricsData) PostCreateTable(_ context.Context, _ config.TableDesc) error {
 	return nil
 }
 
-func (m *metricsData) DescribeTable(ctx context.Context, desc *config.TableDesc) error {
+func (m *metricsData) DescribeTable(_ context.Context, _ *config.TableDesc) error {
 	return nil
 }
 

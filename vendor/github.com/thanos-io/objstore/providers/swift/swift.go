@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/errcapture"
+	"github.com/efficientgo/core/errcapture"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/ncw/swift"
@@ -40,27 +40,30 @@ var DefaultConfig = Config{
 }
 
 type Config struct {
-	AuthVersion            int            `yaml:"auth_version"`
-	AuthUrl                string         `yaml:"auth_url"`
-	Username               string         `yaml:"username"`
-	UserDomainName         string         `yaml:"user_domain_name"`
-	UserDomainID           string         `yaml:"user_domain_id"`
-	UserId                 string         `yaml:"user_id"`
-	Password               string         `yaml:"password"`
-	DomainId               string         `yaml:"domain_id"`
-	DomainName             string         `yaml:"domain_name"`
-	ProjectID              string         `yaml:"project_id"`
-	ProjectName            string         `yaml:"project_name"`
-	ProjectDomainID        string         `yaml:"project_domain_id"`
-	ProjectDomainName      string         `yaml:"project_domain_name"`
-	RegionName             string         `yaml:"region_name"`
-	ContainerName          string         `yaml:"container_name"`
-	ChunkSize              int64          `yaml:"large_object_chunk_size"`
-	SegmentContainerName   string         `yaml:"large_object_segments_container_name"`
-	Retries                int            `yaml:"retries"`
-	ConnectTimeout         model.Duration `yaml:"connect_timeout"`
-	Timeout                model.Duration `yaml:"timeout"`
-	UseDynamicLargeObjects bool           `yaml:"use_dynamic_large_objects"`
+	AuthVersion                 int            `yaml:"auth_version"`
+	AuthUrl                     string         `yaml:"auth_url"`
+	Username                    string         `yaml:"username"`
+	UserDomainName              string         `yaml:"user_domain_name"`
+	UserDomainID                string         `yaml:"user_domain_id"`
+	UserId                      string         `yaml:"user_id"`
+	Password                    string         `yaml:"password"`
+	DomainId                    string         `yaml:"domain_id"`
+	DomainName                  string         `yaml:"domain_name"`
+	ApplicationCredentialID     string         `yaml:"application_credential_id"`
+	ApplicationCredentialName   string         `yaml:"application_credential_name"`
+	ApplicationCredentialSecret string         `yaml:"application_credential_secret"`
+	ProjectID                   string         `yaml:"project_id"`
+	ProjectName                 string         `yaml:"project_name"`
+	ProjectDomainID             string         `yaml:"project_domain_id"`
+	ProjectDomainName           string         `yaml:"project_domain_name"`
+	RegionName                  string         `yaml:"region_name"`
+	ContainerName               string         `yaml:"container_name"`
+	ChunkSize                   int64          `yaml:"large_object_chunk_size"`
+	SegmentContainerName        string         `yaml:"large_object_segments_container_name"`
+	Retries                     int            `yaml:"retries"`
+	ConnectTimeout              model.Duration `yaml:"connect_timeout"`
+	Timeout                     model.Duration `yaml:"timeout"`
+	UseDynamicLargeObjects      bool           `yaml:"use_dynamic_large_objects"`
 }
 
 func parseConfig(conf []byte) (*Config, error) {
@@ -76,25 +79,28 @@ func configFromEnv() (*Config, error) {
 	}
 
 	config := Config{
-		AuthVersion:            c.AuthVersion,
-		AuthUrl:                c.AuthUrl,
-		Password:               c.ApiKey,
-		Username:               c.UserName,
-		UserId:                 c.UserId,
-		DomainId:               c.DomainId,
-		DomainName:             c.Domain,
-		ProjectID:              c.TenantId,
-		ProjectName:            c.Tenant,
-		ProjectDomainID:        c.TenantDomainId,
-		ProjectDomainName:      c.TenantDomain,
-		RegionName:             c.Region,
-		ContainerName:          os.Getenv("OS_CONTAINER_NAME"),
-		ChunkSize:              DefaultConfig.ChunkSize,
-		SegmentContainerName:   os.Getenv("SWIFT_SEGMENTS_CONTAINER_NAME"),
-		Retries:                c.Retries,
-		ConnectTimeout:         model.Duration(c.ConnectTimeout),
-		Timeout:                model.Duration(c.Timeout),
-		UseDynamicLargeObjects: false,
+		AuthVersion:                 c.AuthVersion,
+		AuthUrl:                     c.AuthUrl,
+		Username:                    c.UserName,
+		UserId:                      c.UserId,
+		Password:                    c.ApiKey,
+		DomainId:                    c.DomainId,
+		DomainName:                  c.Domain,
+		ApplicationCredentialID:     c.ApplicationCredentialId,
+		ApplicationCredentialName:   c.ApplicationCredentialName,
+		ApplicationCredentialSecret: c.ApplicationCredentialSecret,
+		ProjectID:                   c.TenantId,
+		ProjectName:                 c.Tenant,
+		ProjectDomainID:             c.TenantDomainId,
+		ProjectDomainName:           c.TenantDomain,
+		RegionName:                  c.Region,
+		ContainerName:               os.Getenv("OS_CONTAINER_NAME"),
+		ChunkSize:                   DefaultConfig.ChunkSize,
+		SegmentContainerName:        os.Getenv("SWIFT_SEGMENTS_CONTAINER_NAME"),
+		Retries:                     c.Retries,
+		ConnectTimeout:              model.Duration(c.ConnectTimeout),
+		Timeout:                     model.Duration(c.Timeout),
+		UseDynamicLargeObjects:      false,
 	}
 	if os.Getenv("SWIFT_CHUNK_SIZE") != "" {
 		var err error
@@ -111,21 +117,24 @@ func configFromEnv() (*Config, error) {
 
 func connectionFromConfig(sc *Config) *swift.Connection {
 	connection := swift.Connection{
-		Domain:         sc.DomainName,
-		DomainId:       sc.DomainId,
-		UserName:       sc.Username,
-		UserId:         sc.UserId,
-		ApiKey:         sc.Password,
-		AuthUrl:        sc.AuthUrl,
-		Retries:        sc.Retries,
-		Region:         sc.RegionName,
-		AuthVersion:    sc.AuthVersion,
-		Tenant:         sc.ProjectName,
-		TenantId:       sc.ProjectID,
-		TenantDomain:   sc.ProjectDomainName,
-		TenantDomainId: sc.ProjectDomainID,
-		ConnectTimeout: time.Duration(sc.ConnectTimeout),
-		Timeout:        time.Duration(sc.Timeout),
+		AuthVersion:                 sc.AuthVersion,
+		AuthUrl:                     sc.AuthUrl,
+		UserName:                    sc.Username,
+		UserId:                      sc.UserId,
+		ApiKey:                      sc.Password,
+		DomainId:                    sc.DomainId,
+		Domain:                      sc.DomainName,
+		ApplicationCredentialId:     sc.ApplicationCredentialID,
+		ApplicationCredentialName:   sc.ApplicationCredentialName,
+		ApplicationCredentialSecret: sc.ApplicationCredentialSecret,
+		TenantId:                    sc.ProjectID,
+		Tenant:                      sc.ProjectName,
+		TenantDomain:                sc.ProjectDomainName,
+		TenantDomainId:              sc.ProjectDomainID,
+		Region:                      sc.RegionName,
+		Retries:                     sc.Retries,
+		ConnectTimeout:              time.Duration(sc.ConnectTimeout),
+		Timeout:                     time.Duration(sc.Timeout),
 	}
 	return &connection
 }

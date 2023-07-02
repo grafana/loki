@@ -42,6 +42,7 @@ const (
 	V2ClusterType     = "envoy.api.v2.Cluster"
 	V2EndpointsType   = "envoy.api.v2.ClusterLoadAssignment"
 
+	V2ResourceWrapperURL = googleapiPrefix + "envoy.api.v2.Resource"
 	V2ListenerURL        = googleapiPrefix + V2ListenerType
 	V2RouteConfigURL     = googleapiPrefix + V2RouteConfigType
 	V2ClusterURL         = googleapiPrefix + V2ClusterType
@@ -53,6 +54,7 @@ const (
 	V3ClusterType     = "envoy.config.cluster.v3.Cluster"
 	V3EndpointsType   = "envoy.config.endpoint.v3.ClusterLoadAssignment"
 
+	V3ResourceWrapperURL      = googleapiPrefix + "envoy.service.discovery.v3.Resource"
 	V3ListenerURL             = googleapiPrefix + V3ListenerType
 	V3RouteConfigURL          = googleapiPrefix + V3RouteConfigType
 	V3ClusterURL              = googleapiPrefix + V3ClusterType

@@ -1,6 +1,6 @@
-ARG BUILD_IMAGE=grafana/loki-build-image:0.25.0
+ARG BUILD_IMAGE=grafana/loki-build-image:0.29.0
 
-FROM golang:1.19.1-alpine as goenv
+FROM golang:1.20.4-alpine as goenv
 RUN go env GOARCH > /goarch && \
   go env GOARM > /goarm
 
@@ -8,6 +8,7 @@ FROM --platform=linux/amd64 $BUILD_IMAGE as builder
 COPY --from=goenv /goarch /goarm /
 WORKDIR /workspace
 # Copy the Go Modules manifests
+COPY apis/ apis/
 COPY go.mod go.mod
 COPY go.sum go.sum
 # cache deps before building and copying source so that we don't need to re-download as much
@@ -16,7 +17,6 @@ RUN go mod download
 
 # Copy the go source
 COPY main.go main.go
-COPY apis/ apis/
 COPY controllers/ controllers/
 COPY internal/ internal/
 

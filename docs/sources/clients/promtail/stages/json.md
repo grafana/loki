@@ -1,7 +1,8 @@
 ---
 title: json
+description: json stage
 ---
-# `json` stage
+# json
 
 The `json` stage is a parsing stage that reads the log line as JSON and accepts
 [JMESPath](http://jmespath.org/) expressions to extract data.
@@ -32,7 +33,7 @@ This stage uses the Go JSON unmarshaler, which means non-string types like
 numbers or booleans will be unmarshaled into those types. The extracted data
 can hold non-string values and this stage does not do any type conversions;
 downstream stages will need to perform correct type conversion of these values
-as necessary. Please refer to the [the `template` stage](../template/) for how
+as necessary. Please refer to the [the `template` stage]({{< relref "./template" >}}) for how
 to do this.
 
 If the value extracted is a complex type, such as an array or a JSON object, it

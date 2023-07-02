@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,13 +38,14 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	pserver "github.com/grafana/loki/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
 
 func TestPromtail(t *testing.T) {
 	// Setup.
@@ -54,8 +54,8 @@ func TestPromtail(t *testing.T) {
 	logger = level.NewFilter(logger, level.AllowInfo())
 	util_log.Logger = logger
 
-	initRandom()
-	dirName := "/tmp/promtail_test_" + randName()
+	testutils.InitRandom()
+	dirName := filepath.Join(os.TempDir(), "/promtail_test_"+testutils.RandName())
 	positionsFileName := dirName + "/positions.yml"
 
 	err := os.MkdirAll(dirName, 0o750)
@@ -89,7 +89,7 @@ func TestPromtail(t *testing.T) {
 		if t.Failed() {
 			return // Test has already failed; don't wait for everything to shut down.
 		}
-		fmt.Fprintf(os.Stdout, "wait close")
+		fmt.Fprintf(os.Stdout, "wait close\n")
 		wg.Wait()
 		if err != nil {
 			t.Fatal(err)
@@ -169,23 +169,23 @@ func TestPromtail(t *testing.T) {
 		expectedEntries[entry] = i
 	}
 	lbls := []labels.Labels{}
-	lbls = append(lbls, labels.Labels{
-		labels.Label{Name: "action", Value: "GET"},
-		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
-		labels.Label{Name: "job", Value: "varlogs"},
-		labels.Label{Name: "localhost", Value: ""},
-		labels.Label{Name: "match", Value: "true"},
-		labels.Label{Name: "stream", Value: "stderr"},
-	})
+	lbls = append(lbls, labels.FromStrings(
+		"action", "GET",
+		"filename", dirName+"/logs/testPipeline.log",
+		"job", "varlogs",
+		"address", "localhost",
+		"match", "true",
+		"stream", "stderr",
+	))
 
-	lbls = append(lbls, labels.Labels{
-		labels.Label{Name: "action", Value: "POST"},
-		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
-		labels.Label{Name: "job", Value: "varlogs"},
-		labels.Label{Name: "localhost", Value: ""},
-		labels.Label{Name: "match", Value: "true"},
-		labels.Label{Name: "stream", Value: "stdout"},
-	})
+	lbls = append(lbls, labels.FromStrings(
+		"action", "POST",
+		"filename", dirName+"/logs/testPipeline.log",
+		"job", "varlogs",
+		"address", "localhost",
+		"match", "true",
+		"stream", "stdout",
+	))
 	expectedLabels := make(map[string]int)
 	for i, label := range lbls {
 		expectedLabels[label.String()] = i
@@ -215,6 +215,7 @@ func TestPromtail(t *testing.T) {
 	verifyFile(t, expectedCounts[logFile2], prefix2, handler.receivedMap[logFile2])
 	verifyFile(t, expectedCounts[logFile3], prefix3, handler.receivedMap[logFile3])
 	verifyFile(t, expectedCounts[logFile4], prefix4, handler.receivedMap[logFile4])
+	fmt.Println("Verifying pipeline", logFile5)
 	verifyPipeline(t, expectedCounts[logFile5], expectedEntries, handler.receivedMap[logFile5], handler.receivedLabels[logFile5], expectedLabels)
 
 	if len(handler.receivedMap) != len(expectedCounts) {
@@ -612,7 +613,7 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
-			"localhost": "",
+			"address": "localhost",
 		}},
 		Labels: model.LabelSet{
 			"job":      "varlogs",
@@ -641,22 +642,8 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	return cfg
 }
 
-func initRandom() {
-	rand.Seed(time.Now().UnixNano())
-}
-
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randName() string {
-	b := make([]rune, 10)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
-}
-
 func Test_DryRun(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_DryRun")
+	f, err := os.CreateTemp("", "Test_DryRun")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
@@ -701,7 +688,7 @@ func Test_DryRun(t *testing.T) {
 }
 
 func Test_Reload(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_Reload")
+	f, err := os.CreateTemp("", "Test_Reload")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
@@ -770,7 +757,7 @@ func Test_Reload(t *testing.T) {
 }
 
 func Test_ReloadFail_NotPanic(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_Reload")
+	f, err := os.CreateTemp("", "Test_Reload")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 

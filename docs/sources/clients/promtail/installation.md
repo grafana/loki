@@ -1,7 +1,8 @@
 ---
 title: Installation
+description: Install Promtail
 ---
-# Install Promtail
+# Installation
 
 Promtail is distributed as a binary, in a Docker container,
 or there is a Helm chart to install it in a Kubernetes cluster.
@@ -37,7 +38,7 @@ helm repo update
 Finally, Promtail can be deployed with:
 
 ```bash
-$ helm upgrade --install promtail grafana/promtail --set "loki.serviceName=loki"
+helm upgrade --install promtail grafana/promtail
 ```
 
 ## Kubernetes

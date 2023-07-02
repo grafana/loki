@@ -25,44 +25,29 @@ import (
 	"google.golang.org/grpc/resolver"
 )
 
-type ignoreResolveNowBalancerBuilder struct {
-	balancer.Builder
+// ignoreResolveNowClientConn wraps a balancer.ClientConn and overrides the
+// ResolveNow() method to ignore those calls if the ignoreResolveNow bit is set.
+type ignoreResolveNowClientConn struct {
+	balancer.ClientConn
 	ignoreResolveNow *uint32
 }
 
-// If `ignore` is true, all `ResolveNow()` from the balancer built from this
-// builder will be ignored.
-//
-// `ignore` can be updated later by `updateIgnoreResolveNow`, and the update
-// will be propagated to all the old and new balancers built with this.
-func newIgnoreResolveNowBalancerBuilder(bb balancer.Builder, ignore bool) *ignoreResolveNowBalancerBuilder {
-	ret := &ignoreResolveNowBalancerBuilder{
-		Builder:          bb,
+func newIgnoreResolveNowClientConn(cc balancer.ClientConn, ignore bool) *ignoreResolveNowClientConn {
+	ret := &ignoreResolveNowClientConn{
+		ClientConn:       cc,
 		ignoreResolveNow: new(uint32),
 	}
 	ret.updateIgnoreResolveNow(ignore)
 	return ret
 }
 
-func (irnbb *ignoreResolveNowBalancerBuilder) updateIgnoreResolveNow(b bool) {
+func (i *ignoreResolveNowClientConn) updateIgnoreResolveNow(b bool) {
 	if b {
-		atomic.StoreUint32(irnbb.ignoreResolveNow, 1)
+		atomic.StoreUint32(i.ignoreResolveNow, 1)
 		return
 	}
-	atomic.StoreUint32(irnbb.ignoreResolveNow, 0)
+	atomic.StoreUint32(i.ignoreResolveNow, 0)
 
-}
-
-func (irnbb *ignoreResolveNowBalancerBuilder) Build(cc balancer.ClientConn, opts balancer.BuildOptions) balancer.Balancer {
-	return irnbb.Builder.Build(&ignoreResolveNowClientConn{
-		ClientConn:       cc,
-		ignoreResolveNow: irnbb.ignoreResolveNow,
-	}, opts)
-}
-
-type ignoreResolveNowClientConn struct {
-	balancer.ClientConn
-	ignoreResolveNow *uint32
 }
 
 func (i ignoreResolveNowClientConn) ResolveNow(o resolver.ResolveNowOptions) {

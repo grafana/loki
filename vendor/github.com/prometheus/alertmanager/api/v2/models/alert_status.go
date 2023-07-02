@@ -20,6 +20,7 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
 	"encoding/json"
 
 	"github.com/go-openapi/errors"
@@ -130,6 +131,11 @@ func (m *AlertStatus) validateState(formats strfmt.Registry) error {
 		return err
 	}
 
+	return nil
+}
+
+// ContextValidate validates this alert status based on context it is used
+func (m *AlertStatus) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
 	return nil
 }
 

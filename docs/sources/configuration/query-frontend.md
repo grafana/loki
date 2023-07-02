@@ -1,7 +1,8 @@
 ---
 title: Query Frontend
+description: Kubernetes Query Frontend Example
 ---
-# Kubernetes Query Frontend Example
+# Query Frontend
 
 ## Disclaimer
 

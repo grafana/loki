@@ -21,18 +21,17 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"unicode/utf8"
 
-	"github.com/cespare/xxhash/v2"
-	//nolint:staticcheck // Ignore SA1019. Need to keep deprecated package for compatibility.
-	"github.com/golang/protobuf/proto"
-	"github.com/prometheus/common/expfmt"
-
-	dto "github.com/prometheus/client_model/go"
-
 	"github.com/prometheus/client_golang/prometheus/internal"
+
+	"github.com/cespare/xxhash/v2"
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -252,9 +251,12 @@ func (errs MultiError) MaybeUnwrap() error {
 }
 
 // Registry registers Prometheus collectors, collects their metrics, and gathers
-// them into MetricFamilies for exposition. It implements both Registerer and
-// Gatherer. The zero value is not usable. Create instances with NewRegistry or
-// NewPedanticRegistry.
+// them into MetricFamilies for exposition. It implements Registerer, Gatherer,
+// and Collector. The zero value is not usable. Create instances with
+// NewRegistry or NewPedanticRegistry.
+//
+// Registry implements Collector to allow it to be used for creating groups of
+// metrics. See the Grouping example for how this can be done.
 type Registry struct {
 	mtx                   sync.RWMutex
 	collectorsByID        map[uint64]Collector // ID is a hash of the descIDs.
@@ -554,6 +556,31 @@ func (r *Registry) Gather() ([]*dto.MetricFamily, error) {
 		}
 	}
 	return internal.NormalizeMetricFamilies(metricFamiliesByName), errs.MaybeUnwrap()
+}
+
+// Describe implements Collector.
+func (r *Registry) Describe(ch chan<- *Desc) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	// Only report the checked Collectors; unchecked collectors don't report any
+	// Desc.
+	for _, c := range r.collectorsByID {
+		c.Describe(ch)
+	}
+}
+
+// Collect implements Collector.
+func (r *Registry) Collect(ch chan<- Metric) {
+	r.mtx.RLock()
+	defer r.mtx.RUnlock()
+
+	for _, c := range r.collectorsByID {
+		c.Collect(ch)
+	}
+	for _, c := range r.uncheckedCollectors {
+		c.Collect(ch)
+	}
 }
 
 // WriteToTextfile calls Gather on the provided Gatherer, encodes the result in the
@@ -905,6 +932,10 @@ func checkMetricConsistency(
 		h.WriteString(lp.GetValue())
 		h.Write(separatorByteSlice)
 	}
+	if dtoMetric.TimestampMs != nil {
+		h.WriteString(strconv.FormatInt(*(dtoMetric.TimestampMs), 10))
+		h.Write(separatorByteSlice)
+	}
 	hSum := h.Sum64()
 	if _, exists := metricHashes[hSum]; exists {
 		return fmt.Errorf(
@@ -934,7 +965,7 @@ func checkDescConsistency(
 	copy(lpsFromDesc, desc.constLabelPairs)
 	for _, l := range desc.variableLabels {
 		lpsFromDesc = append(lpsFromDesc, &dto.LabelPair{
-			Name: proto.String(l),
+			Name: proto.String(l.Name),
 		})
 	}
 	if len(lpsFromDesc) != len(dtoMetric.Label) {

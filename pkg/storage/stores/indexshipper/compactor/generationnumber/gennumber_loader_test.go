@@ -45,7 +45,7 @@ type mockGenNumberClient struct {
 	genNumbers map[string]string
 }
 
-func (g *mockGenNumberClient) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+func (g *mockGenNumberClient) GetCacheGenerationNumber(_ context.Context, userID string) (string, error) {
 	return g.genNumbers[userID], nil
 }
 

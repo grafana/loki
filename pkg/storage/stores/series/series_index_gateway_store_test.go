@@ -23,11 +23,11 @@ type fakeClient struct {
 	logproto.IndexGatewayClient
 }
 
-func (fakeClient) GetChunkRef(ctx context.Context, in *logproto.GetChunkRefRequest, opts ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
+func (fakeClient) GetChunkRef(_ context.Context, _ *logproto.GetChunkRefRequest, _ ...grpc.CallOption) (*logproto.GetChunkRefResponse, error) {
 	return &logproto.GetChunkRefResponse{}, nil
 }
 
-func (fakeClient) GetSeries(ctx context.Context, in *logproto.GetSeriesRequest, opts ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
+func (fakeClient) GetSeries(_ context.Context, _ *logproto.GetSeriesRequest, _ ...grpc.CallOption) (*logproto.GetSeriesResponse, error) {
 	return &logproto.GetSeriesResponse{}, nil
 }
 

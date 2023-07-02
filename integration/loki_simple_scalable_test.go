@@ -12,71 +12,8 @@ import (
 	"github.com/grafana/loki/integration/cluster"
 )
 
-func TestSimpleScalable_Legacy_IngestQuery(t *testing.T) {
-	clu := cluster.New()
-	defer func() {
-		assert.NoError(t, clu.Cleanup())
-	}()
-
-	var (
-		tRead = clu.AddComponent(
-			"read",
-			"-target=read",
-		)
-		tWrite = clu.AddComponent(
-			"write",
-			"-target=write",
-		)
-	)
-
-	require.NoError(t, clu.Run())
-
-	tenantID := randStringRunes()
-
-	now := time.Now()
-	cliWrite := client.New(tenantID, "", tWrite.HTTPURL())
-	cliWrite.Now = now
-	cliRead := client.New(tenantID, "", tRead.HTTPURL())
-	cliRead.Now = now
-
-	t.Run("ingest logs", func(t *testing.T) {
-		// ingest some log lines
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("lineA", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
-		require.NoError(t, cliWrite.PushLogLineWithTimestamp("lineB", now.Add(-45*time.Minute), map[string]string{"job": "fake"}))
-
-		require.NoError(t, cliWrite.PushLogLine("lineC", map[string]string{"job": "fake"}))
-		require.NoError(t, cliWrite.PushLogLine("lineD", map[string]string{"job": "fake"}))
-	})
-
-	t.Run("query", func(t *testing.T) {
-		resp, err := cliRead.RunRangeQuery(context.Background(), `{job="fake"}`)
-		require.NoError(t, err)
-		assert.Equal(t, "streams", resp.Data.ResultType)
-
-		var lines []string
-		for _, stream := range resp.Data.Stream {
-			for _, val := range stream.Values {
-				lines = append(lines, val[1])
-			}
-		}
-		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
-	})
-
-	t.Run("label-names", func(t *testing.T) {
-		resp, err := cliRead.LabelNames(context.Background())
-		require.NoError(t, err)
-		assert.ElementsMatch(t, []string{"job"}, resp)
-	})
-
-	t.Run("label-values", func(t *testing.T) {
-		resp, err := cliRead.LabelValues(context.Background(), "job")
-		require.NoError(t, err)
-		assert.ElementsMatch(t, []string{"fake"}, resp)
-	})
-}
-
 func TestSimpleScalable_IngestQuery(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()

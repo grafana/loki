@@ -64,7 +64,10 @@ type Locality struct {
 
 // EndpointsUpdate contains an EDS update.
 type EndpointsUpdate struct {
-	Drops      []OverloadDropConfig
+	Drops []OverloadDropConfig
+	// Localities in the EDS response with `load_balancing_weight` field not set
+	// or explicitly set to 0 are ignored while parsing the resource, and
+	// therefore do not show up here.
 	Localities []Locality
 
 	// Raw is the resource from the xds response.

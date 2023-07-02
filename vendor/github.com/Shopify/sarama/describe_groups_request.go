@@ -1,16 +1,33 @@
 package sarama
 
 type DescribeGroupsRequest struct {
-	Groups []string
+	Version                     int16
+	Groups                      []string
+	IncludeAuthorizedOperations bool
 }
 
 func (r *DescribeGroupsRequest) encode(pe packetEncoder) error {
-	return pe.putStringArray(r.Groups)
+	if err := pe.putStringArray(r.Groups); err != nil {
+		return err
+	}
+	if r.Version >= 3 {
+		pe.putBool(r.IncludeAuthorizedOperations)
+	}
+	return nil
 }
 
 func (r *DescribeGroupsRequest) decode(pd packetDecoder, version int16) (err error) {
+	r.Version = version
 	r.Groups, err = pd.getStringArray()
-	return
+	if err != nil {
+		return err
+	}
+	if r.Version >= 3 {
+		if r.IncludeAuthorizedOperations, err = pd.getBool(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *DescribeGroupsRequest) key() int16 {
@@ -18,7 +35,7 @@ func (r *DescribeGroupsRequest) key() int16 {
 }
 
 func (r *DescribeGroupsRequest) version() int16 {
-	return 0
+	return r.Version
 }
 
 func (r *DescribeGroupsRequest) headerVersion() int16 {
@@ -26,6 +43,10 @@ func (r *DescribeGroupsRequest) headerVersion() int16 {
 }
 
 func (r *DescribeGroupsRequest) requiredVersion() KafkaVersion {
+	switch r.Version {
+	case 1, 2, 3, 4:
+		return V2_3_0_0
+	}
 	return V0_9_0_0
 }
 

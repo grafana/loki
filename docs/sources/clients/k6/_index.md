@@ -1,9 +1,10 @@
 ---
 title: k6 load testing
+description: k6 Loki extension load testing 
 weight: 90
 ---
 
-# k6 Loki extension load testing
+# k6 load testing
 
 Grafana [k6](https://k6.io) is a modern load-testing tool.
 Its clean and approachable scripting [API](https://k6.io/docs/javascript-api/)
@@ -80,12 +81,12 @@ The `Client` class exposes the following instance methods:
 | method | description |
 | ------ | ----------- |
 | `push()` | shortcut for `pushParameterized(5, 800*1024, 1024*1024)` |
-| `pushParameterized(streams, minSize, maxSize)` | execute push request ([POST /loki/api/v1/push]({{< relref "../../api/_index.md#post-lokiapiv1push" >}})) |
-| `instantQuery(query, limit)` | execute instant query  ([GET /loki/api/v1/query]({{< relref "../../api/_index.md#get-lokiapiv1query" >}})) |
-| `client.rangeQuery(query, duration, limit)` | execute range query  ([GET /loki/api/v1/query_range]({{< relref "../../api/_index.md#get-lokiapiv1query_range" >}})) |
-| `client.labelsQuery(duration)` | execute labels query  ([GET /loki/api/v1/labels]({{< relref "../../api/_index.md#get-lokiapiv1labels" >}})) |
-| `client.labelValuesQuery(label, duration)` | execute label values query  ([GET /loki/api/v1/label/\<name\>/values]({{< relref "../../api/_index.md#get-lokiapiv1labelnamevalues" >}})) |
-| `client.seriesQuery(matchers, duration)` | execute series query  ([GET /loki/api/v1/series]({{< relref "../../api/_index.md#series" >}})) |
+| `pushParameterized(streams, minSize, maxSize)` | execute push request ([POST /loki/api/v1/push]({{< relref "../../reference/api#push-log-entries-to-loki" >}})) |
+| `instantQuery(query, limit)` | execute instant query  ([GET /loki/api/v1/query]({{< relref "../../reference/api#query-loki" >}})) |
+| `client.rangeQuery(query, duration, limit)` | execute range query  ([GET /loki/api/v1/query_range]({{< relref "../../reference/api#query-loki-over-a-range-of-time" >}})) |
+| `client.labelsQuery(duration)` | execute labels query  ([GET /loki/api/v1/labels]({{< relref "../../reference/api#list-labels-within-a-range-of-time" >}})) |
+| `client.labelValuesQuery(label, duration)` | execute label values query  ([GET /loki/api/v1/label/\<name\>/values]({{< relref "../../reference/api#list-label-values-within-a-range-of-time" >}})) |
+| `client.seriesQuery(matchers, duration)` | execute series query  ([GET /loki/api/v1/series]({{< relref "../../reference/api#list-series" >}})) |
 
 **Javascript load test example:**
 

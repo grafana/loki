@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -38,8 +39,9 @@ type ConfigWrapper struct {
 }
 
 func PrintVersion(args []string) bool {
+	pattern := regexp.MustCompile(`^-+` + versionFlag + `$`)
 	for _, a := range args {
-		if a == "-"+versionFlag {
+		if pattern.MatchString(a) {
 			return true
 		}
 	}
@@ -164,6 +166,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -442,7 +445,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Azure = r.Common.Storage.Azure
 			r.StorageConfig.AzureStorageConfig = r.Common.Storage.Azure
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
-			r.CompactorConfig.SharedStoreType = config.StorageTypeAzure
 		}
 	}
 
@@ -457,7 +459,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "local"
 			r.Ruler.StoreConfig.Local = local.Config{Directory: r.Common.Storage.FSConfig.RulesDirectory}
 			r.StorageConfig.FSConfig.Directory = r.Common.Storage.FSConfig.ChunksDirectory
-			r.CompactorConfig.SharedStoreType = config.StorageTypeFileSystem
 		}
 	}
 
@@ -468,7 +469,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "gcs"
 			r.Ruler.StoreConfig.GCS = r.Common.Storage.GCS
 			r.StorageConfig.GCSConfig = r.Common.Storage.GCS
-			r.CompactorConfig.SharedStoreType = config.StorageTypeGCS
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -480,7 +480,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
 			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
-			r.CompactorConfig.SharedStoreType = config.StorageTypeS3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -491,7 +490,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "bos"
 			r.Ruler.StoreConfig.BOS = r.Common.Storage.BOS
 			r.StorageConfig.BOSStorageConfig = r.Common.Storage.BOS
-			r.CompactorConfig.SharedStoreType = config.StorageTypeBOS
 		}
 	}
 
@@ -502,7 +500,6 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 			r.Ruler.StoreConfig.Type = "swift"
 			r.Ruler.StoreConfig.Swift = r.Common.Storage.Swift
 			r.StorageConfig.Swift = r.Common.Storage.Swift
-			r.CompactorConfig.SharedStoreType = config.StorageTypeSwift
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
@@ -519,13 +516,8 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 }
 
 func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
-	if cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType == defaults.StorageConfig.BoltDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.BoltDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
-	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = period.ObjectType
+	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
+		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -542,13 +534,8 @@ func betterBoltdbShipperDefaults(cfg, defaults *ConfigWrapper, period config.Per
 }
 
 func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.PeriodConfig) {
-
-	if cfg.StorageConfig.TSDBShipperConfig.SharedStoreType == defaults.StorageConfig.TSDBShipperConfig.SharedStoreType {
-		cfg.StorageConfig.TSDBShipperConfig.SharedStoreType = period.ObjectType
-	}
-
-	if cfg.CompactorConfig.SharedStoreType == defaults.CompactorConfig.SharedStoreType {
-		cfg.CompactorConfig.SharedStoreType = period.ObjectType
+	if cfg.CompactorConfig.DefaultDeleteRequestStore == defaults.CompactorConfig.DefaultDeleteRequestStore {
+		cfg.CompactorConfig.DefaultDeleteRequestStore = period.ObjectType
 	}
 
 	if cfg.Common.PathPrefix != "" {
@@ -564,11 +551,10 @@ func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.Perio
 	}
 }
 
-// applyFIFOCacheConfig turns on FIFO cache for the chunk store and for the query range results,
-// but only if no other cache storage is configured (redis or memcache).
-//
-// This behavior is only applied for the chunk store cache and for the query range results cache
-// (i.e: not applicable for the index queries cache or for the write dedupe cache).
+// applyFIFOCacheConfig turns on FIFO cache for the chunk store, for the query range results,
+// and for the index stats results, but only if no other cache storage is configured (redis or memcache).
+// This behavior is only applied for the chunk store cache, for the query range results cache, and for
+// the index stats results (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
 	if !cache.IsCacheConfigured(chunkCacheConfig) {
@@ -582,6 +568,12 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 		// so instead we will override them here.
 		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.MaxSizeBytes = "1GB"
 		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.TTL = 1 * time.Hour
+	}
+
+	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
+		// We use the same config as the query range results cache.
+		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 	}
 }
 

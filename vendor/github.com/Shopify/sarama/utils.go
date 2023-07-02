@@ -122,8 +122,9 @@ func newKafkaVersion(major, minor, veryMinor, patch uint) KafkaVersion {
 
 // IsAtLeast return true if and only if the version it is called on is
 // greater than or equal to the version passed in:
-//    V1.IsAtLeast(V2) // false
-//    V2.IsAtLeast(V1) // true
+//
+//	V1.IsAtLeast(V2) // false
+//	V2.IsAtLeast(V1) // true
 func (v KafkaVersion) IsAtLeast(other KafkaVersion) bool {
 	for i := range v.version {
 		if v.version[i] > other.version[i] {
@@ -173,11 +174,25 @@ var (
 	V2_6_0_0  = newKafkaVersion(2, 6, 0, 0)
 	V2_6_1_0  = newKafkaVersion(2, 6, 1, 0)
 	V2_6_2_0  = newKafkaVersion(2, 6, 2, 0)
+	V2_6_3_0  = newKafkaVersion(2, 6, 3, 0)
 	V2_7_0_0  = newKafkaVersion(2, 7, 0, 0)
 	V2_7_1_0  = newKafkaVersion(2, 7, 1, 0)
+	V2_7_2_0  = newKafkaVersion(2, 7, 2, 0)
 	V2_8_0_0  = newKafkaVersion(2, 8, 0, 0)
 	V2_8_1_0  = newKafkaVersion(2, 8, 1, 0)
+	V2_8_2_0  = newKafkaVersion(2, 8, 2, 0)
 	V3_0_0_0  = newKafkaVersion(3, 0, 0, 0)
+	V3_0_1_0  = newKafkaVersion(3, 0, 1, 0)
+	V3_0_2_0  = newKafkaVersion(3, 0, 2, 0)
+	V3_1_0_0  = newKafkaVersion(3, 1, 0, 0)
+	V3_1_1_0  = newKafkaVersion(3, 1, 1, 0)
+	V3_1_2_0  = newKafkaVersion(3, 1, 2, 0)
+	V3_2_0_0  = newKafkaVersion(3, 2, 0, 0)
+	V3_2_1_0  = newKafkaVersion(3, 2, 1, 0)
+	V3_2_2_0  = newKafkaVersion(3, 2, 2, 0)
+	V3_2_3_0  = newKafkaVersion(3, 2, 3, 0)
+	V3_3_0_0  = newKafkaVersion(3, 3, 0, 0)
+	V3_3_1_0  = newKafkaVersion(3, 3, 1, 0)
 
 	SupportedVersions = []KafkaVersion{
 		V0_8_2_0,
@@ -220,11 +235,39 @@ var (
 		V2_7_1_0,
 		V2_8_0_0,
 		V2_8_1_0,
+		V2_8_2_0,
 		V3_0_0_0,
+		V3_0_1_0,
+		V3_0_2_0,
+		V3_1_0_0,
+		V3_1_1_0,
+		V3_1_2_0,
+		V3_2_0_0,
+		V3_2_1_0,
+		V3_2_2_0,
+		V3_2_3_0,
+		V3_3_0_0,
+		V3_3_1_0,
 	}
 	MinVersion     = V0_8_2_0
-	MaxVersion     = V3_0_0_0
+	MaxVersion     = V3_3_1_0
 	DefaultVersion = V1_0_0_0
+
+	// reduced set of versions to matrix test
+	fvtRangeVersions = []KafkaVersion{
+		V0_8_2_2,
+		V0_10_2_2,
+		V1_0_2_0,
+		V1_1_1_0,
+		V2_0_1_0,
+		V2_2_2_0,
+		V2_4_1_0,
+		V2_6_2_0,
+		V2_8_2_0,
+		V3_1_2_0,
+		V3_2_3_0,
+		V3_3_1_0,
+	}
 )
 
 // ParseKafkaVersion parses and returns kafka version or error from a string

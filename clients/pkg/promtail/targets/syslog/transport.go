@@ -85,7 +85,7 @@ func (t *baseTransport) connectionLabels(ip string) labels.Labels {
 	lb.Set("__syslog_connection_ip_address", ip)
 	lb.Set("__syslog_connection_hostname", lookupAddr(ip))
 
-	return lb.Labels(nil)
+	return lb.Labels()
 }
 
 func ipFromConn(c net.Conn) net.IP {
@@ -150,10 +150,7 @@ func NewConnPipe(addr net.Addr) *ConnPipe {
 }
 
 func (pipe *ConnPipe) Close() error {
-	if err := pipe.PipeWriter.Close(); err != nil {
-		return err
-	}
-	return nil
+	return pipe.PipeWriter.Close()
 }
 
 type TCPTransport struct {

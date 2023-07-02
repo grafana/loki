@@ -3,6 +3,7 @@ package sarama
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -359,9 +360,10 @@ func (b *MockBroker) defaultRequestHandler(req *request) (res encoderWithHeader)
 
 func (b *MockBroker) serverError(err error) {
 	isConnectionClosedError := false
-	if _, ok := err.(*net.OpError); ok {
+	opError := &net.OpError{}
+	if errors.As(err, &opError) {
 		isConnectionClosedError = true
-	} else if err == io.EOF {
+	} else if errors.Is(err, io.EOF) {
 		isConnectionClosedError = true
 	} else if err.Error() == "use of closed network connection" {
 		isConnectionClosedError = true

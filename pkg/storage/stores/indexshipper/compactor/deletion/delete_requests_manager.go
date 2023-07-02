@@ -7,13 +7,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
-
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -32,10 +32,7 @@ type DeleteRequestsManager struct {
 	deleteRequestsStore       DeleteRequestsStore
 	deleteRequestCancelPeriod time.Duration
 
-	deleteRequestsToProcess map[string]*userDeleteRequests
-	chunkIntervalsToRetain  []retention.IntervalFilter
-	// WARN: If by any chance we change deleteRequestsToProcessMtx to sync.RWMutex to be able to check multiple chunks at a time,
-	// please take care of chunkIntervalsToRetain which should be unique per chunk.
+	deleteRequestsToProcess    map[string]*userDeleteRequests
 	deleteRequestsToProcessMtx sync.Mutex
 	metrics                    *deleteRequestsManagerMetrics
 	wg                         sync.WaitGroup
@@ -232,7 +229,7 @@ func (d *DeleteRequestsManager) shouldProcessRequest(dr DeleteRequest) (bool, er
 	return mode == deletionmode.FilterAndDelete, nil
 }
 
-func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, []retention.IntervalFilter) {
+func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) (bool, filter.Func) {
 	d.deleteRequestsToProcessMtx.Lock()
 	defer d.deleteRequestsToProcessMtx.Unlock()
 
@@ -244,40 +241,15 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 		return false, nil
 	}
 
-	isExpired := false
-	d.chunkIntervalsToRetain = d.chunkIntervalsToRetain[:0]
-	d.chunkIntervalsToRetain = append(d.chunkIntervalsToRetain, retention.IntervalFilter{
-		Interval: model.Interval{
-			Start: ref.From,
-			End:   ref.Through,
-		},
-	})
+	var filterFuncs []filter.Func
 
 	for _, deleteRequest := range d.deleteRequestsToProcess[userIDStr].requests {
-		rebuiltIntervals := make([]retention.IntervalFilter, 0, len(d.chunkIntervalsToRetain))
-		for _, ivf := range d.chunkIntervalsToRetain {
-			if ivf.Filter != nil {
-				// This can happen when there are multiple delete requests touching the same chunk.
-				// It likely can have different line filters or no line filters at all.
-				// To keep things simple, let us not consider chunks which are already being considered for deletion with line filter.
-				// ToDo(Sandeep): See if we can efficiently consider multiple delete requests touching same chunk.
-				rebuiltIntervals = append(rebuiltIntervals, ivf)
-				continue
-			}
-			entry := ref
-			entry.From = ivf.Interval.Start
-			entry.Through = ivf.Interval.End
-			isDeleted, newIntervalsToRetain := deleteRequest.IsDeleted(entry)
-			if !isDeleted {
-				rebuiltIntervals = append(rebuiltIntervals, ivf)
-			} else {
-				isExpired = true
-				rebuiltIntervals = append(rebuiltIntervals, newIntervalsToRetain...)
-			}
+		isDeleted, ff := deleteRequest.IsDeleted(ref)
+		if !isDeleted {
+			continue
 		}
 
-		d.chunkIntervalsToRetain = rebuiltIntervals
-		if isExpired && len(d.chunkIntervalsToRetain) == 0 {
+		if ff == nil {
 			level.Info(util_log.Logger).Log(
 				"msg", "no chunks to retain: the whole chunk is deleted",
 				"delete_request_id", deleteRequest.RequestID,
@@ -288,14 +260,23 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 			d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
 			return true, nil
 		}
+		filterFuncs = append(filterFuncs, ff)
 	}
 
-	if !isExpired {
+	if len(filterFuncs) == 0 {
 		return false, nil
 	}
 
 	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-	return true, d.chunkIntervalsToRetain
+	return true, func(ts time.Time, s string) bool {
+		for _, ff := range filterFuncs {
+			if ff(ts, s) {
+				return true
+			}
+		}
+
+		return false
+	}
 }
 
 func (d *DeleteRequestsManager) MarkPhaseStarted() {

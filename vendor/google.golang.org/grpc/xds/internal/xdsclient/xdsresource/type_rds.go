@@ -80,7 +80,7 @@ const (
 	// HashPolicyTypeHeader specifies to hash a Header in the incoming request.
 	HashPolicyTypeHeader HashPolicyType = iota
 	// HashPolicyTypeChannelID specifies to hash a unique Identifier of the
-	// Channel. In grpc-go, this will be done using the ClientConn pointer.
+	// Channel. This is a 64-bit random int computed at initialization time.
 	HashPolicyTypeChannelID
 )
 

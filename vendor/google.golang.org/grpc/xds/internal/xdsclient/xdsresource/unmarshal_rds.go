@@ -35,17 +35,12 @@ import (
 	"google.golang.org/protobuf/types/known/anypb"
 )
 
-// UnmarshalRouteConfig processes resources received in an RDS response,
-// validates them, and transforms them into a native struct which contains only
-// fields we are interested in. The provided hostname determines the route
-// configuration resources of interest.
-func UnmarshalRouteConfig(opts *UnmarshalOptions) (map[string]RouteConfigUpdateErrTuple, UpdateMetadata, error) {
-	update := make(map[string]RouteConfigUpdateErrTuple)
-	md, err := processAllResources(opts, update)
-	return update, md, err
-}
-
 func unmarshalRouteConfigResource(r *anypb.Any, logger *grpclog.PrefixLogger) (string, RouteConfigUpdate, error) {
+	r, err := unwrapResource(r)
+	if err != nil {
+		return "", RouteConfigUpdate{}, fmt.Errorf("failed to unwrap resource: %v", err)
+	}
+
 	if !IsRouteConfigResource(r.GetTypeUrl()) {
 		return "", RouteConfigUpdate{}, fmt.Errorf("unexpected resource type: %q ", r.GetTypeUrl())
 	}
@@ -88,7 +83,7 @@ func generateRDSUpdateFromRouteConfiguration(rc *v3routepb.RouteConfiguration, l
 		var err error
 		csps, err = processClusterSpecifierPlugins(rc.ClusterSpecifierPlugins)
 		if err != nil {
-			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid %v", err)
+			return RouteConfigUpdate{}, fmt.Errorf("received route is invalid: %v", err)
 		}
 	}
 	// cspNames represents all the cluster specifiers referenced by Route
@@ -142,6 +137,12 @@ func processClusterSpecifierPlugins(csps []*v3routepb.ClusterSpecifierPlugin) (m
 	for _, csp := range csps {
 		cs := clusterspecifier.Get(csp.GetExtension().GetTypedConfig().GetTypeUrl())
 		if cs == nil {
+			if csp.GetIsOptional() {
+				// "If a plugin is not supported but has is_optional set, then
+				// we will ignore any routes that point to that plugin"
+				cspCfgs[csp.GetExtension().GetName()] = nil
+				continue
+			}
 			// "If no plugin is registered for it, the resource will be NACKed."
 			// - RLS in xDS design
 			return nil, fmt.Errorf("cluster specifier %q of type %q was not found", csp.GetExtension().GetName(), csp.GetExtension().GetTypedConfig().GetTypeUrl())
@@ -349,11 +350,23 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 				if totalWeight == 0 {
 					return nil, nil, fmt.Errorf("route %+v, action %+v, has no valid cluster in WeightedCluster action", r, a)
 				}
-			case *v3routepb.RouteAction_ClusterHeader:
-				continue
 			case *v3routepb.RouteAction_ClusterSpecifierPlugin:
+				// gRFC A28 was updated to say the following:
+				//
+				// The route’s action field must be route, and its
+				// cluster_specifier:
+				// - Can be Cluster
+				// - Can be Weighted_clusters
+				//   - The sum of weights must add up to the total_weight.
+				// - Can be unset or an unsupported field. The route containing
+				//   this action will be ignored.
+				//
+				// This means that if this env var is not set, we should treat
+				// it as if it we didn't know about the cluster_specifier_plugin
+				// at all.
 				if !envconfig.XDSRLS {
-					return nil, nil, fmt.Errorf("route %+v, has an unknown ClusterSpecifier: %+v", r, a)
+					logger.Infof("route %+v contains route_action with unsupported field: cluster_specifier_plugin, the route will be ignored", r)
+					continue
 				}
 				if _, ok := csps[a.ClusterSpecifierPlugin]; !ok {
 					// "When processing RouteActions, if any action includes a
@@ -362,10 +375,15 @@ func routesProtoToSlice(routes []*v3routepb.Route, csps map[string]clusterspecif
 					// resource will be NACKed." - RLS in xDS design
 					return nil, nil, fmt.Errorf("route %+v, action %+v, specifies a cluster specifier plugin %+v that is not in Route Configuration", r, a, a.ClusterSpecifierPlugin)
 				}
+				if csps[a.ClusterSpecifierPlugin] == nil {
+					logger.Infof("route %+v references optional and unsupported cluster specifier plugin %v, the route will be ignored", r, a.ClusterSpecifierPlugin)
+					continue
+				}
 				cspNames[a.ClusterSpecifierPlugin] = true
 				route.ClusterSpecifierPlugin = a.ClusterSpecifierPlugin
 			default:
-				return nil, nil, fmt.Errorf("route %+v, has an unknown ClusterSpecifier: %+v", r, a)
+				logger.Infof("route %+v references unknown ClusterSpecifier %+v, the route will be ignored", r, a)
+				continue
 			}
 
 			msd := action.GetMaxStreamDuration()

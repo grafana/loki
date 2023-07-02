@@ -21,7 +21,6 @@ import (
 	"crypto/sha512"
 	"encoding/json"
 	"fmt"
-	"mime"
 	"net/http"
 	"net/url"
 	"path"
@@ -41,15 +40,9 @@ import (
 )
 
 const (
-	jsonExt = ".json"
-
-	mimeJson = "application/json"
-	// TODO(mehdy): change @68f4ded to a version tag when gnostic add version tags.
-	mimePb   = "application/com.github.googleapis.gnostic.OpenAPIv3@68f4ded+protobuf"
-	mimePbGz = "application/x-gzip"
-
-	subTypeProtobuf = "com.github.proto-openapi.spec.v3@v1.0+protobuf"
-	subTypeJSON     = "json"
+	subTypeProtobufDeprecated = "com.github.proto-openapi.spec.v3@v1.0+protobuf"
+	subTypeProtobuf           = "com.github.proto-openapi.spec.v3.v1.0+protobuf"
+	subTypeJSON               = "json"
 )
 
 // OpenAPIV3Discovery is the format of the Discovery document for OpenAPI V3
@@ -82,12 +75,6 @@ type OpenAPIV3Group struct {
 	pbCache   handler.HandlerCache
 	jsonCache handler.HandlerCache
 	etagCache handler.HandlerCache
-}
-
-func init() {
-	mime.AddExtensionType(".json", mimeJson)
-	mime.AddExtensionType(".pb-v1", mimePb)
-	mime.AddExtensionType(".gz", mimePbGz)
 }
 
 func computeETag(data []byte) string {
@@ -154,7 +141,7 @@ func (o *OpenAPIService) getSingleGroupBytes(getType string, group string) ([]by
 		}
 		etagBytes, err := v.etagCache.Get()
 		return specBytes, string(etagBytes), v.lastModified, err
-	} else if getType == subTypeProtobuf {
+	} else if getType == subTypeProtobuf || getType == subTypeProtobufDeprecated {
 		specPb, err := v.pbCache.Get()
 		if err != nil {
 			return nil, "", v.lastModified, err
@@ -191,6 +178,8 @@ func ToV3ProtoBinary(json []byte) ([]byte, error) {
 
 func (o *OpenAPIService) HandleDiscovery(w http.ResponseWriter, r *http.Request) {
 	data, _ := o.getGroupBytes()
+	w.Header().Set("Etag", strconv.Quote(computeETag(data)))
+	w.Header().Set("Content-Type", "application/json")
 	http.ServeContent(w, r, "/openapi/v3", time.Now(), bytes.NewReader(data))
 }
 
@@ -210,11 +199,13 @@ func (o *OpenAPIService) HandleGroupVersion(w http.ResponseWriter, r *http.Reque
 	}
 
 	accepted := []struct {
-		Type    string
-		SubType string
+		Type                string
+		SubType             string
+		ReturnedContentType string
 	}{
-		{"application", subTypeJSON},
-		{"application", subTypeProtobuf},
+		{"application", subTypeJSON, "application/" + subTypeJSON},
+		{"application", subTypeProtobuf, "application/" + subTypeProtobuf},
+		{"application", subTypeProtobufDeprecated, "application/" + subTypeProtobuf},
 	}
 
 	for _, clause := range clauses {
@@ -229,6 +220,9 @@ func (o *OpenAPIService) HandleGroupVersion(w http.ResponseWriter, r *http.Reque
 			if err != nil {
 				return
 			}
+			// Set Content-Type header in the reponse
+			w.Header().Set("Content-Type", accepts.ReturnedContentType)
+
 			// ETag must be enclosed in double quotes: https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag
 			w.Header().Set("Etag", strconv.Quote(etag))
 

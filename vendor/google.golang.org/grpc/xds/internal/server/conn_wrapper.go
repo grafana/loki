@@ -32,13 +32,13 @@ import (
 
 // connWrapper is a thin wrapper around a net.Conn returned by Accept(). It
 // provides the following additional functionality:
-// 1. A way to retrieve the configured deadline. This is required by the
-//    ServerHandshake() method of the xdsCredentials when it attempts to read
-//    key material from the certificate providers.
-// 2. Implements the XDSHandshakeInfo() method used by the xdsCredentials to
-//    retrieve the configured certificate providers.
-// 3. xDS filter_chain matching logic to select appropriate security
-//    configuration for the incoming connection.
+//  1. A way to retrieve the configured deadline. This is required by the
+//     ServerHandshake() method of the xdsCredentials when it attempts to read
+//     key material from the certificate providers.
+//  2. Implements the XDSHandshakeInfo() method used by the xdsCredentials to
+//     retrieve the configured certificate providers.
+//  3. xDS filter_chain matching logic to select appropriate security
+//     configuration for the incoming connection.
 type connWrapper struct {
 	net.Conn
 

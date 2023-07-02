@@ -30,20 +30,21 @@ package xds
 import (
 	"fmt"
 
-	v3statusgrpc "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/internal"
 	internaladmin "google.golang.org/grpc/internal/admin"
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/xds/csds"
 
-	_ "google.golang.org/grpc/credentials/tls/certprovider/pemfile"         // Register the file watcher certificate provider plugin.
-	_ "google.golang.org/grpc/xds/internal/balancer"                        // Register the balancers.
-	_ "google.golang.org/grpc/xds/internal/httpfilter/fault"                // Register the fault injection filter.
-	_ "google.golang.org/grpc/xds/internal/httpfilter/rbac"                 // Register the RBAC filter.
-	_ "google.golang.org/grpc/xds/internal/httpfilter/router"               // Register the router filter.
-	xdsresolver "google.golang.org/grpc/xds/internal/resolver"              // Register the xds_resolver.
-	_ "google.golang.org/grpc/xds/internal/xdsclient/controller/version/v2" // Register the v2 xDS API client.
-	_ "google.golang.org/grpc/xds/internal/xdsclient/controller/version/v3" // Register the v3 xDS API client.
+	_ "google.golang.org/grpc/credentials/tls/certprovider/pemfile" // Register the file watcher certificate provider plugin.
+	_ "google.golang.org/grpc/xds/internal/balancer"                // Register the balancers.
+	_ "google.golang.org/grpc/xds/internal/clusterspecifier/rls"    // Register the RLS cluster specifier plugin. Note that this does not register the RLS LB policy.
+	_ "google.golang.org/grpc/xds/internal/httpfilter/fault"        // Register the fault injection filter.
+	_ "google.golang.org/grpc/xds/internal/httpfilter/rbac"         // Register the RBAC filter.
+	_ "google.golang.org/grpc/xds/internal/httpfilter/router"       // Register the router filter.
+	_ "google.golang.org/grpc/xds/internal/resolver"                // Register the xds_resolver
+
+	v3statusgrpc "github.com/envoyproxy/go-control-plane/envoy/service/status/v3"
 )
 
 func init() {
@@ -75,20 +76,20 @@ func init() {
 	})
 }
 
-// NewXDSResolverWithConfigForTesting creates a new xds resolver builder using
-// the provided xds bootstrap config instead of the global configuration from
+// NewXDSResolverWithConfigForTesting creates a new xDS resolver builder using
+// the provided xDS bootstrap config instead of the global configuration from
 // the supported environment variables.  The resolver.Builder is meant to be
 // used in conjunction with the grpc.WithResolvers DialOption.
 //
-// Testing Only
+// # Testing Only
 //
 // This function should ONLY be used for testing and may not work with some
 // other features, including the CSDS service.
 //
-// Experimental
+// # Experimental
 //
 // Notice: This API is EXPERIMENTAL and may be changed or removed in a
 // later release.
 func NewXDSResolverWithConfigForTesting(bootstrapConfig []byte) (resolver.Builder, error) {
-	return xdsresolver.NewBuilderForTesting(bootstrapConfig)
+	return internal.NewXDSResolverWithConfigForTesting.(func([]byte) (resolver.Builder, error))(bootstrapConfig)
 }

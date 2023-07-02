@@ -1,10 +1,8 @@
 ---
 title: Helm Chart Values
-menuTitle: Helm Chart Values
+menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-aliases:
-  - /docs/writers-toolkit/latest/templates/reference-template
-weight: 100
+weight: 200
 keywords: []
 ---
 
@@ -15,10 +13,16 @@ keywords: []
 <!-- The reference title is required. Use a noun-based title. -->
 <!-- vale Grafana.Quotes = YES -->
 
-This is the generade reference for the Loki Helm Chart values.
+This is the generated reference for the Loki Helm Chart values.
+
+> **Note:** This reference is for the Loki Helm chart version 3.0 or greater.
+> If you are using the `grafana/loki-stack` Helm chart from the community repo,
+> please refer to the `values.yaml` of the respective Github repository
+> [grafana/helm-charts](https://github.com/grafana/helm-charts/tree/main/charts/loki-stack).
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 {{ define "chart.valuesTableHtml" }}
+{{ `{{< responsive-table >}}` }}
 <table>
 	<thead>
 		<th>Key</th>
@@ -37,6 +41,7 @@ This is the generade reference for the Loki Helm Chart values.
 	{{- end }}
 	</tbody>
 </table>
+{{ `{{< /responsive-table >}}` }}
 {{ end }}
 
 {{ template "chart.valuesTableHtml" . }}

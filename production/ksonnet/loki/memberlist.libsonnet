@@ -85,7 +85,7 @@
 
         // You can use a headless k8s service for all distributor,
         // ingester and querier components.
-        join_members: ['gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort]],
+        join_members: ['dns+gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort]],
 
         max_join_backoff: '1m',
         max_join_retries: 10,
@@ -121,12 +121,24 @@
 
   compactor_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
   distributor_deployment+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
-  index_gateway_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
-  ingester_statefulset+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
-  query_scheduler_deployment+: if !$._config.memberlist_ring_enabled then {} else gossipLabel,
+  index_gateway_statefulset+: if !$._config.memberlist_ring_enabled || !$._config.use_index_gateway then {} else gossipLabel,
+  ingester_statefulset: if $._config.multi_zone_ingester_enabled && !$._config.multi_zone_ingester_migration_enabled then {} else
+    (super.ingester_statefulset + if !$._config.memberlist_ring_enabled then {} else gossipLabel),
+  ingester_zone_a_statefulset+:
+    if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
+    then gossipLabel
+    else {},
+  ingester_zone_b_statefulset+:
+    if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
+    then gossipLabel
+    else {},
+  ingester_zone_c_statefulset+:
+    if $._config.multi_zone_ingester_enabled && $._config.memberlist_ring_enabled
+    then gossipLabel
+    else {},
+  query_scheduler_deployment+: if !$._config.memberlist_ring_enabled || !$._config.query_scheduler_enabled then {} else gossipLabel,
   ruler_deployment+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled || $._config.stateful_rulers then {} else gossipLabel,
   ruler_statefulset+: if !$._config.memberlist_ring_enabled || !$._config.ruler_enabled || !$._config.stateful_rulers then {} else gossipLabel,
-
   // Headless service (= no assigned IP, DNS returns all targets instead) pointing to gossip network members.
   gossip_ring_service:
     if !$._config.memberlist_ring_enabled then null

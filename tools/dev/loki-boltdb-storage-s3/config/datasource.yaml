@@ -12,3 +12,13 @@ datasources:
       httpHeaderName1: 'X-Scope-OrgID'
     secureJsonData:
       httpHeaderValue1: '1'
+  - name: Loki-Limited
+    type: loki
+    access: proxy
+    url: http://query-frontend:8007
+    jsonData:
+      httpHeaderName1: 'X-Scope-OrgID'
+      httpHeaderName2: 'X-Loki-Query-Limits'
+    secureJsonData:
+      httpHeaderValue1: '1'
+      httpHeaderValue2: '{"maxQueryLength":"30m"}'

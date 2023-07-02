@@ -5,7 +5,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/grafana/cloudflare-go"
 	"github.com/stretchr/testify/mock"
 )
 

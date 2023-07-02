@@ -194,7 +194,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEv = SampleEvaluatorFunc(func(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+			nextEv = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluator, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
@@ -232,7 +232,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return newVectorIterator(val, q.Step().Nanoseconds(), q.Start().UnixNano(), q.End().UnixNano()), nil
+		return newVectorIterator(val, q.Step().Milliseconds(), q.Start().UnixMilli(), q.End().UnixMilli()), nil
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
@@ -284,7 +284,7 @@ func vectorAggEvaluator(
 					lb.Reset(metric)
 					lb.Del(expr.Grouping.Groups...)
 					lb.Del(labels.MetricName)
-					m = lb.Labels(nil)
+					m = lb.Labels()
 				} else {
 					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
 					for _, l := range metric {
@@ -299,8 +299,8 @@ func vectorAggEvaluator(
 				}
 				result[groupingKey] = &groupedAggregation{
 					labels:     m,
-					value:      s.V,
-					mean:       s.V,
+					value:      s.F,
+					mean:       s.F,
 					groupCount: 1,
 				}
 
@@ -314,25 +314,25 @@ func vectorAggEvaluator(
 				} else if expr.Operation == syntax.OpTypeTopK {
 					result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
 					heap.Push(&result[groupingKey].heap, &promql.Sample{
-						Point:  promql.Point{V: s.V},
+						F:      s.F,
 						Metric: s.Metric,
 					})
 				} else if expr.Operation == syntax.OpTypeBottomK {
 					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
 					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
-						Point:  promql.Point{V: s.V},
+						F:      s.F,
 						Metric: s.Metric,
 					})
 				} else if expr.Operation == syntax.OpTypeSortDesc {
 					result[groupingKey].heap = make(vectorByValueHeap, 0)
 					heap.Push(&result[groupingKey].heap, &promql.Sample{
-						Point:  promql.Point{V: s.V},
+						F:      s.F,
 						Metric: s.Metric,
 					})
 				} else if expr.Operation == syntax.OpTypeSort {
 					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
 					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
-						Point:  promql.Point{V: s.V},
+						F:      s.F,
 						Metric: s.Metric,
 					})
 				}
@@ -340,20 +340,20 @@ func vectorAggEvaluator(
 			}
 			switch expr.Operation {
 			case syntax.OpTypeSum:
-				group.value += s.V
+				group.value += s.F
 
 			case syntax.OpTypeAvg:
 				group.groupCount++
-				group.mean += (s.V - group.mean) / float64(group.groupCount)
+				group.mean += (s.F - group.mean) / float64(group.groupCount)
 
 			case syntax.OpTypeMax:
-				if group.value < s.V || math.IsNaN(group.value) {
-					group.value = s.V
+				if group.value < s.F || math.IsNaN(group.value) {
+					group.value = s.F
 				}
 
 			case syntax.OpTypeMin:
-				if group.value > s.V || math.IsNaN(group.value) {
-					group.value = s.V
+				if group.value > s.F || math.IsNaN(group.value) {
+					group.value = s.F
 				}
 
 			case syntax.OpTypeCount:
@@ -361,39 +361,39 @@ func vectorAggEvaluator(
 
 			case syntax.OpTypeStddev, syntax.OpTypeStdvar:
 				group.groupCount++
-				delta := s.V - group.mean
+				delta := s.F - group.mean
 				group.mean += delta / float64(group.groupCount)
-				group.value += delta * (s.V - group.mean)
+				group.value += delta * (s.F - group.mean)
 
 			case syntax.OpTypeTopK:
-				if len(group.heap) < expr.Params || group.heap[0].V < s.V || math.IsNaN(group.heap[0].V) {
+				if len(group.heap) < expr.Params || group.heap[0].F < s.F || math.IsNaN(group.heap[0].F) {
 					if len(group.heap) == expr.Params {
 						heap.Pop(&group.heap)
 					}
 					heap.Push(&group.heap, &promql.Sample{
-						Point:  promql.Point{V: s.V},
+						F:      s.F,
 						Metric: s.Metric,
 					})
 				}
 
 			case syntax.OpTypeBottomK:
-				if len(group.reverseHeap) < expr.Params || group.reverseHeap[0].V > s.V || math.IsNaN(group.reverseHeap[0].V) {
+				if len(group.reverseHeap) < expr.Params || group.reverseHeap[0].F > s.F || math.IsNaN(group.reverseHeap[0].F) {
 					if len(group.reverseHeap) == expr.Params {
 						heap.Pop(&group.reverseHeap)
 					}
 					heap.Push(&group.reverseHeap, &promql.Sample{
-						Point:  promql.Point{V: s.V},
+						F:      s.F,
 						Metric: s.Metric,
 					})
 				}
 			case syntax.OpTypeSortDesc:
 				heap.Push(&group.heap, &promql.Sample{
-					Point:  promql.Point{V: s.V},
+					F:      s.F,
 					Metric: s.Metric,
 				})
 			case syntax.OpTypeSort:
 				heap.Push(&group.reverseHeap, &promql.Sample{
-					Point:  promql.Point{V: s.V},
+					F:      s.F,
 					Metric: s.Metric,
 				})
 			default:
@@ -421,10 +421,8 @@ func vectorAggEvaluator(
 				for _, v := range aggr.heap {
 					vec = append(vec, promql.Sample{
 						Metric: v.Metric,
-						Point: promql.Point{
-							T: ts,
-							V: v.V,
-						},
+						T:      ts,
+						F:      v.F,
 					})
 				}
 				continue // Bypass default append.
@@ -435,10 +433,8 @@ func vectorAggEvaluator(
 				for _, v := range aggr.reverseHeap {
 					vec = append(vec, promql.Sample{
 						Metric: v.Metric,
-						Point: promql.Point{
-							T: ts,
-							V: v.V,
-						},
+						T:      ts,
+						F:      v.F,
 					})
 				}
 				continue // Bypass default append.
@@ -446,10 +442,8 @@ func vectorAggEvaluator(
 			}
 			vec = append(vec, promql.Sample{
 				Metric: aggr.labels,
-				Point: promql.Point{
-					T: ts,
-					V: aggr.value,
-				},
+				T:      ts,
+				F:      aggr.value,
 			})
 		}
 		return next, ts, vec
@@ -472,9 +466,13 @@ func rangeAggEvaluator(
 		return nil, err
 	}
 	if expr.Operation == syntax.OpRangeTypeAbsent {
+		absentLabels, err := absentLabels(expr)
+		if err != nil {
+			return nil, err
+		}
 		return &absentRangeVectorEvaluator{
 			iter: iter,
-			lbs:  absentLabels(expr),
+			lbs:  absentLabels,
 		}, nil
 	}
 	return &rangeVectorEvaluator{
@@ -495,8 +493,8 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
-		// Errors are not allowed in metrics.
-		if s.Metric.Has(logqlmodel.ErrorLabel) {
+		// Errors are not allowed in metrics unless they've been specifically requested.
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
@@ -527,8 +525,8 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
-		// Errors are not allowed in metrics.
-		if s.Metric.Has(logqlmodel.ErrorLabel) {
+		// Errors are not allowed in metrics unless they've been specifically requested.
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, promql.Vector{}
 		}
@@ -539,10 +537,8 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	// values are missing.
 	return next, ts, promql.Vector{
 		promql.Sample{
-			Point: promql.Point{
-				T: ts,
-				V: 1.,
-			},
+			T:      ts,
+			F:      1.,
 			Metric: r.lbs,
 		},
 	}
@@ -701,9 +697,9 @@ func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
 	if opts == nil || opts.VectorMatching == nil {
 		return sample.Metric.Hash()
 	} else if opts.VectorMatching.On {
-		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels(nil).Hash()
+		return labels.NewBuilder(sample.Metric).Keep(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	} else {
-		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels(nil).Hash()
+		return labels.NewBuilder(sample.Metric).Del(opts.VectorMatching.MatchingLabels...).Labels().Hash()
 	}
 }
 
@@ -731,7 +727,8 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 		}
 		rightSigs[sig] = &promql.Sample{
 			Metric: sample.Metric,
-			Point:  sample.Point,
+			T:      sample.T,
+			F:      sample.F,
 		}
 	}
 
@@ -771,8 +768,11 @@ func vectorBinop(op string, opts *syntax.BinOpOptions, lhs, rhs promql.Vector, l
 				ls, rs = rs, ls
 			}
 		}
-
-		if merged := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op)); merged != nil {
+		merged, err := syntax.MergeBinOp(op, ls, rs, filter, syntax.IsComparisonOperator(op))
+		if err != nil {
+			return nil, err
+		}
+		if merged != nil {
 			// replace with labels specified by expr
 			merged.Metric = metric
 			results = append(results, *merged)
@@ -874,7 +874,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 		}
 	}
 
-	return lb.Labels(nil)
+	return lb.Labels()
 }
 
 // literalStepEvaluator merges a literal with a StepEvaluator. Since order matters in
@@ -886,29 +886,40 @@ func literalStepEvaluator(
 	inverted bool,
 	returnBool bool,
 ) (StepEvaluator, error) {
+	val, err := lit.Value()
+	if err != nil {
+		return nil, err
+	}
+	var mergeErr error
+
 	return newStepEvaluator(
 		func() (bool, int64, promql.Vector) {
 			ok, ts, vec := eval.Next()
-
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
+
 				literalPoint := promql.Sample{
 					Metric: sample.Metric,
-					Point:  promql.Point{T: ts, V: lit.Value()},
+					T:      ts,
+					F:      val,
 				}
 
 				left, right := &literalPoint, &sample
 				if inverted {
 					left, right = right, left
 				}
-
-				if merged := syntax.MergeBinOp(
+				merged, err := syntax.MergeBinOp(
 					op,
 					left,
 					right,
 					!returnBool,
 					syntax.IsComparisonOperator(op),
-				); merged != nil {
+				)
+				if err != nil {
+					mergeErr = err
+					return false, 0, nil
+				}
+				if merged != nil {
 					results = append(results, *merged)
 				}
 			}
@@ -916,40 +927,43 @@ func literalStepEvaluator(
 			return ok, ts, results
 		},
 		eval.Close,
-		eval.Error,
+		func() error {
+			if mergeErr != nil {
+				return mergeErr
+			}
+			return eval.Error()
+		},
 	)
 }
 
 // vectorIterator return simple vector like (1).
 type vectorIterator struct {
-	step, end, current int64
-	val                float64
+	stepMs, endMs, currentMs int64
+	val                      float64
 }
 
 func newVectorIterator(val float64,
-	step, start, end int64) *vectorIterator {
-	if step == 0 {
-		step = 1
+	stepMs, startMs, endMs int64) *vectorIterator {
+	if stepMs == 0 {
+		stepMs = 1
 	}
 	return &vectorIterator{
-		val:     val,
-		step:    step,
-		end:     end,
-		current: start - step,
+		val:       val,
+		stepMs:    stepMs,
+		endMs:     endMs,
+		currentMs: startMs - stepMs,
 	}
 }
 
 func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
-	r.current = r.current + r.step
-	if r.current > r.end {
+	r.currentMs = r.currentMs + r.stepMs
+	if r.currentMs > r.endMs {
 		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
-	vectorPoint := promql.Sample{
-		Point: promql.Point{T: r.current, V: r.val},
-	}
+	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
 	results = append(results, vectorPoint)
-	return true, r.current, results
+	return true, r.currentMs, results
 }
 
 func (r *vectorIterator) Close() error {
@@ -1001,7 +1015,7 @@ func labelReplaceEvaluator(
 			if len(res) > 0 {
 				lb.Set(expr.Dst, string(res))
 			}
-			outLbs := lb.Labels(nil)
+			outLbs := lb.Labels()
 			labelCache[hash] = outLbs
 			vec[i].Metric = outLbs
 		}
@@ -1010,12 +1024,16 @@ func labelReplaceEvaluator(
 }
 
 // This is to replace missing timeseries during absent_over_time aggregation.
-func absentLabels(expr syntax.SampleExpr) labels.Labels {
+func absentLabels(expr syntax.SampleExpr) (labels.Labels, error) {
 	m := labels.Labels{}
 
-	lm := expr.Selector().Matchers()
+	selector, err := expr.Selector()
+	if err != nil {
+		return nil, err
+	}
+	lm := selector.Matchers()
 	if len(lm) == 0 {
-		return m
+		return m, nil
 	}
 
 	empty := []string{}
@@ -1024,14 +1042,14 @@ func absentLabels(expr syntax.SampleExpr) labels.Labels {
 			continue
 		}
 		if ma.Type == labels.MatchEqual && !m.Has(ma.Name) {
-			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels(nil)
+			m = labels.NewBuilder(m).Set(ma.Name, ma.Value).Labels()
 		} else {
 			empty = append(empty, ma.Name)
 		}
 	}
 
 	for _, v := range empty {
-		m = labels.NewBuilder(m).Del(v).Labels(nil)
+		m = labels.NewBuilder(m).Del(v).Labels()
 	}
-	return m
+	return m, nil
 }

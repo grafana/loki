@@ -19,7 +19,10 @@ package minio
 
 import (
 	"context"
+	"crypto/x509"
+	"errors"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -122,4 +125,24 @@ var retryableHTTPStatusCodes = map[int]struct{}{
 func isHTTPStatusRetryable(httpStatusCode int) (ok bool) {
 	_, ok = retryableHTTPStatusCodes[httpStatusCode]
 	return ok
+}
+
+// For now, all http Do() requests are retriable except some well defined errors
+func isRequestErrorRetryable(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	if ue, ok := err.(*url.Error); ok {
+		e := ue.Unwrap()
+		switch e.(type) {
+		// x509: certificate signed by unknown authority
+		case x509.UnknownAuthorityError:
+			return false
+		}
+		switch e.Error() {
+		case "http: server gave HTTP response to HTTPS client":
+			return false
+		}
+	}
+	return true
 }

@@ -1,8 +1,9 @@
 ---
 title: Best practices
+description: Grafana Loki label best practices
 weight: 400
 ---
-# Grafana Loki label best practices
+# Best practices
 
 Grafana Loki is under active development, and we are constantly working to improve performance. But here are some of the most current best practices for labels that will give you the best experience with Loki.
 
@@ -22,7 +23,7 @@ This may seem surprising, but if applications have medium to low volume, that la
 
 Above, we mentioned not to add labels until you _need_ them, so when would you _need_ labels?? A little farther down is a section on `chunk_target_size`. If you set this to 1MB (which is reasonable), this will try to cut chunks at 1MB compressed size, which is about 5MB-ish of uncompressed logs (might be as much as 10MB depending on compression). If your logs have sufficient volume to write 5MB in less time than `max_chunk_age`, or **many** chunks in that timeframe, you might want to consider splitting it into separate streams with a dynamic label.
 
-What you want to avoid is splitting a log file into streams, which result in chunks getting flushed because the stream is idle or hits the max age before being full. As of [Loki 1.4.0](https://grafana.com/blog/2020/04/01/loki-v1.4.0-released-with-query-statistics-and-up-to-300x-regex-optimization/), there is a metric which can help you understand why chunks are flushed `sum by (reason) (rate(loki_ingester_chunks_flushed_total{cluster="dev"}[1m]))`.
+What you want to avoid is splitting a log file into streams, which result in chunks getting flushed because the stream is idle or hits the max age before being full. As of [Loki 1.4.0](/blog/2020/04/01/loki-v1.4.0-released-with-query-statistics-and-up-to-300x-regex-optimization/), there is a metric which can help you understand why chunks are flushed `sum by (reason) (rate(loki_ingester_chunks_flushed_total{cluster="dev"}[1m]))`.
 
 It’s not critical that every chunk be full when flushed, but it will improve many aspects of operation. As such, our current guidance here is to avoid dynamic labels as much as possible and instead favor filter expressions. For example, don’t add a `level` dynamic label, just `|= "level=debug"` instead.
 
@@ -34,11 +35,11 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Promtail](https://github.com/grafana/loki/tree/master/docs/sources/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit), a [Docker plugin](https://grafana.com/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Promtail](/grafana/loki/blob/main/docs/sources/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.
-Series information can be queried through the [Series API](https://grafana.com/docs/loki/latest/api/#series), or you can use [logcli](https://grafana.com/docs/loki/latest/getting-started/logcli/).
+Series information can be queried through the [Series API](/docs/loki/latest/api/#series), or you can use [logcli](/docs/loki/latest/getting-started/logcli/).
 
 In Loki 1.6.0 and newer the logcli series command added the `--analyze-labels` flag specifically for debugging high cardinality labels:
 
@@ -69,7 +70,7 @@ Loki can cache data at many levels, which can drastically improve performance. D
 
 ## Time ordering of logs
 
-Loki [accepts out-of-order writes](../configuration/#accept-out-of-order-writes) _by default_.
+Loki [accepts out-of-order writes]({{< relref "../configuration#accept-out-of-order-writes" >}}) _by default_.
 This section identifies best practices when Loki is _not_ configured to accept out-of-order writes.
 
 One issue many people have with Loki is their client receiving errors for out of order log entries.  This happens because of this hard and fast rule within Loki:
@@ -101,7 +102,7 @@ What can we do about this? What if this was because the sources of these logs we
 {job="syslog", instance="host2"} 00:00:02 i'm a syslog!  <- Accepted, still in order for stream 2
 ```
 
-But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](https://grafana.com/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
+But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
 
 It's also worth noting that the batching nature of the Loki push API can lead to some instances of out of order errors being received which are really false positives. (Perhaps a batch partially succeeded and was present; or anything that previously succeeded would return an out of order entry; or anything new would be accepted.)
 
@@ -109,7 +110,7 @@ It's also worth noting that the batching nature of the Loki push API can lead to
 
 Using `chunk_target_size` instructs Loki to try to fill all chunks to a target _compressed_ size of 1.5MB. These larger chunks are more efficient for Loki to process.
 
-Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 1h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
+Other configuration variables affect how full a chunk can get. Loki has a default `max_chunk_age` of 2h and `chunk_idle_period` of 30m to limit the amount of memory used as well as the exposure of lost logs if the process crashes.
 
 Depending on the compression used (we have been using snappy which has less compressibility but faster performance), you need 5-10x or 7.5-10MB of raw log data to fill a 1.5MB chunk. Remembering that a chunk is per stream, the more streams you break up your log files into, the more chunks that sit in memory, and the higher likelihood they get flushed by hitting one of those timeouts mentioned above before they are filled.
 

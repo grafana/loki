@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -28,13 +29,13 @@ type splitByRange struct {
 }
 
 // NewSplitByRangeMiddleware creates a new Middleware that splits log requests by the range interval.
-func NewSplitByRangeMiddleware(logger log.Logger, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
+func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, limits Limits, metrics *logql.MapperMetrics) queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByRange{
 			logger: log.With(logger, "middleware", "InstantQuery.splitByRangeVector"),
 			next:   next,
 			limits: limits,
-			ng: logql.NewDownstreamEngine(logql.EngineOpts{}, DownstreamHandler{
+			ng: logql.NewDownstreamEngine(engineOpts, DownstreamHandler{
 				limits: limits,
 				next:   next,
 			}, limits, logger),
@@ -57,7 +58,8 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		return s.next.Do(ctx, request)
 	}
 
-	mapper, err := logql.NewRangeMapper(interval, s.metrics)
+	mapperStats := logql.NewMapperStats()
+	mapper, err := logql.NewRangeMapper(interval, s.metrics, mapperStats)
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +75,10 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		// the query cannot be split, so continue
 		return s.next.Do(ctx, request)
 	}
+
+	// Update middleware stats
+	queryStatsCtx := stats.FromContext(ctx)
+	queryStatsCtx.AddSplitQueries(int64(mapperStats.GetSplitQueries()))
 
 	params, err := paramsFromRequest(request)
 	if err != nil {
@@ -109,7 +115,6 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 		}, nil
 	case parser.ValueTypeVector:
 		return &LokiPromResponse{
-			Statistics: res.Statistics,
 			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
 				Data: queryrangebase.PrometheusData{
@@ -117,6 +122,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 					Result:     toProtoVector(value.(loghttp.Vector)),
 				},
 			},
+			Statistics: res.Statistics,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unexpected downstream response type (%T)", res.Data.Type())

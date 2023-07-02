@@ -21,12 +21,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"strings"
 
-	"google.golang.org/grpc/balancer/roundrobin"
 	internalserviceconfig "google.golang.org/grpc/internal/serviceconfig"
 	"google.golang.org/grpc/serviceconfig"
-	"google.golang.org/grpc/xds/internal/balancer/ringhash"
+	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
@@ -102,6 +100,9 @@ type DiscoveryMechanism struct {
 	// DNSHostname is the DNS name to resolve in "host:port" form. For type
 	// LOGICAL_DNS only.
 	DNSHostname string `json:"dnsHostname,omitempty"`
+	// OutlierDetection is the Outlier Detection LB configuration for this
+	// priority.
+	OutlierDetection outlierdetection.LBConfig `json:"outlierDetection,omitempty"`
 }
 
 // Equal returns whether the DiscoveryMechanism is the same with the parameter.
@@ -116,6 +117,8 @@ func (dm DiscoveryMechanism) Equal(b DiscoveryMechanism) bool {
 	case dm.EDSServiceName != b.EDSServiceName:
 		return false
 	case dm.DNSHostname != b.DNSHostname:
+		return false
+	case !dm.OutlierDetection.EqualIgnoringChildPolicy(&b.OutlierDetection):
 		return false
 	}
 
@@ -160,20 +163,4 @@ type LBConfig struct {
 	// be lb config for the ring_hash_experimental LB Policy. ring_hash policy
 	// is responsible for both locality picking and endpoint picking.
 	XDSLBPolicy *internalserviceconfig.BalancerConfig `json:"xdsLbPolicy,omitempty"`
-}
-
-const (
-	rrName = roundrobin.Name
-	rhName = ringhash.Name
-)
-
-func parseConfig(c json.RawMessage) (*LBConfig, error) {
-	var cfg LBConfig
-	if err := json.Unmarshal(c, &cfg); err != nil {
-		return nil, err
-	}
-	if lbp := cfg.XDSLBPolicy; lbp != nil && !strings.EqualFold(lbp.Name, rrName) && !strings.EqualFold(lbp.Name, rhName) {
-		return nil, fmt.Errorf("unsupported child policy with name %q, not one of {%q,%q}", lbp.Name, rrName, rhName)
-	}
-	return &cfg, nil
 }

@@ -2,14 +2,14 @@
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile.debug .
 
-FROM grafana/loki-build-image:0.25.0 as build
+FROM grafana/loki-build-image:0.29.0 as build
 ARG GOARCH="amd64"
 COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail-debug
 
 
-FROM       alpine:3.16.2
+FROM       alpine:3.16.5
 RUN        apk add --update --no-cache ca-certificates tzdata
 COPY       --from=build /src/loki/clients/cmd/promtail/promtail-debug /usr/bin/promtail-debug
 COPY       --from=build /usr/bin/dlv /usr/bin/dlv

@@ -17,10 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
@@ -41,8 +41,8 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 
-	bytesReceivedStats = usagestats.NewCounter("distributor_bytes_received")
-	linesReceivedStats = usagestats.NewCounter("distributor_lines_received")
+	bytesReceivedStats = analytics.NewCounter("distributor_bytes_received")
+	linesReceivedStats = analytics.NewCounter("distributor_lines_received")
 )
 
 const applicationJSON = "application/json"
@@ -126,7 +126,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		if tenantsRetention != nil {
 			lbs, err := syntax.ParseLabels(s.Labels)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
 			retentionHours = fmt.Sprintf("%d", int64(math.Floor(tenantsRetention.RetentionPeriodFor(userID, lbs).Hours())))
 		}

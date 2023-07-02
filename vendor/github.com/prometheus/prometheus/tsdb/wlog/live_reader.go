@@ -96,7 +96,7 @@ type LiveReader struct {
 // not be used again.  It is up to the user to decide when to stop trying should
 // io.EOF be returned.
 func (r *LiveReader) Err() error {
-	if r.eofNonErr && r.err == io.EOF {
+	if r.eofNonErr && errors.Is(r.err, io.EOF) {
 		return nil
 	}
 	return r.err
@@ -126,9 +126,10 @@ func (r *LiveReader) Next() bool {
 		// we return  EOF and the user can try again later. If we have a full
 		// page, buildRecord is guaranteed to return a record or a non-EOF; it
 		// has checks the records fit in pages.
-		if ok, err := r.buildRecord(); ok {
+		switch ok, err := r.buildRecord(); {
+		case ok:
 			return true
-		} else if err != nil && err != io.EOF {
+		case err != nil && err != io.EOF:
 			r.err = err
 			return false
 		}

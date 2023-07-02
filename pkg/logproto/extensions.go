@@ -1,8 +1,10 @@
 package logproto
 
 import (
+	"strings"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 
+	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -35,12 +37,26 @@ func (m *IndexStatsResponse) AddStream(_ model.Fingerprint) {
 }
 
 // Safe for concurrent use
-func (m *IndexStatsResponse) AddChunk(_ model.Fingerprint, chk index.ChunkMeta) {
-	atomic.AddUint64(&m.Chunks, 1)
-	atomic.AddUint64(&m.Bytes, uint64(chk.KB<<10))
-	atomic.AddUint64(&m.Entries, uint64(chk.Entries))
+func (m *IndexStatsResponse) AddChunkStats(s index.ChunkStats) {
+	atomic.AddUint64(&m.Chunks, s.Chunks)
+	atomic.AddUint64(&m.Bytes, s.KB<<10)
+	atomic.AddUint64(&m.Entries, s.Entries)
 }
 
 func (m *IndexStatsResponse) Stats() IndexStatsResponse {
 	return *m
+}
+
+// Helper function for returning the key value pairs
+// to be passed to a logger
+func (m *IndexStatsResponse) LoggingKeyValues() []interface{} {
+	if m == nil {
+		return nil
+	}
+	return []interface{}{
+		"bytes", strings.Replace(humanize.Bytes(m.Bytes), " ", "", 1),
+		"chunks", m.Chunks,
+		"streams", m.Streams,
+		"entries", m.Entries,
+	}
 }

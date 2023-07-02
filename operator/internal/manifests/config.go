@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
 	corev1 "k8s.io/api/core/v1"
@@ -30,6 +29,10 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 
 	s := sha1.New()
 	_, err = s.Write(c)
+	if err != nil {
+		return nil, "", err
+	}
+	_, err = s.Write(rc)
 	if err != nil {
 		return nil, "", err
 	}
@@ -104,6 +107,16 @@ func ConfigOptions(opt Options) config.Options {
 		protocol = "https"
 	}
 
+	// nolint:staticcheck
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opt.Stack.Replication == nil || opt.Stack.Replication.Factor == 0) && opt.Stack.ReplicationFactor > 0 {
+		if opt.Stack.Replication == nil {
+			opt.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+
+		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
+	}
+
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
@@ -137,18 +150,14 @@ func ConfigOptions(opt Options) config.Options {
 		Namespace: opt.Namespace,
 		Name:      opt.Name,
 		Compactor: config.Address{
-			FQDN:     fqdn(NewCompactorHTTPService(opt).GetName(), opt.Namespace),
-			Port:     httpPort,
-			Protocol: protocol,
+			FQDN: fqdn(NewCompactorGRPCService(opt).GetName(), opt.Namespace),
+			Port: grpcPort,
 		},
 		FrontendWorker: config.Address{
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: config.Address{
-			FQDN: fqdn(BuildLokiGossipRingService(opt.Name).GetName(), opt.Namespace),
-			Port: gossipPort,
-		},
+		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing),
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
@@ -167,6 +176,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
+		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
@@ -181,7 +191,7 @@ func ConfigOptions(opt Options) config.Options {
 	}
 }
 
-func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManagerConfig {
+func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfig {
 	if spec == nil {
 		return nil
 	}
@@ -248,7 +258,28 @@ func alertManagerConfig(spec *lokiv1beta1.AlertManagerSpec) *config.AlertManager
 	return conf
 }
 
-func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
+func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
+	var instanceAddr string
+	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
+		switch spec.MemberList.InstanceAddrType {
+		case lokiv1.InstanceAddrPodIP:
+			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+		case lokiv1.InstanceAddrDefault:
+			// Do nothing use loki defaults
+		default:
+			// Do nothing use loki defaults
+		}
+	}
+
+	return config.GossipRing{
+		InstanceAddr:         instanceAddr,
+		InstancePort:         grpcPort,
+		BindPort:             gossipPort,
+		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+	}
+}
+
+func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
 	if s == nil || rs == nil {
 		return nil
 	}
@@ -269,10 +300,10 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 		}
 
 		switch cls.AuthorizationType {
-		case lokiv1beta1.BasicAuthorization:
+		case lokiv1.BasicAuthorization:
 			c.Client.BasicAuthUsername = rs.Username
 			c.Client.BasicAuthPassword = rs.Password
-		case lokiv1beta1.BearerAuthorization:
+		case lokiv1.BearerAuthorization:
 			c.Client.BearerToken = rs.BearerToken
 		}
 
@@ -305,6 +336,7 @@ func remoteWriteConfig(s *lokiv1beta1.RemoteWriteSpec, rs *RulerSecret) *config.
 }
 
 var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXDemo:       10,
 	lokiv1.SizeOneXExtraSmall: 10,
 	lokiv1.SizeOneXSmall:      150,
 	lokiv1.SizeOneXMedium:     150,

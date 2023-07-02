@@ -4,14 +4,15 @@ import (
 	"context"
 	"testing"
 
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/require"
 )
 
 type mockCache struct {
@@ -24,7 +25,7 @@ func (m *mockCache) Store(_ context.Context, _ []string, _ [][]byte) error {
 	return nil
 }
 
-func (m *mockCache) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
+func (m *mockCache) Fetch(_ context.Context, keys []string) (found []string, bufs [][]byte, missing []string, err error) {
 	for _, key := range keys {
 		val, ok := m.data[key]
 		if !ok {
@@ -45,7 +46,7 @@ type mockIndexWriter struct {
 	called int
 }
 
-func (m *mockIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (m *mockIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	m.called++
 	return nil
 }
@@ -54,20 +55,20 @@ type mockChunksClient struct {
 	called int
 }
 
-func (m *mockChunksClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (m *mockChunksClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
 	m.called++
 	return nil
 }
 
 func (m *mockChunksClient) Stop() {
 }
-func (m *mockChunksClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (m *mockChunksClient) GetChunks(_ context.Context, _ []chunk.Chunk) ([]chunk.Chunk, error) {
 	panic("GetChunks not implemented")
 }
-func (m *mockChunksClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+func (m *mockChunksClient) DeleteChunk(_ context.Context, _, _ string) error {
 	panic("DeleteChunk not implemented")
 }
-func (m *mockChunksClient) IsChunkNotFoundErr(err error) bool {
+func (m *mockChunksClient) IsChunkNotFoundErr(_ error) bool {
 	panic("IsChunkNotFoundErr not implemented")
 }
 

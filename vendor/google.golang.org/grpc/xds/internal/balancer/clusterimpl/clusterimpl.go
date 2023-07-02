@@ -331,6 +331,7 @@ func (b *clusterImplBalancer) Close() {
 	if b.childLB != nil {
 		b.childLB.Close()
 		b.childLB = nil
+		b.childState = balancer.State{}
 	}
 	<-b.done.Done()
 	b.logger.Infof("Shutdown")

@@ -1,11 +1,18 @@
 package sarama
 
 type fetchRequestBlock struct {
-	Version            int16
+	Version int16
+	// currentLeaderEpoch contains the current leader epoch of the partition.
 	currentLeaderEpoch int32
-	fetchOffset        int64
-	logStartOffset     int64
-	maxBytes           int32
+	// fetchOffset contains the message offset.
+	fetchOffset int64
+	// logStartOffset contains the earliest available offset of the follower
+	// replica.  The field is only used when the request is sent by the
+	// follower.
+	logStartOffset int64
+	// maxBytes contains the maximum bytes to fetch from this partition.  See
+	// KIP-74 for cases where this limit may not be honored.
+	maxBytes int32
 }
 
 func (b *fetchRequestBlock) encode(pe packetEncoder, version int16) error {
@@ -46,16 +53,38 @@ func (b *fetchRequestBlock) decode(pd packetDecoder, version int16) (err error) 
 // https://issues.apache.org/jira/browse/KAFKA-2063 for a discussion of the issues leading up to that.  The KIP is at
 // https://cwiki.apache.org/confluence/display/KAFKA/KIP-74%3A+Add+Fetch+Response+Size+Limit+in+Bytes
 type FetchRequest struct {
-	MaxWaitTime  int32
-	MinBytes     int32
-	MaxBytes     int32
-	Version      int16
-	Isolation    IsolationLevel
-	SessionID    int32
+	// Version defines the protocol version to use for encode and decode
+	Version int16
+	// ReplicaID contains the broker ID of the follower, of -1 if this request
+	// is from a consumer.
+	// ReplicaID int32
+	// MaxWaitTime contains the maximum time in milliseconds to wait for the response.
+	MaxWaitTime int32
+	// MinBytes contains the minimum bytes to accumulate in the response.
+	MinBytes int32
+	// MaxBytes contains the maximum bytes to fetch.  See KIP-74 for cases
+	// where this limit may not be honored.
+	MaxBytes int32
+	// Isolation contains a This setting controls the visibility of
+	// transactional records. Using READ_UNCOMMITTED (isolation_level = 0)
+	// makes all records visible. With READ_COMMITTED (isolation_level = 1),
+	// non-transactional and COMMITTED transactional records are visible. To be
+	// more concrete, READ_COMMITTED returns all data from offsets smaller than
+	// the current LSO (last stable offset), and enables the inclusion of the
+	// list of aborted transactions in the result, which allows consumers to
+	// discard ABORTED transactional records
+	Isolation IsolationLevel
+	// SessionID contains the fetch session ID.
+	SessionID int32
+	// SessionEpoch contains the epoch of the partition leader as known to the
+	// follower replica or a consumer.
 	SessionEpoch int32
-	blocks       map[string]map[int32]*fetchRequestBlock
-	forgotten    map[string][]int32
-	RackID       string
+	// blocks contains the topics to fetch.
+	blocks map[string]map[int32]*fetchRequestBlock
+	// forgotten contains in an incremental fetch request, the partitions to remove.
+	forgotten map[string][]int32
+	// RackID contains a Rack ID of the consumer making this request
+	RackID string
 }
 
 type IsolationLevel int8
@@ -66,7 +95,9 @@ const (
 )
 
 func (r *FetchRequest) encode(pe packetEncoder) (err error) {
-	pe.putInt32(-1) // replica ID is always -1 for clients
+	metricRegistry := pe.metricRegistry()
+
+	pe.putInt32(-1) // ReplicaID is always -1 for clients
 	pe.putInt32(r.MaxWaitTime)
 	pe.putInt32(r.MinBytes)
 	if r.Version >= 3 {
@@ -99,6 +130,7 @@ func (r *FetchRequest) encode(pe packetEncoder) (err error) {
 				return err
 			}
 		}
+		getOrRegisterTopicMeter("consumer-fetch-rate", topic, metricRegistry).Mark(1)
 	}
 	if r.Version >= 7 {
 		err = pe.putArrayLength(len(r.forgotten))
@@ -270,7 +302,7 @@ func (r *FetchRequest) requiredVersion() KafkaVersion {
 	}
 }
 
-func (r *FetchRequest) AddBlock(topic string, partitionID int32, fetchOffset int64, maxBytes int32) {
+func (r *FetchRequest) AddBlock(topic string, partitionID int32, fetchOffset int64, maxBytes int32, leaderEpoch int32) {
 	if r.blocks == nil {
 		r.blocks = make(map[string]map[int32]*fetchRequestBlock)
 	}
@@ -288,7 +320,7 @@ func (r *FetchRequest) AddBlock(topic string, partitionID int32, fetchOffset int
 	tmp.maxBytes = maxBytes
 	tmp.fetchOffset = fetchOffset
 	if r.Version >= 9 {
-		tmp.currentLeaderEpoch = int32(-1)
+		tmp.currentLeaderEpoch = leaderEpoch
 	}
 
 	r.blocks[topic][partitionID] = tmp

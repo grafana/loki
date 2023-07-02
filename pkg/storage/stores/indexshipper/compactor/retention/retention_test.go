@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -21,7 +23,9 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	ingesterclient "github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -39,7 +43,7 @@ func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) erro
 	return nil
 }
 
-func (m *mockChunkClient) IsChunkNotFoundErr(err error) bool {
+func (m *mockChunkClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
@@ -173,9 +177,9 @@ func Test_Retention(t *testing.T) {
 
 type noopWriter struct{}
 
-func (noopWriter) Put(chunkID []byte) error { return nil }
-func (noopWriter) Count() int64             { return 0 }
-func (noopWriter) Close() error             { return nil }
+func (noopWriter) Put(_ []byte) error { return nil }
+func (noopWriter) Count() int64       { return 0 }
+func (noopWriter) Close() error       { return nil }
 
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
@@ -192,7 +196,8 @@ func Test_EmptyTable(t *testing.T) {
 
 	tables := store.indexTables()
 	require.Len(t, tables, 1)
-	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: 0}, "2": {retentionPeriod: 0}}}), nil, util_log.Logger)
+	// Set a very low retention to make sure all chunks are marked for deletion which will create an empty table.
+	empty, _, err := markForDelete(context.Background(), 0, tables[0].name, noopWriter{}, tables[0], NewExpirationChecker(&fakeLimits{perTenant: map[string]retentionLimit{"1": {retentionPeriod: time.Second}, "2": {retentionPeriod: time.Second}}}), nil, util_log.Logger)
 	require.NoError(t, err)
 	require.True(t, empty)
 
@@ -208,7 +213,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	)
 	labelsBuilder := labels.NewBuilder(lbs)
 	labelsBuilder.Set(labels.MetricName, "logs")
-	metric := labelsBuilder.Labels(nil)
+	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
 	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
 
@@ -271,103 +276,199 @@ func labelsString(ls labels.Labels) string {
 func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()
+	schema := allSchemas[3]
+	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
+	type tableResp struct {
+		mustDeleteLines  bool
+		mustRewriteChunk bool
+	}
+
 	for _, tt := range []struct {
 		name                   string
 		chunk                  chunk.Chunk
-		rewriteIntervalFilters []IntervalFilter
+		filterFunc             filter.Func
+		expectedRespByTables   map[string]tableResp
+		retainedChunkIntervals []model.Interval
 	}{
 		{
 			name:  "no rewrites",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-time.Hour), now),
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(time.Hour)),
+			filterFunc: func(ts time.Time, s string) bool {
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.Start): {},
+			},
 		},
 		{
 			name:  "no rewrites with chunk spanning multiple tables",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-48*time.Hour), now),
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-48*time.Hour), todaysTableInterval.End),
+			filterFunc: func(ts time.Time, s string) bool {
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.End):                      {},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-24 * time.Hour)): {},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-48 * time.Hour)): {},
+			},
 		},
 		{
 			name:  "rewrite first half",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
-			rewriteIntervalFilters: []IntervalFilter{
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
+			filterFunc: func(ts time.Time, _ string) bool {
+				tsUnixNano := ts.UnixNano()
+				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
+					return true
+				}
+
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.Start): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+			},
+			retainedChunkIntervals: []model.Interval{
 				{
-					Interval: model.Interval{
-						Start: now.Add(-2 * time.Hour),
-						End:   now.Add(-1 * time.Hour),
-					},
+					Start: todaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
+					End:   todaysTableInterval.Start.Add(2 * time.Hour),
 				},
 			},
 		},
 		{
 			name:  "rewrite second half",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
-			rewriteIntervalFilters: []IntervalFilter{
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
+			filterFunc: func(ts time.Time, _ string) bool {
+				tsUnixNano := ts.UnixNano()
+				if todaysTableInterval.Start.Add(time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano() {
+					return true
+				}
+
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.Start): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+			},
+			retainedChunkIntervals: []model.Interval{
 				{
-					Interval: model.Interval{
-						Start: now.Add(-time.Hour),
-						End:   now,
-					},
+					Start: todaysTableInterval.Start,
+					End:   todaysTableInterval.Start.Add(time.Hour).Add(-time.Minute),
 				},
 			},
 		},
 		{
 			name:  "rewrite multiple intervals",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-12*time.Hour), now),
-			rewriteIntervalFilters: []IntervalFilter{
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(12*time.Hour)),
+			filterFunc: func(ts time.Time, _ string) bool {
+				tsUnixNano := ts.UnixNano()
+				if (todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano()) ||
+					(todaysTableInterval.Start.Add(5*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(9*time.Hour).UnixNano()) ||
+					(todaysTableInterval.Start.Add(10*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(12*time.Hour).UnixNano()) {
+					return true
+				}
+
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.Start): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+			},
+			retainedChunkIntervals: []model.Interval{
 				{
-					Interval: model.Interval{
-						Start: now.Add(-12 * time.Hour),
-						End:   now.Add(-10 * time.Hour),
-					},
+					Start: todaysTableInterval.Start.Add(2 * time.Hour).Add(time.Minute),
+					End:   todaysTableInterval.Start.Add(5 * time.Hour).Add(-time.Minute),
 				},
 				{
-					Interval: model.Interval{
-						Start: now.Add(-9 * time.Hour),
-						End:   now.Add(-5 * time.Hour),
-					},
-				},
-				{
-					Interval: model.Interval{
-						Start: now.Add(-2 * time.Hour),
-						End:   now,
-					},
+					Start: todaysTableInterval.Start.Add(9 * time.Hour).Add(time.Minute),
+					End:   todaysTableInterval.Start.Add(10 * time.Hour).Add(-time.Minute),
 				},
 			},
 		},
 		{
-			name:  "rewrite chunk spanning multiple days with multiple intervals",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-72*time.Hour), now),
-			rewriteIntervalFilters: []IntervalFilter{
+			name:  "rewrite chunk spanning multiple days with multiple intervals - delete partially for each day",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
+			filterFunc: func(ts time.Time, _ string) bool {
+				tsUnixNano := ts.UnixNano()
+				if (todaysTableInterval.End.Add(-71*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-47*time.Hour).UnixNano()) ||
+					(todaysTableInterval.End.Add(-40*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-30*time.Hour).UnixNano()) ||
+					(todaysTableInterval.End.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.UnixNano()) {
+					return true
+				}
+
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.End): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-24 * time.Hour)): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-48 * time.Hour)): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-72 * time.Hour)): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+			},
+			retainedChunkIntervals: []model.Interval{
 				{
-					Interval: model.Interval{
-						Start: now.Add(-71 * time.Hour),
-						End:   now.Add(-47 * time.Hour),
-					},
+					Start: todaysTableInterval.End.Add(-72 * time.Hour),
+					End:   todaysTableInterval.End.Add(-71 * time.Hour).Add(-time.Minute),
 				},
 				{
-					Interval: model.Interval{
-						Start: now.Add(-40 * time.Hour),
-						End:   now.Add(-30 * time.Hour),
-					},
+					Start: todaysTableInterval.End.Add(-47 * time.Hour).Add(time.Minute),
+					End:   todaysTableInterval.End.Add(-40 * time.Hour).Add(-time.Minute),
 				},
 				{
-					Interval: model.Interval{
-						Start: now.Add(-2 * time.Hour),
-						End:   now,
-					},
+					Start: todaysTableInterval.End.Add(-30 * time.Hour).Add(time.Minute),
+					End:   todaysTableInterval.End.Add(-2 * time.Hour).Add(-time.Minute),
 				},
 			},
 		},
 		{
-			name:  "remove no lines using a filter function",
-			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, now.Add(-2*time.Hour), now),
-			rewriteIntervalFilters: []IntervalFilter{
+			name:  "rewrite chunk spanning multiple days with multiple intervals - delete just one whole day",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
+			filterFunc: func(ts time.Time, _ string) bool {
+				tsUnixNano := ts.UnixNano()
+				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.UnixNano() {
+					return true
+				}
+
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.End): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: false,
+				},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-24 * time.Hour)): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-48 * time.Hour)): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+				schema.config.IndexTables.TableFor(todaysTableInterval.End.Add(-72 * time.Hour)): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+			},
+			retainedChunkIntervals: []model.Interval{
 				{
-					Interval: model.Interval{
-						Start: now.Add(-1 * time.Hour),
-						End:   now,
-					},
-					Filter: func(s string) bool {
-						return false
-					},
+					Start: todaysTableInterval.End.Add(-72 * time.Hour),
+					End:   todaysTableInterval.End.Add(-24 * time.Hour),
 				},
 			},
 		},
@@ -378,33 +479,59 @@ func TestChunkRewriter(t *testing.T) {
 			require.NoError(t, store.Put(context.TODO(), []chunk.Chunk{tt.chunk}))
 			store.Stop()
 
-			for _, indexTable := range store.indexTables() {
+			indexTables := store.indexTables()
+			require.Len(t, indexTables, len(tt.expectedRespByTables))
+			for _, indexTable := range indexTables {
 				cr := newChunkRewriter(store.chunkClient, indexTable.name, indexTable)
 
-				wroteChunks, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), ExtractIntervalFromTableName(indexTable.name), tt.rewriteIntervalFilters)
+				wroteChunks, linesDeleted, err := cr.rewriteChunk(context.Background(), entryFromChunk(tt.chunk), ExtractIntervalFromTableName(indexTable.name), tt.filterFunc)
 				require.NoError(t, err)
-				if len(tt.rewriteIntervalFilters) == 0 {
-					require.False(t, wroteChunks)
-				}
+				require.Equal(t, tt.expectedRespByTables[indexTable.name].mustDeleteLines, linesDeleted)
+				require.Equal(t, tt.expectedRespByTables[indexTable.name].mustRewriteChunk, wroteChunks)
+			}
+
+			// we should have original chunk in the store
+			expectedChunks := [][]model.Interval{
+				{
+					{
+						Start: tt.chunk.From,
+						End:   tt.chunk.Through,
+					},
+				},
 			}
 
 			chunks := store.GetChunks(tt.chunk.UserID, tt.chunk.From, tt.chunk.Through, tt.chunk.Metric)
-
-			// number of chunks should be the new re-written chunks + the source chunk
-			require.Len(t, chunks, len(tt.rewriteIntervalFilters)+1)
-			for _, ivf := range tt.rewriteIntervalFilters {
-				expectedChk := createChunk(t, tt.chunk.UserID, labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, ivf.Interval.Start, ivf.Interval.End)
-				for i, chk := range chunks {
-					if getChunkID(chk.ChunkRef) == getChunkID(expectedChk.ChunkRef) {
-						chunks = append(chunks[:i], chunks[i+1:]...)
-						break
-					}
+			// if we rewrote the chunk, we should have that too
+			if len(tt.retainedChunkIntervals) > 0 {
+				expectedChunks = append(expectedChunks, tt.retainedChunkIntervals)
+				if chunks[1].Checksum == tt.chunk.Checksum {
+					chunks[0], chunks[1] = chunks[1], chunks[0]
 				}
 			}
+			require.Len(t, chunks, len(expectedChunks))
 
-			// the source chunk should still be there in the store
-			require.Len(t, chunks, 1)
-			require.Equal(t, getChunkID(tt.chunk.ChunkRef), getChunkID(chunks[0].ChunkRef))
+			// now verify the contents of the chunks
+			for i := 0; i < len(expectedChunks); i++ {
+				require.Equal(t, expectedChunks[i][0].Start, chunks[i].From)
+				require.Equal(t, expectedChunks[i][len(expectedChunks[i])-1].End, chunks[i].Through)
+
+				lokiChunk := chunks[i].Data.(*chunkenc.Facade).LokiChunk()
+				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				require.NoError(t, err)
+
+				for _, interval := range expectedChunks[i] {
+					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
+						require.True(t, newChunkItr.Next())
+						require.Equal(t, logproto.Entry{
+							Timestamp: curr.Time(),
+							Line:      curr.String(),
+						}, newChunkItr.Entry())
+					}
+				}
+
+				// the iterator should not have any more entries left to iterate
+				require.False(t, newChunkItr.Next())
+			}
 			store.Stop()
 		})
 	}
@@ -429,8 +556,8 @@ func (s *seriesCleanedRecorder) CleanupSeries(userID []byte, lbls labels.Labels)
 }
 
 type chunkExpiry struct {
-	isExpired                 bool
-	nonDeletedIntervalFilters []IntervalFilter
+	isExpired  bool
+	filterFunc filter.Func
 }
 
 type mockExpirationChecker struct {
@@ -445,15 +572,15 @@ func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) *mockExpirati
 	return &mockExpirationChecker{chunksExpiry: chunksExpiry}
 }
 
-func (m *mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, []IntervalFilter) {
+func (m *mockExpirationChecker) Expired(ref ChunkEntry, _ model.Time) (bool, filter.Func) {
 	time.Sleep(m.delay)
 	m.calls++
 
 	ce := m.chunksExpiry[string(ref.ChunkID)]
-	return ce.isExpired, ce.nonDeletedIntervalFilters
+	return ce.isExpired, ce.filterFunc
 }
 
-func (m *mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+func (m *mockExpirationChecker) DropFromIndex(_ ChunkEntry, _ model.Time, _ model.Time) bool {
 	return false
 }
 
@@ -496,6 +623,29 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			},
 		},
 		{
+			name: "chunk deleted with filter but no lines matching",
+			chunks: []chunk.Chunk{
+				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
+			},
+			expiry: []chunkExpiry{
+				{
+					isExpired: true,
+					filterFunc: func(ts time.Time, s string) bool {
+						return false
+					},
+				},
+			},
+			expectedDeletedSeries: []map[uint64]struct{}{
+				nil,
+			},
+			expectedEmpty: []bool{
+				false,
+			},
+			expectedModified: []bool{
+				false,
+			},
+		},
+		{
 			name: "only one chunk in store which gets deleted",
 			chunks: []chunk.Chunk{
 				createChunk(t, userID, labels.Labels{labels.Label{Name: "foo", Value: "1"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(30*time.Minute)),
@@ -523,12 +673,14 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					nonDeletedIntervalFilters: []IntervalFilter{{
-						Interval: model.Interval{
-							Start: todaysTableInterval.Start,
-							End:   todaysTableInterval.Start.Add(15 * time.Minute),
-						},
-					}},
+					filterFunc: func(ts time.Time, _ string) bool {
+						tsUnixNano := ts.UnixNano()
+						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
+							return true
+						}
+
+						return false
+					},
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
@@ -577,12 +729,14 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 				{
 					isExpired: true,
-					nonDeletedIntervalFilters: []IntervalFilter{{
-						Interval: model.Interval{
-							Start: todaysTableInterval.Start,
-							End:   todaysTableInterval.Start.Add(15 * time.Minute),
-						},
-					}},
+					filterFunc: func(ts time.Time, _ string) bool {
+						tsUnixNano := ts.UnixNano()
+						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
+							return true
+						}
+
+						return false
+					},
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
@@ -603,12 +757,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					nonDeletedIntervalFilters: []IntervalFilter{{
-						Interval: model.Interval{
-							Start: todaysTableInterval.Start,
-							End:   now,
-						},
-					}},
+					filterFunc: func(ts time.Time, s string) bool {
+						return ts.UnixNano() < todaysTableInterval.Start.UnixNano()
+					},
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
@@ -629,12 +780,9 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					nonDeletedIntervalFilters: []IntervalFilter{{
-						Interval: model.Interval{
-							Start: todaysTableInterval.Start.Add(-30 * time.Minute),
-							End:   now,
-						},
-					}},
+					filterFunc: func(ts time.Time, s string) bool {
+						return ts.UnixNano() < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano()
+					},
 				},
 			},
 			expectedDeletedSeries: []map[uint64]struct{}{
@@ -764,4 +912,43 @@ func TestMarkForDelete_DropChunkFromIndex(t *testing.T) {
 	require.False(t, store.HasChunk(c3))
 	require.False(t, store.HasChunk(c4))
 	require.False(t, store.HasChunk(c5))
+}
+
+func TestMigrateMarkers(t *testing.T) {
+	t.Run("nothing to migrate", func(t *testing.T) {
+		workDir := t.TempDir()
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
+	})
+
+	t.Run("migrate markers dir", func(t *testing.T) {
+		workDir := t.TempDir()
+		require.NoError(t, os.Mkdir(path.Join(workDir, MarkersFolder), 0755))
+
+		markers := []string{"foo", "bar", "buzz"}
+		for _, marker := range markers {
+			err := os.WriteFile(path.Join(workDir, MarkersFolder, marker), []byte(marker), 0o666)
+			require.NoError(t, err)
+		}
+
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		targetDir := path.Join(workDir, "store-1", MarkersFolder)
+		require.DirExists(t, targetDir)
+		for _, marker := range markers {
+			require.FileExists(t, path.Join(targetDir, marker))
+			b, err := os.ReadFile(path.Join(targetDir, marker))
+			require.NoError(t, err)
+			require.Equal(t, marker, string(b))
+		}
+	})
+
+	t.Run("file named markers should not be migrated", func(t *testing.T) {
+		workDir := t.TempDir()
+		f, err := os.Create(path.Join(workDir, MarkersFolder))
+		require.NoError(t, err)
+		defer f.Close()
+
+		require.NoError(t, CopyMarkers(workDir, "store-1"))
+		require.NoDirExists(t, path.Join(workDir, "store-1", MarkersFolder))
+	})
 }

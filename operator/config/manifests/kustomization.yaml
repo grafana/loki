@@ -1,4 +1,0 @@
-resources:
-- ../overlays/openshift
-- ../samples
-- ../scorecard

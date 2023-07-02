@@ -287,6 +287,15 @@
     "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/bigquery/datapolicies/apiv1": {
+    "distribution_name": "cloud.google.com/go/bigquery/datapolicies/apiv1",
+    "description": "BigQuery Data Policy API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/datapolicies/apiv1",
+    "release_level": "beta",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/bigquery/datapolicies/apiv1beta1": {
     "distribution_name": "cloud.google.com/go/bigquery/datapolicies/apiv1beta1",
     "description": "BigQuery Data Policy API",
@@ -330,15 +339,6 @@
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/reservation/apiv1",
     "release_level": "ga",
-    "library_type": "GAPIC_AUTO"
-  },
-  "cloud.google.com/go/bigquery/reservation/apiv1beta1": {
-    "distribution_name": "cloud.google.com/go/bigquery/reservation/apiv1beta1",
-    "description": "BigQuery Reservation API",
-    "language": "Go",
-    "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/bigquery/latest/reservation/apiv1beta1",
-    "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/bigquery/storage/apiv1": {
@@ -548,6 +548,15 @@
     "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
+  "cloud.google.com/go/datacatalog/lineage/apiv1": {
+    "distribution_name": "cloud.google.com/go/datacatalog/lineage/apiv1",
+    "description": "Data Lineage API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/datacatalog/latest/lineage/apiv1",
+    "release_level": "beta",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/dataflow/apiv1beta3": {
     "distribution_name": "cloud.google.com/go/dataflow/apiv1beta3",
     "description": "Dataflow API",
@@ -707,6 +716,15 @@
     "language": "Go",
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/dialogflow/latest/cx/apiv3beta1",
+    "release_level": "beta",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/discoveryengine/apiv1beta": {
+    "distribution_name": "cloud.google.com/go/discoveryengine/apiv1beta",
+    "description": "Discovery Engine API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/discoveryengine/latest/apiv1beta",
     "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
@@ -944,6 +962,15 @@
     "release_level": "ga",
     "library_type": "CORE"
   },
+  "cloud.google.com/go/iam/apiv1": {
+    "distribution_name": "cloud.google.com/go/iam/apiv1",
+    "description": "IAM Meta API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/iam/latest/apiv1",
+    "release_level": "beta",
+    "library_type": "GAPIC_AUTO"
+  },
   "cloud.google.com/go/iam/apiv2": {
     "distribution_name": "cloud.google.com/go/iam/apiv2",
     "description": "Identity and Access Management (IAM) API",
@@ -1048,7 +1075,7 @@
     "description": "Long Running Operations API",
     "language": "Go",
     "client_library_type": "generated",
-    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/latest/longrunning/autogen",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/longrunning/latest/autogen",
     "release_level": "alpha",
     "library_type": "GAPIC_AUTO"
   },
@@ -1059,6 +1086,33 @@
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/managedidentities/latest/apiv1",
     "release_level": "ga",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/addressvalidation/apiv1": {
+    "distribution_name": "cloud.google.com/go/maps/addressvalidation/apiv1",
+    "description": "Address Validation API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/addressvalidation/apiv1",
+    "release_level": "beta",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/mapsplatformdatasets/apiv1alpha": {
+    "distribution_name": "cloud.google.com/go/maps/mapsplatformdatasets/apiv1alpha",
+    "description": "Maps Platform Datasets API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/mapsplatformdatasets/apiv1alpha",
+    "release_level": "alpha",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/maps/routing/apiv2": {
+    "distribution_name": "cloud.google.com/go/maps/routing/apiv2",
+    "description": "Routes API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/maps/latest/routing/apiv2",
+    "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/mediatranslation/apiv1beta1": {
@@ -1869,6 +1923,15 @@
     "client_library_type": "generated",
     "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/vmmigration/latest/apiv1",
     "release_level": "ga",
+    "library_type": "GAPIC_AUTO"
+  },
+  "cloud.google.com/go/vmwareengine/apiv1": {
+    "distribution_name": "cloud.google.com/go/vmwareengine/apiv1",
+    "description": "VMware Engine API",
+    "language": "Go",
+    "client_library_type": "generated",
+    "docs_url": "https://cloud.google.com/go/docs/reference/cloud.google.com/go/vmwareengine/latest/apiv1",
+    "release_level": "beta",
     "library_type": "GAPIC_AUTO"
   },
   "cloud.google.com/go/vpcaccess/apiv1": {

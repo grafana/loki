@@ -49,8 +49,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.cortexgateway + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.cortexgateway + [utils.selector.re('route', 'api_prom_push|loki_api_v1_push')],
                             )
                           )
                         )
@@ -64,8 +63,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.distributor,
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.distributor,
                             )
                           )
                         )
@@ -80,8 +78,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.ingester_zone + [utils.selector.eq('route', '/logproto.Pusher/Push')],
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester_zone + [utils.selector.eq('route', '/logproto.Pusher/Push')],
                             )
                           )
                         )
@@ -97,8 +94,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_request_duration_seconds',
-                              dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('route', '/logproto.Pusher/Push')],
-                              extra_selectors=dashboards['loki-writes.json'].clusterMatchers
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('route', '/logproto.Pusher/Push')],
                             )
                           )
                         )
@@ -125,7 +121,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             $.panel('Latency') +
                             utils.latencyRecordingRulePanel(
                               'loki_bigtable_request_duration_seconds',
-                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
+                              dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].clusterMatchers + dashboards['loki-writes.json'].matchers.ingester + [utils.selector.eq('operation', '/google.bigtable.v2.Bigtable/MutateRows')]
                             )
                           )
                         )

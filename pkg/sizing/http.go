@@ -33,12 +33,12 @@ func decodeMesage(req *http.Request, msg *Message) error {
 
 	msg.Ingest, err = strconv.Atoi(req.FormValue("ingest"))
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read ingest: %w", err)
 	}
 
 	msg.Retention, err = strconv.Atoi(req.FormValue("retention"))
 	if err != nil {
-		return err
+		return fmt.Errorf("cannot read retention: %w", err)
 	}
 
 	msg.QueryPerformance = QueryPerf(strings.ToLower(req.FormValue("queryperf")))
@@ -67,17 +67,17 @@ func (h *Handler) GenerateHelmValues(w http.ResponseWriter, req *http.Request) {
 
 	w.Header().Set("Content-Type", "application/x-yaml; charset=utf-8")
 
-	cluster := calculateClusterSize(msg.NodeType, msg.Ingest, msg.QueryPerformance)
+	cluster := calculateClusterSize(msg.NodeType, float64(msg.Ingest), msg.QueryPerformance)
 	helm := constructHelmValues(cluster, msg.NodeType)
 
 	enc := yaml.NewEncoder(w)
 	err = enc.Encode(helm)
 	if err != nil {
-		level.Error(h.logger).Log("msg", "could not encode Helm Char values", "error", err)
+		level.Error(h.logger).Log("msg", "could not encode Helm Chart values", "error", err)
 	}
 }
 
-func (h *Handler) Nodes(w http.ResponseWriter, req *http.Request) {
+func (h *Handler) Nodes(w http.ResponseWriter, _ *http.Request) {
 	var nodes []string
 	for cloud, n := range NodeTypesByProvider {
 		for nodeType := range n {
@@ -88,7 +88,7 @@ func (h *Handler) Nodes(w http.ResponseWriter, req *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	err := json.NewEncoder(w).Encode(nodes)
 	if err != nil {
-		level.Error(h.logger).Log("msg", "could not encode Helm Char values", "error", err)
+		level.Error(h.logger).Log("msg", "could not encode node values", "error", err)
 	}
 }
 
@@ -96,6 +96,25 @@ func (h *Handler) respondError(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusBadRequest)
 	_, err = w.Write([]byte(fmt.Sprintf("error: %v", err)))
 	if err != nil {
-		level.Error(h.logger).Log("msg", "could not encode Helm Char values", "error", err)
+		level.Error(h.logger).Log("msg", "could not write error message", "error", err)
+	}
+}
+
+func (h *Handler) Cluster(w http.ResponseWriter, req *http.Request) {
+	var msg Message
+
+	err := decodeMesage(req, &msg)
+	if err != nil {
+		level.Error(h.logger).Log("error", err)
+		h.respondError(w, err)
+		return
+	}
+
+	cluster := calculateClusterSize(msg.NodeType, float64(msg.Ingest), msg.QueryPerformance)
+
+	w.Header().Set("Content-Type", "application/json")
+	err = json.NewEncoder(w).Encode(cluster)
+	if err != nil {
+		level.Error(h.logger).Log("msg", "could not encode cluster size", "error", err)
 	}
 }

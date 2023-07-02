@@ -13,9 +13,10 @@ const ReceiveTime int64 = -1
 const GroupGenerationUndefined = -1
 
 type offsetCommitRequestBlock struct {
-	offset    int64
-	timestamp int64
-	metadata  string
+	offset               int64
+	timestamp            int64
+	committedLeaderEpoch int32
+	metadata             string
 }
 
 func (b *offsetCommitRequestBlock) encode(pe packetEncoder, version int16) error {
@@ -24,6 +25,9 @@ func (b *offsetCommitRequestBlock) encode(pe packetEncoder, version int16) error
 		pe.putInt64(b.timestamp)
 	} else if b.timestamp != 0 {
 		Logger.Println("Non-zero timestamp specified for OffsetCommitRequest not v1, it will be ignored")
+	}
+	if version >= 6 {
+		pe.putInt32(b.committedLeaderEpoch)
 	}
 
 	return pe.putString(b.metadata)
@@ -38,15 +42,22 @@ func (b *offsetCommitRequestBlock) decode(pd packetDecoder, version int16) (err 
 			return err
 		}
 	}
+	if version >= 6 {
+		if b.committedLeaderEpoch, err = pd.getInt32(); err != nil {
+			return err
+		}
+	}
+
 	b.metadata, err = pd.getString()
 	return err
 }
 
 type OffsetCommitRequest struct {
 	ConsumerGroup           string
-	ConsumerGroupGeneration int32  // v1 or later
-	ConsumerID              string // v1 or later
-	RetentionTime           int64  // v2 or later
+	ConsumerGroupGeneration int32   // v1 or later
+	ConsumerID              string  // v1 or later
+	GroupInstanceId         *string // v7 or later
+	RetentionTime           int64   // v2 or later
 
 	// Version can be:
 	// - 0 (kafka 0.8.1 and later)
@@ -54,12 +65,14 @@ type OffsetCommitRequest struct {
 	// - 2 (kafka 0.9.0 and later)
 	// - 3 (kafka 0.11.0 and later)
 	// - 4 (kafka 2.0.0 and later)
+	// - 5&6 (kafka 2.1.0 and later)
+	// - 7 (kafka 2.3.0 and later)
 	Version int16
 	blocks  map[string]map[int32]*offsetCommitRequestBlock
 }
 
 func (r *OffsetCommitRequest) encode(pe packetEncoder) error {
-	if r.Version < 0 || r.Version > 4 {
+	if r.Version < 0 || r.Version > 7 {
 		return PacketEncodingError{"invalid or unsupported OffsetCommitRequest version field"}
 	}
 
@@ -81,10 +94,17 @@ func (r *OffsetCommitRequest) encode(pe packetEncoder) error {
 		}
 	}
 
-	if r.Version >= 2 {
+	// Version 5 removes RetentionTime, which is now controlled only by a broker configuration.
+	if r.Version >= 2 && r.Version <= 4 {
 		pe.putInt64(r.RetentionTime)
 	} else if r.RetentionTime != 0 {
 		Logger.Println("Non-zero RetentionTime specified for OffsetCommitRequest version <2, it will be ignored")
+	}
+
+	if r.Version >= 7 {
+		if err := pe.putNullableString(r.GroupInstanceId); err != nil {
+			return err
+		}
 	}
 
 	if err := pe.putArrayLength(len(r.blocks)); err != nil {
@@ -123,8 +143,15 @@ func (r *OffsetCommitRequest) decode(pd packetDecoder, version int16) (err error
 		}
 	}
 
-	if r.Version >= 2 {
+	// Version 5 removes RetentionTime, which is now controlled only by a broker configuration.
+	if r.Version >= 2 && r.Version <= 4 {
 		if r.RetentionTime, err = pd.getInt64(); err != nil {
+			return err
+		}
+	}
+
+	if r.Version >= 7 {
+		if r.GroupInstanceId, err = pd.getNullableString(); err != nil {
 			return err
 		}
 	}
@@ -184,12 +211,16 @@ func (r *OffsetCommitRequest) requiredVersion() KafkaVersion {
 		return V0_11_0_0
 	case 4:
 		return V2_0_0_0
+	case 5, 6:
+		return V2_1_0_0
+	case 7:
+		return V2_3_0_0
 	default:
 		return MinVersion
 	}
 }
 
-func (r *OffsetCommitRequest) AddBlock(topic string, partitionID int32, offset int64, timestamp int64, metadata string) {
+func (r *OffsetCommitRequest) AddBlock(topic string, partitionID int32, offset int64, leaderEpoch int32, timestamp int64, metadata string) {
 	if r.blocks == nil {
 		r.blocks = make(map[string]map[int32]*offsetCommitRequestBlock)
 	}
@@ -198,7 +229,7 @@ func (r *OffsetCommitRequest) AddBlock(topic string, partitionID int32, offset i
 		r.blocks[topic] = make(map[int32]*offsetCommitRequestBlock)
 	}
 
-	r.blocks[topic][partitionID] = &offsetCommitRequestBlock{offset, timestamp, metadata}
+	r.blocks[topic][partitionID] = &offsetCommitRequestBlock{offset, timestamp, leaderEpoch, metadata}
 }
 
 func (r *OffsetCommitRequest) Offset(topic string, partitionID int32) (int64, string, error) {

@@ -1,4 +1,4 @@
-FROM golang:1.19.2-bullseye as build
+FROM golang:1.20.4-bullseye as build
 
 COPY . /src/loki
 WORKDIR /src/loki

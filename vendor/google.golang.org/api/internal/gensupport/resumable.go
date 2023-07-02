@@ -193,22 +193,27 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 
 		// Each chunk gets its own initialized-at-zero backoff and invocation ID.
 		bo := rx.Retry.backoff()
-		quitAfter := time.After(retryDeadline)
+		quitAfterTimer := time.NewTimer(retryDeadline)
 		rx.attempts = 1
 		rx.invocationID = uuid.New().String()
 
 		// Retry loop for a single chunk.
 		for {
+			pauseTimer := time.NewTimer(pause)
 			select {
 			case <-ctx.Done():
+				quitAfterTimer.Stop()
+				pauseTimer.Stop()
 				if err == nil {
 					err = ctx.Err()
 				}
 				return prepareReturn(resp, err)
-			case <-time.After(pause):
-			case <-quitAfter:
+			case <-pauseTimer.C:
+			case <-quitAfterTimer.C:
+				pauseTimer.Stop()
 				return prepareReturn(resp, err)
 			}
+			pauseTimer.Stop()
 
 			// Check for context cancellation or timeout once more. If more than one
 			// case in the select statement above was satisfied at the same time, Go
@@ -217,11 +222,12 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			// canceled before or the timeout was reached.
 			select {
 			case <-ctx.Done():
+				quitAfterTimer.Stop()
 				if err == nil {
 					err = ctx.Err()
 				}
 				return prepareReturn(resp, err)
-			case <-quitAfter:
+			case <-quitAfterTimer.C:
 				return prepareReturn(resp, err)
 			default:
 			}
@@ -235,6 +241,7 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 
 			// Check if we should retry the request.
 			if !errorFunc(status, err) {
+				quitAfterTimer.Stop()
 				break
 			}
 

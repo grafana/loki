@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc/credentials/tls/certprovider"
 	"google.golang.org/grpc/internal/buffer"
 	xdsinternal "google.golang.org/grpc/internal/credentials/xds"
+	"google.golang.org/grpc/internal/envconfig"
 	"google.golang.org/grpc/internal/grpclog"
 	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/internal/pretty"
@@ -36,6 +37,7 @@ import (
 	"google.golang.org/grpc/resolver"
 	"google.golang.org/grpc/serviceconfig"
 	"google.golang.org/grpc/xds/internal/balancer/clusterresolver"
+	"google.golang.org/grpc/xds/internal/balancer/outlierdetection"
 	"google.golang.org/grpc/xds/internal/balancer/ringhash"
 	"google.golang.org/grpc/xds/internal/xdsclient"
 	"google.golang.org/grpc/xds/internal/xdsclient/xdsresource"
@@ -270,6 +272,52 @@ func buildProviderFunc(configs map[string]*certprovider.BuildableConfig, instanc
 	return provider, nil
 }
 
+func outlierDetectionToConfig(od *xdsresource.OutlierDetection) outlierdetection.LBConfig { // Already validated - no need to return error
+	if od == nil {
+		// "If the outlier_detection field is not set in the Cluster message, a
+		// "no-op" outlier_detection config will be generated, with interval set
+		// to the maximum possible value and all other fields unset." - A50
+		return outlierdetection.LBConfig{
+			Interval: 1<<63 - 1,
+		}
+	}
+
+	// "if the enforcing_success_rate field is set to 0, the config
+	// success_rate_ejection field will be null and all success_rate_* fields
+	// will be ignored." - A50
+	var sre *outlierdetection.SuccessRateEjection
+	if od.EnforcingSuccessRate != 0 {
+		sre = &outlierdetection.SuccessRateEjection{
+			StdevFactor:           od.SuccessRateStdevFactor,
+			EnforcementPercentage: od.EnforcingSuccessRate,
+			MinimumHosts:          od.SuccessRateMinimumHosts,
+			RequestVolume:         od.SuccessRateRequestVolume,
+		}
+	}
+
+	// "If the enforcing_failure_percent field is set to 0 or null, the config
+	// failure_percent_ejection field will be null and all failure_percent_*
+	// fields will be ignored." - A50
+	var fpe *outlierdetection.FailurePercentageEjection
+	if od.EnforcingFailurePercentage != 0 {
+		fpe = &outlierdetection.FailurePercentageEjection{
+			Threshold:             od.FailurePercentageThreshold,
+			EnforcementPercentage: od.EnforcingFailurePercentage,
+			MinimumHosts:          od.FailurePercentageMinimumHosts,
+			RequestVolume:         od.FailurePercentageRequestVolume,
+		}
+	}
+
+	return outlierdetection.LBConfig{
+		Interval:                  od.Interval,
+		BaseEjectionTime:          od.BaseEjectionTime,
+		MaxEjectionTime:           od.MaxEjectionTime,
+		MaxEjectionPercent:        od.MaxEjectionPercent,
+		SuccessRateEjection:       sre,
+		FailurePercentageEjection: fpe,
+	}
+}
+
 // handleWatchUpdate handles a watch update from the xDS Client. Good updates
 // lead to clientConn updates being invoked on the underlying cluster_resolver balancer.
 func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
@@ -301,7 +349,7 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 	if b.childLB == nil {
 		childLB, err := newChildBalancer(b.ccw, b.bOpts)
 		if err != nil {
-			b.logger.Errorf("Failed to create child policy of type %s, %v", clusterresolver.Name, err)
+			b.logger.Errorf("Failed to create child policy of type %s: %v", clusterresolver.Name, err)
 			return
 		}
 		b.childLB = childLB
@@ -341,6 +389,9 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 			}
 		default:
 			b.logger.Infof("unexpected cluster type %v when handling update from cluster handler", cu.ClusterType)
+		}
+		if envconfig.XDSOutlierDetection {
+			dms[i].OutlierDetection = outlierDetectionToConfig(cu.OutlierDetection)
 		}
 	}
 	lbCfg := &clusterresolver.LBConfig{

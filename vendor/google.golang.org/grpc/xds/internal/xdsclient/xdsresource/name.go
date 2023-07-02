@@ -119,7 +119,7 @@ func (n *Name) String() string {
 
 	path := n.Type
 	if n.ID != "" {
-		path = path + "/" + n.ID
+		path = "/" + path + "/" + n.ID
 	}
 
 	tempURL := &url.URL{

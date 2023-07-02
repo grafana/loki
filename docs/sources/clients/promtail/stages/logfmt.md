@@ -3,7 +3,7 @@ title: logfmt
 menuTitle: logfmt
 description: The logfmt parsing stage reads logfmt log lines and extracts the data into labels.
 ---
-# `logfmt` stage
+# logfmt
 
 The `logfmt` stage is a parsing stage that reads the log line as [logfmt](https://brandur.org/logfmt) and allows extraction of data into labels.
 
@@ -25,7 +25,7 @@ This stage uses the [go-logfmt](https://github.com/go-logfmt/logfmt) unmarshaler
 numbers or booleans will be unmarshaled into those types. The extracted data
 can hold non-string values, and this stage does not do any type conversions;
 downstream stages will need to perform correct type conversion of these values
-as necessary. Please refer to the [`template` stage](../template/) for how
+as necessary. Please refer to the [`template` stage]({{< relref "./template" >}}) for how
 to do this.
 
 If the value extracted is a complex type, its value is extracted as a string.

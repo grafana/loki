@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -10,7 +12,11 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 )
+
+var objectsMtime = time.Now().Local()
 
 type mockObjectClient struct {
 	client.ObjectClient
@@ -20,20 +26,24 @@ type mockObjectClient struct {
 	listDelay      time.Duration
 }
 
-func newMockObjectClient(objects []string) *mockObjectClient {
-	storageObjects := make([]client.StorageObject, 0, len(objects))
+func newMockObjectClient(t *testing.T, objects []string) *mockObjectClient {
+	tempDir := t.TempDir()
 	for _, objectName := range objects {
-		storageObjects = append(storageObjects, client.StorageObject{
-			Key: objectName,
-		})
+		objectFullPath := filepath.Join(tempDir, objectName)
+		parentDir := filepath.Dir(objectFullPath)
+		require.NoError(t, util.EnsureDirectory(parentDir))
+		require.NoError(t, os.WriteFile(objectFullPath, []byte("foo"), 0644))
+		require.NoError(t, os.Chtimes(objectFullPath, objectsMtime, objectsMtime))
 	}
 
+	objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+	require.NoError(t, err)
 	return &mockObjectClient{
-		storageObjects: storageObjects,
+		ObjectClient: objectClient,
 	}
 }
 
-func (m *mockObjectClient) List(_ context.Context, _, _ string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (m *mockObjectClient) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	defer func() {
 		time.Sleep(m.listDelay)
 		m.listCallsCount++
@@ -43,7 +53,7 @@ func (m *mockObjectClient) List(_ context.Context, _, _ string) ([]client.Storag
 		return nil, nil, m.errResp
 	}
 
-	return m.storageObjects, []client.StorageCommonPrefix{}, nil
+	return m.ObjectClient.List(ctx, prefix, delimiter)
 }
 
 func TestCachedObjectClient(t *testing.T) {
@@ -61,7 +71,7 @@ func TestCachedObjectClient(t *testing.T) {
 		"table3/user1/db2.gz",
 	}
 
-	objectClient := newMockObjectClient(objectsInStorage)
+	objectClient := newMockObjectClient(t, objectsInStorage)
 	cachedObjectClient := newCachedObjectClient(objectClient)
 
 	// list tables
@@ -74,58 +84,59 @@ func TestCachedObjectClient(t *testing.T) {
 	// list objects in all 3 tables
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table1/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 2, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
-		{Key: "table1/db1.gz"},
-		{Key: "table1/db2.gz"},
+		{Key: "table1/db1.gz", ModifiedAt: objectsMtime},
+		{Key: "table1/db2.gz", ModifiedAt: objectsMtime},
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 3, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
-		{Key: "table2/db1.gz"},
+		{Key: "table2/db1.gz", ModifiedAt: objectsMtime},
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table2/user1"}, commonPrefixes)
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 4, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{"table3/user1"}, commonPrefixes)
 
-	// list user objects from table2 and table3
+	// list user objects from table2 and table3, which should not make any new list calls
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table2/user1/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 4, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
 		{
-			Key: "table2/user1/db1.gz",
+			Key:        "table2/user1/db1.gz",
+			ModifiedAt: objectsMtime,
 		},
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user1/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 4, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{
-		{Key: "table3/user1/db1.gz"},
-		{Key: "table3/user1/db2.gz"},
+		{Key: "table3/user1/db1.gz", ModifiedAt: objectsMtime},
+		{Key: "table3/user1/db2.gz", ModifiedAt: objectsMtime},
 	}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	// list non-existent table
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table4/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 4, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	// list non-existent user
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user2/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
+	require.Equal(t, 4, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 }
@@ -137,7 +148,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 		"table1/db2.gz",
 	}
 
-	objectClient := newMockObjectClient(objectsInStorage)
+	objectClient := newMockObjectClient(t, objectsInStorage)
 	cachedObjectClient := newCachedObjectClient(objectClient)
 
 	// do the initial listing
@@ -150,7 +161,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 	// timeout the cache and call List concurrently with objectClient throwing an error
 	// objectClient must receive just one request and all the cachedObjectClient.List calls should get an error
 	wg := sync.WaitGroup{}
-	cachedObjectClient.cacheBuiltAt = time.Now().Add(-(cacheTimeout + time.Second))
+	cachedObjectClient.tableNamesCacheBuiltAt = time.Now().Add(-(cacheTimeout + time.Second))
 	objectClient.listDelay = time.Millisecond * 100
 	objectClient.errResp = errors.New("fake error")
 	for i := 0; i < 5; i++ {

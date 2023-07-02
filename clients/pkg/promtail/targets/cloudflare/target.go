@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/buger/jsonparser"
-	"github.com/cloudflare/cloudflare-go"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/cloudflare-go"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/multierror"

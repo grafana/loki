@@ -68,7 +68,7 @@ func BoolValue(v bool) Value {
 
 // BoolSliceValue creates a BOOLSLICE Value.
 func BoolSliceValue(v []bool) Value {
-	return Value{vtype: BOOLSLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: BOOLSLICE, slice: attribute.BoolSliceValue(v)}
 }
 
 // IntValue creates an INT64 Value.
@@ -99,7 +99,7 @@ func Int64Value(v int64) Value {
 
 // Int64SliceValue creates an INT64SLICE Value.
 func Int64SliceValue(v []int64) Value {
-	return Value{vtype: INT64SLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: INT64SLICE, slice: attribute.Int64SliceValue(v)}
 }
 
 // Float64Value creates a FLOAT64 Value.
@@ -112,7 +112,7 @@ func Float64Value(v float64) Value {
 
 // Float64SliceValue creates a FLOAT64SLICE Value.
 func Float64SliceValue(v []float64) Value {
-	return Value{vtype: FLOAT64SLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: FLOAT64SLICE, slice: attribute.Float64SliceValue(v)}
 }
 
 // StringValue creates a STRING Value.
@@ -125,7 +125,7 @@ func StringValue(v string) Value {
 
 // StringSliceValue creates a STRINGSLICE Value.
 func StringSliceValue(v []string) Value {
-	return Value{vtype: STRINGSLICE, slice: attribute.SliceValue(v)}
+	return Value{vtype: STRINGSLICE, slice: attribute.StringSliceValue(v)}
 }
 
 // Type returns a type of the Value.
@@ -142,7 +142,14 @@ func (v Value) AsBool() bool {
 // AsBoolSlice returns the []bool value. Make sure that the Value's type is
 // BOOLSLICE.
 func (v Value) AsBoolSlice() []bool {
-	return attribute.AsSlice[bool](v.slice)
+	if v.vtype != BOOLSLICE {
+		return nil
+	}
+	return v.asBoolSlice()
+}
+
+func (v Value) asBoolSlice() []bool {
+	return attribute.AsBoolSlice(v.slice)
 }
 
 // AsInt64 returns the int64 value. Make sure that the Value's type is
@@ -154,7 +161,14 @@ func (v Value) AsInt64() int64 {
 // AsInt64Slice returns the []int64 value. Make sure that the Value's type is
 // INT64SLICE.
 func (v Value) AsInt64Slice() []int64 {
-	return attribute.AsSlice[int64](v.slice)
+	if v.vtype != INT64SLICE {
+		return nil
+	}
+	return v.asInt64Slice()
+}
+
+func (v Value) asInt64Slice() []int64 {
+	return attribute.AsInt64Slice(v.slice)
 }
 
 // AsFloat64 returns the float64 value. Make sure that the Value's
@@ -166,7 +180,14 @@ func (v Value) AsFloat64() float64 {
 // AsFloat64Slice returns the []float64 value. Make sure that the Value's type is
 // FLOAT64SLICE.
 func (v Value) AsFloat64Slice() []float64 {
-	return attribute.AsSlice[float64](v.slice)
+	if v.vtype != FLOAT64SLICE {
+		return nil
+	}
+	return v.asFloat64Slice()
+}
+
+func (v Value) asFloat64Slice() []float64 {
+	return attribute.AsFloat64Slice(v.slice)
 }
 
 // AsString returns the string value. Make sure that the Value's type
@@ -178,7 +199,14 @@ func (v Value) AsString() string {
 // AsStringSlice returns the []string value. Make sure that the Value's type is
 // STRINGSLICE.
 func (v Value) AsStringSlice() []string {
-	return attribute.AsSlice[string](v.slice)
+	if v.vtype != STRINGSLICE {
+		return nil
+	}
+	return v.asStringSlice()
+}
+
+func (v Value) asStringSlice() []string {
+	return attribute.AsStringSlice(v.slice)
 }
 
 type unknownValueType struct{}
@@ -189,19 +217,19 @@ func (v Value) AsInterface() interface{} {
 	case BOOL:
 		return v.AsBool()
 	case BOOLSLICE:
-		return v.AsBoolSlice()
+		return v.asBoolSlice()
 	case INT64:
 		return v.AsInt64()
 	case INT64SLICE:
-		return v.AsInt64Slice()
+		return v.asInt64Slice()
 	case FLOAT64:
 		return v.AsFloat64()
 	case FLOAT64SLICE:
-		return v.AsFloat64Slice()
+		return v.asFloat64Slice()
 	case STRING:
 		return v.stringly
 	case STRINGSLICE:
-		return v.AsStringSlice()
+		return v.asStringSlice()
 	}
 	return unknownValueType{}
 }
@@ -210,19 +238,19 @@ func (v Value) AsInterface() interface{} {
 func (v Value) Emit() string {
 	switch v.Type() {
 	case BOOLSLICE:
-		return fmt.Sprint(v.AsBoolSlice())
+		return fmt.Sprint(v.asBoolSlice())
 	case BOOL:
 		return strconv.FormatBool(v.AsBool())
 	case INT64SLICE:
-		return fmt.Sprint(v.AsInt64Slice())
+		return fmt.Sprint(v.asInt64Slice())
 	case INT64:
 		return strconv.FormatInt(v.AsInt64(), 10)
 	case FLOAT64SLICE:
-		return fmt.Sprint(v.AsFloat64Slice())
+		return fmt.Sprint(v.asFloat64Slice())
 	case FLOAT64:
 		return fmt.Sprint(v.AsFloat64())
 	case STRINGSLICE:
-		return fmt.Sprint(v.AsStringSlice())
+		return fmt.Sprint(v.asStringSlice())
 	case STRING:
 		return v.stringly
 	default:

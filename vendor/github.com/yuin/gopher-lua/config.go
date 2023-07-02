@@ -22,15 +22,22 @@ var LuaPath = "LUA_PATH"
 var LuaLDir string
 var LuaPathDefault string
 var LuaOS string
+var LuaDirSep string
+var LuaPathSep = ";"
+var LuaPathMark = "?"
+var LuaExecDir = "!"
+var LuaIgMark = "-"
 
 func init() {
 	if os.PathSeparator == '/' { // unix-like
 		LuaOS = "unix"
 		LuaLDir = "/usr/local/share/lua/5.1"
+		LuaDirSep = "/"
 		LuaPathDefault = "./?.lua;" + LuaLDir + "/?.lua;" + LuaLDir + "/?/init.lua"
 	} else { // windows
 		LuaOS = "windows"
 		LuaLDir = "!\\lua"
+		LuaDirSep = "\\"
 		LuaPathDefault = ".\\?.lua;" + LuaLDir + "\\?.lua;" + LuaLDir + "\\?\\init.lua"
 	}
 }

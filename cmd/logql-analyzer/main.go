@@ -52,6 +52,7 @@ func createServer(cfg server.Config, logger log.Logger) (*server.Server, error) 
 
 	s.HTTP.Handle("/api/sizing/helm", http.HandlerFunc(sizingHandler.GenerateHelmValues)).Methods(http.MethodGet, http.MethodOptions)
 	s.HTTP.Handle("/api/sizing/nodes", http.HandlerFunc(sizingHandler.Nodes)).Methods(http.MethodGet, http.MethodOptions)
+	s.HTTP.Handle("/api/sizing/cluster", http.HandlerFunc(sizingHandler.Cluster)).Methods(http.MethodGet, http.MethodOptions)
 
 	s.HTTP.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
 		http.Error(w, "ready", http.StatusOK)

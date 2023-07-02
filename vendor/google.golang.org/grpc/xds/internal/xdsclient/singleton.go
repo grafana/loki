@@ -19,12 +19,13 @@
 package xdsclient
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"google.golang.org/grpc/internal/envconfig"
+	"google.golang.org/grpc/internal/grpcsync"
 	"google.golang.org/grpc/xds/internal/xdsclient/bootstrap"
 )
 
@@ -34,9 +35,10 @@ const (
 )
 
 var (
-	// This is the Client returned by New(). It contains one client implementation,
+	// This is the client returned by New(). It contains one client implementation,
 	// and maintains the refcount.
-	singletonClient = &clientRefCounted{}
+	singletonMu     sync.Mutex
+	singletonClient *clientRefCounted
 
 	// The following functions are no-ops in the actual code, but can be
 	// overridden in tests to give them visibility into certain events.
@@ -47,20 +49,57 @@ var (
 // To override in tests.
 var bootstrapNewConfig = bootstrap.NewConfig
 
-// onceClosingClient is a thin wrapper around clientRefCounted. The Close()
-// method is overridden such that the underlying reference counted client's
-// Close() is called at most once, thereby making Close() idempotent.
-//
-// This is the type which is returned by New() and NewWithConfig(), making it
-// safe for these callers to call Close() any number of times.
-type onceClosingClient struct {
-	XDSClient
+func clientRefCountedClose() {
+	singletonMu.Lock()
+	defer singletonMu.Unlock()
 
-	once sync.Once
+	if singletonClient.decrRef() != 0 {
+		return
+	}
+	singletonClient.clientImpl.close()
+	singletonClientImplCloseHook()
+	singletonClient = nil
 }
 
-func (o *onceClosingClient) Close() {
-	o.once.Do(o.XDSClient.Close)
+func newRefCountedWithConfig(fallbackConfig *bootstrap.Config) (XDSClient, func(), error) {
+	singletonMu.Lock()
+	defer singletonMu.Unlock()
+
+	if singletonClient != nil {
+		singletonClient.incrRef()
+		return singletonClient, grpcsync.OnceFunc(clientRefCountedClose), nil
+
+	}
+
+	// Use fallbackConfig only if bootstrap env vars are unspecified.
+	var config *bootstrap.Config
+	if envconfig.XDSBootstrapFileName == "" && envconfig.XDSBootstrapFileContent == "" {
+		if fallbackConfig == nil {
+			return nil, nil, fmt.Errorf("xds: bootstrap env vars are unspecified and provided fallback config is nil")
+		}
+		config = fallbackConfig
+	} else {
+		var err error
+		config, err = bootstrapNewConfig()
+		if err != nil {
+			return nil, nil, fmt.Errorf("xds: failed to read bootstrap file: %v", err)
+		}
+	}
+
+	// Create the new client implementation.
+	c, err := newWithConfig(config, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
+	if err != nil {
+		return nil, nil, err
+	}
+	singletonClient = &clientRefCounted{clientImpl: c, refCount: 1}
+	singletonClientImplCreateHook()
+
+	nodeID := "<unknown>"
+	if node, ok := config.XDSServer.NodeProto.(interface{ GetId() string }); ok {
+		nodeID = node.GetId()
+	}
+	logger.Infof("xDS node ID: %s", nodeID)
+	return singletonClient, grpcsync.OnceFunc(clientRefCountedClose), nil
 }
 
 // clientRefCounted is ref-counted, and to be shared by the xds resolver and
@@ -68,153 +107,13 @@ func (o *onceClosingClient) Close() {
 type clientRefCounted struct {
 	*clientImpl
 
-	// This mu protects all the fields, including the embedded clientImpl above.
-	mu       sync.Mutex
-	refCount int
+	refCount int32 // accessed atomically
 }
 
-// New returns a new xdsClient configured by the bootstrap file specified in env
-// variable GRPC_XDS_BOOTSTRAP or GRPC_XDS_BOOTSTRAP_CONFIG.
-//
-// The returned xdsClient is a singleton. This function creates the xds client
-// if it doesn't already exist.
-//
-// Note that the first invocation of New() or NewWithConfig() sets the client
-// singleton. The following calls will return the singleton xds client without
-// checking or using the config.
-func New() (XDSClient, error) {
-	// This cannot just return newRefCounted(), because in error cases, the
-	// returned nil is a typed nil (*clientRefCounted), which may cause nil
-	// checks fail.
-	c, err := newRefCounted()
-	if err != nil {
-		return nil, err
-	}
-	return c, nil
+func (c *clientRefCounted) incrRef() int32 {
+	return atomic.AddInt32(&c.refCount, 1)
 }
 
-func newRefCounted() (XDSClient, error) {
-	return newRefCountedWithConfig(nil)
+func (c *clientRefCounted) decrRef() int32 {
+	return atomic.AddInt32(&c.refCount, -1)
 }
-
-// NewWithConfig returns a new xdsClient configured by the given config.
-//
-// The returned xdsClient is a singleton. This function creates the xds client
-// if it doesn't already exist.
-//
-// Note that the first invocation of New() or NewWithConfig() sets the client
-// singleton. The following calls will return the singleton xds client without
-// checking or using the config.
-//
-// This function is internal only, for c2p resolver and testing to use. DO NOT
-// use this elsewhere. Use New() instead.
-func NewWithConfig(config *bootstrap.Config) (XDSClient, error) {
-	return newRefCountedWithConfig(config)
-}
-
-func newRefCountedWithConfig(config *bootstrap.Config) (XDSClient, error) {
-	singletonClient.mu.Lock()
-	defer singletonClient.mu.Unlock()
-
-	// If the client implementation was created, increment ref count and return
-	// the client.
-	if singletonClient.clientImpl != nil {
-		singletonClient.refCount++
-		return &onceClosingClient{XDSClient: singletonClient}, nil
-	}
-
-	// If the passed in config is nil, perform bootstrap to read config.
-	if config == nil {
-		var err error
-		config, err = bootstrapNewConfig()
-		if err != nil {
-			return nil, fmt.Errorf("xds: failed to read bootstrap file: %v", err)
-		}
-	}
-
-	// Create the new client implementation.
-	c, err := newWithConfig(config, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
-	if err != nil {
-		return nil, err
-	}
-
-	singletonClient.clientImpl = c
-	singletonClient.refCount++
-	singletonClientImplCreateHook()
-	return &onceClosingClient{XDSClient: singletonClient}, nil
-}
-
-// Close closes the client. It does ref count of the xds client implementation,
-// and closes the gRPC connection to the management server when ref count
-// reaches 0.
-func (c *clientRefCounted) Close() {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.refCount--
-	if c.refCount == 0 {
-		c.clientImpl.Close()
-		// Set clientImpl back to nil. So if New() is called after this, a new
-		// implementation will be created.
-		c.clientImpl = nil
-		singletonClientImplCloseHook()
-	}
-}
-
-// NewWithConfigForTesting returns an xdsClient for the specified bootstrap
-// config, separate from the global singleton.
-//
-// This should be used for testing purposes only.
-func NewWithConfigForTesting(config *bootstrap.Config, watchExpiryTimeout time.Duration) (XDSClient, error) {
-	cl, err := newWithConfig(config, watchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
-	if err != nil {
-		return nil, err
-	}
-	return &clientRefCounted{clientImpl: cl, refCount: 1}, nil
-}
-
-// NewWithBootstrapContentsForTesting returns an xdsClient for this config,
-// separate from the global singleton.
-//
-// This should be used for testing purposes only.
-func NewWithBootstrapContentsForTesting(contents []byte) (XDSClient, error) {
-	// Normalize the contents
-	buf := bytes.Buffer{}
-	err := json.Indent(&buf, contents, "", "")
-	if err != nil {
-		return nil, fmt.Errorf("xds: error normalizing JSON: %v", err)
-	}
-	contents = bytes.TrimSpace(buf.Bytes())
-
-	clientsMu.Lock()
-	defer clientsMu.Unlock()
-	if c := clients[string(contents)]; c != nil {
-		c.mu.Lock()
-		// Since we don't remove the *Client from the map when it is closed, we
-		// need to recreate the impl if the ref count dropped to zero.
-		if c.refCount > 0 {
-			c.refCount++
-			c.mu.Unlock()
-			return c, nil
-		}
-		c.mu.Unlock()
-	}
-
-	bcfg, err := bootstrap.NewConfigFromContentsForTesting(contents)
-	if err != nil {
-		return nil, fmt.Errorf("xds: error with bootstrap config: %v", err)
-	}
-
-	cImpl, err := newWithConfig(bcfg, defaultWatchExpiryTimeout, defaultIdleAuthorityDeleteTimeout)
-	if err != nil {
-		return nil, err
-	}
-
-	c := &clientRefCounted{clientImpl: cImpl, refCount: 1}
-	clients[string(contents)] = c
-	return c, nil
-}
-
-var (
-	clients   = map[string]*clientRefCounted{}
-	clientsMu sync.Mutex
-)
