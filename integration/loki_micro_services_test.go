@@ -566,3 +566,121 @@ func TestSchedulerRing(t *testing.T) {
 		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
 	})
 }
+
+func TestQueryTSDB_WithCachedPostings(t *testing.T) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB)
+
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	var (
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+			"-store.index-cache-read.lrucache.enabled=true",
+			"-tsdb.cache-postings=true",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-ingester.flush-on-shutdown=true",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-frontend.default-validity=0s",
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		_ = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+
+	// end of setup. Ingestion and querying below.
+
+	t.Run("ingest-logs", func(t *testing.T) {
+		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-72*time.Hour), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
+	})
+
+	// restart ingester which should flush the chunks and index
+	require.NoError(t, tIngester.Restart())
+
+	// Query lines
+	t.Run("query to verify logs being served from storage", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
+		require.NoError(t, err)
+		assert.Equal(t, "streams", resp.Data.ResultType)
+
+		var lines []string
+		for _, stream := range resp.Data.Stream {
+			for _, val := range stream.Values {
+				lines = append(lines, val[1])
+			}
+		}
+
+		assert.ElementsMatch(t, []string{"lineA", "lineB"}, lines)
+	})
+
+	// ingest logs with ts=now.
+	require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+
+	// default length is 7 days.
+	resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
+	require.NoError(t, err)
+	assert.Equal(t, "streams", resp.Data.ResultType)
+
+	var lines []string
+	for _, stream := range resp.Data.Stream {
+		for _, val := range stream.Values {
+			lines = append(lines, val[1])
+		}
+	}
+	// expect lines from both, ingesters memory and from the store.
+	assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
+}
