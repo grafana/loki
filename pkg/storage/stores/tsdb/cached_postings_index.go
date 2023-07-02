@@ -25,6 +25,16 @@ type PostingsReader interface {
 
 var sharedCacheClient cache.Cache
 
+// NewCachedPostingsReader uses the cache defined by `index_read_cache` to store and read Postings.
+//
+// The cache key is stored/read as `matchers:reader_checksum`.
+//
+// The cache value is stored as: `[n, refs...]`, where n is how many series references this entry has, and refs is
+// a sequence of series references encoded as the diff between the current series and the previous one.
+//
+// Example: if the postings for stream "app=kubernetes,env=production" is `[1,7,30,50]` and its reader has `checksum=12345`:
+// - The cache key for the entry will be: `app=kubernetes,env=production:12345`
+// - The cache value for the entry will be: [4, 1, 6, 23, 20].
 func NewCachedPostingsReader(reader IndexReader, logger log.Logger, cacheClient cache.Cache) PostingsReader {
 	return &cachedPostingsReader{
 		reader:      reader,
