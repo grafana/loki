@@ -230,7 +230,7 @@ func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context, forceRefr
 
 	defer func() {
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to build table names cache", "err", c.err)
+			level.Error(util_log.Logger).Log("msg", "failed to build table names cache", "err", err)
 		}
 	}()
 
@@ -289,7 +289,7 @@ func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient
 
 	defer func() {
 		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to build table cache", "table_name", t.name, "err", c.err)
+			level.Error(util_log.Logger).Log("msg", "failed to build table cache", "table_name", t.name, "err", err)
 		}
 	}()
 
