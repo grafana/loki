@@ -274,10 +274,10 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				},
 			},
 			wantOptions: config.GossipRing{
-				InstanceAvailabilityZone: "${INSTANCE_AVAILABILITY_ZONE}",
-				InstancePort:             9095,
-				BindPort:                 7946,
-				MembersDiscoveryAddr:     "my-stack-gossip-ring.my-ns.svc.cluster.local",
+				EnableInstanceAvailabilityZone: true,
+				InstancePort:                   9095,
+				BindPort:                       7946,
+				MembersDiscoveryAddr:           "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
 	}

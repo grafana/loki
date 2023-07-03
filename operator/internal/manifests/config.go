@@ -261,7 +261,7 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 }
 
 func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, replication *lokiv1.ReplicationSpec) config.GossipRing {
-	var instanceAddr, instanceAZ string
+	var instanceAddr string
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
@@ -273,24 +273,13 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		}
 	}
 
-	if replication != nil {
-		instanceAZ = zoneAwareConfig(replication)
-	}
-
 	return config.GossipRing{
-		InstanceAddr:             instanceAddr,
-		InstancePort:             grpcPort,
-		BindPort:                 gossipPort,
-		MembersDiscoveryAddr:     fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
-		InstanceAvailabilityZone: instanceAZ,
+		InstanceAddr:                   instanceAddr,
+		InstancePort:                   grpcPort,
+		BindPort:                       gossipPort,
+		MembersDiscoveryAddr:           fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+		EnableInstanceAvailabilityZone: replication != nil,
 	}
-}
-
-func zoneAwareConfig(spec *lokiv1.ReplicationSpec) string {
-	if len(spec.Zones) > 0 {
-		return fmt.Sprintf("${%s}", availabilityZoneEnvVarName)
-	}
-	return ""
 }
 
 func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.RemoteWriteConfig {
