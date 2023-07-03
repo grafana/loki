@@ -45,7 +45,7 @@ func (r *LokiStackZoneAwarePodReconciler) Reconcile(ctx context.Context, req ctr
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
-		return ctrl.Result{}, kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return ctrl.Result{}, kverrors.Wrap(err, "failed to get pod", "name", req.NamespacedName)
 	}
 
 	labels := lokiPod.GetLabels()
