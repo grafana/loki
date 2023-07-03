@@ -791,6 +791,11 @@ results_cache:
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
 
+# The downstream querier is required to answer in the accepted format. Can be
+# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
+# CLI flag: -frontend.required-query-response-format
+[required_query_response_format: <string> | default = "json"]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]
@@ -2392,6 +2397,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # TSDB schemas.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 512]
+
+# Maximum number of bytes assigned to a single sharded query. Also expressible
+# in human readable forms (1GB, etc).
+# CLI flag: -querier.tsdb-max-bytes-per-shard
+[tsdb_max_bytes_per_shard: <int> | default = 600MB]
 
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit

@@ -316,9 +316,9 @@ func (s *stream) storeEntries(ctx context.Context, entries []logproto.Entry) (in
 
 		chunk.lastUpdated = time.Now()
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
-			s.writeFailures.Log(s.tenant, err)
 			invalid = append(invalid, entryWithError{&entries[i], err})
 			if chunkenc.IsOutOfOrderErr(err) {
+				s.writeFailures.Log(s.tenant, err)
 				outOfOrderSamples++
 				outOfOrderBytes += len(entries[i].Line)
 			}

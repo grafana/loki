@@ -285,9 +285,7 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 				{Name: `{fizz="buzz"}`, Volume: 100 * 1024},
 				{Name: `{ping="pong"}`, Volume: 100 * 1024},
 			},
-			Limit:   10,
-			From:    from,
-			Through: through,
+			Limit: 10,
 		}, vol)
 	})
 
@@ -299,9 +297,7 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 			Volumes: []logproto.Volume{
 				{Name: `{foo="bar"}`, Volume: 200 * 1024},
 			},
-			Limit:   1,
-			From:    from,
-			Through: through,
+			Limit: 1,
 		}, vol)
 	})
 }

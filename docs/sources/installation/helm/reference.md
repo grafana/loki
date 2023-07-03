@@ -2107,6 +2107,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,
     "useManagedIdentity": false,
@@ -2705,6 +2706,15 @@ true
 			<td>Additional ServiceMonitor labels</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.serviceMonitor.metricRelabelings</td>
+			<td>list</td>
+			<td>ServiceMonitor metric relabel configs to apply to samples before ingestion https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#endpoint</td>
+			<td><pre lang="json">
+[]
 </pre>
 </td>
 		</tr>
