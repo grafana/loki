@@ -293,6 +293,7 @@ func (tm *tableManager) ensureQueryReadiness(ctx context.Context) error {
 		return nil
 	}
 
+	tm.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 	tables, err := tm.indexStorageClient.ListTables(ctx)
 	if err != nil {
 		return err
