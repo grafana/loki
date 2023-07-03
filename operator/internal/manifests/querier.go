@@ -58,12 +58,6 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Stack.Replication != nil {
-		if err := configureZoneAwareEnv(&deployment.Spec.Template.Spec, *opts.Stack.Replication); err != nil {
-			return nil, err
-		}
-	}
-
 	return []client.Object{
 		deployment,
 		NewQuerierGRPCService(opts),
@@ -74,14 +68,9 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 
 // NewQuerierDeployment creates a deployment object for a querier
 func NewQuerierDeployment(opts Options) *appsv1.Deployment {
-	var l labels.Set
-	var a map[string]string
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		l, a = setZoneAwareLabelAnnotation(opts.Stack.Replication.Zones, LabelQuerierComponent, opts.Name, opts.ConfigSHA1, opts.CertRotationRequiredAt)
-	} else {
-		l = ComponentLabels(LabelQuerierComponent, opts.Name)
-		a = commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
-	}
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+
 	podSpec := corev1.PodSpec{
 		Affinity:                  configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
 		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelQuerierComponent, opts.Name),
@@ -150,8 +139,17 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
 	}
 
-	if opts.Stack.Replication != nil {
-		configureReplication(&podSpec, *opts.Stack.Replication, LabelQuerierComponent, opts.Name)
+	podTemplate := corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        fmt.Sprintf("loki-querier-%s", opts.Name),
+			Labels:      labels.Merge(l, GossipLabels()),
+			Annotations: a,
+		},
+		Spec: podSpec,
+	}
+
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		configureReplication(&podTemplate, opts.Stack.Replication, LabelQuerierComponent, opts.Name)
 	}
 
 	return &appsv1.Deployment{
@@ -168,14 +166,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-querier-%s", opts.Name),
-					Labels:      labels.Merge(l, GossipLabels()),
-					Annotations: a,
-				},
-				Spec: podSpec,
-			},
+			Template: podTemplate,
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
 			},

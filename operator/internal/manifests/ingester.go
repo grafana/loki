@@ -58,12 +58,6 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Stack.Replication != nil {
-		if err := configureZoneAwareEnv(&statefulSet.Spec.Template.Spec, *opts.Stack.Replication); err != nil {
-			return nil, err
-		}
-	}
-
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
@@ -74,14 +68,9 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
-	var l labels.Set
-	var a map[string]string
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		l, a = setZoneAwareLabelAnnotation(opts.Stack.Replication.Zones, LabelIngesterComponent, opts.Name, opts.ConfigSHA1, opts.CertRotationRequiredAt)
-	} else {
-		l = ComponentLabels(LabelIngesterComponent, opts.Name)
-		a = commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
-	}
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+
 	podSpec := corev1.PodSpec{
 		Affinity: configureAffinity(LabelIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ingester),
 		Volumes: []corev1.Volume{
@@ -159,8 +148,17 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
 	}
 
-	if opts.Stack.Replication != nil {
-		configureReplication(&podSpec, *opts.Stack.Replication, LabelIngesterComponent, opts.Name)
+	podTemplate := corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        fmt.Sprintf("loki-ingester-%s", opts.Name),
+			Labels:      labels.Merge(l, GossipLabels()),
+			Annotations: a,
+		},
+		Spec: podSpec,
+	}
+
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		configureReplication(&podTemplate, opts.Stack.Replication, LabelIngesterComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{
@@ -179,14 +177,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("loki-ingester-%s", opts.Name),
-					Labels:      labels.Merge(l, GossipLabels()),
-					Annotations: a,
-				},
-				Spec: podSpec,
-			},
+			Template: podTemplate,
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 				{
 					ObjectMeta: metav1.ObjectMeta{

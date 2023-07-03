@@ -52,12 +52,6 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Stack.Replication != nil {
-		if err := configureZoneAwareEnv(&deployment.Spec.Template.Spec, *opts.Stack.Replication); err != nil {
-			return nil, err
-		}
-	}
-
 	return []client.Object{
 		deployment,
 		NewQueryFrontendGRPCService(opts),
@@ -68,14 +62,9 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
-	var l labels.Set
-	var a map[string]string
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		l, a = setZoneAwareLabelAnnotation(opts.Stack.Replication.Zones, LabelQueryFrontendComponent, opts.Name, opts.ConfigSHA1, opts.CertRotationRequiredAt)
-	} else {
-		l = ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-		a = commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
-	}
+	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
+
 	podSpec := corev1.PodSpec{
 		Affinity: configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.QueryFrontend),
 		Volumes: []corev1.Volume{
@@ -155,8 +144,17 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
 	}
 
-	if opts.Stack.Replication != nil {
-		configureReplication(&podSpec, *opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
+	podTemplate := corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        fmt.Sprintf("%s-%s", lokiFrontendContainerName, opts.Name),
+			Labels:      labels.Merge(l, GossipLabels()),
+			Annotations: a,
+		},
+		Spec: podSpec,
+	}
+
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		configureReplication(&podTemplate, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
 	}
 
 	return &appsv1.Deployment{
@@ -173,14 +171,7 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
-			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:        fmt.Sprintf("%s-%s", lokiFrontendContainerName, opts.Name),
-					Labels:      labels.Merge(l, GossipLabels()),
-					Annotations: a,
-				},
-				Spec: podSpec,
-			},
+			Template: podTemplate,
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
 			},
