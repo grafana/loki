@@ -25,7 +25,6 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/signer"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
@@ -36,6 +35,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/util"
+	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
 const (
@@ -368,10 +368,12 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+	var resp *s3.GetObjectOutput
+
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
-	err := ctx.Err()
+	var lastErr error
 
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
@@ -379,34 +381,31 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 
-		resp, reqErr := func() (*s3.GetObjectOutput, error) {
-			if sp := opentracing.SpanFromContext(ctx); sp != nil {
-				sp.LogKV("event", "started S3.GetObject", "key", objectKey)
-				defer sp.LogKV("event", "finished S3.GetObject", "key", objectKey)
-			}
-
-			return a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+		lastErr = loki_instrument.ObserveRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+			var requestErr error
+			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
 				Key:    aws.String(objectKey),
 			})
-		}()
-		err = reqErr
+			return requestErr
+		})
 
 		var size int64
 		if resp.ContentLength != nil {
 			size = *resp.ContentLength
 		}
-		if err == nil && resp.Body != nil {
+		if lastErr == nil && resp.Body != nil {
 			return resp.Body, size, nil
 		}
 		retries.Wait()
 	}
-	return nil, 0, errors.Wrap(err, "failed to get s3 object")
+
+	return nil, 0, errors.Wrap(lastErr, "failed to get s3 object")
 }
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.ObserveRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
 			Body:         object,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
@@ -431,7 +430,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	var commonPrefixes []client.StorageCommonPrefix
 
 	for i := range a.bucketNames {
-		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := loki_instrument.ObserveRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
 				Bucket:    aws.String(a.bucketNames[i]),
 				Prefix:    aws.String(prefix),
