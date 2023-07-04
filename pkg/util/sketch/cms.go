@@ -32,7 +32,7 @@ func (s *CountMinSketch) getPos(h1, h2 uint32, row int) uint32 {
 	return pos
 }
 
-// Add 'count' occurences of the given input.
+// Add 'count' occurrences of the given input.
 func (s *CountMinSketch) Add(event string, count int) {
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
