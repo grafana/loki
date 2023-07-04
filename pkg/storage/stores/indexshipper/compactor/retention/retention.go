@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"os"
 	"path/filepath"
 
@@ -100,9 +99,17 @@ type SizeBasedRetentionCleaner struct {
 	cleanupMetrics   *cleanupMetrics
 	chunkClient      client.Client
 	cleanupThreshold int
+}
 
+type SizeBasedRetentionCleanerService struct {
 	RetentionLoop         services.Service
 	RetentionLoopInterval time.Duration
+}
+
+func NewSizeBasedRetentionCleanerService() *SizeBasedRetentionCleanerService {
+	return &SizeBasedRetentionCleanerService{
+		RetentionLoopInterval: sizeBasedRetentionEnforcementInterval,
+	}
 }
 
 func NewSizeBasedRetentionCleaner(
@@ -113,11 +120,10 @@ func NewSizeBasedRetentionCleaner(
 ) (*SizeBasedRetentionCleaner, error) {
 	metrics := newCleanupMetrics(r)
 	return &SizeBasedRetentionCleaner{
-		WorkingDirectory:      fsconfig.Directory,
-		cleanupMetrics:        metrics,
-		chunkClient:           chunkClient,
-		cleanupThreshold:      cleanupThreshold,
-		RetentionLoopInterval: sizeBasedRetentionEnforcementInterval,
+		WorkingDirectory: fsconfig.Directory,
+		cleanupMetrics:   metrics,
+		chunkClient:      chunkClient,
+		cleanupThreshold: cleanupThreshold,
 	}, nil
 }
 
@@ -222,26 +228,16 @@ type TableMarker interface {
 type Marker struct {
 	workingDirectory string
 	expiration       ExpirationChecker
-	markerMetrics    *markerMetrics
+	markerMetrics    *MarkerMetrics
 	chunkClient      client.Client
 	markTimeout      time.Duration
 }
 
-var mu sync.Mutex
-var metrics *markerMetrics
-
-func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
-	mu.Lock()
-	defer mu.Unlock()
-
-	if metrics == nil {
-		metrics = newMarkerMetrics(r)
-	}
-
+func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, metrics *MarkerMetrics) (*Marker, error) {
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
-		markerMetrics:    newMarkerMetrics(r),
+		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
 		markTimeout:      markTimeout,
 	}, nil
