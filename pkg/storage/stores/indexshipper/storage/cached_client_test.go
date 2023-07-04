@@ -143,52 +143,90 @@ func TestCachedObjectClient(t *testing.T) {
 
 func TestCachedObjectClient_errors(t *testing.T) {
 	objectsInStorage := []string{
-		// table with just common dbs
 		"table1/db1.gz",
-		"table1/db2.gz",
+		"table1/u1/db2.gz",
 	}
 
-	objectClient := newMockObjectClient(t, objectsInStorage)
-	cachedObjectClient := newCachedObjectClient(objectClient)
+	for _, tc := range []struct {
+		name                   string
+		prefix                 string
+		expectedObjects        []client.StorageObject
+		expectedCommonPrefixes []client.StorageCommonPrefix
+	}{
+		{
+			name:            "list tables",
+			prefix:          "",
+			expectedObjects: []client.StorageObject{},
+			expectedCommonPrefixes: []client.StorageCommonPrefix{
+				"table1",
+			},
+		},
+		{
+			name:   "list table1",
+			prefix: "table1/",
+			expectedObjects: []client.StorageObject{
+				{Key: "table1/db1.gz", ModifiedAt: objectsMtime},
+			},
+			expectedCommonPrefixes: []client.StorageCommonPrefix{
+				"table1/u1",
+			},
+		},
+		{
+			name:   "list table1/u1/",
+			prefix: "table1/u1/",
+			expectedObjects: []client.StorageObject{
+				{Key: "table1/u1/db2.gz", ModifiedAt: objectsMtime},
+			},
+			expectedCommonPrefixes: []client.StorageCommonPrefix{},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			objectClient := newMockObjectClient(t, objectsInStorage)
+			cachedObjectClient := newCachedObjectClient(objectClient)
 
-	// do the initial listing
-	objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), "", "", false)
-	require.NoError(t, err)
-	require.Equal(t, 1, objectClient.listCallsCount)
-	require.Equal(t, []client.StorageObject{}, objects)
-	require.Equal(t, []client.StorageCommonPrefix{"table1"}, commonPrefixes)
-
-	// timeout the cache and call List concurrently with objectClient throwing an error
-	// objectClient must receive just one request and all the cachedObjectClient.List calls should get an error
-	wg := sync.WaitGroup{}
-	cachedObjectClient.tableNamesCacheBuiltAt = time.Now().Add(-(cacheTimeout + time.Second))
-	objectClient.listDelay = time.Millisecond * 100
-	objectClient.errResp = errors.New("fake error")
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, _, err := cachedObjectClient.List(context.Background(), "", "", false)
-			require.Error(t, err)
-			require.Equal(t, 2, objectClient.listCallsCount)
-		}()
-	}
-
-	wg.Wait()
-
-	// clear the error and call the List concurrently again
-	// objectClient must receive just one request and all the calls should not get any error
-	objectClient.errResp = nil
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "", "", false)
+			// do the initial listing
+			objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
 			require.NoError(t, err)
-			require.Equal(t, 3, objectClient.listCallsCount)
-			require.Equal(t, []client.StorageObject{}, objects)
-			require.Equal(t, []client.StorageCommonPrefix{"table1"}, commonPrefixes)
-		}()
+			require.Equal(t, tc.expectedObjects, objects)
+			require.Equal(t, tc.expectedCommonPrefixes, commonPrefixes)
+			expectedListCallsCount := objectClient.listCallsCount
+
+			// timeout the cache and call List concurrently with objectClient throwing an error
+			// objectClient must receive just one request and all the cachedObjectClient.List calls should get an error
+			wg := sync.WaitGroup{}
+			cachedObjectClient.tableNamesCacheBuiltAt = time.Now().Add(-(cacheTimeout + time.Second))
+			cachedObjectClient.tables["table1"].cacheBuiltAt = time.Now().Add(-(cacheTimeout + time.Second))
+			objectClient.listDelay = time.Millisecond * 100
+			objectClient.errResp = errors.New("fake error")
+			expectedListCallsCount++
+			for i := 0; i < 5; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					_, _, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
+					require.Error(t, err)
+					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
+				}()
+			}
+
+			wg.Wait()
+
+			// clear the error and call the List concurrently again
+			// objectClient must receive just one request and all the calls should not get any error
+			objectClient.errResp = nil
+			expectedListCallsCount++
+			for i := 0; i < 5; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), tc.prefix, "", false)
+					require.NoError(t, err)
+					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
+					require.Equal(t, tc.expectedObjects, objects)
+					require.Equal(t, tc.expectedCommonPrefixes, commonPrefixes)
+				}()
+			}
+			wg.Wait()
+		})
 	}
-	wg.Wait()
 }
