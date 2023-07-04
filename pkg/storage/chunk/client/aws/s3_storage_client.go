@@ -367,25 +367,23 @@ func (a *S3ObjectClient) bucketFromKey(key string) string {
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
-	var resp *s3.GetObjectOutput
-
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
-	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	err := ctx.Err()
+
+	retries := backoff.New(ctx, a.cfg.BackoffConfig)
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
-		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
-			var requestErr error
-			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-				Bucket: aws.String(bucket),
-				Key:    aws.String(objectKey),
-			})
-			return requestErr
+
+		resp, reqErr := a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+			Bucket: aws.String(bucket),
+			Key:    aws.String(objectKey),
 		})
+		err = reqErr
+
 		var size int64
 		if resp.ContentLength != nil {
 			size = *resp.ContentLength
