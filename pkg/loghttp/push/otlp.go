@@ -115,12 +115,17 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 	rls := ld.ResourceLogs()
 	for i := 0; i < rls.Len(); i++ {
 		sls := rls.At(i).ScopeLogs()
+		res := rls.At(i).Resource()
 
 		streamLabels := model.LabelSet{}
-		flattenedResourceAttributes := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(flattenAttributes(rls.At(i).Resource().Attributes(), "")))
+		flattenedResourceAttributes := labels.NewBuilder(logproto.FromLabelAdaptersToLabels(attributesToLabels(res.Attributes(), "")))
 		// service.name is a required Resource Attribute. If it is not present, we will set it to "unknown_service".
 		if flattenedResourceAttributes.Get("service_name") == "" {
 			flattenedResourceAttributes = flattenedResourceAttributes.Set("service_name", "unknown_service")
+		}
+
+		if dac := res.DroppedAttributesCount(); dac != 0 {
+			flattenedResourceAttributes = flattenedResourceAttributes.Set("resource_dropped_attributes_count", fmt.Sprintf("%d", dac))
 		}
 
 		// copy blessed attributes to stream labels
@@ -166,7 +171,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 			logs := sls.At(j).LogRecords()
 
 			// use fields and attributes from scope as structured metadata
-			scopeAttributesAsStructuredMetadata := flattenAttributes(scope.Attributes(), "")
+			scopeAttributesAsStructuredMetadata := attributesToLabels(scope.Attributes(), "")
 
 			if scopeName := scope.Name(); scopeName != "" {
 				scopeAttributesAsStructuredMetadata = append(scopeAttributesAsStructuredMetadata, push.LabelAdapter{
@@ -223,7 +228,7 @@ func otlpToLokiPushRequest(ld plog.Logs, userID string, tenantsRetention Tenants
 // otlpLogToPushEntry converts an OTLP log record to a Loki push.Entry.
 func otlpLogToPushEntry(log plog.LogRecord) push.Entry {
 	// copy log attributes and all the fields from log(except log.Body) to structured metadata
-	structuredMetadata := flattenAttributes(log.Attributes(), "")
+	structuredMetadata := attributesToLabels(log.Attributes(), "")
 
 	// if log.Timestamp() is 0, we would have already stored log.ObservedTimestamp as log timestamp so no need to store again in structured metadata
 	if log.Timestamp() != 0 && log.ObservedTimestamp() != 0 {
@@ -279,17 +284,22 @@ func otlpLogToPushEntry(log plog.LogRecord) push.Entry {
 	}
 }
 
-func flattenAttributes(val pcommon.Map, prefix string) push.LabelsAdapter {
-	var labelsAdapter push.LabelsAdapter
-	val.Range(func(k string, v pcommon.Value) bool {
-		keyWithPrefix := prometheustranslator.NormalizeLabel(k)
+func attributesToLabels(attrs pcommon.Map, prefix string) push.LabelsAdapter {
+	labelsAdapter := push.LabelsAdapter{}
+	if attrs.Len() == 0 {
+		return labelsAdapter
+	}
+
+	attrs.Range(func(k string, v pcommon.Value) bool {
+		keyWithPrefix := k
 		if prefix != "" {
 			keyWithPrefix = prefix + "_" + k
 		}
+		keyWithPrefix = prometheustranslator.NormalizeLabel(keyWithPrefix)
 
 		typ := v.Type()
 		if typ == pcommon.ValueTypeMap {
-			labelsAdapter = append(labelsAdapter, flattenAttributes(v.Map(), keyWithPrefix)...)
+			labelsAdapter = append(labelsAdapter, attributesToLabels(v.Map(), keyWithPrefix)...)
 		} else {
 			labelsAdapter = append(labelsAdapter, push.LabelAdapter{Name: keyWithPrefix, Value: v.AsString()})
 		}
