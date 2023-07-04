@@ -305,6 +305,7 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 	for objectStoreType, objectClient := range objectStoreClients {
 		var sc storeContainer
 		sc.indexStorageClient = shipper_storage.NewIndexStorageClient(objectClient, c.cfg.SharedStoreKeyPrefix)
+		c.indexStorageClient = sc.indexStorageClient
 
 		if c.cfg.RetentionEnabled {
 			// given that compaction can now run on multiple object stores, marker files are stored under /retention/{objectStoreType}/markers/
