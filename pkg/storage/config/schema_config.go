@@ -324,19 +324,6 @@ func UsingObjectStorageIndex(configs []PeriodConfig) bool {
 	return usingForPeriodConfigs(configs, IsObjectStorageIndex)
 }
 
-func UsingBoltDBtorageIndex(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		switch cfg.IndexType {
-		case StorageTypeBoltDB:
-			return true
-		default:
-			return false
-		}
-	}
-
-	return usingForPeriodConfigs(configs, fn)
-}
-
 func defaultRowShards(schema string) uint32 {
 	switch schema {
 	case "v1", "v2", "v3", "v4", "v5", "v6", "v9":
