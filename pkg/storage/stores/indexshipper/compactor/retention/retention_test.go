@@ -149,7 +149,7 @@ func Test_Retention(t *testing.T) {
 			sweep.Start()
 			defer sweep.Stop()
 
-			marker, err := NewMarker(workDir, expiration, time.Hour, nil, prometheus.NewRegistry())
+			marker, err := NewMarker(workDir, expiration, time.Hour, nil, newMarkerMetrics(prometheus.NewRegistry()))
 			require.NoError(t, err)
 			for _, table := range store.indexTables() {
 				_, _, err := marker.MarkForDelete(context.Background(), table.name, "", table, util_log.Logger)
