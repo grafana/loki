@@ -151,13 +151,16 @@ type Compactor struct {
 
 	cfg                       Config
 	indexStorageClient        shipper_storage.Client
+	tableMarker               retention.TableMarker
 	sweeper                   *retention.Sweeper
 	deleteRequestsStore       deletion.DeleteRequestsStore
 	DeleteRequestsHandler     *deletion.DeleteRequestHandler
 	DeleteRequestsGRPCHandler *deletion.GRPCRequestHandler
 	deleteRequestsManager     *deletion.DeleteRequestsManager
+	expirationChecker         retention.ExpirationChecker
 
-	sizeBasedRetention *retention.SizeBasedRetentionCleaner
+	sizeBasedRetention *retention.SizeBasedRetentionCleanerService
+	markerMetrics      *retention.MarkerMetrics
 	metrics            *metrics
 	running            bool
 	wg                 sync.WaitGroup
@@ -188,9 +191,10 @@ type Compactor struct {
 }
 
 type storeContainer struct {
-	tableMarker        retention.TableMarker
-	sweeper            *retention.Sweeper
-	indexStorageClient shipper_storage.Client
+	tableMarker               retention.TableMarker
+	sweeper                   *retention.Sweeper
+	indexStorageClient        shipper_storage.Client
+	sizeBasedRetentionCleaner *retention.SizeBasedRetentionCleaner
 }
 
 type Limits interface {
@@ -209,13 +213,14 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 	}
 
 	compactor := &Compactor{
-		cfg:             cfg,
-		ringPollPeriod:  5 * time.Second,
-		indexCompactors: map[string]IndexCompactor{},
-		schemaConfig:    schemaConfig,
-		fsConfig:        fsconfig,
-		limits:          limits,
-		registerer:      r,
+		cfg:                cfg,
+		ringPollPeriod:     5 * time.Second,
+		indexCompactors:    map[string]IndexCompactor{},
+		schemaConfig:       schemaConfig,
+		fsConfig:           fsconfig,
+		limits:             limits,
+		registerer:         r,
+		sizeBasedRetention: retention.NewSizeBasedRetentionCleanerService(),
 	}
 
 	ringStore, err := kv.NewClient(
@@ -285,14 +290,6 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 			}
 		}()
 
-		c.chunkClient = client.NewClient(objectClient, encoder, schemaConfig)
-
-		c.retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention")
-		c.sweeper, err = retention.NewSweeper(c.retentionWorkDir, c.chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
-		if err != nil {
-			return err
-		}
-
 		objectClient, ok := objectStoreClients[deleteRequestsStore]
 		if !ok {
 			return fmt.Errorf("failed to init delete store. Object client not found for %s", deleteRequestsStore)
@@ -300,13 +297,6 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 
 		if err := c.initDeletes(objectClient, r, limits); err != nil {
 			return fmt.Errorf("failed to init delete store: %w", err)
-		}
-
-		if c.cfg.SharedStoreType == config.StorageTypeFileSystem {
-			c.sizeBasedRetention, err = retention.NewSizeBasedRetentionCleaner(c.chunkClient, c.cfg.RetentionDiskSpacePercentage, r, c.fsConfig)
-		}
-		if err != nil {
-			return err
 		}
 	}
 
@@ -332,13 +322,21 @@ func (c *Compactor) init(objectStoreClients map[string]client.ObjectClient, sche
 				encoder = client.FSEncoder
 			}
 			chunkClient := client.NewClient(objectClient, encoder, schemaConfig)
+			c.retentionWorkDir = filepath.Join(c.cfg.WorkingDirectory, "retention")
+
+			if c.cfg.SharedStoreType == config.StorageTypeFileSystem {
+				sc.sizeBasedRetentionCleaner, err = retention.NewSizeBasedRetentionCleaner(chunkClient, c.cfg.RetentionDiskSpacePercentage, r, c.fsConfig)
+			}
+			if err != nil {
+				return err
+			}
 
 			sc.sweeper, err = retention.NewSweeper(retentionWorkDir, chunkClient, c.cfg.RetentionDeleteWorkCount, c.cfg.RetentionDeleteDelay, r)
 			if err != nil {
 				return fmt.Errorf("failed to init sweeper: %w", err)
 			}
 
-			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, r)
+			sc.tableMarker, err = retention.NewMarker(retentionWorkDir, c.expirationChecker, c.cfg.RetentionTableTimeout, chunkClient, c.markerMetrics)
 			if err != nil {
 				return fmt.Errorf("failed to init table marker: %w", err)
 			}
@@ -382,6 +380,7 @@ func (c *Compactor) initDeletes(objectClient client.ObjectClient, r prometheus.R
 		r,
 	)
 
+	c.expirationChecker = newExpirationChecker(retention.NewExpirationChecker(limits), c.deleteRequestsManager)
 	return nil
 }
 
@@ -450,7 +449,21 @@ func (c *Compactor) starting(ctx context.Context) (err error) {
 }
 
 func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
-	exceeded, err := c.sizeBasedRetention.ThresholdExceeded()
+	var ret error
+	for _, sc := range c.storeContainers {
+		err := c.executeSizeBasedCompaction(ctx, sc.sizeBasedRetentionCleaner)
+
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg",
+				"Failed to execute SizeBasedCompaction", "err", err)
+			ret = err
+		}
+	}
+	return ret
+}
+
+func (c *Compactor) executeSizeBasedCompaction(ctx context.Context, cleaner *retention.SizeBasedRetentionCleaner) error {
+	exceeded, err := cleaner.ThresholdExceeded()
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg",
 			"Failed to calculate compaction storage threshold", "err", err)
@@ -472,7 +485,7 @@ func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
 	// process most recent tables first
 	sortTablesByRangeOldestFirst(tables)
 
-	indexes, err := c.buildCompactedIndexDetails(ctx, tables)
+	indexes, err := c.buildCompactedIndexDetails(ctx, tables, cleaner)
 	if len(indexes) == 0 {
 		return nil
 	}
@@ -481,7 +494,7 @@ func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
 		return nil
 	}
 
-	chunksToDelete, err := c.sizeBasedRetention.BuildChunksToDelete(ctx, indexes, c.retentionWorkDir)
+	chunksToDelete, err := cleaner.BuildChunksToDelete(ctx, indexes, c.retentionWorkDir)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg",
 			"Failed to build chunks to remove for size-based compaction", "err", err)
@@ -494,7 +507,7 @@ func (c *Compactor) sizeBasedCompactionInterval(ctx context.Context) error {
 	return nil
 }
 
-func (c *Compactor) buildCompactedIndexDetails(ctx context.Context, tables []string) ([]retention.CompactionIndexMap, error) {
+func (c *Compactor) buildCompactedIndexDetails(ctx context.Context, tables []string, cleaner *retention.SizeBasedRetentionCleaner) ([]retention.CompactionIndexMap, error) {
 	var indexes []retention.CompactionIndexMap
 	for _, t := range tables {
 		if t == deletion.DeleteRequestsTableName {
@@ -507,7 +520,7 @@ func (c *Compactor) buildCompactedIndexDetails(ctx context.Context, tables []str
 		for _, f := range indexFiles {
 			is, err := newCommonIndexSet(ctx, t,
 				shipper_storage.NewIndexSet(c.indexStorageClient, false),
-				filepath.Join(c.sizeBasedRetention.WorkingDirectory, c.cfg.SharedStoreKeyPrefix, t),
+				filepath.Join(cleaner.WorkingDirectory, c.cfg.SharedStoreKeyPrefix, t),
 				util_log.Logger)
 
 			if err != nil {
@@ -758,7 +771,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 		expirationChecker.MarkPhaseStarted()
 	}
 
-	tableMarker, err := retention.NewMarker(c.retentionWorkDir, expirationChecker, c.cfg.RetentionTableTimeout, c.chunkClient, c.registerer)
+	tableMarker, err := retention.NewMarker(c.retentionWorkDir, expirationChecker, c.cfg.RetentionTableTimeout, c.chunkClient, c.markerMetrics)
 	if err != nil {
 		return err
 	}
@@ -825,7 +838,7 @@ func (c *Compactor) RunSizeCompaction(ctx context.Context, toDelete []retention.
 		}
 	}()
 
-	tableMarker, err := retention.NewMarker(c.retentionWorkDir, expirationChecker, c.cfg.RetentionTableTimeout, c.chunkClient, c.registerer)
+	tableMarker, err := retention.NewMarker(c.retentionWorkDir, expirationChecker, c.cfg.RetentionTableTimeout, c.chunkClient, c.markerMetrics)
 	if err != nil {
 		status = statusFailure
 		return err
