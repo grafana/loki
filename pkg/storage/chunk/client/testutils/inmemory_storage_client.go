@@ -388,7 +388,7 @@ func (m *MockStorage) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
 }
 
 // GetChunks implements StorageClient.
-func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []chunk.Chunk) ([]chunk.Chunk, error) {
+func (m *MockStorage) GetChunks(_ context.Context, chunkSet []chunk.Chunk) ([]chunk.Chunk, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -413,7 +413,7 @@ func (m *MockStorage) GetChunks(ctx context.Context, chunkSet []chunk.Chunk) ([]
 }
 
 // DeleteChunk implements StorageClient.
-func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+func (m *MockStorage) DeleteChunk(ctx context.Context, _, chunkID string) error {
 	if m.mode == MockStorageModeReadOnly {
 		return errPermissionDenied
 	}
@@ -421,7 +421,7 @@ func (m *MockStorage) DeleteChunk(ctx context.Context, userID, chunkID string) e
 	return m.DeleteObject(ctx, chunkID)
 }
 
-func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
+func (m *MockStorage) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
@@ -437,7 +437,7 @@ func (m *MockStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 	return io.NopCloser(bytes.NewReader(buf)), int64(len(buf)), nil
 }
 
-func (m *MockStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+func (m *MockStorage) PutObject(_ context.Context, objectKey string, object io.ReadSeeker) error {
 	buf, err := io.ReadAll(object)
 	if err != nil {
 		return err
@@ -462,7 +462,7 @@ func (m *MockStorage) IsChunkNotFoundErr(err error) bool {
 	return m.IsObjectNotFoundErr(err)
 }
 
-func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error {
+func (m *MockStorage) DeleteObject(_ context.Context, objectKey string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -479,7 +479,7 @@ func (m *MockStorage) DeleteObject(ctx context.Context, objectKey string) error 
 }
 
 // List implements chunk.ObjectClient.
-func (m *MockStorage) List(ctx context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
+func (m *MockStorage) List(_ context.Context, prefix, delimiter string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 

@@ -55,14 +55,12 @@ These parameters can be adjusted in the load test:
 
 * The way to run k6
 
-    k6 can be run locally, self-managed in a distributed way,
-    or it can be run highly-scalable within the k6 cloud.
+    k6 supports three [execution modes](https://k6.io/docs/get-started/running-k6/#execution-modes) to run a test: local, distributed, and cloud.
     Whereas running your k6 load test from a single (local
     or remote) machine is easy to set up and fine for smaller Loki clusters,
     the single machine does not load test large Loki installations,
     because it cannot create the data to saturate the write path.
-    Therefore, it makes sense to run
-    the tests in the [k6 Cloud](https://k6.io/cloud/).
+    For larger tests, consider [these optimizations](https://k6.io/docs/testing-guides/running-large-tests/), or run them in [Grafana Cloud k6](/products/cloud/k6) or a Kubernetes cluster with the [k6 Operator](https://github.com/grafana/k6-operator).
 
 ## Metrics
 

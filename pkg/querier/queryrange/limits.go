@@ -59,10 +59,15 @@ type Limits interface {
 	// TSDBMaxQueryParallelism returns the limit to the number of split queries the
 	// frontend will process in parallel for TSDB queries.
 	TSDBMaxQueryParallelism(context.Context, string) int
+	// TSDBMaxBytesPerShard returns the limit to the number of bytes a single shard
+	TSDBMaxBytesPerShard(string) int
+
 	RequiredLabels(context.Context, string) []string
 	RequiredNumberLabels(context.Context, string) int
 	MaxQueryBytesRead(context.Context, string) int
 	MaxQuerierBytesRead(context.Context, string) int
+	MaxStatsCacheFreshness(context.Context, string) time.Duration
+	VolumeEnabled(string) bool
 }
 
 type limits struct {
@@ -557,7 +562,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	if err != nil {
 		return nil, err
 	}
-	return rt.codec.EncodeResponse(ctx, response)
+	return rt.codec.EncodeResponse(ctx, r, response)
 }
 
 func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {

@@ -1,9 +1,13 @@
 ---
-title: Components
-description: Components
-weight: 30
+menutitle: Components
+title: Loki components
+description: The components that make up Grafana Loki.
+weight: 500
+aliases:
+    - /docs/loki/latest/fundamentals/architecture/components
+    - /docs/loki/latest/get-started/components/
 ---
-# Components
+# Loki components
 
 ![components_diagram](./loki_architecture_components.svg)
 
@@ -32,7 +36,7 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 The distributor can also rate limit incoming logs based on the maximum per-tenant bitrate. It does this by checking a per tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/second before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
 
-**Note: The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{<relref "../../../configuration#distributor">}}).**
+**Note: The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configuration#distributor" >}}).**
 
 ### Forwarding
 
@@ -42,7 +46,7 @@ Once the distributor has performed all of its validation duties, it forwards dat
 
 In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication_factor_ of them. Generally, this is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will error if less than a _quorum_ of writes succeed. A quorum is defined as `floor(replication_factor / 2) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write can be retried.
 
-**Caveat: There's also an edge case where we acknowledge a write if 2 of the three ingesters do which means that in the case where 2 writes succeed, we can only lose one ingester before suffering data loss.**
+**Caveat: If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.**
 
 Replication factor isn't the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts & restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
 
@@ -139,7 +143,7 @@ deduplicated.
 
 ### Timestamp Ordering
 
-Loki can be configured to [accept out-of-order writes]({{<relref "../../../configuration/#accept-out-of-order-writes">}}).
+Loki is configured to [accept out-of-order writes]({{< relref "../configuration#accept-out-of-order-writes" >}}) by default.
 
 When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
@@ -154,7 +158,7 @@ Logs from each unique set of labels are built up into "chunks" in memory and
 then flushed to the backing storage backend.
 
 If an ingester process crashes or exits abruptly, all the data that has not yet
-been flushed could be lost. Loki is usually configured with a [Write Ahead Log]({{<relref "../../../operations/storage/wal">}}) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
+been flushed could be lost. Loki is usually configured with a [Write Ahead Log]({{< relref "../operations/storage/wal" >}}) which can be _replayed_ on restart as well as with a `replication_factor` (usually 3) of each log to mitigate this risk.
 
 When not configured to accept out-of-order writes,
 all lines pushed to Loki for a given stream (unique combination of
@@ -170,7 +174,7 @@ nanosecond timestamps:
    different content, the log line is accepted. This means it is possible to
    have two different log lines for the same timestamp.
 
-### Handoff - Deprecated in favor of the [WAL]({{<relref "../../../operations/storage/wal">}})
+### Handoff - Deprecated in favor of the [WAL]({{< relref "../operations/storage/wal" >}})
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will
@@ -224,7 +228,7 @@ Caching log (filter, regexp) queries are under active development.
 
 ## Querier
 
-The **querier** service handles queries using the [LogQL]({{<relref "../../../query/">}}) query
+The **querier** service handles queries using the [LogQL]({{< relref "../query" >}}) query
 language, fetching logs both from the ingesters and from long-term storage.
 
 Queriers query all ingesters for in-memory data before falling back to

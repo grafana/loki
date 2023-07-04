@@ -687,4 +687,4 @@ func (noopConvictionPolicy) AddFailure(err error, host *gocql.HostInfo) bool {
 }
 
 // Implementats gocql.ConvictionPolicy.
-func (noopConvictionPolicy) Reset(host *gocql.HostInfo) {}
+func (noopConvictionPolicy) Reset(_ *gocql.HostInfo) {}

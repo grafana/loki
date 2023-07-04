@@ -149,6 +149,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 func (s *store) init() error {
 	for i, p := range s.schemaCfg.Configs {
+		p := p
 		chunkClient, err := s.chunkClientForPeriod(p)
 		if err != nil {
 			return err
@@ -173,6 +174,7 @@ func (s *store) init() error {
 	if s.cfg.EnableAsyncStore {
 		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
 	}
+
 	return nil
 }
 
@@ -220,7 +222,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	if p.IndexType == config.TSDBType {
 		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
 			// inject the index-gateway client into the index store
-			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, indexClientLogger)
+			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger)
 			if err != nil {
 				return nil, nil, nil, err
 			}

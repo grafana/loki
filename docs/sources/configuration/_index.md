@@ -13,7 +13,7 @@ Grafana Loki is configured in a YAML file (usually referred to as `loki.yaml` )
 which contains information on the Loki server and its individual components,
 depending on which mode Loki is launched in.
 
-Configuration examples can be found in the [Configuration Examples]({{< relref "./examples/" >}}) document.
+Configuration examples can be found in the [Configuration Examples]({{< relref "./examples" >}}) document.
 
 ## Printing Loki config at runtime
 
@@ -482,6 +482,18 @@ rate_store:
   # If enabled, detailed logs and spans will be emitted.
   # CLI flag: -distributor.rate-store.debug
   [debug: <boolean> | default = false]
+
+# Experimental. Customize the logging of write failures.
+write_failures_logging:
+  # Experimental and subject to change. Log volume allowed (per second).
+  # Default: 1KB.
+  # CLI flag: -distributor.write-failures-logging.rate
+  [rate: <int> | default = 1KB]
+
+  # Experimental and subject to change. Whether a insight=true key should be
+  # logged or not. Default: false.
+  # CLI flag: -distributor.write-failures-logging.add-insights-label
+  [add_insights_label: <boolean> | default = false]
 ```
 
 ### querier
@@ -756,18 +768,14 @@ results_cache:
   # The CLI flags prefix for this block configuration is: frontend
   [cache: <cache_config>]
 
-  # Use compression in results cache. Supported values are: 'snappy' and ''
-  # (disable compression).
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.compression
   [compression: <string> | default = ""]
 
 # Cache query results.
 # CLI flag: -querier.cache-results
 [cache_results: <boolean> | default = false]
-
-# Cache index stats query results.
-# CLI flag: -querier.cache-index-stats-results
-[cache_index_stats_results: <boolean> | default = false]
 
 # Maximum number of retries for a single request; beyond this, the downstream
 # error is returned.
@@ -782,6 +790,28 @@ results_cache:
 # List of headers forwarded by the query Frontend to downstream querier.
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
+
+# The downstream querier is required to answer in the accepted format. Can be
+# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
+# CLI flag: -frontend.required-query-response-format
+[required_query_response_format: <string> | default = "json"]
+
+# Cache index stats query results.
+# CLI flag: -querier.cache-index-stats-results
+[cache_index_stats_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_index_stats_results is true, the
+# config for the results cache is used.
+index_stats_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.index-stats-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
 ```
 
 ### ruler
@@ -1626,7 +1656,9 @@ ring:
   # CLI flag: -index-gateway.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
-  # How many index gateway instances are assigned to each tenant.
+  # Deprecated: How many index gateway instances are assigned to each tenant.
+  # Use -index-gateway.shard-size instead. The shard size is also a per-tenant
+  # setting.
   # CLI flag: -replication-factor
   [replication_factor: <int> | default = 3]
 ```
@@ -2362,6 +2394,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -querier.tsdb-max-query-parallelism
 [tsdb_max_query_parallelism: <int> | default = 512]
 
+# Maximum number of bytes assigned to a single sharded query. Also expressible
+# in human readable forms (1GB, etc).
+# CLI flag: -querier.tsdb-max-bytes-per-shard
+[tsdb_max_bytes_per_shard: <int> | default = 600MB]
+
 # Cardinality limit for index queries.
 # CLI flag: -store.cardinality-limit
 [cardinality_limit: <int> | default = 100000]
@@ -2382,6 +2419,11 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # recent results that might still be in flux.
 # CLI flag: -frontend.max-cache-freshness
 [max_cache_freshness_per_query: <duration> | default = 1m]
+
+# Do not cache requests with an end time that falls within Now minus this
+# duration. 0 disables this feature (default).
+# CLI flag: -frontend.max-stats-cache-freshness
+[max_stats_cache_freshness: <duration> | default = 0s]
 
 # Maximum number of queriers that can handle requests for a single tenant. If
 # set to 0 or value higher than number of available queriers, *all* queriers
@@ -2426,6 +2468,9 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # disables this limit.
 # CLI flag: -frontend.max-querier-bytes-read
 [max_querier_bytes_read: <int> | default = 0B]
+
+# Enable log-volume endpoints.
+[volume_enabled: <boolean>]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
@@ -2582,6 +2627,12 @@ shard_streams:
 
 # Minimum number of label matchers a query should contain.
 [minimum_labels_number: <int>]
+
+# The shard size defines how many index gateways should be used by a tenant for
+# querying. If the global shard factor is 0, the global shard factor is set to
+# the deprecated -replication-factor for backwards compatibility reasons.
+# CLI flag: -index-gateway.shard-size
+[index_gateway_shard_size: <int> | default = 0]
 ```
 
 ### frontend_worker
@@ -3721,6 +3772,7 @@ The TLS configuration.
 The cache block configures the cache backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `frontend`
+- `frontend.index-stats-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
@@ -3745,6 +3797,10 @@ background:
   # How many key batches to buffer for background write-back.
   # CLI flag: -<prefix>.background.write-back-buffer
   [writeback_buffer: <int> | default = 10000]
+
+  # Size limit in bytes for background write-back.
+  # CLI flag: -<prefix>.background.write-back-size-limit
+  [writeback_size_limit: <int> | default = 1GB]
 
 memcached:
   # How long keys stay in the memcache.

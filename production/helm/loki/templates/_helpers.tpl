@@ -270,6 +270,9 @@ azure:
   {{- with .requestTimeout }}
   request_timeout: {{ . }}
   {{- end }}
+  {{- with .endpointSuffix }}
+  endpoint_suffix: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
@@ -337,6 +340,9 @@ azure:
   {{- with .requestTimeout }}
   request_timeout: {{ . }}
   {{- end }}
+  {{- with .endpointSuffix }}
+  endpoint_suffix: {{ . }}
+  {{- end }}
 {{- end -}}
 {{- else }}
 type: "local"
@@ -352,6 +358,29 @@ ruler:
 {{- toYaml .Values.loki.rulerConfig | nindent 2}}
 {{- end }}
 {{- end }}
+
+{{/*
+Calculate the config from structured and unstructred text input
+*/}}
+{{- define "loki.calculatedConfig" -}}
+{{ tpl (mergeOverwrite (tpl .Values.loki.config . | fromYaml) .Values.loki.structuredConfig | toYaml) . }}
+{{- end }}
+
+{{/*
+The volume to mount for loki configuration
+*/}}
+{{- define "loki.configVolume" -}}
+{{- if eq .Values.loki.configStorageType "Secret" -}}
+secret:
+  secretName: {{ tpl .Values.loki.externalConfigSecretName . }}
+{{- else if eq .Values.loki.configStorageType "ConfigMap" -}}
+configMap:
+  name: {{ tpl .Values.loki.externalConfigSecretName . }}
+  items:
+    - key: "config.yaml"
+      path: "config.yaml"
+{{- end -}}
+{{- end -}}
 
 {{/*
 Memcached Docker image
@@ -466,9 +495,9 @@ Params:
 */}}
 {{- define "loki.ingress.serviceName" -}}
 {{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.fullname" .ctx) }}
+{{- printf "%s" (include "loki.name" .ctx) }}
 {{- else }}
-{{- printf "%s-%s" (include "loki.fullname" .ctx) .svcName }}
+{{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
 {{- end -}}
 
@@ -545,9 +574,9 @@ http {
   uwsgi_temp_path       /tmp/uwsgi_temp;
   scgi_temp_path        /tmp/scgi_temp;
 
-  client_max_body_size 4M;
+  client_max_body_size  4M;
 
-  proxy_read_timeout    600; ## 6 minutes
+  proxy_read_timeout    600; ## 10 minutes
   proxy_send_timeout    600;
   proxy_connect_timeout 600;
 
@@ -577,6 +606,7 @@ http {
 
   server {
     listen             8080;
+    listen             [::]:8080;
 
     {{- if .Values.gateway.basicAuth.enabled }}
     auth_basic           "Loki";

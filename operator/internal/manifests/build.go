@@ -62,7 +62,6 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	res = append(res, BuildLokiGossipRingService(opts.Name))
 
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
-
 		rulesCMShards, err := RulesConfigMapShards(&opts)
 		if err != nil {
 			return nil, err

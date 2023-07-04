@@ -113,11 +113,26 @@ spec:
                               on ingestion path. Units in Bytes.
                             format: int32
                             type: integer
+                          perStreamRateLimit:
+                            description: PerStreamRateLimit defines the maximum byte
+                              rate per second per stream. Units MB.
+                            format: int32
+                            type: integer
+                          perStreamRateLimitBurst:
+                            description: PerStreamRateLimitBurst defines the maximum
+                              burst bytes per stream. Units MB.
+                            format: int32
+                            type: integer
                         type: object
                       queries:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
                         properties:
+                          cardinalityLimit:
+                            description: CardinalityLimit defines the cardinality
+                              limit for index queries.
+                            format: int32
+                            type: integer
                           maxChunksPerQuery:
                             description: MaxChunksPerQuery defines the maximum number
                               of chunks that can be fetched by a single query.
@@ -129,7 +144,7 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
+                            description: MaxQuerySeries defines the maximum of
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
@@ -225,11 +240,26 @@ spec:
                                 on ingestion path. Units in Bytes.
                               format: int32
                               type: integer
+                            perStreamRateLimit:
+                              description: PerStreamRateLimit defines the maximum
+                                byte rate per second per stream. Units MB.
+                              format: int32
+                              type: integer
+                            perStreamRateLimitBurst:
+                              description: PerStreamRateLimitBurst defines the maximum
+                                burst bytes per stream. Units MB.
+                              format: int32
+                              type: integer
                           type: object
                         queries:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            cardinalityLimit:
+                              description: CardinalityLimit defines the cardinality
+                                limit for index queries.
+                              format: int32
+                              type: integer
                             maxChunksPerQuery:
                               description: MaxChunksPerQuery defines the maximum number
                                 of chunks that can be fetched by a single query.
@@ -242,7 +272,7 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
+                              description: MaxQuerySeries defines the maximum
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer
@@ -464,6 +494,7 @@ spec:
                 description: Size defines one of the support Loki deployment scale
                   out sizes.
                 enum:
+                - 1x.demo
                 - 1x.extra-small
                 - 1x.small
                 - 1x.medium
@@ -4020,7 +4051,7 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
+                            description: MaxQuerySeries defines the maximum of
                               unique series that is returned by a metric query.
                             format: int32
                             type: integer
@@ -4091,7 +4122,7 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
+                              description: MaxQuerySeries defines the maximum
                                 of unique series that is returned by a metric query.
                               format: int32
                               type: integer

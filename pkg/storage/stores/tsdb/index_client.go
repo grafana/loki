@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -16,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 // implements stores.Index
@@ -44,6 +45,11 @@ type IndexStatsAccumulator interface {
 	AddStream(fp model.Fingerprint)
 	AddChunkStats(s index.ChunkStats)
 	Stats() stats.Stats
+}
+
+type SeriesVolumeAccumulator interface {
+	AddVolumes(map[string]uint64)
+	Volumes() *logproto.VolumeResponse
 }
 
 func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
@@ -95,12 +101,10 @@ func cleanMatchers(matchers ...*labels.Matcher) ([]*labels.Matcher, *index.Shard
 func (c *IndexClient) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.GetChunkRefs")
 	defer sp.Finish()
-	log := spanlogger.FromContext(ctx)
-	defer log.Finish()
 
 	var kvps []interface{}
 	defer func() {
-		log.Log(kvps...)
+		sp.LogKV(kvps...)
 	}()
 
 	matchers, shard, err := cleanMatchers(matchers...)
@@ -172,6 +176,9 @@ func (c *IndexClient) LabelNamesForMetricName(ctx context.Context, userID string
 }
 
 func (c *IndexClient) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Stats")
+	defer sp.Finish()
+
 	matchers, shard, err := cleanMatchers(matchers...)
 	if err != nil {
 		return nil, err
@@ -218,7 +225,60 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	}
 	res := acc.Stats()
 
+	sp.LogKV(
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"intervals", len(intervals),
+		"streams", res.Streams,
+		"chunks", res.Chunks,
+		"bytes", res.Bytes,
+		"entries", res.Entries,
+	)
+
 	return &res, nil
+}
+
+func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.SeriesVolume")
+	defer sp.Finish()
+
+	matchers, shard, err := cleanMatchers(matchers...)
+	if err != nil {
+		return nil, err
+	}
+
+	// Split by interval to query the index in parallel
+	var intervals []model.Interval
+	util.ForInterval(config.ObjectStorageIndexRequiredPeriod, from.Time(), through.Time(), true, func(start, end time.Time) {
+		intervals = append(intervals, model.Interval{
+			Start: model.TimeFromUnixNano(start.UnixNano()),
+			End:   model.TimeFromUnixNano(end.UnixNano()),
+		})
+	})
+
+	acc := seriesvolume.NewAccumulator(limit)
+	for _, interval := range intervals {
+		if err := c.idx.SeriesVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+			return nil, err
+		}
+	}
+
+	sp.LogKV(
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"shard", shard,
+		"intervals", len(intervals),
+		"limit", limit,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return acc.Volumes(), nil
 }
 
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.

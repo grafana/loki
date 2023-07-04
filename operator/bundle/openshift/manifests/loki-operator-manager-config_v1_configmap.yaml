@@ -41,7 +41,7 @@ data:
       #
       lokiStackGateway: true
       grafanaLabsUsageReport: false
-      runtimeSeccompProfile: false
+      restrictedPodSecurityStandard: true
       defaultNodeAffinity: true
       #
       # Webhook feature gates

@@ -342,33 +342,34 @@ type Loki struct {
 	deps          map[string][]string
 	SignalHandler *signals.Handler
 
-	Server                   *server.Server
-	InternalServer           *server.Server
-	ring                     *ring.Ring
-	Overrides                limiter.CombinedLimits
-	tenantConfigs            *runtime.TenantConfigs
-	TenantLimits             validation.TenantLimits
-	distributor              *distributor.Distributor
-	Ingester                 ingester.Interface
-	Querier                  querier.Querier
-	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
-	querierAPI               *querier.QuerierAPI
-	ingesterQuerier          *querier.IngesterQuerier
-	Store                    storage.Store
-	tableManager             *index.TableManager
-	frontend                 Frontend
-	ruler                    *base_ruler.Ruler
-	ruleEvaluator            ruler.Evaluator
-	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *base_ruler.API
-	stopper                  queryrange.Stopper
-	runtimeConfig            *runtimeconfig.Manager
-	MemberlistKV             *memberlist.KVInitService
-	compactor                *compactor.Compactor
-	QueryFrontEndTripperware basetripper.Tripperware
-	queryScheduler           *scheduler.Scheduler
-	usageReport              *analytics.Reporter
-	indexGatewayRingManager  *indexgateway.RingManager
+	Server                    *server.Server
+	InternalServer            *server.Server
+	ring                      *ring.Ring
+	Overrides                 limiter.CombinedLimits
+	tenantConfigs             *runtime.TenantConfigs
+	TenantLimits              validation.TenantLimits
+	distributor               *distributor.Distributor
+	Ingester                  ingester.Interface
+	Querier                   querier.Querier
+	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
+	querierAPI                *querier.QuerierAPI
+	ingesterQuerier           *querier.IngesterQuerier
+	Store                     storage.Store
+	tableManager              *index.TableManager
+	frontend                  Frontend
+	ruler                     *base_ruler.Ruler
+	ruleEvaluator             ruler.Evaluator
+	RulerStorage              rulestore.RuleStore
+	rulerAPI                  *base_ruler.API
+	stopper                   queryrange.Stopper
+	runtimeConfig             *runtimeconfig.Manager
+	MemberlistKV              *memberlist.KVInitService
+	compactor                 *compactor.Compactor
+	QueryFrontEndTripperware  basetripper.Tripperware
+	queryScheduler            *scheduler.Scheduler
+	querySchedulerRingManager *scheduler.RingManager
+	usageReport               *analytics.Reporter
+	indexGatewayRingManager   *indexgateway.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -483,6 +484,8 @@ func (t *Loki) Run(opts RunOpts) error {
 		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
+
+	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LevelHandler(&t.Cfg.Server.LogLevel))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
@@ -632,8 +635,10 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
-	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
+	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 
@@ -652,17 +657,18 @@ func (t *Loki) setupModuleManager() error {
 		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
 		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader},
-		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
 		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing},
+		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing, IndexGatewayInterceptors},
 		IngesterQuerier:          {Ring},
-		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
+		QuerySchedulerRing:       {Overrides, Server, MemberlistKV},
+		IndexGatewayRing:         {Overrides, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryFrontend, Querier},
 		Write:                    {Ingester, Distributor},

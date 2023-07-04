@@ -106,6 +106,15 @@ var queryTests = []struct {
 							"requests": 0,
 							"downloadTime": 0
 						},
+						"statsResult": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
+						},
 						"result": {
 							"entriesFound": 0,
 							"entriesRequested": 0,
@@ -235,6 +244,15 @@ var queryTests = []struct {
 						"downloadTime": 0
 					},
 					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -393,6 +411,15 @@ var queryTests = []struct {
 						"downloadTime": 0
 					},
 					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -659,7 +686,7 @@ type wrappedValue struct {
 	parser.Value
 }
 
-func (w wrappedValue) Generate(rand *rand.Rand, size int) reflect.Value {
+func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 	types := []string{
 		loghttp.ResultTypeMatrix,
 		loghttp.ResultTypeScalar,
@@ -731,7 +758,8 @@ func randLabel(rand *rand.Rand) labels.Label {
 
 func randLabels(rand *rand.Rand) labels.Labels {
 	var labels labels.Labels
-	for i := 0; i < rand.Intn(100); i++ {
+	nLabels := rand.Intn(100)
+	for i := 0; i < nLabels; i++ {
 		labels = append(labels, randLabel(rand))
 	}
 
@@ -740,7 +768,8 @@ func randLabels(rand *rand.Rand) labels.Labels {
 
 func randEntries(rand *rand.Rand) []logproto.Entry {
 	var entries []logproto.Entry
-	for i := 0; i < rand.Intn(100); i++ {
+	nEntries := rand.Intn(100)
+	for i := 0; i < nEntries; i++ {
 		l, _ := quick.Value(reflect.TypeOf(""), rand)
 		entries = append(entries, logproto.Entry{Timestamp: time.Now(), Line: l.Interface().(string)})
 	}

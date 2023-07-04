@@ -181,7 +181,7 @@ func Test_astMapper(t *testing.T) {
 		{Name: "Header", Values: []string{"value"}},
 	}, resp.GetHeaders())
 
-	expected, err := LokiCodec.MergeResponse(lokiResps...)
+	expected, err := DefaultCodec.MergeResponse(lokiResps...)
 	sort.Sort(logproto.Streams(expected.(*LokiResponse).Data.Result))
 	require.Nil(t, err)
 	require.Equal(t, called, 2)
@@ -410,7 +410,7 @@ func Test_InstantSharding(t *testing.T) {
 	cpyPeriodConf.RowShards = 3
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
-	}, testEngineOpts, LokiCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+	}, testEngineOpts, DefaultCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
 		nilShardingMetrics,
 		fakeLimits{
 			maxSeries:           math.MaxInt32,
@@ -475,7 +475,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 		fakeLimits{
 			maxQueryParallelism: 10,
 		},
-		LokiCodec,
+		DefaultCodec,
 	)
 	ctx := user.InjectOrgID(context.Background(), "1")
 
@@ -778,7 +778,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				fakeLimits{
 					maxQueryParallelism: 10,
 				},
-				LokiCodec,
+				DefaultCodec,
 			)
 
 			_, err := mware.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {

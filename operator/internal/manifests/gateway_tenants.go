@@ -74,6 +74,17 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeTyp
 	return nil
 }
 
+func configureGatewayDeploymentRulesAPIForMode(d *appsv1.Deployment, mode lokiv1.ModeType) error {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic, lokiv1.OpenshiftNetwork:
+		return nil // nothing to configure
+	case lokiv1.OpenshiftLogging:
+		return openshift.ConfigureGatewayDeploymentRulesAPI(d, gatewayContainerName)
+	}
+
+	return nil
+}
+
 func configureGatewayServiceForMode(s *corev1.ServiceSpec, mode lokiv1.ModeType) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
