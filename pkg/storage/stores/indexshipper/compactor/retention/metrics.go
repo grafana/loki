@@ -48,14 +48,14 @@ func newSweeperMetrics(r prometheus.Registerer) *sweeperMetrics {
 	}
 }
 
-type markerMetrics struct {
+type MarkerMetrics struct {
 	tableProcessedTotal           *prometheus.CounterVec
 	tableMarksCreatedTotal        *prometheus.CounterVec
 	tableProcessedDurationSeconds *prometheus.HistogramVec
 }
 
-func newMarkerMetrics(r prometheus.Registerer) *markerMetrics {
-	return &markerMetrics{
+func newMarkerMetrics(r prometheus.Registerer) *MarkerMetrics {
+	return &MarkerMetrics{
 		tableProcessedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "retention_marker_table_processed_total",
