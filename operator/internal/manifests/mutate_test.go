@@ -488,7 +488,7 @@ func TestGetMutateFunc_MutateRoleBinding(t *testing.T) {
 	require.Exactly(t, got.Subjects, want.Subjects)
 }
 
-func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
+func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.Deployment
@@ -615,7 +615,7 @@ func TestGeMutateFunc_MutateDeploymentSpec(t *testing.T) {
 	}
 }
 
-func TestGeMutateFunc_MutateStatefulSetSpec(t *testing.T) {
+func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 	type test struct {
 		name string
 		got  *appsv1.StatefulSet
