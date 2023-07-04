@@ -25,6 +25,7 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/minio/minio-go/v7/pkg/signer"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
@@ -378,10 +379,17 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 
-		resp, reqErr := a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
-			Bucket: aws.String(bucket),
-			Key:    aws.String(objectKey),
-		})
+		resp, reqErr := func() (*s3.GetObjectOutput, error) {
+			if sp := opentracing.SpanFromContext(ctx); sp != nil {
+				sp.LogKV("event", "started S3.GetObject", "key", objectKey)
+				defer sp.LogKV("event", "finished S3.GetObject", "key", objectKey)
+			}
+
+			return a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
+				Bucket: aws.String(bucket),
+				Key:    aws.String(objectKey),
+			})
+		}()
 		err = reqErr
 
 		var size int64
