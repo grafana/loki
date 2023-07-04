@@ -16,6 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/sketch"
 )
 
 const (
@@ -218,6 +219,16 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 					Status:     "success",
 					Statistics: result.Statistics,
 				},
+			},
+		}, nil
+	case sketch.TopKMatrix:
+		sk, err := data.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		return &QueryResponse{
+			Response: &QueryResponse_TopkSketches{
+				TopkSketches: &TopKSketchesResponse{Response: sk},
 			},
 		}, nil
 	}

@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package logproto;
+
+option go_package = "github.com/grafana/loki/pkg/logproto";
+
+message CountMinSketch {
+  uint32 depth = 1;
+  uint32 width = 2;
+
+  // counters is a matrix of depth * width.
+  repeated uint32 counters = 3;
+}
+
+message TopK {
+  CountMinSketch cms = 1;
+  repeated string labels = 2;
+  bytes hyperloglog = 3;
+}
+
+message TopKMatrix{
+
+  message Vector {
+    TopK topk = 1;
+    int64 timestamp_ms = 2;
+  }
+
+  repeated Vector values = 1;
+}

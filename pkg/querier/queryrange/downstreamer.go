@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/util/sketch"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -251,7 +252,16 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
 			Headers:    resp.GetHeaders(),
 		}, nil
+	case *TopKSketchesResponse:
+		matrix, err := sketch.FromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode topk sketch: %w", err)
+		}
 
+		return logqlmodel.Result{
+			Data:    matrix,
+			Headers: resp.GetHeaders(),
+		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}
