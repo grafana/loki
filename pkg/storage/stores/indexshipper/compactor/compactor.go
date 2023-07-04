@@ -220,6 +220,7 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 		fsConfig:           fsconfig,
 		limits:             limits,
 		registerer:         r,
+		markerMetrics:      retention.NewMarkerMetrics(r),
 		sizeBasedRetention: retention.NewSizeBasedRetentionCleanerService(),
 	}
 

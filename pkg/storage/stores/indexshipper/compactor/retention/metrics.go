@@ -54,7 +54,7 @@ type MarkerMetrics struct {
 	tableProcessedDurationSeconds *prometheus.HistogramVec
 }
 
-func newMarkerMetrics(r prometheus.Registerer) *MarkerMetrics {
+func NewMarkerMetrics(r prometheus.Registerer) *MarkerMetrics {
 	return &MarkerMetrics{
 		tableProcessedTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
