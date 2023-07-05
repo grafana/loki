@@ -32,7 +32,7 @@ Migrating from a single ingester StatefulSet to 3 zone aware ingester StatefulSe
 
 The following are steps to live migrate (no downtime) an existing Loki deployment from a single ingester StatefulSet to 3 zone aware ingester StatefulSets.
 
-These instructions assume you are using the zone aware ingester jsonnet deployment code from this repo, see [here](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/multi-zone.libsonnet). **If you are not using jsonnet please see relevant annotations in some steps that describe how to perform that step manually.**
+These instructions assume you are using the zone aware ingester jsonnet deployment code from this repo, see [here](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/multi-zone.libsonnet). **If you are not using jsonnet see the relevant annotations in some steps that describe how to perform that step manually.**
 
 1. Configure the zone for the existing “ingester” StatefulSet as zone-default by setting multi_zone_default_ingester_zone: true, this allows us to later filter out that zone from the write path.
 1. Configure ingester-pdb with maxUnavailable=0 and deploy 3x zone-aware StatefulSets with 0 replicas by setting

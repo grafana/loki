@@ -966,6 +966,30 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
+func TestQuerier_LabeleVolumes(t *testing.T) {
+	t.Run("it returns label volumes from the store", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		store := newStoreMock()
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		querier := SingleTenantQuerier{
+			store:  store,
+			limits: limits,
+		}
+
+		req := &logproto.VolumeRequest{From: 0, Through: 1000, Matchers: `{}`}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.SeriesVolume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+}
+
 func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
 	queryClient := newQueryClientMock()
 	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
@@ -1188,7 +1212,7 @@ type mockDeleteGettter struct {
 	results []deletion.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

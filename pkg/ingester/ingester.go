@@ -28,6 +28,7 @@ import (
 
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
@@ -40,6 +41,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -171,6 +173,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
+	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -239,10 +242,12 @@ type Ingester struct {
 	chunkFilter chunk.RequestChunkFilterer
 
 	streamRateCalculator *StreamRateCalculator
+
+	writeLogManager *writefailures.Manager
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -268,6 +273,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
+		writeLogManager:       writefailures.NewManager(util_log.Logger, writeFailuresCfg, configs),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -594,7 +600,7 @@ func (i *Ingester) loop() {
 // source can trigger a safe termination through a signal to the process.
 // The handler is deprecated and usage is discouraged. Use ShutdownHandler
 // instead.
-func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request) {
+func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, _ *http.Request) {
 	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
@@ -800,8 +806,7 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	err = instance.Push(ctx, req)
-	return &logproto.PushResponse{}, err
+	return &logproto.PushResponse{}, instance.Push(ctx, req)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
@@ -831,7 +836,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator, i.writeLogManager)
 		if err != nil {
 			return nil, err
 		}
@@ -1080,6 +1085,9 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.GetStats")
+	defer sp.Finish()
+
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1110,7 +1118,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		ctx,
 		len(jobs),
 		2,
-		func(ctx context.Context, idx int) error {
+		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
 			resps[idx] = res
 			return err
@@ -1120,7 +1128,62 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	merged := index_stats.MergeStats(resps...)
+	sp.LogKV(
+		"user", user,
+		"from", req.From.Time(),
+		"through", req.Through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"streams", merged.Streams,
+		"chunks", merged.Chunks,
+		"bytes", merged.Bytes,
+		"entries", merged.Entries,
+	)
+
 	return &merged, nil
+}
+
+func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	user, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(user)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	type f func() (*logproto.VolumeResponse, error)
+	jobs := []f{
+		f(func() (*logproto.VolumeResponse, error) {
+			return instance.GetSeriesVolume(ctx, req)
+		}),
+		f(func() (*logproto.VolumeResponse, error) {
+			return i.store.SeriesVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
+		}),
+	}
+	resps := make([]*logproto.VolumeResponse, len(jobs))
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := seriesvolume.Merge(resps, req.Limit)
+	return merged, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
@@ -1187,7 +1250,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 }
 
 // TailersCount returns count of active tail requests from a user
-func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err

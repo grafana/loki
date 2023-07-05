@@ -17,7 +17,8 @@ import (
 func Test_InitQuerierService(t *testing.T) {
 	var mockQueryHandlers = map[string]http.Handler{
 		"/loki/api/v1/query": http.HandlerFunc(func(res http.ResponseWriter, req *http.Request) {
-			_, err := res.Write([]byte("test handler"))
+			_, err := res.Write([]byte(`{"handler": "test"}`))
+			res.Header().Del("Content-Type")
 			require.NoError(t, err)
 		}),
 	}
@@ -36,9 +37,11 @@ func Test_InitQuerierService(t *testing.T) {
 			authMiddleware = middleware.Identity
 		}
 
+		pathPrefix := ""
 		querierWorkerService, err := InitWorkerService(
 			config,
 			nil,
+			pathPrefix,
 			mockQueryHandlers,
 			alwaysExternalHandlers,
 			externalRouter,
@@ -65,7 +68,7 @@ func Test_InitQuerierService(t *testing.T) {
 			request := httptest.NewRequest("GET", "/loki/api/v1/query", nil)
 			externalRouter.ServeHTTP(recorder, request)
 			assert.Equal(t, 200, recorder.Code)
-			assert.Equal(t, "test handler", recorder.Body.String())
+			assert.Equal(t, `{"handler": "test"}`, recorder.Body.String())
 
 			// Tail endpoints always external
 			recorder = httptest.NewRecorder()

@@ -10,7 +10,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -57,6 +56,13 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		if err := configureGatewayRulesAPI(&dpl.Spec.Template.Spec, opts.Name, opts.Namespace); err != nil {
 			return nil, err
 		}
+
+		if opts.Stack.Tenants != nil {
+			mode := opts.Stack.Tenants.Mode
+			if err := configureGatewayDeploymentRulesAPIForMode(dpl, mode); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if opts.Gates.HTTPEncryption {
@@ -82,7 +88,11 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		objs = configureGatewayObjsForMode(objs, opts)
 	}
 
-	configureDeploymentForRestrictedPolicy(dpl, opts.Gates)
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&dpl.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
 
 	return objs, nil
 }
@@ -597,15 +607,4 @@ func configureGatewayRulesAPI(podSpec *corev1.PodSpec, stackName, stackNs string
 	}
 
 	return nil
-}
-
-func configureDeploymentForRestrictedPolicy(d *appsv1.Deployment, fg configv1.FeatureGates) {
-	podSpec := d.Spec.Template.Spec
-
-	podSpec.SecurityContext = podSecurityContext(fg.RuntimeSeccompProfile)
-	for i := range podSpec.Containers {
-		podSpec.Containers[i].SecurityContext = containerSecurityContext()
-	}
-
-	d.Spec.Template.Spec = podSpec
 }

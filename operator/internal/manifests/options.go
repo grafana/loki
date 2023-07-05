@@ -135,7 +135,7 @@ func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
 	}
 
 	queryTimeout := lokiDefaultQueryTimeout
-	if s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
+	if s.Global != nil && s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
 		var err error
 		globalQueryTimeout, err := time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
 		if err != nil {

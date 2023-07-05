@@ -551,11 +551,10 @@ func betterTSDBShipperDefaults(cfg, defaults *ConfigWrapper, period config.Perio
 	}
 }
 
-// applyFIFOCacheConfig turns on FIFO cache for the chunk store and for the query range results,
-// but only if no other cache storage is configured (redis or memcache).
-//
-// This behavior is only applied for the chunk store cache and for the query range results cache
-// (i.e: not applicable for the index queries cache or for the write dedupe cache).
+// applyFIFOCacheConfig turns on FIFO cache for the chunk store, for the query range results,
+// and for the index stats results, but only if no other cache storage is configured (redis or memcache).
+// This behavior is only applied for the chunk store cache, for the query range results cache, and for
+// the index stats results (i.e: not applicable for the index queries cache or for the write dedupe cache).
 func applyFIFOCacheConfig(r *ConfigWrapper) {
 	chunkCacheConfig := r.ChunkStoreConfig.ChunkCacheConfig
 	if !cache.IsCacheConfigured(chunkCacheConfig) {
@@ -569,6 +568,12 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 		// so instead we will override them here.
 		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.MaxSizeBytes = "1GB"
 		r.QueryRange.ResultsCacheConfig.CacheConfig.Fifocache.TTL = 1 * time.Hour
+	}
+
+	indexStatsCacheConfig := r.QueryRange.StatsCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
+		// We use the same config as the query range results cache.
+		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 	}
 }
 

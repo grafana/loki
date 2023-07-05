@@ -107,7 +107,7 @@ type stubPipeline struct {
 	sp *stubStreamPipeline
 }
 
-func (p *stubPipeline) ForStream(labels labels.Labels) StreamPipeline {
+func (p *stubPipeline) ForStream(_ labels.Labels) StreamPipeline {
 	return p.sp
 }
 
@@ -118,11 +118,11 @@ func (p *stubStreamPipeline) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
+func (p *stubStreamPipeline) Process(_ int64, _ []byte) ([]byte, LabelsResult, bool) {
 	return nil, nil, true
 }
 
-func (p *stubStreamPipeline) ProcessString(ts int64, line string) (string, LabelsResult, bool) {
+func (p *stubStreamPipeline) ProcessString(_ int64, _ string) (string, LabelsResult, bool) {
 	return "", nil, true
 }
 
@@ -145,7 +145,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__",
 			[]Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(true, false),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -182,7 +182,7 @@ func TestDropLabelsPipeline(t *testing.T) {
 		{
 			"drop __error__ with matching value",
 			[]Stage{
-				NewLogfmtParser(),
+				NewLogfmtParser(true, false),
 				NewJSONParser(),
 				NewDropLabels([]DropLabel{
 					{
@@ -232,12 +232,132 @@ func TestDropLabelsPipeline(t *testing.T) {
 	}
 
 }
+
+func TestKeepLabelsPipeline(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		stages []Stage
+		lines  [][]byte
+
+		wantLine   [][]byte
+		wantLabels []labels.Labels
+	}{
+		{
+			name: "keep all",
+			stages: []Stage{
+				NewLogfmtParser(false, false),
+				NewKeepLabels([]KeepLabel{}),
+			},
+			lines: [][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`level=debug ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+			},
+			wantLine: [][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`level=debug ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+			},
+			wantLabels: []labels.Labels{
+				labels.FromStrings(
+					"level", "info",
+					"ts", "2020-10-18T18:04:22.147378997Z",
+					"caller", "metrics.go:81",
+					"status", "200",
+				),
+				labels.FromStrings(
+					"level", "debug",
+					"ts", "2020-10-18T18:04:22.147378997Z",
+					"caller", "metrics.go:81",
+					"status", "200",
+				),
+				labels.FromStrings(
+					"ts", "2020-10-18T18:04:22.147378997Z",
+					"caller", "metrics.go:81",
+					"status", "200",
+				),
+			},
+		},
+		{
+			name: "keep by name",
+			stages: []Stage{
+				NewLogfmtParser(false, false),
+				NewKeepLabels([]KeepLabel{
+					{
+						nil,
+						"level",
+					},
+				}),
+			},
+			lines: [][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`level=debug ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+			},
+			wantLine: [][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`level=debug ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+			},
+			wantLabels: []labels.Labels{
+				labels.FromStrings(
+					"level", "info",
+				),
+				labels.FromStrings(
+					"level", "debug",
+				),
+				{},
+			},
+		},
+		{
+			name: "keep by matcher",
+			stages: []Stage{
+				NewLogfmtParser(false, false),
+				NewKeepLabels([]KeepLabel{
+					{
+						labels.MustNewMatcher(labels.MatchEqual, "level", "info"),
+						"",
+					},
+				}),
+			},
+			lines: [][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`level=debug ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+			},
+			wantLine: [][]byte{
+				[]byte(`level=info ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`level=debug ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+				[]byte(`ts=2020-10-18T18:04:22.147378997Z caller=metrics.go:81 status=200`),
+			},
+			wantLabels: []labels.Labels{
+				labels.FromStrings(
+					"level", "info",
+				),
+				{},
+				{},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p := NewPipeline(tt.stages)
+			sp := p.ForStream(labels.EmptyLabels())
+			for i, line := range tt.lines {
+				finalLine, finalLbs, _ := sp.Process(0, line)
+				require.Equal(t, tt.wantLine[i], finalLine)
+				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
+			}
+		})
+	}
+
+}
+
 func Benchmark_Pipeline(b *testing.B) {
 	b.ReportAllocs()
 
 	stages := []Stage{
 		mustFilter(NewFilter("metrics.go", labels.MatchEqual)).ToStage(),
-		NewLogfmtParser(),
+		NewLogfmtParser(false, false),
 		NewAndLabelFilter(
 			NewDurationLabelFilter(LabelFilterGreaterThan, "duration", 10*time.Millisecond),
 			NewNumericLabelFilter(LabelFilterEqual, "status", 200.0),
@@ -430,13 +550,13 @@ func logfmtBenchmark(b *testing.B, parser Stage) {
 }
 
 func BenchmarkLogfmtParser(b *testing.B) {
-	logfmtBenchmark(b, NewLogfmtParser())
+	logfmtBenchmark(b, NewLogfmtParser(false, false))
 }
 
 func BenchmarkLogfmtExpressionParser(b *testing.B) {
 	parser, err := NewLogfmtExpressionParser([]LabelExtractionExpr{
 		NewLabelExtractionExpr("timestamp", "ts"),
-	})
+	}, false)
 	if err != nil {
 		b.Fatal("cannot create new logfmt expression parser:", err.Error())
 	}

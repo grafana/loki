@@ -85,7 +85,7 @@
 
         // You can use a headless k8s service for all distributor,
         // ingester and querier components.
-        join_members: ['gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort]],
+        join_members: ['dns+gossip-ring.%s.svc.cluster.local:%d' % [$._config.namespace, gossipRingPort]],
 
         max_join_backoff: '1m',
         max_join_retries: 10,

@@ -6,7 +6,6 @@ type Config struct {
 	LogPushRequestStreams bool `yaml:"log_push_request_streams"`
 
 	// LimitedLogPushErrors is to be implemented and will allow logging push failures at a controlled pace.
-	// TODO(dylanguedes): implement it.
 	LimitedLogPushErrors bool `yaml:"limited_log_push_errors"`
 }
 

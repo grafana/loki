@@ -38,7 +38,7 @@ var (
 	}.Froze()
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
+	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
 
 	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
 	PrometheusCodec Codec = &prometheusCodec{}
@@ -51,17 +51,17 @@ type prometheusCodec struct{}
 
 // WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
-	new := *q
-	new.Start = start
-	new.End = end
-	return &new
+	clone := *q
+	clone.Start = start
+	clone.End = end
+	return &clone
 }
 
 // WithQuery clones the current `PrometheusRequest` with a new query.
 func (q *PrometheusRequest) WithQuery(query string) Request {
-	new := *q
-	new.Query = query
-	return &new
+	clone := *q
+	clone.Query = query
+	return &clone
 }
 
 // LogToSpan logs the current `PrometheusRequest` parameters to the specified span.
@@ -277,7 +277,8 @@ func bodyBuffer(res *http.Response) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.Response, error) {
+// TODO(karsten): remove prometheusCodec from code base since only MergeResponse is used.
+func (prometheusCodec) EncodeResponse(ctx context.Context, _ *http.Request, res Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 

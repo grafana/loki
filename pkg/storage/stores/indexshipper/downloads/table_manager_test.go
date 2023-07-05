@@ -429,24 +429,24 @@ type mockTable struct {
 	queryReadinessDoneForUsers []string
 }
 
-func (m *mockTable) ForEach(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+func (m *mockTable) ForEach(_ context.Context, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
-func (m *mockTable) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
+func (m *mockTable) ForEachConcurrent(_ context.Context, _ string, _ index.ForEachIndexCallback) error {
 	return nil
 }
 
 func (m *mockTable) Close() {}
 
-func (m *mockTable) DropUnusedIndex(ttl time.Duration, now time.Time) (bool, error) {
+func (m *mockTable) DropUnusedIndex(_ time.Duration, _ time.Time) (bool, error) {
 	return m.tableExpired, nil
 }
 
-func (m *mockTable) Sync(ctx context.Context) error {
+func (m *mockTable) Sync(_ context.Context) error {
 	return nil
 }
 
-func (m *mockTable) EnsureQueryReadiness(ctx context.Context, userIDs []string) error {
+func (m *mockTable) EnsureQueryReadiness(_ context.Context, userIDs []string) error {
 	m.queryReadinessDoneForUsers = userIDs
 	return nil
 }
@@ -457,13 +457,15 @@ type mockIndexStorageClient struct {
 	userIndexesInTables map[string][]string
 }
 
-func (m *mockIndexStorageClient) ListTables(ctx context.Context) ([]string, error) {
+func (m *mockIndexStorageClient) ListTables(_ context.Context) ([]string, error) {
 	return m.tablesInStorage, nil
 }
 
-func (m *mockIndexStorageClient) ListFiles(ctx context.Context, tableName string, bypassCache bool) ([]storage.IndexFile, []string, error) {
+func (m *mockIndexStorageClient) ListFiles(_ context.Context, tableName string, _ bool) ([]storage.IndexFile, []string, error) {
 	return []storage.IndexFile{}, m.userIndexesInTables[tableName], nil
 }
+
+func (m *mockIndexStorageClient) RefreshIndexTableNamesCache(_ context.Context) {}
 
 func buildTableNumber(idx int) int64 {
 	return getActiveTableNumber() - int64(idx)

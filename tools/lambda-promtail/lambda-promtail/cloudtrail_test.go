@@ -13,7 +13,7 @@ func TestParseJson(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	gzipReader,err  := gzip.NewReader(file)
+	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
 		t.Error(err)
 	}

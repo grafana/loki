@@ -41,14 +41,19 @@ type Config struct {
 	// Deprecated: SplitQueriesByInterval will be removed in the next major release
 	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval" doc:"deprecated|description=Use -querier.split-queries-by-interval instead. CLI flag: -querier.split-queries-by-day. Split queries by day and execute in parallel."`
 
-	AlignQueriesWithStep   bool `yaml:"align_queries_with_step"`
-	ResultsCacheConfig     `yaml:"results_cache"`
-	CacheResults           bool `yaml:"cache_results"`
-	CacheIndexStatsResults bool `yaml:"cache_index_stats_results"`
-	MaxRetries             int  `yaml:"max_retries"`
-	ShardedQueries         bool `yaml:"parallelise_shardable_queries"`
+	AlignQueriesWithStep bool               `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   ResultsCacheConfig `yaml:"results_cache"`
+	CacheResults         bool               `yaml:"cache_results"`
+	MaxRetries           int                `yaml:"max_retries"`
+	ShardedQueries       bool               `yaml:"parallelise_shardable_queries"`
+
+	// TODO(karsten): remove used option ForwardHeaders with Loki 3.0 since
+	// it's a breaking change.
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+
+	// Required format for querier responses
+	RequiredQueryResponseFormat string `yaml:"required_query_response_format"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -56,9 +61,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
-	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", false, "Cache index stats query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
+
+	f.StringVar(&cfg.RequiredQueryResponseFormat, "frontend.required-query-response-format", "json", "The downstream querier is required to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
+
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
@@ -69,7 +76,7 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.CacheResults {
 		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
-			return errors.Wrap(err, "invalid ResultsCache config")
+			return errors.Wrap(err, "invalid results_cache config")
 		}
 	}
 	return nil
@@ -159,7 +166,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	return q.codec.EncodeResponse(r.Context(), response)
+	return q.codec.EncodeResponse(r.Context(), r, response)
 }
 
 type roundTripperHandler struct {
