@@ -167,11 +167,7 @@ func (m *StreamAdapter) GetHash() uint64 {
 type EntryAdapter struct {
 	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	// TODO: maybe we can use the labels.Labels type here?
-	//
-	//	So we can avoid the conversion to and from string.
-	//	Leaving it as string for now to be consistent with `labels` field in `StreamAdapter`.
-	Labels string `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+	Labels    string    `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
 }
 
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
