@@ -227,7 +227,7 @@ func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadC
 		size int64
 		rc   io.ReadCloser
 	)
-	err := loki_instrument.ObserveRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	err := loki_instrument.TimeRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		rc, size, err = b.getObject(ctx, objectKey)
 		return err
@@ -258,7 +258,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return loki_instrument.ObserveRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
 			return err
@@ -472,7 +472,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 			return nil, nil, ctx.Err()
 		}
 
-		err := loki_instrument.ObserveRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		err := loki_instrument.TimeRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 			listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 			if err != nil {
 				return err
@@ -505,7 +505,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
-	return loki_instrument.ObserveRequest(ctx, "azure.DeleteObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "azure.DeleteObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(blobID, false)
 		if err != nil {
 			return err

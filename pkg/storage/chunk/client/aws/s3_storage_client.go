@@ -381,7 +381,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 
-		lastErr = loki_instrument.ObserveRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
 			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
@@ -405,7 +405,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return loki_instrument.ObserveRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
 			Body:         object,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
@@ -430,7 +430,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	var commonPrefixes []client.StorageCommonPrefix
 
 	for i := range a.bucketNames {
-		err := loki_instrument.ObserveRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
 				Bucket:    aws.String(a.bucketNames[i]),
 				Prefix:    aws.String(prefix),

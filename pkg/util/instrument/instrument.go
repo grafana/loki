@@ -7,10 +7,10 @@ import (
 	"github.com/weaveworks/common/instrument"
 )
 
-// ObserveRequest reports how much time was spent on the given function  `f`.
+// TimeRequest reports how much time was spent on the given function  `f`.
 //
 // It is a thinner version of weaveworks/common/instrument.CollectedRequest that doesn't emit spans.
-func ObserveRequest(ctx context.Context, method string, col instrument.Collector, toStatusCode func(error) string, f func(context.Context) error) error {
+func TimeRequest(ctx context.Context, method string, col instrument.Collector, toStatusCode func(error) string, f func(context.Context) error) error {
 	if toStatusCode == nil {
 		toStatusCode = instrument.ErrorCode
 	}
