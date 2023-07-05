@@ -107,7 +107,7 @@ func Test_Config(t *testing.T) {
 			require.NoError(t, err)
 
 			if !reflect.DeepEqual(tc.expectedConfig, clientConfig) {
-				t.Errorf("Configs does not match, expected: %v, received: %v", tc.expectedConfig, clientConfig)
+				t.Errorf("Configs do not match, expected: %v, got: %v", tc.expectedConfig, clientConfig)
 			}
 		}
 	}
