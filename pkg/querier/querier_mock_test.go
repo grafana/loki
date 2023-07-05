@@ -23,11 +23,13 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // querierClientMock is a mockable version of QuerierClient, used in querier
@@ -546,4 +548,40 @@ func (q *querierMock) SeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 	}
 
 	return resp.(*logproto.VolumeResponse), err
+}
+
+type engineMock struct {
+	util.ExtendedMock
+}
+
+func newEngineMock() *engineMock {
+	return &engineMock{}
+}
+
+func (e *engineMock) Query(p logql.Params) logql.Query {
+	args := e.Called(p)
+	return args.Get(0).(logql.Query)
+}
+
+type queryMock struct {
+	result logqlmodel.Result
+}
+
+func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
+	return q.result, nil
+}
+
+type mockTenantLimits map[string]*validation.Limits
+
+func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+	limits, ok := tl[userID]
+	if !ok {
+		return &validation.Limits{}
+	}
+
+	return limits
+}
+
+func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return tl
 }
