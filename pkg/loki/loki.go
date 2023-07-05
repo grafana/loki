@@ -636,6 +636,7 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
+	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
 	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
 	mm.RegisterModule(Analytics, t.initAnalytics)
@@ -664,10 +665,10 @@ func (t *Loki) setupModuleManager() error {
 		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
-		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing},
+		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing, IndexGatewayInterceptors},
 		IngesterQuerier:          {Ring},
-		QuerySchedulerRing:       {RuntimeConfig, Server, MemberlistKV},
-		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
+		QuerySchedulerRing:       {Overrides, Server, MemberlistKV},
+		IndexGatewayRing:         {Overrides, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryFrontend, Querier},
 		Write:                    {Ingester, Distributor},

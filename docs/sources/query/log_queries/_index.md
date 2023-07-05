@@ -456,12 +456,41 @@ The **logfmt** parser can operate in two modes:
     ```logfmt
     at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
     ```
-    
+
     And rename `fwd` to `fwd_ip`:
     ```kv
     "host" => "grafana.net"
     "fwd_ip" => "124.133.124.161"
     ```
+
+The logfmt parser also supports the following flags:
+- `--strict` to enable strict parsing
+
+    With strict parsing enabled, the logfmt parser immediately stops scanning the log line and returns early with an error when it encounters any poorly formatted key/value pair.
+    ```
+    // accepted key/value pairs
+    key=value key="value in double quotes"
+
+    // invalid key/value pairs
+    =value // no key
+    foo=bar=buzz
+    fo"o=bar
+    ```
+
+    Without the `--strict` flag the parser skips invalid key/value pairs and continues parsing the rest of the log line.
+    Non-strict mode offers the flexibility to parse semi-structed log lines, though note that this is only best-effort.
+
+- `--keep-empty` to retain standalone keys with empty value
+
+    With `--keep-empty` flag set, the logfmt parser retains standalone keys(keys without a value) as labels with value set to empty string.
+    If the standalone key is explicitly requested using label extraction parameters, there is no need to add this flag.
+
+Note: flags if any should appear right after logfmt and before label extraction parameters
+```
+| logfmt --strict
+| logfmt --strict host, fwd_ip="fwd"
+| logfmt --keep-empty --strict host
+```
 
 #### Pattern
 
@@ -641,3 +670,44 @@ the result will be
 {host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 {app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
+
+### Keep Labels expression
+
+**Syntax**:  `|keep name, other_name, some_name="some_value"`
+
+The `| keep` expression will keep only the specified labels in the pipeline and drop all the other labels.
+
+{{% admonition type="note" %}}
+The keep stage will not drop the  __error__ or __error_details__ labels added by Loki at query time. To drop these labels, refer to [drop](#drop-labels-expression) stage.
+{{% /admonition %}}
+
+Query examples:
+
+For the query `{job="varlogs"}|json|keep level, method="GET"`, with the following log lines:
+
+```
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{level="info", method="GET"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{level="info"} {"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+For the query `{job="varlogs"}|json|keep level, tenant, app=~"some-api.*"`, with the following log lines:
+
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{app="some-api-service", level="info"} {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{level="info"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+

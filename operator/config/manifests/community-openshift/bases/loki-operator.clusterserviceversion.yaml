@@ -254,6 +254,11 @@ spec:
         path: limits.global.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.global.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -266,8 +271,8 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -333,6 +338,11 @@ spec:
         path: limits.tenants.ingestion.perStreamRateLimitBurst
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.tenants.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -345,8 +355,8 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
@@ -799,8 +809,8 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -862,8 +872,8 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:

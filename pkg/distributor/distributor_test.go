@@ -52,29 +52,46 @@ func TestDistributor(t *testing.T) {
 	for i, tc := range []struct {
 		lines            int
 		maxLineSize      uint64
-		mangleLabels     bool
+		streams          int
+		mangleLabels     int
 		expectedResponse *logproto.PushResponse
-		expectedError    error
+		expectedErrors   []error
 	}{
 		{
 			lines:            10,
+			streams:          1,
 			expectedResponse: success,
 		},
 		{
-			lines:         100,
-			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000),
+			lines:          100,
+			streams:        1,
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000)},
 		},
 		{
 			lines:            100,
+			streams:          1,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10),
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, "100 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
 		},
 		{
 			lines:            100,
-			mangleLabels:     true,
+			streams:          1,
+			mangleLabels:     1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string"),
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")},
+		},
+		{
+			lines:            10,
+			streams:          2,
+			mangleLabels:     1,
+			maxLineSize:      1,
+			expectedResponse: success,
+			expectedErrors: []error{
+				httpgrpc.Errorf(http.StatusBadRequest, ""),
+				fmt.Errorf("1 errors like: %s", fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")),
+				fmt.Errorf("10 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10)),
+			},
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
@@ -87,15 +104,29 @@ func TestDistributor(t *testing.T) {
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
-			request := makeWriteRequest(tc.lines, 10)
-
-			if tc.mangleLabels {
-				request.Streams[0].Labels = `{ab"`
+			var request logproto.PushRequest
+			for i := 0; i < tc.streams; i++ {
+				req := makeWriteRequest(tc.lines, 10)
+				request.Streams = append(request.Streams, req.Streams[0])
 			}
 
-			response, err := distributors[i%len(distributors)].Push(ctx, request)
+			for i := 0; i < tc.mangleLabels; i++ {
+				request.Streams[i].Labels = `{ab"`
+			}
+
+			response, err := distributors[i%len(distributors)].Push(ctx, &request)
 			assert.Equal(t, tc.expectedResponse, response)
-			assert.Equal(t, tc.expectedError, err)
+			if len(tc.expectedErrors) > 0 {
+				for _, expectedError := range tc.expectedErrors {
+					if len(tc.expectedErrors) == 1 {
+						assert.Equal(t, err, expectedError)
+					} else {
+						assert.Contains(t, err.Error(), expectedError.Error())
+					}
+				}
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
@@ -322,6 +353,34 @@ func Test_IncrementTimestamp(t *testing.T) {
 							{Timestamp: time.Unix(123456, 0), Line: "heyooooooo"},
 							{Timestamp: time.Unix(123456, 1), Line: "hi"},
 							{Timestamp: time.Unix(123456, 2), Line: "hey there"},
+						},
+					},
+				},
+			},
+		},
+		"incrementing enabled, no dupes, out of order": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
 						},
 					},
 				},

@@ -24,7 +24,7 @@ spec:
       partition: 0
   serviceName: {{ include "loki.singleBinaryFullname" . }}-headless
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC)  }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.singleBinary.persistence.enableStatefulSetAutoDeletePVC) (.Values.singleBinary.persistence.enabled) }}
   {{/*
     Data on the singleBinary nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -151,8 +151,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         - name: runtime-config
           configMap:

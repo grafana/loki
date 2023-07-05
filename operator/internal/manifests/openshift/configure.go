@@ -76,6 +76,30 @@ func ConfigureGatewayDeployment(
 	return nil
 }
 
+// ConfigureGatewayDeploymentRulesAPI merges CLI argument to the gateway container
+// that allow only Rules API access with a valid namespace input for the tenant application.
+func ConfigureGatewayDeploymentRulesAPI(d *appsv1.Deployment, containerName string) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == containerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	container := corev1.Container{
+		Args: []string{
+			fmt.Sprintf("--logs.rules.label-filters=%s:%s", tenantApplication, opaDefaultLabelMatcher),
+		},
+	}
+
+	if err := mergo.Merge(&d.Spec.Template.Spec.Containers[gwIndex], container, mergo.WithAppendSlice); err != nil {
+		return kverrors.Wrap(err, "failed to merge container")
+	}
+
+	return nil
+}
+
 // ConfigureGatewayService merges the OpenPolicyAgent sidecar metrics port into
 // the service spec. With this the metrics are exposed through the same service.
 func ConfigureGatewayService(s *corev1.ServiceSpec) error {

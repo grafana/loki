@@ -91,7 +91,15 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 
+	cfg.Client = config.DefaultHTTPClientConfig
+
 	if err := unmarshal(&cfg); err != nil {
+		return err
+	}
+
+	// explicitly call Validate on HTTPClientConfig as it's UnmarshalYAML
+	// method doesn't get invoked given that it's not a pointer.
+	if err := cfg.Client.Validate(); err != nil {
 		return err
 	}
 

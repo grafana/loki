@@ -44,7 +44,6 @@ func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
 
 func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
 	mergedVolumes := make(map[string]uint64)
-
 	for _, res := range responses {
 		if res == nil {
 			// Some stores return nil responses
@@ -64,17 +63,12 @@ func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int) *logp
 	for name, size := range mergedVolumes {
 		volumes = append(volumes, logproto.Volume{
 			Name:   name,
-			Value:  "",
 			Volume: size,
 		})
 	}
 
 	sort.Slice(volumes, func(i, j int) bool {
 		if volumes[i].Volume == volumes[j].Volume {
-			if volumes[i].Name == volumes[j].Name {
-				return volumes[i].Value < volumes[j].Value
-			}
-
 			return volumes[i].Name < volumes[j].Name
 		}
 

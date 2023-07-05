@@ -14,7 +14,7 @@ require (
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Shopify/sarama v1.38.1
 	github.com/Workiva/go-datastructures v1.0.53
-	github.com/alicebob/miniredis/v2 v2.30.2
+	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.7+incompatible
 	github.com/aws/aws-sdk-go v1.44.217
 	github.com/baidubce/bce-sdk-go v0.9.141
@@ -82,7 +82,7 @@ require (
 	// github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pierrec/lz4/v4 v4.1.17
 	github.com/pkg/errors v0.9.1
-	github.com/prometheus/client_golang v1.15.1
+	github.com/prometheus/client_golang v1.16.0
 	github.com/prometheus/client_model v0.4.0
 	github.com/prometheus/common v0.43.0
 	github.com/prometheus/prometheus v0.43.1-0.20230419161410-69155c6ba1e9
@@ -101,7 +101,7 @@ require (
 	go.uber.org/goleak v1.2.1
 	golang.org/x/crypto v0.9.0
 	golang.org/x/net v0.10.0
-	golang.org/x/sync v0.1.0
+	golang.org/x/sync v0.2.0
 	golang.org/x/sys v0.8.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.114.0
@@ -118,7 +118,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
-	github.com/heroku/x v0.0.55
+	github.com/heroku/x v0.0.59
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
@@ -266,7 +266,7 @@ require (
 	github.com/pkg/browser v0.0.0-20210911075715-681adbf594b8 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/prometheus/exporter-toolkit v0.9.1 // indirect
-	github.com/prometheus/procfs v0.9.0 // indirect
+	github.com/prometheus/procfs v0.10.1 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
 	github.com/rootless-containers/rootlesskit v1.1.0 // indirect
 	github.com/rs/xid v1.4.0 // indirect

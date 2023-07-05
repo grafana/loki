@@ -1,11 +1,14 @@
 ---
-title: Labels
-description: Labels
-weight: 300
+menuTitle: Labels
+title: Understand labels
+description: Explains how to Loki uses labels to define log streams.
+weight: 600
 aliases:
     - /docs/loki/latest/getting-started/labels/
+    - /docs/loki/latest/fundamentals/labels/
+    - /docs/loki/latest/get-started/labels/
 ---
-# Labels
+# Understand labels
 
 Labels are key value pairs and can be defined as anything! We like to refer to them as metadata to describe a log stream. If you are familiar with Prometheus, there are a few labels you are used to seeing like `job` and `instance`, and I will use those in the coming examples.
 

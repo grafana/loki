@@ -47,8 +47,9 @@ const (
 
 	bytesInMB = 1048576
 
-	defaultPerStreamRateLimit  = 3 << 20 // 3MB
-	defaultPerStreamBurstLimit = 5 * defaultPerStreamRateLimit
+	defaultPerStreamRateLimit   = 3 << 20   // 3MB
+	DefaultTSDBMaxBytesPerShard = 600 << 20 // 600MB
+	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
 )
@@ -81,28 +82,30 @@ type Limits struct {
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery          int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
-	MaxQuerySeries             int            `yaml:"max_query_series" json:"max_query_series"`
-	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryRange              model.Duration `yaml:"max_query_range" json:"max_query_range"`
-	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
-	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
-	MaxStreamsMatchersPerQuery int            `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
-	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
-	MaxEntriesLimitPerQuery    int            `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
-	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
-	MaxStatsCacheFreshness     model.Duration `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
-	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
-	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
+	MaxChunksPerQuery          int              `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
+	MaxQuerySeries             int              `yaml:"max_query_series" json:"max_query_series"`
+	MaxQueryLookback           model.Duration   `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength             model.Duration   `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange              model.Duration   `yaml:"max_query_range" json:"max_query_range"`
+	MaxQueryParallelism        int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
+	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
+	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
+	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
+	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
+	MaxQueriersPerTenant       int              `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
+	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
 	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
 	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
 	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
 
 	// Ruler defaults and limits.
 
@@ -173,6 +176,8 @@ type Limits struct {
 
 	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
+
+	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 }
 
 type StreamRetention struct {
@@ -232,6 +237,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how far back in time series data and metadata can be queried, up until lookback duration ago. This limit is enforced in the query frontend, the querier and the ruler. If the requested time range is outside the allowed range, the request will not fail, but will be modified to only query data within the allowed time range. The default value of 0 does not set a limit.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries that will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 512, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
+	_ = l.TSDBMaxBytesPerShard.Set(strconv.Itoa(DefaultTSDBMaxBytesPerShard))
+	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc).")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Maximum number of concurrent tail requests.")
@@ -271,6 +278,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
+
+	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
@@ -467,6 +476,11 @@ func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
 // frontend will process in parallel for TSDB schemas.
 func (o *Overrides) TSDBMaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).TSDBMaxQueryParallelism
+}
+
+// TSDBMaxBytesPerShard returns the maximum number of bytes assigned to a specific shard in a tsdb query
+func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
+	return o.getOverridesForUser(userID).TSDBMaxBytesPerShard.Val()
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
@@ -728,6 +742,15 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+// VolumeEnabled returns whether volume endpoints are enabled for a user.
+func (o *Overrides) VolumeEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).VolumeEnabled
+}
+
+func (o *Overrides) IndexGatewayShardSize(userID string) int {
+	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

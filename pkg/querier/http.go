@@ -7,15 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/prometheus/common/model"
-
-	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/weaveworks/common/httpgrpc"
@@ -25,16 +22,17 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
-	"github.com/grafana/loki/pkg/util/server"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
@@ -98,9 +96,9 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		serverutil.WriteError(err, w)
 		return
 	}
-	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -135,9 +133,8 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -190,9 +187,8 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := marshal_legacy.WriteQueryResponseJSON(result, w); err != nil {
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -224,7 +220,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		status, _ = server.ClientHTTPStatusAndError(err)
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
@@ -234,14 +230,8 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-		err = marshal.WriteLabelResponseJSON(*resp, w)
-	} else {
-		err = marshal_legacy.WriteLabelResponseJSON(*resp, w)
-	}
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -399,7 +389,7 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 
 	status := 200
 	if err != nil {
-		status, _ = server.ClientHTTPStatusAndError(err)
+		status, _ = serverutil.ClientHTTPStatusAndError(err)
 	}
 
 	logql.RecordSeriesQueryMetrics(ctx, log, req.Start, req.End, req.Groups, strconv.Itoa(status), statResult)
@@ -408,10 +398,8 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = marshal.WriteSeriesResponseJSON(*resp, w)
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
@@ -435,16 +423,18 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = marshal.WriteIndexStatsResponseJSON(resp, w)
-	if err != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 
-// SeriesVolumeHandler queries the index label volumes related to the passed matchers
-func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseSeriesVolumeQuery(r)
+//TODO(trevorwhitney): add test for the handler split
+
+// SeriesVolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns N values where N is the time range / step.
+func (q *QuerierAPI) SeriesVolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -454,10 +444,36 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
 		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
 		Matchers: rawReq.Query,
+		Step:     rawReq.Step.Milliseconds(),
 		Limit:    int32(rawReq.Limit),
 	}
 
-	resp, err := q.querier.SeriesVolume(r.Context(), req)
+	q.seriesVolumeHandler(r.Context(), r, req, w)
+}
+
+// SeriesVolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
+// Returns a single value for the time range.
+func (q *QuerierAPI) SeriesVolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseSeriesVolumeInstantQuery(r)
+
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	req := &logproto.VolumeRequest{
+		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers: rawReq.Query,
+		Step:     0,
+		Limit:    int32(rawReq.Limit),
+	}
+
+	q.seriesVolumeHandler(r.Context(), r, req, w)
+}
+
+func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
+	resp, err := q.querier.SeriesVolume(ctx, req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return
@@ -467,9 +483,8 @@ func (q *QuerierAPI) SeriesVolumeHandler(w http.ResponseWriter, r *http.Request)
 		resp = &logproto.VolumeResponse{Volumes: []logproto.Volume{}}
 	}
 
-	if marshal.WriteSeriesVolumeResponseJSON(resp, w) != nil {
+	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
 		serverutil.WriteError(err, w)
-		return
 	}
 }
 

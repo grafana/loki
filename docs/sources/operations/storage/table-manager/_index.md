@@ -200,13 +200,13 @@ The Table Manager can be executed in two ways:
 
 ### Monolithic mode
 
-When Loki runs in [monolithic mode]({{< relref "../../../fundamentals/architecture/deployment-modes" >}}),
+When Loki runs in [monolithic mode]({{< relref "../../../get-started/deployment-modes" >}}),
 the Table Manager is also started as component of the entire stack.
 
 
 ### Microservices mode
 
-When Loki runs in [microservices mode]({{< relref "../../../fundamentals/architecture/deployment-modes" >}}),
+When Loki runs in [microservices mode]({{< relref "../../../get-started/deployment-modes" >}}),
 the Table Manager should be started as separate service named `table-manager`.
 
 You can check out a production grade deployment example at

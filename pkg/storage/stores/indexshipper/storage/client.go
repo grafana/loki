@@ -33,8 +33,9 @@ type Client interface {
 	CommonIndexClient
 	UserIndexClient
 
-	RefreshIndexListCache(ctx context.Context)
+	RefreshIndexTableNamesCache(ctx context.Context)
 	ListTables(ctx context.Context) ([]string, error)
+	RefreshIndexTableCache(ctx context.Context, tableName string)
 	IsFileNotFoundErr(err error) bool
 	Stop()
 }
@@ -53,8 +54,12 @@ func NewIndexStorageClient(origObjectClient client.ObjectClient, storagePrefix s
 	return &indexStorageClient{objectClient: objectClient}
 }
 
-func (s *indexStorageClient) RefreshIndexListCache(ctx context.Context) {
-	s.objectClient.RefreshIndexListCache(ctx)
+func (s *indexStorageClient) RefreshIndexTableNamesCache(ctx context.Context) {
+	s.objectClient.RefreshIndexTableNamesCache(ctx)
+}
+
+func (s *indexStorageClient) RefreshIndexTableCache(ctx context.Context, tableName string) {
+	s.objectClient.RefreshIndexTableCache(ctx, tableName)
 }
 
 func (s *indexStorageClient) ListTables(ctx context.Context) ([]string, error) {

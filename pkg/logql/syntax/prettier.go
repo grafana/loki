@@ -100,8 +100,11 @@ func (e *LineFilterExpr) Pretty(level int) string {
 	return s
 }
 
+func (e *LogfmtParserExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
 // e.g:
-// `| logfmt`
 // `| json`
 // `| regexp`
 // `| pattern`
@@ -111,6 +114,10 @@ func (e *LabelParserExpr) Pretty(level int) string {
 }
 
 func (e *DropLabelsExpr) Pretty(level int) string {
+	return commonPrefixIndent(level, e)
+}
+
+func (e *KeepLabelsExpr) Pretty(level int) string {
 	return commonPrefixIndent(level, e)
 }
 

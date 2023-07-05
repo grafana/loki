@@ -32,12 +32,16 @@ func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Man
 }
 
 func (m *Manager) Log(tenantID string, err error) {
+	if m == nil {
+		return
+	}
+
 	if !m.tenantCfgs.LimitedLogPushErrors(tenantID) {
 		return
 	}
 
 	errMsg := err.Error()
 	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
-		level.Error(m.logger).Log("msg", "write operation failed", "err", errMsg)
+		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID)
 	}
 }
