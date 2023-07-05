@@ -13,8 +13,7 @@ import (
 // the latter two of which have len(k), to track the top k events by frequency.
 type Topk struct {
 	max                 int
-	currentTop          map[string]uint32
-	heap                MinHeap
+	heap                *MinHeap
 	sketch              *CountMinSketch
 	hashfuncs, rowlen   int
 	hll                 *hyperloglog.Sketch
@@ -46,30 +45,29 @@ func getCMSWidth(l log.Logger, c int) int {
 	return width
 }
 
-func NewCMSTopkForCardinality(l log.Logger, k, c int) (Topk, error) {
+func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
 	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
 	w := getCMSWidth(l, c)
 	d := 4
 
 	sk, err := NewCMSTopK(k, w, d)
 	if err != nil {
-		return Topk{}, err
+		return &Topk{}, err
 	}
 	sk.expectedCardinality = c
 	return sk, nil
 }
 
-func NewCMSTopK(k, w, d int) (Topk, error) {
+func NewCMSTopK(k, w, d int) (*Topk, error) {
 	s, err := NewCountMinSketch(w, d)
 	if err != nil {
-		return Topk{}, nil
+		return &Topk{}, nil
 	}
-	return Topk{
-		max:        k,
-		currentTop: make(map[string]uint32, k),
-		heap:       MinHeap{},
-		sketch:     s,
-		hll:        hyperloglog.New16(),
+	return &Topk{
+		max:    k,
+		heap:   &MinHeap{},
+		sketch: s,
+		hll:    hyperloglog.New16(),
 	}, nil
 }
 
@@ -81,30 +79,35 @@ func (t *Topk) Observe(event string) {
 	// check if the event is already in the topk, if it is we should update it's count
 	if t.InTopk(event) {
 		t.heap.update(event, estimate)
-		t.currentTop[event] = estimate
 		return
 	}
 
-	if len(t.currentTop) < t.max {
-		heap.Push(&t.heap, &node{event: event, count: estimate})
-		t.currentTop[event] = estimate
+	if len(*t.heap) < t.max {
+		heap.Push(t.heap, &node{event: event, count: estimate})
 		return
 	}
 
 	if estimate > t.heap.Peek().(*node).count {
-		if len(t.currentTop) == t.max {
-			min := heap.Pop(&t.heap).(*node)
-			// todo: refactor so we have a nicer way of not calling pop if the
-			// heap length is 0
-			if min != nil {
-				delete(t.currentTop, min.event)
-			}
+		if len(*t.heap) == t.max {
+			_ = heap.Pop(t.heap).(*node)
 		}
-
 		ele := node{event: event, count: estimate}
-		heap.Push(&t.heap, &ele)
-		t.currentTop[event] = estimate
+		heap.Push(t.heap, &ele)
 	}
+}
+
+func removeDuplicates(t TopKResult) TopKResult {
+	processed := map[string]struct{}{}
+	w := 0
+	for _, e := range t {
+		if _, exists := processed[e.Event]; !exists {
+			// If this city has not been seen yet, add it to the list
+			processed[e.Event] = struct{}{}
+			t[w] = e
+			w++
+		}
+	}
+	return t[:w]
 }
 
 // Merge the given sketch into this one.
@@ -114,24 +117,29 @@ func (t *Topk) Merge(from *Topk) error {
 	if err != nil {
 		return err
 	}
-	// do we want to update the heap, or just merge the topk maps
-	// and get the new list, with a length > k, and sort then get the real
-	// topk, we will have to benchmark and check accuracy
 
-	// merge them all in
-	for e := range from.currentTop {
-		if _, ok := t.currentTop[e]; ok {
-			continue
-		}
-		t.currentTop[e] = 0
+	var all TopKResult
+	for _, e := range *t.heap {
+		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
 	}
+
+	for _, e := range *from.heap {
+		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+	}
+	all = removeDuplicates(all)
+	sort.Sort(all)
+	temp := &MinHeap{}
+	for _, e := range all[:t.max] {
+		heap.Push(temp, &node{event: e.Event, count: uint32(e.Count)})
+	}
+	t.heap = temp
 
 	return nil
 }
 
 // InTopk checks to see if an event is already in the topk for this query
 func (t *Topk) InTopk(event string) bool {
-	_, ok := t.currentTop[event]
+	_, ok := t.heap.Find(event)
 	return ok
 }
 
@@ -150,17 +158,20 @@ func (t TopKResult) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
 
 func (t *Topk) Topk() TopKResult {
 	n := t.max
-	if len(t.currentTop) < t.max {
-		n = len(t.currentTop)
+	if len(*t.heap) < t.max {
+		n = len(*t.heap)
 	}
-	res := make(TopKResult, 0, len(t.currentTop))
-	for e := range t.currentTop {
+	res := make(TopKResult, 0, len(*t.heap))
+	for _, e := range *t.heap {
 		res = append(res, element{
-			Event: e,
-			Count: int64(t.sketch.Count(e)),
+			Event: e.event,
+			Count: int64(t.sketch.Count(e.event)),
 		})
 	}
 	sort.Sort(res)
+	//fmt.Println("sizeof CMS sketch:", size.Of(t.sketch))
+	//fmt.Println("sizeof heap: ", size.Of(t.heap))
+	//fmt.Println("sizeof hll: ", size.Of(t.hll))
 	return res[:n]
 }
 

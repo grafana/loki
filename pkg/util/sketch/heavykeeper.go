@@ -2,13 +2,12 @@ package sketch
 
 import (
 	"container/heap"
+	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"math"
 	"math/rand"
 	"sort"
-
-	"github.com/axiomhq/hyperloglog"
 )
 
 type heavyKeeper struct {
@@ -18,12 +17,8 @@ type heavyKeeper struct {
 }
 
 type HeavyKeeperTopK struct {
-	k     uint32
-	decay float64
-	// string to refs
-	currentTop map[string]uint32
-	// refs to strings
-	currentTopReverse   map[uint32]string
+	k                   uint32
+	decay               float64
 	heap                MinHeap
 	sketch              [][]heavyKeeper
 	hll                 *hyperloglog.Sketch
@@ -71,13 +66,11 @@ func NewHeavyKeeperTopK(decay float64, k, w, d int) HeavyKeeperTopK {
 		sk[i] = make([]heavyKeeper, w)
 	}
 	return HeavyKeeperTopK{
-		decay:             decay,
-		k:                 uint32(k),
-		currentTop:        make(map[string]uint32, 2*k),
-		currentTopReverse: make(map[uint32]string),
-		heap:              MinHeap{},
-		sketch:            sk,
-		hll:               hyperloglog.New16(),
+		decay:  decay,
+		k:      uint32(k),
+		heap:   MinHeap{},
+		sketch: sk,
+		hll:    hyperloglog.New16(),
 	}
 }
 
@@ -85,18 +78,17 @@ func (t *HeavyKeeperTopK) Observe(event string) {
 	t.hll.Insert([]byte(event))
 
 	heapMin := uint32(0)
-	if len(t.currentTop) > 0 {
+	if len(t.heap) > 0 {
 		heapMin = t.heap.Peek().(*node).count
 	}
-	removed := false
-	var removedEvent uint32
+
 	h1, h2 := hashn(event)
 	maxCount := uint32(0)
 	for i := uint32(0); int(i) < len(t.sketch); i++ {
 		_, itemHeapExist := t.heap.Find(event)
 		// there should be a better way to do this but at the moment we need to
 		// update the min for each iteration in case we inserted or updated on the last round
-		if len(t.currentTop) > 0 {
+		if len(t.heap) > 0 {
 			heapMin = t.heap.Peek().(*node).count
 		}
 
@@ -125,8 +117,8 @@ func (t *HeavyKeeperTopK) Observe(event string) {
 			if rand.Float64() < decay {
 				t.sketch[i][pos].count--
 				if t.sketch[i][pos].count == 0 {
-					removed = true
-					removedEvent = t.sketch[i][pos].fp
+					//removed = true
+					//removedEvent = t.sketch[i][pos].fp
 					t.sketch[i][pos].fp = h1
 					t.sketch[i][pos].count = 1
 
@@ -137,48 +129,35 @@ func (t *HeavyKeeperTopK) Observe(event string) {
 			}
 		}
 
-		if removed {
-			delete(t.currentTop, t.currentTopReverse[h1])
-			delete(t.currentTopReverse, removedEvent)
-		}
-
 		// update heap
 		if itemHeapExist {
 			t.heap.update(event, maxCount)
-			t.currentTop[event] = h1
-			t.currentTopReverse[h1] = event
 			continue
 		}
 		// item doesn't exist in heap
 		// if we aren't already tracking the max # of things we can just add this event
-		if len(t.currentTop) < int(t.k) {
+		if len(t.heap) < int(t.k) {
 			heap.Push(&t.heap, &node{
 				event: event,
 				count: maxCount,
 			})
-
-			t.currentTop[event] = h1
-			t.currentTopReverse[h1] = event
 			continue
 		}
 		// otherwise, if the max count for this event is > heap min
 		// we need to pop the top and add the new event
 		if maxCount > heapMin {
-			m := heap.Pop(&t.heap)
-			delete(t.currentTop, m.(*node).event)
+			heap.Pop(&t.heap)
 			heap.Push(&t.heap, &node{
 				event: event,
 				count: maxCount,
 			})
-			t.currentTop[event] = h1
-			t.currentTopReverse[h1] = event
 		}
 	}
 }
 
 // InTopk checks to see if an event is already in the topk for this query
 func (t *HeavyKeeperTopK) InTopk(event string) bool {
-	_, ok := t.currentTop[event]
+	_, ok := t.heap.Find(event)
 	return ok
 }
 
@@ -197,31 +176,36 @@ func (t *HeavyKeeperTopK) query(event string) uint32 {
 }
 
 func (t *HeavyKeeperTopK) Topk() TopKResult {
-	res := make(TopKResult, 0, len(t.currentTop))
+	res := make(TopKResult, 0, len(t.heap))
 	for _, e := range t.heap {
 		res = append(res, element{
 			Event: e.event,
 			Count: int64(e.count),
 		})
 	}
+	//fmt.Println("len(heap): ", len(t.heap))
+	//fmt.Println("sizeof HK sketch:", size.Of(t.sketch))
+	//fmt.Println("sizeof heap: ", size.Of(t.heap))
+	//fmt.Println("sizeof hll: ", size.Of(t.hll))
 	sort.Sort(res)
-	return res
+	return res[:t.k]
 }
 
 // Merge the given sketch into this one.
 // The sketches must have the same dimensions.
 func (t *HeavyKeeperTopK) Merge(from *HeavyKeeperTopK) error {
 	// merging via using the same logic as observe to decay or increment counters
-	// or via this merge extension of the currentTop map doesn't seem to be consistently
-	// as accurate as if we'd just used a single HK sketch
-	for e := range from.currentTop {
-		if _, ok := t.currentTop[e]; ok {
-			t.heap.update(e, from.query(e))
+	// or via this merge extension of the heap doesn't seem to be consistently
+	// as accurate as if we'd just used a single HK sketch, AFAICT there is no official
+	// proven way of merging HK sketches
+	for _, e := range from.heap {
+		if _, ok := t.heap.Find(e.event); ok {
+			t.heap.update(e.event, from.query(e.event))
 			continue
 		}
 		t.heap.Push(&node{
-			event: e,
-			count: from.query(e),
+			event: e.event,
+			count: from.query(e.event),
 		})
 	}
 
