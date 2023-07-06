@@ -772,9 +772,9 @@ check-doc: doc
 # Example Configs #
 ###################
 
-# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+# Validate the example configurations that we provide in ./docs/sources/configure/examples
 validate-example-configs: loki
-	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in ./docs/sources/configure/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
@@ -794,7 +794,7 @@ generate-example-config-doc:
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+	@if ! (git diff --exit-code ./docs/sources/configure/examples.md); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \

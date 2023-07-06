@@ -3,8 +3,8 @@ title: Query frontend
 menuTitle:  
 description: Kubernetes query frontent example.
 aliases: 
-  - /docs/sources/configuration/query-frontend/
-  - /docs/sources/configure/query-frontend/
+  - ../configuration/query-frontend/
+  - ../configure/query-frontend/
 weight:  200
 ---
 # Query frontend
