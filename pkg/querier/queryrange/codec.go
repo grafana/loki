@@ -1061,6 +1061,16 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 		return &paramsRangeWrapper{
 			LokiRequest: r,
 		}, nil
+	case *logproto.VolumeRequest:
+		return &paramsRangeWrapper{
+			LokiRequest: &LokiRequest{
+				Query:   r.GetQuery(),
+				Limit:   uint32(r.GetLimit()),
+				Step:    r.GetStep(),
+				StartTs: time.UnixMilli(r.GetStart()),
+				EndTs:   time.UnixMilli(r.GetEnd()),
+			},
+		}, nil
 	case *LokiInstantRequest:
 		return &paramsInstantWrapper{
 			LokiInstantRequest: r,
