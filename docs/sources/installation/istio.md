@@ -19,7 +19,7 @@ If you try to add `loki` to `Grafana` data sources, you will see logs like (`emp
 loki level=warn ts=2021-11-24T08:02:42.08262122Z caller=logging.go:72 traceID=3fc821042d8ada1a orgID=fake msg="GET /loki/api/v1/labels?end=1637740962079859431&start=1637740361925000000 (500) 97.4µs Response: \"empty ring\\n\" ws: false; X-Scope-Orgid: fake; uber-trace-id: 3fc821042d8ada1a:1feed8872deea75c:1180f95a8235bb6c:0; "
 ```
 
-When you enable istio-injection on the namespace where Loki is running, you need to also modify the configuration for the Loki services. Given that Istio will not allow a pod to resolve another mod using an IP address, you must also modify the `memberlist` service.
+When you enable istio-injection on the namespace where Loki is running, you need to also modify the configuration for the Loki services. Given that Istio will not allow a pod to resolve another pod using an IP address, you must also modify the `memberlist` service.
 
 ## Required changes
 
