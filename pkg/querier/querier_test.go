@@ -966,8 +966,8 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
-func TestQuerier_LabeleVolumes(t *testing.T) {
-	t.Run("it returns label volumes from the store", func(t *testing.T) {
+func TestQuerier_SeriesVolumes(t *testing.T) {
+	t.Run("it returns series volumes from the store", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Volume: 38},
 		}}
@@ -976,7 +976,7 @@ func TestQuerier_LabeleVolumes(t *testing.T) {
 		require.NoError(t, err)
 
 		store := newStoreMock()
-		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 		querier := SingleTenantQuerier{
 			store:  store,
 			limits: limits,
