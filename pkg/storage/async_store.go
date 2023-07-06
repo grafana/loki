@@ -165,7 +165,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	return &merged, nil
 }
 
-func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.SeriesVolume")
 	defer sp.Finish()
 
@@ -186,7 +186,7 @@ func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, thro
 		})
 	}
 	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-		vols, err := a.Store.SeriesVolume(ctx, userID, from, through, limit, matchers...)
+		vols, err := a.Store.SeriesVolume(ctx, userID, from, through, limit, targetLabels, matchers...)
 		level.Debug(logger).Log(
 			"msg", "queried label volume",
 			"matchers", matchersStr,

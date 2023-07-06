@@ -629,15 +629,48 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	matchAny := len(matchers) == 0
+	targetLabels := req.TargetLabels
+	collectToTargets := len(targetLabels) > 0
+
+	matchAny := len(matchers) == 0 && !collectToTargets
+	matchAnyIndex := -1
+
 	labelsToMatch := make(map[string]struct{})
-	for _, m := range matchers {
+	targetsFound := make(map[string]bool, len(targetLabels))
+	for _, target := range targetLabels {
+		labelsToMatch[target] = struct{}{}
+		targetsFound[target] = false
+	}
+
+	for i, m := range matchers {
 		if m.Name == "" {
-			matchAny = true
+			matchAnyIndex = i
+			matchAny = !collectToTargets
 			continue
 		}
 
-		labelsToMatch[m.Name] = struct{}{}
+		if !collectToTargets {
+			labelsToMatch[m.Name] = struct{}{}
+		}
+
+		if found, ok := targetsFound[m.Name]; ok && !found {
+			targetsFound[m.Name] = true
+		}
+	}
+
+	// Make sure all target labels are included in the matchers.
+	if collectToTargets {
+		for target, found := range targetsFound {
+			if !found {
+				matcher := labels.MustNewMatcher(labels.MatchRegexp, target, ".+")
+				matchers = append(matchers, matcher)
+			}
+		}
+
+		// If target labels has added a matcher, we can remove the all matcher
+		if matchAnyIndex > -1 && len(matchers) > 1 {
+			matchers = append(matchers[:matchAnyIndex], matchers[matchAnyIndex+1:]...)
+		}
 	}
 
 	seriesNames := make(map[uint64]string)

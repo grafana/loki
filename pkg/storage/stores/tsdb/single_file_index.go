@@ -324,15 +324,32 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 // {foo="a", fizz="b"}
 // {foo="b", fizz="a"}
 // {foo="b", fizz="b"}
-func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
+//
+// SeriesVolume optionally accepts a slice of target labels. If provided, volumes are aggregated
+// into those labels only. For exmaple, given the matcher {fizz=~".+"} and target labels of []string{"foo"},
+// volumes would be aggregated as follows:
+//
+// {foo="a"} which would be the sum of {foo="a", fizz="a"} and {foo="a", fizz="b"}
+// {foo="b"} which would be the sum of {foo="b", fizz="a"} and {foo="b", fizz="b"}
+func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, targetLabels []string, matchers ...*labels.Matcher) error {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.SeriesVolume")
 	defer sp.Finish()
 
-	var matchAll bool
+	var includeAll bool
+	matchAllIndex := -1
+	collectToTargets := len(targetLabels) > 0
+
 	labelsToMatch := make(map[string]struct{})
-	for _, m := range matchers {
+	targetsFound := make(map[string]bool, len(targetLabels))
+	for _, target := range targetLabels {
+		labelsToMatch[target] = struct{}{}
+		targetsFound[target] = false
+	}
+
+	for i, m := range matchers {
 		if m.Name == "" {
-			matchAll = true
+			matchAllIndex = i
+			includeAll = !collectToTargets
 			continue
 		}
 
@@ -340,7 +357,28 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 			continue
 		}
 
-		labelsToMatch[m.Name] = struct{}{}
+		if !collectToTargets {
+			labelsToMatch[m.Name] = struct{}{}
+		}
+
+		if found, ok := targetsFound[m.Name]; ok && !found {
+			targetsFound[m.Name] = true
+		}
+	}
+
+	// Make sure all target labels are included in the matchers.
+	if collectToTargets {
+		for target, found := range targetsFound {
+			if !found {
+				matcher := labels.MustNewMatcher(labels.MatchRegexp, target, ".+")
+				matchers = append(matchers, matcher)
+			}
+		}
+
+		// If target labels has added a matcher, we can remove the all matcher
+		if matchAllIndex > -1 && len(matchers) > 1 {
+			matchers = append(matchers[:matchAllIndex], matchers[matchAllIndex+1:]...)
+		}
 	}
 
 	seriesNames := make(map[uint64]string)
@@ -372,7 +410,7 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 			if stats.Entries > 0 {
 				seriesLabels = seriesLabels[:0]
 				for _, l := range ls {
-					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && matchAll || ok {
+					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 						seriesLabels = append(seriesLabels, l)
 					}
 				}

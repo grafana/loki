@@ -808,6 +808,7 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 		req.From,
 		req.Through,
 		req.Limit,
+		req.TargetLabels,
 		matchers...,
 	)
 }
