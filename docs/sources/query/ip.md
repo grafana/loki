@@ -3,8 +3,8 @@ title: Matching IP addresses
 menuTItle:  
 description: LogQL supports matching IP addresses.
 aliases: 
- - /docs/loki/latest/logql
- - /docs/loki/latest/query
+ - ../logql/ip/
+ - ../query/ip/
 weight: 40
 ---
 

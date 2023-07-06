@@ -4,8 +4,8 @@ title: Consistent hash rings
 description: Describes how the Loki architecture uses consistent hash rings.
 weight: 700
 aliases:
-    - /docs/loki/latest/fundamentals/architecture/rings
-    - /docs/loki/latest/get-started/hash-rings/
+    - ../fundamentals/architecture/rings
+    - ../get-started/hash-rings/
 ---
 # Consistent hash rings
 
