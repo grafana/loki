@@ -167,6 +167,11 @@ func (s *SketchBF) Observe(event string) {
 		return
 	}
 
+	// if the value is not greater than the current heap min we can continue
+	if len(s.heap) > 0 && val < s.heap.Peek().(*node).count {
+		return
+	}
+
 	// update the heap and bloom filter values
 	for i := 0; i < len(s.heap); i++ {
 		e := s.heap[i].event
