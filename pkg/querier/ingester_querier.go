@@ -80,27 +80,44 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 // forGivenIngesters runs f, in parallel, for given ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
+  cfg := ring.DoUntilQuorumConfig{
+    //TODO: what should this be?
+  }
+  results, err := ring.DoUntilQuorum(ctx, replicationSet, cfg, func(ctx context.Context, ingester *ring.InstanceDesc) (responseFromIngesters, error) {
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
-			return nil, err
+      return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
 		resp, err := f(ctx, client.(logproto.QuerierClient))
 		if err != nil {
-			return nil, err
+      return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
 		return responseFromIngesters{ingester.Addr, resp}, nil
-	})
+  }, func(responseFromIngesters) {
+    // Nothing to do
+  })
+
+	// results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
+	// 	client, err := q.pool.GetClientFor(ingester.Addr)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	resp, err := f(ctx, client.(logproto.QuerierClient))
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	return responseFromIngesters{ingester.Addr, resp}, nil
+	// })
 	if err != nil {
 		return nil, err
 	}
 
 	responses := make([]responseFromIngesters, 0, len(results))
-	for _, result := range results {
-		responses = append(responses, result.(responseFromIngesters))
-	}
+	responses = append(responses, results...)
 
 	return responses, err
 }
