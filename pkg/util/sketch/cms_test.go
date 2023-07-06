@@ -1,3 +1,6 @@
+//go:build sketch
+// +build sketch
+
 package sketch
 
 import (
