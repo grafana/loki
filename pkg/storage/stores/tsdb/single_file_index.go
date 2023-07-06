@@ -408,7 +408,7 @@ func prepareLabelsAndMatchers(targetLabels []string, matchers []*labels.Matcher)
 			continue
 		}
 
-    labelsToMatch[m.Name] = struct{}{}
+		labelsToMatch[m.Name] = struct{}{}
 	}
 
 	return labelsToMatch, matchers, includeAll

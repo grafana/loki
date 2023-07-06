@@ -686,7 +686,7 @@ func prepareLabelsAndMatchers(targetLabels []string, matchers []*labels.Matcher)
 		return prepareLabelsAndMatchersWithTargets(targetLabels, matchers)
 	}
 
-  includeAll := len(matchers) == 0
+	includeAll := len(matchers) == 0
 	labelsToMatch := make(map[string]struct{})
 
 	for _, m := range matchers {
