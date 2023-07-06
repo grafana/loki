@@ -335,51 +335,7 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.SeriesVolume")
 	defer sp.Finish()
 
-	var includeAll bool
-	matchAllIndex := -1
-	collectToTargets := len(targetLabels) > 0
-
-	labelsToMatch := make(map[string]struct{})
-	targetsFound := make(map[string]bool, len(targetLabels))
-	for _, target := range targetLabels {
-		labelsToMatch[target] = struct{}{}
-		targetsFound[target] = false
-	}
-
-	for i, m := range matchers {
-		if m.Name == "" {
-			matchAllIndex = i
-			includeAll = !collectToTargets
-			continue
-		}
-
-		if m.Name == TenantLabel {
-			continue
-		}
-
-		if !collectToTargets {
-			labelsToMatch[m.Name] = struct{}{}
-		}
-
-		if found, ok := targetsFound[m.Name]; ok && !found {
-			targetsFound[m.Name] = true
-		}
-	}
-
-	// Make sure all target labels are included in the matchers.
-	if collectToTargets {
-		for target, found := range targetsFound {
-			if !found {
-				matcher := labels.MustNewMatcher(labels.MatchRegexp, target, ".+")
-				matchers = append(matchers, matcher)
-			}
-		}
-
-		// If target labels has added a matcher, we can remove the all matcher
-		if matchAllIndex > -1 && len(matchers) > 1 {
-			matchers = append(matchers[:matchAllIndex], matchers[matchAllIndex+1:]...)
-		}
-	}
+	labelsToMatch, matchers, includeAll := prepareLabelsAndMatchers(targetLabels, matchers)
 
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
@@ -432,4 +388,69 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 	}
 	acc.AddVolumes(volumes)
 	return nil
+}
+
+func prepareLabelsAndMatchers(targetLabels []string, matchers []*labels.Matcher) (map[string]struct{}, []*labels.Matcher, bool) {
+	if len(targetLabels) > 0 {
+		return prepareLabelsAndMatchersWithTargets(targetLabels, matchers)
+	}
+
+	var includeAll bool
+	labelsToMatch := make(map[string]struct{})
+
+	for _, m := range matchers {
+		if m.Name == "" {
+			includeAll = true
+			continue
+		}
+
+		if m.Name == TenantLabel {
+			continue
+		}
+
+    labelsToMatch[m.Name] = struct{}{}
+	}
+
+	return labelsToMatch, matchers, includeAll
+}
+
+func prepareLabelsAndMatchersWithTargets(targetLabels []string, matchers []*labels.Matcher) (map[string]struct{}, []*labels.Matcher, bool) {
+	matchAllIndex := -1
+	labelsToMatch := make(map[string]struct{})
+	targetsFound := make(map[string]bool, len(targetLabels))
+
+	for _, target := range targetLabels {
+		labelsToMatch[target] = struct{}{}
+		targetsFound[target] = false
+	}
+
+	for i, m := range matchers {
+		if m.Name == "" {
+			matchAllIndex = i
+			continue
+		}
+
+		if m.Name == TenantLabel {
+			continue
+		}
+
+		if found, ok := targetsFound[m.Name]; ok && !found {
+			targetsFound[m.Name] = true
+		}
+	}
+
+	// Make sure all target labels are included in the matchers.
+	for target, found := range targetsFound {
+		if !found {
+			matcher := labels.MustNewMatcher(labels.MatchRegexp, target, ".+")
+			matchers = append(matchers, matcher)
+		}
+	}
+
+	// If target labels has added a matcher, we can remove the all matcher
+	if matchAllIndex > -1 && len(matchers) > 1 {
+		matchers = append(matchers[:matchAllIndex], matchers[matchAllIndex+1:]...)
+	}
+
+	return labelsToMatch, matchers, false
 }

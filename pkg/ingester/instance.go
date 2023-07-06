@@ -629,49 +629,7 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	targetLabels := req.TargetLabels
-	collectToTargets := len(targetLabels) > 0
-
-	matchAny := len(matchers) == 0 && !collectToTargets
-	matchAnyIndex := -1
-
-	labelsToMatch := make(map[string]struct{})
-	targetsFound := make(map[string]bool, len(targetLabels))
-	for _, target := range targetLabels {
-		labelsToMatch[target] = struct{}{}
-		targetsFound[target] = false
-	}
-
-	for i, m := range matchers {
-		if m.Name == "" {
-			matchAnyIndex = i
-			matchAny = !collectToTargets
-			continue
-		}
-
-		if !collectToTargets {
-			labelsToMatch[m.Name] = struct{}{}
-		}
-
-		if found, ok := targetsFound[m.Name]; ok && !found {
-			targetsFound[m.Name] = true
-		}
-	}
-
-	// Make sure all target labels are included in the matchers.
-	if collectToTargets {
-		for target, found := range targetsFound {
-			if !found {
-				matcher := labels.MustNewMatcher(labels.MatchRegexp, target, ".+")
-				matchers = append(matchers, matcher)
-			}
-		}
-
-		// If target labels has added a matcher, we can remove the all matcher
-		if matchAnyIndex > -1 && len(matchers) > 1 {
-			matchers = append(matchers[:matchAnyIndex], matchers[matchAnyIndex+1:]...)
-		}
-	}
+	labelsToMatch, matchers, matchAny := prepareLabelsAndMatchers(req.TargetLabels, matchers)
 
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
@@ -721,6 +679,63 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 
 	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
+}
+
+func prepareLabelsAndMatchers(targetLabels []string, matchers []*labels.Matcher) (map[string]struct{}, []*labels.Matcher, bool) {
+	if len(targetLabels) > 0 {
+		return prepareLabelsAndMatchersWithTargets(targetLabels, matchers)
+	}
+
+  includeAll := len(matchers) == 0
+	labelsToMatch := make(map[string]struct{})
+
+	for _, m := range matchers {
+		if m.Name == "" {
+			includeAll = true
+			continue
+		}
+
+		labelsToMatch[m.Name] = struct{}{}
+	}
+
+	return labelsToMatch, matchers, includeAll
+}
+
+func prepareLabelsAndMatchersWithTargets(targetLabels []string, matchers []*labels.Matcher) (map[string]struct{}, []*labels.Matcher, bool) {
+	matchAllIndex := -1
+	labelsToMatch := make(map[string]struct{})
+	targetsFound := make(map[string]bool, len(targetLabels))
+
+	for _, target := range targetLabels {
+		labelsToMatch[target] = struct{}{}
+		targetsFound[target] = false
+	}
+
+	for i, m := range matchers {
+		if m.Name == "" {
+			matchAllIndex = i
+			continue
+		}
+
+		if found, ok := targetsFound[m.Name]; ok && !found {
+			targetsFound[m.Name] = true
+		}
+	}
+
+	// Make sure all target labels are included in the matchers.
+	for target, found := range targetsFound {
+		if !found {
+			matcher := labels.MustNewMatcher(labels.MatchRegexp, target, ".+")
+			matchers = append(matchers, matcher)
+		}
+	}
+
+	// If target labels has added a matcher, we can remove the all matcher
+	if matchAllIndex > -1 && len(matchers) > 1 {
+		matchers = append(matchers[:matchAllIndex], matchers[matchAllIndex+1:]...)
+	}
+
+	return labelsToMatch, matchers, false
 }
 
 func (i *instance) numStreams() int {
