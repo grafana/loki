@@ -807,6 +807,7 @@ func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tr
 			}
 
 			seriesVolumeMiddlewares := []queryrangebase.Middleware{
+				StatsCollectorMiddleware(),
 				NewSeriesVolumeMiddleware(),
 			}
 
