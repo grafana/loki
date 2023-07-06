@@ -198,6 +198,43 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 	})
 }
 
+func TestSeriesHandler(t *testing.T) {
+	t.Run("instant queries set a step of 0", func(t *testing.T) {
+		ret := func() *logproto.SeriesResponse {
+			return &logproto.SeriesResponse{
+				Series: []logproto.SeriesIdentifier{
+					{
+						Labels: map[string]string{
+							"a": "1",
+							"b": "2",
+						},
+					},
+					{
+						Labels: map[string]string{
+							"c": "3",
+							"d": "4",
+						},
+					},
+				},
+			}
+		}
+		expected := `{"status":"success","data":[{"a":"1","b":"2"},{"c":"3","d":"4"}]}`
+
+		querier := newQuerierMock()
+		querier.On("Series", mock.Anything, mock.Anything).Return(ret, nil)
+		api := setupAPI(querier)
+
+		req := httptest.NewRequest(http.MethodGet, "/loki/api/v1/series"+
+			"?start=0"+
+			"&end=1"+
+			"&step=42"+
+			"&query=%7Bfoo%3D%22bar%22%7D", nil)
+		res := makeRequest(t, api.SeriesHandler, req)
+
+		require.Equalf(t, 200, res.Code, "response was not HTTP OK: %s", res.Body.String())
+		require.JSONEq(t, expected, res.Body.String())
+	})
+}
 func TestSeriesVolumeHandler(t *testing.T) {
 	ret := &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
@@ -341,4 +378,18 @@ func TestSeriesVolumeHandler(t *testing.T) {
 		request := calls[0].Arguments[1].(*logproto.VolumeRequest)
 		require.Equal(t, time.Second.Milliseconds(), request.Step)
 	})
+}
+
+func makeRequest(t *testing.T, handler http.HandlerFunc, req *http.Request) *httptest.ResponseRecorder {
+	err := req.ParseForm()
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	handler(w, req)
+	return w
+}
+
+func setupAPI(querier *querierMock) *QuerierAPI {
+	api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
+	return api
 }
