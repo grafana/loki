@@ -199,7 +199,7 @@ func (r *markerProcessor) Start(deleteFunc func(ctx context.Context, chunkId []b
 				continue
 			}
 			if len(paths) == 0 {
-				level.Info(util_log.Logger).Log("msg", "no marks file found")
+				level.Info(util_log.Logger).Log("msg", "no marks file found", "path", r.folder, "foundPath", fmt.Sprintf("%+v", paths))
 				r.sweeperMetrics.markerFileCurrentTime.Set(0)
 				continue
 			}
@@ -372,6 +372,7 @@ func (r *markerProcessor) deleteEmptyMarks(path string) error {
 // availablePath returns markers path in chronological order, skipping file that are not old enough.
 func (r *markerProcessor) availablePath() ([]string, []time.Time, error) {
 	found := []int64{}
+
 	if err := filepath.WalkDir(r.folder, func(path string, d fs.DirEntry, err error) error {
 		if d == nil || err != nil {
 			return err

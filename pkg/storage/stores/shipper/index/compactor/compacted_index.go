@@ -123,7 +123,7 @@ func (c *CompactedIndex) setupIndexProcessors() error {
 
 	bucket := c.boltdbTx.Bucket(local.IndexBucketName)
 	if bucket == nil {
-		return fmt.Errorf("required bucket not found")
+		return retention.ErrLocalIndexBucketNotFound
 	}
 
 	c.chunkIndexer, err = newChunkIndexer(bucket, c.periodConfig, c.tableName)

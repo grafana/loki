@@ -2108,6 +2108,8 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -boltdb.shipper.compactor.retention-delete-worker-count
 [retention_delete_worker_count: <int> | default = 150]
 
+[retention_disk_space_percentage: <int>]
+
 # The maximum amount of time to spend running retention and deletion on any
 # given table in the index.
 # CLI flag: -boltdb.shipper.compactor.retention-table-timeout
@@ -2229,6 +2231,11 @@ compactor_ring:
   # zone-awareness is enabled.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
+
+# Run the compactor one time to cleanup and compact index files only (no
+# retention applied)
+# CLI flag: -boltdb.shipper.compactor.run-once
+[_: <boolean> | default = false]
 
   # Enable using a IPv6 instance address.
   # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
@@ -3100,6 +3107,10 @@ storage:
     # Directory to store rules in.
     # CLI flag: -common.storage.filesystem.rules-directory
     [rules_directory: <string> | default = ""]
+
+    # Size based retention percentage
+    # CLI flag: -common.storage..size-based-retention-percentage
+    [size_based_retention_percentage: <int> | default = 80]
 
   hedging:
     # If set to a non-zero value a second request will be issued at the provided

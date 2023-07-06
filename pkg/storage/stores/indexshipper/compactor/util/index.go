@@ -1,14 +1,13 @@
-package compactor
+package util
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
-	"strconv"
-
-	"github.com/prometheus/common/model"
-
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
+	"strconv"
+	"unsafe"
 )
 
 const (
@@ -39,7 +38,7 @@ func (e InvalidIndexKeyError) Is(target error) bool {
 	return target == ErrInvalidIndexKey
 }
 
-func parseChunkRef(hashKey, rangeKey []byte) (retention.ChunkRef, bool, error) {
+func ParseChunkRef(hashKey, rangeKey []byte) (retention.ChunkRef, bool, error) {
 	componentsRef := getComponents()
 	defer putComponents(componentsRef)
 	components := componentsRef.components
@@ -133,7 +132,7 @@ func readOneHexPart(hex []byte) (part []byte, i int) {
 	return nil, 0
 }
 
-func parseLabelIndexSeriesID(hashKey, rangeKey []byte) ([]byte, bool, error) {
+func ParseLabelIndexSeriesID(hashKey, rangeKey []byte) ([]byte, bool, error) {
 	componentsRef := getComponents()
 	defer putComponents(componentsRef)
 	components := componentsRef.components
@@ -167,7 +166,7 @@ func (l LabelSeriesRangeKey) String() string {
 	return fmt.Sprintf("%s:%s:%s", l.SeriesID, l.UserID, l.Name)
 }
 
-func parseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bool, error) {
+func ParseLabelSeriesRangeKey(hashKey, rangeKey []byte) (LabelSeriesRangeKey, bool, error) {
 	rangeComponentsRef := getComponents()
 	defer putComponents(rangeComponentsRef)
 	rangeComponents := rangeComponentsRef.components
@@ -211,8 +210,8 @@ func seriesFromHash(h []byte) (seriesID []byte) {
 	return
 }
 
-// decodeKey decodes hash and range value from a boltdb key.
-func decodeKey(k []byte) (hashValue, rangeValue []byte) {
+// DecodeKey decodes hash and range value from a boltdb key.
+func DecodeKey(k []byte) (hashValue, rangeValue []byte) {
 	// hashValue + 0 + string(rangeValue)
 	for i := range k {
 		if k[i] == 0 {
@@ -253,4 +252,9 @@ func decodeRangeKey(value []byte, components [][]byte) [][]byte {
 		i = j
 	}
 	return components
+}
+
+// unsafeGetString is like yolostring but with a meaningful name
+func unsafeGetString(buf []byte) string {
+	return *((*string)(unsafe.Pointer(&buf)))
 }

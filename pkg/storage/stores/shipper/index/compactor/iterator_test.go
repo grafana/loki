@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/util"
 	"strconv"
 	"strings"
 	"testing"
@@ -143,7 +144,7 @@ func Test_SeriesCleaner(t *testing.T) {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
 					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
 					c2SeriesID := entryFromChunk(testSchema, c2).SeriesID
-					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
+					series, ok, err := util.ParseLabelIndexSeriesID(util.DecodeKey(k))
 					if !ok {
 						return nil
 					}

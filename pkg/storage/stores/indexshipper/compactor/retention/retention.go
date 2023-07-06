@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
 	"time"
+
+	"github.com/grafana/dskit/services"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -18,7 +21,10 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
+
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
+
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -28,6 +34,10 @@ var chunkBucket = []byte("chunks")
 
 const (
 	MarkersFolder = "markers"
+
+	// sizeBasedRetentionEnforcementInterval sets the timer interval to check and clean up chunks if the
+	// disk space usage is too high on local filesystem stores
+	sizeBasedRetentionEnforcementInterval = 60 * time.Second
 )
 
 type ChunkRef struct {
@@ -74,8 +84,141 @@ type IndexProcessor interface {
 	SeriesCleaner
 }
 
+type CompactionIndexMap struct {
+	Path           string
+	Size           int64
+	CompactedIndex IndexProcessor
+}
+
 var errNoChunksFound = errors.New("no chunks found in table, please check if there are really no chunks and manually drop the table or " +
 	"see if there is a bug causing us to drop whole index table")
+var ErrLocalIndexBucketNotFound = errors.New("failed setting up index processors since compactedFile is nil")
+
+type SizeBasedRetentionCleaner struct {
+	WorkingDirectory string
+	cleanupMetrics   *cleanupMetrics
+	chunkClient      client.Client
+	cleanupThreshold int
+}
+
+type SizeBasedRetentionCleanerService struct {
+	RetentionLoop         services.Service
+	RetentionLoopInterval time.Duration
+}
+
+func NewSizeBasedRetentionCleanerService() *SizeBasedRetentionCleanerService {
+	return &SizeBasedRetentionCleanerService{
+		RetentionLoopInterval: sizeBasedRetentionEnforcementInterval,
+	}
+}
+
+func NewSizeBasedRetentionCleaner(
+	chunkClient client.Client,
+	cleanupThreshold int,
+	r prometheus.Registerer,
+	fsconfig local.FSConfig,
+) (*SizeBasedRetentionCleaner, error) {
+	metrics := newCleanupMetrics(r)
+	return &SizeBasedRetentionCleaner{
+		WorkingDirectory: fsconfig.Directory,
+		cleanupMetrics:   metrics,
+		chunkClient:      chunkClient,
+		cleanupThreshold: cleanupThreshold,
+	}, nil
+}
+
+func (s *SizeBasedRetentionCleaner) ThresholdExceeded() (bool, error) {
+	diskUsage, err := s.getDiskUsage()
+	if err != nil {
+		return false, err
+	}
+	if diskUsage.UsedPercent < float64(s.cleanupThreshold) {
+		level.Info(util_log.Logger).Log("msg", "Not past disk usage threshold, not running size-based compaction.")
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *SizeBasedRetentionCleaner) getDiskUsage() (util.DiskStatus, error) {
+	usage, err := util.DiskUsage(s.WorkingDirectory)
+	if err != nil {
+		return util.DiskStatus{}, err
+	}
+	level.Info(util_log.Logger).Log("msg", "Detected disk usage percentage", "diskUsage", fmt.Sprintf("%.2f%%", usage.UsedPercent))
+
+	return usage, nil
+}
+
+func (s *SizeBasedRetentionCleaner) BuildChunksToDelete(ctx context.Context, indexes []CompactionIndexMap, retentionWorkDir string) ([]ChunkRef, error) {
+	bytesToDelete, err := s.getBytesToDelete()
+	if err != nil {
+		return []ChunkRef{}, err
+	}
+
+	level.Info(util_log.Logger).Log("msg", "Calculated megabytes to delete to reach configured storage free space:",
+		"megabytesToDelete", fmt.Sprintf("%.2f", bytesToDelete/1024/1024))
+
+	var chunksToDelete []ChunkRef
+	bytesDeleted := 0.0
+	for _, entry := range indexes {
+		if bytesToDelete < (bytesDeleted) {
+			break
+		}
+
+		level.Info(util_log.Logger).Log("msg",
+			"Block size retention exceeded, removing chunks from file", "filepath", entry.Path)
+
+		seriesMap := newUserSeriesMap()
+		entry.CompactedIndex.ForEachChunk(ctx, func(ce ChunkEntry) (bool, error) {
+			if bytesToDelete < bytesDeleted {
+				return true, nil
+			}
+
+			seriesMap.Add(ce.SeriesID, ce.UserID, ce.Labels)
+			userID := unsafeGetString(ce.UserID)
+			chunkID := unsafeGetString(ce.ChunkID)
+
+			chk, err := chunk.ParseExternalKey(userID, chunkID)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "could not get chunk", "err", fmt.Sprintf("%+v", err))
+				return false, err
+			}
+
+			bytesDeleted = bytesDeleted + float64(chk.Size())
+
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "could not write chunk id to markerw", "ChunkID", string(ce.ChunkID))
+				return false, err
+			}
+			chunksToDelete = append(chunksToDelete, ce.ChunkRef)
+			level.Info(util_log.Logger).Log("msg", "current number of chunks to delete", "count", len(chunksToDelete))
+
+			return true, nil
+		})
+		seriesMap.ForEach(func(info userSeriesInfo) error {
+			if !info.isDeleted {
+				return nil
+			}
+
+			return entry.CompactedIndex.CleanupSeries(info.UserID(), info.lbls)
+		})
+	}
+	return chunksToDelete, nil
+}
+
+func (s *SizeBasedRetentionCleaner) getBytesToDelete() (float64, error) {
+	diskUsage, err := s.getDiskUsage()
+	if err != nil {
+		return 0.0, err
+	}
+	percentageToBeDeleted := diskUsage.UsedPercent - float64(s.cleanupThreshold)
+
+	if percentageToBeDeleted < 0.0 {
+		percentageToBeDeleted = 0.0
+	}
+
+	return (percentageToBeDeleted / 100) * float64(diskUsage.All), nil
+}
 
 type TableMarker interface {
 	// MarkForDelete marks chunks to delete for a given table and returns if it's empty or modified.
@@ -85,16 +228,16 @@ type TableMarker interface {
 type Marker struct {
 	workingDirectory string
 	expiration       ExpirationChecker
-	markerMetrics    *markerMetrics
+	markerMetrics    *MarkerMetrics
 	chunkClient      client.Client
 	markTimeout      time.Duration
 }
 
-func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, r prometheus.Registerer) (*Marker, error) {
+func NewMarker(workingDirectory string, expiration ExpirationChecker, markTimeout time.Duration, chunkClient client.Client, metrics *MarkerMetrics) (*Marker, error) {
 	return &Marker{
 		workingDirectory: workingDirectory,
 		expiration:       expiration,
-		markerMetrics:    newMarkerMetrics(r),
+		markerMetrics:    metrics,
 		chunkClient:      chunkClient,
 		markTimeout:      markTimeout,
 	}, nil
@@ -232,6 +375,9 @@ func markForDelete(
 			// Deletes timed out. Don't return an error so compaction can continue and deletes can be retried
 			level.Warn(logger).Log("msg", "Timed out while running delete")
 			expiration.MarkPhaseTimedOut()
+		} else if errors.Is(err, ErrLocalIndexBucketNotFound) {
+			// The local index bucket may not be found if it's empty and cannot be iterated
+			return true, false, nil
 		} else {
 			return false, false, err
 		}

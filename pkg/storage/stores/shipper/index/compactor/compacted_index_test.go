@@ -3,6 +3,7 @@ package compactor
 import (
 	"bytes"
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/util"
 	"os"
 	"sort"
 	"testing"
@@ -74,7 +75,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			err = modifiedBoltDB.View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
 					c1SeriesID := entryFromChunk(testSchema, c1).SeriesID
-					series, ok, err := parseLabelIndexSeriesID(decodeKey(k))
+					series, ok, err := util.ParseLabelIndexSeriesID(util.DecodeKey(k))
 					if !ok {
 						return nil
 					}

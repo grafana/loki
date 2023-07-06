@@ -20,6 +20,7 @@ import (
 	"github.com/weaveworks/common/mtime"
 
 	"github.com/grafana/loki/pkg/storage/config"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

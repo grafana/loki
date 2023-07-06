@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/util"
 	"github.com/prometheus/prometheus/model/labels"
 	"go.etcd.io/bbolt"
 
@@ -82,7 +83,7 @@ func (sm *seriesLabelsMapper) Get(seriesID []byte, userID []byte) labels.Labels 
 func (sm *seriesLabelsMapper) build() error {
 Outer:
 	for k, v := sm.cursor.First(); k != nil; k, v = sm.cursor.Next() {
-		ref, ok, err := parseLabelSeriesRangeKey(decodeKey(k))
+		ref, ok, err := util.ParseLabelSeriesRangeKey(util.DecodeKey(k))
 		if err != nil {
 			return err
 		}
