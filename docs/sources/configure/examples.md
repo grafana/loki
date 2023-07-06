@@ -1,12 +1,6 @@
 ---
-
 title: Examples
-menuTitle:  
 description: Loki Configuration Examples
-aliases: 
-  - ../configuration/examples
-  - ../configure/examples
-weight:  100
 ---
  # Examples
 
