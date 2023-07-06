@@ -416,12 +416,12 @@ func ParseSeriesVolumeRangeQuery(r *http.Request) (*SeriesVolumeRangeQuery, erro
 }
 
 func targetLabels(r *http.Request) []string {
-  lbls := strings.Split(r.Form.Get("targetLabels"), ",")
-  if len(lbls) == 1 && lbls[0] == "" {
-    return nil
-  }
+	lbls := strings.Split(r.Form.Get("targetLabels"), ",")
+	if (len(lbls) == 1 && lbls[0] == "") || len(lbls) == 0 {
+		return nil
+	}
 
-  return lbls
+	return lbls
 }
 
 func labelVolumeLimit(r *http.Request) error {

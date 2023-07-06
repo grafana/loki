@@ -326,7 +326,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 // {foo="b", fizz="b"}
 //
 // SeriesVolume optionally accepts a slice of target labels. If provided, volumes are aggregated
-// into those labels only. For exmaple, given the matcher {fizz=~".+"} and target labels of []string{"foo"},
+// into those labels only. For example, given the matcher {fizz=~".+"} and target labels of []string{"foo"},
 // volumes would be aggregated as follows:
 //
 // {foo="a"} which would be the sum of {foo="a", fizz="a"} and {foo="a", fizz="b"}
