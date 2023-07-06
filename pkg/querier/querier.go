@@ -800,6 +800,7 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 		"through", req.Through.Time(),
 		"matchers", syntax.MatchersString(matchers),
 		"limit", req.Limit,
+		"targetLabels", req.TargetLabels,
 	)
 
 	return q.store.SeriesVolume(
