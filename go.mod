@@ -13,7 +13,7 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Shopify/sarama v1.38.1
-	github.com/Workiva/go-datastructures v1.0.53
+	github.com/Workiva/go-datastructures v1.1.0
 	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.7+incompatible
 	github.com/aws/aws-sdk-go v1.44.217
