@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	loki_net "github.com/grafana/loki/pkg/util/net"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 const indexTablePrefix = "table_"
@@ -39,7 +42,8 @@ func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClie
 	cfg := Config{}
 	flagext.DefaultValues(&cfg)
 	cfg.WorkingDirectory = filepath.Join(tempDir, workingDirName)
-	cfg.RetentionEnabled = false
+	cfg.RetentionEnabled = true
+	cfg.SharedStoreType = periodConfigs[len(periodConfigs)-1].ObjectType
 
 	if loopbackIFace, err := loki_net.LoopbackInterfaceName(); err == nil {
 		cfg.CompactorRing.InstanceInterfaceNames = append(cfg.CompactorRing.InstanceInterfaceNames, loopbackIFace)
@@ -47,9 +51,16 @@ func setupTestCompactor(t *testing.T, objectClients map[string]client.ObjectClie
 
 	require.NoError(t, cfg.Validate())
 
+	defaultLimits := validation.Limits{}
+	flagext.DefaultValues(&defaultLimits)
+	require.NoError(t, defaultLimits.RetentionPeriod.Set("30d"))
+
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+
 	c, err := NewCompactor(cfg, objectClients, config.SchemaConfig{
 		Configs: periodConfigs,
-	}, nil, nil)
+	}, overrides, prometheus.NewPedanticRegistry())
 	require.NoError(t, err)
 
 	c.RegisterIndexCompactor("dummy", testIndexCompactor{})
@@ -274,4 +285,135 @@ func Test_tableSort(t *testing.T) {
 
 	sortTablesByRange(intervals)
 	require.Equal(t, []string{"index_19195", "index_19192", "index_19191"}, intervals)
+}
+
+func TestCompactor_TableLocking(t *testing.T) {
+	commonDBsConfig := IndexesConfig{NumUnCompactedFiles: 5}
+	perUserDBsConfig := PerUserIndexesConfig{}
+
+	daySeconds := int64(24 * time.Hour / time.Second)
+	tableNumEnd := time.Now().Unix() / daySeconds
+	tableNumStart := tableNumEnd - 5
+
+	setupCompactorAndIndex := func(tempDir string) *Compactor {
+		tablesPath := filepath.Join(tempDir, "index")
+
+		periodConfigs := []config.PeriodConfig{
+			{
+				From:       config.DayTime{Time: model.Time(0)},
+				IndexType:  "dummy",
+				ObjectType: "fs_01",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: indexTablePrefix,
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				},
+			},
+		}
+
+		for i := tableNumStart; i <= tableNumEnd; i++ {
+			SetupTable(t, filepath.Join(tablesPath, fmt.Sprintf("%s%d", indexTablePrefix, i)), IndexesConfig{NumUnCompactedFiles: 5}, PerUserIndexesConfig{})
+		}
+
+		var (
+			objectClients = map[string]client.ObjectClient{}
+			err           error
+		)
+		objectClients["fs_01"], err = local.NewFSObjectClient(local.FSConfig{Directory: tempDir})
+		require.NoError(t, err)
+
+		return setupTestCompactor(t, objectClients, periodConfigs, tempDir)
+	}
+
+	for _, tc := range []struct {
+		name           string
+		lockTable      string
+		applyRetention bool
+
+		compactionShouldTimeout bool
+	}{
+		{
+			name: "no table locked - not applying retention",
+		},
+		{
+			name:           "no table locked - applying retention",
+			applyRetention: true,
+		},
+		{
+			name:      "first table locked - not applying retention",
+			lockTable: fmt.Sprintf("%s%d", indexTablePrefix, tableNumEnd),
+		},
+		{
+			name:                    "first table locked - applying retention",
+			lockTable:               fmt.Sprintf("%s%d", indexTablePrefix, tableNumEnd),
+			applyRetention:          true,
+			compactionShouldTimeout: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			tablesPath := filepath.Join(tempDir, "index")
+			compactor := setupCompactorAndIndex(tempDir)
+
+			// run the compaction twice, 2nd time without any table locking
+			for n := 1; n <= 2; n++ {
+				t.Run(fmt.Sprintf("%d", n), func(t *testing.T) {
+					// lock table only for the first run
+					if n == 1 && tc.lockTable != "" {
+						locked, _ := compactor.tableLocker.lockTable(tc.lockTable)
+						require.True(t, locked)
+
+						defer compactor.tableLocker.unlockTable(tc.lockTable)
+					}
+
+					// set a timeout so that retention does not get blocked forever on acquiring table lock.
+					ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+					defer cancel()
+
+					err := compactor.RunCompaction(ctx, tc.applyRetention)
+					// compaction should not timeout after first run since we won't be locking the table
+					if n == 1 && tc.compactionShouldTimeout {
+						require.ErrorIs(t, err, context.DeadlineExceeded)
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure, "true")))
+						require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusFailure, "false")))
+						return
+					}
+					require.NoError(t, err)
+
+					if n > 1 && tc.compactionShouldTimeout {
+						// this should be the first successful run if compaction was expected to be timeout out during first run
+						require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, fmt.Sprintf("%v", tc.applyRetention))))
+					} else {
+						// else it should have succeeded during all the n runs
+						require.Equal(t, float64(n), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, fmt.Sprintf("%v", tc.applyRetention))))
+					}
+					require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.compactTablesOperationTotal.WithLabelValues(statusSuccess, fmt.Sprintf("%v", !tc.applyRetention))))
+
+					// if the table was locked and compaction ran without retention then only locked table should have been skipped
+					if tc.lockTable != "" {
+						if tc.applyRetention {
+							require.Equal(t, float64(0), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables))
+						} else {
+							require.Equal(t, float64(1), testutil.ToFloat64(compactor.metrics.skippedCompactingLockedTables))
+						}
+					}
+
+					for tableNum := tableNumStart; tableNum <= tableNumEnd; tableNum++ {
+						name := fmt.Sprintf("%s%d", indexTablePrefix, tableNum)
+						files, err := os.ReadDir(filepath.Join(tablesPath, name))
+						require.NoError(t, err)
+
+						if n == 1 && name == tc.lockTable {
+							// locked table should not be compacted during first run
+							require.Len(t, files, 5)
+						} else {
+							require.Len(t, files, 1)
+							require.True(t, strings.HasSuffix(files[0].Name(), ".gz"))
+
+							verifyCompactedIndexTable(t, commonDBsConfig, perUserDBsConfig, filepath.Join(tablesPath, name))
+						}
+					}
+				})
+			}
+		})
+	}
 }

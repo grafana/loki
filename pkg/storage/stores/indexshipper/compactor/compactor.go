@@ -129,8 +129,8 @@ func (cfg *Config) Validate() error {
 	if cfg.MaxCompactionParallelism < 1 {
 		return errors.New("max compaction parallelism must be >= 1")
 	}
-	if cfg.RetentionEnabled && cfg.ApplyRetentionInterval != 0 && cfg.ApplyRetentionInterval%cfg.CompactionInterval != 0 {
-		return errors.New("interval for applying retention should either be set to a 0 or a multiple of compaction interval")
+	if cfg.RetentionEnabled && cfg.ApplyRetentionInterval == 0 {
+		cfg.ApplyRetentionInterval = cfg.CompactionInterval
 	}
 
 	if err := shipper_storage.ValidateSharedStoreKeyPrefix(cfg.SharedStoreKeyPrefix); err != nil {
@@ -161,6 +161,7 @@ type Compactor struct {
 	wg                        sync.WaitGroup
 	indexCompactors           map[string]IndexCompactor
 	schemaConfig              config.SchemaConfig
+	tableLocker               *tableLocker
 
 	// Ring used for running a single compactor
 	ringLifecycler *ring.BasicLifecycler
@@ -201,6 +202,7 @@ func NewCompactor(cfg Config, objectStoreClients map[string]client.ObjectClient,
 		ringPollPeriod:  5 * time.Second,
 		indexCompactors: map[string]IndexCompactor{},
 		schemaConfig:    schemaConfig,
+		tableLocker:     newTableLocker(),
 	}
 
 	ringStore, err := kv.NewClient(
@@ -499,28 +501,36 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		}
 	}()
 
-	lastRetentionRunAt := time.Unix(0, 0)
-	runCompaction := func() {
-		applyRetention := false
-		if c.cfg.RetentionEnabled && time.Since(lastRetentionRunAt) >= c.cfg.ApplyRetentionInterval {
-			level.Info(util_log.Logger).Log("msg", "applying retention with compaction")
-			applyRetention = true
-		}
-
-		err := c.RunCompaction(ctx, applyRetention)
-		if err != nil {
-			level.Error(util_log.Logger).Log("msg", "failed to run compaction", "err", err)
-		}
-
-		if applyRetention {
-			lastRetentionRunAt = time.Now()
-		}
+	// do the initial compaction
+	if err := c.RunCompaction(ctx, false); err != nil {
+		level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
 	}
 
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		runCompaction()
+
+		ticker := time.NewTicker(c.cfg.ApplyRetentionInterval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := c.RunCompaction(ctx, false); err != nil {
+					level.Error(util_log.Logger).Log("msg", "failed to run compaction", err)
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		if err := c.RunCompaction(ctx, true); err != nil {
+			level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+		}
 
 		ticker := time.NewTicker(c.cfg.CompactionInterval)
 		defer ticker.Stop()
@@ -528,7 +538,9 @@ func (c *Compactor) runCompactions(ctx context.Context) {
 		for {
 			select {
 			case <-ticker.C:
-				runCompaction()
+				if err := c.RunCompaction(ctx, true); err != nil {
+					level.Error(util_log.Logger).Log("msg", "failed to apply retention", err)
+				}
 			case <-ctx.Done():
 				return
 			}
@@ -572,6 +584,37 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		return fmt.Errorf("index store client not found for %s", schemaCfg.ObjectType)
 	}
 
+	for {
+		locked, lockWaiterChan := c.tableLocker.lockTable(tableName)
+		if locked {
+			break
+		}
+		// do not wait for lock to be released if we are only compacting the table since
+		// compaction should happen more frequently than retention and retention anyway compacts un-compacted files as well.
+		if !applyRetention {
+			hasUncompactedIndex, err := tableHasUncompactedIndex(ctx, tableName, sc.indexStorageClient)
+			if err != nil {
+				level.Error(util_log.Logger).Log("msg", "failed to check if table has uncompacted index", "table_name", tableName)
+				hasUncompactedIndex = true
+			}
+
+			if hasUncompactedIndex {
+				c.metrics.skippedCompactingLockedTables.Inc()
+				level.Warn(util_log.Logger).Log("msg", "skipped compacting table which likely has uncompacted index since it is locked by retention", "table_name", tableName)
+			}
+			return nil
+		}
+
+		// we are applying retention and processing delete requests so,
+		// wait for lock to be released since we can't mark delete requests as processed without checking all the tables
+		select {
+		case <-lockWaiterChan:
+		case <-ctx.Done():
+			return nil
+		}
+	}
+	defer c.tableLocker.unlockTable(tableName)
+
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
 		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
 	if err != nil {
@@ -597,7 +640,7 @@ func (c *Compactor) RegisterIndexCompactor(indexType string, indexCompactor Inde
 	c.indexCompactors[indexType] = indexCompactor
 }
 
-func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) error {
+func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err error) {
 	status := statusSuccess
 	start := time.Now()
 
@@ -606,11 +649,15 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	}
 
 	defer func() {
-		c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		if err != nil {
+			status = statusFailure
+		}
+		withRetentionLabelValue := fmt.Sprintf("%v", applyRetention)
+		c.metrics.compactTablesOperationTotal.WithLabelValues(status, withRetentionLabelValue).Inc()
 		runtime := time.Since(start)
 		if status == statusSuccess {
-			c.metrics.compactTablesOperationDurationSeconds.Set(runtime.Seconds())
-			c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
+			c.metrics.compactTablesOperationDurationSeconds.WithLabelValues(withRetentionLabelValue).Set(runtime.Seconds())
+			c.metrics.compactTablesOperationLastSuccess.WithLabelValues(withRetentionLabelValue).SetToCurrentTime()
 			if applyRetention {
 				c.metrics.applyRetentionLastSuccess.SetToCurrentTime()
 			}
@@ -623,7 +670,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 				c.expirationChecker.MarkPhaseFailed()
 			}
 		}
-		if runtime > c.cfg.CompactionInterval {
+		if !applyRetention && runtime > c.cfg.CompactionInterval {
 			level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("last compaction took %s which is longer than the compaction interval of %s, this can lead to duplicate compactors running if not running a standalone compactor instance.", runtime, c.cfg.CompactionInterval))
 		}
 	}()
@@ -634,7 +681,6 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 		tbls, err := sc.indexStorageClient.ListTables(ctx)
 		if err != nil {
-			status = statusFailure
 			return fmt.Errorf("failed to list tables: %w", err)
 		}
 
@@ -704,12 +750,15 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	for i := 0; i < c.cfg.MaxCompactionParallelism; i++ {
 		err := <-errChan
 		if err != nil && firstErr == nil {
-			status = statusFailure
 			firstErr = err
 		}
 	}
 
-	return firstErr
+	if firstErr != nil {
+		return firstErr
+	}
+
+	return ctx.Err()
 }
 
 type expirationChecker struct {
