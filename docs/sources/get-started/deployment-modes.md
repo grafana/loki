@@ -40,7 +40,7 @@ as well as for small read/write volumes of up to approximately 100GB per day.
 
 Horizontally scale up a monolithic mode deployment to more instances
 by using a shared object store, and by configuring the
-[`ring` section]({{< relref "../configuration#common" >}})
+[`ring` section]({{< relref "../configure#common" >}})
 to share state between all instances.
 
 High availability can be configured by running two Loki instances
