@@ -18,8 +18,7 @@ message TopK {
   bytes hyperloglog = 3;
 }
 
-message TopKMatrix{
-
+message TopKMatrix {
   message Vector {
     TopK topk = 1;
     int64 timestamp_ms = 2;
