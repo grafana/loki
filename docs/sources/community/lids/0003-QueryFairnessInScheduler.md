@@ -2,8 +2,8 @@
 title: "0003: Query fairness across users within tenants"
 description: "Improve the query scheduler to ensure fairness between individual users of individual tenants."
 aliases: 
-- /docs/loki/latest/lids
-- /docs/loki/latest/community/lids
+- /docs/loki/latest/lids/0003-queryfairnessinscheduler/
+- /docs/loki/latest/community/lids/0003-queryfairnessinscheduler/
 ---
 
 # 0003: Query fairness across users within tenants

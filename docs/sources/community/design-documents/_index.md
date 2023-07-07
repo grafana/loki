@@ -1,10 +1,10 @@
 ---
 title: Design documents
-description: Design documents
+description: Loki Design documents
 aliases: 
-- /docs/loki/latest/design-documents
-- /docs/loki/latest/community/design-documents
-weight: 1300
+- ../design-documents
+- ../community/design-documents
+weight: 600
 ---
 # Design documents
 

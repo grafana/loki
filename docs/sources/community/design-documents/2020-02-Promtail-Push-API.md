@@ -2,8 +2,8 @@
 title: Promtail Push API
 description: Promtail Push API
 aliases: 
-- /docs/loki/latest/design-documents/
-- /docs/loki/latest/community/design-documents/
+- ../design-documents/2020-02-promtail-push-api/
+- ../community/design-documents/2020-02-promtail-push-api/
 weight: 20
 ---
 # Promtail Push API

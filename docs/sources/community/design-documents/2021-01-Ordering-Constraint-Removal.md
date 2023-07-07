@@ -2,8 +2,8 @@
 title: Ordering Constraint Removal
 description: Ordering Constraint Removal
 aliases: 
-- /docs/loki/latest/design-documents/
-- /docs/loki/latest/community/design-documents/
+- ../design-documents/2021-01-ordering-constraint-removal/
+- ../community/design-documents/2021-01-ordering-constraint-removal/
 weight: 40
 ---
 ## Ordering Constraint Removal

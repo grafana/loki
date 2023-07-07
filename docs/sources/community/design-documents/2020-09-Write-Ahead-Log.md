@@ -2,8 +2,8 @@
 title: Write-Ahead Logs
 description: Write-Ahead Logs
 aliases: 
-- /docs/loki/latest/design-documents/
-- /docs/loki/latest/community/design-documents/
+- ../design-documents/2020-09-write-ahead-log/
+- ../community/design-documents/2020-09-write-ahead-log/
 weight: 30
 ---
 ## Write-Ahead Logs

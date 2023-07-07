@@ -2,8 +2,8 @@
 title: Releasing Grafana Loki
 description: Releasing Grafana Loki
 aliases: 
-- /docs/loki/latest/maintaining
-- /docs/loki/latest/community/maintaining
+- /docs/loki/latest/maintaining/release/
+- /docs/loki/latest/community/maintaining/release/
 ---
 # Releasing Grafana Loki
 
