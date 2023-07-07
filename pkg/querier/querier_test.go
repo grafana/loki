@@ -975,14 +975,27 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 		require.NoError(t, err)
 
+		ingesterClient := newQuerierClientMock()
 		store := newStoreMock()
 		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
-		querier := SingleTenantQuerier{
-			store:  store,
-			limits: limits,
-		}
 
-		req := &logproto.VolumeRequest{From: 0, Through: 1000, Matchers: `{}`, Limit: 10}
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-1 * time.Hour).Unix())
+		through := model.TimeFromUnix(now.Add(-35 * time.Minute).Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
 		ctx := user.InjectOrgID(context.Background(), "test")
 		resp, err := querier.SeriesVolume(ctx, req)
 		require.NoError(t, err)

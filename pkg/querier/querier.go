@@ -804,8 +804,19 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
 
-	responses := make([]*logproto.VolumeResponse, 0)
-	if !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil {
+	queryIngesters := !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil
+	queryStore := !q.cfg.QueryIngesterOnly && storeQueryInterval != nil
+
+	numResponses := 0
+	if queryIngesters {
+		numResponses++
+	}
+	if queryStore {
+		numResponses++
+	}
+	responses := make([]*logproto.VolumeResponse, 0, numResponses)
+
+	if queryIngesters {
 		// Make a copy of the request before modifying
 		// because the initial request is used below to query stores
 
@@ -824,8 +835,8 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 		responses = append(responses, resp)
 	}
 
-	if !q.cfg.QueryIngesterOnly && storeQueryInterval != nil {
-		resp, err := q.ingesterQuerier.SeriesVolume(
+	if queryStore {
+		resp, err := q.store.SeriesVolume(
 			ctx,
 			userID,
 			model.TimeFromUnix(storeQueryInterval.start.Unix()),
