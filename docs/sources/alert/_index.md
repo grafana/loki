@@ -2,12 +2,10 @@
 title: Alerting and recording rules
 menuTitle: Alert
 description: Learn how the rule evaluates queries for alerting.
-
 aliases:
-  - /docs/loki/latest/rules/
-  - docs/loki/latest/alert/
-  - docs/loki/latest/alerting/
-
+  - ./rules/
+  - ./alert/
+  - ./alerting/
 weight: 850
 keywords:
   - loki
