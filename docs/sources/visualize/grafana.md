@@ -4,6 +4,7 @@ menuTitle: Visualize data
 description: Visualize your log data with Grafana
 
 aliases:
+   - ../getting-started/grafana/
    - ../operations/grafana/
    - ../visualize/grafana/
 weight: 825
