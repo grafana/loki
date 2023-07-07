@@ -365,7 +365,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10)
+		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10, nil)
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
@@ -385,7 +385,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10)
+		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10, nil)
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)
