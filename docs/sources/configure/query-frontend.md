@@ -1,8 +1,13 @@
 ---
-title: Query Frontend
-description: Kubernetes Query Frontend Example
+title: Query frontend
+menuTitle:  
+description: Kubernetes query frontent example.
+aliases: 
+  - ../configuration/query-frontend/
+  - ../configure/query-frontend/
+weight:  200
 ---
-# Query Frontend
+# Query frontend
 
 ## Disclaimer
 

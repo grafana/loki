@@ -17,7 +17,7 @@ format](#chunk-format) for how chunks are stored internally.
 The **index** stores each stream's label set and links them to the individual
 chunks.
 
-Refer to Loki's [configuration]({{< relref "../../configuration" >}}) for details on
+Refer to Loki's [configuration]({{< relref "../../configure" >}}) for details on
 how to configure the storage and the index.
 
 For more information:
