@@ -4,6 +4,7 @@ import (
 	"container/heap"
 	"fmt"
 	"github.com/axiomhq/hyperloglog"
+	"math"
 	"sort"
 )
 
@@ -18,9 +19,11 @@ type SketchBF struct {
 	expectedCardinality int
 
 	// sketch portion
-	depth, width int
-	cms          *CountMinSketch
-	bf           [][]bool
+	depth, width   int
+	cms            *CountMinSketch
+	bf             [][]bool
+	eventPositions []uint32
+	//heapPositions  map[string][]uint32
 }
 
 func NewSketchBFForCardinality(k, c int) (*SketchBF, error) {
@@ -49,13 +52,14 @@ func NewSketchBF(k, w, d int) (*SketchBF, error) {
 	//}, nil
 
 	return &SketchBF{
-		max:   k,
-		depth: d,
-		width: w,
-		heap:  MinHeap{},
-		cms:   cms,
-		bf:    makeBF(w, d),
-		hll:   hyperloglog.New16(),
+		max:            k,
+		depth:          d,
+		width:          w,
+		heap:           MinHeap{},
+		cms:            cms,
+		bf:             makeBF(w, d),
+		hll:            hyperloglog.New16(),
+		eventPositions: make([]uint32, d),
 	}, nil
 }
 
@@ -72,95 +76,34 @@ func (s *SketchBF) getPos(h1, h2 uint32, row int) uint32 {
 	return pos
 }
 
-//// Add 'count' occurences of the given input.
-//func (s *SketchBF) add(event string, count int) {
-//	// see the comments in the hashn function for how using only 2
-//	// hash functions rather than a function per row still fullfils
-//	// the pairwise indendent hash functions requirement for CMS
-//	h1, h2 := hashn(event)
-//	for i := 0; i < s.depth; i++ {
-//		pos := s.getPos(h1, h2, i)
-//		s.counters[i][pos] += uint32(count)
-//	}
-//}
-
-//func (s *SketchBF) increment(event string) {
-//	s.add(event, 1)
-//}
-
-// conservativeAdd adds the count (conservatively) for the given input.
-// Conservative counting is described in https://dl.acm.org/doi/pdf/10.1145/633025.633056
-// and https://theory.stanford.edu/~matias/papers/sbf-sigmod-03.pdf. For more details you can read
-// https://arxiv.org/pdf/2203.14549.pdf as well. The tl; dr, we only update the counters with a
-// value that's less than Count(h) + count rather than all counters that h hashed to.
-//func (s *SketchBF) conservativeAdd(event string, count uint32) uint32 {
-//	val := s.count(event)
-//	val += count
-//
-//	h1, h2 := hashn(event)
-//	for i := 0; i < s.depth; i++ {
-//		pos := s.getPos(h1, h2, i)
-//		v := s.counters[i][pos]
-//		if v < val {
-//			s.counters[i][pos] = val
-//		}
-//	}
-//	return val
-//}
-//
-//func (s *SketchBF) conservativeIncrement(event string) {
-//	s.conservativeAdd(event, 1)
-//}
-//
-//// Count returns the approximate min count for the given input.
-//func (s *SketchBF) count(event string) uint32 {
-//	min := uint32(math.MaxUint32)
-//	h1, h2 := hashn(event)
-//
-//	var pos uint32
-//	for i := 0; i < s.depth; i++ {
-//		pos = s.getPos(h1, h2, i)
-//		if s.counters[i][pos] < min {
-//			min = s.counters[i][pos]
-//		}
-//	}
-//	return min
-//}
-
 func (s *SketchBF) Observe(event string) {
-	s.hll.Insert([]byte(event))
-	//estimate := s.cms.ConservativeIncrement(event)
-	//estimate := s.cms.Count(event)
-
-	// check if the event is already in the topk, if it is we should update it's count
-	// loop copied from cms conservative add
-	val := s.cms.Count(event)
-	val++
-
-	ok := true
+	// avoid calling count so that we can save the positions in each row for this event
 	h1, h2 := hashn(event)
+	val := uint32(math.MaxUint32)
+	var pos uint32
+	for i := 0; i < s.depth; i++ {
+		pos = s.getPos(h1, h2, i)
+		s.eventPositions[i] = pos
+		if s.cms.counters[i][pos] < val {
+			val = s.cms.counters[i][pos]
+		}
+
+	}
+	val++
+	ok := true
+	s.hll.InsertHash(uint64(h1))
 	// update the counter in the CMS but also check all the
 	// bloom filter counters to see if the event is already in the heap
 	for i := 0; i < s.depth; i++ {
-		pos := s.getPos(h1, h2, i)
-		v := s.cms.counters[i][pos]
-		if v < val {
+
+		pos = s.eventPositions[i]
+		if s.cms.counters[i][pos] < val {
 			s.cms.counters[i][pos] = val
 		}
 		if s.bf[i][pos] != true {
 			ok = false
 		}
 	}
-	estimate := val
-	//return val
-	//h1, h2 := hashn(event)
-	//for r := range s.bf {
-	//	pos := s.getPos(h1, h2, r)
-	//	if s.bf[r][pos] != true {
-	//		ok = false
-	//		break
-	//	}
-	//}
 
 	// avoid updating the heap, we don't need to
 	if ok {
@@ -173,80 +116,51 @@ func (s *SketchBF) Observe(event string) {
 	}
 
 	// update the heap and bloom filter values
+	oMin := uint32(math.MaxUint32)
+	oMinIdx := 0
 	for i := 0; i < len(s.heap); i++ {
-		e := s.heap[i].event
-		s.heap[i].count = s.cms.Count(e)
-		updateH1, updateH2 := hashn(e)
-		for r := range s.bf {
-			pos := s.getPos(updateH1, updateH2, r)
+		min := uint32(math.MaxUint32)
+		for r := range s.cms.counters {
+			pos = s.heap[i].sketchPositions[r]
 			s.bf[r][pos] = true
+			if s.cms.counters[r][pos] < min {
+				min = s.cms.counters[r][pos]
+			}
+			if s.cms.counters[r][pos] < oMin {
+				oMin = s.cms.counters[r][pos]
+				oMinIdx = i
+			}
 		}
-		//heap.Fix(&s.heap, i)
+		s.heap[i].count = min
 	}
-
-	// reheapify
-	for i := s.heap.Len() / 2; i > 0; i-- {
-		e := s.heap[i].event
-		s.heap[i].count = s.cms.Count(e)
-		heap.Fix(&s.heap, i)
-	}
+	heap.Fix(&s.heap, oMinIdx)
 
 	// check if the event is in the heap now
 	ok = true
-	//h1, h2 := hashn(event)
-	// update the counter in the CMS but also check all the
-	// bloom filter counters to see if the event is already in the heap
 	for i := 0; i < s.depth; i++ {
-		pos := s.getPos(h1, h2, i)
+		pos = s.eventPositions[i]
 		if s.bf[i][pos] != true {
 			ok = false
 		}
 	}
 	if ok {
-		//fmt.pr	/
 		return
 	}
-	//estimate := val
-
-	// when we get here, the event is not in the heap currently
-
-	//if estimate < s.heap.Peek().(*node).count {
-	//	return
-	//}
 
 	if s.heap.Len() < s.max {
-		heap.Push(&s.heap, &node{event: event, count: estimate})
+		n := &node{event: event, count: val}
+		n.sketchPositions = make([]uint32, len(s.eventPositions))
+		copy(n.sketchPositions, s.eventPositions)
+		heap.Push(&s.heap, n)
 		for r := range s.bf {
-			pos := s.getPos(h1, h2, r)
+			pos = s.eventPositions[r]
 			s.bf[r][pos] = true
 		}
-		//t.currentTop[event] = estimate
 		return
 	}
 
-	//// do an initial check if the estimate is > the heaps min value
-	//if estimate > s.heap.Peek().(*node).count {
-	//	// lets ensure all the values of the events in the heap are up to date
-	//	for i := 0; i < len(s.heap); i++ {
-	//		e := s.heap[i].event
-	//		s.heap[i].count = s.cms.Count(e)
-	//		heap.Fix(&s.heap, i)
-	//		r1, r2 := hashn(e)
-	//
-	//		for r := range s.bf {
-	//			pos := s.getPos(r1, r2, r)
-	//			s.bf[r][pos] = true
-	//		}
-	//		// the paper also updates all the bf counters here
-	//		// to be 1, but they should already be? not necessarily if
-	//		// we popped something from the heap that had a collision with
-	//		// this event
-	//
-	//	}
-	//}
-
 	// if the estimate is still greater than the updated min, we can do the dance
-	if estimate > s.heap.Peek().(*node).count {
+	if val > s.heap.Peek().(*node).count {
 		var r1, r2 uint32
 		removed := false
 		var removedEvent string
@@ -254,35 +168,27 @@ func (s *SketchBF) Observe(event string) {
 			e := heap.Pop(&s.heap).(*node)
 			removedEvent = e.event
 			// we need to update the bf for the thing we popped
-			//r1, r2 = hashn(e.event)
 			removed = true
-			//for r := range s.bf {
-			//	pos := s.getPos(r1, r2, r)
-			//	s.bf[r][pos] = false
-			//}
-			// todo: refactor so we have a nicer way of not calling pop if the
-			// heap length is 0
-			//if min != nil {
-			//	delete(t.currentTop, min.event)
-			//}
 		}
 
-		ele := node{event: event, count: estimate}
+		ele := node{event: event, count: val}
+		ele.sketchPositions = make([]uint32, len(s.eventPositions))
+		copy(ele.sketchPositions, s.eventPositions)
 		heap.Push(&s.heap, &ele)
 		if removed {
 			r1, r2 = hashn(removedEvent)
 		}
+		var rPos uint32
 		for r := range s.bf {
 			// do the removed position first just incase the new added
 			// position overlaps
 			if removed {
-				rPos := s.getPos(r1, r2, r)
+				rPos = s.getPos(r1, r2, r)
 				s.bf[r][rPos] = false
 			}
-			pos := s.getPos(h1, h2, r)
+			pos = s.eventPositions[r]
 			s.bf[r][pos] = true
 		}
-		//t.currentTop[event] = estimate
 	}
 }
 
