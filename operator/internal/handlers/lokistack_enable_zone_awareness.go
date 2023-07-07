@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -35,7 +34,7 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 
 	labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
 	if !ok {
-		return fmt.Errorf("zone-aware pod is missing node-labels annotation: %s", lokiv1.AnnotationAvailabilityZoneLabels)
+		return kverrors.New("zone-aware pod is missing node-labels annotation", "annotation", lokiv1.AnnotationAvailabilityZoneLabels)
 	}
 	labelKeys := strings.Split(labelsAnnotation, ",")
 
@@ -74,7 +73,7 @@ func getAvailabilityZone(labelKeys []string, nodeLabels map[string]string) (stri
 	for _, key := range labelKeys {
 		value, ok := nodeLabels[key]
 		if !ok {
-			return "", fmt.Errorf("scheduled node is missing label: %s", key)
+			return "", kverrors.New("scheduled node is missing label", "label", key)
 		}
 
 		labelValues = append(labelValues, value)

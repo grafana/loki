@@ -14,16 +14,14 @@ const (
 	availabilityZoneFieldPath  = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
 )
 
-var (
-	availabilityZoneEnvVar = corev1.EnvVar{
-		Name: availabilityZoneEnvVarName,
-		ValueFrom: &corev1.EnvVarSource{
-			FieldRef: &corev1.ObjectFieldSelector{
-				FieldPath: availabilityZoneFieldPath,
-			},
+var availabilityZoneEnvVar = corev1.EnvVar{
+	Name: availabilityZoneEnvVarName,
+	ValueFrom: &corev1.EnvVarSource{
+		FieldRef: &corev1.ObjectFieldSelector{
+			FieldPath: availabilityZoneFieldPath,
 		},
-	}
-)
+	},
+}
 
 func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *lokiv1.ReplicationSpec, component string, stackName string) {
 	zoneKeys := []string{}
