@@ -28,7 +28,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -176,7 +176,7 @@ func (a *AsyncStore) SeriesVolume(ctx context.Context, userID string, from, thro
 
 	if a.shouldQueryIngesters(through, model.Now()) {
 		jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-			vols, err := a.ingesterQuerier.SeriesVolume(ctx, userID, from, through, limit, matchers...)
+			vols, err := a.ingesterQuerier.SeriesVolume(ctx, userID, from, through, limit, targetLabels, matchers...)
 			level.Debug(logger).Log(
 				"msg", "queried label volumes",
 				"matchers", matchersStr,
