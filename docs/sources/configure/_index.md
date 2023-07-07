@@ -1,8 +1,11 @@
 ---
-description: Describes parameters used to configure Grafana Loki.
-menuTitle: Configuration parameters
 title: Grafana Loki configuration parameters
-weight: 500
+menuTitle: Configuration parameters
+description: Configuration reference for the parameters used to configure Grafana Loki.
+aliases: 
+  - ../configuration
+  - ../configure
+weight: 500 
 ---
 
 # Grafana Loki configuration parameters

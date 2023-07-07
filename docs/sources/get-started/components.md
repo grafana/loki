@@ -36,7 +36,7 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 The distributor can also rate limit incoming logs based on the maximum per-tenant bitrate. It does this by checking a per tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/second before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
 
-**Note: The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configuration#distributor" >}}).**
+**Note: The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configure#distributor" >}}).**
 
 ### Forwarding
 
@@ -143,7 +143,7 @@ deduplicated.
 
 ### Timestamp Ordering
 
-Loki is configured to [accept out-of-order writes]({{< relref "../configuration#accept-out-of-order-writes" >}}) by default.
+Loki is configured to [accept out-of-order writes]({{< relref "../configure#accept-out-of-order-writes" >}}) by default.
 
 When not configured to accept out-of-order writes, the ingester validates that ingested log lines are in order. When an
 ingester receives a log line that doesn't follow the expected order, the line
