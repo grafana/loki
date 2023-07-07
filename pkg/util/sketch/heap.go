@@ -8,7 +8,8 @@ type node struct {
 	event string
 	count uint32
 	// used for the container heap Fix function
-	index uint16
+	index           uint16
+	sketchPositions []uint32
 }
 
 type MinHeap []*node

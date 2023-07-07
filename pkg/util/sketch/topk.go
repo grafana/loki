@@ -15,6 +15,7 @@ type Topk struct {
 	max                 int
 	heap                *MinHeap
 	sketch              *CountMinSketch
+	bf                  [][]bool
 	hashfuncs, rowlen   int
 	hll                 *hyperloglog.Sketch
 	expectedCardinality int
@@ -46,6 +47,7 @@ func getCMSWidth(l log.Logger, c int) int {
 }
 
 func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
+	// TODO: fix this function and get width function based on new testing data
 	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
 	w := getCMSWidth(l, c)
 	d := 4
@@ -68,31 +70,87 @@ func NewCMSTopK(k, w, d int) (*Topk, error) {
 		heap:   &MinHeap{},
 		sketch: s,
 		hll:    hyperloglog.New16(),
+		bf:     makeBF(w, d),
 	}, nil
 }
 
+func (t *Topk) heapPush(event string, estimate, h1, h2 uint32) {
+	var pos uint32
+	for i := range t.bf {
+		pos = t.sketch.getPos(h1, h2, i)
+		t.bf[i][pos] = true
+	}
+	heap.Push(t.heap, &node{event: event, count: estimate})
+}
+
+func (t *Topk) heapUpdate(event string, estimate, h1, h2 uint32) {
+	var pos uint32
+	for i := range t.bf {
+		pos = t.sketch.getPos(h1, h2, i)
+		t.bf[i][pos] = true
+	}
+	(*t.heap)[0].event = event
+	(*t.heap)[0].count = estimate
+	heap.Fix(t.heap, 0)
+}
+
+// updates the BF to ensure that the removed event won't be mistakenly thought
+// to be in the heap, and updates the BF to ensure that we would get a truthy result for the added event
+func (t *Topk) updateBF(removed, added string) {
+	r1, r2 := hashn(removed)
+	a1, a2 := hashn(added)
+	var pos uint32
+	for i := range t.bf {
+		// removed event
+		pos = t.sketch.getPos(r1, r2, i)
+		t.bf[i][pos] = false
+		// added event
+		pos = t.sketch.getPos(a1, a2, i)
+		t.bf[i][pos] = true
+	}
+}
+
 func (t *Topk) Observe(event string) {
-	t.hll.Insert([]byte(event))
-	t.sketch.ConservativeIncrement(event)
-	estimate := t.sketch.Count(event)
+	estimate, h1, h2 := t.sketch.ConservativeIncrement(event)
+	t.hll.InsertHash(uint64(h1))
 
 	// check if the event is already in the topk, if it is we should update it's count
-	if t.InTopk(event) {
-		t.heap.update(event, estimate)
+	if t.InTopk(h1, h2) {
 		return
 	}
 
 	if len(*t.heap) < t.max {
-		heap.Push(t.heap, &node{event: event, count: estimate})
+		t.heapPush(event, estimate, h1, h2)
 		return
 	}
 
 	if estimate > t.heap.Peek().(*node).count {
-		if len(*t.heap) == t.max {
-			_ = heap.Pop(t.heap).(*node)
+		for i := range *t.heap {
+			(*t.heap)[i].count = t.sketch.Count((*t.heap)[i].event)
+			if i <= len(*t.heap)/2 {
+				heap.Fix(t.heap, i)
+			}
 		}
-		ele := node{event: event, count: estimate}
-		heap.Push(t.heap, &ele)
+	}
+
+	// after we've updated the heap, if the estimate is still > the min heap element
+	// we should replace the min heap element with the current event and rebalance
+	// the heap
+	if estimate > t.heap.Peek().(*node).count {
+		if len(*t.heap) == t.max {
+			e := t.heap.Peek().(*node).event
+			r1, r2 := hashn(e)
+			var pos uint32
+			for i := range t.bf {
+				// removed event
+				pos = t.sketch.getPos(r1, r2, i)
+				t.bf[i][pos] = false
+			}
+			t.heapUpdate(event, estimate, h1, h2)
+
+			return
+		}
+		t.heapPush(event, estimate, h1, h2)
 	}
 }
 
@@ -137,10 +195,17 @@ func (t *Topk) Merge(from *Topk) error {
 	return nil
 }
 
-// InTopk checks to see if an event is already in the topk for this query
-func (t *Topk) InTopk(event string) bool {
-	_, ok := t.heap.Find(event)
-	return ok
+// InTopk checks to see if an event is already in the topk for this query based on it's sketch hashes
+func (t *Topk) InTopk(h1, h2 uint32) bool {
+	ret := true
+	var pos uint32
+	for i := range t.bf {
+		pos = t.sketch.getPos(h1, h2, i)
+		if !t.bf[i][pos] {
+			ret = false
+		}
+	}
+	return ret
 }
 
 type element struct {

@@ -581,3 +581,145 @@ outer2:
 	// would have been if we had used
 	assert.True(t, cmsMissing <= hkMissing, "merged CMS should be more accurate than merged HK")
 }
+
+// this test was supposed to be CMS vs sketchbf, my sketch BF implementation for some reason
+// was never better than 50% slower than cms, but applying some of the sketchbf principles
+// and measuring via this benchmark I managed to make our CMS Topk implementation almost 3x faster
+func BenchmarkCMSTopk(b *testing.B) {
+	nStreams := 100000
+	maxPerStream := 1000
+	k := 100
+	w := 2719
+	d := 7
+	oTotal := 0
+	cms, _ := NewCMSTopK(k, w, d)
+	//bf, _ := NewSketchBF(k, w, d)
+	max := int64(0)
+	events := make([]event, 0)
+	total := int64(0)
+	cmsDur := time.Duration(0)
+	//bfDur := time.Duration(0)
+
+	for i := 0; i < b.N; i++ {
+		b.StopTimer()
+		fmt.Println("benchmark iteration")
+		for j := 0; j < nStreams-k; j++ {
+			num := int64(maxPerStream)
+			n := rand.Int63n(num) + 1
+			if n > max {
+				max = n
+			}
+			for z := 0; z < int(n); z++ {
+				events = append(events, event{name: strconv.Itoa(j), count: 1})
+			}
+			total += n
+			oTotal += int(n)
+		}
+		// then another set of things more than the max of the previous entries
+		for z := nStreams - k; z < nStreams; z++ {
+			n := int64(rand.Int63n(int64(maxPerStream)) + 1 + max)
+			for x := 0; x < int(n); x++ {
+				events = append(events, event{name: strconv.Itoa(z), count: 1})
+			}
+			total += n
+			oTotal += int(n)
+		}
+
+		rand.Seed(time.Now().UnixNano())
+		rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
+		b.StartTimer()
+
+		cmsStart := time.Now()
+		for _, e := range events {
+			for i := 0; i < e.count; i++ {
+				cms.Observe(e.name)
+			}
+		}
+		cmsDur += time.Since(cmsStart)
+
+		//bfStart := time.Now()
+		//for _, e := range events {
+		//	for i := 0; i < e.count; i++ {
+		//		bf.Observe(e.name)
+		//	}
+		//}
+		//bfDur += time.Since(bfStart)
+	}
+	b.ReportMetric(cmsDur.Seconds()/float64(b.N), "cms_time/op")
+	//b.ReportMetric(bfDur.Seconds()/float64(b.N), "bf_time/op")
+	//require.LessOrEqualf(b, bfDur.Seconds()/float64(b.N), cmsDur.Seconds()/float64(b.N), "sketchbf duration should be less than cms duration because of the reduction in heap")
+}
+
+func TestBFTopK(t *testing.T) {
+	nStreams := 100000
+	k := 100
+	maxPerStream := 1000
+	events := make([]event, 0)
+	max := int64(0)
+
+	for i := 0; i < nStreams-k; i++ {
+		num := int64(maxPerStream)
+		n := rand.Int63n(num) + 1
+		if n > max {
+			max = n
+		}
+		for z := 0; z < int(n); z++ {
+			events = append(events, event{name: strconv.Itoa(i), count: 1})
+		}
+	}
+	// then another set of things more than the max of the previous entries
+	for i := nStreams - k; i < nStreams; i++ {
+		n := int64(rand.Int63n(int64(maxPerStream)) + 1 + max)
+		for x := 0; x < int(n); x++ {
+			events = append(events, event{name: strconv.Itoa(i), count: 1})
+		}
+	}
+
+	rand.Seed(time.Now().UnixNano())
+	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
+
+	topk, _ := NewSketchBF(100, 27189, 7)
+	for _, e := range events {
+		for i := 0; i < e.count; i++ {
+			topk.Observe(e.name)
+		}
+	}
+
+	cms, _ := NewCMSTopK(100, 27189, 7)
+	for _, e := range events {
+		for i := 0; i < e.count; i++ {
+			cms.Observe(e.name)
+		}
+	}
+
+	bftopk := topk.Topk()
+	cmsTopk := cms.Topk()
+
+	bfMissing := 0
+	cmsMissing := 0
+	var eventName string
+
+	for i := nStreams - k; i < nStreams; i++ {
+		eventName = strconv.Itoa(i)
+		m := false
+		for j := 0; j < len(bftopk); j++ {
+			if bftopk[j].Event == eventName {
+				m = true
+			}
+		}
+		if !m {
+			bfMissing++
+		}
+		m = false
+		for j := 0; j < len(cmsTopk); j++ {
+			if cmsTopk[j].Event == eventName {
+				m = true
+			}
+		}
+		if !m {
+			cmsMissing++
+		}
+	}
+	// should have the same accuracy since sketchbf is just using a cms under the hood
+	require.LessOrEqualf(t, bfMissing, cmsMissing, "sketchbf should be as accurate or better than cms since it uses cms under the hood, bf missing: %d, cms missing: %d", bfMissing, cmsMissing)
+}

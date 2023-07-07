@@ -57,23 +57,33 @@ func (s *CountMinSketch) Increment(event string) {
 // and https://theory.stanford.edu/~matias/papers/sbf-sigmod-03.pdf. For more details you can read
 // https://arxiv.org/pdf/2203.14549.pdf as well. The tl; dr, we only update the counters with a
 // value that's less than Count(h) + count rather than all counters that h hashed to.
-func (s *CountMinSketch) ConservativeAdd(event string, count uint32) uint32 {
-	val := s.Count(event)
-	val += count
+// Returns the new estimate for the event as well as the both hashes which can be used
+// to identify the event for other things that need a hash.
+func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, uint32, uint32) {
+	min := uint32(math.MaxUint32)
 
 	h1, h2 := hashn(event)
+	// inline Count to save time/memory
+	var pos uint32
 	for i := 0; i < s.depth; i++ {
-		pos := s.getPos(h1, h2, i)
-		v := s.counters[i][pos]
-		if v < val {
-			s.counters[i][pos] = val
+		pos = s.getPos(h1, h2, i)
+		if s.counters[i][pos] < min {
+			min = s.counters[i][pos]
 		}
 	}
-	return val
+	min += count
+	for i := 0; i < s.depth; i++ {
+		pos = s.getPos(h1, h2, i)
+		v := s.counters[i][pos]
+		if v < min {
+			s.counters[i][pos] = min
+		}
+	}
+	return min, h1, h2
 }
 
-func (s *CountMinSketch) ConservativeIncrement(event string) {
-	s.ConservativeAdd(event, 1)
+func (s *CountMinSketch) ConservativeIncrement(event string) (uint32, uint32, uint32) {
+	return s.ConservativeAdd(event, 1)
 }
 
 // Count returns the approximate min count for the given input.
