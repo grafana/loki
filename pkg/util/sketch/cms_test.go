@@ -1,6 +1,3 @@
-//go:build sketch
-// +build sketch
-
 package sketch
 
 import (
@@ -11,6 +8,11 @@ import (
 )
 
 func TestCMS(t *testing.T) {
+	type event struct {
+		name  string
+		count int
+	}
+
 	myCms, _ := NewCountMinSketch(10, 4)
 
 	k := 1
@@ -28,8 +30,6 @@ func TestCMS(t *testing.T) {
 		for z := 0; z < int(n); z++ {
 			events = append(events, event{name: strconv.Itoa(j), count: 1})
 		}
-		//total += n
-		//oTotal += int(n)
 	}
 	// then another set of things more than the max of the previous entries
 	for z := numStreams - k; z < numStreams; z++ {

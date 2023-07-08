@@ -1,12 +1,10 @@
-//go:build sketch
-// +build sketch
-
 package sketch
 
 import (
 	"container/heap"
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestHeap(t *testing.T) {
