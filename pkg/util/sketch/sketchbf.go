@@ -12,8 +12,7 @@ import (
 // it uses an additional "bloom filter" of bits to know whether
 // a given thing is already part of the heap
 type SketchBF struct {
-	max int
-	//currentTop          map[string]uint32
+	max                 int
 	heap                MinHeap
 	hll                 *hyperloglog.Sketch
 	expectedCardinality int
@@ -23,7 +22,6 @@ type SketchBF struct {
 	cms            *CountMinSketch
 	bf             [][]bool
 	eventPositions []uint32
-	//heapPositions  map[string][]uint32
 }
 
 func NewSketchBFForCardinality(k, c int) (*SketchBF, error) {
@@ -45,11 +43,6 @@ func NewSketchBF(k, w, d int) (*SketchBF, error) {
 		return nil, fmt.Errorf("sketch dimensions must be positive, w: %d, d: %d", w, d)
 	}
 	cms, _ := NewCountMinSketch(w, d)
-	//return &SketchBF{
-	//	depth: d,
-	//	width: w,
-	//
-	//}, nil
 
 	return &SketchBF{
 		max:            k,
