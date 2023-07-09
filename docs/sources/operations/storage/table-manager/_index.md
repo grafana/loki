@@ -39,7 +39,7 @@ to store chunks, are not managed by the Table Manager, and a custom bucket polic
 should be set to delete old data.
 
 For detailed information on configuring the Table Manager, refer to the
-[`table_manager`]({{< relref "../../../configuration#table_manager" >}})
+[`table_manager`]({{< relref "../../../configure#table_manager" >}})
 section in the Loki configuration document.
 
 
@@ -48,10 +48,10 @@ section in the Loki configuration document.
 A periodic table stores the index or chunk data relative to a specific period
 of time. The duration of the time range of the data stored in a single table and
 its storage type is configured in the
-[`schema_config`]({{< relref "../../../configuration#schema_config" >}}) configuration
+[`schema_config`]({{< relref "../../../configure#schema_config" >}}) configuration
 block.
 
-The [`schema_config`]({{< relref "../../../configuration#schema_config" >}}) can contain
+The [`schema_config`]({{< relref "../../../configure#schema_config" >}}) can contain
 one or more `configs`. Each config, defines the storage used between the day
 set in `from` (in the format `yyyy-mm-dd`) and the next config, or "now"
 in the case of the last schema config entry.
@@ -105,7 +105,7 @@ order to make sure that the new table is ready once the current table end
 period is reached.
 
 The `creation_grace_period` property - in the
-[`table_manager`]({{< relref "../../../configuration#table_manager" >}})
+[`table_manager`]({{< relref "../../../configure#table_manager" >}})
 configuration block - defines how long before a table should be created.
 
 
@@ -149,7 +149,7 @@ documentation.
 A table can be active or inactive.
 
 A table is considered **active** if the current time is within the range:
-- Table start period - [`creation_grace_period`]({{< relref "../../../configuration#table_manager" >}})
+- Table start period - [`creation_grace_period`]({{< relref "../../../configure#table_manager" >}})
 - Table end period + max chunk age (hardcoded to `12h`)
 
 ![active_vs_inactive_tables](./table-manager-active-vs-inactive-tables.png)

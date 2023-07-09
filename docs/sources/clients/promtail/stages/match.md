@@ -48,7 +48,7 @@ match:
       ]
 ```
 
-Refer to the [Promtail Configuration Reference]({{< relref "../configuration" >}}) for the
+Refer to the [Promtail Configuration Reference]({{< relref "../configuration.md" >}}) for the
 schema on the various other stages referenced here.
 
 ### Example

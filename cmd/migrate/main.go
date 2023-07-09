@@ -342,30 +342,34 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 						keys = append(keys, key)
 						chks = append(chks, chk)
 					}
-					finalChks := make([]chunk.Chunk, 0, len(chunks))
-					for i := range chks {
-						onechunk := []chunk.Chunk{chunks[i]}
-						onekey := []string{keys[i]}
-						var retry int
-						for retry = 10; retry >= 0; retry-- {
-							onechunk, err = f.FetchChunks(m.ctx, onechunk, onekey)
-							if err != nil {
-								if retry == 0 {
-									log.Println(threadID, "Final error retrieving chunks, giving up:", err)
+					finalChks, err := f.FetchChunks(m.ctx, chks, keys)
+					if err != nil {
+						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)
+						finalChks = make([]chunk.Chunk, 0, len(chunks))
+						for i := range chks {
+							onechunk := []chunk.Chunk{chunks[i]}
+							onekey := []string{keys[i]}
+							var retry int
+							for retry = 4; retry >= 0; retry-- {
+								onechunk, err = f.FetchChunks(m.ctx, onechunk, onekey)
+								if err != nil {
+									if retry == 0 {
+										log.Println(threadID, "Final error retrieving chunks, giving up:", err)
+									}
+									log.Println(threadID, "Error fetching chunks, will retry:", err)
+									onechunk = []chunk.Chunk{chunks[i]}
+									time.Sleep(5 * time.Second)
+								} else {
+									break
 								}
-								log.Println(threadID, "Error fetching chunks, will retry:", err)
-								onechunk = []chunk.Chunk{chunks[i]}
-								time.Sleep(5 * time.Second)
-							} else {
-								break
 							}
-						}
 
-						if retry < 0 {
-							continue
-						}
+							if retry < 0 {
+								continue
+							}
 
-						finalChks = append(finalChks, onechunk[0])
+							finalChks = append(finalChks, onechunk[0])
+						}
 					}
 
 					totalChunks += uint64(len(finalChks))

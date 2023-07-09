@@ -34,8 +34,8 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		}
 
 		return marshal_legacy.WriteLabelResponseJSON(*result, w)
-	case logproto.SeriesResponse:
-		return WriteSeriesResponseJSON(result, w)
+	case *logproto.SeriesResponse:
+		return WriteSeriesResponseJSON(*result, w)
 	case *stats.Stats:
 		return WriteIndexStatsResponseJSON(result, w)
 	case *logproto.VolumeResponse:
