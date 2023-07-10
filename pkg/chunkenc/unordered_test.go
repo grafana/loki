@@ -31,7 +31,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 }
 
 func Test_forEntriesEarlyReturn(t *testing.T) {
-	hb := newUnorderedHeadBlock()
+	hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
 	for i := 0; i < 10; i++ {
 		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "i", Value: fmt.Sprint(i)}}))
 	}
@@ -165,7 +165,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hb := newUnorderedHeadBlock()
+			hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
 			for _, e := range tc.input {
 				require.Nil(t, hb.Append(e.t, e.s, e.metaLabels))
 			}
@@ -228,7 +228,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hb := newUnorderedHeadBlock()
+			hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
 			for _, e := range tc.input {
 				require.Nil(t, hb.Append(e.t, e.s, e.metaLabels))
 			}
@@ -247,37 +247,78 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 }
 
 func TestHeadBlockInterop(t *testing.T) {
-	unordered, ordered := newUnorderedHeadBlock(), &headBlock{}
+	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt), &headBlock{}
+	unorderedWithMetadata := newUnorderedHeadBlock(UnorderedWithMetadataHeadBlockFmt)
 	for i := 0; i < 100; i++ {
-		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}))
+		metaLabels := labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}
+		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
+		require.Nil(t, unorderedWithMetadata.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
 		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}}))
 	}
 
 	// turn to bytes
-	b1, err := ordered.CheckpointBytes(nil)
+	orderedCheckpointBytes, err := ordered.CheckpointBytes(nil)
 	require.Nil(t, err)
-	b2, err := unordered.CheckpointBytes(nil)
+	unorderedCheckpointBytes, err := unordered.CheckpointBytes(nil)
+	require.Nil(t, err)
+	unorderedWithMetadataCheckpointBytes, err := unorderedWithMetadata.CheckpointBytes(nil)
 	require.Nil(t, err)
 
 	// Ensure we can recover ordered checkpoint into ordered headblock
-	recovered, err := HeadFromCheckpoint(b1, OrderedHeadBlockFmt)
+	recovered, err := HeadFromCheckpoint(orderedCheckpointBytes, OrderedHeadBlockFmt)
 	require.Nil(t, err)
 	require.Equal(t, ordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(b1, UnorderedHeadBlockFmt)
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt)
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
+	// Ensure we can recover ordered checkpoint into unordered headblock with metadata
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithMetadataHeadBlockFmt)
+	require.NoError(t, err)
+	require.Equal(t, UnorderedWithMetadataHeadBlockFmt, recovered.Format())
+	require.IsType(t, &unorderedHeadBlock{}, recovered)
+	require.IsType(t, unordered.rt, (recovered.(*unorderedHeadBlock)).rt)
+	require.IsType(t, unordered.size, (recovered.(*unorderedHeadBlock)).size)
+	require.IsType(t, unordered.mint, (recovered.(*unorderedHeadBlock)).mint)
+	require.IsType(t, unordered.maxt, (recovered.(*unorderedHeadBlock)).maxt)
+
 	// Ensure we can recover unordered checkpoint into ordered headblock
-	recovered, err = HeadFromCheckpoint(b2, OrderedHeadBlockFmt)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, OrderedHeadBlockFmt)
 	require.Nil(t, err)
 	require.Equal(t, ordered, recovered)
 
 	// Ensure we can recover unordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(b2, UnorderedHeadBlockFmt)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt)
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
+
+	// Ensure we can recover unordered checkpoint into unordered with metadata headblock
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithMetadataHeadBlockFmt)
+	// we compare the data with unordered because unordered head block does not contain metaLabels.
+	require.NoError(t, err)
+	require.Equal(t, UnorderedWithMetadataHeadBlockFmt, recovered.Format())
+	require.IsType(t, &unorderedHeadBlock{}, recovered)
+	require.IsType(t, unordered.rt, (recovered.(*unorderedHeadBlock)).rt)
+	require.IsType(t, unordered.size, (recovered.(*unorderedHeadBlock)).size)
+	require.IsType(t, unordered.mint, (recovered.(*unorderedHeadBlock)).mint)
+	require.IsType(t, unordered.maxt, (recovered.(*unorderedHeadBlock)).maxt)
+
+	// Ensure we can recover unordered with metadata checkpoint into ordered headblock
+	recovered, err = HeadFromCheckpoint(unorderedWithMetadataCheckpointBytes, OrderedHeadBlockFmt)
+	require.Nil(t, err)
+	require.Equal(t, ordered, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+
+	// Ensure we can recover unordered with metadata checkpoint into unordered headblock
+	recovered, err = HeadFromCheckpoint(unorderedWithMetadataCheckpointBytes, UnorderedHeadBlockFmt)
+	require.Nil(t, err)
+	require.Equal(t, unordered, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+
+	// Ensure we can recover unordered with metadata checkpoint into unordered with metadata headblock
+	recovered, err = HeadFromCheckpoint(unorderedWithMetadataCheckpointBytes, UnorderedWithMetadataHeadBlockFmt)
+	require.Nil(t, err)
+	require.Equal(t, unorderedWithMetadata, recovered)
 }
 
 // ensure backwards compatibility from when chunk format
@@ -302,7 +343,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	}
 
 	unorderedHeadBlockFn := func() func(int64, string, labels.Labels) {
-		hb := newUnorderedHeadBlock()
+		hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
 		return func(ts int64, line string, metaLabels labels.Labels) {
 			_ = hb.Append(ts, line, metaLabels)
 		}
@@ -643,8 +684,9 @@ func Test_HeadIteratorHash(t *testing.T) {
 	}
 
 	for name, b := range map[string]HeadBlock{
-		"unordered": newUnorderedHeadBlock(),
-		"ordered":   &headBlock{},
+		"unordered":               newUnorderedHeadBlock(UnorderedHeadBlockFmt),
+		"unordered with metadata": newUnorderedHeadBlock(UnorderedWithMetadataHeadBlockFmt),
+		"ordered":                 &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.NoError(t, b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}}))

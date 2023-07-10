@@ -34,7 +34,7 @@ const (
 	chunkFormatV3
 	chunkFormatV4
 
-	DefaultChunkFormat = chunkFormatV4 // the currently used chunk format
+	DefaultChunkFormat = chunkFormatV3 // the currently used chunk format
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
@@ -45,7 +45,7 @@ const (
 	defaultBlockSize = 256 * 1024
 )
 
-var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt}
+var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithMetadataHeadBlockFmt}
 
 type HeadBlockFmt byte
 
@@ -57,6 +57,8 @@ func (f HeadBlockFmt) String() string {
 		return "ordered"
 	case f == UnorderedHeadBlockFmt:
 		return "unordered"
+	case f == UnorderedWithMetadataHeadBlockFmt:
+		return "unordered with metadata"
 	default:
 		return fmt.Sprintf("unknown: %v", byte(f))
 	}
@@ -67,7 +69,7 @@ func (f HeadBlockFmt) NewBlock() HeadBlock {
 	case f < UnorderedHeadBlockFmt:
 		return &headBlock{}
 	default:
-		return newUnorderedHeadBlock()
+		return newUnorderedHeadBlock(f)
 	}
 }
 
@@ -79,6 +81,9 @@ const (
 	_
 	OrderedHeadBlockFmt
 	UnorderedHeadBlockFmt
+	UnorderedWithMetadataHeadBlockFmt
+
+	DefaultHeadBlockFmt = UnorderedHeadBlockFmt
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -113,7 +118,6 @@ type MemChunk struct {
 	// Current in-mem block being appended to.
 	head HeadBlock
 
-	// the chunk format default to v2
 	format   byte
 	encoding Encoding
 	headFmt  HeadBlockFmt
@@ -161,12 +165,12 @@ func (hb *headBlock) Reset() {
 
 func (hb *headBlock) Bounds() (int64, int64) { return hb.mint, hb.maxt }
 
-func (hb *headBlock) Append(ts int64, line string, metaLabels labels.Labels) error {
+func (hb *headBlock) Append(ts int64, line string, _ labels.Labels) error {
 	if !hb.IsEmpty() && hb.maxt > ts {
 		return ErrOutOfOrder
 	}
 
-	hb.entries = append(hb.entries, entry{ts, line, metaLabels})
+	hb.entries = append(hb.entries, entry{t: ts, s: line})
 	if hb.mint == 0 || hb.mint > ts {
 		hb.mint = ts
 	}
@@ -195,19 +199,6 @@ func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
 		inBuf.Write(encBuf[:n])
 
 		inBuf.WriteString(logEntry.s)
-
-		// Serialize metadata labels
-		n = binary.PutUvarint(encBuf, uint64(len(logEntry.metaLabels)))
-		inBuf.Write(encBuf[:n])
-		for _, l := range logEntry.metaLabels {
-			n = binary.PutUvarint(encBuf, uint64(len(l.Name)))
-			inBuf.Write(encBuf[:n])
-			inBuf.WriteString(l.Name)
-
-			n = binary.PutUvarint(encBuf, uint64(len(l.Value)))
-			inBuf.Write(encBuf[:n])
-			inBuf.WriteString(l.Value)
-		}
 	}
 
 	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
@@ -238,13 +229,6 @@ func (hb *headBlock) CheckpointSize() int {
 
 	for _, e := range hb.entries {
 		size += len(e.s)
-
-		size += binary.MaxVarintLen32                           // len of meta labels
-		size += (binary.MaxVarintLen32 * 2) * len(e.metaLabels) // len of name and value of each meta label
-		for _, l := range e.metaLabels {
-			size += len(l.Name)
-			size += len(l.Value)
-		}
 	}
 	return size
 }
@@ -287,33 +271,6 @@ func (hb *headBlock) CheckpointTo(w io.Writer) error {
 		if err != nil {
 			return errors.Wrap(err, "write headblock entry line")
 		}
-
-		// metadata
-		eb.putUvarint(len(entry.metaLabels))
-		_, err = w.Write(eb.get())
-		if err != nil {
-			return errors.Wrap(err, "write headBlock entry meta labels length")
-		}
-		eb.reset()
-		for _, l := range entry.metaLabels {
-			eb.putUvarint(len(l.Name))
-			eb.putUvarint(len(l.Value))
-			_, err = w.Write(eb.get())
-			if err != nil {
-				return errors.Wrap(err, "write headBlock entry meta label name and value length")
-			}
-			eb.reset()
-
-			_, err = io.WriteString(w, l.Name)
-			if err != nil {
-				return errors.Wrap(err, "write headBlock entry meta label name")
-			}
-			_, err = io.WriteString(w, l.Value)
-			if err != nil {
-				return errors.Wrap(err, "write headBlock entry meta label value")
-			}
-		}
-
 	}
 	return nil
 }
@@ -350,26 +307,6 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 		entry.t = db.varint64()
 		lineLn := db.uvarint()
 		entry.s = string(db.bytes(lineLn))
-
-		// TODO: Fix this:
-		//       At CheckpointTo we write the version with eb.putByte(byte(hb.Format())), which returns OrderedHeadBlockFmt (3)
-		//       but here we pretend to use the version to distinguish between V1-V4, which is not correct.
-		//       We should probably write both the version and the format.
-		//       See: https://raintank-corp.slack.com/archives/C029V4SSS9L/p1686046591132639
-		if true /*version >= chunkFormatV4*/ {
-			metaLn := db.uvarint()
-			entry.metaLabels = make(labels.Labels, metaLn)
-			for j := 0; j < metaLn && db.err() == nil; j++ {
-				var label labels.Label
-				nameLn := db.uvarint()
-				valueLn := db.uvarint()
-				label.Name = string(db.bytes(nameLn))
-				label.Value = string(db.bytes(valueLn))
-
-				entry.metaLabels[j] = label
-			}
-		}
-
 		hb.entries[i] = entry
 	}
 
@@ -384,7 +321,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	if version < UnorderedHeadBlockFmt {
 		return hb, nil
 	}
-	out := newUnorderedHeadBlock()
+	out := version.NewBlock()
 
 	for _, e := range hb.entries {
 		if err := out.Append(e.t, e.s, e.metaLabels); err != nil {
@@ -402,12 +339,17 @@ type entry struct {
 
 // NewMemChunk returns a new in-mem chunk.
 func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	return newMemChunkWithFormat(DefaultChunkFormat, enc, head, blockSize, targetSize)
+}
+
+// NewMemChunk returns a new in-mem chunk.
+func newMemChunkWithFormat(format byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
 	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
 		blocks:     []block{},
 
-		format: DefaultChunkFormat,
+		format: format,
 		head:   head.NewBlock(),
 
 		encoding: enc,
@@ -872,7 +814,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		}
 		lastMax = b.maxt
 
-		blockItrs = append(blockItrs, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
+		blockItrs = append(blockItrs, encBlock{c.encoding, c.format, b}.Iterator(ctx, pipeline))
 	}
 
 	if !c.head.IsEmpty() {
@@ -946,7 +888,7 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 			ordered = false
 		}
 		lastMax = b.maxt
-		its = append(its, encBlock{c.encoding, b}.SampleIterator(ctx, extractor))
+		its = append(its, encBlock{c.encoding, c.format, b}.SampleIterator(ctx, extractor))
 	}
 
 	if !c.head.IsEmpty() {
@@ -978,7 +920,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 
 	for _, b := range c.blocks {
 		if maxt >= b.mint && b.maxt >= mint {
-			blocks = append(blocks, encBlock{c.encoding, b})
+			blocks = append(blocks, encBlock{c.encoding, c.format, b})
 		}
 	}
 	return blocks
@@ -1030,7 +972,8 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 // then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
 // chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
 type encBlock struct {
-	enc Encoding
+	enc    Encoding
+	format byte
 	block
 }
 
@@ -1038,14 +981,14 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline)
+	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline, b.format)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newSampleIterator(ctx, getReaderPool(b.enc), b.b, extractor)
+	return newSampleIterator(ctx, getReaderPool(b.enc), b.b, b.format, extractor)
 }
 
 func (b block) Offset() int {
@@ -1197,6 +1140,7 @@ type bufferedIterator struct {
 	readBuf      [20]byte // Enough bytes to store two varints.
 	readBufValid int      // How many bytes are left in readBuf from previous read.
 
+	format   byte
 	buf      []byte // The buffer for a single entry.
 	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
@@ -1207,7 +1151,7 @@ type bufferedIterator struct {
 	closed bool
 }
 
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *bufferedIterator {
+func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte, format byte) *bufferedIterator {
 	stats := stats.FromContext(ctx)
 	stats.AddCompressedBytes(int64(len(b)))
 	return &bufferedIterator{
@@ -1215,6 +1159,7 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 		origBytes: b,
 		reader:    nil, // will be initialized later
 		pool:      pool,
+		format:    format,
 	}
 }
 
@@ -1310,6 +1255,10 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 			si.err = err
 			return 0, nil, nil, false
 		}
+	}
+
+	if si.format < chunkFormatV4 {
+		return ts, si.buf[:lineSize], nil, true
 	}
 
 	// TODO: This is pretty similar to how we read the line size, and the metadata name and value sizes
@@ -1445,9 +1394,9 @@ func (si *bufferedIterator) close() {
 	si.origBytes = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
+func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte) iter.EntryIterator {
 	return &entryBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b),
+		bufferedIterator: newBufferedIterator(ctx, pool, b, format),
 		pipeline:         pipeline,
 	}
 }
@@ -1495,9 +1444,9 @@ func (e *entryBufferedIterator) Next() bool {
 	return false
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, format byte, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	it := &sampleBufferedIterator{
-		bufferedIterator: newBufferedIterator(ctx, pool, b),
+		bufferedIterator: newBufferedIterator(ctx, pool, b, format),
 		extractor:        extractor,
 	}
 	return it
