@@ -1,8 +1,11 @@
 ---
-description: Describes parameters used to configure Grafana Loki.
-menuTitle: Configuration parameters
 title: Grafana Loki configuration parameters
-weight: 500
+menuTitle: Configuration parameters
+description: Configuration reference for the parameters used to configure Grafana Loki.
+aliases: 
+  - ../configuration
+  - ../configure
+weight: 500 
 ---
 
 # Grafana Loki configuration parameters
@@ -790,6 +793,11 @@ results_cache:
 # List of headers forwarded by the query Frontend to downstream querier.
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
+
+# The downstream querier is required to answer in the accepted format. Can be
+# 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
+# CLI flag: -frontend.required-query-response-format
+[required_query_response_format: <string> | default = "json"]
 
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results

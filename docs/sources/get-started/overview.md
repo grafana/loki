@@ -4,9 +4,9 @@ title: Loki overview
 description: Loki product overview and features.
 weight: 200
 aliases:
-    - /docs/loki/latest/overview/
-    - /docs/loki/latest/fundamentals/overview/
-    - /docs/loki/latest/get-started/overview/
+    - ../overview/
+    - ../fundamentals/overview/
+    - ../get-started/overview/
 ---
 # Loki overview
 
