@@ -45,7 +45,7 @@ type Topk struct {
 // get the correct sketch width based on the expected cardinality of the set
 // we might need to do something smarter here to round up to next order of magnitude if we're say more than 10%
 // over a given size that currently exists, or have some more intermediate sizes
-func getCMSWidth(l log.Logger, c int) int {
+func getCMSWidth(l log.Logger, c int) uint32 {
 	// default to something reasonable for low cardinality
 	width := 32
 	switch {
@@ -64,7 +64,7 @@ func getCMSWidth(l log.Logger, c int) int {
 	case c >= 100:
 		width = 48
 	}
-	return width
+	return uint32(width)
 }
 
 // NewCMSTopkForCardinality creates a new topk sketch where k is the amount of topk we want, and c is the expected
@@ -73,7 +73,7 @@ func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
 	// TODO: fix this function and get width function based on new testing data
 	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
 	w := getCMSWidth(l, c)
-	d := 4
+	d := uint32(4)
 
 	sk, err := newCMSTopK(k, w, d)
 	if err != nil {
@@ -85,7 +85,7 @@ func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
 
 // newCMSTopK creates a new topk sketch with a count min sketch of w by d dimensions, where w is the length of each row
 // and d is the depth or # of rows. Remember that each row of a count min sketch increases the % chance of accuracy.
-func newCMSTopK(k, w, d int) (*Topk, error) {
+func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 	s, err := NewCountMinSketch(w, d)
 	if err != nil {
 		return &Topk{}, nil

@@ -18,7 +18,7 @@ type SketchBF struct {
 	expectedCardinality int
 
 	// sketch portion
-	depth, width   int
+	depth, width   uint32
 	cms            *CountMinSketch
 	bf             [][]bool
 	eventPositions []uint32
@@ -27,7 +27,7 @@ type SketchBF struct {
 func NewSketchBFForCardinality(k, c int) (*SketchBF, error) {
 	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
 	w := getCMSWidth(nil, c)
-	d := 4
+	d := uint32(4)
 
 	sk, err := NewSketchBF(k, w, d)
 	if err != nil {
@@ -38,7 +38,7 @@ func NewSketchBFForCardinality(k, c int) (*SketchBF, error) {
 }
 
 // NewSketchBF creates a new CMS for a given width and depth.
-func NewSketchBF(k, w, d int) (*SketchBF, error) {
+func NewSketchBF(k int, w, d uint32) (*SketchBF, error) {
 	if d < 1 || w < 1 {
 		return nil, fmt.Errorf("sketch dimensions must be positive, w: %d, d: %d", w, d)
 	}
@@ -56,7 +56,7 @@ func NewSketchBF(k, w, d int) (*SketchBF, error) {
 	}, nil
 }
 
-func makeBF(col, row int) [][]bool {
+func makeBF(col, row uint32) [][]bool {
 	bf := make([][]bool, row)
 	for i := range bf {
 		bf[i] = make([]bool, col)
@@ -74,7 +74,7 @@ func (s *SketchBF) Observe(event string) {
 	h1, h2 := hashn(event)
 	val := uint32(math.MaxUint32)
 	var pos uint32
-	for i := 0; i < s.depth; i++ {
+	for i := 0; i < int(s.depth); i++ {
 		pos = s.getPos(h1, h2, i)
 		s.eventPositions[i] = pos
 		if s.cms.counters[i][pos] < val {
@@ -87,8 +87,7 @@ func (s *SketchBF) Observe(event string) {
 	s.hll.InsertHash(uint64(h1))
 	// update the counter in the CMS but also check all the
 	// bloom filter counters to see if the event is already in the heap
-	for i := 0; i < s.depth; i++ {
-
+	for i := 0; i < int(s.depth); i++ {
 		pos = s.eventPositions[i]
 		if s.cms.counters[i][pos] < val {
 			s.cms.counters[i][pos] = val
@@ -130,7 +129,7 @@ func (s *SketchBF) Observe(event string) {
 
 	// check if the event is in the heap now
 	ok = true
-	for i := 0; i < s.depth; i++ {
+	for i := 0; i < int(s.depth); i++ {
 		pos = s.eventPositions[i]
 		if s.bf[i][pos] != true {
 			ok = false

@@ -6,16 +6,12 @@ import (
 )
 
 type CountMinSketch struct {
-	depth, width int
+	depth, width uint32
 	counters     [][]uint32
 }
 
 // NewCountMinSketch creates a new CMS for a given width and depth.
-func NewCountMinSketch(w, d int) (*CountMinSketch, error) {
-	if d < 1 || w < 1 {
-		return nil, fmt.Errorf("sketch dimensions must be positive, w: %d, d: %d", w, d)
-	}
-
+func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 	return &CountMinSketch{
 		depth:    d,
 		width:    w,
@@ -23,7 +19,7 @@ func NewCountMinSketch(w, d int) (*CountMinSketch, error) {
 	}, nil
 }
 
-func make2dslice(col, row int) [][]uint32 {
+func make2dslice(col, row uint32) [][]uint32 {
 	ret := make([][]uint32, row)
 	for i := range ret {
 		ret[i] = make([]uint32, col)
@@ -42,7 +38,7 @@ func (s *CountMinSketch) Add(event string, count int) {
 	// hash functions rather than a function per row still fullfils
 	// the pairwise indendent hash functions requirement for CMS
 	h1, h2 := hashn(event)
-	for i := 0; i < s.depth; i++ {
+	for i := 0; i < int(s.depth); i++ {
 		pos := s.getPos(h1, h2, i)
 		s.counters[i][pos] += uint32(count)
 	}
@@ -65,14 +61,14 @@ func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, ui
 	h1, h2 := hashn(event)
 	// inline Count to save time/memory
 	var pos uint32
-	for i := 0; i < s.depth; i++ {
+	for i := 0; i < int(s.depth); i++ {
 		pos = s.getPos(h1, h2, i)
 		if s.counters[i][pos] < min {
 			min = s.counters[i][pos]
 		}
 	}
 	min += count
-	for i := 0; i < s.depth; i++ {
+	for i := 0; i < int(s.depth); i++ {
 		pos = s.getPos(h1, h2, i)
 		v := s.counters[i][pos]
 		if v < min {
@@ -92,7 +88,7 @@ func (s *CountMinSketch) Count(event string) uint32 {
 	h1, h2 := hashn(event)
 
 	var pos uint32
-	for i := 0; i < s.depth; i++ {
+	for i := 0; i < int(s.depth); i++ {
 		pos = s.getPos(h1, h2, i)
 		if s.counters[i][pos] < min {
 			min = s.counters[i][pos]
