@@ -118,9 +118,9 @@ func NewEntry(e logproto.Entry) (loghttp.Entry, error) {
 	}
 
 	return loghttp.Entry{
-		Timestamp: e.Timestamp,
-		Line:      e.Line,
-		Labels:    labels,
+		Timestamp:        e.Timestamp,
+		Line:             e.Line,
+		NonIndexedLabels: labels,
 	}, nil
 }
 

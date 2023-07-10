@@ -18,22 +18,22 @@ func init() {
 
 // Entry represents a log entry.  It includes a log message and the time it occurred at.
 type Entry struct {
-	Timestamp time.Time
-	Line      string
-	Labels    LabelSet
+	Timestamp        time.Time
+	Line             string
+	NonIndexedLabels LabelSet
 }
 
 func (e Entry) ToProto() logproto.Entry {
 	// If there are no labels, we return empty string instead of '{}'.
-	var labels string
-	if len(e.Labels) > 0 {
-		labels = e.Labels.String()
+	var nonIndexedLabels string
+	if len(e.NonIndexedLabels) > 0 {
+		nonIndexedLabels = e.NonIndexedLabels.String()
 	}
 
 	return logproto.Entry{
 		Timestamp: e.Timestamp,
 		Line:      e.Line,
-		Labels:    labels,
+		Labels:    nonIndexedLabels,
 	}
 }
 
@@ -72,12 +72,12 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 				parseError = jsonparser.MalformedObjectError
 				return
 			}
-			e.Labels = make(LabelSet)
+			e.NonIndexedLabels = make(LabelSet)
 			if err := jsonparser.ObjectEach(value, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				e.Labels[yoloString(key)] = yoloString(value)
+				e.NonIndexedLabels[yoloString(key)] = yoloString(value)
 				return nil
 			}); err != nil {
 				parseError = err
@@ -138,9 +138,9 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		})
 		if ok {
 			*((*[]Entry)(ptr)) = append(*((*[]Entry)(ptr)), Entry{
-				Timestamp: ts,
-				Line:      line,
-				Labels:    labels,
+				Timestamp:        ts,
+				Line:             line,
+				NonIndexedLabels: labels,
 			})
 			return true
 		}
@@ -177,11 +177,11 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	stream.WriteRaw(`"`)
 	stream.WriteMore()
 	stream.WriteStringWithHTMLEscaped(e.Line)
-	if len(e.Labels) > 0 {
+	if len(e.NonIndexedLabels) > 0 {
 		stream.WriteMore()
 		stream.WriteObjectStart()
 		var idx int
-		for lName, lValue := range e.Labels {
+		for lName, lValue := range e.NonIndexedLabels {
 			if idx > 0 {
 				stream.WriteMore()
 			}
