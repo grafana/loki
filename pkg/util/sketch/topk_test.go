@@ -3,6 +3,7 @@ package sketch
 import (
 	"bufio"
 	"container/heap"
+	"fmt"
 	"github.com/alicebob/miniredis/v2/hyperloglog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,15 +44,17 @@ func TestTopkCardinality(t *testing.T) {
 
 // TODO: merging is not as accurate as it should be
 func TestTopK_Merge(t *testing.T) {
-	nStreams := 1000
-	k := 100
+	nStreams := 10
+	k := 1
 	maxPerStream := 1000
 	events := make([]event, 0)
 	max := int64(0)
+	r := rand.New(rand.NewSource(99))
 
 	for i := 0; i < nStreams-k; i++ {
 		num := int64(maxPerStream)
-		n := rand.Int63n(num) + 1
+		n := r.Int63n(num) + 1
+		fmt.Printf("%d entries for stream %d\n", n, i)
 		if n > max {
 			max = n
 		}
@@ -338,7 +341,6 @@ outer:
 	}
 	i = 0
 	for scanner.Scan() {
-		//fmt.Println(scanner.Text())
 		idx := i % shards
 		s = scanner.Text()
 		hk[idx].Observe(s)

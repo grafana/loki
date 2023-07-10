@@ -13,7 +13,7 @@ func TestCMS(t *testing.T) {
 		count int
 	}
 
-	myCms, _ := NewCountMinSketch(10, 4)
+	cms, _ := NewCountMinSketch(10, 4)
 
 	k := 1
 	numStreams := 10
@@ -37,8 +37,6 @@ func TestCMS(t *testing.T) {
 		for x := 0; x < int(n); x++ {
 			events = append(events, event{name: strconv.Itoa(z), count: 1})
 		}
-		//total += n
-		//oTotal += int(n)
 	}
 
 	rand.Seed(time.Now().UnixNano())
@@ -46,7 +44,7 @@ func TestCMS(t *testing.T) {
 
 	for _, e := range events {
 		for i := 0; i < e.count; i++ {
-			myCms.ConservativeIncrement(e.name)
+			cms.ConservativeIncrement(e.name)
 		}
 	}
 }

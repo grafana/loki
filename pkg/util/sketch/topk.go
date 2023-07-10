@@ -2,8 +2,6 @@ package sketch
 
 import (
 	"container/heap"
-	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"unsafe"
@@ -108,19 +106,6 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 		t.bf[i][pos] = true
 	}
 	heap.Push(h, &node{event: event, count: estimate})
-	// temp for testing
-	pres := make(map[string]struct{})
-	for _, e := range *t.heap {
-		if _, ok := pres[e.event]; ok {
-
-			fmt.Println("we pushed a duplicate event 123: ", e.event)
-			for _, e := range *t.heap {
-				fmt.Println("event in heap: ", e.event)
-			}
-			os.Exit(1)
-		}
-		pres[e.event] = struct{}{}
-	}
 }
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
@@ -176,16 +161,11 @@ func unsafeGetBytes(s string) []byte {
 // greater than the minimum heap element count, we should put this event into the heap and remove the other one.
 func (t *Topk) Observe(event string) {
 	estimate, h1, h2 := t.sketch.ConservativeIncrement(event)
-	//t.hll
-	//fmt.Println("hll hash for event: ", uint64(h1)<<32+uint64(h2))
-	//t.hll.InsertHash(uint64(h1<<32 + h2))
-	//t.eventBytes = []byte(event)
 	t.hll.Insert(unsafeGetBytes(event))
-	// check if the event is already in the topk
+
 	if t.InTopk(h1, h2) {
 		return
 	}
-	//fmt.Println("event is not in topk", event)
 
 	if len(*t.heap) < t.max {
 		t.heapPush(t.heap, event, estimate, h1, h2)
