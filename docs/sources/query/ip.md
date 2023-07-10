@@ -65,11 +65,19 @@ When specifying label filter expressions, only the  `=` and `!=` operations are 
 		| level = "error"
     ```
 
-    Filters can be chained. This example matches log lines with all IPv4 subnet values `192.168.4.5/16` except IP address `192.168.4.2`:
+    Filters can also be chained. This example matches log lines with all IPv4 subnet values `192.168.4.5/16` except IP address `192.168.4.2`:
 
     ```logql
     {job_name="myapp"}
 		| logfmt
 		| addr = ip("192.168.4.5/16")
 		| addr != ip("192.168.4.2")
+    ```
+
+    This example use the conditional `or` and matches log lines with either, all IPv4 subnet values `192.168.4.0/24` OR all IPv4 subnet values `10.10.15.0/24`:
+
+    ```logql
+    {job_name="myapp"}
+		| logfmt
+		| addr = ip("192.168.4.0/24") or addr = ip("10.10.15.0/24")
     ```
