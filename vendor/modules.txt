@@ -110,6 +110,9 @@ github.com/Shopify/sarama
 ## explicit; go 1.15
 github.com/Workiva/go-datastructures/rangetree
 github.com/Workiva/go-datastructures/slice
+# github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af
+## explicit
+github.com/ajstarks/svgo
 # github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 ## explicit
 github.com/alecthomas/template
@@ -282,6 +285,9 @@ github.com/beorn7/perks/quantile
 # github.com/bmatcuk/doublestar v1.3.4
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
+# github.com/bsipos/thist v1.0.0
+## explicit; go 1.12
+github.com/bsipos/thist
 # github.com/buger/jsonparser v1.1.1
 ## explicit; go 1.13
 github.com/buger/jsonparser
@@ -500,6 +506,9 @@ github.com/felixge/httpsnoop
 # github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
 ## explicit
 github.com/fluent/fluent-bit-go/output
+# github.com/fogleman/gg v1.2.1-0.20190220221249-0403632d5b90
+## explicit
+github.com/fogleman/gg
 # github.com/fsnotify/fsnotify v1.6.0
 ## explicit; go 1.16
 github.com/fsnotify/fsnotify
@@ -598,6 +607,10 @@ github.com/gogo/status
 # github.com/golang-jwt/jwt/v4 v4.4.2
 ## explicit; go 1.16
 github.com/golang-jwt/jwt/v4
+# github.com/golang/freetype v0.0.0-20170609003504-e2365dfdc4a0
+## explicit
+github.com/golang/freetype/raster
+github.com/golang/freetype/truetype
 # github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 ## explicit
 github.com/golang/groupcache/lru
@@ -868,6 +881,9 @@ github.com/json-iterator/go
 # github.com/julienschmidt/httprouter v1.3.0
 ## explicit; go 1.7
 github.com/julienschmidt/httprouter
+# github.com/jung-kurt/gofpdf v1.0.3-0.20190309125859-24315acbbda5
+## explicit
+github.com/jung-kurt/gofpdf
 # github.com/klauspost/compress v1.15.15
 ## explicit; go 1.17
 github.com/klauspost/compress
@@ -1358,10 +1374,21 @@ golang.org/x/crypto/pkcs12
 golang.org/x/crypto/pkcs12/internal/rc2
 golang.org/x/crypto/scrypt
 golang.org/x/crypto/sha3
+golang.org/x/crypto/ssh/terminal
 # golang.org/x/exp v0.0.0-20221212164502-fae10dda9338
 ## explicit; go 1.18
 golang.org/x/exp/constraints
 golang.org/x/exp/slices
+# golang.org/x/image v0.0.0-20190802002840-cff245a6509b
+## explicit; go 1.12
+golang.org/x/image/ccitt
+golang.org/x/image/draw
+golang.org/x/image/font
+golang.org/x/image/font/basicfont
+golang.org/x/image/math/f64
+golang.org/x/image/math/fixed
+golang.org/x/image/tiff
+golang.org/x/image/tiff/lzw
 # golang.org/x/mod v0.7.0
 ## explicit; go 1.17
 golang.org/x/mod/semver
@@ -1458,6 +1485,20 @@ golang.org/x/tools/internal/typesinternal
 ## explicit; go 1.17
 golang.org/x/xerrors
 golang.org/x/xerrors/internal
+# gonum.org/v1/plot v0.0.0-20190515093506-e2840ee46a6b
+## explicit
+gonum.org/v1/plot
+gonum.org/v1/plot/palette
+gonum.org/v1/plot/plotter
+gonum.org/v1/plot/plotutil
+gonum.org/v1/plot/tools/bezier
+gonum.org/v1/plot/vg
+gonum.org/v1/plot/vg/draw
+gonum.org/v1/plot/vg/fonts
+gonum.org/v1/plot/vg/vgeps
+gonum.org/v1/plot/vg/vgimg
+gonum.org/v1/plot/vg/vgpdf
+gonum.org/v1/plot/vg/vgsvg
 # google.golang.org/api v0.108.0
 ## explicit; go 1.19
 google.golang.org/api/cloudresourcemanager/v1
