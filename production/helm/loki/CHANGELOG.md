@@ -56,6 +56,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.8.10
 
 - [ENHANCEMENT] Canary labelname can now be configured via monitoring.lokiCanary.labelname
+- [ENHANCEMENT] Add rbac.pspAnnotations to define PSP annotations
 
 ## 5.8.9
 
