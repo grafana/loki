@@ -50,9 +50,9 @@ var pushTests = []struct {
 			{
 				Entries: []logproto.Entry{
 					{
-						Timestamp: time.Unix(0, 123456789012345),
-						Line:      "super line",
-						Labels:    `{a="1", b="2"}`,
+						Timestamp:        time.Unix(0, 123456789012345),
+						Line:             "super line",
+						NonIndexedLabels: `{a="1", b="2"}`,
 					},
 				},
 				Labels: `{test="test"}`,

@@ -109,10 +109,10 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 // NewEntry constructs an Entry from a logproto.Entry
 func NewEntry(e logproto.Entry) (loghttp.Entry, error) {
 	var labels loghttp.LabelSet
-	if e.Labels != "" {
-		lbls, err := syntax.ParseLabels(e.Labels)
+	if e.NonIndexedLabels != "" {
+		lbls, err := syntax.ParseLabels(e.NonIndexedLabels)
 		if err != nil {
-			return loghttp.Entry{}, errors.Wrapf(err, "err while creating labelset for entry %s", e.Labels)
+			return loghttp.Entry{}, errors.Wrapf(err, "err while creating labelset for entry %s", e.NonIndexedLabels)
 		}
 		labels = lbls.Map()
 	}
@@ -329,10 +329,10 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
-		if e.Labels != "" {
+		if e.NonIndexedLabels != "" {
 			s.WriteMore()
 			s.WriteObjectStart()
-			labels, err = parser.ParseMetric(e.Labels)
+			labels, err = parser.ParseMetric(e.NonIndexedLabels)
 			if err != nil {
 				return err
 			}

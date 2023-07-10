@@ -31,9 +31,9 @@ func (e Entry) ToProto() logproto.Entry {
 	}
 
 	return logproto.Entry{
-		Timestamp: e.Timestamp,
-		Line:      e.Line,
-		Labels:    nonIndexedLabels,
+		Timestamp:        e.Timestamp,
+		Line:             e.Line,
+		NonIndexedLabels: nonIndexedLabels,
 	}
 }
 

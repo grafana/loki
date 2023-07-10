@@ -26,9 +26,9 @@ var pushTests = []struct {
 						Line:      "super line",
 					},
 					{
-						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
-						Line:      "super line with labels",
-						Labels:    `{foo="a", bar="b"}`,
+						Timestamp:        mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
+						Line:             "super line with labels",
+						NonIndexedLabels: `{foo="a", bar="b"}`,
 					},
 				},
 				Labels: `{test="test"}`,

@@ -155,20 +155,20 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				return
 			}
 			e.Line = v
-		case 2: // labels
-			labels := make(LabelSet)
+		case 2: // nonIndexedLabels
+			nonIndexedLabels := make(LabelSet)
 			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				labels[yoloString(key)] = yoloString(val)
+				nonIndexedLabels[yoloString(key)] = yoloString(val)
 				return nil
 			})
 			if err != nil {
 				parseError = err
 				return
 			}
-			e.Labels = labels.String()
+			e.NonIndexedLabels = nonIndexedLabels.String()
 		}
 		i++
 	})
