@@ -12,6 +12,8 @@ There are examples below to help explain.
 
 ## Decolorize stage schema
 
+The use of 'decolorize' should be done under pipeline stages > stages.
+
 ```yaml
 decolorize:
   # Currently this stage has no configurable options
@@ -24,7 +26,29 @@ The following is an example showing the use of the `decolorize` stage.
 Given the pipeline:
 
 ```yaml
-- decolorize:
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: 'http://<loki_url>:<port>/loki/api/v1/push'
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*.log
+    pipeline_stages:
+    - match:
+        selector: '{job="varlogs"}'
+        stages:
+        - decolorize: true
 ```
 
 Would turn each line having a color code into a non-colored one, e.g.
