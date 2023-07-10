@@ -17,9 +17,9 @@ type Stream struct {
 
 // Entry is a log entry with a timestamp.
 type Entry struct {
-	Timestamp time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line      string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	Labels    string    `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+	Timestamp        time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line             string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	NonIndexedLabels string    `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
 }
 
 func (m *Stream) Marshal() (dAtA []byte, err error) {
@@ -91,10 +91,10 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.Labels) > 0 {
-		i -= len(m.Labels)
-		copy(dAtA[i:], m.Labels)
-		i = encodeVarintPush(dAtA, i, uint64(len(m.Labels)))
+	if len(m.NonIndexedLabels) > 0 {
+		i -= len(m.NonIndexedLabels)
+		copy(dAtA[i:], m.NonIndexedLabels)
+		i = encodeVarintPush(dAtA, i, uint64(len(m.NonIndexedLabels)))
 		i--
 		dAtA[i] = 0x1a
 	}
@@ -147,7 +147,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -351,7 +351,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -379,7 +379,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = string(dAtA[iNdEx:postIndex])
+			m.NonIndexedLabels = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -440,7 +440,7 @@ func (m *Entry) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
-	l = len(m.Labels)
+	l = len(m.NonIndexedLabels)
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
@@ -505,7 +505,7 @@ func (m *Entry) Equal(that interface{}) bool {
 	if m.Line != that1.Line {
 		return false
 	}
-	if m.Labels != that1.Labels {
+	if m.NonIndexedLabels != that1.NonIndexedLabels {
 		return false
 	}
 	return true
