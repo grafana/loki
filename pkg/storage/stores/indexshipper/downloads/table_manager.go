@@ -30,6 +30,7 @@ const (
 type Limits interface {
 	AllByUserID() map[string]*validation.Limits
 	DefaultLimits() *validation.Limits
+	VolumeMaxSeries(userID string) int
 }
 
 // TenantFilter is invoked by an IndexGateway instance and answers which

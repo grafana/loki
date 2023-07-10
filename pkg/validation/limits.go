@@ -106,6 +106,7 @@ type Limits struct {
 	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
 	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
 	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
 
@@ -283,6 +284,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
+
+	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -747,6 +750,10 @@ func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 // VolumeEnabled returns whether volume endpoints are enabled for a user.
 func (o *Overrides) VolumeEnabled(userID string) bool {
 	return o.getOverridesForUser(userID).VolumeEnabled
+}
+
+func (o *Overrides) VolumeMaxSeries(userID string) int {
+	return o.getOverridesForUser(userID).VolumeMaxSeries
 }
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {
