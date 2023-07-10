@@ -3,20 +3,18 @@ version: "3.8"
 networks:
   loki:
 
-
 volumes:
   prometheus:
   grafana:
   alertmanager-data:
-
+  loki:
 
 services:
-
   # Since the Loki containers are running as user 10001 and the mounted data volume is owned by root,
   # Loki would not have permissions to create the directories.
   # Therefore the init container changes permissions of the mounted directory.
   init:
-    image: grafana/loki:2.8.2
+    image: &lokiImage grafana/loki:2.8.2
     user: root
     entrypoint:
       - "chown"
@@ -115,7 +113,7 @@ services:
       - loki
 
   loki-read:
-    image: grafana/loki:2.8.2
+    image: *lokiImage
     volumes:
       - ./config:/etc/loki/
       - ./rules:/loki/rules:ro
@@ -123,11 +121,11 @@ services:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
-      # - "40000-40002:40000" # # makes the replicas available on ports 40000, 40001, 40002
-      #cap_add:
-      #  - SYS_PTRACE
-      #security_opt:
-      #  - apparmor=unconfined
+      # - "40000-40002:40000" # makes the replicas available on ports 40000, 40001, 40002
+    # cap_add:
+    # - SYS_PTRACE
+    # security_opt:
+    # - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=read"
     networks:
       - loki
@@ -138,19 +136,40 @@ services:
     # only needed for interactive debugging with dlv
 
   loki-write:
-    image: grafana/loki:2.8.2
+    image: *lokiImage
     volumes:
       - ./config:/etc/loki/
     ports:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
-      # - "50000-50002:40000" # makes the replicas available on ports 50000, 50001, 50002
-      # cap_add:
-      #   - SYS_PTRACE
-      # security_opt:
-      #   - apparmor=unconfined
+      # - "50000-50002:40000" #  makes the replicas available on ports 50000, 50001, 50002
+    # cap_add:
+    # - SYS_PTRACE
+    # security_opt:
+    # - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=write"
+    networks:
+      - loki
+    restart: always
+    deploy:
+      mode: replicated
+      replicas: 3
+
+  loki-backend:
+    image: *lokiImage
+    volumes:
+      - ./config:/etc/loki/
+    ports:
+      - "3100"
+      - "7946"
+      # uncomment to use interactive debugging
+      # - "60000-60002:40000" #  makes the replicas available on ports 60000, 60001, 60002
+    # cap_add:
+    # - SYS_PTRACE
+    # security_opt:
+    # - apparmor=unconfined
+    command: "-config.file=/etc/loki/loki.yaml -target=backend"
     networks:
       - loki
     restart: always
