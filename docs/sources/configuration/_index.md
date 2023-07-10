@@ -989,7 +989,7 @@ alertmanager_client:
 
 # Distribute rule evaluation using ring backend.
 # CLI flag: -ruler.enable-sharding
-[enable_sharding: <boolean> | default = true]
+[enable_sharding: <boolean> | default = false]
 
 # The sharding strategy to use. Supported values are: default, shuffle-sharding.
 # CLI flag: -ruler.sharding-strategy

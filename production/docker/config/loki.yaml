@@ -51,6 +51,7 @@ ingester:
 
 ruler:
   enable_api: true
+  enable_sharding: true  
   wal:
     dir: /tmp/ruler-wal
   storage:
