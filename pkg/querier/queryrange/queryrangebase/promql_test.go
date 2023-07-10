@@ -603,7 +603,7 @@ func (m *testMatrix) Err() error { return nil }
 
 func (m *testMatrix) Warnings() storage.Warnings { return nil }
 
-func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (m *testMatrix) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	s, _, err := astmapper.ShardFromMatchers(matchers)
 	if err != nil {
 		return storage.ErrSeriesSet(err)
@@ -616,10 +616,10 @@ func (m *testMatrix) Select(_ bool, selectParams *storage.SelectHints, matchers 
 	return m.Copy()
 }
 
-func (m *testMatrix) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
-func (m *testMatrix) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (m *testMatrix) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 func (m *testMatrix) Close() error { return nil }

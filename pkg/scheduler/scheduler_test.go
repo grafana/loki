@@ -76,15 +76,15 @@ func (m mockSchedulerForFrontendFrontendLoopServer) Recv() (*schedulerpb.Fronten
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SetHeader(md metadata.MD) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SetHeader(_ metadata.MD) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SendHeader(md metadata.MD) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SendHeader(_ metadata.MD) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SetTrailer(md metadata.MD) {
+func (m mockSchedulerForFrontendFrontendLoopServer) SetTrailer(_ metadata.MD) {
 	panic("implement me")
 }
 
@@ -92,10 +92,10 @@ func (m mockSchedulerForFrontendFrontendLoopServer) Context() context.Context {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) SendMsg(msg interface{}) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) SendMsg(_ interface{}) error {
 	panic("implement me")
 }
 
-func (m mockSchedulerForFrontendFrontendLoopServer) RecvMsg(msg interface{}) error {
+func (m mockSchedulerForFrontendFrontendLoopServer) RecvMsg(_ interface{}) error {
 	panic("implement me")
 }

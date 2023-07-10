@@ -5,7 +5,7 @@ weight: 20
 ---
 # Lambda Promtail
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{<relref "../promtail/configuration#loki_push_api">}}).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../promtail/configuration#loki_push_api" >}}).
 
 ## Deployment
 
@@ -85,7 +85,7 @@ To modify an existing CloudFormation stack, use [update-stack](https://docs.aws.
 
 ### Ephemeral Jobs
 
-This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients]({{<relref "../">}}).
+This workflow is intended to be an effective approach for monitoring ephemeral jobs such as those run on AWS Lambda which are otherwise hard/impossible to monitor via one of the other Loki [clients]({{< relref ".." >}}).
 
 Ephemeral jobs can quite easily run afoul of cardinality best practices. During high request load, an AWS lambda function might balloon in concurrency, creating many log streams in Cloudwatch. For this reason lambda-promtail defaults to **not** keeping the log stream value as a label when propagating the logs to Loki. This is only possible because new versions of Loki no longer have an ingestion ordering constraint on logs within a single stream.
 
@@ -109,9 +109,10 @@ This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
 
 This workflow allows ingesting AWS Cloudtrail logs stored on S3 to Loki.
 
-### Cloudfront real-time logs
-
-Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
+### Cloudfront logs
+Cloudfront logs can be either batched or streamed in real time to Loki:
++ Logging can be activated on a Cloudfront distribution with an S3 bucket as the destination. In this case, the workflow is the same as for other services (VPC Flow logs, Loadbalancer logs, Cloudtrail logs).
++ Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
 
 ### Triggering Lambda-Promtail via SQS
 For AWS services supporting sending messages to SQS (for example, S3 with an S3 Notification to SQS), events can be processed through an [SQS queue using a lambda trigger](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) instead of directly configuring the source service to trigger lambda. Lambda-promtail will retrieve the nested events from the SQS messages' body and process them as if them came directly from the source service.
@@ -121,7 +122,7 @@ Triggering lambda-promtail through SQS allows handling on-failure recovery of th
 
 ## Propagated Labels
 
-Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{<relref "../promtail/configuration#relabel_configs">}}) or later stages in a Promtail [pipeline]({{<relref "../promtail/pipelines/">}}):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../promtail/pipelines" >}}):
 
 - `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
@@ -207,4 +208,4 @@ Instead we can pipeline Cloudwatch logs to a set of Promtails, which can mitigat
 1) Using Promtail's push api along with the `use_incoming_timestamp: false` config, we let Promtail determine the timestamp based on when it ingests the logs, not the timestamp assigned by cloudwatch. Obviously, this means that we lose the origin timestamp because Promtail now assigns it, but this is a relatively small difference in a real time ingestion system like this.
 2) In conjunction with (1), Promtail can coalesce logs across  Cloudwatch log streams because it's no longer susceptible to out-of-order errors when combining multiple sources (lambda invocations).
 
-One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the  number of log streams -> number of Promtails. If you have not configured Loki to [accept out-of-order writes]({{<relref "../../configuration#accept-out-of-order-writes">}}), you'll need to assign a Promtail-specific label on each Promtail so that you don't run into out-of-order errors when the Promtails send data for the same log groups to Loki. This can easily be done via a configuration like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.
+One important aspect to keep in mind when running with a set of Promtails behind a load balancer is that we're effectively moving the cardinality problems from the  number of log streams -> number of Promtails. If you have not configured Loki to [accept out-of-order writes]({{< relref "../../configure#accept-out-of-order-writes" >}}), you'll need to assign a Promtail-specific label on each Promtail so that you don't run into out-of-order errors when the Promtails send data for the same log groups to Loki. This can easily be done via a configuration like `--client.external-labels=promtail=${HOSTNAME}` passed to Promtail.

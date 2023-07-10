@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.28.3
+BUILD_IMAGE_VERSION := 0.29.0
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -50,7 +50,7 @@ GIT_BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 
 # We don't want find to scan inside a bunch of directories, to accelerate the
 # 'make: Entering directory '/src/loki' phase.
-DONT_FIND := -name tools -prune -o -name vendor -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
+DONT_FIND := -name tools -prune -o -name vendor -prune -o -name operator -prune -o -name .git -prune -o -name .cache -prune -o -name .pkg -prune -o
 
 # Build flags
 VPREFIX := github.com/grafana/loki/pkg/util/build
@@ -85,8 +85,8 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 DOC_SOURCES_PATH := docs/sources
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configuration/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configuration/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
 
 ##########
 # Docker #
@@ -748,9 +748,9 @@ test-fuzz:
 
 format:
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec gofmt -w -s {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec gofmt -w -s {} \;
 	find . $(DONT_FIND) -name '*.pb.go' -prune -o -name '*.y.go' -prune -o -name '*.rl.go' -prune -o \
-		-type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
+		-name '*_vfsdata.go' -prune -o -type f -name '*.go' -exec goimports -w -local github.com/grafana/loki {} \;
 
 
 GIT_TARGET_BRANCH ?= main
@@ -772,14 +772,14 @@ check-doc: doc
 # Example Configs #
 ###################
 
-# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+# Validate the example configurations that we provide in ./docs/sources/configure/examples
 validate-example-configs: loki
-	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in ./docs/sources/configure/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
-# Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
+# Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configuration)
+	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configure)
 	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
 	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
 	# Title and Heading
@@ -794,7 +794,7 @@ generate-example-config-doc:
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+	@if ! (git diff --exit-code ./docs/sources/configure/examples.md); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \

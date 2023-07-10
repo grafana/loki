@@ -44,7 +44,7 @@ helm upgrade --install loki-stack grafana/loki-stack \
 ### AWS Elastic Container Service (ECS)
 
 You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation]({{<relref "../aws/ecs">}})
+For more information about this see our [AWS documentation]({{< relref "../aws/ecs" >}})
 
 ### Local
 
@@ -92,7 +92,7 @@ You can also adapt your plugins.conf, removing the need to change the command li
 
 ### Labels
 
-Labels are used to [query logs]({{<relref "../../query">}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
+Labels are used to [query logs]({{< relref "../../query" >}}) `{container_name="nginx", cluster="us-west1"}`, they are usually metadata about the workload producing the log stream (`instance`, `container_name`, `region`, `cluster`, `level`).  In Loki labels are indexed consequently you should be cautious when choosing them (high cardinality label values can have performance drastic impact).
 
 You can use `Labels`, `RemoveKeys` , `LabelKeys` and `LabelMapPath` to how the output plugin will perform labels extraction.
 
@@ -151,7 +151,7 @@ Buffering refers to the ability to store the records somewhere, and while they a
 
 The blocking state with some of the input plugins is not acceptable, because it can have an undesirable side effect on the part that generates the logs. Fluent Bit implements a buffering mechanism that is based on parallel processing. Therefore, it cannot send logs in order. There are two ways of handling the out-of-order logs: 
 
-- Configure Loki to [accept out-of-order writes]({{<relref "../../configuration/#accept-out-of-order-writes">}}).
+- Configure Loki to [accept out-of-order writes]({{< relref "../../configure#accept-out-of-order-writes" >}}).
 
 - Configure the Loki output plugin to use the buffering mechanism based on [`dque`](https://github.com/joncrlsn/dque), which is compatible with the Loki server strict time ordering:
 

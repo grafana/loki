@@ -67,6 +67,9 @@ var (
 		"unixEpochMillis":  unixEpochMillis,
 		"unixEpochNanos":   unixEpochNanos,
 		"toDateInZone":     toDateInZone,
+		"unixToTime":       unixToTime,
+		"alignLeft":        alignLeft,
+		"alignRight":       alignRight,
 	}
 
 	// sprig template functions
@@ -128,6 +131,35 @@ func addLineAndTimestampFunctions(currLine func() string, currTimestamp func() i
 		return time.Unix(0, currTimestamp())
 	}
 	return functions
+}
+
+// toEpoch converts a string with Unix time to an time Value
+func unixToTime(epoch string) (time.Time, error) {
+	var ct time.Time
+	l := len(epoch)
+	i, err := strconv.ParseInt(epoch, 10, 64)
+	if err != nil {
+		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
+	}
+	switch l {
+	case 5:
+		// days 19373
+		return time.Unix(i*86400, 0), nil
+	case 10:
+		// seconds 1673798889
+		return time.Unix(i, 0), nil
+	case 13:
+		// milliseconds 1673798889902
+		return time.Unix(0, i*1000*1000), nil
+	case 16:
+		// microseconds 1673798889902000
+		return time.Unix(0, i*1000), nil
+	case 19:
+		// nanoseconds 1673798889902000000
+		return time.Unix(0, i), nil
+	default:
+		return ct, fmt.Errorf("unable to parse time '%v': %w", epoch, err)
+	}
 }
 
 func unixEpochMillis(date time.Time) string {
@@ -394,6 +426,32 @@ func trunc(c int, s string) string {
 		return string(runes[:c])
 	}
 	return s
+}
+
+func alignLeft(count int, src string) string {
+	runes := []rune(src)
+	l := len(runes)
+	if count < 0 || count == l {
+		return src
+	}
+	pad := count - l
+	if pad > 0 {
+		return src + strings.Repeat(" ", pad)
+	}
+	return string(runes[:count])
+}
+
+func alignRight(count int, src string) string {
+	runes := []rune(src)
+	l := len(runes)
+	if count < 0 || count == l {
+		return src
+	}
+	pad := count - l
+	if pad > 0 {
+		return strings.Repeat(" ", pad) + src
+	}
+	return string(runes[l-count:])
 }
 
 type Decolorizer struct{}

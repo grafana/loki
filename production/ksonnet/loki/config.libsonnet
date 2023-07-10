@@ -12,9 +12,6 @@
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
-    // flag for tuning things when boltdb-shipper is current or upcoming index type.
-    using_boltdb_shipper: true,
-
     wal_enabled: true,
     query_scheduler_enabled: false,
     overrides_exporter_enabled: false,

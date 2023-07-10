@@ -71,11 +71,11 @@ type mockCompactorClient struct {
 	cacheGenNum string
 }
 
-func (m *mockCompactorClient) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (m *mockCompactorClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
 	return m.delRequests, nil
 }
 
-func (m *mockCompactorClient) GetCacheGenerationNumber(ctx context.Context, userID string) (string, error) {
+func (m *mockCompactorClient) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
 	return m.cacheGenNum, nil
 }
 

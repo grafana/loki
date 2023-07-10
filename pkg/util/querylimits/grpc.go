@@ -77,7 +77,7 @@ func extractFromGRPCRequest(ctx context.Context) (context.Context, error) {
 	return InjectQueryLimitsContext(ctx, *limits), nil
 }
 
-func ServerQueryLimitsInterceptor(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+func ServerQueryLimitsInterceptor(ctx context.Context, req interface{}, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 	ctx, err := extractFromGRPCRequest(ctx)
 	if err != nil {
 		return nil, err
