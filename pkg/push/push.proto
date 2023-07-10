@@ -37,5 +37,5 @@ message EntryAdapter {
     (gogoproto.jsontag) = "ts"
   ];
   string line = 2 [(gogoproto.jsontag) = "line"];
-  string labels = 3 [(gogoproto.jsontag) = "labels,omitempty"];
+  string nonIndexedLabels = 3 [(gogoproto.jsontag) = "nonIndexedLabels,omitempty"];
 }
