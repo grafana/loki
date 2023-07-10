@@ -217,7 +217,7 @@ github.com/NYTimes/gziphandler
 # github.com/Shopify/sarama v1.38.1
 ## explicit; go 1.17
 github.com/Shopify/sarama
-# github.com/Workiva/go-datastructures v1.0.53
+# github.com/Workiva/go-datastructures v1.1.0
 ## explicit; go 1.15
 github.com/Workiva/go-datastructures/rangetree
 github.com/Workiva/go-datastructures/slice
