@@ -25,6 +25,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.8.10
 
 - [ENHANCEMENT] Canary labelname can now be configured via monitoring.lokiCanary.labelname
+## 5.8.10
+
+- [BUGFIX] Fix loki helm chart helper function for loki.host so it explicitly includes gateway port value
 
 ## 5.8.9
 
