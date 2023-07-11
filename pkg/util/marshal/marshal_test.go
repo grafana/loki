@@ -675,7 +675,7 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			err := WriteSeriesResponseJSON(tc.input, &b)
 			require.NoError(t, err)
 
-			require.JSONEqf(t, tc.expected, b.String(), "Label Test %d failed", i)
+			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
 		})
 	}
 }

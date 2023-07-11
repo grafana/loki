@@ -57,6 +57,10 @@ func (m *zeroValueLimits) AllByUserID() map[string]*validation.Limits {
 	return nil
 }
 
+func (m *zeroValueLimits) VolumeMaxSeries(_ string) int {
+	return 0
+}
+
 func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
 	return &validation.Limits{
 		QueryReadyIndexNumDays: 0,

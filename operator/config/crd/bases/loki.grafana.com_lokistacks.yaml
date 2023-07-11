@@ -144,8 +144,8 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the maximum of
-                              unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the maximum of unique
+                              series that is returned by a metric query.
                             format: int32
                             type: integer
                           queryTimeout:
@@ -272,8 +272,8 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the maximum
-                                of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the maximum of unique
+                                series that is returned by a metric query.
                               format: int32
                               type: integer
                             queryTimeout:
@@ -4051,8 +4051,8 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the maximum of
-                              unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the maximum of unique
+                              series that is returned by a metric query.
                             format: int32
                             type: integer
                         type: object
@@ -4122,8 +4122,8 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the maximum
-                                of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the maximum of unique
+                                series that is returned by a metric query.
                               format: int32
                               type: integer
                           type: object

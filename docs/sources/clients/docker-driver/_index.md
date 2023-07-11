@@ -1,31 +1,33 @@
 ---
-title: Docker driver
-description: Docker driver client
+title: Docker driver client
+menuTItle:  Docker driver
+description: Instructions to install, upgrade, and remove the Docker driver client. 
 weight: 40
 ---
-# Docker driver
+# Docker driver client
 
 Grafana Loki officially supports a Docker plugin that will read logs from Docker
 containers and ship them to Loki. The plugin can be configured to send the logs
 to a private Loki instance or [Grafana Cloud](/oss/loki).
 
-> Docker plugins are not yet supported on Windows; see the
-> [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
+{{% admonition type="note" %}}
+Docker plugins are not supported on Windows; see the [Docker Engine managed plugin system](https://docs.docker.com/engine/extend) documentation for more information.
+{{% /admonition %}}
 
 Documentation on configuring the Loki Docker Driver can be found on the
 [configuration page]({{< relref "./configuration" >}}).
 
-If you have any questions or issues using the Docker plugin feel free to open an issue in this [repository](https://github.com/grafana/loki/issues).
+If you have any questions or issues using the Docker plugin, open an issue in 
+the [Loki repository](https://github.com/grafana/loki/issues).
 
-## Installing
+## Install the Docker driver client
 
-The Docker plugin must be installed on each Docker host that will be running
-containers you want to collect logs from.
+The Docker plugin must be installed on each Docker host that will be running containers you want to collect logs from.
 
-Run the following command to install the plugin:
+Run the following command to install the plugin, updating the release version if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:latest --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:2.8.2 --alias loki --grant-all-permissions
 ```
 
 To check installed plugins, use the `docker plugin ls` command. Plugins that
@@ -37,21 +39,24 @@ ID                  NAME         DESCRIPTION           ENABLED
 ac720b8fcfdb        loki         Loki Logging Driver   true
 ```
 
-Once the plugin is installed it can be [configured]({{< relref "./configuration" >}}).
+Once you have successfully installed the plugin you can [configure]({{< relref "./configuration" >}}) it.
 
-## Upgrading
+## Upgrade the Docker driver client
 
 The upgrade process involves disabling the existing plugin, upgrading, then
 re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:latest --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:2.8.2 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
+{{% admonition type="note" %}}
+Update the version number to the appropriate version.
+{{% /admonition %}}
 
-## Uninstalling
+## Uninstall the Docker driver client
 
 To cleanly uninstall the plugin, disable and remove it:
 
@@ -60,8 +65,10 @@ docker plugin disable loki --force
 docker plugin rm loki
 ```
 
-## Known Issues
+## Known Issue: Deadlocked Docker Daemon
 
 The driver keeps all logs in memory and will drop log entries if Loki is not reachable and if the quantity of `max_retries` has been exceeded. To avoid the dropping of log entries, setting `max_retries` to zero allows unlimited retries; the driver will continue trying forever until Loki is again reachable. Trying forever may have undesired consequences, because the Docker daemon will wait for the Loki driver to process all logs of a container, until the container is removed. Thus, the Docker daemon might wait forever if the container is stuck.
 
-Use Promtail's [Docker target]({{< relref "../promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../promtail/configuration#docker_sd_config" >}}) to avoid this issue.
+The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff_800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
+
+To avoid this issue, use the Promtail [Docker target]({{< relref "../promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../promtail/configuration#docker_sd_config" >}}).

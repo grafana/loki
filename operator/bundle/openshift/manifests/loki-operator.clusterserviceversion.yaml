@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-06-29T17:58:20Z"
+    createdAt: "2023-07-04T17:17:21Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -371,8 +371,8 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -455,8 +455,8 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:

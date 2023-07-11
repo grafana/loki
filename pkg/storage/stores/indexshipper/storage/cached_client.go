@@ -210,7 +210,7 @@ func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName
 	tbl.buildCacheWg.Wait()
 
 	if tbl.err != nil {
-		return nil, c.err
+		return nil, tbl.err
 	}
 
 	tbl.mtx.RLock()

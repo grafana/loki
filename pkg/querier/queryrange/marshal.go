@@ -40,9 +40,9 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any
 	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(req.RequestURI)
 		return WriteLabelResponseProtobuf(version, *result, w)
-	case logproto.SeriesResponse:
+	case *logproto.SeriesResponse:
 		version := loghttp.GetVersion(req.RequestURI)
-		return WriteSeriesResponseProtobuf(version, result, w)
+		return WriteSeriesResponseProtobuf(version, *result, w)
 	case *stats.Stats:
 		return WriteIndexStatsResponseProtobuf(result, w)
 	case *logproto.VolumeResponse:

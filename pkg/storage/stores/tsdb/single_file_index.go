@@ -374,8 +374,7 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
 
-	volumes := make(map[string]uint64)
-	err := i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
+	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		var filterer chunk.Filterer
 		if i.chunkFilter != nil {
@@ -412,14 +411,11 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 					seriesNames[hash] = seriesLabels.String()
 				}
 
-				volumes[seriesNames[hash]] += stats.KB << 10 // Return bytes
+				if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
+					return err
+				}
 			}
 		}
 		return p.Err()
 	})
-	if err != nil {
-		return err
-	}
-	acc.AddVolumes(volumes)
-	return nil
 }
