@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -27,7 +28,7 @@ var ErrAlreadyOnDesiredVersion = errors.New("tsdb file already on desired versio
 type GetRawFileReaderFunc func() (io.ReadSeeker, error)
 
 type IndexOpts struct {
-	UsePostingsCache bool
+	PostingsCache cache.Cache
 }
 
 func OpenShippableTSDB(p string, opts IndexOpts) (index_shipper.Index, error) {
@@ -40,7 +41,7 @@ func OpenShippableTSDB(p string, opts IndexOpts) (index_shipper.Index, error) {
 }
 
 func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index_shipper.Index, error) {
-	opts := IndexOpts{UsePostingsCache: false}
+	opts := IndexOpts{}
 	indexFile, err := OpenShippableTSDB(path, opts)
 	if err != nil {
 		return nil, err
@@ -80,7 +81,7 @@ func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index
 	if err != nil {
 		return nil, err
 	}
-	return NewShippableTSDBFile(id, IndexOpts{UsePostingsCache: false})
+	return NewShippableTSDBFile(id, IndexOpts{})
 }
 
 // nolint
@@ -135,7 +136,7 @@ func NewTSDBIndexFromFile(location string, opts IndexOpts) (Index, GetRawFileRea
 		return nil, nil, err
 	}
 
-	postingsReader := getPostingsReader(reader, opts.UsePostingsCache)
+	postingsReader := getPostingsReader(reader, opts.PostingsCache)
 	tsdbIdx := NewTSDBIndex(reader, postingsReader)
 
 	return tsdbIdx, func() (io.ReadSeeker, error) {
@@ -143,11 +144,11 @@ func NewTSDBIndexFromFile(location string, opts IndexOpts) (Index, GetRawFileRea
 	}, nil
 }
 
-func getPostingsReader(reader IndexReader, usePostingsCache bool) PostingsReader {
+func getPostingsReader(reader IndexReader, postingsCache cache.Cache) PostingsReader {
 	var pr PostingsReader
 
-	if usePostingsCache && sharedCacheClient != nil {
-		pr = NewCachedPostingsReader(reader, util_log.Logger, sharedCacheClient)
+	if postingsCache != nil {
+		pr = NewCachedPostingsReader(reader, util_log.Logger, postingsCache)
 	}
 
 	if pr == nil {

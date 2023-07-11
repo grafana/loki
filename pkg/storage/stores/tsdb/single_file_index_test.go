@@ -73,7 +73,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases, IndexOpts{UsePostingsCache: false})
+				return BuildIndex(t, t.TempDir(), cases, IndexOpts{})
 			},
 		},
 		{
@@ -256,7 +256,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	}, IndexOpts{UsePostingsCache: true})
+	}, IndexOpts{PostingsCache: sharedCacheClient})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -311,7 +311,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: false})
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 
 	// Create the test cases
 	testCases := []struct {
@@ -426,7 +426,7 @@ func TestTSDBIndex_SeriesVolume(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: false})
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 
 	from := model.TimeFromUnixNano(t1.UnixNano())
 	through := model.TimeFromUnixNano(t2.UnixNano())

@@ -23,8 +23,6 @@ type PostingsReader interface {
 	ForPostings(ctx context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error
 }
 
-var sharedCacheClient cache.Cache
-
 // NewCachedPostingsReader uses the cache defined by `index_read_cache` to store and read Postings.
 //
 // The cache key is stored/read as `matchers:reader_checksum`.

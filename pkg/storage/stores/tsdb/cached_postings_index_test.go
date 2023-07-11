@@ -78,7 +78,7 @@ func TestSingleIdxCached(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases, IndexOpts{UsePostingsCache: true})
+				return BuildIndex(t, t.TempDir(), cases, IndexOpts{})
 			},
 		},
 		{
@@ -263,7 +263,7 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	}, IndexOpts{UsePostingsCache: true})
+	}, IndexOpts{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -377,7 +377,7 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
+			tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 			acc := &stats.Stats{}
 			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.Equal(t, tc.expectedErr, err)
@@ -430,7 +430,7 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 		},
 	}
 	tempDir := b.TempDir()
-	tsdbIndex := BuildIndex(b, tempDir, series, IndexOpts{UsePostingsCache: true})
+	tsdbIndex := BuildIndex(b, tempDir, series, IndexOpts{PostingsCache: sharedCacheClient})
 	acc := &stats.Stats{}
 
 	for i := 0; i < b.N; i++ {
@@ -468,7 +468,7 @@ func TestMultipleIndexesFiles(t *testing.T) {
 		},
 	}
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: sharedCacheClient})
 
 	refs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
 	require.NoError(t, err)
@@ -492,7 +492,7 @@ func TestMultipleIndexesFiles(t *testing.T) {
 	}
 
 	tempDir = t.TempDir()
-	tsdbIndex = BuildIndex(t, tempDir, series, IndexOpts{UsePostingsCache: true})
+	tsdbIndex = BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: sharedCacheClient})
 	refs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
 	require.NoError(t, err)
 	require.Len(t, refs, 0)

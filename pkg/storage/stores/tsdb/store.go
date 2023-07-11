@@ -75,11 +75,13 @@ func NewStore(
 func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
 
-	sharedCacheClient = idxCache
+	var sharedCache cache.Cache
+	if indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil {
+		sharedCache = idxCache
+	}
 
-	usePostingsCache := indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil
 	openFn := func(p string) (indexshipper_index.Index, error) {
-		return OpenShippableTSDB(p, IndexOpts{UsePostingsCache: usePostingsCache})
+		return OpenShippableTSDB(p, IndexOpts{PostingsCache: sharedCache})
 	}
 
 	var err error

@@ -88,7 +88,7 @@ func TestMigrateTables(t *testing.T) {
 		require.NoError(t, err)
 
 		tableName := fmt.Sprintf("%s%d", indexPrefix, i)
-		idx, err := tsdb.NewShippableTSDBFile(id, tsdb.IndexOpts{UsePostingsCache: false})
+		idx, err := tsdb.NewShippableTSDBFile(id, tsdb.IndexOpts{})
 		require.NoError(t, err)
 
 		require.NoError(t, uploadFile(idx, indexStorageClient, tableName, userID))
