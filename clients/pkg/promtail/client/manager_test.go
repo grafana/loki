@@ -1,8 +1,8 @@
 package client
 
 import (
+	"context"
 	"fmt"
-	"golang.org/x/net/context"
 	"net/http"
 	"net/url"
 	"os"
@@ -251,7 +251,7 @@ func TestManager_WALDisabled_MultipleConfigs(t *testing.T) {
 	require.Equal(t, "multi:test-client,test-client-2", manager.Name())
 
 	receivedRequests := []utils.RemoteWriteRequest{}
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	go func(ctx context.Context) {
 		for {
 			select {

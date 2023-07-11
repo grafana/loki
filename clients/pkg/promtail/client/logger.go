@@ -9,12 +9,12 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
