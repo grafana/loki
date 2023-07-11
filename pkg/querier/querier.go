@@ -803,13 +803,56 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 		"targetLabels", req.TargetLabels,
 	)
 
-	return q.store.SeriesVolume(
-		ctx,
-		userID,
-		req.From,
-		req.Through,
-		req.Limit,
-		req.TargetLabels,
-		matchers...,
-	)
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
+
+	queryIngesters := !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil
+	queryStore := !q.cfg.QueryIngesterOnly && storeQueryInterval != nil
+
+	numResponses := 0
+	if queryIngesters {
+		numResponses++
+	}
+	if queryStore {
+		numResponses++
+	}
+	responses := make([]*logproto.VolumeResponse, 0, numResponses)
+
+	if queryIngesters {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+
+		resp, err := q.ingesterQuerier.SeriesVolume(
+			ctx,
+			userID,
+			model.TimeFromUnix(ingesterQueryInterval.start.Unix()),
+			model.TimeFromUnix(ingesterQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	if queryStore {
+		resp, err := q.store.SeriesVolume(
+			ctx,
+			userID,
+			model.TimeFromUnix(storeQueryInterval.start.Unix()),
+			model.TimeFromUnix(storeQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	return seriesvolume.Merge(responses, req.Limit), nil
 }
