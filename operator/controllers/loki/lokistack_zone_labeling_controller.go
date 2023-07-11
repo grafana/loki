@@ -22,7 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var createOrUpdatePred = builder.WithPredicates(predicate.Funcs{
+var createOrUpdatePodWithLabelPred = builder.WithPredicates(predicate.Funcs{
 	UpdateFunc:  func(e event.UpdateEvent) bool { return eventPodHasLabel(e.ObjectNew) },
 	CreateFunc:  func(e event.CreateEvent) bool { return eventPodHasLabel(e.Object) },
 	DeleteFunc:  func(e event.DeleteEvent) bool { return false },
@@ -66,7 +66,7 @@ func (r *LokiStackZoneAwarePodReconciler) SetupWithManager(mgr ctrl.Manager) err
 func (r *LokiStackZoneAwarePodReconciler) buildController(bld k8s.Builder) error {
 	return bld.
 		Named("ZoneAwarePod").
-		Watches(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, createOrUpdatePred).
+		Watches(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForObject{}, createOrUpdatePodWithLabelPred).
 		Complete(r)
 }
 

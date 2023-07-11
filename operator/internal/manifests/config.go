@@ -102,8 +102,6 @@ func ConfigOptions(opt Options) config.Options {
 		}
 	}
 
-	gossipRingconfig := gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing, opt.Stack.Replication)
-
 	protocol := "http"
 	if opt.Gates.HTTPEncryption {
 		protocol = "https"
@@ -159,7 +157,7 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: gossipRingconfig,
+		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing, opt.Stack.Replication),
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),

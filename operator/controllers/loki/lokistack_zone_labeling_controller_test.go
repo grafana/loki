@@ -26,7 +26,7 @@ func TestLokiStackZoneAwarePodController_RegisterWatchedResources(t *testing.T) 
 			src:               &source.Kind{Type: &corev1.Pod{}},
 			index:             0,
 			watchesCallsCount: 1,
-			pred:              createOrUpdatePred,
+			pred:              createOrUpdatePodWithLabelPred,
 		},
 	}
 	for _, tst := range table {

@@ -19,7 +19,7 @@ import (
 func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s.Client, pod *corev1.Pod) error {
 	var err error
 
-	ll := log.WithValues("lokistack-pod-zone-annotation event", "createOrUpdatePred", "pod", pod.Name)
+	ll := log.WithValues("lokistack-pod-zone-annotation event", "createOrUpdatePodWithLabelPred", "pod", pod.Name)
 
 	nodeName := pod.Spec.NodeName
 	if nodeName == "" {
