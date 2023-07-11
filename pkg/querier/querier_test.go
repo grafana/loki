@@ -977,7 +977,7 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 
 		ingesterClient := newQuerierClientMock()
 		store := newStoreMock()
-		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		conf := mockQuerierConfig()
 		conf.QueryIngestersWithin = time.Minute * 30
@@ -1050,7 +1050,7 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		store := newStoreMock()
-		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		conf := mockQuerierConfig()
 		conf.QueryIngestersWithin = time.Minute * 30

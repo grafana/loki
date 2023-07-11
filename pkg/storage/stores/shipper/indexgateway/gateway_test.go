@@ -272,7 +272,7 @@ func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
 }
 
-func (i *indexQuerierMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (i *indexQuerierMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, _ []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {

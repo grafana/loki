@@ -900,6 +900,57 @@ func TestInstance_SeriesVolume(t *testing.T) {
 			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
 		}, volumes.Volumes)
 	})
+
+	t.Run("with targetLabels", func(t *testing.T) {
+		t.Run("all targetLabels are added to matchers", func(t *testing.T) {
+			instance := defaultInstance(t)
+			volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+				From:         0,
+				Through:      1.1 * 1e3, //milliseconds
+				Matchers:     `{}`,
+				Limit:        2,
+				TargetLabels: []string{"log_stream"},
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{log_stream="dispatcher"}`, Volume: 90},
+				{Name: `{log_stream="worker"}`, Volume: 70},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with a specific equals matcher", func(t *testing.T) {
+			instance := defaultInstance(t)
+			volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+				From:         0,
+				Through:      1.1 * 1e3, //milliseconds
+				Matchers:     `{log_stream="dispatcher"}`,
+				Limit:        2,
+				TargetLabels: []string{"host"},
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent"}`, Volume: 90},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with a specific regexp matcher", func(t *testing.T) {
+			instance := defaultInstance(t)
+			volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+				From:         0,
+				Through:      1.1 * 1e3, //milliseconds
+				Matchers:     `{log_stream=~".+"}`,
+				Limit:        2,
+				TargetLabels: []string{"host", "job"},
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3"}`, Volume: 160},
+			}, volumes.Volumes)
+		})
+	})
 }
 
 func TestGetStats(t *testing.T) {

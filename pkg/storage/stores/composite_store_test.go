@@ -56,7 +56,7 @@ func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*lab
 	return nil, nil
 }
 
-func (m mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 
@@ -305,7 +305,7 @@ type mockStoreSeriesVolume struct {
 	err   error
 }
 
-func (m mockStoreSeriesVolume) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m mockStoreSeriesVolume) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return m.value, m.err
 }
 

@@ -800,6 +800,7 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 		"through", req.Through.Time(),
 		"matchers", syntax.MatchersString(matchers),
 		"limit", req.Limit,
+		"targetLabels", req.TargetLabels,
 	)
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
@@ -826,6 +827,7 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 			model.TimeFromUnix(ingesterQueryInterval.start.Unix()),
 			model.TimeFromUnix(ingesterQueryInterval.end.Unix()),
 			req.Limit,
+			req.TargetLabels,
 			matchers...,
 		)
 		if err != nil {
@@ -842,6 +844,7 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 			model.TimeFromUnix(storeQueryInterval.start.Unix()),
 			model.TimeFromUnix(storeQueryInterval.end.Unix()),
 			req.Limit,
+			req.TargetLabels,
 			matchers...,
 		)
 		if err != nil {
