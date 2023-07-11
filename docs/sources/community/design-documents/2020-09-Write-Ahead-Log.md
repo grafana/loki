@@ -3,7 +3,6 @@ title: Write-Ahead Logs
 description: Write-Ahead Logs
 aliases: 
 - ../design-documents/2020-09-write-ahead-log/
-- ../community/design-documents/2020-09-write-ahead-log/
 weight: 30
 ---
 ## Write-Ahead Logs

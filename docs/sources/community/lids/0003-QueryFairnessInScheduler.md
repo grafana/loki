@@ -3,7 +3,6 @@ title: "0003: Query fairness across users within tenants"
 description: "Improve the query scheduler to ensure fairness between individual users of individual tenants."
 aliases: 
 - ../lids/0003-queryfairnessinscheduler/
-- ../community/lids/0003-queryfairnessinscheduler/
 ---
 
 # 0003: Query fairness across users within tenants

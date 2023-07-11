@@ -4,7 +4,6 @@ menuTitle: "HTTP API"
 description: Loki exposes REST endpoints for operating on a Loki cluster. This section details the REST endpoints.
 aliases:
 - ./api
-- ./reference
 weight: 100
 ---
 

@@ -3,7 +3,6 @@ title: "0001: Introducing LIDs"
 description: "0001: Introducing LIDs"
 aliases: 
 - ../lids/0001-introduction/
-- ../community/lids/0001-introduction/
 ---
 
 # 0001: Introducing LIDs
