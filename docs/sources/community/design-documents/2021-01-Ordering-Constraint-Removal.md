@@ -2,7 +2,7 @@
 title: Ordering Constraint Removal
 description: Ordering Constraint Removal
 aliases: 
-- ../design-documents/2021-01-ordering-constraint-removal/
+- ../../design-documents/2021-01-ordering-constraint-removal/
 weight: 40
 ---
 ## Ordering Constraint Removal

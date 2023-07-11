@@ -2,7 +2,7 @@
 title: "0002: Remote Rule Evaluation"
 description: "Remote Rule Evaluation"
 aliases: 
-- ../lids/0002-remoteruleevaluation/
+- ../../lids/0002-remoteruleevaluation/
 ---
 
 # 0002: Remote Rule Evaluation

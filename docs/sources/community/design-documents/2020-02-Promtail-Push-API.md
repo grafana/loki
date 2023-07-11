@@ -2,7 +2,7 @@
 title: Promtail Push API
 description: Promtail Push API
 aliases: 
-- ../design-documents/2020-02-promtail-push-api
+- ../../design-documents/2020-02-promtail-push-api/
 weight: 20
 ---
 # Promtail Push API
