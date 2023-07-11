@@ -445,11 +445,12 @@ func (q *QuerierAPI) SeriesVolumeRangeHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	req := &logproto.VolumeRequest{
-		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers: rawReq.Query,
-		Step:     rawReq.Step.Milliseconds(),
-		Limit:    int32(rawReq.Limit),
+		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers:     rawReq.Query,
+		Step:         rawReq.Step.Milliseconds(),
+		Limit:        int32(rawReq.Limit),
+		TargetLabels: rawReq.TargetLabels,
 	}
 
 	q.seriesVolumeHandler(r.Context(), r, req, w)
@@ -466,11 +467,12 @@ func (q *QuerierAPI) SeriesVolumeInstantHandler(w http.ResponseWriter, r *http.R
 	}
 
 	req := &logproto.VolumeRequest{
-		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers: rawReq.Query,
-		Step:     0,
-		Limit:    int32(rawReq.Limit),
+		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers:     rawReq.Query,
+		Step:         0,
+		Limit:        int32(rawReq.Limit),
+		TargetLabels: rawReq.TargetLabels,
 	}
 
 	q.seriesVolumeHandler(r.Context(), r, req, w)
