@@ -6,6 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/limiter"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/pkg/runtime"
 )
@@ -14,9 +15,10 @@ type Manager struct {
 	limiter    *limiter.RateLimiter
 	logger     log.Logger
 	tenantCfgs *runtime.TenantConfigs
+	m          *metrics
 }
 
-func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
+func NewManager(logger log.Logger, reg prometheus.Registerer, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
 	logger = log.With(logger, "path", "write")
 	if cfg.AddInsightsLabel {
 		logger = log.With(logger, "insight", "true")
@@ -28,6 +30,7 @@ func NewManager(logger log.Logger, cfg Cfg, tenants *runtime.TenantConfigs) *Man
 		limiter:    limiter.NewRateLimiter(strategy, time.Minute),
 		logger:     logger,
 		tenantCfgs: tenants,
+		m:          newMetrics(reg),
 	}
 }
 
@@ -42,6 +45,10 @@ func (m *Manager) Log(tenantID string, err error) {
 
 	errMsg := err.Error()
 	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
+		m.m.loggedCount.WithLabelValues(tenantID)
 		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID)
+		return
 	}
+
+	m.m.discardedCount.WithLabelValues(tenantID)
 }
