@@ -9,7 +9,7 @@ aliases:
 ---
 # Loki components
 
-![components_diagram](./loki_architecture_components.svg)
+![components_diagram](../loki_architecture_components.svg "Components diagram")
 
 ## Distributor
 
