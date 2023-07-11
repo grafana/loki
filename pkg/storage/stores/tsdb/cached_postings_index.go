@@ -72,7 +72,7 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 		level.Error(c.log).Log("msg", "failed to cache postings", "err", err, "matchers", key)
 	}
 
-	// because `index.ExpandedPostings` walks with the iterator, we have to reset it current index by instantiating a new ListPostings.
+	// because `index.ExpandPostings` walks the iterator, we have to reset it current index by instantiating a new ListPostings.
 	return fn(index.NewListPostings(expandedPosts))
 }
 
