@@ -7,15 +7,14 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 )
 
 var (
