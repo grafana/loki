@@ -3,8 +3,8 @@ title: Template functions
 menuTItle:  
 description: Describes functions that are supported by the text template.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
+- ../logql/template_functions/
+- ../query/template_functions/
 weight: 30
 ---
 

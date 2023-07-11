@@ -3,8 +3,8 @@ title: Log queries
 menuTItle:  
 description: Overview of how log queries are constructed and parsed.
 aliases: 
-- /docs/loki/latest/logql/log_queries/
-- /docs/loki/latest/query/log_queries/
+- ../logql/log_queries/
+- ../query/log_queries/
 weight: 10 
 ---
 

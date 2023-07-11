@@ -22,8 +22,9 @@ import (
 
 // implements stores.Index
 type IndexClient struct {
-	idx  Index
-	opts IndexClientOptions
+	idx    Index
+	opts   IndexClientOptions
+	limits Limits
 }
 
 type IndexClientOptions struct {
@@ -48,14 +49,19 @@ type IndexStatsAccumulator interface {
 }
 
 type SeriesVolumeAccumulator interface {
-	AddVolumes(map[string]uint64)
+	AddVolume(string, uint64) error
 	Volumes() *logproto.VolumeResponse
 }
 
-func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
+type Limits interface {
+	VolumeMaxSeries(string) int
+}
+
+func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 	return &IndexClient{
-		idx:  idx,
-		opts: opts,
+		idx:    idx,
+		opts:   opts,
+		limits: l,
 	}
 }
 
@@ -258,7 +264,7 @@ func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, thr
 		})
 	})
 
-	acc := seriesvolume.NewAccumulator(limit)
+	acc := seriesvolume.NewAccumulator(limit, c.limits.VolumeMaxSeries(userID))
 	for _, interval := range intervals {
 		if err := c.idx.SeriesVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, matchers...); err != nil {
 			return nil, err

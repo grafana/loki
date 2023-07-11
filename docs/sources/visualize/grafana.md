@@ -4,9 +4,9 @@ menuTitle: Visualize data
 description: Visualize your log data with Grafana
 
 aliases:
-   - /docs/loki/latest/operations/grafana/
-   - /docs/loki/latest/visualize/grafana/
-   - /docs/loki/latest/getting-started/grafana/
+   - ../getting-started/grafana/
+   - ../operations/grafana/
+   - ../visualize/grafana/
 weight: 825
 keywords:
    - visualize

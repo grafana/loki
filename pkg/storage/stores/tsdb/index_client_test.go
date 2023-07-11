@@ -2,9 +2,12 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/loki/pkg/logproto"
 
@@ -76,7 +79,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -142,7 +145,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
 	for _, tc := range []struct {
 		name               string
@@ -270,7 +273,8 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	limits := &fakeLimits{volumeMaxSeries: 5}
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits)
 	from := indexStartYesterday
 	through := indexStartToday + 1000
 
@@ -300,4 +304,18 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 			Limit: 1,
 		}, vol)
 	})
+
+	t.Run("it returns an error when the number of selected series exceeds the limit", func(t *testing.T) {
+		limits.volumeMaxSeries = 0
+		_, err := indexClient.SeriesVolume(context.Background(), "", from, through, 1, nil, nil...)
+		require.EqualError(t, err, fmt.Sprintf(seriesvolume.ErrVolumeMaxSeriesHit, 0))
+	})
+}
+
+type fakeLimits struct {
+	volumeMaxSeries int
+}
+
+func (f *fakeLimits) VolumeMaxSeries(_ string) int {
+	return f.volumeMaxSeries
 }

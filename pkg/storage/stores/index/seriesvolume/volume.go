@@ -1,6 +1,7 @@
 package seriesvolume
 
 import (
+	"fmt"
 	"sort"
 	"sync"
 
@@ -10,29 +11,36 @@ import (
 const (
 	MatchAny     = "{}"
 	DefaultLimit = 100
+
+	ErrVolumeMaxSeriesHit = "the query hit the max number of series limit (limit: %d series)"
 )
 
 // TODO(masslessparticle): Lock striping to reduce contention on this map
 type Accumulator struct {
-	lock    sync.RWMutex
-	volumes map[string]uint64
-	limit   int32
+	lock            sync.RWMutex
+	volumes         map[string]uint64
+	limit           int32
+	volumeMaxSeries int
 }
 
-func NewAccumulator(limit int32) *Accumulator {
+func NewAccumulator(limit int32, maxSize int) *Accumulator {
 	return &Accumulator{
-		volumes: make(map[string]uint64),
-		limit:   limit,
+		volumes:         make(map[string]uint64),
+		limit:           limit,
+		volumeMaxSeries: maxSize,
 	}
 }
 
-func (acc *Accumulator) AddVolumes(volumes map[string]uint64) {
+func (acc *Accumulator) AddVolume(name string, size uint64) error {
 	acc.lock.Lock()
 	defer acc.lock.Unlock()
 
-	for name, size := range volumes {
-		acc.volumes[name] += size
+	acc.volumes[name] += size
+	if len(acc.volumes) > acc.volumeMaxSeries {
+		return fmt.Errorf(ErrVolumeMaxSeriesHit, acc.volumeMaxSeries)
 	}
+
+	return nil
 }
 
 func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
