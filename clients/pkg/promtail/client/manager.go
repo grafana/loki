@@ -2,7 +2,6 @@ package client
 
 import (
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	"strings"
 	"sync"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 )
 

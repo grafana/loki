@@ -2,10 +2,7 @@ package client
 
 import (
 	"fmt"
-	"github.com/grafana/loki/clients/pkg/promtail/limit"
-	"github.com/grafana/loki/clients/pkg/promtail/wal"
-	"github.com/prometheus/client_golang/prometheus"
-	"io"
+	"os"
 	"runtime"
 	"sync"
 	"text/tabwriter"
@@ -15,6 +12,9 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var (
@@ -39,7 +39,7 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(out io.Writer, metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error) {
+func NewLogger(metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
 	c, err := NewManager(metrics, log, limit.Config{}, prometheus.NewRegistry(), wal.Config{}, NilNotifier, cfgs...)
 	if err != nil {
@@ -58,7 +58,7 @@ func NewLogger(out io.Writer, metrics *Metrics, log log.Logger, cfgs ...Config) 
 	}
 	entries := make(chan api.Entry)
 	l := &logger{
-		Writer:  tabwriter.NewWriter(out, 0, 8, 0, '\t', 0),
+		Writer:  tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0),
 		entries: entries,
 	}
 	go l.run()

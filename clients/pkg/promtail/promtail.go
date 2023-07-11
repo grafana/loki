@@ -149,7 +149,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	// TODO: Refactor all client instantiation inside client.Manager
 	cfg.PositionsConfig.ReadOnly = cfg.PositionsConfig.ReadOnly || p.dryRun
 	if p.dryRun {
-		p.client, err = client.NewLogger(os.Stdout, p.metrics, p.logger, cfg.ClientConfigs...)
+		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
