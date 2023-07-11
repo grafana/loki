@@ -584,7 +584,7 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 			"index-gateway",
 			"-target=index-gateway",
 			"-store.index-cache-read.lrucache.enabled=true",
-			"-tsdb.cache-postings=true",
+			"-tsdb.enable-cache-postings=true",
 		)
 	)
 	require.NoError(t, clu.Run())
