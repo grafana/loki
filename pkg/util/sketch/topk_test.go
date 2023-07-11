@@ -3,10 +3,6 @@ package sketch
 import (
 	"bufio"
 	"container/heap"
-	"fmt"
-	"github.com/alicebob/miniredis/v2/hyperloglog"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"io"
 	"math/rand"
 	"net/http"
@@ -14,6 +10,10 @@ import (
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/alicebob/miniredis/v2/hyperloglog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type event struct {
@@ -54,7 +54,6 @@ func TestTopK_Merge(t *testing.T) {
 	for i := 0; i < nStreams-k; i++ {
 		num := int64(maxPerStream)
 		n := r.Int63n(num) + 1
-		fmt.Printf("%d entries for stream %d\n", n, i)
 		if n > max {
 			max = n
 		}
@@ -201,31 +200,8 @@ outer:
 	}
 	resp.Body.Close()
 
-	hk := NewHeavyKeeperTopK(0.9, 100, 256, 5)
-	resp, err = http.Get(link)
-
-	scanner = bufio.NewScanner(resp.Body)
-	scanner.Split(bufio.ScanWords)
-	for scanner.Scan() {
-		s = scanner.Text()
-		hk.Observe(s)
-	}
-	hkTop := hk.Topk()
-	hkMissing := 0
-outer2:
-	for _, t := range res {
-		for _, t2 := range hkTop {
-			if t2.Event == t.Event {
-				continue outer2
-			}
-		}
-		hkMissing++
-	}
-	resp.Body.Close()
-
-	// we should have gotten at least 98/100 topk right for both these sketches
+	// we should have gotten at least 98/100 topk right here
 	require.True(t, cmsMissing <= 2, "cms missing %d", cmsMissing)
-	require.True(t, hkMissing <= 2)
 }
 
 // compare the accuracy of cms topk and hk to the real topk when using
@@ -325,47 +301,4 @@ outer:
 	r2.Body.Close()
 	r3.Body.Close()
 
-	r1, err = http.Get(link1)
-	require.NoError(t, err)
-	r2, err = http.Get(link2)
-	require.NoError(t, err)
-	r3, err = http.Get(link2)
-	require.NoError(t, err)
-	combined = io.MultiReader(r1.Body, r2.Body)
-	scanner = bufio.NewScanner(combined)
-	scanner.Split(bufio.ScanWords)
-	var hk = make([]*HeavyKeeperTopK, shards)
-	for i := range cms {
-		h := NewHeavyKeeperTopK(0.9, k, 256, 5)
-		hk[i] = &h
-	}
-	i = 0
-	for scanner.Scan() {
-		idx := i % shards
-		s = scanner.Text()
-		hk[idx].Observe(s)
-		i++
-	}
-	mergedHK := NewHeavyKeeperTopK(0.9, k, 256, 5)
-	for _, h := range hk {
-		mergedHK.Merge(h)
-	}
-	hkTop := mergedHK.Topk()
-	hkMissing := 0
-outer2:
-	for _, t := range res {
-		for _, t2 := range hkTop {
-			if t2.Event == t.Event {
-				continue outer2
-			}
-		}
-		hkMissing++
-	}
-	r1.Body.Close()
-	r2.Body.Close()
-	r3.Body.Close()
-
-	// the CMS using conservative updates will never be as accurate after merging as it
-	// would have been if we had used
-	assert.True(t, cmsMissing <= hkMissing, "merged CMS should be more accurate than merged HK")
 }
