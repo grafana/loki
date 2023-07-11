@@ -35,9 +35,12 @@ var queryTests = []struct {
 						Line:      "super line",
 					},
 					{
-						Timestamp:        time.Unix(0, 123456789012346),
-						Line:             "super line with labels",
-						NonIndexedLabels: `{foo="a", bar="b"}`,
+						Timestamp: time.Unix(0, 123456789012346),
+						Line:      "super line with labels",
+						NonIndexedLabels: labels.Labels{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
 					},
 				},
 				Labels: `{test="test"}`,
@@ -495,9 +498,12 @@ var tailTests = []struct {
 							Line:      "super line",
 						},
 						{
-							Timestamp:        time.Unix(0, 123456789012346),
-							Line:             "super line with labels",
-							NonIndexedLabels: `{foo="a", bar="b"}`,
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							NonIndexedLabels: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
 						},
 					},
 					Labels: "{test=\"test\"}",

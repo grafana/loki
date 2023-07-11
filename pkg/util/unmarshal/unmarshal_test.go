@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -50,9 +51,12 @@ var pushTests = []struct {
 			{
 				Entries: []logproto.Entry{
 					{
-						Timestamp:        time.Unix(0, 123456789012345),
-						Line:             "super line",
-						NonIndexedLabels: `{a="1", b="2"}`,
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+						NonIndexedLabels: labels.Labels{
+							{Name: "a", Value: "1"},
+							{Name: "b", Value: "2"},
+						},
 					},
 				},
 				Labels: `{test="test"}`,

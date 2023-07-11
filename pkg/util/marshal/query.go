@@ -3,6 +3,7 @@ package marshal
 import (
 	"fmt"
 	"strconv"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -13,7 +14,6 @@ import (
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -91,37 +91,18 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 		return loghttp.Stream{}, errors.Wrapf(err, "err while creating labelset for %s", s.Labels)
 	}
 
-	ret := loghttp.Stream{
-		Labels:  labels,
-		Entries: make([]loghttp.Entry, len(s.Entries)),
+	// Avoid a nil entries slice to be consistent with the decoding
+	entries := []loghttp.Entry{}
+	if len(s.Entries) > 0 {
+		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries))
 	}
 
-	for i, e := range s.Entries {
-		ret.Entries[i], err = NewEntry(e)
-		if err != nil {
-			return loghttp.Stream{}, err
-		}
+	ret := loghttp.Stream{
+		Labels:  labels,
+		Entries: entries,
 	}
 
 	return ret, nil
-}
-
-// NewEntry constructs an Entry from a logproto.Entry
-func NewEntry(e logproto.Entry) (loghttp.Entry, error) {
-	var labels loghttp.LabelSet
-	if e.NonIndexedLabels != "" {
-		lbls, err := syntax.ParseLabels(e.NonIndexedLabels)
-		if err != nil {
-			return loghttp.Entry{}, errors.Wrapf(err, "err while creating labelset for entry %s", e.NonIndexedLabels)
-		}
-		labels = lbls.Map()
-	}
-
-	return loghttp.Entry{
-		Timestamp:        e.Timestamp,
-		Line:             e.Line,
-		NonIndexedLabels: labels,
-	}, nil
 }
 
 func NewScalar(s promql.Scalar) loghttp.Scalar {
@@ -329,21 +310,15 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
-		if e.NonIndexedLabels != "" {
+		if len(e.NonIndexedLabels) > 0 {
 			s.WriteMore()
 			s.WriteObjectStart()
-			labels, err = parser.ParseMetric(e.NonIndexedLabels)
-			if err != nil {
-				return err
-			}
-
-			for i, l := range labels {
+			for i, lbl := range e.NonIndexedLabels {
 				if i > 0 {
 					s.WriteMore()
 				}
-
-				s.WriteObjectField(l.Name)
-				s.WriteString(l.Value)
+				s.WriteObjectField(lbl.Name)
+				s.WriteString(lbl.Value)
 			}
 			s.WriteObjectEnd()
 		}

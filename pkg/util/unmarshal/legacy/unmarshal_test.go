@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -26,9 +27,12 @@ var pushTests = []struct {
 						Line:      "super line",
 					},
 					{
-						Timestamp:        mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
-						Line:             "super line with labels",
-						NonIndexedLabels: `{foo="a", bar="b"}`,
+						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
+						Line:      "super line with labels",
+						NonIndexedLabels: labels.Labels{
+							{Name: "a", Value: "1"},
+							{Name: "b", Value: "2"},
+						},
 					},
 				},
 				Labels: `{test="test"}`,
@@ -46,7 +50,10 @@ var pushTests = []struct {
 						{
 							"ts": "2019-09-13T18:32:23.380001319Z",
 							"line": "super line with labels",
-							"labels": "{foo=\"a\", bar=\"b\"}"
+							"labels": {
+								"a": "1",
+								"b": "2"
+							}
 						}
 					]
 				}

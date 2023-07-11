@@ -8,8 +8,7 @@ import (
 	"github.com/buger/jsonparser"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/modern-go/reflect2"
-
-	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 func init() {
@@ -20,21 +19,7 @@ func init() {
 type Entry struct {
 	Timestamp        time.Time
 	Line             string
-	NonIndexedLabels LabelSet
-}
-
-func (e Entry) ToProto() logproto.Entry {
-	// If there are no labels, we return empty string instead of '{}'.
-	var nonIndexedLabels string
-	if len(e.NonIndexedLabels) > 0 {
-		nonIndexedLabels = e.NonIndexedLabels.String()
-	}
-
-	return logproto.Entry{
-		Timestamp:        e.Timestamp,
-		Line:             e.Line,
-		NonIndexedLabels: nonIndexedLabels,
-	}
+	NonIndexedLabels labels.Labels
 }
 
 func (e *Entry) UnmarshalJSON(data []byte) error {
@@ -72,17 +57,21 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 				parseError = jsonparser.MalformedObjectError
 				return
 			}
-			e.NonIndexedLabels = make(LabelSet)
+			var nonIndexedLabels labels.Labels
 			if err := jsonparser.ObjectEach(value, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				e.NonIndexedLabels[yoloString(key)] = yoloString(value)
+				nonIndexedLabels = append(nonIndexedLabels, labels.Label{
+					Name:  yoloString(key),
+					Value: yoloString(value),
+				})
 				return nil
 			}); err != nil {
 				parseError = err
 				return
 			}
+			e.NonIndexedLabels = nonIndexedLabels
 		}
 		i++
 	})
@@ -104,7 +93,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 		i := 0
 		var ts time.Time
 		var line string
-		var labels LabelSet
+		var nonIndexedLabels labels.Labels
 		ok := iter.ReadArrayCB(func(iter *jsoniter.Iterator) bool {
 			var ok bool
 			switch i {
@@ -120,10 +109,12 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 				}
 				return true
 			case 2:
-				labels = make(LabelSet)
 				iter.ReadMapCB(func(iter *jsoniter.Iterator, labelName string) bool {
 					labelValue := iter.ReadString()
-					labels[labelName] = labelValue
+					nonIndexedLabels = append(nonIndexedLabels, labels.Label{
+						Name:  labelName,
+						Value: labelValue,
+					})
 					return true
 				})
 				i++
@@ -140,7 +131,7 @@ func (sliceEntryDecoder) Decode(ptr unsafe.Pointer, iter *jsoniter.Iterator) {
 			*((*[]Entry)(ptr)) = append(*((*[]Entry)(ptr)), Entry{
 				Timestamp:        ts,
 				Line:             line,
-				NonIndexedLabels: labels,
+				NonIndexedLabels: nonIndexedLabels,
 			})
 			return true
 		}
@@ -180,14 +171,12 @@ func (EntryEncoder) Encode(ptr unsafe.Pointer, stream *jsoniter.Stream) {
 	if len(e.NonIndexedLabels) > 0 {
 		stream.WriteMore()
 		stream.WriteObjectStart()
-		var idx int
-		for lName, lValue := range e.NonIndexedLabels {
-			if idx > 0 {
+		for i, lbl := range e.NonIndexedLabels {
+			if i > 0 {
 				stream.WriteMore()
 			}
-			stream.WriteObjectField(lName)
-			stream.WriteString(lValue)
-			idx++
+			stream.WriteObjectField(lbl.Name)
+			stream.WriteString(lbl.Value)
 		}
 		stream.WriteObjectEnd()
 	}

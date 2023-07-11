@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -17,9 +19,48 @@ type Stream struct {
 
 // Entry is a log entry with a timestamp.
 type Entry struct {
-	Timestamp        time.Time `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line             string    `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	NonIndexedLabels string    `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+	Timestamp        time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line             string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	NonIndexedLabels labels.Labels `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+}
+
+type LabelAdapter labels.Label
+
+func (m *LabelAdapter) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *LabelAdapter) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *LabelAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Value) > 0 {
+		i -= len(m.Value)
+		copy(dAtA[i:], m.Value)
+		i = encodeVarintPush(dAtA, i, uint64(len(m.Value)))
+		i--
+		dAtA[i] = 0x12
+	}
+	if len(m.Name) > 0 {
+		i -= len(m.Name)
+		copy(dAtA[i:], m.Name)
+		i = encodeVarintPush(dAtA, i, uint64(len(m.Name)))
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
 }
 
 func (m *Stream) Marshal() (dAtA []byte, err error) {
@@ -92,11 +133,18 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	if len(m.NonIndexedLabels) > 0 {
-		i -= len(m.NonIndexedLabels)
-		copy(dAtA[i:], m.NonIndexedLabels)
-		i = encodeVarintPush(dAtA, i, uint64(len(m.NonIndexedLabels)))
-		i--
-		dAtA[i] = 0x1a
+		for iNdEx := len(m.NonIndexedLabels) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := (*LabelAdapter)(&m.NonIndexedLabels[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
 	}
 	if len(m.Line) > 0 {
 		i -= len(m.Line)
@@ -353,6 +401,94 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if wireType != 2 {
 				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
 			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.NonIndexedLabels = append(m.NonIndexedLabels, labels.Label{})
+			if err := (*LabelAdapter)(&m.NonIndexedLabels[len(m.NonIndexedLabels)-1]).Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPush(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+
+func (m *LabelAdapter) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPush
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: LabelPairAdapter: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: LabelPairAdapter: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
@@ -379,7 +515,39 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NonIndexedLabels = string(dAtA[iNdEx:postIndex])
+			m.Name = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Value", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Value = string(dAtA[iNdEx:postIndex])
 			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
@@ -440,7 +608,26 @@ func (m *Entry) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
-	l = len(m.NonIndexedLabels)
+	if len(m.NonIndexedLabels) > 0 {
+		for _, e := range m.NonIndexedLabels {
+			l = (*LabelAdapter)(&e).Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	return n
+}
+
+func (m *LabelAdapter) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Name)
+	if l > 0 {
+		n += 1 + l + sovPush(uint64(l))
+	}
+	l = len(m.Value)
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
@@ -505,7 +692,37 @@ func (m *Entry) Equal(that interface{}) bool {
 	if m.Line != that1.Line {
 		return false
 	}
-	if m.NonIndexedLabels != that1.NonIndexedLabels {
+	for i := range m.NonIndexedLabels {
+		if !(*LabelAdapter)(&m.NonIndexedLabels[i]).Equal(&that1.NonIndexedLabels[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func (m *LabelAdapter) Equal(that interface{}) bool {
+	if that == nil {
+		return m == nil
+	}
+
+	that1, ok := that.(*LabelPairAdapter)
+	if !ok {
+		that2, ok := that.(LabelPairAdapter)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return m == nil
+	} else if m == nil {
+		return false
+	}
+	if m.Name != that1.Name {
+		return false
+	}
+	if m.Value != that1.Value {
 		return false
 	}
 	return true

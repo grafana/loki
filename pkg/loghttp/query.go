@@ -8,6 +8,7 @@ import (
 	"unsafe"
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
@@ -156,19 +157,22 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 			}
 			e.Line = v
 		case 2: // nonIndexedLabels
-			nonIndexedLabels := make(LabelSet)
+			var nonIndexedLabels labels.Labels
 			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				nonIndexedLabels[yoloString(key)] = yoloString(val)
+				nonIndexedLabels = append(nonIndexedLabels, labels.Label{
+					Name:  yoloString(key),
+					Value: yoloString(val),
+				})
 				return nil
 			})
 			if err != nil {
 				parseError = err
 				return
 			}
-			e.NonIndexedLabels = nonIndexedLabels.String()
+			e.NonIndexedLabels = nonIndexedLabels
 		}
 		i++
 	})
@@ -238,10 +242,7 @@ func (s Streams) ToProto() []logproto.Stream {
 	}
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
-		entries := make([]logproto.Entry, len(s.Entries), len(s.Entries))
-		for i, e := range s.Entries {
-			entries[i] = e.ToProto()
-		}
+		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
 		result = append(result, logproto.Stream{Labels: s.Labels.String(), Entries: entries})
 	}
 	return result
