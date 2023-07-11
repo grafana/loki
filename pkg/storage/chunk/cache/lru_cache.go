@@ -40,7 +40,7 @@ func (cfg *LRUCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f
 
 	f.IntVar(&cfg.MaxItems, prefix+".max-items", 50000, description+"Maximum items in the cache.")
 
-	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, description+"Whether LRUCache should be enabled or not.")
+	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, description+"Whether a LRU cache (last-recently used) should be enabled or not.")
 }
 
 func (cfg *LRUCacheConfig) Validate() error {

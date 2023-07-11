@@ -35,7 +35,7 @@ type Config struct {
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
 	EmbeddedCache  EmbeddedCacheConfig   `yaml:"embedded_cache"`
-	LRUCache       LRUCacheConfig        `yaml:"lru_cache"`
+	LRUCache       LRUCacheConfig        `yaml:"lru_cache" category:"experimental"`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // deprecated
 
 	// This is to name the cache metrics properly.
