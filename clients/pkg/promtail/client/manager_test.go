@@ -26,15 +26,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-type notifier func(subscriber wal.CleanupEventSubscriber)
-
-func (n notifier) SubscribeCleanup(subscriber wal.CleanupEventSubscriber) {
-	n(subscriber)
-}
-
-func (n notifier) SubscribeWrite(_ wal.WriteEventSubscriber) {
-}
-
 var limitsConfig = limit.Config{
 	MaxLineSizeTruncate: false,
 	MaxStreams:          0,
@@ -42,11 +33,8 @@ var limitsConfig = limit.Config{
 }
 
 var (
-	nilMetrics  = NewMetrics(nil)
-	nilNotifier = notifier(func(_ wal.CleanupEventSubscriber) {
-
-	})
-	metrics = NewMetrics(prometheus.DefaultRegisterer)
+	nilMetrics = NewMetrics(nil)
+	metrics    = NewMetrics(prometheus.DefaultRegisterer)
 )
 
 func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
@@ -190,7 +178,7 @@ func TestManager_WALDisabled(t *testing.T) {
 	clientMetrics := NewMetrics(reg)
 
 	// start writer and manager
-	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, nilNotifier, testClientConfig)
+	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, NilNotifier, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "multi:test-client", manager.Name())
 
@@ -258,7 +246,7 @@ func TestManager_WALDisabled_MultipleConfigs(t *testing.T) {
 	clientMetrics := NewMetrics(reg)
 
 	// start writer and manager
-	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, nilNotifier, testClientConfig, testClientConfig2)
+	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, NilNotifier, testClientConfig, testClientConfig2)
 	require.NoError(t, err)
 	require.Equal(t, "multi:test-client,test-client-2", manager.Name())
 

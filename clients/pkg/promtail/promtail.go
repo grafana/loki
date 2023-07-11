@@ -154,32 +154,30 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
-	} else if cfg.WAL.Enabled {
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return fmt.Errorf("failed to create wal writer: %w", err)
-		}
+	} else {
+		var notifier client.WriterEventsNotifier = client.NilNotifier
+		if cfg.WAL.Enabled {
+			p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+			if err != nil {
+				return fmt.Errorf("failed to create wal writer: %w", err)
+			}
 
+			// If WAL is enabled, the walWriter should notify the manager of new WAL writes, and it should as well
+			// be an entry handler where the processing pipeline writes to
+			notifier = p.walWriter
+			entryHandlers = append(entryHandlers, p.walWriter)
+		}
 		p.client, err = client.NewManager(
 			p.metrics,
 			p.logger,
 			cfg.LimitsConfig,
 			p.reg,
 			cfg.WAL,
-			p.walWriter,
+			notifier,
 			cfg.ClientConfigs...,
 		)
 		if err != nil {
-			return err
-		}
-
-		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
-		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
-		entryHandlers = append(entryHandlers, p.walWriter)
-	} else {
-		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
-		if err != nil {
-			return err
+			return fmt.Errorf("failed to create client manager: %w", err)
 		}
 	}
 

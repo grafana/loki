@@ -2,6 +2,9 @@ package client
 
 import (
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
+	"github.com/prometheus/client_golang/prometheus"
 	"io"
 	"runtime"
 	"sync"
@@ -15,8 +18,9 @@ import (
 )
 
 var (
-	yellow = color.New(color.FgYellow)
-	blue   = color.New(color.FgBlue)
+	yellow      = color.New(color.FgYellow)
+	blue        = color.New(color.FgBlue)
+	nilNotifier = notifier(func(_ wal.CleanupEventSubscriber) {})
 )
 
 func init() {
@@ -37,7 +41,7 @@ type logger struct {
 // NewLogger creates a new client logger that logs entries instead of sending them.
 func NewLogger(out io.Writer, metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(metrics, log, 0, 0, false, cfgs...)
+	c, err := NewManager(metrics, log, limit.Config{}, prometheus.NewRegistry(), wal.Config{}, NilNotifier, cfgs...)
 	if err != nil {
 		return nil, err
 	}

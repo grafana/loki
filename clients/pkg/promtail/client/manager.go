@@ -21,6 +21,20 @@ type WriterEventsNotifier interface {
 	SubscribeWrite(subscriber wal.WriteEventSubscriber)
 }
 
+// notifier implements WriteEventsNotifier so that we can create a no-op notifier.
+type notifier func(subscriber wal.CleanupEventSubscriber)
+
+func (n notifier) SubscribeCleanup(subscriber wal.CleanupEventSubscriber) {
+	n(subscriber)
+}
+
+func (n notifier) SubscribeWrite(_ wal.WriteEventSubscriber) {}
+
+var (
+	// NilNotifier is a no-op notifier.
+	NilNotifier = notifier(func(_ wal.CleanupEventSubscriber) {})
+)
+
 type Stoppable interface {
 	Stop()
 }
