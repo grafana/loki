@@ -5,7 +5,6 @@ description: The components that make up Grafana Loki.
 weight: 500
 aliases:
     - ../fundamentals/architecture/components
-    - ../get-started/components/
 ---
 # Loki components
 

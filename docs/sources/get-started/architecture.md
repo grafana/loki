@@ -6,7 +6,6 @@ weight: 300
 aliases:
     - ../architecture/
     - ../fundamentals/architecture/
-    - ../get-started/architecture/
 ---
 # Loki architecture
 
