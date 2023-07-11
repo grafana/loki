@@ -183,6 +183,16 @@ type OIDCSpec struct {
 	UsernameClaim string `json:"usernameClaim,omitempty"`
 }
 
+// TLSConfigSpec specifies safe TLS configuration parameters.
+type TLSConfigSpec struct {
+	// Secret defines the spec for the custom CA and custom server certificate for tenant's authentication.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant Secret"
+	Secret *TenantSecretSpec `json:"secret"`
+}
+
 // AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.
 type AuthenticationSpec struct {
 	// TenantName defines the name of the tenant.
@@ -199,10 +209,15 @@ type AuthenticationSpec struct {
 	TenantID string `json:"tenantId"`
 	// OIDC defines the spec for the OIDC tenant's authentication.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OIDC Configuration"
-	OIDC *OIDCSpec `json:"oidc"`
+	OIDC *OIDCSpec `json:"oidc,omitempty"`
+
+	// TLSConfig defines the spec for the mTLS tenant's authentication.
+	//
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Configuration"
+	TLSConfig *TLSConfigSpec `json:"tlsConfig,omitempty"`
 }
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
@@ -928,6 +943,8 @@ const (
 	ReasonMissingGatewayTenantSecret LokiStackConditionReason = "MissingGatewayTenantSecret"
 	// ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.
 	ReasonInvalidGatewayTenantSecret LokiStackConditionReason = "InvalidGatewayTenantSecret"
+	// ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config
+	ReasonMissingGatewayAuthenticationConfig LokiStackConditionReason = "MissingGatewayTenantAuthenticationConfig"
 	// ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.

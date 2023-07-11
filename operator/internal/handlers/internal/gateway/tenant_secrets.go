@@ -33,36 +33,72 @@ func GetTenantSecrets(
 	)
 
 	for _, tenant := range stack.Spec.Tenants.Authentication {
-		key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: req.Namespace}
-		if err := k.Get(ctx, key, &gatewaySecret); err != nil {
-			if apierrors.IsNotFound(err) {
+		switch {
+		case tenant.OIDC != nil:
+			key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: req.Namespace}
+			if err := k.Get(ctx, key, &gatewaySecret); err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil, &status.DegradedError{
+						Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
+						Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
+						Requeue: true,
+					}
+				}
+				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
+					"name", key)
+			}
+
+			oidcSecret, err := extractOIDCSecret(&gatewaySecret, tenant.TenantName)
+			if err != nil {
 				return nil, &status.DegradedError{
-					Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
-					Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
+					Message: "Invalid gateway tenant secret contents",
+					Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
 					Requeue: true,
 				}
 			}
-			return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
-				"name", key)
-		}
+			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
+				OIDCSecret: oidcSecret,
+			})
+		case tenant.TLSConfig != nil:
+			key := client.ObjectKey{Name: tenant.TLSConfig.Secret.Name, Namespace: req.Namespace}
+			if err := k.Get(ctx, key, &gatewaySecret); err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil, &status.DegradedError{
+						Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
+						Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
+						Requeue: true,
+					}
+				}
+				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
+					"name", key)
+			}
 
-		var ts *manifests.TenantSecrets
-		ts, err := extractSecret(&gatewaySecret, tenant.TenantName)
-		if err != nil {
+			TLSSecret, err := extractTLSSecret(&gatewaySecret, tenant.TenantName)
+			if err != nil {
+				return nil, &status.DegradedError{
+					Message: "Invalid gateway tenant secret contents",
+					Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
+					Requeue: true,
+				}
+			}
+			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
+				TenantName: tenant.TenantName,
+				TLSSecret:  TLSSecret,
+			})
+		default:
 			return nil, &status.DegradedError{
-				Message: "Invalid gateway tenant secret contents",
+				Message: "No gateway tenant authentication method provided",
 				Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
 				Requeue: true,
 			}
 		}
-		tenantSecrets = append(tenantSecrets, ts)
 	}
 
 	return tenantSecrets, nil
 }
 
-// extractSecret reads a k8s secret into a manifest tenant secret struct if valid.
-func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecrets, error) {
+// extractOIDCSecret reads a k8s secret into a manifest tenant secret struct if valid.
+func extractOIDCSecret(s *corev1.Secret) (*manifests.OIDCSecret, error) {
 	// Extract and validate mandatory fields
 	clientID := s.Data["clientID"]
 	if len(clientID) == 0 {
@@ -71,10 +107,27 @@ func extractSecret(s *corev1.Secret, tenantName string) (*manifests.TenantSecret
 	clientSecret := s.Data["clientSecret"]
 	issuerCAPath := s.Data["issuerCAPath"]
 
-	return &manifests.TenantSecrets{
-		TenantName:   tenantName,
+	return &manifests.OIDCSecret{
 		ClientID:     string(clientID),
 		ClientSecret: string(clientSecret),
 		IssuerCAPath: string(issuerCAPath),
+	}, nil
+}
+
+// extractTLSSecret reads a k8s secret into a manifest tenant secret struct if valid.
+func extractTLSSecret(s *corev1.Secret, tenantName string) (*manifests.TLSSecret, error) {
+	// Extract and validate mandatory fields
+	cert := s.Data["cert"]
+	if len(cert) == 0 {
+		return nil, kverrors.New("missing cert field", "field", "cert")
+	}
+	ca := s.Data["ca"]
+	if len(ca) == 0 {
+		return nil, kverrors.New("missing ca field", "field", "ca")
+	}
+
+	return &manifests.TLSSecret{
+		Cert: string(cert),
+		CA:   string(ca),
 	}, nil
 }

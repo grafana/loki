@@ -174,7 +174,7 @@ func TestExtractSecret(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := extractSecret(tst.secret, tst.tenantName)
+			_, err := extractOIDCSecret(tst.secret, tst.tenantName)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}

@@ -65,12 +65,22 @@ type Tenants struct {
 	Configs map[string]TenantConfig
 }
 
-// TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.
+// TenantSecrets for tenant's authentication.
 type TenantSecrets struct {
-	TenantName   string
+	TenantName string
+	OIDCSecret *OIDCSecret
+	TLSSecret  *TLSSecret
+}
+
+type OIDCSecret struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
+}
+
+type TLSSecret struct {
+	CA   string
+	Cert string
 }
 
 // TenantConfig for tenant authorizationconfig

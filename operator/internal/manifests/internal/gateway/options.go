@@ -17,10 +17,20 @@ type Options struct {
 	TenantSecrets    []*Secret
 }
 
-// Secret for clientID, clientSecret and issuerCAPath for tenant's authentication.
+// Secret for tenant's authentication.
 type Secret struct {
-	TenantName   string
+	TenantName string
+	OIDC       *OIDC
+	TLS        *TLS
+}
+
+type OIDC struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
+}
+
+type TLS struct {
+	CA   string
+	Cert string
 }

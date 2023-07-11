@@ -440,12 +440,18 @@ func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, 
 func gatewayConfigOptions(opt Options) gateway.Options {
 	var gatewaySecrets []*gateway.Secret
 	for _, secret := range opt.Tenants.Secrets {
-		gatewaySecret := &gateway.Secret{
-			TenantName:   secret.TenantName,
-			ClientID:     secret.ClientID,
-			ClientSecret: secret.ClientSecret,
-			IssuerCAPath: secret.IssuerCAPath,
+		switch {
+		case secret.OIDCSecret != nil:
+			gatewaySecret := &gateway.Secret{
+				TenantName: secret.TenantName,
+				OIDC: &gateway.OIDC{
+					ClientID:     secret.ClientID,
+					ClientSecret: secret.ClientSecret,
+					IssuerCAPath: secret.IssuerCAPath,
+				},
+			}
 		}
+		gatewaySecret := &gateway.Secret{}
 		gatewaySecrets = append(gatewaySecrets, gatewaySecret)
 	}
 
