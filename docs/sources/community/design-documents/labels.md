@@ -2,7 +2,7 @@
 title: Labels
 description: Labels from Logs
 aliases: 
-- ../design-documents/labels/
+- ../../design-documents/labels/
 weight: 10
 ---
 # Labels

@@ -2,7 +2,7 @@
 title: Releasing Grafana Loki
 description: Releasing Grafana Loki
 aliases: 
-- ../maintaining/release/
+- ../../maintaining/release/
 ---
 # Releasing Grafana Loki
 

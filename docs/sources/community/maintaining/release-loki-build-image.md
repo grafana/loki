@@ -2,7 +2,7 @@
 title: Releasing Loki Build Image
 description: Releasing Loki Build Image
 aliases: 
-- ../maintaining/release-loki-build-image/
+- ../../maintaining/release-loki-build-image/
 ---
 # Releasing Loki Build Image
 
