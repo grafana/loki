@@ -495,10 +495,7 @@ rbac:
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
   # -- Specify PSP annotations
-  ## Ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/#apparmor
-  ## Ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/#seccomp
-  ## Ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/#sysctl
-  ##
+  # Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations
   pspAnnotations: {}
   # seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
   # seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'

@@ -2971,6 +2971,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.pspAnnotations</td>
+			<td>object</td>
+			<td>Specify PSP annotations Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
