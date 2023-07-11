@@ -1,6 +1,7 @@
 ---
 title: Examples
 description: Loki Configuration Examples
+weight: 300
 ---
  # Examples
 
