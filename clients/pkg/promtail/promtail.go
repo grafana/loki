@@ -147,8 +147,9 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	var entryHandlers = []api.EntryHandler{}
 
 	// TODO: Refactor all client instantiation inside client.Manager
+	cfg.PositionsConfig.ReadOnly = cfg.PositionsConfig.ReadOnly || p.dryRun
 	if p.dryRun {
-		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
+		p.client, err = client.NewLogger(os.Stdout, p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
@@ -162,9 +163,7 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 		p.client, err = client.NewManager(
 			p.metrics,
 			p.logger,
-			cfg.LimitsConfig.MaxStreams,
-			cfg.LimitsConfig.MaxLineSize.Val(),
-			cfg.LimitsConfig.MaxLineSizeTruncate,
+			cfg.LimitsConfig,
 			p.reg,
 			cfg.WAL,
 			p.walWriter,

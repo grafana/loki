@@ -2,7 +2,7 @@ package client
 
 import (
 	"fmt"
-	"os"
+	"io"
 	"runtime"
 	"sync"
 	"text/tabwriter"
@@ -35,7 +35,7 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error) {
+func NewLogger(out io.Writer, metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
 	c, err := NewMulti(metrics, log, 0, 0, false, cfgs...)
 	if err != nil {
@@ -54,7 +54,7 @@ func NewLogger(metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error)
 	}
 	entries := make(chan api.Entry)
 	l := &logger{
-		Writer:  tabwriter.NewWriter(os.Stdout, 0, 8, 0, '\t', 0),
+		Writer:  tabwriter.NewWriter(out, 0, 8, 0, '\t', 0),
 		entries: entries,
 	}
 	go l.run()

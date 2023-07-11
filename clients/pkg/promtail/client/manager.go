@@ -2,6 +2,7 @@ package client
 
 import (
 	"fmt"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	"strings"
 	"sync"
 
@@ -41,36 +42,49 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager
-func NewManager(
+func NewManager(metrics *Metrics, logger log.Logger, limits limit.Config, reg prometheus.Registerer, walCfg wal.Config, notifier WriterEventsNotifier, clientCfgs ...Config) (*Manager, error) {
+	manager := &Manager{
+		entries: make(chan api.Entry),
+	}
+	if walCfg.Enabled {
+		if err := manager.newWAL(metrics, logger, limits, reg, walCfg, notifier, clientCfgs...); err != nil {
+			return nil, err
+		}
+	} else {
+		return nil, fmt.Errorf("not supported manager method")
+	}
+	manager.start()
+	return manager, nil
+}
+
+func (m *Manager) newWAL(
 	metrics *Metrics,
 	logger log.Logger,
-	maxStreams, maxLineSize int,
-	maxLineSizeTruncate bool,
+	limits limit.Config,
 	reg prometheus.Registerer,
 	walCfg wal.Config,
 	notifier WriterEventsNotifier,
 	clientCfgs ...Config,
-) (*Manager, error) {
-	// TODO: refactor this to instantiate all clients types
+) error {
 	var fake struct{}
 
 	watcherMetrics := wal.NewWatcherMetrics(reg)
 
 	if len(clientCfgs) == 0 {
-		return nil, fmt.Errorf("at least one client config should be provided")
+		return fmt.Errorf("at least one client config should be provided")
 	}
 	clientsCheck := make(map[string]struct{})
 	clients := make([]Client, 0, len(clientCfgs))
 	watchers := make([]Stoppable, 0, len(clientCfgs))
 	for _, cfg := range clientCfgs {
-		client, err := New(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
+		client, err := New(metrics, cfg, limits.MaxStreams, limits.MaxLineSize.Val(), limits.MaxLineSizeTruncate, logger)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
 		// Don't allow duplicate clients, we have client specific metrics that need at least one unique label value (name).
 		if _, ok := clientsCheck[client.Name()]; ok {
-			return nil, fmt.Errorf("duplicate client configs are not allowed, found duplicate for name: %s", cfg.Name)
+			return fmt.Errorf("duplicate client configs are not allowed, found duplicate for name: %s", cfg.Name)
 		}
 
 		clientsCheck[client.Name()] = fake
@@ -96,13 +110,9 @@ func NewManager(
 		watchers = append(watchers, watcher)
 	}
 
-	manager := &Manager{
-		clients:     clients,
-		walWatchers: watchers,
-		entries:     make(chan api.Entry),
-	}
-	manager.start()
-	return manager, nil
+	m.clients = clients
+	m.walWatchers = watchers
+	return nil
 }
 
 func (m *Manager) start() {
