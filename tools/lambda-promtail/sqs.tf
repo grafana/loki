@@ -63,6 +63,6 @@ data "aws_iam_policy" "lambda_sqs_execution" {
 
 resource "aws_iam_role_policy_attachment" "lambda_sqs_execution" {
   count      = var.sqs_enabled ? 1 : 0
-  role       = aws_iam_role.iam_for_lambda.name
+  role       = aws_iam_role.this.name
   policy_arn = data.aws_iam_policy.lambda_sqs_execution.arn
 }
