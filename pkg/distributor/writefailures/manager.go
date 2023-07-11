@@ -18,7 +18,7 @@ type Manager struct {
 	m          *metrics
 }
 
-func NewManager(logger log.Logger, reg prometheus.Registerer, cfg Cfg, tenants *runtime.TenantConfigs) *Manager {
+func NewManager(logger log.Logger, reg prometheus.Registerer, cfg Cfg, tenants *runtime.TenantConfigs, subsystem string) *Manager {
 	logger = log.With(logger, "path", "write")
 	if cfg.AddInsightsLabel {
 		logger = log.With(logger, "insight", "true")
@@ -30,7 +30,7 @@ func NewManager(logger log.Logger, reg prometheus.Registerer, cfg Cfg, tenants *
 		limiter:    limiter.NewRateLimiter(strategy, time.Minute),
 		logger:     logger,
 		tenantCfgs: tenants,
-		m:          newMetrics(reg),
+		m:          newMetrics(reg, subsystem),
 	}
 }
 

@@ -37,7 +37,7 @@ func TestWriteFailuresLogging(t *testing.T) {
 		runtimeCfg, err := runtime.NewTenantConfigs(f)
 		require.NoError(t, err)
 
-		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg)
+		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "ingester")
 
 		manager.Log("bad-tenant", fmt.Errorf("bad-tenant contains invalid entry"))
 		manager.Log("good-tenant", fmt.Errorf("good-tenant contains invalid entry"))
@@ -64,7 +64,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("with zero rate limiting", func(t *testing.T) {
-		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(0)}, runtimeCfg)
+		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(0)}, runtimeCfg, "distributor")
 
 		manager.Log("known-tenant", fmt.Errorf("known-tenant entry error"))
 
@@ -73,7 +73,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	})
 
 	t.Run("bytes exceeded on single message", func(t *testing.T) {
-		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg)
+		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "distributor")
 
 		errorStr := strings.Builder{}
 		for i := 0; i < 1001; i++ {
@@ -87,7 +87,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	})
 
 	t.Run("valid bytes", func(t *testing.T) {
-		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1002)}, runtimeCfg)
+		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1002)}, runtimeCfg, "ingester")
 
 		errorStr := strings.Builder{}
 		for i := 0; i < 1001; i++ {
@@ -102,7 +102,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	})
 
 	t.Run("limit is reset after a second", func(t *testing.T) {
-		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg)
+		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "ingester")
 
 		errorStr1 := strings.Builder{}
 		errorStr2 := strings.Builder{}
@@ -128,7 +128,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	t.Run("limit is per-tenant", func(t *testing.T) {
 		runtimeCfg, err := runtime.NewTenantConfigs(f)
 		require.NoError(t, err)
-		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg)
+		manager := NewManager(logger, prometheus.NewRegistry(), Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg, "ingester")
 
 		errorStr1 := strings.Builder{}
 		errorStr2 := strings.Builder{}
