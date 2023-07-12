@@ -73,7 +73,7 @@ RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@
 RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
 
-FROM golang:1.20.6-buster
+FROM golang:1.20.6-bookworm
 RUN apt-get update && \
     apt-get install -qy \
     musl gnupg ragel \
