@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -24,9 +25,7 @@ func (fakeClient) GetSeries(_ context.Context, _ *logproto.GetSeriesRequest, _ .
 }
 
 func Test_IndexGatewayClient(t *testing.T) {
-	idx := IndexGatewayClientStore{
-		client: fakeClient{},
-	}
+	idx := NewIndexGatewayClientStore(fakeClient{}, log.NewNopLogger())
 	_, err := idx.GetSeries(context.Background(), "foo", model.Earliest, model.Latest)
 	require.NoError(t, err)
 }

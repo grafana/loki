@@ -226,7 +226,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			idx := series.NewIndexGatewayClientStore(gw)
+			idx := series.NewIndexGatewayClientStore(gw, indexClientLogger)
 
 			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 				f.Stop()

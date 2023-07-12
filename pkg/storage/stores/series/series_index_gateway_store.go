@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -17,11 +19,13 @@ import (
 // IndexGatewayClientStore implements pkg/storage/stores/index.ReaderWriter
 type IndexGatewayClientStore struct {
 	client logproto.IndexGatewayClient
+	logger log.Logger
 }
 
-func NewIndexGatewayClientStore(client logproto.IndexGatewayClient) index.ReaderWriter {
+func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) index.ReaderWriter {
 	return &IndexGatewayClientStore{
 		client: client,
+		logger: logger,
 	}
 }
 
@@ -107,6 +111,7 @@ func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, userID strin
 }
 
 func (c *IndexGatewayClientStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+	level.Warn(c.logger).Log("msg", "SetChunkFilterer called on index gateway client store, but it does not support it")
 }
 
 func (c *IndexGatewayClientStore) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
