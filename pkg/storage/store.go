@@ -226,7 +226,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			idx := series.NewIndexGatewayClientStore(gw, nil)
+			idx := series.NewIndexGatewayClientStore(gw)
 
 			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 				f.Stop()
@@ -295,16 +295,6 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
 	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
 	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
-
-	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
-	/*if s.cfg.BoltDBShipperConfig != nil && shouldUseIndexGatewayClient(s.cfg.BoltDBShipperConfig) {
-		// inject the index-gateway client into the index store
-		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		indexReaderWriter = series.NewIndexGatewayClientStore(gw, indexReaderWriter)
-	}*/
 
 	return chunkWriter,
 		indexReaderWriter,
