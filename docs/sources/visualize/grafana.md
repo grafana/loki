@@ -2,11 +2,9 @@
 title: Visualize log data
 menuTitle: Visualize
 description: Visualize your log data with Grafana
-
 aliases:
    - ../getting-started/grafana/
    - ../operations/grafana/
-   - ../visualize/grafana/
 weight: 825
 keywords:
    - visualize

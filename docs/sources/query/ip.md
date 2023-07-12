@@ -4,7 +4,6 @@ menuTItle:
 description: LogQL supports matching IP addresses.
 aliases: 
  - ../logql/ip/
- - ../query/ip/
 weight: 40
 ---
 
