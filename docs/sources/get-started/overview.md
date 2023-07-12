@@ -6,7 +6,6 @@ weight: 200
 aliases:
     - ../overview/
     - ../fundamentals/overview/
-    - ../get-started/overview/
 ---
 # Loki overview
 

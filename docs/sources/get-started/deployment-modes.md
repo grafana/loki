@@ -5,7 +5,6 @@ description: Describes the different ways to deploy Loki.
 weight: 400
 aliases:
     - ../fundamentals/architecture/deployment-modes
-    - ../get-started/deployment-modes/
 ---
 # Loki deployment modes
 

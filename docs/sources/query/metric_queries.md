@@ -4,7 +4,6 @@ menuTItle:
 description: Metric queries extend log queries by applying a function to log query results. This powerful feature creates metrics from logs.
 aliases: 
 - ../logql/metric_queries/
-- ../query/metric_queries/
 weight: 20  
 ---
 
