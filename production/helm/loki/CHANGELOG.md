@@ -25,7 +25,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [BUGFIX] Remove persistentVolumeClaimRetentionPolicy from single-binary StatefulSet when persistence is disabled
 
-## 5.8.6
+## 5.8.6
 
 - [ENHANCEMENT] Add serviceMonitor.metricRelabelings to support metric relabelings
 

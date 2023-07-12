@@ -5,7 +5,7 @@
 # See ../docs/sources/maintaining/release-loki-build-image.md
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
-FROM golang:1.20.4 as helm
+FROM golang:1.20.6 as helm
 ARG HELM_VER="v3.2.3"
 RUN curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
     tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
@@ -38,7 +38,7 @@ RUN apk add --no-cache docker-cli
 # TODO this should be fixed to download and extract the specific release binary from github as we do for golangci and helm above
 # however we need a commit which hasn't been released yet: https://github.com/drone/drone-cli/commit/1fad337d74ca0ecf420993d9d2d7229a1c99f054
 # Read the comment below regarding GO111MODULE=on and why it is necessary
-FROM golang:1.20.4 as drone
+FROM golang:1.20.6 as drone
 RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_linux_amd64.tar.gz | tar zx && \
     install -t /usr/local/bin drone
 
@@ -47,33 +47,33 @@ RUN curl -L https://github.com/drone/drone-cli/releases/download/v1.4.0/drone_li
 # Error:
 # github.com/fatih/faillint@v1.5.0 requires golang.org/x/tools@v0.0.0-20200207224406-61798d64f025
 #   (not golang.org/x/tools@v0.0.0-20190918214920-58d531046acd from golang.org/x/tools/cmd/goyacc@58d531046acdc757f177387bc1725bfa79895d69)
-FROM golang:1.20.4 as faillint
+FROM golang:1.20.6 as faillint
 RUN GO111MODULE=on go install github.com/fatih/faillint@v1.11.0
 RUN GO111MODULE=on go install golang.org/x/tools/cmd/goimports@v0.7.0
 
-FROM golang:1.20.4 as delve
+FROM golang:1.20.6 as delve
 RUN GO111MODULE=on go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Install ghr used to push binaries and template the release
 # This collides with the version of go tools used in the base image, thus we install it in its own image and copy it over.
-FROM golang:1.20.4 as ghr
+FROM golang:1.20.6 as ghr
 RUN GO111MODULE=on go install github.com/tcnksm/ghr@9349474
 
 # Install nfpm (https://nfpm.goreleaser.com) for creating .deb and .rpm packages.
-FROM golang:1.20.4 as nfpm
+FROM golang:1.20.6 as nfpm
 RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 
 # Install gotestsum
-FROM golang:1.20.4 as gotestsum
+FROM golang:1.20.6 as gotestsum
 RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.8.2
 
 # Install tools used to compile jsonnet.
-FROM golang:1.20.4 as jsonnet
+FROM golang:1.20.6 as jsonnet
 RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@v0.4.0
 RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
 
-FROM golang:1.20.4-buster
+FROM golang:1.20.6-bookworm
 RUN apt-get update && \
     apt-get install -qy \
     musl gnupg ragel \

@@ -64,11 +64,12 @@ func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
 				}
 
 				reqs[bucket] = &logproto.VolumeRequest{
-					From:     model.TimeFromUnix(start.Unix()),
-					Through:  model.TimeFromUnix(end.Unix()),
-					Matchers: volReq.Matchers,
-					Limit:    volReq.Limit,
-					Step:     volReq.Step,
+					From:         model.TimeFromUnix(start.Unix()),
+					Through:      model.TimeFromUnix(end.Unix()),
+					Matchers:     volReq.Matchers,
+					Limit:        volReq.Limit,
+					Step:         volReq.Step,
+					TargetLabels: volReq.TargetLabels,
 				}
 			})
 

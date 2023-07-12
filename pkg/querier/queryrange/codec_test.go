@@ -36,7 +36,7 @@ var (
 	end   = start.Add(1 * time.Hour)
 )
 
-func Test_codec_DecodeRequest(t *testing.T) {
+func Test_codec_EncodeDecodeRequest(t *testing.T) {
 	tests := []struct {
 		name       string
 		reqBuilder func() (*http.Request, error)
@@ -108,18 +108,20 @@ func Test_codec_DecodeRequest(t *testing.T) {
 		}, false},
 		{"series_volume", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
-				From:     model.TimeFromUnixNano(start.UnixNano()),
-				Through:  model.TimeFromUnixNano(end.UnixNano()),
-				Matchers: `{job="foo"}`,
-				Limit:    3,
-				Step:     0,
+				From:         model.TimeFromUnixNano(start.UnixNano()),
+				Through:      model.TimeFromUnixNano(end.UnixNano()),
+				Matchers:     `{job="foo"}`,
+				Limit:        3,
+				Step:         0,
+				TargetLabels: []string{"job"},
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    3,
-			Step:     0,
+			From:         model.TimeFromUnixNano(start.UnixNano()),
+			Through:      model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:     `{job="foo"}`,
+			Limit:        3,
+			Step:         0,
+			TargetLabels: []string{"job"},
 		}, false},
 		{"series_volume_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
@@ -136,18 +138,20 @@ func Test_codec_DecodeRequest(t *testing.T) {
 		}, false},
 		{"series_volume_range", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
-				From:     model.TimeFromUnixNano(start.UnixNano()),
-				Through:  model.TimeFromUnixNano(end.UnixNano()),
-				Matchers: `{job="foo"}`,
-				Limit:    3,
-				Step:     30 * 1e3,
+				From:         model.TimeFromUnixNano(start.UnixNano()),
+				Through:      model.TimeFromUnixNano(end.UnixNano()),
+				Matchers:     `{job="foo"}`,
+				Limit:        3,
+				Step:         30 * 1e3,
+				TargetLabels: []string{"fizz", "buzz"},
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    3,
-			Step:     30 * 1e3, // step is expected in ms
+			From:         model.TimeFromUnixNano(start.UnixNano()),
+			Through:      model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:     `{job="foo"}`,
+			Limit:        3,
+			Step:         30 * 1e3, // step is expected in ms
+			TargetLabels: []string{"fizz", "buzz"},
 		}, false},
 		{"series_volume_range_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
@@ -175,7 +179,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			require.Equal(t, got, tt.want)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -698,11 +702,12 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	from, through := util.RoundToMilliseconds(start, end)
 	toEncode := &logproto.VolumeRequest{
-		From:     from,
-		Through:  through,
-		Matchers: `{job="foo"}`,
-		Limit:    20,
-		Step:     30 * 1e6,
+		From:         from,
+		Through:      through,
+		Matchers:     `{job="foo"}`,
+		Limit:        20,
+		Step:         30 * 1e6,
+		TargetLabels: []string{"foo", "bar"},
 	}
 	got, err := DefaultCodec.EncodeRequest(context.Background(), toEncode)
 	require.Nil(t, err)
@@ -711,6 +716,7 @@ func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
 	require.Equal(t, "20", got.URL.Query().Get("limit"))
 	require.Equal(t, fmt.Sprintf("%f", float64(toEncode.Step/1e3)), got.URL.Query().Get("step"))
+	require.Equal(t, `foo,bar`, got.URL.Query().Get("targetLabels"))
 }
 
 func Test_codec_EncodeResponse(t *testing.T) {

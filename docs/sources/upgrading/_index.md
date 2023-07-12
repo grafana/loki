@@ -1236,7 +1236,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../configuration#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config]({{< relref "../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 

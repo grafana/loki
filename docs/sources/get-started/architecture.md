@@ -4,9 +4,9 @@ title: Loki architecture
 description: Grafana Loki's architecture.
 weight: 300
 aliases:
-    - /docs/loki/latest/architecture/
-    - /docs/loki/latest/fundamentals/architecture/
-    - /docs/loki/latest/get-started/architecture/
+    - ../architecture/
+    - ../fundamentals/architecture/
+    - ../get-started/architecture/
 ---
 # Loki architecture
 
