@@ -71,10 +71,12 @@ func TestGetTenantSecrets_StaticMode(t *testing.T) {
 
 	expected := []*manifests.TenantSecrets{
 		{
-			TenantName:   "test",
-			ClientID:     "test",
-			ClientSecret: "test",
-			IssuerCAPath: "/path/to/ca/file",
+			TenantName: "test",
+			OIDCSecret: &manifests.OIDCSecret{
+				ClientID:     "test",
+				ClientSecret: "test",
+				IssuerCAPath: "/path/to/ca/file",
+			},
 		},
 	}
 	require.ElementsMatch(t, ts, expected)
@@ -134,10 +136,12 @@ func TestGetTenantSecrets_DynamicMode(t *testing.T) {
 
 	expected := []*manifests.TenantSecrets{
 		{
-			TenantName:   "test",
-			ClientID:     "test",
-			ClientSecret: "test",
-			IssuerCAPath: "/path/to/ca/file",
+			TenantName: "test",
+			OIDCSecret: &manifests.OIDCSecret{
+				ClientID:     "test",
+				ClientSecret: "test",
+				IssuerCAPath: "/path/to/ca/file",
+			},
 		},
 	}
 	require.ElementsMatch(t, ts, expected)
@@ -174,7 +178,7 @@ func TestExtractSecret(t *testing.T) {
 		t.Run(tst.name, func(t *testing.T) {
 			t.Parallel()
 
-			_, err := extractOIDCSecret(tst.secret, tst.tenantName)
+			_, err := extractOIDCSecret(tst.secret)
 			if !tst.wantErr {
 				require.NoError(t, err)
 			}

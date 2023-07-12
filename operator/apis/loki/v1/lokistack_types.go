@@ -183,14 +183,20 @@ type OIDCSpec struct {
 	UsernameClaim string `json:"usernameClaim,omitempty"`
 }
 
-// TLSConfigSpec specifies safe TLS configuration parameters.
-type TLSConfigSpec struct {
-	// Secret defines the spec for the custom CA and custom server certificate for tenant's authentication.
+// MTLSSpec specifies mTLS configuration parameters.
+type MTLSSpec struct {
+	// Secret defines the spec for the tls.key, tls.crt for tenant's authentication.
 	//
 	// +required
 	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant Secret"
-	Secret *TenantSecretSpec `json:"secret"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cert Secret"
+	CertSecret *TenantSecretSpec `json:"certSecret"`
+	// CASpec defines the spec for the custom CA for tenant's authentication.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap"
+	CASpec *CASpec `json:"caSpec"`
 }
 
 // AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.
@@ -216,8 +222,8 @@ type AuthenticationSpec struct {
 	// TLSConfig defines the spec for the mTLS tenant's authentication.
 	//
 	// +optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="TLS Configuration"
-	TLSConfig *TLSConfigSpec `json:"tlsConfig,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="mTLS Configuration"
+	MTLS *MTLSSpec `json:"mTLS,omitempty"`
 }
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
@@ -429,12 +435,11 @@ type HashRingSpec struct {
 	MemberList *MemberListSpec `json:"memberlist,omitempty"`
 }
 
-// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
-type ObjectStorageTLSSpec struct {
+type CASpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
-	// If empty, it defaults to "service-ca.crt".
 	//
+	// If empty, it defaults to "service-ca.crt".
 	// +optional
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap Key"
@@ -446,6 +451,11 @@ type ObjectStorageTLSSpec struct {
 	// +kubebuilder:validation:required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
 	CA string `json:"caName"`
+}
+
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	CASpec `json:",inline"`
 }
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
@@ -941,6 +951,9 @@ const (
 	// ReasonMissingGatewayTenantSecret when the required tenant secret
 	// for authentication is missing.
 	ReasonMissingGatewayTenantSecret LokiStackConditionReason = "MissingGatewayTenantSecret"
+	// ReasonMissingGatewayTenantConfigMap when the required tenant configmap
+	// for authentication is missing.
+	ReasonMissingGatewayTenantConfigMap LokiStackConditionReason = "MissingGatewayTenantConfigMap"
 	// ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.
 	ReasonInvalidGatewayTenantSecret LokiStackConditionReason = "InvalidGatewayTenantSecret"
 	// ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config

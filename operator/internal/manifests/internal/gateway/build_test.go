@@ -91,10 +91,12 @@ roles:
 		Name:      "test",
 		TenantSecrets: []*Secret{
 			{
-				TenantName:   "test-a",
-				ClientID:     "test",
-				ClientSecret: "test123",
-				IssuerCAPath: "/tmp/ca/path",
+				TenantName: "test-a",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "test123",
+					IssuerCAPath: "/tmp/ca/path",
+				},
 			},
 		},
 	}
@@ -151,10 +153,12 @@ tenants:
 		Name:      "test",
 		TenantSecrets: []*Secret{
 			{
-				TenantName:   "test-a",
-				ClientID:     "test",
-				ClientSecret: "test123",
-				IssuerCAPath: "/tmp/ca/path",
+				TenantName: "test-a",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "test123",
+					IssuerCAPath: "/tmp/ca/path",
+				},
 			},
 		},
 	}
@@ -234,22 +238,28 @@ tenants:
 		Name:      "test",
 		TenantSecrets: []*Secret{
 			{
-				TenantName:   "application",
-				ClientID:     "test",
-				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
-				IssuerCAPath: "./tmp/certs/ca.pem",
+				TenantName: "application",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
 			},
 			{
-				TenantName:   "infrastructure",
-				ClientID:     "test",
-				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
-				IssuerCAPath: "./tmp/certs/ca.pem",
+				TenantName: "infrastructure",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
 			},
 			{
-				TenantName:   "audit",
-				ClientID:     "test",
-				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
-				IssuerCAPath: "./tmp/certs/ca.pem",
+				TenantName: "audit",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
 			},
 		},
 	}
@@ -298,10 +308,12 @@ tenants:
 		Name:      "test",
 		TenantSecrets: []*Secret{
 			{
-				TenantName:   "network",
-				ClientID:     "test",
-				ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
-				IssuerCAPath: "./tmp/certs/ca.pem",
+				TenantName: "network",
+				OIDC: &OIDC{
+					ClientID:     "test",
+					ClientSecret: "ZXhhbXBsZS1hcHAtc2VjcmV0",
+					IssuerCAPath: "./tmp/certs/ca.pem",
+				},
 			},
 		},
 	}

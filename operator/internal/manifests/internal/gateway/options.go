@@ -21,7 +21,7 @@ type Options struct {
 type Secret struct {
 	TenantName string
 	OIDC       *OIDC
-	TLS        *TLS
+	MTLS       *MTLS
 }
 
 type OIDC struct {
@@ -30,7 +30,7 @@ type OIDC struct {
 	IssuerCAPath string
 }
 
-type TLS struct {
+type MTLS struct {
 	CA   string
 	Cert string
 }

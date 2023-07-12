@@ -36,19 +36,10 @@ func GetTenantSecrets(
 		switch {
 		case tenant.OIDC != nil:
 			key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: req.Namespace}
-			if err := k.Get(ctx, key, &gatewaySecret); err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil, &status.DegradedError{
-						Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
-						Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
-						Requeue: true,
-					}
-				}
-				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
-					"name", key)
+			if err := getSecret(ctx, k, tenant.TenantName, key, &gatewaySecret); err != nil {
+				return nil, err
 			}
-
-			oidcSecret, err := extractOIDCSecret(&gatewaySecret, tenant.TenantName)
+			oidcSecret, err := extractOIDCSecret(&gatewaySecret)
 			if err != nil {
 				return nil, &status.DegradedError{
 					Message: "Invalid gateway tenant secret contents",
@@ -59,21 +50,26 @@ func GetTenantSecrets(
 			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
 				OIDCSecret: oidcSecret,
 			})
-		case tenant.TLSConfig != nil:
-			key := client.ObjectKey{Name: tenant.TLSConfig.Secret.Name, Namespace: req.Namespace}
-			if err := k.Get(ctx, key, &gatewaySecret); err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil, &status.DegradedError{
-						Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
-						Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
-						Requeue: true,
-					}
+		case tenant.MTLS != nil:
+			key := client.ObjectKey{Name: tenant.MTLS.CertSecret.Name, Namespace: req.Namespace}
+			if err := getSecret(ctx, k, tenant.TenantName, key, &gatewaySecret); err != nil {
+				return nil, err
+			}
+			cert, err := extractCert(&gatewaySecret)
+			if err != nil {
+				return nil, &status.DegradedError{
+					Message: "Invalid gateway tenant secret contents",
+					Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
+					Requeue: true,
 				}
-				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
-					"name", key)
 			}
 
-			TLSSecret, err := extractTLSSecret(&gatewaySecret, tenant.TenantName)
+			var configMap corev1.ConfigMap
+			key = client.ObjectKey{Name: tenant.MTLS.CASpec.CA, Namespace: req.Namespace}
+			if err = getConfigMap(ctx, k, tenant.TenantName, key, &configMap); err != nil {
+				return nil, err
+			}
+			ca, err := extractCA(&configMap, tenant.MTLS.CASpec.CAKey)
 			if err != nil {
 				return nil, &status.DegradedError{
 					Message: "Invalid gateway tenant secret contents",
@@ -83,7 +79,10 @@ func GetTenantSecrets(
 			}
 			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
 				TenantName: tenant.TenantName,
-				TLSSecret:  TLSSecret,
+				MTLSSecret: &manifests.MTLSSecret{
+					Cert: cert,
+					CA:   ca,
+				},
 			})
 		default:
 			return nil, &status.DegradedError{
@@ -95,6 +94,36 @@ func GetTenantSecrets(
 	}
 
 	return tenantSecrets, nil
+}
+
+func getSecret(ctx context.Context, k k8s.Client, tenantName string, key client.ObjectKey, s *corev1.Secret) error {
+	if err := k.Get(ctx, key, s); err != nil {
+		if apierrors.IsNotFound(err) {
+			return &status.DegradedError{
+				Message: fmt.Sprintf("Missing secrets for tenant %s", tenantName),
+				Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
+				Requeue: true,
+			}
+		}
+		return kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
+			"name", key)
+	}
+	return nil
+}
+
+func getConfigMap(ctx context.Context, k k8s.Client, tenantName string, key client.ObjectKey, cm *corev1.ConfigMap) error {
+	if err := k.Get(ctx, key, cm); err != nil {
+		if apierrors.IsNotFound(err) {
+			return &status.DegradedError{
+				Message: fmt.Sprintf("Missing configmap for tenant %s", tenantName),
+				Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
+				Requeue: true,
+			}
+		}
+		return kverrors.Wrap(err, "failed to lookup lokistack gateway tenant configMap",
+			"name", key)
+	}
+	return nil
 }
 
 // extractOIDCSecret reads a k8s secret into a manifest tenant secret struct if valid.
@@ -114,20 +143,22 @@ func extractOIDCSecret(s *corev1.Secret) (*manifests.OIDCSecret, error) {
 	}, nil
 }
 
-// extractTLSSecret reads a k8s secret into a manifest tenant secret struct if valid.
-func extractTLSSecret(s *corev1.Secret, tenantName string) (*manifests.TLSSecret, error) {
-	// Extract and validate mandatory fields
-	cert := s.Data["cert"]
-	if len(cert) == 0 {
-		return nil, kverrors.New("missing cert field", "field", "cert")
+// extractCert reads the TLSCertKey from a k8s secret of type SecretTypeTLS
+func extractCert(s *corev1.Secret) (string, error) {
+	switch s.Type {
+	case corev1.SecretTypeTLS:
+		return string(s.Data[corev1.TLSCertKey]), nil
+	default:
+		return "", kverrors.New("missing fields, has to contain fields \"tls.key\" and \"tls.crt\"")
 	}
-	ca := s.Data["ca"]
-	if len(ca) == 0 {
-		return nil, kverrors.New("missing ca field", "field", "ca")
-	}
+}
 
-	return &manifests.TLSSecret{
-		Cert: string(cert),
-		CA:   string(ca),
-	}, nil
+// extractCA reads the CA from a k8s configmap
+func extractCA(cm *corev1.ConfigMap, key string) (string, error) {
+	// Extract and validate mandatory fields
+	ca := cm.Data[key]
+	if len(ca) == 0 {
+		return "", kverrors.New(fmt.Sprintf("missing %s field", key), "field", key)
+	}
+	return string(ca), nil
 }

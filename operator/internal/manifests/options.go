@@ -69,7 +69,7 @@ type Tenants struct {
 type TenantSecrets struct {
 	TenantName string
 	OIDCSecret *OIDCSecret
-	TLSSecret  *TLSSecret
+	MTLSSecret *MTLSSecret
 }
 
 type OIDCSecret struct {
@@ -78,7 +78,7 @@ type OIDCSecret struct {
 	IssuerCAPath string
 }
 
-type TLSSecret struct {
+type MTLSSecret struct {
 	CA   string
 	Cert string
 }
