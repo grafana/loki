@@ -793,7 +793,7 @@ github.com/gorilla/websocket
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20230518162305-3c92c534827e
+# github.com/grafana/dskit v0.0.0-20230706162620-5081d8ed53e6
 ## explicit; go 1.18
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency
@@ -838,7 +838,7 @@ github.com/grafana/loki/pkg/push
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
-# github.com/grafana/tail v0.0.0-20230321215411-205c7713cbcd
+# github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 ## explicit; go 1.13
 github.com/grafana/tail
 github.com/grafana/tail/ratelimiter
