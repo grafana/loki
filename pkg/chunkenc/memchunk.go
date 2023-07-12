@@ -1290,17 +1290,27 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	si.readBufValid = copy(si.readBuf[:], si.readBuf[labelsWidth:si.readBufValid])
 
 	// If not enough space for the labels, create a new buffer slice and put the old one back in the pool.
-	if nLabels*2 > cap(si.metaLabelsBuf) {
+	metaLabelsBufLen := nLabels * 2
+	if metaLabelsBufLen > cap(si.metaLabelsBuf) {
 		if si.metaLabelsBuf != nil {
 			for i := range si.metaLabelsBuf {
-				BytesBufferPool.Put(si.metaLabelsBuf[i])
+				if si.metaLabelsBuf[i] != nil {
+					BytesBufferPool.Put(si.metaLabelsBuf[i])
+				}
 			}
+			LabelsPool.Put(si.metaLabelsBuf)
 		}
-		si.metaLabelsBuf = make([][]byte, nLabels*2)
+		si.metaLabelsBuf = LabelsPool.Get(metaLabelsBufLen).([][]byte)
+		if metaLabelsBufLen > cap(si.metaLabelsBuf) {
+			si.err = fmt.Errorf("could not get a labels matrix of size %d, actual %d", metaLabelsBufLen, cap(si.metaLabelsBuf))
+			return 0, nil, nil, false
+		}
 	}
 
+	si.metaLabelsBuf = si.metaLabelsBuf[:nLabels*2]
+
 	// Read all the label-value pairs, into the buffer slice.
-	for i := 0; i < nLabels*2; i++ {
+	for i := 0; i < metaLabelsBufLen; i++ {
 		// Read the length of the label.
 		var labelWidth, labelSize int
 		for labelWidth == 0 { // Read until we have enough bytes for the name.
@@ -1360,7 +1370,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		}
 	}
 
-	return ts, si.buf[:lineSize], si.metaLabelsBuf[:nLabels*2], true
+	return ts, si.buf[:lineSize], si.metaLabelsBuf[:metaLabelsBufLen], true
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
