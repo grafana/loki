@@ -3628,13 +3628,13 @@ backoff_config:
 # are ignored. Setting this to a value other than the default disables the BDP
 # estimator.
 # CLI flag: -<prefix>.initial-stream-window-size
-[initial_stream_window_size: <int> | default = 63KiB1023B]
+[initial_stream_window_size: <int> | default = 64kb]
 
 # Initial connection window size. Values less than the default are not supported
 # and are ignored. Setting this to a value other than the default disables the
 # BDP estimator.
 # CLI flag: -<prefix>.initial-connection-window-size
-[initial_connection_window_size: <int> | default = 63KiB1023B]
+[initial_connection_window_size: <int> | default = 64kb]
 
 # Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be

@@ -1,11 +1,12 @@
 package distributor
 
 import (
+	"testing"
+	"time"
+
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/stretchr/testify/assert"
-	"testing"
-	"time"
 
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
