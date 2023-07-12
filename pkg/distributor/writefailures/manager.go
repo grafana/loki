@@ -45,10 +45,10 @@ func (m *Manager) Log(tenantID string, err error) {
 
 	errMsg := err.Error()
 	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
-		m.m.loggedCount.WithLabelValues(tenantID)
+		m.m.loggedCount.WithLabelValues(tenantID).Inc()
 		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID)
 		return
 	}
 
-	m.m.discardedCount.WithLabelValues(tenantID)
+	m.m.discardedCount.WithLabelValues(tenantID).Inc()
 }
