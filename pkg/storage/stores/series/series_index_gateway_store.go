@@ -29,7 +29,7 @@ func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.L
 	}
 }
 
-func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
+func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, _ string, from, through model.Time, allMatchers ...*labels.Matcher) ([]logproto.ChunkRef, error) {
 	response, err := c.client.GetChunkRef(ctx, &logproto.GetChunkRefRequest{
 		From:     from,
 		Through:  through,
@@ -47,7 +47,7 @@ func (c *IndexGatewayClientStore) GetChunkRefs(ctx context.Context, userID strin
 	return result, nil
 }
 
-func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	resp, err := c.client.GetSeries(ctx, &logproto.GetSeriesRequest{
 		From:     from,
 		Through:  through,
@@ -66,7 +66,7 @@ func (c *IndexGatewayClientStore) GetSeries(ctx context.Context, userID string, 
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
-func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string) ([]string, error) {
 	resp, err := c.client.LabelNamesForMetricName(ctx, &logproto.LabelNamesForMetricNameRequest{
 		MetricName: metricName,
 		From:       from,
@@ -78,7 +78,7 @@ func (c *IndexGatewayClientStore) LabelNamesForMetricName(ctx context.Context, u
 	return resp.Values, nil
 }
 
-func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, _ string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
 	resp, err := c.client.LabelValuesForMetricName(ctx, &logproto.LabelValuesForMetricNameRequest{
 		MetricName: metricName,
 		LabelName:  labelName,
@@ -92,7 +92,7 @@ func (c *IndexGatewayClientStore) LabelValuesForMetricName(ctx context.Context, 
 	return resp.Values, nil
 }
 
-func (c *IndexGatewayClientStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
 	return c.client.GetStats(ctx, &logproto.IndexStatsRequest{
 		From:     from,
 		Through:  through,
@@ -100,7 +100,7 @@ func (c *IndexGatewayClientStore) Stats(ctx context.Context, userID string, from
 	})
 }
 
-func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return c.client.GetSeriesVolume(ctx, &logproto.VolumeRequest{
 		From:         from,
 		Through:      through,
@@ -110,7 +110,7 @@ func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, userID strin
 	})
 }
 
-func (c *IndexGatewayClientStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
 	level.Warn(c.logger).Log("msg", "SetChunkFilterer called on index gateway client store, but it does not support it")
 }
 
