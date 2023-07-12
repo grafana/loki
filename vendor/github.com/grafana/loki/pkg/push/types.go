@@ -23,7 +23,7 @@ type Stream struct {
 type Entry struct {
 	Timestamp        time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line             string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	NonIndexedLabels labels.Labels `protobuf:"bytes,3,opt,name=labels,proto3" json:"labels,omitempty"`
+	NonIndexedLabels labels.Labels `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
 }
 
 type LabelAdapter labels.Label
