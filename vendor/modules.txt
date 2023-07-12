@@ -838,7 +838,7 @@ github.com/grafana/loki/pkg/push
 ## explicit; go 1.17
 github.com/grafana/regexp
 github.com/grafana/regexp/syntax
-# github.com/grafana/tail v0.0.0-20230321215411-205c7713cbcd
+# github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 ## explicit; go 1.13
 github.com/grafana/tail
 github.com/grafana/tail/ratelimiter
