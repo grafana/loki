@@ -5,7 +5,7 @@
 # See ../docs/sources/maintaining/release-loki-build-image.md
 
 # Install helm (https://helm.sh/) and helm-docs (https://github.com/norwoodj/helm-docs) for generating Helm Chart reference.
-FROM golang:1.20.6 as helm
+FROM golang:1.20.6-bullseye as helm
 ARG HELM_VER="v3.2.3"
 RUN curl -L -o /tmp/helm-$HELM_VER.tgz https://get.helm.sh/helm-${HELM_VER}-linux-amd64.tar.gz && \
     tar -xz -C /tmp -f /tmp/helm-$HELM_VER.tgz && \
@@ -64,7 +64,7 @@ FROM golang:1.20.6 as nfpm
 RUN GO111MODULE=on go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.11.3
 
 # Install gotestsum
-FROM golang:1.20.6 as gotestsum
+FROM golang:1.20.6-bullseye as gotestsum
 RUN GO111MODULE=on go install gotest.tools/gotestsum@v1.8.2
 
 # Install tools used to compile jsonnet.
