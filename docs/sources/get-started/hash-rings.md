@@ -38,7 +38,7 @@ These components can optionally be connected into a hash ring:
 In an architecture that has three distributors and three ingesters defined,
 the hash rings for these components connect the instances of same-type components.
 
-![distributor and ingester rings](./ring-overview.png)
+![Distributor and ingester rings](../ring-overview.png "Distributor and ingester rings")
 
 Each node in the ring represents an instance of a component.
 Each node has a key-value store that holds communication information
