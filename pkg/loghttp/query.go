@@ -75,7 +75,7 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				labels[yoloString(key)] = yoloString(val)
+				labels[string(key)] = string(val)
 				return nil
 			})
 			if err != nil {
@@ -163,8 +163,8 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 					return jsonparser.MalformedStringError
 				}
 				nonIndexedLabels = append(nonIndexedLabels, labels.Label{
-					Name:  yoloString(key),
-					Value: yoloString(val),
+					Name:  string(key),
+					Value: string(val),
 				})
 				return nil
 			})
@@ -560,8 +560,4 @@ func labelVolumeLimit(r *http.Request) error {
 	}
 
 	return nil
-}
-
-func yoloString(buf []byte) string {
-	return *((*string)(unsafe.Pointer(&buf)))
 }
