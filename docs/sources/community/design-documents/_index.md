@@ -2,7 +2,7 @@
 title: Design documents
 description: Loki Design documents
 aliases: 
-- ../../design-documents
+- ../design-documents/
 weight: 600
 ---
 # Design documents
