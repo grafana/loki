@@ -11,7 +11,6 @@ type metrics struct {
 }
 
 func newMetrics(reg prometheus.Registerer, subsystem string) *metrics {
-	// prometheus.NewCounterVec(opts prometheus.CounterOpts, labelNames []string)
 	return &metrics{
 		loggedCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace:   "loki",
