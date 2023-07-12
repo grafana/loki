@@ -407,18 +407,18 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	}
 }
 
-func TestSeriesVolume(t *testing.T) {
+func TestVolume(t *testing.T) {
 	tenant.WithDefaultResolver(tenant.NewMultiResolver())
 
 	for _, tc := range []struct {
-		desc                  string
-		orgID                 string
-		expectedSeriesVolumes []logproto.Volume
+		desc            string
+		orgID           string
+		expectedVolumes []logproto.Volume
 	}{
 		{
 			desc:  "multiple tenants are aggregated",
 			orgID: "1|2",
-			expectedSeriesVolumes: []logproto.Volume{
+			expectedVolumes: []logproto.Volume{
 				{Name: `{foo="bar"}`, Volume: 76},
 			},
 		},
@@ -426,20 +426,20 @@ func TestSeriesVolume(t *testing.T) {
 		{
 			desc:  "single tenant",
 			orgID: "2",
-			expectedSeriesVolumes: []logproto.Volume{
+			expectedVolumes: []logproto.Volume{
 				{Name: `{foo="bar"}`, Volume: 38},
 			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			querier := newQuerierMock()
-			querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(mockLabelValueResponse(), nil)
+			querier.On("Volume", mock.Anything, mock.Anything).Return(mockLabelValueResponse(), nil)
 			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
 			ctx := user.InjectOrgID(context.Background(), tc.orgID)
 
-			resp, err := multiTenantQuerier.SeriesVolume(ctx, mockLabelValueRequest())
+			resp, err := multiTenantQuerier.Volume(ctx, mockLabelValueRequest())
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedSeriesVolumes, resp.GetVolumes())
+			require.Equal(t, tc.expectedVolumes, resp.GetVolumes())
 		})
 	}
 }

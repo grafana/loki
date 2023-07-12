@@ -275,8 +275,8 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Through:  through,
 			Matchers: req.Query,
 		}, err
-	case SeriesVolumeOp:
-		req, err := loghttp.ParseSeriesVolumeInstantQuery(r)
+	case VolumeOp:
+		req, err := loghttp.ParseVolumeInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -289,8 +289,8 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Step:         0,
 			TargetLabels: req.TargetLabels,
 		}, err
-	case SeriesVolumeRangeOp:
-		req, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+	case VolumeRangeOp:
+		req, err := loghttp.ParseVolumeRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -450,12 +450,12 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		if request.Step != 0 {
 			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 			u = &url.URL{
-				Path:     "/loki/api/v1/index/series_volume_range",
+				Path:     "/loki/api/v1/index/volume_range",
 				RawQuery: params.Encode(),
 			}
 		} else {
 			u = &url.URL{
-				Path:     "/loki/api/v1/index/series_volume",
+				Path:     "/loki/api/v1/index/volume",
 				RawQuery: params.Encode(),
 			}
 		}
@@ -742,7 +742,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 			return nil, err
 		}
 	case *VolumeResponse:
-		if err := marshal.WriteSeriesVolumeResponseJSON(response.Response, &buf); err != nil {
+		if err := marshal.WriteVolumeResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
 	default:

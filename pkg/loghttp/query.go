@@ -467,7 +467,7 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	return ParseRangeQuery(r)
 }
 
-type SeriesVolumeInstantQuery struct {
+type VolumeInstantQuery struct {
 	Start        time.Time
 	End          time.Time
 	Query        string
@@ -475,7 +475,7 @@ type SeriesVolumeInstantQuery struct {
 	TargetLabels []string
 }
 
-func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, error) {
+func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
 	err := labelVolumeLimit(r)
 	if err != nil {
 		return nil, err
@@ -486,7 +486,7 @@ func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, 
 		return nil, err
 	}
 
-	svInstantQuery := SeriesVolumeInstantQuery{
+	svInstantQuery := VolumeInstantQuery{
 		Query:        result.Query,
 		Limit:        result.Limit,
 		TargetLabels: targetLabels(r),
@@ -504,7 +504,7 @@ func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, 
 	return &svInstantQuery, nil
 }
 
-type SeriesVolumeRangeQuery struct {
+type VolumeRangeQuery struct {
 	Start        time.Time
 	End          time.Time
 	Step         time.Duration
@@ -513,7 +513,7 @@ type SeriesVolumeRangeQuery struct {
 	TargetLabels []string
 }
 
-func ParseSeriesVolumeRangeQuery(r *http.Request) (*SeriesVolumeRangeQuery, error) {
+func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 	err := labelVolumeLimit(r)
 	if err != nil {
 		return nil, err
@@ -524,7 +524,7 @@ func ParseSeriesVolumeRangeQuery(r *http.Request) (*SeriesVolumeRangeQuery, erro
 		return nil, err
 	}
 
-	return &SeriesVolumeRangeQuery{
+	return &VolumeRangeQuery{
 		Start:        result.Start,
 		End:          result.End,
 		Step:         result.Step,

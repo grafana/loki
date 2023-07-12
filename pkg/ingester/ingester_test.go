@@ -470,7 +470,7 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	}, nil
 }
 
-func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *mockStore) Volume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
 			{Name: `{foo="bar"}`, Volume: 38},
@@ -1082,7 +1082,7 @@ func TestStats(t *testing.T) {
 	}, resp)
 }
 
-func TestSeriesVolume(t *testing.T) {
+func TestVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
@@ -1095,7 +1095,7 @@ func TestSeriesVolume(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "test")
 
 	t.Run("matching a single label", func(t *testing.T) {
-		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
 			From:     0,
 			Through:  10000,
 			Matchers: `{log_stream=~"dispatcher|worker"}`,
@@ -1110,7 +1110,7 @@ func TestSeriesVolume(t *testing.T) {
 	})
 
 	t.Run("matching multiple labels, exact", func(t *testing.T) {
-		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
 			From:     0,
 			Through:  10000,
 			Matchers: `{log_stream=~"dispatcher|worker", host="agent"}`,
@@ -1125,7 +1125,7 @@ func TestSeriesVolume(t *testing.T) {
 	})
 
 	t.Run("matching multiple labels, regex", func(t *testing.T) {
-		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
 			From:     0,
 			Through:  10000,
 			Matchers: `{log_stream=~"dispatcher|worker", host=~".+"}`,

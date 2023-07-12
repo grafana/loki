@@ -173,7 +173,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1142,7 +1142,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return &merged, nil
 }
 
-func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1161,10 +1161,10 @@ func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 	type f func() (*logproto.VolumeResponse, error)
 	jobs := []f{
 		f(func() (*logproto.VolumeResponse, error) {
-			return instance.GetSeriesVolume(ctx, req)
+			return instance.GetVolume(ctx, req)
 		}),
 		f(func() (*logproto.VolumeResponse, error) {
-			return i.store.SeriesVolume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, matchers...)
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, matchers...)
 		}),
 	}
 	resps := make([]*logproto.VolumeResponse, len(jobs))

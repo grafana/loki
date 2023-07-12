@@ -106,7 +106,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
-		{"series_volume", func() (*http.Request, error) {
+		{"volume", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:         model.TimeFromUnixNano(start.UnixNano()),
 				Through:      model.TimeFromUnixNano(end.UnixNano()),
@@ -123,7 +123,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Step:         0,
 			TargetLabels: []string{"job"},
 		}, false},
-		{"series_volume_default_limit", func() (*http.Request, error) {
+		{"volume_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
@@ -136,7 +136,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Limit:    100,
 			Step:     0,
 		}, false},
-		{"series_volume_range", func() (*http.Request, error) {
+		{"volume_range", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:         model.TimeFromUnixNano(start.UnixNano()),
 				Through:      model.TimeFromUnixNano(end.UnixNano()),
@@ -153,7 +153,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Step:         30 * 1e3, // step is expected in ms
 			TargetLabels: []string{"fizz", "buzz"},
 		}, false},
-		{"series_volume_range_default_limit", func() (*http.Request, error) {
+		{"volume_range_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
@@ -804,7 +804,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"series volume", "/loki/api/v1/index/series_volume",
+			"volume", "/loki/api/v1/index/volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{

@@ -29,7 +29,7 @@ service Querier {
   rpc GetStats(IndexStatsRequest) returns (IndexStatsResponse) {}
   // Note: this MUST be the same as the variant defined in
   // indexgateway.proto on the IndexGateway service.
-  rpc GetSeriesVolume(VolumeRequest) returns (VolumeResponse) {}
+  rpc GetVolume(VolumeRequest) returns (VolumeResponse) {}
 }
 
 service Ingester {

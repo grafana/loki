@@ -100,8 +100,8 @@ func (c *IndexGatewayClientStore) Stats(ctx context.Context, _ string, from, thr
 	})
 }
 
-func (c *IndexGatewayClientStore) SeriesVolume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	return c.client.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return c.client.GetVolume(ctx, &logproto.VolumeRequest{
 		From:         from,
 		Through:      through,
 		Matchers:     (&syntax.MatchersExpr{Mts: matchers}).String(),

@@ -47,7 +47,7 @@ func (acc *Accumulator) Volumes() *logproto.VolumeResponse {
 	acc.lock.RLock()
 	defer acc.lock.RUnlock()
 
-	return MapToSeriesVolumeResponse(acc.volumes, int(acc.limit))
+	return MapToVolumeResponse(acc.volumes, int(acc.limit))
 }
 
 func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeResponse {
@@ -63,10 +63,10 @@ func Merge(responses []*logproto.VolumeResponse, limit int32) *logproto.VolumeRe
 		}
 	}
 
-	return MapToSeriesVolumeResponse(mergedVolumes, int(limit))
+	return MapToVolumeResponse(mergedVolumes, int(limit))
 }
 
-func MapToSeriesVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.VolumeResponse {
+func MapToVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.VolumeResponse {
 	volumes := make([]logproto.Volume, 0, len(mergedVolumes))
 	for name, size := range mergedVolumes {
 		volumes = append(volumes, logproto.Volume{

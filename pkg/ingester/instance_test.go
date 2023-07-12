@@ -838,10 +838,10 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
-func TestInstance_SeriesVolume(t *testing.T) {
+func TestInstance_Volume(t *testing.T) {
 	t.Run("no matchers", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+		volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{}",
@@ -857,7 +857,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 
 	t.Run("with matchers", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+		volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  1.1 * 1e3, //milliseconds
 			Matchers: `{log_stream="dispatcher"}`,
@@ -872,7 +872,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 
 	t.Run("excludes streams outside of time bounds", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+		volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 			From:     5,
 			Through:  1.1 * 1e3, //milliseconds
 			Matchers: "{}",
@@ -888,7 +888,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 
 	t.Run("enforces the limit", func(t *testing.T) {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+		volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 			From:     0,
 			Through:  11000,
 			Matchers: "{}",
@@ -904,7 +904,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 	t.Run("with targetLabels", func(t *testing.T) {
 		t.Run("all targetLabels are added to matchers", func(t *testing.T) {
 			instance := defaultInstance(t)
-			volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 				From:         0,
 				Through:      1.1 * 1e3, //milliseconds
 				Matchers:     `{}`,
@@ -921,7 +921,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 
 		t.Run("with a specific equals matcher", func(t *testing.T) {
 			instance := defaultInstance(t)
-			volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 				From:         0,
 				Through:      1.1 * 1e3, //milliseconds
 				Matchers:     `{log_stream="dispatcher"}`,
@@ -937,7 +937,7 @@ func TestInstance_SeriesVolume(t *testing.T) {
 
 		t.Run("with a specific regexp matcher", func(t *testing.T) {
 			instance := defaultInstance(t)
-			volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 				From:         0,
 				Through:      1.1 * 1e3, //milliseconds
 				Matchers:     `{log_stream=~".+"}`,

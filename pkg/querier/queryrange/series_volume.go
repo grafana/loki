@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-func SeriesVolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
+func VolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
 	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		request, err := codec.EncodeRequest(ctx, req)
 		if err != nil {
@@ -41,7 +41,7 @@ func SeriesVolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebas
 	})
 }
 
-func NewSeriesVolumeMiddleware() queryrangebase.Middleware {
+func NewVolumeMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			volReq, ok := req.(*logproto.VolumeRequest)

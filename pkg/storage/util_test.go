@@ -259,7 +259,7 @@ func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ .
 	return nil, nil
 }
 
-func (m *mockChunkStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 

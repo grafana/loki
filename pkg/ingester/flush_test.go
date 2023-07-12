@@ -352,7 +352,7 @@ func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	return &stats.Stats{}, nil
 }
 
-func (s *testStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *testStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{}, nil
 }
 

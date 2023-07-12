@@ -93,6 +93,6 @@ func (m *MultiTenantIndex) Stats(ctx context.Context, userID string, from, throu
 	return m.idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, withTenantLabelMatcher(userID, matchers)...)
 }
 
-func (m *MultiTenantIndex) SeriesVolume(ctx context.Context, userID string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, matchers ...*labels.Matcher) error {
-	return m.idx.SeriesVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, withTenantLabelMatcher(userID, matchers)...)
+func (m *MultiTenantIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, matchers ...*labels.Matcher) error {
+	return m.idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, withTenantLabelMatcher(userID, matchers)...)
 }
