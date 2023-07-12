@@ -295,10 +295,11 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 		endTS := model.Time(r.GetEnd()).Time()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
-				From:     model.TimeFromUnix(start.Unix()),
-				Through:  model.TimeFromUnix(end.Unix()),
-				Matchers: r.GetMatchers(),
-				Limit:    r.Limit,
+				From:         model.TimeFromUnix(start.Unix()),
+				Through:      model.TimeFromUnix(end.Unix()),
+				Matchers:     r.GetMatchers(),
+				Limit:        r.Limit,
+				TargetLabels: r.TargetLabels,
 			})
 		})
 	default:

@@ -1,8 +1,11 @@
 ---
-description: Describes parameters used to configure Grafana Loki.
-menuTitle: Configuration parameters
 title: Grafana Loki configuration parameters
-weight: 500
+menuTitle: Configuration parameters
+description: Configuration reference for the parameters used to configure Grafana Loki.
+aliases: 
+  - ../configuration
+  - ../configure
+weight: 500 
 ---
 
 # Grafana Loki configuration parameters
@@ -2471,6 +2474,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 
 # Enable log-volume endpoints.
 [volume_enabled: <boolean>]
+
+# The maximum number of aggregated series in a log-volume response
+# CLI flag: -limits.volume-max-series
+[volume_max_series: <int> | default = 1000]
 
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.

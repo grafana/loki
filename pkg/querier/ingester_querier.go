@@ -319,7 +319,7 @@ func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through mod
 	return &merged, nil
 }
 
-func (q *IngesterQuerier) SeriesVolume(ctx context.Context, _ string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (q *IngesterQuerier) SeriesVolume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	matcherString := "{}"
 	if len(matchers) > 0 {
 		matcherString = syntax.MatchersString(matchers)
@@ -327,10 +327,11 @@ func (q *IngesterQuerier) SeriesVolume(ctx context.Context, _ string, from, thro
 
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetSeriesVolume(ctx, &logproto.VolumeRequest{
-			From:     from,
-			Through:  through,
-			Matchers: matcherString,
-			Limit:    limit,
+			From:         from,
+			Through:      through,
+			Matchers:     matcherString,
+			Limit:        limit,
+			TargetLabels: targetLabels,
 		})
 	})
 
