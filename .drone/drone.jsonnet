@@ -472,7 +472,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.28.3',
+    local build_image_tag = '0.29.1',
     workspace: {
       base: '/src',
       path: 'loki',
