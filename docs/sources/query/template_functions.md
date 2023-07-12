@@ -4,7 +4,6 @@ menuTItle:
 description: Describes functions that are supported by the text template.
 aliases: 
 - ../logql/template_functions/
-- ../query/template_functions/
 weight: 30
 ---
 

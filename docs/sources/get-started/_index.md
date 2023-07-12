@@ -5,7 +5,6 @@ description: How to create and use a simple Loki cluster for testing and evaluat
 aliases:
     - ../getting-started/get-logs-into-loki/
     - ../getting-started/
-    - ../get-started/
 ---
 
 # Get started
