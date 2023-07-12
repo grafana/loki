@@ -591,6 +591,39 @@ func TestMutateFuncFor_MutateDeploymentSpec(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 	for _, tst := range table {
 		tst := tst
@@ -742,6 +775,39 @@ func TestMutateFuncFor_MutateStatefulSetSpec(t *testing.T) {
 									corev1.ReadWriteOnce,
 									corev1.ReadWriteMany,
 								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "remove extra annotations and labels on pod",
+			got: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+							Labels: map[string]string{
+								"first-key":  "first-value",
+								"second-key": "second-value",
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.StatefulSet{
+				Spec: appsv1.StatefulSetSpec{
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Annotations: map[string]string{
+								"first-key": "first-value",
+							},
+							Labels: map[string]string{
+								"first-key": "first-value",
 							},
 						},
 					},

@@ -231,8 +231,8 @@ func mutateDeployment(existing, desired *appsv1.Deployment) {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	existing.Spec.Template = desired.Spec.Template
 	existing.Spec.Strategy = desired.Spec.Strategy
+	mutatePodTemplate(&existing.Spec.Template, &desired.Spec.Template)
 }
 
 func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
@@ -242,11 +242,27 @@ func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	existing.Spec.Template = desired.Spec.Template
+	mutatePodTemplate(&existing.Spec.Template, &desired.Spec.Template)
 }
 
 func mutatePodDisruptionBudget(existing, desired *policyv1.PodDisruptionBudget) {
 	existing.Annotations = desired.Annotations
 	existing.Labels = desired.Labels
 	existing.Spec = desired.Spec
+}
+
+func mutatePodTemplate(existing, desired *corev1.PodTemplateSpec) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	mutatePodSpec(&existing.Spec, &desired.Spec)
+}
+
+func mutatePodSpec(existing *corev1.PodSpec, desired *corev1.PodSpec) {
+	existing.Affinity = desired.Affinity
+	existing.Containers = desired.Containers
+	existing.InitContainers = desired.InitContainers
+	existing.NodeSelector = desired.NodeSelector
+	existing.Tolerations = desired.Tolerations
+	existing.TopologySpreadConstraints = desired.TopologySpreadConstraints
+	existing.Volumes = desired.Volumes
 }
