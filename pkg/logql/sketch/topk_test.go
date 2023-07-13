@@ -344,20 +344,21 @@ func TestRealTop_MergeProto(t *testing.T) {
 	require.NoError(t, mergedCMS.Merge(cms2), "error merging")
 
 	// turn both sketches into proto
-	series := TopKMatrix([]TopKVector{{ts: 100, topk: cms1}, {ts: 101, topk: cms2}})
-
-	proto, err := series.ToProto()
+	cms1Proto, err := cms1.ToProto()
 	require.NoError(t, err)
-	require.Len(t, proto.Values, 2)
 
-	deserialized, err := FromProto(proto)
+	cms2Proto, err := cms2.ToProto()
 	require.NoError(t, err)
-	require.Len(t, deserialized, 2)
+
+	deserialized1, err := TopkFromProto(cms1Proto)
+	require.NoError(t, err)
+	deserialized2, err := TopkFromProto(cms2Proto)
+	require.NoError(t, err)
 
 	// merge the deserialized sketches
 	dMerged, _ := newCMSTopK(k, 2048, 5)
-	require.NoError(t, dMerged.Merge(deserialized[0].topk))
-	require.NoError(t, dMerged.Merge(deserialized[1].topk))
+	require.NoError(t, dMerged.Merge(deserialized1))
+	require.NoError(t, dMerged.Merge(deserialized2))
 
 	require.Equal(t, mergedCMS.Topk(), dMerged.Topk(), "topk was not correct after deserializing and merging")
 	mCardinality, _ := mergedCMS.Cardinality()

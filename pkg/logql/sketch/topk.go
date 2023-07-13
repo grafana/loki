@@ -2,6 +2,7 @@ package sketch
 
 import (
 	"container/heap"
+	"github.com/grafana/loki/pkg/logproto"
 	"reflect"
 	"sort"
 	"unsafe"
@@ -103,6 +104,73 @@ func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 		hll:    hyperloglog.New16(),
 		bf:     makeBF(w, d),
 	}, nil
+}
+
+func TopkFromProto(t *logproto.TopK) (*Topk, error) {
+	cms := &CountMinSketch{
+		depth: t.Cms.Depth,
+		width: t.Cms.Width,
+	}
+	for row := uint32(0); row < cms.depth; row++ {
+		s := row * cms.width
+		e := s + cms.width
+		cms.counters = append(cms.counters, t.Cms.Counters[s:e])
+	}
+
+	hll := hyperloglog.New()
+	err := hll.UnmarshalBinary(t.Hyperloglog)
+	if err != nil {
+		return nil, err
+	}
+
+	h := &MinHeap{}
+	for _, p := range t.List {
+		node := &node{
+			event: p.Event,
+			count: p.Count,
+		}
+		heap.Push(h, node)
+	}
+
+	// TODO(karsten): should we set expected cardinality as well?
+	topk := &Topk{
+		sketch: cms,
+		hll:    hll,
+		heap:   h,
+	}
+	return topk, nil
+}
+
+func (t *Topk) ToProto() (*logproto.TopK, error) {
+	cms := &logproto.CountMinSketch{
+		Depth: t.sketch.depth,
+		Width: t.sketch.width,
+	}
+	cms.Counters = make([]uint32, 0, cms.Depth*cms.Width)
+	for row := uint32(0); row < cms.Depth; row++ {
+		cms.Counters = append(cms.Counters, t.sketch.counters[row]...)
+	}
+
+	hllBytes, err := t.hll.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+
+	list := make([]*logproto.TopK_Pair, 0, len(*t.heap))
+	for _, node := range *t.heap {
+		pair := &logproto.TopK_Pair{
+			Event: node.event,
+			Count: node.count,
+		}
+		list = append(list, pair)
+	}
+
+	topk := &logproto.TopK{
+		Cms:         cms,
+		Hyperloglog: hllBytes,
+		List:        list,
+	}
+	return topk, nil
 }
 
 // wrapper to bundle together updating of the bf portion of the sketch and pushing of a new element
