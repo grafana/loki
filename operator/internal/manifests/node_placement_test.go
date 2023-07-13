@@ -355,36 +355,62 @@ func TestDefaultNodeAffinityForEachComponent(t *testing.T) {
 	})
 }
 
-func TestPodAntiAffinityForEachComponent(t *testing.T) {
-	paTerm := []corev1.WeightedPodAffinityTerm{
-		{
-			Weight: 100,
-			PodAffinityTerm: corev1.PodAffinityTerm{
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						"foo": "bar",
-					},
-				},
-				TopologyKey: "foo",
-			},
+var podAntiAffinityTestTable = []struct {
+	component string
+	generator func(Options) *corev1.Affinity
+}{
+	{
+		component: "lokistack-gateway",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewGatewayDeployment(opts, "").Spec.Template.Spec.Affinity
 		},
-	}
-	expectedPATerm := &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"foo": "bar",
-						},
-					},
-					TopologyKey: "foo",
-				},
-			},
+	},
+	{
+		component: "distributor",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewDistributorDeployment(opts).Spec.Template.Spec.Affinity
 		},
-	}
-	optsWithNoPodAntiAffinity := Options{
+	},
+	{
+		component: "query-frontend",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewQueryFrontendDeployment(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "querier",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewQuerierDeployment(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "ingester",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewIngesterStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "compactor",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewCompactorStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "index-gateway",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewIndexGatewayStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "ruler",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewRulerStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+}
+
+func TestDefaultPodAntiAffinity(t *testing.T) {
+	opts := Options{
 		// We need to set name here to properly validate default PodAntiAffinity
 		Name: "abcd",
 		Stack: lokiv1.LokiStackSpec{
@@ -416,141 +442,85 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 			},
 		},
 	}
-	optsWithPodAntiAffinity := Options{
+
+	for _, tc := range podAntiAffinityTestTable {
+		tc := tc
+		t.Run(tc.component, func(t *testing.T) {
+			t.Parallel()
+
+			wantAffinity := defaultPodAntiAffinity(tc.component, "abcd")
+
+			affinity := tc.generator(opts)
+			assert.Equal(t, wantAffinity, affinity.PodAntiAffinity)
+		})
+	}
+}
+
+func TestCustomPodAntiAffinity(t *testing.T) {
+	paTerm := []corev1.WeightedPodAffinityTerm{
+		{
+			Weight: 100,
+			PodAffinityTerm: corev1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"foo": "bar",
+					},
+				},
+				TopologyKey: "foo",
+			},
+		},
+	}
+
+	wantAffinity := &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
+	}
+
+	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
 				Compactor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Distributor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Gateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Querier: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				QueryFrontend: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Ruler: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 			},
 		},
 	}
 
-	t.Run("gateway", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewGatewayDeployment(optsWithPodAntiAffinity, "").Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewGatewayDeployment(optsWithNoPodAntiAffinity, "").Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("lokistack-gateway"), affinity.PodAntiAffinity)
-		}
-	})
+	for _, tc := range podAntiAffinityTestTable {
+		tc := tc
+		t.Run(tc.component, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("distributor", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewDistributorDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewDistributorDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("distributor"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("query_frontend", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewQueryFrontendDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewQueryFrontendDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("query-frontend"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("querier", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewQuerierDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewQuerierDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("querier"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("ingester", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewIngesterStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewIngesterStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("ingester"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("compactor", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewCompactorStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewCompactorStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("compactor"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("index_gateway", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewIndexGatewayStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewIndexGatewayStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("index-gateway"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("ruler", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewRulerStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewRulerStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("ruler"), affinity.PodAntiAffinity)
-		}
-	})
-}
-
-func expectedDefaultPodAntiAffinity(component string) *corev1.PodAntiAffinity {
-	return &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/instance":  "abcd",
-							"app.kubernetes.io/component": component,
-						},
-					},
-					TopologyKey: "kubernetes.io/hostname",
-				},
-			},
-		},
+			affinity := tc.generator(opts)
+			assert.Equal(t, wantAffinity, affinity.PodAntiAffinity)
+		})
 	}
 }
