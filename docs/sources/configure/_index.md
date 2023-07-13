@@ -1,8 +1,11 @@
 ---
-description: Describes parameters used to configure Grafana Loki.
-menuTitle: Configuration parameters
 title: Grafana Loki configuration parameters
-weight: 500
+menuTitle: Configuration parameters
+description: Configuration reference for the parameters used to configure Grafana Loki.
+aliases: 
+  - ../configuration
+  - ../configure
+weight: 500 
 ---
 
 # Grafana Loki configuration parameters
@@ -2472,6 +2475,10 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # Enable log-volume endpoints.
 [volume_enabled: <boolean>]
 
+# The maximum number of aggregated series in a log-volume response
+# CLI flag: -limits.volume-max-series
+[volume_max_series: <int> | default = 1000]
+
 # Duration to delay the evaluation of rules to ensure the underlying metrics
 # have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
@@ -3600,7 +3607,7 @@ The `grpc_client` block configures the gRPC client used to communicate between t
 # CLI flag: -<prefix>.grpc-client-rate-limit-burst
 [rate_limit_burst: <int> | default = 0]
 
-# Enable backoff and retry when we hit ratelimits.
+# Enable backoff and retry when we hit rate limits.
 # CLI flag: -<prefix>.backoff-on-ratelimits
 [backoff_on_ratelimits: <boolean> | default = false]
 
@@ -3617,7 +3624,19 @@ backoff_config:
   # CLI flag: -<prefix>.backoff-retries
   [max_retries: <int> | default = 10]
 
-# Enable TLS in the GRPC client. This flag needs to be enabled when any other
+# Initial stream window size. Values less than the default are not supported and
+# are ignored. Setting this to a value other than the default disables the BDP
+# estimator.
+# CLI flag: -<prefix>.initial-stream-window-size
+[initial_stream_window_size: <int> | default = 63KiB1023B]
+
+# Initial connection window size. Values less than the default are not supported
+# and are ignored. Setting this to a value other than the default disables the
+# BDP estimator.
+# CLI flag: -<prefix>.initial-connection-window-size
+[initial_connection_window_size: <int> | default = 63KiB1023B]
+
+# Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
 # CLI flag: -<prefix>.tls-enabled

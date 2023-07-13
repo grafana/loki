@@ -524,7 +524,7 @@ func TestResponseFormat(t *testing.T) {
 					logproto.Stream{
 						Entries: []logproto.Entry{
 							{
-								Timestamp: time.Unix(0, 123456789012345),
+								Timestamp: time.Unix(0, 123456789012345).UTC(),
 								Line:      "super line",
 							},
 						},
@@ -558,7 +558,7 @@ func TestResponseFormat(t *testing.T) {
 					logproto.Stream{
 						Entries: []logproto.Entry{
 							{
-								Timestamp: time.Unix(0, 123456789012345),
+								Timestamp: time.Unix(0, 123456789012345).UTC(),
 								Line:      "super line",
 							},
 						},

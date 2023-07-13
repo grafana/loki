@@ -966,8 +966,8 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
-func TestQuerier_LabeleVolumes(t *testing.T) {
-	t.Run("it returns label volumes from the store", func(t *testing.T) {
+func TestQuerier_SeriesVolumes(t *testing.T) {
+	t.Run("it returns series volumes from the store", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Volume: 38},
 		}}
@@ -975,18 +975,104 @@ func TestQuerier_LabeleVolumes(t *testing.T) {
 		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 		require.NoError(t, err)
 
+		ingesterClient := newQuerierClientMock()
 		store := newStoreMock()
-		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
-		querier := SingleTenantQuerier{
-			store:  store,
-			limits: limits,
-		}
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
-		req := &logproto.VolumeRequest{From: 0, Through: 1000, Matchers: `{}`}
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-1 * time.Hour).Unix())
+		through := model.TimeFromUnix(now.Add(-35 * time.Minute).Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
 		ctx := user.InjectOrgID(context.Background(), "test")
 		resp, err := querier.SeriesVolume(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+
+	t.Run("it returns series volumes from the ingester", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-15 * time.Minute).Unix())
+		through := model.TimeFromUnix(now.Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.SeriesVolume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+
+	t.Run("it merges series volumes from the store and ingester", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-time.Hour).Unix())
+		through := model.TimeFromUnix(now.Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.SeriesVolume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 76}}, resp.Volumes)
 	})
 }
 

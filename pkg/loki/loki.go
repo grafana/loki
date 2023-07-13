@@ -230,7 +230,7 @@ func (c *Config) Validate() error {
 	if err := c.LimitsConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
-	if err := c.Worker.Validate(util_log.Logger); err != nil {
+	if err := c.Worker.Validate(); err != nil {
 		return errors.Wrap(err, "invalid frontend-worker config")
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {

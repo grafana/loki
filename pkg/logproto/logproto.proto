@@ -393,6 +393,7 @@ message VolumeRequest {
   string matchers = 3;
   int32 limit = 4;
   int64 step = 5;
+  repeated string targetLabels = 6;
 }
 
 message VolumeResponse {

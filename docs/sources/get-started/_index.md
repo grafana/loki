@@ -3,9 +3,8 @@ title: Get started
 weight: 100
 description: How to create and use a simple Loki cluster for testing and evaluation purposes.
 aliases:
-    - /docs/loki/latest/getting-started/get-logs-into-loki/
-    - /docs/loki/latest/getting-started/
-    - /docs/loki/latest/get-started/
+    - ../getting-started/get-logs-into-loki/
+    - ../getting-started/
 ---
 
 # Get started
