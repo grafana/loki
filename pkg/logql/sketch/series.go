@@ -29,8 +29,8 @@ func (s TopKMatrix) ToProto() (*logproto.TopKMatrix, error) {
 	points := make([]*logproto.TopKMatrix_Vector, 0, len(s))
 	for _, point := range s {
 		cms := &logproto.CountMinSketch{
-			Depth: uint32(point.topk.sketch.depth),
-			Width: uint32(point.topk.sketch.width),
+			Depth: point.topk.sketch.depth,
+			Width: point.topk.sketch.width,
 		}
 		cms.Counters = make([]uint32, 0, cms.Depth*cms.Width)
 		for row := uint32(0); row < cms.Depth; row++ {

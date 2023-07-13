@@ -16,6 +16,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	link1 = "https://www.gutenberg.org/cache/epub/100/pg100.txt"
+	link2 = "https://www.gutenberg.org/cache/epub/2600/pg2600.txt"
+	link3 = "https://www.gutenberg.org/cache/epub/1184/pg1184.txt"
+)
+
 type event struct {
 	name  string
 	count int
@@ -211,10 +217,6 @@ outer:
 // merging operations with 10 sketches each
 func TestRealTop_Merge(t *testing.T) {
 	// the HLL cardinality estimate for these page is ~120000
-	link1 := "https://www.gutenberg.org/cache/epub/100/pg100.txt"
-	link2 := "https://www.gutenberg.org/cache/epub/2600/pg2600.txt"
-	link3 := "https://www.gutenberg.org/cache/epub/1184/pg1184.txt"
-
 	r1, err := http.Get(link1)
 	require.NoError(t, err)
 	r2, err := http.Get(link2)
@@ -308,11 +310,9 @@ outer:
 }
 
 // compare the accuracy of cms topk and hk to the real topk when using
-// merge after recieving each sketch as a proto
+// merge after receiving each sketch as a proto
 func TestRealTop_MergeProto(t *testing.T) {
-	// the HLL cardinality estimate for these page is ~120000
-	link1 := "https://www.gutenberg.org/cache/epub/100/pg100.txt"
-	link2 := "https://www.gutenberg.org/cache/epub/2600/pg2600.txt"
+	// the HLL cardinality estimate for link 1 and 2 is ~120000
 	k := 100
 
 	cms1, _ := newCMSTopK(k, 2048, 5)
@@ -364,40 +364,3 @@ func TestRealTop_MergeProto(t *testing.T) {
 	dCardinality, _ := dMerged.Cardinality()
 	require.Equal(t, mCardinality, dCardinality, "hll cardinality estimate was not correct after deserializing and merging")
 }
-
-//// test that things are still consistent after marshalling (sending over the wire) and then unmarshalling
-//func TestTopKWire(t *testing.T) {
-//	// the HLL cardinality estimate for this page is ~72000
-//	link := "https://www.gutenberg.org/cache/epub/100/pg100.txt"
-//
-//	cms, _ := NewCMSTopkForCardinality(nil, 100, 72000)
-//	resp, err := http.Get(link)
-//	assert.NoError(t, err)
-//
-//	scanner := bufio.NewScanner(resp.Body)
-//	// Set the split function for the scanning operation.
-//	scanner.Split(bufio.ScanWords)
-//	// Scan all words from the file.
-//	for scanner.Scan() {
-//		s := scanner.Text()
-//		cms.Observe(s)
-//	}
-//	resp.Body.Close()
-//
-//	cmsTop := cms.Topk()
-//	//cmsMissing := 0
-//	//outer:
-//	//	for _, t := range res {
-//	//		for _, t2 := range cmsTop {
-//	//			if t2.Event == t.Event {
-//	//				continue outer
-//	//			}
-//	//		}
-//	//		cmsMissing++
-//	//	}
-//
-//	cms.M
-//
-//	// we should have gotten at least 98/100 topk right here
-//	require.True(t, cmsMissing <= 2, "cms missing %d", cmsMissing)
-//}
