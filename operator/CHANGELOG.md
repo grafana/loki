@@ -1,6 +1,7 @@
 ## Main
 
 - [9930](https://github.com/grafana/loki/pull/9930) **periklis**: Use PodAntiAffinity for all components
+- [9860](https://github.com/grafana/loki/pull/9860) **xperimental**: Fix update of labels and annotations of PodTemplates
 - [9830](https://github.com/grafana/loki/pull/9830) **periklis**: Expose limits config setting cardinality_limit
 - [9600](https://github.com/grafana/loki/pull/9600) **periklis**: Add rules labels filters for openshift-logging application tenant
 - [9735](https://github.com/grafana/loki/pull/9735) **JoaoBraveCoding** Adjust 1x.extra-small resources according to findings
