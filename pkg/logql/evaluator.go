@@ -152,8 +152,9 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev Evaluator) error {
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod time.Duration
-	querier           Querier
+	maxLookBackPeriod  time.Duration
+	querier            Querier
+	vectorAggEvaluator func(context.Context, SampleEvaluator, *syntax.VectorAggregationExpr, Params) (StepEvaluator, error)
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
@@ -161,6 +162,8 @@ func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *Defa
 	return &DefaultEvaluator{
 		querier:           querier,
 		maxLookBackPeriod: maxLookBackPeriod,
+
+		vectorAggEvaluator: vectorAggEvaluator,
 	}
 }
 
@@ -209,7 +212,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return vectorAggEvaluator(ctx, nextEv, e, q)
+		return ev.vectorAggEvaluator(ctx, nextEv, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -236,16 +239,6 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	default:
 		return nil, EvaluatorUnsupportedType(e, ev)
 	}
-}
-
-type ProbabilisticEvaluator struct {
-	DefaultEvaluator
-}
-
-// NewDefaultEvaluator constructs a DefaultEvaluator
-func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
-	d := NewDefaultEvaluator(querier, maxLookBackPeriod)
-	return &ProbabilisticEvaluator{DefaultEvaluator: *d}
 }
 
 func vectorAggEvaluator(
