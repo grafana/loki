@@ -63,8 +63,8 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 					return jsonparser.MalformedStringError
 				}
 				nonIndexedLabels = append(nonIndexedLabels, labels.Label{
-					Name:  yoloString(key),
-					Value: yoloString(value),
+					Name:  string(key),
+					Value: string(value),
 				})
 				return nil
 			}); err != nil {
