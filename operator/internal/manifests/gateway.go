@@ -77,7 +77,7 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers, opts.Stack.Tenants); err != nil {
 			return nil, err
 		}
 
@@ -453,8 +453,7 @@ func gatewayConfigOptions(opt Options) gateway.Options {
 			}
 		case secret.MTLSSecret != nil:
 			gatewaySecret.MTLS = &gateway.MTLS{
-				Cert: secret.MTLSSecret.Cert,
-				CA:   secret.MTLSSecret.CA,
+				CAPath: secret.MTLSSecret.CAPath,
 			}
 		}
 		gatewaySecrets = append(gatewaySecrets, gatewaySecret)

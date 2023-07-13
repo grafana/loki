@@ -97,6 +97,8 @@ const (
 	httpTLSDir = "/var/run/tls/http"
 	// grpcTLSDir is the path that is mounted from the secret for TLS
 	grpcTLSDir = "/var/run/tls/grpc"
+	// tenantMTLSDir is the path that is mounted from the configmaps for mTLS
+	tenantMTLSDir = "/var/run/tls/tenants"
 	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
@@ -317,6 +319,14 @@ func gatewayUpstreamHTTPTLSCert() string {
 
 func gatewayUpstreamHTTPTLSKey() string {
 	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func tenantMTLSCADir(tennantName string) string {
+	return path.Join(tenantMTLSDir, tennantName)
+}
+
+func TenantMTLSCAPath(tennantName, key string) string {
+	return path.Join(tenantMTLSDir, tennantName, key)
 }
 
 func gatewayClientSecretName(stackName string) string {

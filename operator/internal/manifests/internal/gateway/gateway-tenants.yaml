@@ -1,12 +1,8 @@
 {{- define "mTLS" }}
   {{- $secret := index . 0 -}}
-  {{- $spec := index . 1 -}}
   mTLS:
-    {{- if $secret.MTLS.Cert }}
-    cas: {{ $secret.MTLS.Cert }}
-    {{- end -}}
     {{ if $secret.MTLS.CA }}
-    ca: {{ $secret.MTLS.CA }}
+    caPath: {{ $secret.MTLS.CAPath }}
     {{- end -}}
 {{- end }}
 
@@ -43,7 +39,7 @@
   {{- if $secret.OIDC }}
   {{ template "oidc" (arr $secret $spec) }}
   {{- else if $secret.MTLS }}
-  {{ template "mTLS" (arr $l $spec) }}
+  {{ template "mTLS" (arr $secret) }}
   {{- end -}}
   {{- end -}}
   {{- end }}

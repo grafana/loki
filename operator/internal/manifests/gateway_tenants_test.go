@@ -849,7 +849,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "min-version", "cipher1,cipher2")
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "min-version", "cipher1,cipher2", randomConfigOptions().Stack.Tenants)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})

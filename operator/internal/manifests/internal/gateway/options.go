@@ -31,6 +31,5 @@ type OIDC struct {
 }
 
 type MTLS struct {
-	CA   string
-	Cert string
+	CAPath string
 }

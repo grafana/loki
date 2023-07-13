@@ -62,9 +62,14 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string) error {
+func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string, tenants *lokiv1.TenantsSpec) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
+		for _, auth := range tenants.Authentication {
+			if auth.MTLS != nil {
+				mountConfigMap(d, auth.TenantName, auth.MTLS.CASpec)
+			}
+		}
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
@@ -174,4 +179,23 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	}
 
 	return nil
+}
+
+func mountConfigMap(d *appsv1.Deployment, tenantName string, caSpec *lokiv1.CASpec) {
+	vm := &corev1.VolumeMount{
+		Name:      tenantName,
+		MountPath: tenantMTLSCADir(tenantName),
+	}
+	v := &corev1.Volume{
+		Name: tenantName,
+		VolumeSource: corev1.VolumeSource{
+			ConfigMap: &corev1.ConfigMapVolumeSource{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: caSpec.CA,
+				},
+			},
+		},
+	}
+	d.Spec.Template.Spec.Containers[0].VolumeMounts = append(d.Spec.Template.Spec.Containers[0].VolumeMounts, *vm)
+	d.Spec.Template.Spec.Volumes = append(d.Spec.Template.Spec.Volumes, *v)
 }

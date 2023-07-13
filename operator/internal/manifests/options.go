@@ -79,8 +79,7 @@ type OIDCSecret struct {
 }
 
 type MTLSSecret struct {
-	CA   string
-	Cert string
+	CAPath string
 }
 
 // TenantConfig for tenant authorizationconfig

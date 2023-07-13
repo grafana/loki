@@ -52,25 +52,16 @@ func GetTenantSecrets(
 				OIDCSecret: oidcSecret,
 			})
 		case tenant.MTLS != nil:
-			key := client.ObjectKey{Name: tenant.MTLS.CertSecret.Name, Namespace: req.Namespace}
-			if err := getSecret(ctx, k, tenant.TenantName, key, &gatewaySecret); err != nil {
-				return nil, err
-			}
-			cert, err := extractCert(&gatewaySecret)
-			if err != nil {
-				return nil, &status.DegradedError{
-					Message: "Invalid gateway tenant secret contents",
-					Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
-					Requeue: true,
-				}
-			}
-
 			var configMap corev1.ConfigMap
-			key = client.ObjectKey{Name: tenant.MTLS.CASpec.CA, Namespace: req.Namespace}
-			if err = getConfigMap(ctx, k, tenant.TenantName, key, &configMap); err != nil {
+			key := client.ObjectKey{Name: tenant.MTLS.CASpec.CA, Namespace: req.Namespace}
+			if err := getConfigMap(ctx, k, tenant.TenantName, key, &configMap); err != nil {
 				return nil, err
 			}
-			ca, err := extractCA(&configMap, tenant.MTLS.CASpec.CAKey)
+			cmKey := "service-ca.crt"
+			if tenant.MTLS.CASpec.CAKey != "" {
+				cmKey = tenant.MTLS.CASpec.CAKey
+			}
+			err := checkCA(&configMap, cmKey)
 			if err != nil {
 				return nil, &status.DegradedError{
 					Message: "Invalid gateway tenant configmap contents",
@@ -81,8 +72,7 @@ func GetTenantSecrets(
 			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
 				TenantName: tenant.TenantName,
 				MTLSSecret: &manifests.MTLSSecret{
-					Cert: cert,
-					CA:   ca,
+					CAPath: manifests.TenantMTLSCAPath(tenant.TenantName, cmKey),
 				},
 			})
 		default:
@@ -144,22 +134,12 @@ func extractOIDCSecret(s *corev1.Secret) (*manifests.OIDCSecret, error) {
 	}, nil
 }
 
-// extractCert reads the TLSCertKey from a k8s secret of type SecretTypeTLS
-func extractCert(s *corev1.Secret) (string, error) {
-	switch s.Type {
-	case corev1.SecretTypeTLS:
-		return string(s.Data[corev1.TLSCertKey]), nil
-	default:
-		return "", kverrors.New("missing fields, has to contain fields \"tls.key\" and \"tls.crt\"")
-	}
-}
-
-// extractCA reads the CA from a k8s configmap
-func extractCA(cm *corev1.ConfigMap, key string) (string, error) {
+// checkCA reads the CA from a k8s configmap
+func checkCA(cm *corev1.ConfigMap, key string) error {
 	// Extract and validate mandatory fields
 	ca := cm.Data[key]
 	if len(ca) == 0 {
-		return "", kverrors.New(fmt.Sprintf("missing %s field", key), "field", key)
+		return kverrors.New(fmt.Sprintf("missing %s field", key), "field", key)
 	}
-	return string(ca), nil
+	return nil
 }
