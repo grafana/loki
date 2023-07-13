@@ -18,12 +18,12 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
-	"github.com/grafana/loki/pkg/util/sketch"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 

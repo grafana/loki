@@ -12,11 +12,11 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/grafana/loki/pkg/util/sketch"
 )
 
 const (

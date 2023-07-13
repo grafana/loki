@@ -67,10 +67,10 @@ func FromProto(proto *logproto.TopKMatrix) (TopKMatrix, error) {
 	values := make(TopKMatrix, 0, len(proto.Values))
 	for _, vector := range proto.Values {
 		cms := &CountMinSketch{
-			depth: int(vector.Topk.Cms.Depth),
-			width: int(vector.Topk.Cms.Width),
+			depth: vector.Topk.Cms.Depth,
+			width: vector.Topk.Cms.Width,
 		}
-		for row := 0; row < cms.depth; row++ {
+		for row := uint32(0); row < cms.depth; row++ {
 			s := row * cms.width
 			e := s + cms.width
 			cms.counters = append(cms.counters, vector.Topk.Cms.Counters[s:e])
