@@ -87,7 +87,7 @@ func (m *CountMinSketch) GetCounters() []uint32 {
 
 type TopK struct {
 	Cms         *CountMinSketch `protobuf:"bytes,1,opt,name=cms,proto3" json:"cms,omitempty"`
-	Labels      []string        `protobuf:"bytes,2,rep,name=labels,proto3" json:"labels,omitempty"`
+	List        []*TopK_Pair    `protobuf:"bytes,2,rep,name=list,proto3" json:"list,omitempty"`
 	Hyperloglog []byte          `protobuf:"bytes,3,opt,name=hyperloglog,proto3" json:"hyperloglog,omitempty"`
 }
 
@@ -130,9 +130,9 @@ func (m *TopK) GetCms() *CountMinSketch {
 	return nil
 }
 
-func (m *TopK) GetLabels() []string {
+func (m *TopK) GetList() []*TopK_Pair {
 	if m != nil {
-		return m.Labels
+		return m.List
 	}
 	return nil
 }
@@ -142,6 +142,57 @@ func (m *TopK) GetHyperloglog() []byte {
 		return m.Hyperloglog
 	}
 	return nil
+}
+
+type TopK_Pair struct {
+	Event string `protobuf:"bytes,1,opt,name=event,proto3" json:"event,omitempty"`
+	Count uint32 `protobuf:"varint,2,opt,name=count,proto3" json:"count,omitempty"`
+}
+
+func (m *TopK_Pair) Reset()      { *m = TopK_Pair{} }
+func (*TopK_Pair) ProtoMessage() {}
+func (*TopK_Pair) Descriptor() ([]byte, []int) {
+	return fileDescriptor_7f9fd40e59b87ff3, []int{1, 0}
+}
+func (m *TopK_Pair) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *TopK_Pair) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_TopK_Pair.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *TopK_Pair) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_TopK_Pair.Merge(m, src)
+}
+func (m *TopK_Pair) XXX_Size() int {
+	return m.Size()
+}
+func (m *TopK_Pair) XXX_DiscardUnknown() {
+	xxx_messageInfo_TopK_Pair.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_TopK_Pair proto.InternalMessageInfo
+
+func (m *TopK_Pair) GetEvent() string {
+	if m != nil {
+		return m.Event
+	}
+	return ""
+}
+
+func (m *TopK_Pair) GetCount() uint32 {
+	if m != nil {
+		return m.Count
+	}
+	return 0
 }
 
 type TopKMatrix struct {
@@ -241,6 +292,7 @@ func (m *TopKMatrix_Vector) GetTimestampMs() int64 {
 func init() {
 	proto.RegisterType((*CountMinSketch)(nil), "logproto.CountMinSketch")
 	proto.RegisterType((*TopK)(nil), "logproto.TopK")
+	proto.RegisterType((*TopK_Pair)(nil), "logproto.TopK.Pair")
 	proto.RegisterType((*TopKMatrix)(nil), "logproto.TopKMatrix")
 	proto.RegisterType((*TopKMatrix_Vector)(nil), "logproto.TopKMatrix.Vector")
 }
@@ -248,30 +300,32 @@ func init() {
 func init() { proto.RegisterFile("pkg/logproto/sketch.proto", fileDescriptor_7f9fd40e59b87ff3) }
 
 var fileDescriptor_7f9fd40e59b87ff3 = []byte{
-	// 356 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x91, 0xbb, 0x4e, 0xf3, 0x30,
-	0x18, 0x86, 0xe3, 0xa6, 0x7f, 0xd4, 0xff, 0x4b, 0xdb, 0xc1, 0x42, 0x28, 0x14, 0xc9, 0x0a, 0x11,
-	0x43, 0xc4, 0x90, 0x48, 0xed, 0x1d, 0xc0, 0x88, 0x2a, 0x24, 0x83, 0x10, 0xea, 0x82, 0xd2, 0xd4,
-	0x24, 0x51, 0x9c, 0x3a, 0x4a, 0x5c, 0x0e, 0x1b, 0x97, 0x80, 0xb8, 0x0a, 0x2e, 0x85, 0xb1, 0x63,
-	0x47, 0x9a, 0x2e, 0x8c, 0xbd, 0x04, 0x94, 0xf4, 0x3c, 0x59, 0xef, 0xe3, 0xf7, 0xf3, 0x63, 0xd9,
-	0x70, 0x92, 0xc6, 0x81, 0xcb, 0x45, 0x90, 0x66, 0x42, 0x0a, 0x37, 0x8f, 0x99, 0xf4, 0x43, 0xa7,
-	0x0a, 0xb8, 0xb1, 0xc1, 0xd6, 0x03, 0xb4, 0xaf, 0xc4, 0x64, 0x2c, 0xfb, 0xd1, 0xf8, 0xb6, 0x6a,
-	0xe0, 0x23, 0xf8, 0x37, 0x62, 0xa9, 0x0c, 0x0d, 0x64, 0x22, 0xbb, 0x45, 0x57, 0xa1, 0xa4, 0x2f,
-	0xd1, 0x48, 0x86, 0x46, 0x6d, 0x45, 0xab, 0x80, 0x3b, 0xd0, 0xf0, 0xcb, 0x69, 0x96, 0xe5, 0x86,
-	0x6a, 0xaa, 0x76, 0x8b, 0x6e, 0xb3, 0xc5, 0xa1, 0x7e, 0x27, 0xd2, 0x6b, 0x7c, 0x01, 0xaa, 0x9f,
-	0xe4, 0xd5, 0x69, 0x7a, 0xd7, 0x70, 0x36, 0x66, 0xe7, 0x50, 0x4b, 0xcb, 0x12, 0x3e, 0x06, 0x8d,
-	0x7b, 0x43, 0xc6, 0x73, 0xa3, 0x66, 0xaa, 0xf6, 0x7f, 0xba, 0x4e, 0xd8, 0x04, 0x3d, 0x7c, 0x4b,
-	0x59, 0xc6, 0x45, 0xc0, 0x45, 0x60, 0xa8, 0x26, 0xb2, 0x9b, 0x74, 0x1f, 0x59, 0x9f, 0x08, 0xa0,
-	0xd4, 0xf5, 0x3d, 0x99, 0x45, 0xaf, 0xb8, 0x07, 0xda, 0xb3, 0xc7, 0x27, 0xac, 0xf4, 0xaa, 0xb6,
-	0xde, 0x3d, 0xdd, 0x79, 0x77, 0x2d, 0xe7, 0x9e, 0xf9, 0x52, 0x64, 0x74, 0x5d, 0xed, 0xdc, 0x80,
-	0xb6, 0x22, 0xd8, 0x82, 0xba, 0x14, 0x69, 0xbc, 0xbe, 0x74, 0xfb, 0x70, 0x98, 0x56, 0x7b, 0xf8,
-	0x0c, 0x9a, 0x32, 0x4a, 0x58, 0x2e, 0xbd, 0x24, 0x7d, 0x4c, 0xf2, 0xea, 0x61, 0x54, 0xaa, 0x6f,
-	0x59, 0x3f, 0xbf, 0x1c, 0x4c, 0xe7, 0x44, 0x99, 0xcd, 0x89, 0xb2, 0x9c, 0x13, 0xf4, 0x5e, 0x10,
-	0xf4, 0x55, 0x10, 0xf4, 0x5d, 0x10, 0x34, 0x2d, 0x08, 0xfa, 0x29, 0x08, 0xfa, 0x2d, 0x88, 0xb2,
-	0x2c, 0x08, 0xfa, 0x58, 0x10, 0x65, 0xba, 0x20, 0xca, 0x6c, 0x41, 0x94, 0xc1, 0x79, 0x10, 0xc9,
-	0x70, 0x32, 0x74, 0x7c, 0x91, 0xb8, 0x41, 0xe6, 0x3d, 0x79, 0x63, 0xcf, 0xe5, 0x22, 0x8e, 0xdc,
-	0xfd, 0xff, 0x1c, 0x6a, 0xd5, 0xd2, 0xfb, 0x0b, 0x00, 0x00, 0xff, 0xff, 0x16, 0xe9, 0x4b, 0x0a,
-	0xe6, 0x01, 0x00, 0x00,
+	// 391 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x54, 0x92, 0xcf, 0x6e, 0xda, 0x30,
+	0x1c, 0xc7, 0x63, 0x92, 0x21, 0xe6, 0x00, 0x07, 0x6f, 0x87, 0x8c, 0x49, 0x56, 0x16, 0x4d, 0x5a,
+	0xb4, 0x43, 0x22, 0xc1, 0x1b, 0x6c, 0xc7, 0x09, 0x6d, 0xf2, 0xaa, 0xaa, 0xe2, 0x52, 0x85, 0xe0,
+	0x26, 0x56, 0xfe, 0x38, 0x4a, 0x0c, 0x6d, 0x6f, 0x7d, 0x84, 0xaa, 0x4f, 0xd1, 0x6b, 0xdf, 0xa2,
+	0x47, 0x8e, 0x1c, 0x4b, 0xb8, 0xf4, 0xc8, 0x23, 0x54, 0x76, 0x80, 0xc2, 0x29, 0xfa, 0x7e, 0xf3,
+	0xb1, 0x7f, 0x9f, 0x9f, 0x64, 0xf8, 0xa5, 0x48, 0x22, 0x3f, 0xe5, 0x51, 0x51, 0x72, 0xc1, 0xfd,
+	0x2a, 0xa1, 0x22, 0x8c, 0x3d, 0x15, 0x50, 0x67, 0x5f, 0x3b, 0x17, 0xb0, 0xff, 0x9b, 0xcf, 0x73,
+	0x31, 0x66, 0xf9, 0x7f, 0x45, 0xa0, 0xcf, 0xf0, 0xc3, 0x8c, 0x16, 0x22, 0xb6, 0x80, 0x0d, 0xdc,
+	0x1e, 0x69, 0x82, 0x6c, 0xaf, 0xd9, 0x4c, 0xc4, 0x56, 0xab, 0x69, 0x55, 0x40, 0x03, 0xd8, 0x09,
+	0xe5, 0x69, 0x5a, 0x56, 0x96, 0x6e, 0xeb, 0x6e, 0x8f, 0x1c, 0xb2, 0xf3, 0x04, 0xa0, 0x71, 0xc6,
+	0x8b, 0x3f, 0xe8, 0x27, 0xd4, 0xc3, 0xac, 0x52, 0xd7, 0x99, 0x43, 0xcb, 0xdb, 0x8f, 0xf6, 0x4e,
+	0xe7, 0x12, 0x09, 0xa1, 0x1f, 0xd0, 0x48, 0x59, 0x25, 0xac, 0x96, 0xad, 0xbb, 0xe6, 0xf0, 0xd3,
+	0x3b, 0x2c, 0x6f, 0xf2, 0xfe, 0x05, 0xac, 0x24, 0x0a, 0x40, 0x36, 0x34, 0xe3, 0xdb, 0x82, 0x96,
+	0x29, 0x8f, 0x52, 0x1e, 0x59, 0xba, 0x0d, 0xdc, 0x2e, 0x39, 0xae, 0x06, 0x43, 0x68, 0x48, 0x5e,
+	0x9a, 0xd3, 0x05, 0xcd, 0x85, 0x12, 0xf8, 0x48, 0x9a, 0x20, 0x5b, 0x65, 0xba, 0xdf, 0x47, 0x05,
+	0xe7, 0x01, 0x40, 0x28, 0x27, 0x8d, 0x03, 0x51, 0xb2, 0x1b, 0x34, 0x82, 0xed, 0x45, 0x90, 0xce,
+	0xa9, 0x94, 0x97, 0x3e, 0x5f, 0x4f, 0x7d, 0x1a, 0xca, 0x3b, 0xa7, 0xa1, 0xe0, 0x25, 0xd9, 0xa1,
+	0x83, 0xbf, 0xb0, 0xdd, 0x34, 0xc8, 0x81, 0x86, 0xe0, 0x45, 0xb2, 0xdb, 0xbc, 0x7f, 0x7a, 0x98,
+	0xa8, 0x7f, 0xe8, 0x1b, 0xec, 0x0a, 0x96, 0xd1, 0x4a, 0x04, 0x59, 0x71, 0x99, 0x55, 0x4a, 0x47,
+	0x27, 0xe6, 0xa1, 0x1b, 0x57, 0xbf, 0x26, 0xcb, 0x35, 0xd6, 0x56, 0x6b, 0xac, 0x6d, 0xd7, 0x18,
+	0xdc, 0xd5, 0x18, 0x3c, 0xd6, 0x18, 0x3c, 0xd7, 0x18, 0x2c, 0x6b, 0x0c, 0x5e, 0x6a, 0x0c, 0x5e,
+	0x6b, 0xac, 0x6d, 0x6b, 0x0c, 0xee, 0x37, 0x58, 0x5b, 0x6e, 0xb0, 0xb6, 0xda, 0x60, 0x6d, 0xf2,
+	0x3d, 0x62, 0x22, 0x9e, 0x4f, 0xbd, 0x90, 0x67, 0x7e, 0x54, 0x06, 0x57, 0x41, 0x1e, 0xf8, 0x29,
+	0x4f, 0x98, 0x7f, 0xfc, 0x2a, 0xa6, 0x6d, 0xf5, 0x19, 0xbd, 0x05, 0x00, 0x00, 0xff, 0xff, 0x4c,
+	0x14, 0x1f, 0xbe, 0x2c, 0x02, 0x00, 0x00,
 }
 
 func (this *CountMinSketch) Equal(that interface{}) bool {
@@ -331,15 +385,42 @@ func (this *TopK) Equal(that interface{}) bool {
 	if !this.Cms.Equal(that1.Cms) {
 		return false
 	}
-	if len(this.Labels) != len(that1.Labels) {
+	if len(this.List) != len(that1.List) {
 		return false
 	}
-	for i := range this.Labels {
-		if this.Labels[i] != that1.Labels[i] {
+	for i := range this.List {
+		if !this.List[i].Equal(that1.List[i]) {
 			return false
 		}
 	}
 	if !bytes.Equal(this.Hyperloglog, that1.Hyperloglog) {
+		return false
+	}
+	return true
+}
+func (this *TopK_Pair) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*TopK_Pair)
+	if !ok {
+		that2, ok := that.(TopK_Pair)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if this.Event != that1.Event {
+		return false
+	}
+	if this.Count != that1.Count {
 		return false
 	}
 	return true
@@ -421,8 +502,21 @@ func (this *TopK) GoString() string {
 	if this.Cms != nil {
 		s = append(s, "Cms: "+fmt.Sprintf("%#v", this.Cms)+",\n")
 	}
-	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
+	if this.List != nil {
+		s = append(s, "List: "+fmt.Sprintf("%#v", this.List)+",\n")
+	}
 	s = append(s, "Hyperloglog: "+fmt.Sprintf("%#v", this.Hyperloglog)+",\n")
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *TopK_Pair) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 6)
+	s = append(s, "&logproto.TopK_Pair{")
+	s = append(s, "Event: "+fmt.Sprintf("%#v", this.Event)+",\n")
+	s = append(s, "Count: "+fmt.Sprintf("%#v", this.Count)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -537,11 +631,16 @@ func (m *TopK) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x1a
 	}
-	if len(m.Labels) > 0 {
-		for iNdEx := len(m.Labels) - 1; iNdEx >= 0; iNdEx-- {
-			i -= len(m.Labels[iNdEx])
-			copy(dAtA[i:], m.Labels[iNdEx])
-			i = encodeVarintSketch(dAtA, i, uint64(len(m.Labels[iNdEx])))
+	if len(m.List) > 0 {
+		for iNdEx := len(m.List) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.List[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintSketch(dAtA, i, uint64(size))
+			}
 			i--
 			dAtA[i] = 0x12
 		}
@@ -555,6 +654,41 @@ func (m *TopK) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 			i -= size
 			i = encodeVarintSketch(dAtA, i, uint64(size))
 		}
+		i--
+		dAtA[i] = 0xa
+	}
+	return len(dAtA) - i, nil
+}
+
+func (m *TopK_Pair) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *TopK_Pair) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *TopK_Pair) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if m.Count != 0 {
+		i = encodeVarintSketch(dAtA, i, uint64(m.Count))
+		i--
+		dAtA[i] = 0x10
+	}
+	if len(m.Event) > 0 {
+		i -= len(m.Event)
+		copy(dAtA[i:], m.Event)
+		i = encodeVarintSketch(dAtA, i, uint64(len(m.Event)))
 		i--
 		dAtA[i] = 0xa
 	}
@@ -681,15 +815,31 @@ func (m *TopK) Size() (n int) {
 		l = m.Cms.Size()
 		n += 1 + l + sovSketch(uint64(l))
 	}
-	if len(m.Labels) > 0 {
-		for _, s := range m.Labels {
-			l = len(s)
+	if len(m.List) > 0 {
+		for _, e := range m.List {
+			l = e.Size()
 			n += 1 + l + sovSketch(uint64(l))
 		}
 	}
 	l = len(m.Hyperloglog)
 	if l > 0 {
 		n += 1 + l + sovSketch(uint64(l))
+	}
+	return n
+}
+
+func (m *TopK_Pair) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	l = len(m.Event)
+	if l > 0 {
+		n += 1 + l + sovSketch(uint64(l))
+	}
+	if m.Count != 0 {
+		n += 1 + sovSketch(uint64(m.Count))
 	}
 	return n
 }
@@ -747,10 +897,26 @@ func (this *TopK) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForList := "[]*TopK_Pair{"
+	for _, f := range this.List {
+		repeatedStringForList += strings.Replace(fmt.Sprintf("%v", f), "TopK_Pair", "TopK_Pair", 1) + ","
+	}
+	repeatedStringForList += "}"
 	s := strings.Join([]string{`&TopK{`,
 		`Cms:` + strings.Replace(this.Cms.String(), "CountMinSketch", "CountMinSketch", 1) + `,`,
-		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
+		`List:` + repeatedStringForList + `,`,
 		`Hyperloglog:` + fmt.Sprintf("%v", this.Hyperloglog) + `,`,
+		`}`,
+	}, "")
+	return s
+}
+func (this *TopK_Pair) String() string {
+	if this == nil {
+		return "nil"
+	}
+	s := strings.Join([]string{`&TopK_Pair{`,
+		`Event:` + fmt.Sprintf("%v", this.Event) + `,`,
+		`Count:` + fmt.Sprintf("%v", this.Count) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1023,9 +1189,9 @@ func (m *TopK) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 2:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Labels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field List", wireType)
 			}
-			var stringLen uint64
+			var msglen int
 			for shift := uint(0); ; shift += 7 {
 				if shift >= 64 {
 					return ErrIntOverflowSketch
@@ -1035,23 +1201,25 @@ func (m *TopK) Unmarshal(dAtA []byte) error {
 				}
 				b := dAtA[iNdEx]
 				iNdEx++
-				stringLen |= uint64(b&0x7F) << shift
+				msglen |= int(b&0x7F) << shift
 				if b < 0x80 {
 					break
 				}
 			}
-			intStringLen := int(stringLen)
-			if intStringLen < 0 {
+			if msglen < 0 {
 				return ErrInvalidLengthSketch
 			}
-			postIndex := iNdEx + intStringLen
+			postIndex := iNdEx + msglen
 			if postIndex < 0 {
 				return ErrInvalidLengthSketch
 			}
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Labels = append(m.Labels, string(dAtA[iNdEx:postIndex]))
+			m.List = append(m.List, &TopK_Pair{})
+			if err := m.List[len(m.List)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
@@ -1087,6 +1255,110 @@ func (m *TopK) Unmarshal(dAtA []byte) error {
 				m.Hyperloglog = []byte{}
 			}
 			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipSketch(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *TopK_Pair) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowSketch
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Pair: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Pair: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Event", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				stringLen |= uint64(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthSketch
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex < 0 {
+				return ErrInvalidLengthSketch
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Event = string(dAtA[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Count", wireType)
+			}
+			m.Count = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowSketch
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				m.Count |= uint32(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
 		default:
 			iNdEx = preIndex
 			skippy, err := skipSketch(dAtA[iNdEx:])

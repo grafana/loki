@@ -2,22 +2,20 @@ package sketch
 
 import (
 	"bufio"
-	"net/http"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestTopKMatrixProto(t *testing.T) {
-	// Load topk with real world data set.
-	const link = "https://www.gutenberg.org/cache/epub/100/pg100.txt"
-
 	original, err := NewCMSTopK(100, 2048, 5)
 	require.NoError(t, err)
-	resp, err := http.Get(link)
-	require.NoError(t, err)
 
-	scanner := bufio.NewScanner(resp.Body)
+	// Load topk with real world data set.
+	f, err := os.Open("testdata/pg100.txt")
+	require.NoError(t, err)
+	scanner := bufio.NewScanner(f)
 	scanner.Split(bufio.ScanWords)
 	for scanner.Scan() {
 		s := scanner.Text()
@@ -31,6 +29,7 @@ func TestTopKMatrixProto(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, proto.Values, 1)
 	require.Len(t, proto.Values[0].Topk.Cms.Counters, 2048*5)
+	require.Len(t, proto.Values[0].Topk.List, 100)
 
 	deserialized, err := FromProto(proto)
 	require.NoError(t, err)
