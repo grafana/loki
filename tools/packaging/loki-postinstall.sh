@@ -5,7 +5,7 @@
 if ! command -V systemctl >/dev/null 2>&1; then
   echo "Could not find systemd. Skipping system installation." && exit 0
 else
-    systemd_version=$(systemctl --version | head -1 | sed 's/systemd //g')
+    systemd_version=$(systemctl --version | awk '/systemd /{print $2}')
 fi
 
 cleanInstall() {

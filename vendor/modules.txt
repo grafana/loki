@@ -152,6 +152,9 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/oauth/o
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
+# github.com/DmitriyVTitov/size v1.5.0
+## explicit; go 1.14
+github.com/DmitriyVTitov/size
 # github.com/IBM/go-sdk-core/v5 v5.13.1
 ## explicit; go 1.18
 github.com/IBM/go-sdk-core/v5/core
@@ -379,6 +382,9 @@ github.com/aws/smithy-go/rand
 github.com/aws/smithy-go/time
 github.com/aws/smithy-go/transport/http
 github.com/aws/smithy-go/transport/http/internal/io
+# github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
+## explicit; go 1.12
+github.com/axiomhq/hyperloglog
 # github.com/baidubce/bce-sdk-go v0.9.141
 ## explicit; go 1.11
 github.com/baidubce/bce-sdk-go/auth
@@ -448,6 +454,9 @@ github.com/davecgh/go-spew/spew
 # github.com/dennwc/varint v1.0.0
 ## explicit; go 1.12
 github.com/dennwc/varint
+# github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc
+## explicit
+github.com/dgryski/go-metro
 # github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f
 ## explicit
 github.com/dgryski/go-rendezvous
