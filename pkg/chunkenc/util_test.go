@@ -4,9 +4,10 @@ import (
 	"math/rand"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
+
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/prometheus/prometheus/model/labels"
 )
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {

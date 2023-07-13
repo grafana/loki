@@ -94,6 +94,7 @@ func TestBlock(t *testing.T) {
 			chunkFormatV3: UnorderedHeadBlockFmt,
 			chunkFormatV4: UnorderedWithMetadataHeadBlockFmt,
 		} {
+			chunkFormat, headBlockFmt := chunkFormat, headBlockFmt
 			t.Run(fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt), func(t *testing.T) {
 				t.Parallel()
 				chk := newMemChunkWithFormat(chunkFormat, enc, headBlockFmt, testBlockSize, testTargetSize)
