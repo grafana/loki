@@ -201,12 +201,12 @@ func TestFlushMaxAge(t *testing.T) {
 	now := time.Unix(0, 0)
 
 	firstEntries := []logproto.Entry{
-		{Timestamp: now.Add(time.Nanosecond), Line: "1", MetadataLabels: labels.Labels{}.String()},
-		{Timestamp: now.Add(time.Minute), Line: "2", MetadataLabels: labels.Labels{}.String()},
+		{Timestamp: now.Add(time.Nanosecond), Line: "1"},
+		{Timestamp: now.Add(time.Minute), Line: "2"},
 	}
 
 	secondEntries := []logproto.Entry{
-		{Timestamp: now.Add(time.Second * 61), Line: "3", MetadataLabels: labels.Labels{}.String()},
+		{Timestamp: now.Add(time.Second * 61), Line: "3"},
 	}
 
 	req := &logproto.PushRequest{Streams: []logproto.Stream{
@@ -387,9 +387,8 @@ func buildTestStreams(offset int) []logproto.Stream {
 		}
 		for j := 0; j < samplesPerSeries; j++ {
 			ss.Entries = append(ss.Entries, logproto.Entry{
-				Timestamp:      time.Unix(int64(i+j+offset), 0),
-				Line:           "line",
-				MetadataLabels: labels.Labels{}.String(),
+				Timestamp: time.Unix(int64(i+j+offset), 0),
+				Line:      "line",
 			})
 		}
 		m = append(m, ss)

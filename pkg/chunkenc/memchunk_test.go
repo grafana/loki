@@ -100,64 +100,64 @@ func TestBlock(t *testing.T) {
 				cases := []struct {
 					ts  int64
 					str string
-					lbs string
+					lbs labels.Labels
 					cut bool
 				}{
 					{
 						ts:  1,
 						str: "hello, world!",
-						lbs: labels.Labels{}.String(),
 					},
 					{
 						ts:  2,
 						str: "hello, world2!",
-						lbs: `{app="myapp"}`,
+						lbs: labels.Labels{
+							{Name: "app", Value: "myapp"},
+						},
 					},
 					{
 						ts:  3,
 						str: "hello, world3!",
-						lbs: `{a="a", b="b"}`,
+						lbs: labels.Labels{
+							{Name: "a", Value: "a"},
+							{Name: "b", Value: "b"},
+						},
 					},
 					{
 						ts:  4,
 						str: "hello, world4!",
-						lbs: labels.Labels{}.String(),
 					},
 					{
 						ts:  5,
 						str: "hello, world5!",
-						lbs: labels.Labels{}.String(),
 					},
 					{
 						ts:  6,
 						str: "hello, world6!",
-						lbs: labels.Labels{}.String(),
 						cut: true,
 					},
 					{
 						ts:  7,
 						str: "hello, world7!",
-						lbs: labels.Labels{}.String(),
 					},
 					{
 						ts:  8,
 						str: "hello, worl\nd8!",
-						lbs: `{a="a2", b="b"}`,
+						lbs: labels.Labels{
+							{Name: "a", Value: "a2"},
+							{Name: "b", Value: "b"},
+						},
 					},
 					{
 						ts:  8,
 						str: "hello, world 8, 2!",
-						lbs: labels.Labels{}.String(),
 					},
 					{
 						ts:  8,
 						str: "hello, world 8, 3!",
-						lbs: labels.Labels{}.String(),
 					},
 					{
 						ts:  9,
 						str: "",
-						lbs: labels.Labels{}.String(),
 					},
 				}
 
@@ -177,10 +177,9 @@ func TestBlock(t *testing.T) {
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
 					if chunkFormat < chunkFormatV4 {
-						//require.Empty(t, e.MetadataLabels)
-						require.Equal(t, labels.Labels{}.String(), e.MetadataLabels)
+						require.Empty(t, e.NonIndexedLabels)
 					} else {
-						require.Equal(t, cases[idx].lbs, e.MetadataLabels)
+						require.Equal(t, cases[idx].lbs, e.NonIndexedLabels)
 					}
 					idx++
 				}

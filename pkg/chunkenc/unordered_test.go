@@ -21,9 +21,8 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
 		require.Equal(t, logproto.Entry{
-			Timestamp:      time.Unix(0, exp[i].t),
-			Line:           exp[i].s,
-			MetadataLabels: labels.Labels{}.String(),
+			Timestamp: time.Unix(0, exp[i].t),
+			Line:      exp[i].s,
 		}, got.Entry())
 		i++
 	}
@@ -167,7 +166,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
 			for _, e := range tc.input {
-				require.Nil(t, hb.Append(e.t, e.s, e.metaLabels))
+				require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
 			}
 
 			itr := hb.Iterator(
@@ -230,7 +229,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
 			for _, e := range tc.input {
-				require.Nil(t, hb.Append(e.t, e.s, e.metaLabels))
+				require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
 			}
 
 			itr := hb.Iterator(
@@ -376,15 +375,15 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			if tc.unorderedWrites {
 				ts := rnd.Int63()
 				writes = append(writes, entry{
-					t:          ts,
-					s:          fmt.Sprint("line:", ts),
-					metaLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}},
+					t:                ts,
+					s:                fmt.Sprint("line:", ts),
+					nonIndexedLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}},
 				})
 			} else {
 				writes = append(writes, entry{
-					t:          int64(i),
-					s:          fmt.Sprint("line:", i),
-					metaLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}},
+					t:                int64(i),
+					s:                fmt.Sprint("line:", i),
+					nonIndexedLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}},
 				})
 			}
 		}
@@ -393,7 +392,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			for n := 0; n < b.N; n++ {
 				writeFn := tc.fn()
 				for _, w := range writes {
-					writeFn(w.t, w.s, w.metaLabels)
+					writeFn(w.t, w.s, w.nonIndexedLabels)
 				}
 			}
 		})

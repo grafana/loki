@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util/filter"
@@ -324,7 +323,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	out := version.NewBlock()
 
 	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s, e.metaLabels); err != nil {
+		if err := out.Append(e.t, e.s, e.nonIndexedLabels); err != nil {
 			return nil, err
 		}
 	}
@@ -332,9 +331,9 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 }
 
 type entry struct {
-	t          int64
-	s          string
-	metaLabels labels.Labels
+	t                int64
+	s                string
+	nonIndexedLabels labels.Labels
 }
 
 // NewMemChunk returns a new in-mem chunk.
@@ -686,12 +685,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	entryLabels, err := syntax.ParseLabels(entry.MetadataLabels)
-	if err != nil {
-		return err
-	}
-
-	if err := c.head.Append(entryTimestamp, entry.Line, entryLabels); err != nil {
+	if err := c.head.Append(entryTimestamp, entry.Line, entry.NonIndexedLabels); err != nil {
 		return err
 	}
 
@@ -1042,9 +1036,9 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			streams[labels] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp:      time.Unix(0, e.t),
-			Line:           newLine,
-			MetadataLabels: e.metaLabels.String(),
+			Timestamp:        time.Unix(0, e.t),
+			Line:             newLine,
+			NonIndexedLabels: e.nonIndexedLabels,
 		})
 	}
 
@@ -1434,10 +1428,13 @@ func (e *entryBufferedIterator) Next() bool {
 			return false
 		}
 
-		metaLabels := make(labels.Labels, len(e.currMetadataLabels)/2)
-		for i := 0; i < len(e.currMetadataLabels); i += 2 {
-			metaLabels[i/2].Name = string(e.currMetadataLabels[i])
-			metaLabels[i/2].Value = string(e.currMetadataLabels[i+1])
+		var nonIndexedLabels labels.Labels
+		if len(e.currMetadataLabels) > 0 {
+			nonIndexedLabels = make(labels.Labels, len(e.currMetadataLabels)/2)
+			for i := 0; i < len(e.currMetadataLabels); i += 2 {
+				nonIndexedLabels[i/2].Name = string(e.currMetadataLabels[i])
+				nonIndexedLabels[i/2].Value = string(e.currMetadataLabels[i+1])
+			}
 		}
 
 		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
@@ -1446,7 +1443,7 @@ func (e *entryBufferedIterator) Next() bool {
 		}
 
 		e.currLabels = lbs
-		e.cur.MetadataLabels = metaLabels.String()
+		e.cur.NonIndexedLabels = nonIndexedLabels
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 		return true

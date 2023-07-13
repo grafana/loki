@@ -40,9 +40,8 @@ func TestLazyChunkIterator(t *testing.T) {
 					Hash:   fooLabels.Hash(),
 					Entries: []logproto.Entry{
 						{
-							Timestamp:      from,
-							Line:           "1",
-							MetadataLabels: labels.Labels{}.String(),
+							Timestamp: from,
+							Line:      "1",
 						},
 					},
 				},

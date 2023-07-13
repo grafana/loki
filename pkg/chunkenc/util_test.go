@@ -6,6 +6,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 func logprotoEntry(ts int64, line string) *logproto.Entry {
@@ -15,11 +16,11 @@ func logprotoEntry(ts int64, line string) *logproto.Entry {
 	}
 }
 
-func logprotoEntryWithMetadata(ts int64, line string, metadataLabels string) *logproto.Entry {
+func logprotoEntryWithMetadata(ts int64, line string, nonIndexedLabels labels.Labels) *logproto.Entry {
 	return &logproto.Entry{
-		Timestamp:      time.Unix(0, ts),
-		Line:           line,
-		MetadataLabels: metadataLabels,
+		Timestamp:        time.Unix(0, ts),
+		Line:             line,
+		NonIndexedLabels: nonIndexedLabels,
 	}
 }
 

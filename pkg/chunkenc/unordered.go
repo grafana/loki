@@ -111,7 +111,7 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 func (hb *unorderedHeadBlock) Append(ts int64, line string, metaLabels labels.Labels) error {
 	if hb.format < UnorderedWithMetadataHeadBlockFmt {
 		// metaLabels must be ignored for the previous head block formats
-		metaLabels = labels.Labels{}
+		metaLabels = nil
 	}
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
@@ -255,7 +255,7 @@ func (hb *unorderedHeadBlock) Iterator(
 		direction,
 		mint,
 		maxt,
-		func(ts int64, line string, metaLabels labels.Labels) error {
+		func(ts int64, line string, nonIndexedLabels labels.Labels) error {
 			// TODO: This should go to a separate PR
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
 			if !matches {
@@ -274,9 +274,9 @@ func (hb *unorderedHeadBlock) Iterator(
 			}
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp:      time.Unix(0, ts),
-				Line:           newLine,
-				MetadataLabels: metaLabels.String(),
+				Timestamp:        time.Unix(0, ts),
+				Line:             newLine,
+				NonIndexedLabels: nonIndexedLabels,
 			})
 			return nil
 		},
@@ -567,13 +567,15 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 		var metaLabels labels.Labels
 		if version >= UnorderedWithMetadataHeadBlockFmt.Byte() {
 			metaLn := db.uvarint()
-			metaLabels = make(labels.Labels, metaLn)
-			for j := 0; j < metaLn && db.err() == nil; j++ {
-				nameLn := db.uvarint()
-				valueLn := db.uvarint()
-				metaLabels[j] = labels.Label{
-					Name:  string(db.bytes(nameLn)),
-					Value: string(db.bytes(valueLn)),
+			if metaLn > 0 {
+				metaLabels = make(labels.Labels, metaLn)
+				for j := 0; j < metaLn && db.err() == nil; j++ {
+					nameLn := db.uvarint()
+					valueLn := db.uvarint()
+					metaLabels[j] = labels.Label{
+						Name:  string(db.bytes(nameLn)),
+						Value: string(db.bytes(valueLn)),
+					}
 				}
 			}
 		}

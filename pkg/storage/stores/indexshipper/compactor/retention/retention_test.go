@@ -523,9 +523,8 @@ func TestChunkRewriter(t *testing.T) {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
 						require.True(t, newChunkItr.Next())
 						require.Equal(t, logproto.Entry{
-							Timestamp:      curr.Time(),
-							Line:           curr.String(),
-							MetadataLabels: labels.Labels{}.String(),
+							Timestamp: curr.Time(),
+							Line:      curr.String(),
 						}, newChunkItr.Entry())
 					}
 				}
