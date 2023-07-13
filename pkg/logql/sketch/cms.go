@@ -27,18 +27,18 @@ func make2dslice(col, row uint32) [][]uint32 {
 	return ret
 }
 
-func (s *CountMinSketch) getPos(h1, h2 uint32, row int) uint32 {
-	pos := (h1 + uint32(row)*h2) % uint32(s.width)
+func (s *CountMinSketch) getPos(h1, h2, row uint32) uint32 {
+	pos := (h1 + row*h2) % s.width
 	return pos
 }
 
-// Add 'count' occurences of the given input.
+// Add 'count' occurrences of the given input.
 func (s *CountMinSketch) Add(event string, count int) {
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
 	// the pairwise indendent hash functions requirement for CMS
 	h1, h2 := hashn(event)
-	for i := 0; i < int(s.depth); i++ {
+	for i := uint32(0); i < s.depth; i++ {
 		pos := s.getPos(h1, h2, i)
 		s.counters[i][pos] += uint32(count)
 	}
@@ -61,14 +61,14 @@ func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, ui
 	h1, h2 := hashn(event)
 	// inline Count to save time/memory
 	var pos uint32
-	for i := 0; i < int(s.depth); i++ {
+	for i := uint32(0); i < s.depth; i++ {
 		pos = s.getPos(h1, h2, i)
 		if s.counters[i][pos] < min {
 			min = s.counters[i][pos]
 		}
 	}
 	min += count
-	for i := 0; i < int(s.depth); i++ {
+	for i := uint32(0); i < s.depth; i++ {
 		pos = s.getPos(h1, h2, i)
 		v := s.counters[i][pos]
 		if v < min {
@@ -88,7 +88,7 @@ func (s *CountMinSketch) Count(event string) uint32 {
 	h1, h2 := hashn(event)
 
 	var pos uint32
-	for i := 0; i < int(s.depth); i++ {
+	for i := uint32(0); i < s.depth; i++ {
 		pos = s.getPos(h1, h2, i)
 		if s.counters[i][pos] < min {
 			min = s.counters[i][pos]

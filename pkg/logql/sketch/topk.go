@@ -110,7 +110,7 @@ func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 	var pos uint32
 	for i := range t.bf {
-		pos = t.sketch.getPos(h1, h2, i)
+		pos = t.sketch.getPos(h1, h2, uint32(i))
 		t.bf[i][pos] = true
 	}
 	heap.Push(h, &node{event: event, count: estimate})
@@ -133,10 +133,10 @@ func (t *Topk) updateBF(removed, added string) {
 	var pos uint32
 	for i := range t.bf {
 		// removed event
-		pos = t.sketch.getPos(r1, r2, i)
+		pos = t.sketch.getPos(r1, r2, uint32(i))
 		t.bf[i][pos] = false
 		// added event
-		pos = t.sketch.getPos(a1, a2, i)
+		pos = t.sketch.getPos(a1, a2, uint32(i))
 		t.bf[i][pos] = true
 	}
 }
@@ -191,7 +191,7 @@ func (t *Topk) Observe(event string) {
 			// ensure all the bf buckets are truthy for the event
 			h1, h2 = hashn((*t.heap)[i].event)
 			for j := range t.bf {
-				pos = t.sketch.getPos(h1, h2, j)
+				pos = t.sketch.getPos(h1, h2, uint32(j))
 				t.bf[j][pos] = true
 			}
 		}
@@ -268,7 +268,7 @@ func (t *Topk) InTopk(h1, h2 uint32) bool {
 	ret := true
 	var pos uint32
 	for i := range t.bf {
-		pos = t.sketch.getPos(h1, h2, i)
+		pos = t.sketch.getPos(h1, h2, uint32(i))
 		if !t.bf[i][pos] {
 			ret = false
 		}

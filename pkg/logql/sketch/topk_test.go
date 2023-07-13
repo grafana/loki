@@ -39,7 +39,7 @@ func TestTopkCardinality(t *testing.T) {
 		topk.Observe(strconv.Itoa(i))
 	}
 	c, bigEnough = topk.Cardinality()
-	assert.True(t, bigEnough)
+	assert.Truef(t, bigEnough, "Cardinality of %d was not big enough.", c)
 }
 
 // TODO: merging is not as accurate as it should be
@@ -63,16 +63,17 @@ func TestTopK_Merge(t *testing.T) {
 	}
 	// then another set of things more than the max of the previous entries
 	for i := nStreams - k; i < nStreams; i++ {
-		n := int64(rand.Int63n(int64(maxPerStream)) + 1 + max)
+		n := rand.Int63n(int64(maxPerStream)) + 1 + max
 		for j := 0; j < int(n); j++ {
 			events = append(events, event{name: strconv.Itoa(i), count: 1})
 		}
 	}
 
-	rand.Seed(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano()) //nolint:all
 	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
 
 	topk1, err := NewCMSTopkForCardinality(nil, k, nStreams)
+	assert.NoError(t, err, "error creating topk")
 	topk2, err := NewCMSTopkForCardinality(nil, k, nStreams)
 	assert.NoError(t, err, "error creating topk")
 	for i := 0; i < (len(events) / 2); i++ {
@@ -87,7 +88,8 @@ func TestTopK_Merge(t *testing.T) {
 		}
 	}
 
-	topk1.Merge(topk2)
+	err = topk1.Merge(topk2)
+	require.NoError(t, err)
 
 	mergedTopk := topk1.Topk()
 	var eventName string
@@ -178,6 +180,7 @@ func TestRealTopK(t *testing.T) {
 
 	cms, _ := NewCMSTopkForCardinality(nil, 100, 72000)
 	resp, err = http.Get(link)
+	assert.NoError(t, err)
 
 	scanner = bufio.NewScanner(resp.Body)
 	// Set the split function for the scanning operation.
@@ -284,7 +287,8 @@ func TestRealTop_Merge(t *testing.T) {
 	}
 	mergedCMS, _ := newCMSTopK(k, 2048, 5)
 	for _, c := range cms {
-		mergedCMS.Merge(c)
+		err = mergedCMS.Merge(c)
+		require.NoError(t, err)
 	}
 	cmsTop := mergedCMS.Topk()
 	cmsMissing := 0
