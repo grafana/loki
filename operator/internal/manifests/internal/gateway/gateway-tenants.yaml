@@ -1,10 +1,20 @@
+{{- define "mTLS" }}
+  {{- $secret := index . 0 -}}
+  {{- $spec := index . 1 -}}
+  mTLS:
+    {{- if $secret.MTLS.Cert }}
+    cas: {{ $secret.MTLS.Cert }}
+    {{- end -}}
+    {{ if $secret.MTLS.CA }}
+    ca: {{ $secret.MTLS.CA }}
+    {{- end -}}
+{{- end }}
+
 {{- define "oidc" }}
-  {{ $l := index . 0 }}
-  {{ $spec := index . 1 }}
+  {{- $secret := index . 0 -}}
+  {{- $spec := index . 1 -}}
   oidc:
-    {{- range $secret := $l.TenantSecrets }}
-    {{- if eq $secret.TenantName $spec.TenantName -}}
-    {{ if $secret.OIDC.ClientID }}
+    {{- if $secret.OIDC.ClientID }}
     clientID: {{ $secret.OIDC.ClientID }}
     {{- end -}}
     {{ if $secret.OIDC.ClientSecret }}
@@ -12,11 +22,9 @@
     {{- end -}}
     {{ if $secret.OIDC.IssuerCAPath }}
     issuerCAPath: {{ $secret.OIDC.IssuerCAPath }}
-    {{- end -}}
-    {{- end -}}
     {{- end }}
     issuerURL: {{ $spec.OIDC.IssuerURL }}
-    {{ if $spec.OIDC.RedirectURL }}
+    {{- if $spec.OIDC.RedirectURL }}
     redirectURL: {{ $spec.OIDC.RedirectURL }}
     {{- end -}}
     {{ if $spec.OIDC.UsernameClaim }}
@@ -27,13 +35,27 @@
     {{- end }}
 {{- end }}
 
+{{- define "authorization" }}
+  {{- $l := index . 0 -}}
+  {{- $spec := index . 1 -}}
+  {{- range $secret := $l.TenantSecrets }}
+  {{- if eq $secret.TenantName $spec.TenantName }}
+  {{- if $secret.OIDC }}
+  {{ template "oidc" (arr $secret $spec) }}
+  {{- else if $secret.MTLS }}
+  {{ template "mTLS" (arr $l $spec) }}
+  {{- end -}}
+  {{- end -}}
+  {{- end }}
+{{- end }}
+
 tenants:
 {{- if $l := . -}}
 {{- if eq $l.Stack.Tenants.Mode "static" -}}
 {{- range $spec := $l.Stack.Tenants.Authentication }}
 - name: {{ $spec.TenantName }}
   id: {{ $spec.TenantID }}
-  {{ template "oidc" (arr $l $spec) }}
+  {{ template "authorization" (arr $l $spec) }}
   opa:
     query: data.lokistack.allow
     paths:
@@ -45,7 +67,7 @@ tenants:
 {{- range $spec := $tenant.Authentication }}
 - name: {{ $spec.TenantName }}
   id: {{ $spec.TenantID }}
- {{ template "oidc" (arr $l $spec) }} 
+  {{ template "authorization" (arr $l $spec) }}
   opa:
     url: {{ $tenant.Authorization.OPA.URL }}
 {{- end -}}
