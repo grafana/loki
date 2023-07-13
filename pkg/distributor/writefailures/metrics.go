@@ -17,12 +17,12 @@ func newMetrics(reg prometheus.Registerer, subsystem string) *metrics {
 			Name:        "write_failures_logged_total",
 			Help:        "The total number of write failures logs successfully emitted for a tenant.",
 			ConstLabels: prometheus.Labels{"subsystem": subsystem},
-		}, []string{"tenant_id"}),
+		}, []string{"org_id"}),
 		discardedCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Namespace:   "loki",
 			Name:        "write_failures_discarded_total",
 			Help:        "The total number of write failures logs discarded for a tenant.",
 			ConstLabels: prometheus.Labels{"subsystem": subsystem},
-		}, []string{"tenant_id"}),
+		}, []string{"org_id"}),
 	}
 }
