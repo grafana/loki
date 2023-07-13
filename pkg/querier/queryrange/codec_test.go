@@ -1479,7 +1479,7 @@ var (
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line" ]
+						[ "123456789012345", "super line"]
 					]
 				},
 				{
@@ -1487,7 +1487,7 @@ var (
 						"test": "test2"
 					},
 					"values":[
-						[ "123456789012346", "super line2" ]
+						[ "123456789012346", "super line2"]
 					]
 				}
 			]

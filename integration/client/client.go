@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
 )
 
@@ -86,13 +87,28 @@ func New(instanceID, token, baseURL string, opts ...Option) *Client {
 
 // PushLogLine creates a new logline with the current time as timestamp
 func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) error {
-	return c.pushLogLine(line, c.Now, extraLabels...)
+	return c.pushLogLine(line, c.Now, nil, extraLabels...)
+}
+
+func (c *Client) PushLogLineWithMetadata(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
+	return c.PushLogLineWithTimestampAndMetadata(line, c.Now, logLabels, extraLabels...)
 }
 
 // PushLogLineWithTimestamp creates a new logline at the given timestamp
 // The timestamp has to be a Unix timestamp (epoch seconds)
-func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, extraLabelList...)
+func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabels ...map[string]string) error {
+	return c.pushLogLine(line, timestamp, nil, extraLabels...)
+}
+
+func (c *Client) PushLogLineWithTimestampAndMetadata(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
+	// If the logLabels map is empty, labels.FromMap will allocate some empty slices.
+	// Since this code is executed for every log line we receive, as an optimization
+	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.
+	var lbls labels.Labels
+	if len(logLabels) > 0 {
+		lbls = labels.FromMap(logLabels)
+	}
+	return c.pushLogLine(line, timestamp, lbls, extraLabelList...)
 }
 
 func formatTS(ts time.Time) string {
@@ -101,21 +117,22 @@ func formatTS(ts time.Time) string {
 
 type stream struct {
 	Stream map[string]string `json:"stream"`
-	Values [][]string        `json:"values"`
+	Values [][]any           `json:"values"`
 }
 
 // pushLogLine creates a new logline
-func (c *Client) pushLogLine(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
+func (c *Client) pushLogLine(line string, timestamp time.Time, logLabels labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
 	s := stream{
 		Stream: map[string]string{
 			"job": "varlog",
 		},
-		Values: [][]string{
+		Values: [][]any{
 			{
 				formatTS(timestamp),
 				line,
+				logLabels,
 			},
 		},
 	}
