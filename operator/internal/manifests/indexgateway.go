@@ -58,6 +58,10 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -138,19 +142,6 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
 	}
 
-	podTemplate := corev1.PodTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("loki-index-gateway-%s", opts.Name),
-			Labels:      labels.Merge(l, GossipLabels()),
-			Annotations: a,
-		},
-		Spec: podSpec,
-	}
-
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		configureReplication(&podTemplate, opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
-	}
-
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
@@ -167,7 +158,14 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
-			Template: podTemplate,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        fmt.Sprintf("loki-index-gateway-%s", opts.Name),
+					Labels:      labels.Merge(l, GossipLabels()),
+					Annotations: a,
+				},
+				Spec: podSpec,
+			},
 			VolumeClaimTemplates: []corev1.PersistentVolumeClaim{
 				{
 					ObjectMeta: metav1.ObjectMeta{

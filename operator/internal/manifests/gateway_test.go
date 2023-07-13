@@ -964,7 +964,7 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
-	dpl := NewGatewayDeployment(Options{
+	obj, _ := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Gates: configv1.FeatureGates{
@@ -976,13 +976,27 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 					Replicas: rand.Int31(),
 				},
 			},
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: "zone",
+						MaxSkew:     3,
+					},
+					{
+						TopologyKey: "region",
+						MaxSkew:     2,
+					},
+				},
+				Factor: 1,
+			},
 			Tenants: &lokiv1.TenantsSpec{
 				Mode: lokiv1.OpenshiftLogging,
 			},
 		},
 		Timeouts: defaultTimeoutConfig,
-	}, "deadbeef")
+	})
 
+	dpl := obj[2].(*appsv1.Deployment)
 	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:     1,
@@ -994,6 +1008,28 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 				},
 			},
 			WhenUnsatisfiable: corev1.ScheduleAnyway,
+		},
+		{
+			MaxSkew:           3,
+			TopologyKey:       "zone",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "lokistack-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
+		},
+		{
+			MaxSkew:           2,
+			TopologyKey:       "region",
+			WhenUnsatisfiable: "DoNotSchedule",
+			LabelSelector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{
+					"app.kubernetes.io/component": "lokistack-gateway",
+					"app.kubernetes.io/instance":  "abcd",
+				},
+			},
 		},
 	})
 }

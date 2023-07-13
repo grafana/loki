@@ -25,7 +25,7 @@ var proxyEnvNames = []string{
 
 func configureProxyEnv(pod *corev1.PodSpec, opts Options) error {
 	for _, envVar := range proxyEnvNames {
-		resetEnvVar(pod, envVar)
+		resetProxyVar(pod, envVar)
 	}
 
 	proxySpec := opts.Stack.Proxy
@@ -45,6 +45,24 @@ func configureProxyEnv(pod *corev1.PodSpec, opts Options) error {
 	}
 
 	return nil
+}
+
+func resetProxyVar(podSpec *corev1.PodSpec, name string) {
+	for i, container := range podSpec.Containers {
+		found, index := findEnvVar(name, container.Env)
+		if found {
+			podSpec.Containers[i].Env = append(podSpec.Containers[i].Env[:index], podSpec.Containers[i].Env[index+1:]...)
+		}
+	}
+}
+
+func findEnvVar(name string, envVars []corev1.EnvVar) (bool, int) {
+	for i, env := range envVars {
+		if env.Name == name || env.Name == strings.ToLower(name) {
+			return true, i
+		}
+	}
+	return false, 0
 }
 
 func toEnvVars(proxySpec *lokiv1.ClusterProxy) []corev1.EnvVar {

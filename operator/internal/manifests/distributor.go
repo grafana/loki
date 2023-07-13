@@ -52,6 +52,10 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
+		configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelDistributorComponent, opts.Name)
+	}
+
 	return []client.Object{
 		deployment,
 		NewDistributorGRPCService(opts),
@@ -133,19 +137,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 		podSpec.NodeSelector = opts.Stack.Template.Distributor.NodeSelector
 	}
 
-	podTemplate := corev1.PodTemplateSpec{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:        fmt.Sprintf("loki-distributor-%s", opts.Name),
-			Labels:      labels.Merge(l, GossipLabels()),
-			Annotations: a,
-		},
-		Spec: podSpec,
-	}
-
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		configureReplication(&podTemplate, opts.Stack.Replication, LabelDistributorComponent, opts.Name)
-	}
-
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Deployment",
@@ -160,7 +151,14 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
-			Template: podTemplate,
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        fmt.Sprintf("loki-distributor-%s", opts.Name),
+					Labels:      labels.Merge(l, GossipLabels()),
+					Annotations: a,
+				},
+				Spec: podSpec,
+			},
 			Strategy: appsv1.DeploymentStrategy{
 				Type: appsv1.RollingUpdateDeploymentStrategyType,
 			},

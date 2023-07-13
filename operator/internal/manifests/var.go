@@ -3,7 +3,6 @@ package manifests
 import (
 	"fmt"
 	"path"
-	"strings"
 	"time"
 
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
@@ -597,22 +596,4 @@ func lokiReadinessProbe() *corev1.Probe {
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
 	}
-}
-
-func resetEnvVar(podSpec *corev1.PodSpec, name string) {
-	for i, container := range podSpec.Containers {
-		found, index := findEnvVar(name, container.Env)
-		if found {
-			podSpec.Containers[i].Env = append(podSpec.Containers[i].Env[:index], podSpec.Containers[i].Env[index+1:]...)
-		}
-	}
-}
-
-func findEnvVar(name string, envVars []corev1.EnvVar) (bool, int) {
-	for i, env := range envVars {
-		if env.Name == name || env.Name == strings.ToLower(name) {
-			return true, i
-		}
-	}
-	return false, 0
 }
