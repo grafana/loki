@@ -514,10 +514,6 @@ func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool
 	if cSpec.PodAntiAffinity != nil {
 		affinity.PodAntiAffinity = cSpec.PodAntiAffinity
 	}
-
-	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
-		return nil
-	}
 	return affinity
 }
 
