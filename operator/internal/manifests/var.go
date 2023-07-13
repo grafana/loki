@@ -321,6 +321,10 @@ func gatewayUpstreamHTTPTLSKey() string {
 	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSPrivateKeyKey)
 }
 
+func tenantMTLSVolumeName(tenantName string) string {
+	return fmt.Sprintf("%s-ca-bundle", tenantName)	
+}
+
 func tenantMTLSCADir(tennantName string) string {
 	return path.Join(tenantMTLSDir, tennantName)
 }

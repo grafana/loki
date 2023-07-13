@@ -438,8 +438,10 @@ func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, 
 
 // gatewayConfigOptions converts Options to gateway.Options
 func gatewayConfigOptions(opt Options) gateway.Options {
-	var gatewaySecrets []*gateway.Secret
-	var gatewaySecret *gateway.Secret
+	var (
+		gatewaySecrets []*gateway.Secret
+		gatewaySecret  *gateway.Secret
+	)
 	for _, secret := range opt.Tenants.Secrets {
 		gatewaySecret = &gateway.Secret{
 			TenantName: secret.TenantName,

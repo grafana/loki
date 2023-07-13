@@ -24,12 +24,14 @@ type Secret struct {
 	MTLS       *MTLS
 }
 
+// OIDC secret for tenant's authentication.
 type OIDC struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
 }
 
+// MTLS config for tenant's authentication.
 type MTLS struct {
 	CAPath string
 }

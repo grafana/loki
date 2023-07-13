@@ -183,11 +183,11 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 
 func mountConfigMap(d *appsv1.Deployment, tenantName string, caSpec *lokiv1.CASpec) {
 	vm := &corev1.VolumeMount{
-		Name:      tenantName,
+		Name:      tenantMTLSVolumeName(tenantName),
 		MountPath: tenantMTLSCADir(tenantName),
 	}
 	v := &corev1.Volume{
-		Name: tenantName,
+		Name: tenantMTLSVolumeName(tenantName),
 		VolumeSource: corev1.VolumeSource{
 			ConfigMap: &corev1.ConfigMapVolumeSource{
 				LocalObjectReference: corev1.LocalObjectReference{

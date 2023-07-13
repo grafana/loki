@@ -185,12 +185,6 @@ type OIDCSpec struct {
 
 // MTLSSpec specifies mTLS configuration parameters.
 type MTLSSpec struct {
-	// Secret defines the spec for the tls.key, tls.crt for tenant's authentication.
-	//
-	// +required
-	// +kubebuilder:validation:Required
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cert Secret"
-	CertSecret *TenantSecretSpec `json:"certSecret"`
 	// CASpec defines the spec for the custom CA for tenant's authentication.
 	//
 	// +required
@@ -438,8 +432,8 @@ type HashRingSpec struct {
 type CASpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
-	//
 	// If empty, it defaults to "service-ca.crt".
+	//
 	// +optional
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap Key"

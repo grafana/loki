@@ -30,15 +30,25 @@ func GetTenantSecrets(
 	var (
 		tenantSecrets []*manifests.TenantSecrets
 		gatewaySecret corev1.Secret
+		caConfigMap   corev1.ConfigMap
 	)
 
 	for _, tenant := range stack.Spec.Tenants.Authentication {
 		switch {
 		case tenant.OIDC != nil:
 			key := client.ObjectKey{Name: tenant.OIDC.Secret.Name, Namespace: req.Namespace}
-			if err := getSecret(ctx, k, tenant.TenantName, key, &gatewaySecret); err != nil {
-				return nil, err
+			if err := k.Get(ctx, key, &gatewaySecret); err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil, &status.DegradedError{
+						Message: fmt.Sprintf("Missing secrets for tenant %s", tenant.TenantName),
+						Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
+						Requeue: true,
+					}
+				}
+				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
+					"name", key)
 			}
+
 			oidcSecret, err := extractOIDCSecret(&gatewaySecret)
 			if err != nil {
 				return nil, &status.DegradedError{
@@ -52,16 +62,24 @@ func GetTenantSecrets(
 				OIDCSecret: oidcSecret,
 			})
 		case tenant.MTLS != nil:
-			var configMap corev1.ConfigMap
 			key := client.ObjectKey{Name: tenant.MTLS.CASpec.CA, Namespace: req.Namespace}
-			if err := getConfigMap(ctx, k, tenant.TenantName, key, &configMap); err != nil {
-				return nil, err
+			if err := k.Get(ctx, key, &caConfigMap); err != nil {
+				if apierrors.IsNotFound(err) {
+					return nil, &status.DegradedError{
+						Message: fmt.Sprintf("Missing configmap for tenant %s", tenant.TenantName),
+						Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
+						Requeue: true,
+					}
+				}
+				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant configMap",
+					"name", key)
 			}
+			// Default key if the user doesn't specify it
 			cmKey := "service-ca.crt"
 			if tenant.MTLS.CASpec.CAKey != "" {
 				cmKey = tenant.MTLS.CASpec.CAKey
 			}
-			err := checkCA(&configMap, cmKey)
+			err := checkKeyIsPresent(&caConfigMap, cmKey)
 			if err != nil {
 				return nil, &status.DegradedError{
 					Message: "Invalid gateway tenant configmap contents",
@@ -87,36 +105,6 @@ func GetTenantSecrets(
 	return tenantSecrets, nil
 }
 
-func getSecret(ctx context.Context, k k8s.Client, tenantName string, key client.ObjectKey, s *corev1.Secret) error {
-	if err := k.Get(ctx, key, s); err != nil {
-		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing secrets for tenant %s", tenantName),
-				Reason:  lokiv1.ReasonMissingGatewayTenantSecret,
-				Requeue: true,
-			}
-		}
-		return kverrors.Wrap(err, "failed to lookup lokistack gateway tenant secret",
-			"name", key)
-	}
-	return nil
-}
-
-func getConfigMap(ctx context.Context, k k8s.Client, tenantName string, key client.ObjectKey, cm *corev1.ConfigMap) error {
-	if err := k.Get(ctx, key, cm); err != nil {
-		if apierrors.IsNotFound(err) {
-			return &status.DegradedError{
-				Message: fmt.Sprintf("Missing configmap for tenant %s", tenantName),
-				Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
-				Requeue: true,
-			}
-		}
-		return kverrors.Wrap(err, "failed to lookup lokistack gateway tenant configMap",
-			"name", key)
-	}
-	return nil
-}
-
 // extractOIDCSecret reads a k8s secret into a manifest tenant secret struct if valid.
 func extractOIDCSecret(s *corev1.Secret) (*manifests.OIDCSecret, error) {
 	// Extract and validate mandatory fields
@@ -134,9 +122,8 @@ func extractOIDCSecret(s *corev1.Secret) (*manifests.OIDCSecret, error) {
 	}, nil
 }
 
-// checkCA reads the CA from a k8s configmap
-func checkCA(cm *corev1.ConfigMap, key string) error {
-	// Extract and validate mandatory fields
+// checkKeyIsPresent checks if key is present in the configmap
+func checkKeyIsPresent(cm *corev1.ConfigMap, key string) error {
 	ca := cm.Data[key]
 	if len(ca) == 0 {
 		return kverrors.New(fmt.Sprintf("missing %s field", key), "field", key)
