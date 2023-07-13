@@ -15,7 +15,7 @@ type Manager struct {
 	limiter    *limiter.RateLimiter
 	logger     log.Logger
 	tenantCfgs *runtime.TenantConfigs
-	m          *metrics
+	metrics    *metrics
 }
 
 func NewManager(logger log.Logger, reg prometheus.Registerer, cfg Cfg, tenants *runtime.TenantConfigs, subsystem string) *Manager {
@@ -30,7 +30,7 @@ func NewManager(logger log.Logger, reg prometheus.Registerer, cfg Cfg, tenants *
 		limiter:    limiter.NewRateLimiter(strategy, time.Minute),
 		logger:     logger,
 		tenantCfgs: tenants,
-		m:          newMetrics(reg, subsystem),
+		metrics:    newMetrics(reg, subsystem),
 	}
 }
 
@@ -45,10 +45,10 @@ func (m *Manager) Log(tenantID string, err error) {
 
 	errMsg := err.Error()
 	if m.limiter.AllowN(time.Now(), tenantID, len(errMsg)) {
-		m.m.loggedCount.WithLabelValues(tenantID).Inc()
+		m.metrics.loggedCount.WithLabelValues(tenantID).Inc()
 		level.Error(m.logger).Log("msg", "write operation failed", "details", errMsg, "tenant", tenantID)
 		return
 	}
 
-	m.m.discardedCount.WithLabelValues(tenantID).Inc()
+	m.metrics.discardedCount.WithLabelValues(tenantID).Inc()
 }
