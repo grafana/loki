@@ -132,7 +132,11 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 		for _, e := range s.Entries {
 			totalEntries++
-			entrySize := int64(len(e.Line)) + int64(len(e.Labels))
+			var nonIndexedLabelsSize int64
+			for _, l := range e.NonIndexedLabels {
+				nonIndexedLabelsSize += int64(len(l.Name)) + int64(len(l.Value))
+			}
+			entrySize := int64(len(e.Line)) + nonIndexedLabelsSize
 			entriesSize += entrySize
 			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entrySize))
 			bytesReceivedStats.Inc(entrySize)
