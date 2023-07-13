@@ -1,6 +1,7 @@
 ---
 title: Contacting the Loki Team
-description: Contacting the Loki Team
+description: How to contact the Loki team
+weight: 100
 ---
 # Contacting the Loki Team
 
