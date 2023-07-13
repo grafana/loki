@@ -42,15 +42,19 @@ func (s TopKMatrix) ToProto() (*logproto.TopKMatrix, error) {
 			return nil, err
 		}
 
-		labels := make([]string, len(*point.topk.heap))
+		list := make([]*logproto.TopK_Pair, 0, len(*point.topk.heap))
 		for _, node := range *point.topk.heap {
-			labels = append(labels, node.event)
+			pair := &logproto.TopK_Pair{
+				Event: node.event,
+				Count: node.count,
+			}
+			list = append(list, pair)
 		}
 
 		topk := &logproto.TopK{
 			Cms:         cms,
 			Hyperloglog: hllBytes,
-			Labels:      labels,
+			List:        list,
 		}
 
 		points = append(points, &logproto.TopKMatrix_Vector{Topk: topk, TimestampMs: int64(point.ts)})
@@ -78,10 +82,20 @@ func FromProto(proto *logproto.TopKMatrix) (TopKMatrix, error) {
 			return nil, err
 		}
 
+		heap := &MinHeap{}
+		for _, p := range vector.Topk.List {
+			node := &node{
+				event: p.Event,
+				count: p.Count,
+			}
+			heap.Push(node)
+		}
+
 		// TODO(karsten): should we set expected cardinality as well?
 		topk := &Topk{
 			sketch: cms,
 			hll:    hll,
+			heap:   heap,
 		}
 
 		values = append(values, TopKVector{topk, uint64(vector.TimestampMs)})
