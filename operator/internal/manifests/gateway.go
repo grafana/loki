@@ -77,7 +77,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers); err != nil {
+		adminGroups := opts.Stack.AdminGroups
+		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers, adminGroups); err != nil {
 			return nil, err
 		}
 

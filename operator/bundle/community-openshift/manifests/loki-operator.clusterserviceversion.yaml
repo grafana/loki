@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-07-04T17:17:17Z"
+    createdAt: "2023-07-12T12:21:16Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -257,6 +257,10 @@ spec:
         name: ""
         version: v1
       specDescriptors:
+      - description: AdminGroups defines the list of group to be considered cluster
+          admins by the Loki Operator.
+        displayName: Admin Groups
+        path: adminGroups
       - description: HashRing defines the spec for the distributed hash ring configuration.
         displayName: Hash Ring
         path: hashRing

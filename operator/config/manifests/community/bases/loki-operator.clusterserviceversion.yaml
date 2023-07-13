@@ -170,6 +170,10 @@ spec:
         name: ""
         version: v1
       specDescriptors:
+      - description: AdminGroups defines the list of group to be considered cluster
+          admins by the Loki Operator.
+        displayName: Admin Groups
+        path: adminGroups
       - description: HashRing defines the spec for the distributed hash ring configuration.
         displayName: Hash Ring
         path: hashRing

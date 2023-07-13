@@ -37,6 +37,12 @@ spec:
           spec:
             description: LokiStack CR spec field.
             properties:
+              adminGroups:
+                description: AdminGroups defines the list of group to be considered
+                  cluster admins by the Loki Operator.
+                items:
+                  type: string
+                type: array
               hashRing:
                 description: HashRing defines the spec for the distributed hash ring
                   configuration.

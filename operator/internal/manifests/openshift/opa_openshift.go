@@ -22,7 +22,7 @@ const (
 	opaNetworkLabelMatchers = "SrcK8S_Namespace,DstK8S_Namespace"
 )
 
-func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool) corev1.Container {
+func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, minTLSVersion, ciphers string, withTLS bool, adminGroups string) corev1.Container {
 	var (
 		image        string
 		args         []string
@@ -39,7 +39,7 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 	args = []string{
 		"--log.level=warn",
 		"--opa.skip-tenants=audit,infrastructure",
-		"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
+		fmt.Sprintf("--opa.admin-groups=%s", adminGroups),
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),

@@ -838,6 +838,13 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+
+	// AdminGroups defines the list of group to be considered cluster admins by the Loki Operator.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
+	AdminGroups []string `json:"adminGroups,omitempty"`
 }
 
 type ReplicationSpec struct {

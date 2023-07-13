@@ -1,6 +1,8 @@
 package manifests
 
 import (
+	"strings"
+
 	"github.com/ViaQ/logerr/v2/kverrors"
 
 	"github.com/imdario/mergo"
@@ -62,13 +64,18 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string) error {
+func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string, adminGroups []string) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
-		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption)
+		adminGroupsStr := "system:cluster-admins,cluster-admin,dedicated-admin"
+		if len(adminGroups) != 0 {
+			adminGroupsStr = strings.Join(adminGroups, ",")
+		}
+
+		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroupsStr)
 	}
 
 	return nil
