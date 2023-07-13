@@ -120,6 +120,21 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 
 			filters = filters[:0]
 			rest = rest[:0]
+		case *LabelParserExpr:
+			rest = append(rest, f)
+
+			// unpack modifies the contents of the line so any line filter
+			// originally after an unpack must still be after the same
+			// line_format.
+			if f.Op == OpParserTypeUnpack {
+				if len(filters) > 0 {
+					result = append(result, combineFilters(filters))
+				}
+				result = append(result, rest...)
+
+				filters = filters[:0]
+				rest = rest[:0]
+			}
 		default:
 			rest = append(rest, f)
 		}
