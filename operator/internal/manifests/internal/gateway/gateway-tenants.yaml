@@ -1,20 +1,17 @@
-tenants:
-{{- if $l := . -}}
-{{- if eq $l.Stack.Tenants.Mode "static" -}}
-{{- range $spec := $l.Stack.Tenants.Authentication }}
-- name: {{ $spec.TenantName }}
-  id: {{ $spec.TenantID }}
+{{- define "oidc" }}
+  {{ $l := index . 0 }}
+  {{ $spec := index . 1 }}
   oidc:
     {{- range $secret := $l.TenantSecrets }}
     {{- if eq $secret.TenantName $spec.TenantName -}}
-    {{ if $secret.ClientID }}
-    clientID: {{ $secret.ClientID }}
+    {{ if $secret.OIDC.ClientID }}
+    clientID: {{ $secret.OIDC.ClientID }}
     {{- end -}}
-    {{ if $secret.ClientSecret }}
-    clientSecret: {{ $secret.ClientSecret }}
+    {{ if $secret.OIDC.ClientSecret }}
+    clientSecret: {{ $secret.OIDC.ClientSecret }}
     {{- end -}}
-    {{ if $secret.IssuerCAPath }}
-    issuerCAPath: {{ $secret.IssuerCAPath }}
+    {{ if $secret.OIDC.IssuerCAPath }}
+    issuerCAPath: {{ $secret.OIDC.IssuerCAPath }}
     {{- end -}}
     {{- end -}}
     {{- end }}
@@ -28,6 +25,15 @@ tenants:
     {{- if $spec.OIDC.GroupClaim }}
     groupClaim: {{ $spec.OIDC.GroupClaim }}
     {{- end }}
+{{- end }}
+
+tenants:
+{{- if $l := . -}}
+{{- if eq $l.Stack.Tenants.Mode "static" -}}
+{{- range $spec := $l.Stack.Tenants.Authentication }}
+- name: {{ $spec.TenantName }}
+  id: {{ $spec.TenantID }}
+  {{ template "oidc" (arr $l $spec) }}
   opa:
     query: data.lokistack.allow
     paths:
@@ -39,28 +45,7 @@ tenants:
 {{- range $spec := $tenant.Authentication }}
 - name: {{ $spec.TenantName }}
   id: {{ $spec.TenantID }}
-  oidc:
-    {{- range $secret := $l.TenantSecrets }}
-    {{- if eq $secret.TenantName $spec.TenantName -}}
-    {{ if $secret.ClientID }}
-    clientID: {{ $secret.ClientID }}
-    {{- end -}}
-    {{ if $secret.ClientSecret }}
-    clientSecret: {{ $secret.ClientSecret }}
-    {{- end -}}
-    {{ if $secret.IssuerCAPath }}
-    issuerCAPath: {{ $secret.IssuerCAPath }}
-    {{- end -}}
-    {{- end -}}
-    {{- end }}
-    issuerURL: {{ $spec.OIDC.IssuerURL }}
-    redirectURL: {{ $spec.OIDC.RedirectURL }}
-    {{- if $spec.OIDC.UsernameClaim }}
-    usernameClaim: {{ $spec.OIDC.UsernameClaim }}
-    {{- end -}}
-    {{- if $spec.OIDC.GroupClaim }}
-    groupClaim: {{ $spec.OIDC.GroupClaim }}
-    {{- end }}
+ {{ template "oidc" (arr $l $spec) }} 
   opa:
     url: {{ $tenant.Authorization.OPA.URL }}
 {{- end -}}
