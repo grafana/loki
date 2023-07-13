@@ -3,6 +3,7 @@ package marshal
 import (
 	"fmt"
 	"strconv"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -90,24 +91,18 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 		return loghttp.Stream{}, errors.Wrapf(err, "err while creating labelset for %s", s.Labels)
 	}
 
-	ret := loghttp.Stream{
-		Labels:  labels,
-		Entries: make([]loghttp.Entry, len(s.Entries)),
+	// Avoid a nil entries slice to be consistent with the decoding
+	entries := []loghttp.Entry{}
+	if len(s.Entries) > 0 {
+		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries))
 	}
 
-	for i, e := range s.Entries {
-		ret.Entries[i] = NewEntry(e)
+	ret := loghttp.Stream{
+		Labels:  labels,
+		Entries: entries,
 	}
 
 	return ret, nil
-}
-
-// NewEntry constructs an Entry from a logproto.Entry
-func NewEntry(e logproto.Entry) loghttp.Entry {
-	return loghttp.Entry{
-		Timestamp: e.Timestamp,
-		Line:      e.Line,
-	}
 }
 
 func NewScalar(s promql.Scalar) loghttp.Scalar {
@@ -315,6 +310,18 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
+		if len(e.NonIndexedLabels) > 0 {
+			s.WriteMore()
+			s.WriteObjectStart()
+			for i, lbl := range e.NonIndexedLabels {
+				if i > 0 {
+					s.WriteMore()
+				}
+				s.WriteObjectField(lbl.Name)
+				s.WriteString(lbl.Value)
+			}
+			s.WriteObjectEnd()
+		}
 		s.WriteArrayEnd()
 
 		s.Flush()

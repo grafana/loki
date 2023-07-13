@@ -164,7 +164,7 @@ func NewInstanceRegisterDelegate(state InstanceState, tokenCount int) InstanceRe
 	}
 }
 
-func (d InstanceRegisterDelegate) OnRingInstanceRegister(_ *BasicLifecycler, ringDesc Desc, instanceExists bool, instanceID string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
+func (d InstanceRegisterDelegate) OnRingInstanceRegister(l *BasicLifecycler, ringDesc Desc, instanceExists bool, _ string, instanceDesc InstanceDesc) (InstanceState, Tokens) {
 	// Keep the existing tokens if any, otherwise start with a clean situation.
 	var tokens []uint32
 	if instanceExists {
@@ -172,7 +172,7 @@ func (d InstanceRegisterDelegate) OnRingInstanceRegister(_ *BasicLifecycler, rin
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := GenerateTokens(d.tokenCount-len(tokens), takenTokens)
+	newTokens := l.GetTokenGenerator().GenerateTokens(d.tokenCount-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)
