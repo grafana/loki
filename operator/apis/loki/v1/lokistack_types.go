@@ -956,6 +956,8 @@ const (
 	ReasonMissingGatewayTenantConfigMap LokiStackConditionReason = "MissingGatewayTenantConfigMap"
 	// ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.
 	ReasonInvalidGatewayTenantSecret LokiStackConditionReason = "InvalidGatewayTenantSecret"
+	// ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.
+	ReasonInvalidGatewayTenantConfigMap LokiStackConditionReason = "InvalidGatewayTenantConfigMap"
 	// ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config
 	ReasonMissingGatewayAuthenticationConfig LokiStackConditionReason = "MissingGatewayTenantAuthenticationConfig"
 	// ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.

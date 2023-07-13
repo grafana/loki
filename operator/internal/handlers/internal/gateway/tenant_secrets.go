@@ -48,6 +48,7 @@ func GetTenantSecrets(
 				}
 			}
 			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
+				TenantName: tenant.TenantName,
 				OIDCSecret: oidcSecret,
 			})
 		case tenant.MTLS != nil:
@@ -72,8 +73,8 @@ func GetTenantSecrets(
 			ca, err := extractCA(&configMap, tenant.MTLS.CASpec.CAKey)
 			if err != nil {
 				return nil, &status.DegradedError{
-					Message: "Invalid gateway tenant secret contents",
-					Reason:  lokiv1.ReasonInvalidGatewayTenantSecret,
+					Message: "Invalid gateway tenant configmap contents",
+					Reason:  lokiv1.ReasonInvalidGatewayTenantConfigMap,
 					Requeue: true,
 				}
 			}
