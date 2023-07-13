@@ -4,9 +4,14 @@
 package sketch
 
 import (
+	"fmt"
+	"math/rand"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/DmitriyVTitov/size"
+	"github.com/stretchr/testify/require"
 )
 
 // TODO update this test based on new sizes
