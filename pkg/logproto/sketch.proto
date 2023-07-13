@@ -14,7 +14,13 @@ message CountMinSketch {
 
 message TopK {
   CountMinSketch cms = 1;
-  repeated string labels = 2;
+
+  message Pair {
+    string event = 1;
+    uint32 count = 2;
+  }
+  repeated Pair list = 2;
+
   bytes hyperloglog = 3;
 }
 
