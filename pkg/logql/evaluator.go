@@ -152,9 +152,9 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev Evaluator) error {
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod  time.Duration
-	querier            Querier
-	vectorAggEvaluator func(context.Context, SampleEvaluator, *syntax.VectorAggregationExpr, Params) (StepEvaluator, error)
+	maxLookBackPeriod     time.Duration
+	querier               Querier
+	newVectorAggEvaluator func(context.Context, SampleEvaluator, *syntax.VectorAggregationExpr, Params) (StepEvaluator, error)
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
@@ -163,7 +163,7 @@ func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *Defa
 		querier:           querier,
 		maxLookBackPeriod: maxLookBackPeriod,
 
-		vectorAggEvaluator: vectorAggEvaluator,
+		newVectorAggEvaluator: newVectorAggEvaluator,
 	}
 }
 
@@ -209,10 +209,10 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return ev.vectorAggEvaluator(ctx, nextEv, e, q)
+		return ev.newVectorAggEvaluator(ctx, nextEv, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -225,7 +225,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.BinOpExpr:
 		return binOpStepEvaluator(ctx, nextEv, e, q)
 	case *syntax.LabelReplaceExpr:
@@ -241,7 +241,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	}
 }
 
-func vectorAggEvaluator(
+func newVectorAggEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,
 	expr *syntax.VectorAggregationExpr,
@@ -453,7 +453,7 @@ func vectorAggEvaluator(
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
 
-func rangeAggEvaluator(
+func newRangeAggEvaluator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	q Params,
