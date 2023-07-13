@@ -3,6 +3,7 @@ package logql
 import (
 	"context"
 	"hash/fnv"
+	"strconv"
 	"strings"
 	"time"
 
@@ -41,7 +42,7 @@ var (
 		Help:      "Distribution of bytes processed per second for LogQL queries.",
 		// 50MB 100MB 200MB 400MB 600MB 800MB 1GB 2GB 3GB 4GB 5GB 6GB 7GB 8GB 9GB 10GB 15GB 20GB 30GB, 40GB 50GB 60GB
 		Buckets: []float64{50 * 1e6, 100 * 1e6, 400 * 1e6, 600 * 1e6, 800 * 1e6, 1 * 1e9, 2 * 1e9, 3 * 1e9, 4 * 1e9, 5 * 1e9, 6 * 1e9, 7 * 1e9, 8 * 1e9, 9 * 1e9, 10 * 1e9, 15 * 1e9, 20 * 1e9, 30 * 1e9, 40 * 1e9, 50 * 1e9, 60 * 1e9},
-	}, []string{"status_code", "type", "range", "latency_type"})
+	}, []string{"status_code", "type", "range", "latency_type", "shards"})
 	execLatency = promauto.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "logql_querystats_latency_seconds",
@@ -156,7 +157,9 @@ func RecordRangeAndInstantQueryMetrics(
 		logValues...,
 	)
 
-	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType).
+	shards := strconv.FormatInt(stats.Summary.Shards, 10)
+
+	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, shards).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
@@ -209,7 +212,8 @@ func RecordLabelQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
+	shards := strconv.FormatInt(stats.Summary.Shards, 10)
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, shards).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, "").
 		Observe(stats.Summary.ExecTime)
@@ -260,7 +264,8 @@ func RecordSeriesQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType).
+	shards := strconv.FormatInt(stats.Summary.Shards, 10)
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, shards).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, "").
 		Observe(stats.Summary.ExecTime)
