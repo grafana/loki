@@ -385,7 +385,7 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 		},
 	}
 	optsWithNoPodAntiAffinity := Options{
-		// We need to set name here to propperly validate default PodAntiAffinity
+		// We need to set name here to properly validate default PodAntiAffinity
 		Name: "abcd",
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
@@ -393,6 +393,9 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 					Replicas: 1,
 				},
 				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Gateway: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
@@ -428,6 +431,12 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
 					},
 				},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+					PodAntiAffinity: &corev1.PodAntiAffinity{
+						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
+					},
+				},
 				Ingester: &lokiv1.LokiComponentSpec{
 					Replicas: 1,
 					PodAntiAffinity: &corev1.PodAntiAffinity{
@@ -462,11 +471,19 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 		},
 	}
 
+	t.Run("gateway", func(t *testing.T) {
+		assert.Equal(t, expectedPATerm, NewGatewayDeployment(optsWithPodAntiAffinity, "").Spec.Template.Spec.Affinity.PodAntiAffinity)
+		affinity := NewGatewayDeployment(optsWithNoPodAntiAffinity, "").Spec.Template.Spec.Affinity
+		if affinity != nil {
+			assert.Equal(t, expectedDefaultPodAntiAffinity("lokistack-gateway"), affinity.PodAntiAffinity)
+		}
+	})
+
 	t.Run("distributor", func(t *testing.T) {
 		assert.Equal(t, expectedPATerm, NewDistributorDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
 		affinity := NewDistributorDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
 		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
+			assert.Equal(t, expectedDefaultPodAntiAffinity("distributor"), affinity.PodAntiAffinity)
 		}
 	})
 
@@ -482,7 +499,7 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 		assert.Equal(t, expectedPATerm, NewQuerierDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
 		affinity := NewQuerierDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
 		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
+			assert.Equal(t, expectedDefaultPodAntiAffinity("querier"), affinity.PodAntiAffinity)
 		}
 	})
 
@@ -498,7 +515,7 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 		assert.Equal(t, expectedPATerm, NewCompactorStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
 		affinity := NewCompactorStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
 		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
+			assert.Equal(t, expectedDefaultPodAntiAffinity("compactor"), affinity.PodAntiAffinity)
 		}
 	})
 
@@ -506,7 +523,7 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 		assert.Equal(t, expectedPATerm, NewIndexGatewayStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
 		affinity := NewIndexGatewayStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
 		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
+			assert.Equal(t, expectedDefaultPodAntiAffinity("index-gateway"), affinity.PodAntiAffinity)
 		}
 	})
 
