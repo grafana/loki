@@ -53,20 +53,23 @@ type Engine interface {
 
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
-	querier Querier
-	cfg     Config
-	limits  Limits
-	engine  Engine
+	querier  Querier
+	cfg      Config
+	limits   Limits
+	engine   Engine
+	pengine  Engine // Probabilisitic query engine.
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
 func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger) *QuerierAPI {
 	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
+	pengine := logql.NewProbabilisticEngine(cfg.Engine, querier, limits, logger)
 	return &QuerierAPI{
 		cfg:     cfg,
 		limits:  limits,
 		querier: querier,
 		engine:  engine,
+		pengine: pengine,
 	}
 }
 
@@ -95,6 +98,44 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Shards,
 	)
 	query := q.engine.Query(params)
+	result, err := query.Exec(ctx)
+	if err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
+		serverutil.WriteError(err, w)
+	}
+}
+
+// ProbabilisticRangeQueryHandler is a http.HandlerFunc similar to
+// RangeQueryHandler but uses probabilistic data structures to approximate
+// results.
+func (q *QuerierAPI) ProbabilisticRangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	request, err := loghttp.ParseRangeQuery(r)
+	if err != nil {
+		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
+		return
+	}
+
+	ctx := r.Context()
+	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
+		serverutil.WriteError(err, w)
+		return
+	}
+
+	params := logql.NewLiteralParams(
+		request.Query,
+		request.Start,
+		request.End,
+		request.Step,
+		request.Interval,
+		request.Direction,
+		request.Limit,
+		request.Shards,
+	)
+	query := q.pengine.Query(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)

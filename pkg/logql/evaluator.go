@@ -238,6 +238,16 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	}
 }
 
+type ProbabilisticEvaluator struct {
+	DefaultEvaluator
+}
+
+// NewDefaultEvaluator constructs a DefaultEvaluator
+func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
+	d := NewDefaultEvaluator(querier, maxLookBackPeriod)
+	return &ProbabilisticEvaluator{DefaultEvaluator: *d}
+}
+
 func vectorAggEvaluator(
 	ctx context.Context,
 	ev SampleEvaluator,

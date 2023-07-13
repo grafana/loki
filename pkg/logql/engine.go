@@ -180,6 +180,22 @@ func (ng *Engine) Query(params Params) Query {
 	}
 }
 
+// NewProbabilisticEngine creates a new LogQL Engine.
+func NewProbabilisticEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
+	queryTimeout := opts.Timeout
+	opts.applyDefault()
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+	return &Engine{
+		logger:    logger,
+		evaluator: NewProbabilisticEvaluator(q, opts.MaxLookBackPeriod),
+		limits:    l,
+		Timeout:   queryTimeout,
+		opts:      opts,
+	}
+}
+
 // Query is a LogQL query to be executed.
 type Query interface {
 	// Exec processes the query.
