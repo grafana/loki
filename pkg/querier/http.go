@@ -438,7 +438,6 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 // Returns N values where N is the time range / step.
 func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
 	rawReq, err := loghttp.ParseVolumeRangeQuery(r)
-
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -451,6 +450,7 @@ func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) 
 		Step:         rawReq.Step.Milliseconds(),
 		Limit:        int32(rawReq.Limit),
 		TargetLabels: rawReq.TargetLabels,
+		AggregateBy:  rawReq.AggregateBy,
 	}
 
 	q.seriesVolumeHandler(r.Context(), r, req, w)
@@ -460,7 +460,6 @@ func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) 
 // Returns a single value for the time range.
 func (q *QuerierAPI) VolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
 	rawReq, err := loghttp.ParseVolumeInstantQuery(r)
-
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
@@ -473,6 +472,7 @@ func (q *QuerierAPI) VolumeInstantHandler(w http.ResponseWriter, r *http.Request
 		Step:         0,
 		Limit:        int32(rawReq.Limit),
 		TargetLabels: rawReq.TargetLabels,
+		AggregateBy:  rawReq.AggregateBy,
 	}
 
 	q.seriesVolumeHandler(r.Context(), r, req, w)

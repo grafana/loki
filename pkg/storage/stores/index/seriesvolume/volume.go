@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	MatchAny     = "{}"
-	DefaultLimit = 100
+	MatchAny           = "{}"
+	DefaultLimit       = 100
+	DefaultAggregateBy = "series"
 
 	ErrVolumeMaxSeriesHit = "the query hit the max number of series limit (limit: %d series)"
 )
@@ -90,5 +91,16 @@ func MapToVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.V
 	return &logproto.VolumeResponse{
 		Volumes: volumes,
 		Limit:   int32(limit),
+	}
+}
+
+func ValidateAggregateBy(aggregateBy string) bool {
+	switch aggregateBy {
+	case "labels":
+		return true
+	case "series":
+		return true
+	default:
+		return false
 	}
 }

@@ -39,7 +39,7 @@ func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return args.Get(0).(*fetcher.Fetcher)
 }
 
-func (s *storeMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *storeMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(userID, from, through, targetLabels, matchers)
 
 	if args.Get(0) == nil {
@@ -63,7 +63,7 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (i *ingesterQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (i *ingesterQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := i.Called(userID, from, through, targetLabels, matchers)
 
 	if args.Get(0) == nil {
@@ -334,7 +334,7 @@ func TestVolume(t *testing.T) {
 	}
 	asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
 
-	vol, err := asyncStore.Volume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil, nil...)
+	vol, err := asyncStore.Volume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil, "labels", nil...)
 	require.NoError(t, err)
 
 	require.Equal(t, &logproto.VolumeResponse{

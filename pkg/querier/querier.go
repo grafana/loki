@@ -783,8 +783,6 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 		return nil, err
 	}
 
-	// TODO(masslessparticle): I think we can put the target labels/matchers stuff here
-
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 
@@ -803,6 +801,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 		"matchers", syntax.MatchersString(matchers),
 		"limit", req.Limit,
 		"targetLabels", req.TargetLabels,
+		"aggregateBy", req.AggregateBy,
 	)
 
 	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
@@ -830,6 +829,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 			model.TimeFromUnix(ingesterQueryInterval.end.Unix()),
 			req.Limit,
 			req.TargetLabels,
+			req.AggregateBy,
 			matchers...,
 		)
 		if err != nil {
@@ -847,6 +847,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 			model.TimeFromUnix(storeQueryInterval.end.Unix()),
 			req.Limit,
 			req.TargetLabels,
+			req.AggregateBy,
 			matchers...,
 		)
 		if err != nil {

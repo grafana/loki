@@ -70,6 +70,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 					Limit:        volReq.Limit,
 					Step:         volReq.Step,
 					TargetLabels: volReq.TargetLabels,
+					AggregateBy:  volReq.AggregateBy,
 				}
 			})
 

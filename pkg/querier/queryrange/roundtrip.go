@@ -332,7 +332,9 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			"type", "volume",
 			"query", volumeQuery.Query,
 			"length", volumeQuery.Start.Sub(volumeQuery.End),
-			"limit", volumeQuery.Limit)
+			"limit", volumeQuery.Limit,
+			"aggregate_by", volumeQuery.AggregateBy,
+		)
 
 		return r.seriesVolume.RoundTrip(req)
 	case VolumeRangeOp:
@@ -346,7 +348,9 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			"query", volumeQuery.Query,
 			"length", volumeQuery.End.Sub(volumeQuery.Start),
 			"step", volumeQuery.Step,
-			"limit", volumeQuery.Limit)
+			"limit", volumeQuery.Limit,
+			"aggregate_by", volumeQuery.AggregateBy,
+		)
 
 		return r.seriesVolume.RoundTrip(req)
 	default:

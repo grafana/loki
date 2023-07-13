@@ -406,6 +406,7 @@ func TestVolumeHandler(t *testing.T) {
 
 				request := calls[0].Arguments[1].(*logproto.VolumeRequest)
 				require.Equal(t, `{foo="bar"}`, request.Matchers)
+				require.Equal(t, "series", request.AggregateBy)
 
 				require.Equal(
 					t,

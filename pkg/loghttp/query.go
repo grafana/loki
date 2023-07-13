@@ -473,10 +473,11 @@ type VolumeInstantQuery struct {
 	Query        string
 	Limit        uint32
 	TargetLabels []string
+	AggregateBy  string
 }
 
 func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
-	err := labelVolumeLimit(r)
+	err := volumeLimit(r)
 	if err != nil {
 		return nil, err
 	}
@@ -486,10 +487,16 @@ func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
 		return nil, err
 	}
 
+	aggregateBy, err := volumeAggregateBy(r)
+	if err != nil {
+		return nil, err
+	}
+
 	svInstantQuery := VolumeInstantQuery{
 		Query:        result.Query,
 		Limit:        result.Limit,
 		TargetLabels: targetLabels(r),
+		AggregateBy:  aggregateBy,
 	}
 
 	svInstantQuery.Start, svInstantQuery.End, err = bounds(r)
@@ -511,15 +518,21 @@ type VolumeRangeQuery struct {
 	Query        string
 	Limit        uint32
 	TargetLabels []string
+	AggregateBy  string
 }
 
 func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
-	err := labelVolumeLimit(r)
+	err := volumeLimit(r)
 	if err != nil {
 		return nil, err
 	}
 
 	result, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	aggregateBy, err := volumeAggregateBy(r)
 	if err != nil {
 		return nil, err
 	}
@@ -531,6 +544,7 @@ func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
 		Query:        result.Query,
 		Limit:        result.Limit,
 		TargetLabels: targetLabels(r),
+		AggregateBy:  aggregateBy,
 	}, nil
 }
 
@@ -543,7 +557,7 @@ func targetLabels(r *http.Request) []string {
 	return lbls
 }
 
-func labelVolumeLimit(r *http.Request) error {
+func volumeLimit(r *http.Request) error {
 	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
 	if err != nil {
 		return err
@@ -559,4 +573,17 @@ func labelVolumeLimit(r *http.Request) error {
 	}
 
 	return nil
+}
+
+func volumeAggregateBy(r *http.Request) (string, error) {
+	l := r.Form.Get("aggregateBy")
+	if l == "" {
+		return seriesvolume.DefaultAggregateBy, nil
+	}
+
+	if seriesvolume.ValidateAggregateBy(l) {
+		return l, nil
+	}
+
+	return "", errors.New("invalid aggregation option")
 }

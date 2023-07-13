@@ -319,7 +319,7 @@ func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through mod
 	return &merged, nil
 }
 
-func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	matcherString := "{}"
 	if len(matchers) > 0 {
 		matcherString = syntax.MatchersString(matchers)
@@ -332,6 +332,7 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 			Matchers:     matcherString,
 			Limit:        limit,
 			TargetLabels: targetLabels,
+			AggregateBy:  aggregateBy,
 		})
 	})
 

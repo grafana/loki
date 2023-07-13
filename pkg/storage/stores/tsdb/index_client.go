@@ -246,7 +246,7 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
-func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Volume")
 	defer sp.Finish()
 
@@ -266,7 +266,7 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 
 	acc := seriesvolume.NewAccumulator(limit, c.limits.VolumeMaxSeries(userID))
 	for _, interval := range intervals {
-		if err := c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, matchers...); err != nil {
+		if err := c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, aggregateBy, matchers...); err != nil {
 			return nil, err
 		}
 	}
@@ -278,6 +278,7 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 		"shard", shard,
 		"intervals", len(intervals),
 		"limit", limit,
+		"aggregateBy", aggregateBy,
 	)
 
 	if err != nil {

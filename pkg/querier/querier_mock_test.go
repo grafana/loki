@@ -367,7 +367,7 @@ func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	return nil, nil
 }
 
-func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }

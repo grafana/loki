@@ -125,13 +125,13 @@ func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, th
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
-func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
 	}
 
-	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, matchers...)
+	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
 type resultAccumulator struct {

@@ -313,8 +313,40 @@ func Test_ParseVolumeInstantQuery(t *testing.T) {
 		Query:        `{foo="bar"}`,
 		Limit:        1000,
 		TargetLabels: []string{"foo", "bar"},
+		AggregateBy:  "series",
 	}
 	require.Equal(t, expected, actual)
+
+	t.Run("aggregate by", func(t *testing.T) {
+		url := `?query={foo="bar"}` +
+			`&start=2017-06-10T21:42:24.760738998Z` +
+			`&end=2017-07-10T21:42:24.760738998Z` +
+			`&limit=1000` +
+			`&step=3600` +
+			`&targetLabels=foo,bar`
+
+		t.Run("labels", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=labels`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err := ParseVolumeInstantQuery(req)
+			require.NoError(t, err)
+
+			require.Equal(t, "labels", actual.AggregateBy)
+		})
+
+		t.Run("invalid", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=invalid`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			_, err = ParseVolumeInstantQuery(req)
+			require.EqualError(t, err, "invalid aggregation option")
+		})
+	})
 }
 
 func Test_ParseVolumeRangeQuery(t *testing.T) {
@@ -341,6 +373,38 @@ func Test_ParseVolumeRangeQuery(t *testing.T) {
 		Limit:        1000,
 		Step:         time.Hour,
 		TargetLabels: []string{"foo", "bar"},
+		AggregateBy:  "series",
 	}
 	require.Equal(t, expected, actual)
+
+	t.Run("aggregate by", func(t *testing.T) {
+		url := `?query={foo="bar"}` +
+			`&start=2017-06-10T21:42:24.760738998Z` +
+			`&end=2017-07-10T21:42:24.760738998Z` +
+			`&limit=1000` +
+			`&step=3600` +
+			`&targetLabels=foo,bar`
+
+		t.Run("labels", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=labels`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			actual, err := ParseVolumeRangeQuery(req)
+			require.NoError(t, err)
+
+			require.Equal(t, "labels", actual.AggregateBy)
+		})
+
+		t.Run("invalid", func(t *testing.T) {
+			req := &http.Request{URL: mustParseURL(url + `&aggregateBy=invalid`)}
+
+			err := req.ParseForm()
+			require.NoError(t, err)
+
+			_, err = ParseVolumeRangeQuery(req)
+			require.EqualError(t, err, "invalid aggregation option")
+		})
+	})
 }

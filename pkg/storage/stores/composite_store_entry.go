@@ -132,7 +132,7 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
 }
 
-func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
 	defer sp.Finish()
 
@@ -150,9 +150,10 @@ func (c *storeEntry) Volume(ctx context.Context, userID string, from, through mo
 		"matchers", syntax.MatchersString(matchers),
 		"err", err,
 		"limit", limit,
+		"aggregateBy", aggregateBy,
 	)
 
-	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, matchers...)
+	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 }
 
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {

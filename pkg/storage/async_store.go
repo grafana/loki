@@ -28,7 +28,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -165,7 +165,7 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 	return &merged, nil
 }
 
-func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.Volume")
 	defer sp.Finish()
 
@@ -176,7 +176,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 
 	if a.shouldQueryIngesters(through, model.Now()) {
 		jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-			vols, err := a.ingesterQuerier.Volume(ctx, userID, from, through, limit, targetLabels, matchers...)
+			vols, err := a.ingesterQuerier.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 			level.Debug(logger).Log(
 				"msg", "queried label volumes",
 				"matchers", matchersStr,
@@ -186,7 +186,7 @@ func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through mo
 		})
 	}
 	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
-		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, matchers...)
+		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
 		level.Debug(logger).Log(
 			"msg", "queried label volume",
 			"matchers", matchersStr,

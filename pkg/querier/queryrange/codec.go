@@ -288,6 +288,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Limit:        int32(req.Limit),
 			Step:         0,
 			TargetLabels: req.TargetLabels,
+			AggregateBy:  req.AggregateBy,
 		}, err
 	case VolumeRangeOp:
 		req, err := loghttp.ParseVolumeRangeQuery(r)
@@ -302,6 +303,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Limit:        int32(req.Limit),
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
+			AggregateBy:  req.AggregateBy,
 		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
@@ -436,10 +438,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *logproto.VolumeRequest:
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
-			"query": []string{request.GetQuery()},
-			"limit": []string{fmt.Sprintf("%d", request.Limit)},
+			"start":       []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
+			"end":         []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
+			"query":       []string{request.GetQuery()},
+			"limit":       []string{fmt.Sprintf("%d", request.Limit)},
+			"aggregateBy": []string{request.AggregateBy},
 		}
 
 		if len(request.TargetLabels) > 0 {

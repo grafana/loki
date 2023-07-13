@@ -173,7 +173,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -1164,7 +1164,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 			return instance.GetVolume(ctx, req)
 		}),
 		f(func() (*logproto.VolumeResponse, error) {
-			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, matchers...)
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
 		}),
 	}
 	resps := make([]*logproto.VolumeResponse, len(jobs))
