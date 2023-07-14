@@ -29,7 +29,7 @@ func TestIndexStatsCache(t *testing.T) {
 	cacheMiddleware, err := NewIndexStatsCacheMiddleware(
 		log.NewNopLogger(),
 		WithSplitByLimits(fakeLimits{}, 24*time.Hour),
-		LokiCodec,
+		DefaultCodec,
 		c,
 		nil,
 		nil,
@@ -170,7 +170,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 			cacheMiddleware, err := NewIndexStatsCacheMiddleware(
 				log.NewNopLogger(),
 				WithSplitByLimits(lim, 24*time.Hour),
-				LokiCodec,
+				DefaultCodec,
 				c,
 				nil,
 				nil,

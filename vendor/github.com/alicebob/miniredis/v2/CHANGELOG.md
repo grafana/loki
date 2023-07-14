@@ -1,6 +1,21 @@
 ## Changelog
 
 
+### v2.30.4
+
+- fix ZADD LT/LG (thanks @sejin-P)
+- fix COPY (thanks @jerargus)
+- quicker SPOP
+
+
+### v2.30.3
+
+- fix lua error_reply (thanks @pkierski)
+- fix use of blocking functions in lua
+- support for ZMSCORE (thanks @lsgndln)
+- lua cache (thanks @tonyhb)
+
+
 ### v2.30.2
 
 - support MINID in XADD  (thanks @nathan-cormier)

@@ -2107,6 +2107,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,
     "useManagedIdentity": false,

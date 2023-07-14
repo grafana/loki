@@ -288,9 +288,6 @@ func (m *VolumeRequest) GetEnd() int64 {
 	return int64(m.Through)
 }
 
-// GetStep returns the step of the request in milliseconds.
-func (m *VolumeRequest) GetStep() int64 { return 0 }
-
 // GetQuery returns the query of the request.
 func (m *VolumeRequest) GetQuery() string {
 	return m.Matchers

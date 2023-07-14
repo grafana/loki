@@ -3,8 +3,7 @@ title: Grafana Loki HTTP API
 menuTitle: "HTTP API"
 description: Loki exposes REST endpoints for operating on a Loki cluster. This section details the REST endpoints.
 aliases:
-- /docs/loki/latest/api
-- /docs/loki/latest/reference
+- ../api/
 weight: 100
 ---
 

@@ -19,7 +19,12 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 		// correctly parse the error in parent callers (eg. gRPC response status code extraction).
 		return nil, errors.Cause(res.Err)
 	}
-	switch v := res.Value.(type) {
+
+	return FromValue((res.Value))
+}
+
+func FromValue(value parser.Value) ([]SampleStream, error) {
+	switch v := value.(type) {
 	case promql.Scalar:
 		return []SampleStream{
 			{
@@ -59,7 +64,7 @@ func FromResult(res *promql.Result) ([]SampleStream, error) {
 
 	}
 
-	return nil, errors.Errorf("Unexpected value type: [%s]", res.Value.Type())
+	return nil, errors.Errorf("Unexpected value type: [%s]", value.Type())
 }
 
 func mapLabels(ls labels.Labels) []logproto.LabelAdapter {

@@ -123,13 +123,8 @@ const (
 var (
 	defaultTimeoutConfig = calculateHTTPTimeouts(lokiDefaultQueryTimeout)
 
-	defaultConfigMapMode      = int32(420)
-	volumeFileSystemMode      = corev1.PersistentVolumeFilesystem
-	podAntiAffinityComponents = map[string]struct{}{
-		LabelIngesterComponent:      {},
-		LabelRulerComponent:         {},
-		LabelQueryFrontendComponent: {},
-	}
+	defaultConfigMapMode = int32(420)
+	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
 )
 
 func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
@@ -153,19 +148,6 @@ func componentInstanceLabels(component string, stackName string) map[string]stri
 		kubernetesInstanceLabel:  stackName,
 		kubernetesComponentLabel: component,
 	}
-}
-
-// defaultTopologySpreadConstraints returns a topology spread contraint that will
-// instruct the scheduler to try and schedule pods from the same component in different nodes
-func defaultTopologySpreadConstraints(component string, stackName string) []corev1.TopologySpreadConstraint {
-	return []corev1.TopologySpreadConstraint{{
-		MaxSkew:     1,
-		TopologyKey: kubernetesNodeHostnameLabel,
-		LabelSelector: &metav1.LabelSelector{
-			MatchLabels: componentInstanceLabels(component, stackName),
-		},
-		WhenUnsatisfiable: corev1.ScheduleAnyway,
-	}}
 }
 
 func serviceAnnotations(serviceName string, enableSigningService bool) map[string]string {
@@ -510,10 +492,6 @@ func configureAffinity(componentLabel, stackName string, enableNodeAffinity bool
 	if cSpec.PodAntiAffinity != nil {
 		affinity.PodAntiAffinity = cSpec.PodAntiAffinity
 	}
-
-	if affinity.NodeAffinity == nil && affinity.PodAntiAffinity == nil {
-		return nil
-	}
 	return affinity
 }
 
@@ -545,11 +523,6 @@ func defaultNodeAffinity(enableNodeAffinity bool) *corev1.NodeAffinity {
 // defaultPodAntiAffinity for components in podAntiAffinityComponents will
 // configure pods, of a LokiStack, to preferably not run on the same node
 func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAffinity {
-	_, enablePodAntiAffinity := podAntiAffinityComponents[componentLabel]
-	if !enablePodAntiAffinity {
-		return nil
-	}
-
 	return &corev1.PodAntiAffinity{
 		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
 			{

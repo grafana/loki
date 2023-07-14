@@ -323,6 +323,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			stream.Labels, stream.Hash, err = d.parseStreamLabels(validationContext, stream.Labels, &stream)
 			if err != nil {
+				d.writeFailuresManager.Log(tenantID, err)
 				validationErrors.Add(err)
 				validation.DiscardedSamples.WithLabelValues(validation.InvalidLabels, tenantID).Add(float64(len(stream.Entries)))
 				bytes := 0
@@ -335,6 +336,7 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 
 			n := 0
 			pushSize := 0
+			prevTs := stream.Entries[0].Timestamp
 			for _, entry := range stream.Entries {
 				if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 					d.writeFailuresManager.Log(tenantID, err)
@@ -347,12 +349,15 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 				// If configured for this tenant, increment duplicate timestamps. Note, this is imperfect
 				// since Loki will accept out of order writes it doesn't account for separate
 				// pushes with overlapping time ranges having entries with duplicate timestamps
+
 				if validationContext.incrementDuplicateTimestamps && n != 0 {
 					// Traditional logic for Loki is that 2 lines with the same timestamp and
 					// exact same content will be de-duplicated, (i.e. only one will be stored, others dropped)
 					// To maintain this behavior, only increment the timestamp if the log content is different
-					if stream.Entries[n-1].Line != entry.Line {
-						stream.Entries[n].Timestamp = maxT(entry.Timestamp, stream.Entries[n-1].Timestamp.Add(1*time.Nanosecond))
+					if stream.Entries[n-1].Line != entry.Line && (entry.Timestamp == prevTs || entry.Timestamp == stream.Entries[n-1].Timestamp) {
+						stream.Entries[n].Timestamp = stream.Entries[n-1].Timestamp.Add(1 * time.Nanosecond)
+					} else {
+						prevTs = entry.Timestamp
 					}
 				}
 

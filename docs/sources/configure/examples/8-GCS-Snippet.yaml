@@ -1,0 +1,19 @@
+# This partial configuration uses GCS for chunk storage and uses BigTable for index storage
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: bigtable
+    object_store: gcs
+    schema: v11
+    index:
+      prefix: loki_index_
+      period: 168h
+
+storage_config:
+  bigtable:
+    instance: BIGTABLE_INSTANCE
+    project: BIGTABLE_PROJECT
+  gcs:
+    bucket_name: GCS_BUCKET_NAME
+    

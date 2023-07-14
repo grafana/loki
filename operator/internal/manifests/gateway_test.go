@@ -971,23 +971,23 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 			LokiStackGateway: true,
 		},
 		Stack: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Gateway: &lokiv1.LokiComponentSpec{
-					Replicas: rand.Int31(),
-				},
-			},
 			Replication: &lokiv1.ReplicationSpec{
 				Zones: []lokiv1.ZoneSpec{
 					{
 						TopologyKey: "zone",
-						MaxSkew:     3,
+						MaxSkew:     2,
 					},
 					{
 						TopologyKey: "region",
-						MaxSkew:     2,
+						MaxSkew:     1,
 					},
 				},
 				Factor: 1,
+			},
+			Template: &lokiv1.LokiTemplateSpec{
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: rand.Int31(),
+				},
 			},
 			Tenants: &lokiv1.TenantsSpec{
 				Mode: lokiv1.OpenshiftLogging,
@@ -999,18 +999,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 	dpl := obj[2].(*appsv1.Deployment)
 	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
 		{
-			MaxSkew:     1,
-			TopologyKey: kubernetesNodeHostnameLabel,
-			LabelSelector: &metav1.LabelSelector{
-				MatchLabels: map[string]string{
-					"app.kubernetes.io/component": "lokistack-gateway",
-					"app.kubernetes.io/instance":  "abcd",
-				},
-			},
-			WhenUnsatisfiable: corev1.ScheduleAnyway,
-		},
-		{
-			MaxSkew:           3,
+			MaxSkew:           2,
 			TopologyKey:       "zone",
 			WhenUnsatisfiable: "DoNotSchedule",
 			LabelSelector: &metav1.LabelSelector{
@@ -1021,7 +1010,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 			},
 		},
 		{
-			MaxSkew:           2,
+			MaxSkew:           1,
 			TopologyKey:       "region",
 			WhenUnsatisfiable: "DoNotSchedule",
 			LabelSelector: &metav1.LabelSelector{

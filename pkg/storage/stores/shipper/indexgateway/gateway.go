@@ -303,7 +303,7 @@ func (g *Gateway) GetSeriesVolume(ctx context.Context, req *logproto.VolumeReque
 		return nil, err
 	}
 
-	return g.indexQuerier.SeriesVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), matchers...)
+	return g.indexQuerier.SeriesVolume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, matchers...)
 }
 
 type failingIndexClient struct{}
