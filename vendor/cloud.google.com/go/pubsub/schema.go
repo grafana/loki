@@ -17,6 +17,7 @@ package pubsub
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"google.golang.org/api/option"
 
@@ -46,7 +47,8 @@ func NewSchemaClient(ctx context.Context, projectID string, opts ...option.Clien
 
 // SchemaConfig is a reference to a PubSub schema.
 type SchemaConfig struct {
-	// The name of the schema populated by the server. This field is read-only.
+	// Name of the schema.
+	// Format is `projects/{project}/schemas/{schema}`
 	Name string
 
 	// The type of the schema definition.
@@ -56,9 +58,17 @@ type SchemaConfig struct {
 	// the full definition of the schema that is a valid schema definition of
 	// the type specified in `type`.
 	Definition string
+
+	// RevisionID is the revision ID of the schema.
+	// This field is output only.
+	RevisionID string
+
+	// RevisionCreateTime is the timestamp that the revision was created.
+	// This field is output only.
+	RevisionCreateTime time.Time
 }
 
-// SchemaType is the possible shcema definition types.
+// SchemaType is the possible schema definition types.
 type SchemaType pb.Schema_Type
 
 const (
@@ -86,8 +96,22 @@ const (
 // SchemaSettings are settings for validating messages
 // published against a schema.
 type SchemaSettings struct {
-	Schema   string
+	// The name of the schema that messages published should be
+	// validated against. Format is `projects/{project}/schemas/{schema}`
+	Schema string
+
+	// The encoding of messages validated against the schema.
 	Encoding SchemaEncoding
+
+	// The minimum (inclusive) revision allowed for validating messages. If empty
+	// or not present, allow any revision to be validated against LastRevisionID or
+	// any revision created before.
+	FirstRevisionID string
+
+	// The maximum (inclusive) revision allowed for validating messages. If empty
+	// or not present, allow any revision to be validated against FirstRevisionID
+	// or any revision created after.
+	LastRevisionID string
 }
 
 func schemaSettingsToProto(schema *SchemaSettings) *pb.SchemaSettings {
@@ -95,8 +119,10 @@ func schemaSettingsToProto(schema *SchemaSettings) *pb.SchemaSettings {
 		return nil
 	}
 	return &pb.SchemaSettings{
-		Schema:   schema.Schema,
-		Encoding: pb.Encoding(schema.Encoding),
+		Schema:          schema.Schema,
+		Encoding:        pb.Encoding(schema.Encoding),
+		FirstRevisionId: schema.FirstRevisionID,
+		LastRevisionId:  schema.LastRevisionID,
 	}
 }
 
@@ -105,8 +131,10 @@ func protoToSchemaSettings(pbs *pb.SchemaSettings) *SchemaSettings {
 		return nil
 	}
 	return &SchemaSettings{
-		Schema:   pbs.Schema,
-		Encoding: SchemaEncoding(pbs.Encoding),
+		Schema:          pbs.Schema,
+		Encoding:        SchemaEncoding(pbs.Encoding),
+		FirstRevisionID: pbs.FirstRevisionId,
+		LastRevisionID:  pbs.LastRevisionId,
 	}
 }
 
@@ -134,9 +162,11 @@ func (s *SchemaConfig) toProto() *pb.Schema {
 
 func protoToSchemaConfig(pbs *pb.Schema) *SchemaConfig {
 	return &SchemaConfig{
-		Name:       pbs.Name,
-		Type:       SchemaType(pbs.Type),
-		Definition: pbs.Definition,
+		Name:               pbs.Name,
+		Type:               SchemaType(pbs.Type),
+		Definition:         pbs.Definition,
+		RevisionID:         pbs.RevisionId,
+		RevisionCreateTime: pbs.RevisionCreateTime.AsTime(),
 	}
 }
 
@@ -197,10 +227,58 @@ func (s *SchemaIterator) Next() (*SchemaConfig, error) {
 	return protoToSchemaConfig(pbs), nil
 }
 
+// ListSchemaRevisions lists all schema revisions for the named schema.
+func (c *SchemaClient) ListSchemaRevisions(ctx context.Context, schemaID string, view SchemaView) *SchemaIterator {
+	return &SchemaIterator{
+		it: c.sc.ListSchemaRevisions(ctx, &pb.ListSchemaRevisionsRequest{
+			Name: fmt.Sprintf("projects/%s/schemas/%s", c.projectID, schemaID),
+			View: pb.SchemaView(view),
+		}),
+	}
+}
+
+// CommitSchema commits a new schema revision to an existing schema.
+func (c *SchemaClient) CommitSchema(ctx context.Context, schemaID string, s SchemaConfig) (*SchemaConfig, error) {
+	req := &pb.CommitSchemaRequest{
+		Name:   fmt.Sprintf("projects/%s/schemas/%s", c.projectID, schemaID),
+		Schema: s.toProto(),
+	}
+	pbs, err := c.sc.CommitSchema(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return protoToSchemaConfig(pbs), nil
+}
+
+// RollbackSchema creates a new schema revision that is a copy of the provided revision.
+func (c *SchemaClient) RollbackSchema(ctx context.Context, schemaID, revisionID string) (*SchemaConfig, error) {
+	req := &pb.RollbackSchemaRequest{
+		Name:       fmt.Sprintf("projects/%s/schemas/%s", c.projectID, schemaID),
+		RevisionId: revisionID,
+	}
+	pbs, err := c.sc.RollbackSchema(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	return protoToSchemaConfig(pbs), nil
+}
+
+// DeleteSchemaRevision deletes a specific schema revision.
+func (c *SchemaClient) DeleteSchemaRevision(ctx context.Context, schemaID, revisionID string) (*SchemaConfig, error) {
+	schemaPath := fmt.Sprintf("projects/%s/schemas/%s@%s", c.projectID, schemaID, revisionID)
+	schema, err := c.sc.DeleteSchemaRevision(ctx, &pb.DeleteSchemaRevisionRequest{
+		Name: schemaPath,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return protoToSchemaConfig(schema), nil
+}
+
 // DeleteSchema deletes an existing schema given a schema ID.
-func (s *SchemaClient) DeleteSchema(ctx context.Context, schemaID string) error {
-	schemaPath := fmt.Sprintf("projects/%s/schemas/%s", s.projectID, schemaID)
-	return s.sc.DeleteSchema(ctx, &pb.DeleteSchemaRequest{
+func (c *SchemaClient) DeleteSchema(ctx context.Context, schemaID string) error {
+	schemaPath := fmt.Sprintf("projects/%s/schemas/%s", c.projectID, schemaID)
+	return c.sc.DeleteSchema(ctx, &pb.DeleteSchemaRequest{
 		Name: schemaPath,
 	})
 }
@@ -210,12 +288,12 @@ func (s *SchemaClient) DeleteSchema(ctx context.Context, schemaID string) error 
 type ValidateSchemaResult struct{}
 
 // ValidateSchema validates a schema config and returns an error if invalid.
-func (s *SchemaClient) ValidateSchema(ctx context.Context, schema SchemaConfig) (*ValidateSchemaResult, error) {
+func (c *SchemaClient) ValidateSchema(ctx context.Context, schema SchemaConfig) (*ValidateSchemaResult, error) {
 	req := &pb.ValidateSchemaRequest{
-		Parent: fmt.Sprintf("projects/%s", s.projectID),
+		Parent: fmt.Sprintf("projects/%s", c.projectID),
 		Schema: schema.toProto(),
 	}
-	_, err := s.sc.ValidateSchema(ctx, req)
+	_, err := c.sc.ValidateSchema(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -228,16 +306,16 @@ type ValidateMessageResult struct{}
 
 // ValidateMessageWithConfig validates a message against an schema specified
 // by a schema config.
-func (s *SchemaClient) ValidateMessageWithConfig(ctx context.Context, msg []byte, encoding SchemaEncoding, config SchemaConfig) (*ValidateMessageResult, error) {
+func (c *SchemaClient) ValidateMessageWithConfig(ctx context.Context, msg []byte, encoding SchemaEncoding, config SchemaConfig) (*ValidateMessageResult, error) {
 	req := &pb.ValidateMessageRequest{
-		Parent: fmt.Sprintf("projects/%s", s.projectID),
+		Parent: fmt.Sprintf("projects/%s", c.projectID),
 		SchemaSpec: &pb.ValidateMessageRequest_Schema{
 			Schema: config.toProto(),
 		},
 		Message:  msg,
 		Encoding: pb.Encoding(encoding),
 	}
-	_, err := s.sc.ValidateMessage(ctx, req)
+	_, err := c.sc.ValidateMessage(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -246,16 +324,16 @@ func (s *SchemaClient) ValidateMessageWithConfig(ctx context.Context, msg []byte
 
 // ValidateMessageWithID validates a message against an schema specified
 // by the schema ID of an existing schema.
-func (s *SchemaClient) ValidateMessageWithID(ctx context.Context, msg []byte, encoding SchemaEncoding, schemaID string) (*ValidateMessageResult, error) {
+func (c *SchemaClient) ValidateMessageWithID(ctx context.Context, msg []byte, encoding SchemaEncoding, schemaID string) (*ValidateMessageResult, error) {
 	req := &pb.ValidateMessageRequest{
-		Parent: fmt.Sprintf("projects/%s", s.projectID),
+		Parent: fmt.Sprintf("projects/%s", c.projectID),
 		SchemaSpec: &pb.ValidateMessageRequest_Name{
-			Name: fmt.Sprintf("projects/%s/schemas/%s", s.projectID, schemaID),
+			Name: fmt.Sprintf("projects/%s/schemas/%s", c.projectID, schemaID),
 		},
 		Message:  msg,
 		Encoding: pb.Encoding(encoding),
 	}
-	_, err := s.sc.ValidateMessage(ctx, req)
+	_, err := c.sc.ValidateMessage(ctx, req)
 	if err != nil {
 		return nil, err
 	}
