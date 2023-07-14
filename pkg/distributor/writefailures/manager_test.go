@@ -38,9 +38,9 @@ func TestWriteFailuresLogging(t *testing.T) {
 
 		manager := NewManager(logger, Cfg{LogRate: flagext.ByteSize(1000)}, runtimeCfg)
 
-		manager.Log("bad-tenant", fmt.Errorf("bad-tenant contains invalid entry"))
-		manager.Log("good-tenant", fmt.Errorf("good-tenant contains invalid entry"))
-		manager.Log("unknown-tenant", fmt.Errorf("unknown-tenant contains invalid entry"))
+		manager.Log("bad-tenant", fmt.Errorf("bad-tenant contains invalid entry"), InvalidEntryErr)
+		manager.Log("good-tenant", fmt.Errorf("good-tenant contains invalid entry"), InvalidEntryErr)
+		manager.Log("unknown-tenant", fmt.Errorf("unknown-tenant contains invalid entry"), InvalidEntryErr)
 
 		content := buf.String()
 		require.NotEmpty(t, content)
@@ -65,7 +65,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 	t.Run("with zero rate limiting", func(t *testing.T) {
 		manager := NewManager(logger, Cfg{LogRate: flagext.ByteSize(0)}, runtimeCfg)
 
-		manager.Log("known-tenant", fmt.Errorf("known-tenant entry error"))
+		manager.Log("known-tenant", fmt.Errorf("known-tenant entry error"), InvalidEntryErr)
 
 		content := buf.String()
 		require.Empty(t, content)
@@ -79,7 +79,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 			errorStr.WriteRune('z')
 		}
 
-		manager.Log("known-tenant", fmt.Errorf(errorStr.String()))
+		manager.Log("known-tenant", fmt.Errorf(errorStr.String()), RateLimitErr)
 
 		content := buf.String()
 		require.Empty(t, content)
@@ -93,7 +93,7 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 			errorStr.WriteRune('z')
 		}
 
-		manager.Log("known-tenant", fmt.Errorf(errorStr.String()))
+		manager.Log("known-tenant", fmt.Errorf(errorStr.String()), RateLimitErr)
 
 		content := buf.String()
 		require.NotEmpty(t, content)
@@ -112,10 +112,10 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 			errorStr2.WriteRune('y')
 		}
 
-		manager.Log("known-tenant", fmt.Errorf(errorStr1.String()))
-		manager.Log("known-tenant", fmt.Errorf(errorStr2.String())) // more than 1KB/s
+		manager.Log("known-tenant", fmt.Errorf(errorStr1.String()), RateLimitErr)
+		manager.Log("known-tenant", fmt.Errorf(errorStr2.String()), RateLimitErr) // more than 1KB/s
 		time.Sleep(time.Second)
-		manager.Log("known-tenant", fmt.Errorf(errorStr3.String()))
+		manager.Log("known-tenant", fmt.Errorf(errorStr3.String()), RateLimitErr)
 
 		content := buf.String()
 		require.NotEmpty(t, content)
@@ -138,15 +138,15 @@ func TestWriteFailuresRateLimiting(t *testing.T) {
 			errorStr3.WriteRune('y')
 		}
 
-		manager.Log("tenant1", fmt.Errorf("1%s", errorStr1.String()))
-		manager.Log("tenant2", fmt.Errorf("2%s", errorStr1.String()))
+		manager.Log("tenant1", fmt.Errorf("1%s", errorStr1.String()), RateLimitErr)
+		manager.Log("tenant2", fmt.Errorf("2%s", errorStr1.String()), RateLimitErr)
 
-		manager.Log("tenant1", fmt.Errorf("1%s", errorStr2.String())) // limit exceeded for tenant1, Str2 shouldn't be present.
-		manager.Log("tenant3", fmt.Errorf("3%s", errorStr1.String())) // all fine with tenant3.
+		manager.Log("tenant1", fmt.Errorf("1%s", errorStr2.String()), RateLimitErr) // limit exceeded for tenant1, Str2 shouldn't be present.
+		manager.Log("tenant3", fmt.Errorf("3%s", errorStr1.String()), RateLimitErr) // all fine with tenant3.
 
 		time.Sleep(time.Second)
-		manager.Log("tenant1", fmt.Errorf("1%s", errorStr3.String())) // tenant1 is fine again.
-		manager.Log("tenant3", fmt.Errorf("3%s", errorStr1.String())) // all fine with tenant3.
+		manager.Log("tenant1", fmt.Errorf("1%s", errorStr3.String()), RateLimitErr) // tenant1 is fine again.
+		manager.Log("tenant3", fmt.Errorf("3%s", errorStr1.String()), RateLimitErr) // all fine with tenant3.
 
 		content := buf.String()
 		require.NotEmpty(t, content)
