@@ -1,6 +1,7 @@
 package client
 
 import (
+	"errors"
 	"net/url"
 	"reflect"
 	"testing"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/prometheus/common/config"
 	"github.com/stretchr/testify/require"
 
 	"gopkg.in/yaml.v2"
@@ -28,6 +30,15 @@ backoff_config:
 batchwait: 5s
 batchsize: 204800
 timeout: 5s
+basic_auth:
+  username: promtail
+enable_http2: false
+`
+
+var clientInvalidHTTPConfig = `
+url: http://localhost:3100/loki/api/v1/push
+bearer_token: tkn
+bearer_token_file: tkn_file
 `
 
 func Test_Config(t *testing.T) {
@@ -36,6 +47,7 @@ func Test_Config(t *testing.T) {
 	tests := []struct {
 		configValues   string
 		expectedConfig Config
+		expectedErr    error
 	}{
 		{
 			clientDefaultConfig,
@@ -51,7 +63,9 @@ func Test_Config(t *testing.T) {
 				BatchSize: BatchSize,
 				BatchWait: BatchWait,
 				Timeout:   Timeout,
+				Client:    config.DefaultHTTPClientConfig,
 			},
+			nil,
 		},
 		{
 			clientCustomConfig,
@@ -67,15 +81,34 @@ func Test_Config(t *testing.T) {
 				BatchSize: 100 * 2048,
 				BatchWait: 5 * time.Second,
 				Timeout:   5 * time.Second,
+				Client: config.HTTPClientConfig{
+					BasicAuth: &config.BasicAuth{
+						Username: "promtail",
+					},
+					FollowRedirects: true,
+				},
 			},
+			nil,
+		},
+		{
+			clientInvalidHTTPConfig,
+			Config{},
+			errors.New("at most one of bearer_token & bearer_token_file must be configured"),
 		},
 	}
 	for _, tc := range tests {
+		tc := tc
 		err := yaml.Unmarshal([]byte(tc.configValues), &clientConfig)
-		require.NoError(t, err)
 
-		if !reflect.DeepEqual(tc.expectedConfig, clientConfig) {
-			t.Errorf("Configs does not match, expected: %v, received: %v", tc.expectedConfig, clientConfig)
+		if tc.expectedErr != nil {
+			require.Error(t, err)
+			require.Equal(t, tc.expectedErr, err)
+		} else {
+			require.NoError(t, err)
+
+			if !reflect.DeepEqual(tc.expectedConfig, clientConfig) {
+				t.Errorf("Configs do not match, expected: %v, got: %v", tc.expectedConfig, clientConfig)
+			}
 		}
 	}
 }

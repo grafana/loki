@@ -13,8 +13,8 @@ require (
 	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/NYTimes/gziphandler v1.1.1
 	github.com/Shopify/sarama v1.38.1
-	github.com/Workiva/go-datastructures v1.0.53
-	github.com/alicebob/miniredis/v2 v2.30.2
+	github.com/Workiva/go-datastructures v1.1.0
+	github.com/alicebob/miniredis/v2 v2.30.4
 	github.com/aliyun/aliyun-oss-go-sdk v2.2.7+incompatible
 	github.com/aws/aws-sdk-go v1.44.217
 	github.com/baidubce/bce-sdk-go v0.9.141
@@ -49,11 +49,11 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20230518162305-3c92c534827e
+	github.com/grafana/dskit v0.0.0-20230706162620-5081d8ed53e6
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
-	github.com/grafana/tail v0.0.0-20230321215411-205c7713cbcd
+	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.20.0
@@ -99,10 +99,10 @@ require (
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/atomic v1.10.0
 	go.uber.org/goleak v1.2.1
-	golang.org/x/crypto v0.9.0
+	golang.org/x/crypto v0.11.0
 	golang.org/x/net v0.10.0
 	golang.org/x/sync v0.2.0
-	golang.org/x/sys v0.8.0
+	golang.org/x/sys v0.10.0
 	golang.org/x/time v0.3.0
 	google.golang.org/api v0.114.0
 	google.golang.org/grpc v1.55.0
@@ -114,8 +114,10 @@ require (
 
 require (
 	github.com/Azure/go-autorest/autorest v0.11.29
+	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.13.1
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
+	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.59
@@ -126,7 +128,7 @@ require (
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 	golang.org/x/oauth2 v0.7.0
-	golang.org/x/text v0.9.0
+	golang.org/x/text v0.11.0
 )
 
 require (
@@ -176,6 +178,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
+	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/digitalocean/godo v1.98.0 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
@@ -298,7 +301,7 @@ require (
 	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/mod v0.9.0 // indirect
-	golang.org/x/term v0.8.0 // indirect
+	golang.org/x/term v0.10.0 // indirect
 	golang.org/x/tools v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

@@ -283,6 +283,7 @@ loki:
       useFederatedToken: false
       userAssignedId: null
       requestTimeout: null
+      endpointSuffix: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules

@@ -109,7 +109,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})

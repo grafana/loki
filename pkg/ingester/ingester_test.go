@@ -470,7 +470,7 @@ func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	}, nil
 }
 
-func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
 			{Name: `{foo="bar"}`, Volume: 38},

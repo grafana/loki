@@ -92,8 +92,8 @@ Important details are:
   to resume work from the last scraped line and process the rest of the remaining 55%.
 * Since decompression and pushing can be very fast, depending on the size
   of your compressed file Loki will rate-limit your ingestion. In that case you
-  might configure Promtail's [`limits` stage](/docs/loki/latest/clients/promtail/stages/limit/) to slow the pace or increase
-  [ingestion limits on Loki](/docs/loki/latest/configuration/#limits_config).
+  might configure Promtail's [`limits` stage]({{< relref "./stages/limit" >}}) to slow the pace or increase [ingestion limits on Loki]({{< relref "../../configure#limits_config" >}})
+
 * Log rotations on compressed files **are not supported as of now** (log rotation is fully supported for normal files), mostly because it requires us modifying Promtail to
   rely on file inodes instead of file names. If you'd like to see support for it, create a new
   issue on Github asking for it and explaining your use case.

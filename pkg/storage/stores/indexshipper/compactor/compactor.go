@@ -631,7 +631,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	var tables []string
 	for _, sc := range c.storeContainers {
 		// refresh index list cache since previous compaction would have changed the index files in the object store
-		sc.indexStorageClient.RefreshIndexListCache(ctx)
+		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 		tbls, err := sc.indexStorageClient.ListTables(ctx)
 		if err != nil {
 			status = statusFailure
@@ -757,7 +757,7 @@ func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime
 	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
 }
 
-func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
+func (c *Compactor) OnRingInstanceRegister(l *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the compactor instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.
@@ -767,7 +767,7 @@ func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc rin
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := ring.GenerateTokens(ringNumTokens-len(tokens), takenTokens)
+	newTokens := l.GetTokenGenerator().GenerateTokens(ringNumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)

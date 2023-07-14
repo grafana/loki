@@ -13,7 +13,7 @@ cleanInstall() {
 
     # Create the user
     if ! id promtail > /dev/null 2>&1 ; then
-        adduser --system --shell /bin/false "promtail"
+        adduser --no-create-home --system --shell /bin/false "promtail"
     fi
 
     # rhel/centos7 cannot use ExecStartPre=+ to specify the pre start should be run as root

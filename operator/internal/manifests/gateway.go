@@ -102,9 +102,8 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	l := ComponentLabels(LabelGatewayComponent, opts.Name)
 	a := commonAnnotations(sha1C, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		ServiceAccountName:        GatewayName(opts.Name),
-		Affinity:                  configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
-		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelGatewayComponent, opts.Name),
+		ServiceAccountName: GatewayName(opts.Name),
+		Affinity:           configureAffinity(LabelGatewayComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Gateway),
 		Volumes: []corev1.Volume{
 			{
 				Name: "rbac",
@@ -219,6 +218,10 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	if opts.Stack.Template != nil && opts.Stack.Template.Gateway != nil {
 		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
+	}
+
+	if opts.Stack.Replication != nil {
+		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelGatewayComponent, opts.Name)...)
 	}
 
 	return &appsv1.Deployment{

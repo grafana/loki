@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -40,6 +41,35 @@ var pushTests = []struct {
 					},
 					"values":[
 						[ "123456789012345", "super line" ]
+					]
+				}
+			]
+		}`,
+	},
+	{
+		[]logproto.Stream{
+			{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+						NonIndexedLabels: labels.Labels{
+							{Name: "a", Value: "1"},
+							{Name: "b", Value: "2"},
+						},
+					},
+				},
+				Labels: `{test="test"}`,
+			},
+		},
+		`{
+			"streams": [
+				{
+					"stream": {
+						"test": "test"
+					},
+					"values":[
+						[ "123456789012345", "super line", { "a": "1", "b": "2" } ]
 					]
 				}
 			]
