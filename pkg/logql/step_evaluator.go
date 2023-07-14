@@ -3,26 +3,25 @@ package logql
 import (
 	"errors"
 
-	"github.com/prometheus/prometheus/promql"
 )
 
 // StepEvaluator evaluate a single step of a query.
-type StepEvaluator interface {
+type StepEvaluator[V any] interface {
 	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
-	Next() (ok bool, ts int64, vec promql.Vector)
+	Next() (ok bool, ts int64, vec V)
 	// Close all resources used.
 	Close() error
 	// Reports any error
 	Error() error
 }
 
-type stepEvaluator struct {
-	fn    func() (bool, int64, promql.Vector)
+type stepEvaluator[V any] struct {
+	fn    func() (bool, int64, V)
 	close func() error
 	err   func() error
 }
 
-func NewStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() error, err func() error) (StepEvaluator, error) {
+func NewStepEvaluator[V any](fn func() (bool, int64, V), closeFn func() error, err func() error) (StepEvaluator[V], error) {
 	if fn == nil {
 		return nil, errors.New("nil step evaluator fn")
 	}
@@ -34,21 +33,21 @@ func NewStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() err
 	if err == nil {
 		err = func() error { return nil }
 	}
-	return &stepEvaluator{
+	return &stepEvaluator[V]{
 		fn:    fn,
 		close: closeFn,
 		err:   err,
 	}, nil
 }
 
-func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *stepEvaluator[V]) Next() (bool, int64, V) {
 	return e.fn()
 }
 
-func (e *stepEvaluator) Close() error {
+func (e *stepEvaluator[V]) Close() error {
 	return e.close()
 }
 
-func (e *stepEvaluator) Error() error {
+func (e *stepEvaluator[V]) Error() error {
 	return e.err()
 }

@@ -124,20 +124,20 @@ func Sortable(q Params) (bool, error) {
 }
 
 // Evaluator is an interface for iterating over data at different nodes in the AST
-type Evaluator interface {
-	SampleEvaluator
+type Evaluator[V any] interface {
+	SampleEvaluator[V]
 	EntryEvaluator
 }
 
-type SampleEvaluator interface {
+type SampleEvaluator[V any] interface {
 	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// StepEvaluator implementations which can be composed.
-	StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+	StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator[V], expr syntax.SampleExpr, p Params) (StepEvaluator[V], error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluator SampleEvaluator[promql.Vector], expr syntax.SampleExpr, p Params) (StepEvaluator[promql.Vector], error)
 
-func (s SampleEvaluatorFunc) StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+func (s SampleEvaluatorFunc) StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator[promql.Vector], expr syntax.SampleExpr, p Params) (StepEvaluator[promql.Vector], error) {
 	return s(ctx, nextEvaluator, expr, p)
 }
 
@@ -147,14 +147,13 @@ type EntryEvaluator interface {
 }
 
 // EvaluatorUnsupportedType is a helper for signaling that an evaluator does not support an Expr type
-func EvaluatorUnsupportedType(expr syntax.Expr, ev Evaluator) error {
+func EvaluatorUnsupportedType(expr syntax.Expr, ev Evaluator[promql.Vector]) error {
 	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
 }
 
 type DefaultEvaluator struct {
 	maxLookBackPeriod     time.Duration
 	querier               Querier
-	newVectorAggEvaluator func(context.Context, SampleEvaluator, *syntax.VectorAggregationExpr, Params) (StepEvaluator, error)
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
@@ -162,8 +161,6 @@ func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *Defa
 	return &DefaultEvaluator{
 		querier:           querier,
 		maxLookBackPeriod: maxLookBackPeriod,
-
-		newVectorAggEvaluator: newVectorAggEvaluator,
 	}
 }
 
@@ -188,16 +185,16 @@ func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr syntax.LogSelecto
 
 func (ev *DefaultEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator,
+	nextEv SampleEvaluator[promql.Vector],
 	expr syntax.SampleExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEv = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluator, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+			nextEv = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluator[promql.Vector], _ syntax.SampleExpr, _ Params) (StepEvaluator[promql.Vector], error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
@@ -212,7 +209,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return ev.newVectorAggEvaluator(ctx, nextEv, e, q)
+		return newVectorAggEvaluator(ctx, nextEv, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -243,10 +240,10 @@ func (ev *DefaultEvaluator) StepEvaluator(
 
 func newVectorAggEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator,
+	ev SampleEvaluator[promql.Vector],
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
@@ -458,7 +455,7 @@ func newRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	iter, err := newRangeVectorIterator(
 		it, expr,
 		expr.Left.Interval.Nanoseconds(),
@@ -560,10 +557,10 @@ func (r absentRangeVectorEvaluator) Error() error {
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
 func binOpStepEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator,
+	ev SampleEvaluator[promql.Vector],
 	expr *syntax.BinOpExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	// first check if either side is a literal
 	leftLit, lOk := expr.SampleExpr.(*syntax.LiteralExpr)
 	rightLit, rOk := expr.RHS.(*syntax.LiteralExpr)
@@ -596,7 +593,7 @@ func binOpStepEvaluator(
 		)
 	}
 
-	var lse, rse StepEvaluator
+	var lse, rse StepEvaluator[promql.Vector]
 
 	ctx, cancel := context.WithCancel(ctx)
 	g := errgroup.Group{}
@@ -669,7 +666,7 @@ func binOpStepEvaluator(
 		}
 		return true, ts, results
 	}, func() (lastError error) {
-		for _, ev := range []StepEvaluator{lse, rse} {
+		for _, ev := range []StepEvaluator[promql.Vector]{lse, rse} {
 			if err := ev.Close(); err != nil {
 				lastError = err
 			}
@@ -680,7 +677,7 @@ func binOpStepEvaluator(
 		if scopedErr != nil {
 			errs = append(errs, scopedErr)
 		}
-		for _, ev := range []StepEvaluator{lse, rse} {
+		for _, ev := range []StepEvaluator[promql.Vector]{lse, rse} {
 			if err := ev.Error(); err != nil {
 				errs = append(errs, err)
 			}
@@ -885,10 +882,10 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 func literalStepEvaluator(
 	op string,
 	lit *syntax.LiteralExpr,
-	eval StepEvaluator,
+	eval StepEvaluator[promql.Vector],
 	inverted bool,
 	returnBool bool,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	val, err := lit.Value()
 	if err != nil {
 		return nil, err
@@ -980,10 +977,10 @@ func (r *vectorIterator) Error() error {
 // labelReplaceEvaluator
 func labelReplaceEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator,
+	ev SampleEvaluator[promql.Vector],
 	expr *syntax.LabelReplaceExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err

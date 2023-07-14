@@ -204,7 +204,7 @@ type Downstreamer interface {
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
-	defaultEvaluator Evaluator
+	defaultEvaluator Evaluator[promql.Vector]
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
@@ -256,10 +256,10 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 // StepEvaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator,
+	nextEv SampleEvaluator[promql.Vector],
 	expr syntax.SampleExpr,
 	params Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	switch e := expr.(type) {
 
 	case DownstreamSampleExpr:
@@ -298,7 +298,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 			return nil, err
 		}
 
-		xs := make([]StepEvaluator, 0, len(queries))
+		xs := make([]StepEvaluator[promql.Vector], 0, len(queries))
 		for i, res := range results {
 			stepper, err := ResultStepEvaluator(res, params)
 			if err != nil {
@@ -384,7 +384,7 @@ func (ev *DownstreamEvaluator) Iterator(
 
 // ConcatEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
-func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
+func ConcatEvaluator(evaluators []StepEvaluator[promql.Vector]) (StepEvaluator[promql.Vector], error) {
 	return NewStepEvaluator(
 		func() (ok bool, ts int64, vec promql.Vector) {
 			var cur promql.Vector
@@ -422,7 +422,7 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 }
 
 // ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
+func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator[promql.Vector], error) {
 	var (
 		start = params.Start()
 		end   = params.End()

@@ -27,6 +27,7 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -144,7 +145,7 @@ func (opts *EngineOpts) applyDefault() {
 type Engine struct {
 	Timeout   time.Duration
 	logger    log.Logger
-	evaluator Evaluator
+	querier   Querier
 	limits    Limits
 	opts      EngineOpts
 }
@@ -158,7 +159,7 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 	}
 	return &Engine{
 		logger:    logger,
-		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		querier:   q,
 		limits:    l,
 		Timeout:   queryTimeout,
 		opts:      opts,
@@ -170,7 +171,7 @@ func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
 		params:    params,
-		evaluator: ng.evaluator,
+		evaluator: NewDefaultEvaluator(ng.querier, ng.opts.MaxLookBackPeriod),
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
@@ -180,19 +181,43 @@ func (ng *Engine) Query(params Params) Query {
 	}
 }
 
+type ProbabilisticEngine struct {
+	evaluator Evaluator[sketch.TopKVector]
+	Engine
+}
+
 // NewProbabilisticEngine creates a new LogQL Engine.
-func NewProbabilisticEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
+func NewProbabilisticEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *ProbabilisticEngine {
 	queryTimeout := opts.Timeout
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
-	return &Engine{
+	e := Engine{
 		logger:    logger,
-		evaluator: NewProbabilisticEvaluator(q, opts.MaxLookBackPeriod),
+		querier:   q,
 		limits:    l,
 		Timeout:   queryTimeout,
 		opts:      opts,
+	}
+
+	return &ProbabilisticEngine{Engine: e}
+}
+
+func (p *ProbabilisticEngine) Query(params Params) Query {
+	return &probabilisticQuery{
+		evaluator: NewProbabilisticEvaluator(p.querier, p.opts.MaxLookBackPeriod),
+		query: query{
+			logger:    p.logger,
+			params:    params,
+			evaluator: NewDefaultEvaluator(p.querier, p.opts.MaxLookBackPeriod),
+			parse: func(_ context.Context, query string) (syntax.Expr, error) {
+				return syntax.ParseExpr(query)
+			},
+			record:       true,
+			logExecQuery: p.Engine.opts.LogExecutingQuery,
+			limits:       p.Engine.limits,
+		},
 	}
 }
 
@@ -207,7 +232,7 @@ type query struct {
 	params       Params
 	parse        func(context.Context, string) (syntax.Expr, error)
 	limits       Limits
-	evaluator    Evaluator
+	evaluator    Evaluator[promql.Vector]
 	record       bool
 	logExecQuery bool
 }
