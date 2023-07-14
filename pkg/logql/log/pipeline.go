@@ -13,6 +13,7 @@ var NoopStage Stage = &noopStage{}
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
+	Reset()
 }
 
 // StreamPipeline transform and filter log lines and labels.
@@ -44,6 +45,22 @@ type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
 }
 
+func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	h := labels.Hash()
+	if cached, ok := n.cache[h]; ok {
+		return cached
+	}
+	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
+	n.cache[h] = sp
+	return sp
+}
+
+func (n *noopPipeline) Reset() {
+	for k := range n.cache {
+		delete(n.cache, k)
+	}
+}
+
 // IsNoopPipeline tells if a pipeline is a Noop.
 func IsNoopPipeline(p Pipeline) bool {
 	_, ok := p.(*noopPipeline)
@@ -63,16 +80,6 @@ func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsR
 }
 
 func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.LabelsResult }
-
-func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	h := labels.Hash()
-	if cached, ok := n.cache[h]; ok {
-		return cached
-	}
-	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
-	n.cache[h] = sp
-	return sp
-}
 
 type noopStage struct{}
 
@@ -156,6 +163,13 @@ func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	return res
 }
 
+func (p *pipeline) Reset() {
+	p.baseBuilder.Reset()
+	for k := range p.streamPipelines {
+		delete(p.streamPipelines, k)
+	}
+}
+
 func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
@@ -219,6 +233,10 @@ func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
 		filters:  streamFilters,
 		pipeline: p.pipeline.ForStream(labels),
 	}
+}
+
+func (p *filteringPipeline) Reset() {
+	p.pipeline.Reset()
 }
 
 func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {
