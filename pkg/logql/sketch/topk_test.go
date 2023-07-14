@@ -140,8 +140,8 @@ outer2:
 func TestRealTopK(t *testing.T) {
 	// the HLL cardinality estimate for this page is ~72000
 	f, err := os.Open("testdata/shakspeare.txt")
-	defer f.Close()
 	require.NoError(t, err)
+	defer f.Close()
 	scanner := bufio.NewScanner(f)
 
 	m := make(map[string]uint32)
@@ -319,8 +319,8 @@ func TestRealTop_MergeProto(t *testing.T) {
 
 	// read the second dataset into sketch2
 	r2, err := os.Open("testdata/war_peace.txt")
-	defer r2.Close()
 	require.NoError(t, err)
+	defer r2.Close()
 	scanner = bufio.NewScanner(r2)
 	for scanner.Scan() {
 		s := scanner.Text()
