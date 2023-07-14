@@ -257,7 +257,7 @@ func newVectorAggEvaluator(
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+	return NewStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
 
 		if !next {
@@ -629,7 +629,7 @@ func binOpStepEvaluator(
 	// implementation of this StepEvaluator
 	var scopedErr error
 
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+	return NewStepEvaluator(func() (bool, int64, promql.Vector) {
 		var (
 			ts       int64
 			next     bool
@@ -895,7 +895,7 @@ func literalStepEvaluator(
 	}
 	var mergeErr error
 
-	return newStepEvaluator(
+	return NewStepEvaluator(
 		func() (bool, int64, promql.Vector) {
 			ok, ts, vec := eval.Next()
 			results := make(promql.Vector, 0, len(vec))
@@ -990,7 +990,7 @@ func labelReplaceEvaluator(
 	}
 	buf := make([]byte, 0, 1024)
 	var labelCache map[uint64]labels.Labels
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
+	return NewStepEvaluator(func() (bool, int64, promql.Vector) {
 		next, ts, vec := nextEvaluator.Next()
 		if !next {
 			return false, 0, promql.Vector{}

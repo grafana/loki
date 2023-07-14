@@ -23,7 +23,7 @@ func TestTopKMatrixProto(t *testing.T) {
 		original.Observe(s)
 	}
 
-	series := TopKMatrix([]TopKVector{{ts: 100, topk: original}})
+	series := TopKMatrix([]TopKVector{{TS: 100, Topk: original}})
 
 	// Roundtrip serialization
 	proto, err := series.ToProto()
@@ -36,15 +36,15 @@ func TestTopKMatrixProto(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, deserialized, 1)
 
-	require.Equal(t, original.sketch.counters, deserialized[0].topk.sketch.counters)
-	require.Equal(t, *original.hll, *deserialized[0].topk.hll)
+	require.Equal(t, original.sketch.counters, deserialized[0].Topk.sketch.counters)
+	require.Equal(t, *original.hll, *deserialized[0].Topk.hll)
 	oCardinality, _ := original.Cardinality()
 	fmt.Println("ocardinality: ", oCardinality)
-	dCardinality, _ := deserialized[0].topk.Cardinality()
+	dCardinality, _ := deserialized[0].Topk.Cardinality()
 	fmt.Println("dcardinality: ", dCardinality)
 
 	require.Equal(t, oCardinality, dCardinality)
-	require.Equal(t, uint64(100), deserialized[0].ts)
+	require.Equal(t, uint64(100), deserialized[0].TS)
 }
 
 func TestTopKMatrixProtoMerge(t *testing.T) {
@@ -61,7 +61,7 @@ func TestTopKMatrixProtoMerge(t *testing.T) {
 		original.Observe(s)
 	}
 
-	series := TopKMatrix([]TopKVector{{ts: 100, topk: original}})
+	series := TopKMatrix([]TopKVector{{TS: 100, Topk: original}})
 
 	// Roundtrip serialization
 	proto, err := series.ToProto()
@@ -74,10 +74,10 @@ func TestTopKMatrixProtoMerge(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, deserialized, 1)
 
-	require.Equal(t, original.sketch.counters, deserialized[0].topk.sketch.counters)
-	require.Equal(t, *original.hll, *deserialized[0].topk.hll)
+	require.Equal(t, original.sketch.counters, deserialized[0].Topk.sketch.counters)
+	require.Equal(t, *original.hll, *deserialized[0].Topk.hll)
 	oCardinality, _ := original.Cardinality()
-	dCardinality, _ := deserialized[0].topk.Cardinality()
+	dCardinality, _ := deserialized[0].Topk.Cardinality()
 	require.Equal(t, oCardinality, dCardinality)
-	require.Equal(t, uint64(100), deserialized[0].ts)
+	require.Equal(t, uint64(100), deserialized[0].TS)
 }

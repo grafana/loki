@@ -9,8 +9,8 @@ import (
 const ValueTypeTopKMatrix = "topk_matrix"
 
 type TopKVector struct {
-	topk *Topk
-	ts   uint64
+	Topk *Topk
+	TS   uint64
 }
 
 // TopkMatrix is `promql.Value` and `parser.Value`
@@ -27,12 +27,12 @@ func (TopKMatrix) String() string {
 func (s TopKMatrix) ToProto() (*logproto.TopKMatrix, error) {
 	points := make([]*logproto.TopKMatrix_Vector, 0, len(s))
 	for _, point := range s {
-		topk, err := point.topk.ToProto()
+		topk, err := point.Topk.ToProto()
 		if err != nil {
 			return nil, err
 		}
 
-		points = append(points, &logproto.TopKMatrix_Vector{Topk: topk, TimestampMs: int64(point.ts)})
+		points = append(points, &logproto.TopKMatrix_Vector{Topk: topk, TimestampMs: int64(point.TS)})
 	}
 
 	return &logproto.TopKMatrix{Values: points}, nil

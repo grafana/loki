@@ -22,7 +22,7 @@ type stepEvaluator struct {
 	err   func() error
 }
 
-func newStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() error, err func() error) (StepEvaluator, error) {
+func NewStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() error, err func() error) (StepEvaluator, error) {
 	if fn == nil {
 		return nil, errors.New("nil step evaluator fn")
 	}
