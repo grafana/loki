@@ -1389,9 +1389,12 @@ func (si *bufferedIterator) close() {
 	}
 
 	if si.metaLabelsBuf != nil {
-		for _, b := range si.metaLabelsBuf {
-			BytesBufferPool.Put(b)
+		for i := range si.metaLabelsBuf {
+			if si.metaLabelsBuf[i] != nil {
+				BytesBufferPool.Put(si.metaLabelsBuf[i])
+			}
 		}
+		LabelsPool.Put(si.metaLabelsBuf)
 		si.metaLabelsBuf = nil
 	}
 
