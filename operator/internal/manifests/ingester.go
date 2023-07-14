@@ -58,8 +58,8 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIngesterComponent, opts.Name)
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIngesterComponent, opts.Name); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{

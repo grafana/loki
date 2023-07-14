@@ -52,8 +52,8 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{

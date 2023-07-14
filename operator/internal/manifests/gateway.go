@@ -94,8 +94,8 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
-	if opts.Stack.Replication != nil && len(opts.Stack.Replication.Zones) > 0 {
-		configureReplication(&dpl.Spec.Template, opts.Stack.Replication, LabelGatewayComponent, opts.Name)
+	if err := configureReplication(&dpl.Spec.Template, opts.Stack.Replication, LabelGatewayComponent, opts.Name); err != nil {
+		return nil, err
 	}
 
 	return objs, nil
