@@ -69,7 +69,7 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeTyp
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		if tenants != nil {
-			configureMTLS(d, tenants)
+			return configureMTLS(d, tenants)
 		}
 		return nil
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
@@ -126,12 +126,12 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		// If a single tenant configure mTLS change Route termination policy 
+		// If a single tenant configure mTLS change Route termination policy
 		// to Passthrough
 		for _, o := range objs {
 			switch r := o.(type) {
 			case *routev1.Route:
-				for _, secret := range opts.Tenants.Secrets{
+				for _, secret := range opts.Tenants.Secrets {
 					if secret.MTLSSecret != nil {
 						r.Spec.TLS.Termination = routev1.TLSTerminationPassthrough
 						break
