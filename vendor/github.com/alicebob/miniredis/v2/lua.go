@@ -113,7 +113,18 @@ func mkLua(srv *server.Server, c *server.Peer, sha string) (map[string]lua.LGFun
 				return 0
 			}
 			res := &lua.LTable{}
-			res.RawSetString("err", lua.LString("ERR "+msg))
+			parts := strings.SplitN(msg.String(), " ", 2)
+			// '-' at the beginging will be added as a part of error response
+			if parts[0] != "" && parts[0][0] == '-' {
+				parts[0] = parts[0][1:]
+			}
+			var final_msg string
+			if len(parts) == 2 {
+				final_msg = fmt.Sprintf("%s %s", parts[0], parts[1])
+			} else {
+				final_msg = fmt.Sprintf("ERR %s", parts[0])
+			}
+			res.RawSetString("err", lua.LString(final_msg))
 			l.Push(res)
 			return 1
 		},

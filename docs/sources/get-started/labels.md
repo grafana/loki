@@ -4,9 +4,8 @@ title: Understand labels
 description: Explains how to Loki uses labels to define log streams.
 weight: 600
 aliases:
-    - /docs/loki/latest/getting-started/labels/
-    - /docs/loki/latest/fundamentals/labels/
-    - /docs/loki/latest/get-started/labels/
+    - ../getting-started/labels/
+    - ../fundamentals/labels/
 ---
 # Understand labels
 

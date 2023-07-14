@@ -4,11 +4,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net"
 	"net/http"
 	"os"
 	"sort"
-	strconv "strconv"
+	"strconv"
 	"sync"
 	"time"
 
@@ -53,6 +54,10 @@ type LifecyclerConfig struct {
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
+
+	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
+	// Default value is nil, which means that RandomTokenGenerator is used.
+	RingTokenGenerator TokenGenerator `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -97,7 +102,14 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.BoolVar(&cfg.EnableInet6, prefix+"enable-inet6", false, "Enable IPv6 support. Required to make use of IP addresses from IPv6 interfaces.")
 }
 
-// Lifecycler is responsible for managing the lifecycle of entries in the ring.
+/*
+Lifecycler is a Service that is responsible for publishing changes to a ring for a single instance.
+
+  - When a Lifecycler first starts, it will be in a [PENDING] state.
+  - After the configured [ring.LifecyclerConfig.JoinAfter] period, it selects some random tokens and enters the [JOINING] state, creating or updating the ring as needed.
+  - The lifecycler will then periodically, based on the [ring.LifecyclerConfig.ObservePeriod], attempt to verify that its tokens have been added to the ring, after which it will transition to the [ACTIVE] state.
+  - The lifecycler will update the key/value store with heartbeats, state changes, and token changes, based on the [ring.LifecyclerConfig.HeartbeatPeriod].
+*/
 type Lifecycler struct {
 	*services.BasicService
 
@@ -138,6 +150,8 @@ type Lifecycler struct {
 	instancesInZoneCount  int
 	zonesCount            int
 
+	tokenGenerator TokenGenerator
+
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
 }
@@ -167,6 +181,11 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		flushTransferer = NewNoopFlushTransferer()
 	}
 
+	tokenGenerator := cfg.RingTokenGenerator
+	if tokenGenerator == nil {
+		tokenGenerator = NewRandomTokenGenerator()
+	}
+
 	l := &Lifecycler{
 		cfg:                   cfg,
 		flushTransferer:       flushTransferer,
@@ -181,6 +200,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		Zone:                  cfg.Zone,
 		actorChan:             make(chan func()),
 		state:                 PENDING,
+		tokenGenerator:        tokenGenerator,
 		lifecyclerMetrics:     NewLifecyclerMetrics(ringName, reg),
 		logger:                logger,
 	}
@@ -552,7 +572,7 @@ heartbeatLoop:
 }
 
 // initRing is the first thing we do when we start. It:
-// - add an ingester entry to the ring
+// - adds an ingester entry to the ring
 // - copies out our state and tokens if they exist
 func (i *Lifecycler) initRing(ctx context.Context) error {
 	var (
@@ -616,23 +636,42 @@ func (i *Lifecycler) initRing(ctx context.Context) error {
 			return ringDesc, true, nil
 		}
 
-		// If the ingester failed to clean its ring entry up in can leave its state in LEAVING
-		// OR unregister_on_shutdown=false
-		// Move it into ACTIVE to ensure the ingester joins the ring.
-		if instanceDesc.State == LEAVING && len(instanceDesc.Tokens) == i.cfg.NumTokens {
+		tokens := Tokens(instanceDesc.Tokens)
+		level.Info(i.logger).Log("msg", "existing instance found in ring", "state", instanceDesc.State, "tokens",
+			len(tokens), "ring", i.RingName)
+
+		// If the ingester fails to clean its ring entry up or unregister_on_shutdown=false, it can leave behind its
+		// ring state as LEAVING. Make sure to switch to the ACTIVE state.
+		if instanceDesc.State == LEAVING {
+			delta := i.cfg.NumTokens - len(tokens)
+			if delta > 0 {
+				// We need more tokens
+				level.Info(i.logger).Log("msg", "existing instance has too few tokens, adding difference",
+					"current_tokens", len(tokens), "desired_tokens", i.cfg.NumTokens)
+				newTokens := i.tokenGenerator.GenerateTokens(delta, ringDesc.GetTokens())
+				tokens = append(tokens, newTokens...)
+				sort.Sort(tokens)
+			} else if delta < 0 {
+				// We have too many tokens
+				level.Info(i.logger).Log("msg", "existing instance has too many tokens, removing difference",
+					"current_tokens", len(tokens), "desired_tokens", i.cfg.NumTokens)
+				// Make sure we don't pick the N smallest tokens, since that would increase the chance of the instance receiving only smaller hashes.
+				rand.Shuffle(len(tokens), tokens.Swap)
+				tokens = tokens[0:i.cfg.NumTokens]
+				sort.Sort(tokens)
+			}
+
 			instanceDesc.State = ACTIVE
+			instanceDesc.Tokens = tokens
 		}
+
+		// Set the local state based on the updated instance.
+		i.setState(instanceDesc.State)
+		i.setTokens(tokens)
 
 		// We're taking over this entry, update instanceDesc with our values
 		instanceDesc.Addr = i.Addr
 		instanceDesc.Zone = i.Zone
-
-		// We exist in the ring, so assume the ring is right and copy out tokens & state out of there.
-		i.setState(instanceDesc.State)
-		tokens, _ := ringDesc.TokensFor(i.ID)
-		i.setTokens(tokens)
-
-		level.Info(i.logger).Log("msg", "existing entry found in ring", "state", i.GetState(), "tokens", len(tokens), "ring", i.RingName)
 
 		// Update the ring if the instance has been changed. We don't want to rely on heartbeat update, as heartbeat
 		// can be configured to long time, and until then lifecycler would not report this instance as ready in CheckReady.
@@ -673,11 +712,11 @@ func (i *Lifecycler) verifyTokens(ctx context.Context) bool {
 		ringTokens, takenTokens := ringDesc.TokensFor(i.ID)
 
 		if !i.compareTokens(ringTokens) {
-			// uh, oh... our tokens are not our anymore. Let's try new ones.
+			// uh, oh... our tokens are not ours anymore. Let's try new ones.
 			needTokens := i.cfg.NumTokens - len(ringTokens)
 
 			level.Info(i.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", i.RingName)
-			newTokens := GenerateTokens(needTokens, takenTokens)
+			newTokens := i.tokenGenerator.GenerateTokens(needTokens, takenTokens)
 
 			ringTokens = append(ringTokens, newTokens...)
 			sort.Sort(ringTokens)
@@ -737,7 +776,7 @@ func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) er
 			level.Error(i.logger).Log("msg", "tokens already exist for this instance - wasn't expecting any!", "num_tokens", len(myTokens), "ring", i.RingName)
 		}
 
-		newTokens := GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
+		newTokens := i.tokenGenerator.GenerateTokens(i.cfg.NumTokens-len(myTokens), takenTokens)
 		i.setState(targetState)
 
 		myTokens = append(myTokens, newTokens...)

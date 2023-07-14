@@ -2,12 +2,9 @@
 title: Alerting and recording rules
 menuTitle: Alert
 description: Learn how the rule evaluates queries for alerting.
-
 aliases:
-  - /docs/loki/latest/rules/
-  - docs/loki/latest/alert/
-  - docs/loki/latest/alerting/
-
+  - ./rules/
+  - ./alerting/
 weight: 850
 keywords:
   - loki
@@ -133,7 +130,7 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler]({{< relref "../configuration#ruler" >}}).
+Further configuration options can be found under [ruler]({{< relref "../configure#ruler" >}}).
 
 ### Operations
 
@@ -241,7 +238,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation]({{< relref "../configuration" >}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires its own ring to be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation]({{< relref "../configure" >}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires its own ring to be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 

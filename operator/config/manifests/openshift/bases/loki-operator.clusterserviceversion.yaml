@@ -283,8 +283,8 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -367,8 +367,8 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
@@ -821,8 +821,8 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -884,8 +884,8 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:

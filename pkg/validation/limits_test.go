@@ -80,6 +80,7 @@ blocked_queries:
   - pattern: ".*foo.*"
     regex: true
 volume_enabled: true
+volume_max_series: 10001
 `
 	inputJSON := `
  {
@@ -128,7 +129,8 @@ volume_enabled: true
 		"regex": true
 	}
   ],
-  "volume_enabled": true
+  "volume_enabled": true,
+  "volume_max_series": 10001
  }
 `
 

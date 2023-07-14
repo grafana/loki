@@ -8,6 +8,7 @@ import (
 	"time"
 
 	jsoniter "github.com/json-iterator/go"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -153,14 +154,20 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: map[string]string{"foo": "bar"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2"},
+						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						}},
 					},
 				},
 				{
 					Labels: map[string]string{"foo": "bar", "lvl": "error"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4"},
+						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: labels.Labels{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						}},
 					},
 				},
 			},
@@ -169,14 +176,20 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: `{foo="bar"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2"},
+						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						}},
 					},
 				},
 				{
 					Labels: `{foo="bar", lvl="error"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4"},
+						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: labels.Labels{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						}},
 					},
 				},
 			},
@@ -210,7 +223,10 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "1"},
-							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							}},
 						},
 					},
 				},
@@ -230,7 +246,10 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "log line 1"},
-							{Timestamp: time.Unix(0, 2), Line: "some log line 2"},
+							{Timestamp: time.Unix(0, 2), Line: "some log line 2", NonIndexedLabels: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							}},
 						},
 					},
 					Stream{
@@ -240,7 +259,10 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
-							{Timestamp: time.Unix(0, 2), Line: "2"},
+							{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							}},
 						},
 					},
 				},
@@ -267,4 +289,58 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 			require.Equal(t, tt, actual)
 		})
 	}
+}
+
+func Test_ParseSeriesVolumeInstantQuery(t *testing.T) {
+	req := &http.Request{
+		URL: mustParseURL(`?query={foo="bar"}` +
+			`&start=2017-06-10T21:42:24.760738998Z` +
+			`&end=2017-07-10T21:42:24.760738998Z` +
+			`&limit=1000` +
+			`&targetLabels=foo,bar`,
+		),
+	}
+
+	err := req.ParseForm()
+	require.NoError(t, err)
+
+	actual, err := ParseSeriesVolumeInstantQuery(req)
+	require.NoError(t, err)
+
+	expected := &SeriesVolumeInstantQuery{
+		Start:        time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
+		End:          time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC),
+		Query:        `{foo="bar"}`,
+		Limit:        1000,
+		TargetLabels: []string{"foo", "bar"},
+	}
+	require.Equal(t, expected, actual)
+}
+
+func Test_ParseSeriesVolumeRangeQuery(t *testing.T) {
+	req := &http.Request{
+		URL: mustParseURL(`?query={foo="bar"}` +
+			`&start=2017-06-10T21:42:24.760738998Z` +
+			`&end=2017-07-10T21:42:24.760738998Z` +
+			`&limit=1000` +
+			`&step=3600` +
+			`&targetLabels=foo,bar`,
+		),
+	}
+
+	err := req.ParseForm()
+	require.NoError(t, err)
+
+	actual, err := ParseSeriesVolumeRangeQuery(req)
+	require.NoError(t, err)
+
+	expected := &SeriesVolumeRangeQuery{
+		Start:        time.Date(2017, 06, 10, 21, 42, 24, 760738998, time.UTC),
+		End:          time.Date(2017, 07, 10, 21, 42, 24, 760738998, time.UTC),
+		Query:        `{foo="bar"}`,
+		Limit:        1000,
+		Step:         time.Hour,
+		TargetLabels: []string{"foo", "bar"},
+	}
+	require.Equal(t, expected, actual)
 }

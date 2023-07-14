@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -40,9 +41,9 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any
 	case *logproto.LabelResponse:
 		version := loghttp.GetVersion(req.RequestURI)
 		return WriteLabelResponseProtobuf(version, *result, w)
-	case logproto.SeriesResponse:
+	case *logproto.SeriesResponse:
 		version := loghttp.GetVersion(req.RequestURI)
-		return WriteSeriesResponseProtobuf(version, result, w)
+		return WriteSeriesResponseProtobuf(version, *result, w)
 	case *stats.Stats:
 		return WriteIndexStatsResponseProtobuf(result, w)
 	case *logproto.VolumeResponse:
@@ -218,6 +219,16 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 					Status:     "success",
 					Statistics: result.Statistics,
 				},
+			},
+		}, nil
+	case sketch.TopKMatrix:
+		sk, err := data.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		return &QueryResponse{
+			Response: &QueryResponse_TopkSketches{
+				TopkSketches: &TopKSketchesResponse{Response: sk},
 			},
 		}, nil
 	}

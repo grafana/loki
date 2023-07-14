@@ -88,7 +88,7 @@ The index period must be 24h.
 
 #### Configuring the retention period
 
-Retention period is configured within the [`limits_config`]({{< relref "../../configuration#limits_config" >}}) configuration section.
+Retention period is configured within the [`limits_config`]({{< relref "../../configure#limits_config" >}}) configuration section.
 
 There are two ways of setting retention policies:
 
@@ -164,7 +164,7 @@ The example configurations will set these rules:
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
-[`table_manager`]({{< relref "../../configuration#table_manager" >}})
+[`table_manager`]({{< relref "../../configure#table_manager" >}})
 section of the Loki configuration reference for all available options.
 Alternatively, the `table-manager.retention-period` and
 `table-manager.retention-deletes-enabled` command line flags can be used. The
@@ -172,12 +172,12 @@ provided retention period needs to be a duration represented as a string that
 can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
 
 > **WARNING**: The retention period must be a multiple of the index and chunks table
-`period`, configured in the [`period_config`]({{< relref "../../configuration#period_config" >}})
+`period`, configured in the [`period_config`]({{< relref "../../configure#period_config" >}})
 block. See the [Table Manager]({{< relref "./table-manager#retention" >}}) documentation for
 more information.
 
 > **NOTE**: To avoid querying of data beyond the retention period,
-`max_look_back_period` config in [`chunk_store_config`]({{< relref "../../configuration#chunk_store_config" >}}) must be set to a value less than or equal to
+`max_look_back_period` config in [`chunk_store_config`]({{< relref "../../configure#chunk_store_config" >}}) must be set to a value less than or equal to
 what is set in `table_manager.retention_period`.
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry

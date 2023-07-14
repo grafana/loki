@@ -10,7 +10,7 @@ Loki is a multi-tenant system that supports applying limits to each tenant as a 
 
 ## Context
 
-Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`]({{< relref "../configuration#runtime_config" >}}) feature.
+Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`]({{< relref "../configure#runtime_config" >}}) feature.
 
 ## Example
 
