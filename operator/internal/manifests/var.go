@@ -322,7 +322,7 @@ func gatewayUpstreamHTTPTLSKey() string {
 }
 
 func tenantMTLSVolumeName(tenantName string) string {
-	return fmt.Sprintf("%s-ca-bundle", tenantName)	
+	return fmt.Sprintf("%s-ca-bundle", tenantName)
 }
 
 func tenantMTLSCADir(tennantName string) string {

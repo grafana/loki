@@ -1,7 +1,7 @@
 {{- define "mTLS" }}
   {{- $secret := index . 0 -}}
   mTLS:
-    {{ if $secret.MTLS.CA }}
+    {{ if $secret.MTLS.CAPath }}
     caPath: {{ $secret.MTLS.CAPath }}
     {{- end -}}
 {{- end }}

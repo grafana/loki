@@ -1,6 +1,8 @@
 package manifests
 
 import (
+	"strings"
+
 	"github.com/ViaQ/logerr/v2/kverrors"
 
 	"github.com/imdario/mergo"
@@ -65,12 +67,10 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string, tenants *lokiv1.TenantsSpec) error {
 	switch mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		for _, auth := range tenants.Authentication {
-			if auth.MTLS != nil {
-				mountConfigMap(d, auth.TenantName, auth.MTLS.CASpec)
-			}
+		if tenants != nil {
+			configureMTLS(d, tenants)
 		}
-		return nil // nothing to configure
+		return nil
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
 		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption)
@@ -181,21 +181,63 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	return nil
 }
 
-func mountConfigMap(d *appsv1.Deployment, tenantName string, caSpec *lokiv1.CASpec) {
-	vm := &corev1.VolumeMount{
-		Name:      tenantMTLSVolumeName(tenantName),
-		MountPath: tenantMTLSCADir(tenantName),
+// configureMTLS will mount CA bundles in the gateway container and fix arguments
+// if any tenant configured mTLS authentication
+func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == gatewayContainerName {
+			gwIndex = i
+			break
+		}
 	}
-	v := &corev1.Volume{
-		Name: tenantMTLSVolumeName(tenantName),
-		VolumeSource: corev1.VolumeSource{
-			ConfigMap: &corev1.ConfigMapVolumeSource{
-				LocalObjectReference: corev1.LocalObjectReference{
-					Name: caSpec.CA,
+
+	gwContainer := d.Spec.Template.Spec.Containers[gwIndex].DeepCopy()
+	gwArgs := gwContainer.Args
+	gwVolumes := d.Spec.Template.Spec.Volumes
+
+	mTLS := false
+	for _, tenant := range tenants.Authentication {
+		if tenant.MTLS != nil {
+			gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+				Name:      tenantMTLSVolumeName(tenant.TenantName),
+				MountPath: tenantMTLSCADir(tenant.TenantName),
+			})
+			gwVolumes = append(gwVolumes, corev1.Volume{
+				Name: tenantMTLSVolumeName(tenant.TenantName),
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: tenant.MTLS.CASpec.CA,
+						},
+					},
 				},
-			},
-		},
+			})
+			mTLS = true
+		}
 	}
-	d.Spec.Template.Spec.Containers[0].VolumeMounts = append(d.Spec.Template.Spec.Containers[0].VolumeMounts, *vm)
-	d.Spec.Template.Spec.Volumes = append(d.Spec.Template.Spec.Volumes, *v)
+	if !mTLS {
+		return nil // nothing to configure
+	}
+	
+	// Remove old tls.client-auth-type
+	for i, arg := range gwArgs {
+		if strings.HasPrefix(arg, "--tls.client-auth-type=") {
+			gwArgs = append(gwArgs[:i], gwArgs[i+1:]...)
+			break
+		}
+	}
+	gwArgs = append(gwArgs, "--tls.client-auth-type=RequestClientCert")
+
+	gwContainer.Args = gwArgs
+	p := corev1.PodSpec{
+		Containers: []corev1.Container{
+			*gwContainer,
+		},
+		Volumes: gwVolumes,
+	}
+	if err := mergo.Merge(d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge server pki into container spec ")
+	}
+	return nil
 }
