@@ -1,5 +1,6 @@
 ## Main
 
+- [9503](https://github.com/grafana/loki/pull/9503) **sweethaap**: Add Pod annotations with node topology labels to support zone aware scheduling
 - [9930](https://github.com/grafana/loki/pull/9930) **periklis**: Use PodAntiAffinity for all components
 - [9860](https://github.com/grafana/loki/pull/9860) **xperimental**: Fix update of labels and annotations of PodTemplates
 - [9830](https://github.com/grafana/loki/pull/9830) **periklis**: Expose limits config setting cardinality_limit
