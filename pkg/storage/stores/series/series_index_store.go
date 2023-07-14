@@ -244,10 +244,10 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 	}
 
 	type f func() ([]labels.Labels, error)
-	var jobs []f
+	jobs := make([]f, 0, len(groups))
 
 	for _, g := range groups {
-    group := g
+		group := g
 		jobs = append(jobs, f(func() ([]labels.Labels, error) {
 			sort.Sort(group)
 			chunks, err := c.fetcher.FetchChunks(ctx, group.chunks, group.keys)
@@ -255,7 +255,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 				return nil, err
 			}
 
-		results := make([]labels.Labels, 0, len(chunks))
+			lbls := make([]labels.Labels, 0, len(chunks))
 		outer:
 			for _, chk := range chunks {
 				for _, matcher := range matchers {
@@ -271,18 +271,25 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 					continue outer
 				}
 
-				results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
+				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 			}
 
-			return results, nil
+			return lbls, nil
 		}))
 	}
 
 	results := make([]labels.Labels, 0, len(chunksBySeries))
+
+	// Picking an arbitrary bound of 20 numConcurrent jobs.
+	numConcurrent := len(jobs)
+	if numConcurrent > 20 {
+		numConcurrent = 20
+	}
+
 	if err := concurrency.ForEachJob(
 		ctx,
 		len(jobs),
-		len(jobs),
+		numConcurrent,
 		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
 			if res != nil {
