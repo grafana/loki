@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
+	routev1 "github.com/openshift/api/route/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
@@ -125,7 +126,19 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		// nothing to configure
+		// If a single tenant configure mTLS change Route termination policy 
+		// to Passthrough
+		for _, o := range objs {
+			switch r := o.(type) {
+			case *routev1.Route:
+				for _, secret := range opts.Tenants.Secrets{
+					if secret.MTLSSecret != nil {
+						r.Spec.TLS.Termination = routev1.TLSTerminationPassthrough
+						break
+					}
+				}
+			}
+		}
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		for _, o := range objs {
 			switch sa := o.(type) {
@@ -181,7 +194,7 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	return nil
 }
 
-// configureMTLS will mount CA bundles in the gateway container and fix arguments
+// configureMTLS will mount CA bundles and fix CLI arguments for the gateway container
 // if any tenant configured mTLS authentication
 func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 	var gwIndex int
@@ -219,7 +232,7 @@ func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 	if !mTLS {
 		return nil // nothing to configure
 	}
-	
+
 	// Remove old tls.client-auth-type
 	for i, arg := range gwArgs {
 		if strings.HasPrefix(arg, "--tls.client-auth-type=") {
