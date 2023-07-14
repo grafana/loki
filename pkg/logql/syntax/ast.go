@@ -125,7 +125,7 @@ func (m MultiStageExpr) reorderStages() []StageExpr {
 
 			// unpack modifies the contents of the line so any line filter
 			// originally after an unpack must still be after the same
-			// line_format.
+			// unpack.
 			if f.Op == OpParserTypeUnpack {
 				if len(filters) > 0 {
 					result = append(result, combineFilters(filters))
