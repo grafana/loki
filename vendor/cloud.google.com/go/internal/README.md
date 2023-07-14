@@ -19,25 +19,26 @@ metadata required. For now, `.repo-metadata-full.json` includes everything.
 
 ## cloudbuild.yaml
 
-To kick off a build locally run from the repo root:
+The `cloudbuild.yaml` Cloud Build configuration currently supports:
+
+* Building a docker container from the `internal/postprocessor/Dockerfile`.
+
+The build can be run locally in the `google-cloud-go` root directory:
 
 ```bash
 gcloud builds submit --project=cloud-devrel-kokoro-resources --config=internal/cloudbuild.yaml
 ```
 
+See the [postprocessor/README](postprocessor/README.md) for instructions
+regarding updating the post-processor docker container.
+
 ### Updating OwlBot SHA
 
-You may want to manually update the which version of the post processor will be
-used -- to do this you need to update the SHA in the OwlBot lock file. Start by
-running the following commands:
+You may want to manually update the which version of the post-processor will be
+used -- to do this you need to update the SHA in the OwlBot lock file.
 
-```bash
-docker pull gcr.io/cloud-devrel-public-resources/owlbot-go:latest
-docker inspect --format='{{index .RepoDigests 0}}' gcr.io/cloud-devrel-public-resources/owlbot-go:latest
-```
-
-This will give you a SHA. You can use this value to update the value in
-`.github/.OwlBot.lock.yaml`.
+See the [postprocessor/README](postprocessor/README.md) for detailed
+instructions.
 
 *Note*: OwlBot will eventually open a pull request to update this value if it
 discovers a new version of the container.
