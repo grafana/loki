@@ -34,7 +34,6 @@ BUILD_IMAGE_VERSION := 0.28.3
 # Docker image info
 IMAGE_PREFIX ?= grafana
 
-FETCH_TAGS :=$(shell ./tools/fetch-tags)
 IMAGE_TAG := $(shell ./tools/image-tag)
 
 # Version info for binaries
