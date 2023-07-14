@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -251,7 +252,16 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Data:       sampleStreamToMatrix(r.Response.Data.Result),
 			Headers:    resp.GetHeaders(),
 		}, nil
+	case *TopKSketchesResponse:
+		matrix, err := sketch.TopKMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode topk sketch: %w", err)
+		}
 
+		return logqlmodel.Result{
+			Data:    matrix,
+			Headers: resp.GetHeaders(),
+		}, nil
 	default:
 		return logqlmodel.Result{}, fmt.Errorf("cannot decode (%T)", resp)
 	}

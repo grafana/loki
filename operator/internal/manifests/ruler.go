@@ -64,6 +64,10 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelRulerComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return append(objs,
 		statefulSet,
 		NewRulerGRPCService(opts),

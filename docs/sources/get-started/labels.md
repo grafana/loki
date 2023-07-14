@@ -6,7 +6,6 @@ weight: 600
 aliases:
     - ../getting-started/labels/
     - ../fundamentals/labels/
-    - ../get-started/labels/
 ---
 # Understand labels
 

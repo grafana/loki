@@ -173,7 +173,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -273,7 +273,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(util_log.Logger, writeFailuresCfg, configs),
+		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -1164,7 +1164,7 @@ func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 			return instance.GetSeriesVolume(ctx, req)
 		}),
 		f(func() (*logproto.VolumeResponse, error) {
-			return i.store.SeriesVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
+			return i.store.SeriesVolume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, matchers...)
 		}),
 	}
 	resps := make([]*logproto.VolumeResponse, len(jobs))

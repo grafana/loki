@@ -629,16 +629,8 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	matchAny := len(matchers) == 0
-	labelsToMatch := make(map[string]struct{})
-	for _, m := range matchers {
-		if m.Name == "" {
-			matchAny = true
-			continue
-		}
-
-		labelsToMatch[m.Name] = struct{}{}
-	}
+	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(req.TargetLabels, matchers)
+	matchAny = matchAny || len(matchers) == 0
 
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))

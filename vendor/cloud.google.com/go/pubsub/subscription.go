@@ -397,8 +397,8 @@ type SubscriptionConfig struct {
 	// by Pub/Sub and have distinct MessageID values.
 	//
 	// Lastly, to guarantee messages have been acked or nacked properly, you must
-	// call Message.AckWithResponse() or Message.NackWithResponse(). These return an
-	// AckResponse which will be ready if the message has been acked (or failed to be acked).
+	// call Message.AckWithResult() or Message.NackWithResult(). These return an
+	// AckResult which will be ready if the message has been acked (or failed to be acked).
 	EnableExactlyOnceDelivery bool
 
 	// State indicates whether or not the subscription can receive messages.
