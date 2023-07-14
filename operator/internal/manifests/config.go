@@ -276,7 +276,7 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		InstancePort:                   grpcPort,
 		BindPort:                       gossipPort,
 		MembersDiscoveryAddr:           fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
-		EnableInstanceAvailabilityZone: replication != nil,
+		EnableInstanceAvailabilityZone: replication != nil && len(replication.Zones) > 0,
 	}
 }
 

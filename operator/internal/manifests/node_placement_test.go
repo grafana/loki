@@ -569,11 +569,11 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 		Zones: []lokiv1.ZoneSpec{
 			{
 				MaxSkew:     1,
-				TopologyKey: "region",
+				TopologyKey: "datacenter",
 			},
 			{
 				MaxSkew:     1,
-				TopologyKey: "zone",
+				TopologyKey: "rack",
 			},
 		},
 	}
@@ -588,7 +588,7 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 			Annotations: map[string]string{
 				"one":                                   "value",
 				"two":                                   "values",
-				lokiv1.AnnotationAvailabilityZoneLabels: "region,zone",
+				lokiv1.AnnotationAvailabilityZoneLabels: "datacenter,rack",
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -619,7 +619,7 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 			TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
 				{
 					MaxSkew:           int32(1),
-					TopologyKey:       "region",
+					TopologyKey:       "datacenter",
 					WhenUnsatisfiable: corev1.DoNotSchedule,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{
@@ -630,7 +630,7 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 				},
 				{
 					MaxSkew:           int32(1),
-					TopologyKey:       "zone",
+					TopologyKey:       "rack",
 					WhenUnsatisfiable: corev1.DoNotSchedule,
 					LabelSelector: &metav1.LabelSelector{
 						MatchLabels: map[string]string{

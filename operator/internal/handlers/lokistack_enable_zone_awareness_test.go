@@ -37,7 +37,6 @@ var (
 )
 
 func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(t *testing.T) {
-
 	k := &k8sfakes.FakeClient{}
 
 	badRequestErr := kverrors.New("failed to lookup node")
@@ -91,15 +90,16 @@ func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsNode_DoesNotError(t *test
 		return kverrors.New("failed to lookup node")
 	}
 
-	err := handlers.AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &testPod)
-	require.NoError(t, err)
-	expectedPatch, err := json.Marshal(map[string]interface{}{
+	expectedPatch, _ := json.Marshal(map[string]interface{}{
 		"metadata": map[string]interface{}{
 			"annotations": map[string]string{
 				lokiv1.AnnotationAvailabilityZone: "test-node_us-east-2c_us-east-2",
 			},
 		},
 	})
+
+	err := handlers.AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &testPod)
+	require.NoError(t, err)
 
 	// make sure patch was called because the Get succeeded
 	require.Equal(t, 1, k.PatchCallCount())
