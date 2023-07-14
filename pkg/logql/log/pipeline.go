@@ -2,6 +2,7 @@ package log
 
 import (
 	"reflect"
+	"sync"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -43,19 +44,32 @@ func NewNoopPipeline() Pipeline {
 
 type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
+	mu    sync.RWMutex
 }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
 	h := labels.Hash()
+
+	n.mu.RLock()
 	if cached, ok := n.cache[h]; ok {
+		n.mu.RUnlock()
 		return cached
 	}
+	n.mu.RUnlock()
+
 	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	n.cache[h] = sp
 	return sp
 }
 
 func (n *noopPipeline) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
 	for k := range n.cache {
 		delete(n.cache, k)
 	}
@@ -110,6 +124,7 @@ type pipeline struct {
 	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
+	mu          sync.RWMutex
 
 	streamPipelines map[uint64]StreamPipeline
 }
@@ -154,16 +169,27 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
+
+	p.mu.RLock()
 	if res, ok := p.streamPipelines[hash]; ok {
+		p.mu.RUnlock()
 		return res
 	}
+	p.mu.RUnlock()
 
 	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.streamPipelines[hash] = res
 	return res
 }
 
 func (p *pipeline) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.baseBuilder.Reset()
 	for k := range p.streamPipelines {
 		delete(p.streamPipelines, k)
