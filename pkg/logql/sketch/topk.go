@@ -2,10 +2,11 @@ package sketch
 
 import (
 	"container/heap"
-	"github.com/grafana/loki/pkg/logproto"
 	"reflect"
 	"sort"
 	"unsafe"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"

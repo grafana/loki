@@ -253,7 +253,7 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers:    resp.GetHeaders(),
 		}, nil
 	case *TopKSketchesResponse:
-		matrix, err := sketch.FromProto(r.Response)
+		matrix, err := sketch.TopKMatrixFromProto(r.Response)
 		if err != nil {
 			return logqlmodel.Result{}, fmt.Errorf("cannot decode topk sketch: %w", err)
 		}
