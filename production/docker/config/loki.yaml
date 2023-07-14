@@ -70,6 +70,13 @@ ruler:
 schema_config:
   configs:
   - from: 2020-08-01
+    store: boltdb-shipper
+    object_store: s3
+    schema: v11
+    index:
+      prefix: index_
+      period: 24h
+  - from: 2023-07-11
     store: tsdb
     object_store: s3
     schema: v12

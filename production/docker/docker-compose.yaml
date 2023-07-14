@@ -117,15 +117,16 @@ services:
     volumes:
       - ./config:/etc/loki/
       - ./rules:/loki/rules:ro
+    # only needed for interactive debugging with dlv
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
     ports:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
       # - "40000-40002:40000" # makes the replicas available on ports 40000, 40001, 40002
-    # cap_add:
-    # - SYS_PTRACE
-    # security_opt:
-    # - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=read"
     networks:
       - loki
@@ -133,21 +134,21 @@ services:
     deploy:
       mode: replicated
       replicas: 3
-    # only needed for interactive debugging with dlv
 
   loki-write:
     image: *lokiImage
     volumes:
       - ./config:/etc/loki/
+    # only needed for interactive debugging with dlv
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
     ports:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
       # - "50000-50002:40000" #  makes the replicas available on ports 50000, 50001, 50002
-    # cap_add:
-    # - SYS_PTRACE
-    # security_opt:
-    # - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=write"
     networks:
       - loki
@@ -160,15 +161,16 @@ services:
     image: *lokiImage
     volumes:
       - ./config:/etc/loki/
+    # only needed for interactive debugging with dlv
+    # cap_add:
+    #   - SYS_PTRACE
+    # security_opt:
+    #   - apparmor=unconfined
     ports:
       - "3100"
       - "7946"
       # uncomment to use interactive debugging
       # - "60000-60002:40000" #  makes the replicas available on ports 60000, 60001, 60002
-    # cap_add:
-    # - SYS_PTRACE
-    # security_opt:
-    # - apparmor=unconfined
     command: "-config.file=/etc/loki/loki.yaml -target=backend"
     networks:
       - loki
