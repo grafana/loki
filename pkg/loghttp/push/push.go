@@ -82,10 +82,11 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 
 	contentType := r.Header.Get(contentType)
 	var (
-		entriesSize      int64
-		streamLabelsSize int64
-		totalEntries     int64
-		req              logproto.PushRequest
+		entriesSize          int64
+		nonIndexedLabelsSize int64
+		streamLabelsSize     int64
+		totalEntries         int64
+		req                  logproto.PushRequest
 	)
 
 	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
@@ -132,12 +133,13 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		}
 		for _, e := range s.Entries {
 			totalEntries++
-			var nonIndexedLabelsSize int64
+			var entryLabelsSize int64
 			for _, l := range e.NonIndexedLabels {
-				nonIndexedLabelsSize += int64(len(l.Name)) + int64(len(l.Value))
+				entryLabelsSize += int64(len(l.Name)) + int64(len(l.Value))
 			}
-			entrySize := int64(len(e.Line)) + nonIndexedLabelsSize
+			entrySize := int64(len(e.Line)) + entryLabelsSize
 			entriesSize += entrySize
+			nonIndexedLabelsSize += entryLabelsSize
 			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entrySize))
 			bytesReceivedStats.Inc(entrySize)
 			if e.Timestamp.After(mostRecentEntry) {
@@ -162,6 +164,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		"entries", totalEntries,
 		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
+		"nonIndexedLabelsSize", humanize.Bytes(uint64(nonIndexedLabelsSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
 		"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
 	)
