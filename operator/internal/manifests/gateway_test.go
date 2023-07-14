@@ -964,7 +964,7 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
-	dpl := NewGatewayDeployment(Options{
+	obj, _ := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Gates: configv1.FeatureGates{
@@ -994,8 +994,9 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 			},
 		},
 		Timeouts: defaultTimeoutConfig,
-	}, "deadbeef")
+	})
 
+	dpl := obj[2].(*appsv1.Deployment)
 	require.EqualValues(t, dpl.Spec.Template.Spec.TopologySpreadConstraints, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,

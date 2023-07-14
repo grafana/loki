@@ -52,6 +52,10 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelDistributorComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewDistributorGRPCService(opts),
@@ -129,10 +133,6 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	if opts.Stack.Template != nil && opts.Stack.Template.Distributor != nil {
 		podSpec.Tolerations = opts.Stack.Template.Distributor.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Distributor.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelDistributorComponent, opts.Name)...)
 	}
 
 	return &appsv1.Deployment{
