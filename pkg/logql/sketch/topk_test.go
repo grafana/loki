@@ -5,7 +5,7 @@ import (
 	"container/heap"
 	"io"
 	"math/rand"
-	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"testing"
@@ -14,12 +14,6 @@ import (
 	"github.com/alicebob/miniredis/v2/hyperloglog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-)
-
-const (
-	link1 = "https://www.gutenberg.org/cache/epub/100/pg100.txt"
-	link2 = "https://www.gutenberg.org/cache/epub/2600/pg2600.txt"
-	link3 = "https://www.gutenberg.org/cache/epub/1184/pg1184.txt"
 )
 
 type event struct {
@@ -145,11 +139,10 @@ outer2:
 // compare the accuracy of cms topk and hk to the real topk
 func TestRealTopK(t *testing.T) {
 	// the HLL cardinality estimate for this page is ~72000
-	link := "https://www.gutenberg.org/cache/epub/100/pg100.txt"
-
-	resp, err := http.Get(link)
+	f, err := os.Open("testdata/shakspeare.txt")
+	defer f.Close()
 	require.NoError(t, err)
-	scanner := bufio.NewScanner(resp.Body)
+	scanner := bufio.NewScanner(f)
 
 	m := make(map[string]uint32)
 	h := MinHeap{}
@@ -182,13 +175,12 @@ func TestRealTopK(t *testing.T) {
 		res = append(res, element{h[i].event, int64(h[i].count)})
 	}
 	sort.Sort(res)
-	resp.Body.Close()
 
 	cms, _ := NewCMSTopkForCardinality(nil, 100, 72000)
-	resp, err = http.Get(link)
+	f, err = os.Open("testdata/shakspeare.txt")
 	assert.NoError(t, err)
 
-	scanner = bufio.NewScanner(resp.Body)
+	scanner = bufio.NewScanner(f)
 	// Set the split function for the scanning operation.
 	scanner.Split(bufio.ScanWords)
 	// Scan all words from the file.
@@ -207,7 +199,6 @@ outer:
 		}
 		cmsMissing++
 	}
-	resp.Body.Close()
 
 	// we should have gotten at least 98/100 topk right here
 	require.True(t, cmsMissing <= 2, "cms missing %d", cmsMissing)
@@ -217,13 +208,16 @@ outer:
 // merging operations with 10 sketches each
 func TestRealTop_Merge(t *testing.T) {
 	// the HLL cardinality estimate for these page is ~120000
-	r1, err := http.Get(link1)
+	r1, err := os.Open("testdata/shakspeare.txt")
 	require.NoError(t, err)
-	r2, err := http.Get(link2)
+	r2, err := os.Open("testdata/war_peace.txt")
 	require.NoError(t, err)
-	r3, err := http.Get(link3)
+	r3, err := os.Open("testdata/monte_cristo.txt")
 	require.NoError(t, err)
-	combined := io.MultiReader(r1.Body, r2.Body, r3.Body)
+	combined := io.MultiReader(r1, r2, r3)
+	defer r1.Close()
+	defer r2.Close()
+	defer r3.Close()
 
 	scanner := bufio.NewScanner(combined)
 
@@ -262,17 +256,14 @@ func TestRealTop_Merge(t *testing.T) {
 		res = append(res, element{h[i].event, int64(h[i].count)})
 	}
 	sort.Sort(res)
-	r1.Body.Close()
-	r2.Body.Close()
-	r3.Body.Close()
 
-	r1, err = http.Get(link1)
+	r1, err = os.Open("testdata/shakspeare.txt")
 	require.NoError(t, err)
-	r2, err = http.Get(link2)
+	r2, err = os.Open("testdata/war_peace.txt")
 	require.NoError(t, err)
-	r3, err = http.Get(link2)
+	r3, err = os.Open("testdata/monte_cristo.txt")
 	require.NoError(t, err)
-	combined = io.MultiReader(r1.Body, r2.Body)
+	combined = io.MultiReader(r1, r2, r3)
 
 	scanner = bufio.NewScanner(combined)
 	scanner.Split(bufio.ScanWords)
@@ -303,10 +294,6 @@ outer:
 		}
 		cmsMissing++
 	}
-	r1.Body.Close()
-	r2.Body.Close()
-	r3.Body.Close()
-
 }
 
 // compare the accuracy of cms topk and hk to the real topk when using
@@ -319,26 +306,26 @@ func TestRealTop_MergeProto(t *testing.T) {
 	cms2, _ := newCMSTopK(k, 2048, 5)
 
 	// read the first dataset into sketch1
-	r1, err := http.Get(link1)
+	r1, err := os.Open("testdata/shakspeare.txt")
+	r1.Close()
 	require.NoError(t, err)
-	scanner := bufio.NewScanner(r1.Body)
+	scanner := bufio.NewScanner(r1)
 	scanner.Split(bufio.ScanWords)
 
 	for scanner.Scan() {
 		s := scanner.Text()
 		cms1.Observe(s)
 	}
-	r1.Body.Close()
 
 	// read the second dataset into sketch2
-	r2, err := http.Get(link2)
+	r2, err := os.Open("testdata/war_peace.txt")
+	defer r2.Close()
 	require.NoError(t, err)
-	scanner = bufio.NewScanner(r2.Body)
+	scanner = bufio.NewScanner(r2)
 	for scanner.Scan() {
 		s := scanner.Text()
 		cms1.Observe(s)
 	}
-	r2.Body.Close()
 	mergedCMS, _ := newCMSTopK(k, 2048, 5)
 	require.NoError(t, mergedCMS.Merge(cms1), "error merging")
 	require.NoError(t, mergedCMS.Merge(cms2), "error merging")

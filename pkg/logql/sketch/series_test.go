@@ -14,7 +14,7 @@ func TestTopKMatrixProto(t *testing.T) {
 	require.NoError(t, err)
 
 	// Load topk with real world data set.
-	f, err := os.Open("testdata/pg100.txt")
+	f, err := os.Open("testdata/shakspeare.txt")
 	require.NoError(t, err)
 	scanner := bufio.NewScanner(f)
 	scanner.Split(bufio.ScanWords)
@@ -52,7 +52,7 @@ func TestTopKMatrixProtoMerge(t *testing.T) {
 	require.NoError(t, err)
 
 	// Load topk with real world data set.
-	f, err := os.Open("testdata/pg100.txt")
+	f, err := os.Open("testdata/shakspeare.txt")
 	require.NoError(t, err)
 	scanner := bufio.NewScanner(f)
 	scanner.Split(bufio.ScanWords)
