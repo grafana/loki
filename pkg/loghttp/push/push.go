@@ -135,7 +135,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 			totalEntries++
 			var entryLabelsSize int64
 			for _, l := range e.NonIndexedLabels {
-				entryLabelsSize += int64(len(l.Name)) + int64(len(l.Value))
+				entryLabelsSize += int64(len(l.Name) + len(l.Value))
 			}
 			entrySize := int64(len(e.Line)) + entryLabelsSize
 			entriesSize += entrySize
