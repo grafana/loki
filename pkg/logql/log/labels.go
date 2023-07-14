@@ -136,7 +136,7 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 }
 
 // Reset clears all current state for the builder.
-func (b *LabelsBuilder) Reset() {
+func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
