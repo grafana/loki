@@ -148,14 +148,17 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	}
 
 	if cfg.LRUCache.Enabled {
-		cache, err := NewLRUCache(cfg.Prefix+"inmemory-lru-cache", cfg.LRUCache, reg, logger, cacheType)
+		cacheName := cfg.Prefix + "inmemory-lru-cache"
+		lruCache, err := NewLRUCache(cacheName, cfg.LRUCache, reg, logger, cacheType)
 		if err != nil {
 			level.Error(logger).Log("msg", "failed to initialize LRU cache", "err", err)
 			return nil, err
 		}
 
-		if cache != nil {
-			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"inmemory-lru-cache", cache, reg)))
+		if lruCache != nil {
+			instrumentCache := Instrument(cacheName, lruCache, reg)
+			backgroundCache := NewBackground(cacheName, cfg.Background, instrumentCache, reg)
+			caches = append(caches, CollectStats(backgroundCache))
 		}
 	}
 
