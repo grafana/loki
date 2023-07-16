@@ -18,16 +18,13 @@ import (
 	"github.com/grafana/loki/pkg/util/flagext"
 )
 
-func runTSDBIndexCache(t testing.TB) {
+func TestSingleIdxCached(t *testing.T) {
+	// setup cache.
 	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
 	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	require.NoError(t, e)
-	sharedCacheClient = c
-}
+	defer c.Stop()
 
-func TestSingleIdxCached(t *testing.T) {
-	runTSDBIndexCache(t)
-	defer sharedCacheClient.Stop()
 	cases := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar"}`),
@@ -78,7 +75,7 @@ func TestSingleIdxCached(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases, IndexOpts{})
+				return BuildIndex(t, t.TempDir(), cases, IndexOpts{PostingsCache: c})
 			},
 		},
 		{
@@ -221,8 +218,11 @@ func TestSingleIdxCached(t *testing.T) {
 }
 
 func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
-	runTSDBIndexCache(b)
-	defer sharedCacheClient.Stop()
+	// setup cache.
+	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
+	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	require.NoError(b, e)
+	defer c.Stop()
 
 	now := model.Now()
 	queryFrom, queryThrough := now.Add(3*time.Hour).Add(time.Millisecond), now.Add(5*time.Hour).Add(-time.Millisecond)
@@ -263,7 +263,7 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	}, IndexOpts{})
+	}, IndexOpts{PostingsCache: c})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -275,8 +275,12 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 }
 
 func TestCacheableTSDBIndex_Stats(t *testing.T) {
-	runTSDBIndexCache(t)
-	defer sharedCacheClient.Stop()
+	// setup cache.
+	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
+	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	require.NoError(t, e)
+	defer c.Stop()
+
 	series := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
@@ -377,7 +381,7 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
+			tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: c})
 			acc := &stats.Stats{}
 			err := tsdbIndex.Stats(context.Background(), "fake", tc.from, tc.through, acc, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
 			require.Equal(t, tc.expectedErr, err)
@@ -387,8 +391,12 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 }
 
 func BenchmarkSeriesRepetitive(b *testing.B) {
-	runTSDBIndexCache(b)
-	defer sharedCacheClient.Stop()
+	// setup cache.
+	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
+	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	require.NoError(b, e)
+	defer c.Stop()
+
 	series := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
@@ -430,7 +438,7 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 		},
 	}
 	tempDir := b.TempDir()
-	tsdbIndex := BuildIndex(b, tempDir, series, IndexOpts{PostingsCache: sharedCacheClient})
+	tsdbIndex := BuildIndex(b, tempDir, series, IndexOpts{PostingsCache: c})
 	acc := &stats.Stats{}
 
 	for i := 0; i < b.N; i++ {
@@ -439,8 +447,12 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 }
 
 func TestMultipleIndexesFiles(t *testing.T) {
-	runTSDBIndexCache(t)
-	defer sharedCacheClient.Stop()
+	// setup cache.
+	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
+	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	require.NoError(t, e)
+	defer c.Stop()
+
 	series := []LoadableSeries{
 		{
 			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
@@ -468,7 +480,7 @@ func TestMultipleIndexesFiles(t *testing.T) {
 		},
 	}
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: sharedCacheClient})
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: c})
 
 	refs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
 	require.NoError(t, err)
@@ -492,7 +504,7 @@ func TestMultipleIndexesFiles(t *testing.T) {
 	}
 
 	tempDir = t.TempDir()
-	tsdbIndex = BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: sharedCacheClient})
+	tsdbIndex = BuildIndex(t, tempDir, series, IndexOpts{PostingsCache: c})
 	refs, err = tsdbIndex.GetChunkRefs(context.Background(), "fake", 5, 10, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")) //nolint:errcheck
 	require.NoError(t, err)
 	require.Len(t, refs, 0)

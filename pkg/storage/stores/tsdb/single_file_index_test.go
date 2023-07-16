@@ -9,10 +9,8 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/util/flagext"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/common/model"
@@ -216,12 +214,6 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 	queryFrom, queryThrough := now.Add(3*time.Hour).Add(time.Millisecond), now.Add(5*time.Hour).Add(-time.Millisecond)
 	queryBounds := newBounds(queryFrom, queryThrough)
 	numChunksToMatch := 0
-
-	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
-	c, err := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
-	require.NoError(b, err)
-	sharedCacheClient = c
-
 	var chunkMetas []index.ChunkMeta
 	// build a chunk for every second with randomized chunk length
 	for from, through := now, now.Add(24*time.Hour); from <= through; from = from.Add(time.Second) {
@@ -256,7 +248,7 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	}, IndexOpts{PostingsCache: sharedCacheClient})
+	}, IndexOpts{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
