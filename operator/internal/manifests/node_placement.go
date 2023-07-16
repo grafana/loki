@@ -36,7 +36,9 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 			Annotations: map[string]string{},
 		},
 		Spec: corev1.PodSpec{
-			Containers: make([]corev1.Container, len(podTemplate.Spec.Containers)),
+			InitContainers: []corev1.Container{initContainerZoneAnnotationCheck(podTemplate.Spec.Containers[0].Image)},
+			Containers:     make([]corev1.Container, len(podTemplate.Spec.Containers)),
+			Volumes:        []corev1.Volume{zoneAnnotationVolumeMount()},
 		},
 	}
 

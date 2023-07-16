@@ -570,3 +570,39 @@ func lokiReadinessProbe() *corev1.Probe {
 		FailureThreshold:    3,
 	}
 }
+
+func initContainerZoneAnnotationCheck(image string) corev1.Container {
+	return corev1.Container{
+		Name:  "zone-annotation-check",
+		Image: image,
+		Command: []string{
+			"sh",
+			"-c",
+			"while ! [ -s /etc/zone-annotation/annotation ]; do echo Waiting for zone annotation to be set; sleep 2; done; echo Zone annotation is set; cat /etc/zone-annotation/annotation",
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      "zone-annotation",
+				MountPath: "/etc/zone-annotation",
+			},
+		},
+	}
+}
+
+func zoneAnnotationVolumeMount() corev1.Volume {
+	return corev1.Volume{
+		Name: "zone-annotation",
+		VolumeSource: corev1.VolumeSource{
+			DownwardAPI: &corev1.DownwardAPIVolumeSource{
+				Items: []corev1.DownwardAPIVolumeFile{
+					{
+						Path: "annotation",
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: "metadata.annotations['loki_instance_availability_zone']",
+						},
+					},
+				},
+			},
+		},
+	}
+}
