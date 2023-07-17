@@ -104,3 +104,7 @@ func ValidateAggregateBy(aggregateBy string) bool {
 		return false
 	}
 }
+
+func AggregateBySeries(aggregateBy string) bool {
+	return aggregateBy == "series"
+}
