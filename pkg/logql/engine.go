@@ -143,11 +143,11 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
-	Timeout   time.Duration
-	logger    log.Logger
-	querier   Querier
-	limits    Limits
-	opts      EngineOpts
+	Timeout time.Duration
+	logger  log.Logger
+	querier Querier
+	limits  Limits
+	opts    EngineOpts
 }
 
 // NewEngine creates a new LogQL Engine.
@@ -158,11 +158,11 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
-		logger:    logger,
-		querier:   q,
-		limits:    l,
-		Timeout:   queryTimeout,
-		opts:      opts,
+		logger:  logger,
+		querier: q,
+		limits:  l,
+		Timeout: queryTimeout,
+		opts:    opts,
 	}
 }
 
@@ -194,11 +194,11 @@ func NewProbabilisticEngine(opts EngineOpts, q Querier, l Limits, logger log.Log
 		logger = log.NewNopLogger()
 	}
 	e := Engine{
-		logger:    logger,
-		querier:   q,
-		limits:    l,
-		Timeout:   queryTimeout,
-		opts:      opts,
+		logger:  logger,
+		querier: q,
+		limits:  l,
+		Timeout: queryTimeout,
+		opts:    opts,
 	}
 
 	return &ProbabilisticEngine{Engine: e}

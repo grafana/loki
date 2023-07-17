@@ -153,8 +153,8 @@ func EvaluatorUnsupportedType(expr syntax.Expr, ev Evaluator[promql.Vector]) err
 }
 
 type DefaultEvaluator struct {
-	maxLookBackPeriod     time.Duration
-	querier               Querier
+	maxLookBackPeriod time.Duration
+	querier           Querier
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
@@ -486,6 +486,7 @@ type rangeVectorEvaluator struct {
 
 	err error
 }
+
 func (r *rangeVectorEvaluator) Type() parser.ValueType {
 	return parser.ValueTypeVector
 }

@@ -37,23 +37,27 @@ func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration)
 
 func (p *ProbabilisticEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator[promql.Vector], // Wrong type
+	nextEv SampleEvaluator[promql_parser.Value],
 	expr syntax.SampleExpr,
 	q Params,
 ) (StepEvaluator[promql_parser.Value], error) {
+
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if e.Operation != syntax.OpTypeTopK {
-			return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
+			//return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
+			return p.newDefaultStepEvaluator(ctx, nil, expr, q)
 		}
-		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
+		//return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
+		return p.newProbabilisticVectorAggEvaluator(ctx, nil, e, q)
 	default:
-		return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
+		//return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
+		return p.newDefaultStepEvaluator(ctx, nil, expr, q)
 	}
 }
 
 type probabilisticQuery struct {
-	evaluator    Evaluator[promql_parser.Value]
+	evaluator Evaluator[promql_parser.Value]
 	query
 }
 
@@ -71,7 +75,7 @@ func (q *probabilisticQuery) Exec(ctx context.Context) (logqlmodel.Result, error
 	//statResult.Log(level.Debug(spLogger))
 
 	return logqlmodel.Result{
-		Data:       data,
+		Data: data,
 	}, err
 }
 
@@ -137,16 +141,15 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 
 	switch stepEvaluator.Type() {
 	case promql_parser.ValueTypeVector:
-		return q.evalSampleVector(ctx, stepEvaluator, tenantIDs)
+		return q.aggregateSampleVectors(ctx, stepEvaluator, tenantIDs)
 	case sketch.ValueTypeTopKVector:
-		// TODO
-		return nil, nil
+		return q.aggregateTopKVectors(ctx, stepEvaluator, tenantIDs)
 	default:
 		return nil, nil
 	}
 }
 
-func(q *probabilisticQuery) evalSampleVector(
+func (q *probabilisticQuery) aggregateSampleVectors(
 	ctx context.Context,
 	stepEvaluator StepEvaluator[promql_parser.Value],
 	tenantIDs []string,
@@ -182,7 +185,6 @@ func(q *probabilisticQuery) evalSampleVector(
 	if stepCount <= 0 {
 		stepCount = 1
 	}
-
 
 	for next {
 		for _, p := range vec {
@@ -227,6 +229,14 @@ func(q *probabilisticQuery) evalSampleVector(
 	return result, stepEvaluator.Error()
 }
 
+func (q *probabilisticQuery) aggregateTopKVectors(
+	ctx context.Context,
+	stepEvaluator StepEvaluator[promql_parser.Value],
+	tenantIDs []string,
+) (promql_parser.Value, error) {
+	return nil, nil
+}
+
 func (p *ProbabilisticEvaluator) newDefaultStepEvaluator(
 	ctx context.Context,
 	nextEv SampleEvaluator[promql.Vector],
@@ -241,11 +251,11 @@ func (p *ProbabilisticEvaluator) newDefaultStepEvaluator(
 
 	// Wrap evaluator
 	return NewStepEvaluator[promql_parser.Value](func() (ok bool, ts int64, vec promql_parser.Value) {
-			ok, ts, vec = ev.Next()
-			return
-		},
+		ok, ts, vec = ev.Next()
+		return
+	},
 		ev.Close,
-		ev.Error,)
+		ev.Error)
 }
 
 func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
