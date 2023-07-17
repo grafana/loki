@@ -11,7 +11,6 @@ import (
 	"github.com/buger/jsonparser"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -157,12 +156,12 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 			}
 			e.Line = v
 		case 2: // nonIndexedLabels
-			var nonIndexedLabels labels.Labels
+			var nonIndexedLabels []logproto.LabelAdapter
 			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				nonIndexedLabels = append(nonIndexedLabels, labels.Label{
+				nonIndexedLabels = append(nonIndexedLabels, logproto.LabelAdapter{
 					Name:  string(key),
 					Value: string(val),
 				})

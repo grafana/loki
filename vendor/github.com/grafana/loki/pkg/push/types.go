@@ -1,13 +1,14 @@
 package push
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
 	"time"
 	"unsafe"
 
-	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/exp/slices"
 )
 
 // Stream contains a unique labels set as a string and a set of entries for it.
@@ -23,10 +24,47 @@ type Stream struct {
 type Entry struct {
 	Timestamp        time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line             string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	NonIndexedLabels labels.Labels `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
+	NonIndexedLabels LabelsAdapter `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
 }
 
-type LabelAdapter labels.Label
+// LabelAdapter should be a copy of the Prometheus labels.Label type.
+// We cannot import Prometheus in this package because it would create many dependencies
+// in other projects importing this package. Instead, we copy the definition here, which should
+// be kept in sync with the original so it can be casted to the prometheus type.
+type LabelAdapter struct {
+	Name, Value string
+}
+
+// LabelsAdapter is equivalent to the Prometheus labels.Labels type.
+type LabelsAdapter []LabelAdapter
+
+// MarshalJSON implements json.Marshaler.
+// Should be kept in sync with Prometheus's labels.Labels implementation.
+func (ls LabelsAdapter) MarshalJSON() ([]byte, error) {
+	labelsMap := make(map[string]string, len(ls))
+	for _, l := range ls {
+		labelsMap[l.Name] = l.Value
+	}
+	return json.Marshal(labelsMap)
+}
+
+// UnmarshalJSON implements json.Unmarshaler.
+// Should be kept in sync with Prometheus's labels.Labels implementation.
+func (ls *LabelsAdapter) UnmarshalJSON(b []byte) error {
+	var m map[string]string
+
+	if err := json.Unmarshal(b, &m); err != nil {
+		return err
+	}
+
+	*ls = make([]LabelAdapter, 0, len(m))
+	for k, v := range m {
+		*ls = append(*ls, LabelAdapter{Name: k, Value: v})
+	}
+	slices.SortFunc(*ls, func(a, b LabelAdapter) bool { return a.Name < b.Name })
+
+	return nil
+}
 
 func (m *LabelAdapter) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
@@ -428,8 +466,8 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NonIndexedLabels = append(m.NonIndexedLabels, labels.Label{})
-			if err := (*LabelAdapter)(&m.NonIndexedLabels[len(m.NonIndexedLabels)-1]).Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.NonIndexedLabels = append(m.NonIndexedLabels, LabelAdapter{})
+			if err := m.NonIndexedLabels[len(m.NonIndexedLabels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -619,7 +657,7 @@ func (m *Entry) Size() (n int) {
 	}
 	if len(m.NonIndexedLabels) > 0 {
 		for _, e := range m.NonIndexedLabels {
-			l = (*LabelAdapter)(&e).Size()
+			l = e.Size()
 			n += 1 + l + sovPush(uint64(l))
 		}
 	}
@@ -702,7 +740,7 @@ func (m *Entry) Equal(that interface{}) bool {
 		return false
 	}
 	for i := range m.NonIndexedLabels {
-		if !(*LabelAdapter)(&m.NonIndexedLabels[i]).Equal(LabelAdapter(that1.NonIndexedLabels[i])) {
+		if !m.NonIndexedLabels[i].Equal(that1.NonIndexedLabels[i]) {
 			return false
 		}
 	}

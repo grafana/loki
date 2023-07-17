@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"cloud.google.com/go/bigtable"
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/grpcclient"
 	ot "github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -56,8 +57,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
-func (cfg *Config) Validate() error {
-	return cfg.GRPCClientConfig.Validate()
+func (cfg *Config) Validate(log log.Logger) error {
+	return cfg.GRPCClientConfig.Validate(log)
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.

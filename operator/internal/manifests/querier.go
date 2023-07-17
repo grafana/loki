@@ -58,6 +58,10 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQuerierComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewQuerierGRPCService(opts),
@@ -71,8 +75,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelQuerierComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity:                  configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
-		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelQuerierComponent, opts.Name),
+		Affinity: configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -136,10 +139,6 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 	if opts.Stack.Template != nil && opts.Stack.Template.Querier != nil {
 		podSpec.Tolerations = opts.Stack.Template.Querier.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelQuerierComponent, opts.Name)...)
 	}
 
 	return &appsv1.Deployment{
