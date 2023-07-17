@@ -146,19 +146,19 @@ func TestMultiKVSetup(t *testing.T) {
 			require.NotNil(t, c.Ruler.Ring.KVStore.Multi.ConfigProvider)
 		},
 	} {
-		t.Run(target, func(t *testing.T) {
-			prepareGlobalMetricsRegistry(t)
+		t.Run(target, func(test *testing.T) {
+			prepareGlobalMetricsRegistry(test)
 
-			cfg := minimalWorkingConfig(t, dir, target)
+			cfg := minimalWorkingConfig(test, dir, target)
 			cfg.RuntimeConfig.LoadPath = []string{filepath.Join(dir, "config.yaml")}
 			c, err := New(cfg)
-			require.NoError(t, err)
+			require.NoError(test, err)
 
 			_, err = c.ModuleManager.InitModuleServices(cfg.Target...)
-			require.NoError(t, err)
+			require.NoError(test, err)
 			defer c.Server.Stop()
 
-			checkFn(t, c.Cfg)
+			checkFn(test, c.Cfg)
 		})
 	}
 }

@@ -12,15 +12,20 @@ import (
 
 func TestNoopPipeline(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
-	l, lbr, matches := NewNoopPipeline().ForStream(lbs).Process(0, []byte(""))
+	pipeline := NewNoopPipeline().(*noopPipeline)
+
+	l, lbr, matches := pipeline.ForStream(lbs).Process(0, []byte(""))
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
 	require.Equal(t, true, matches)
 
-	ls, lbr, matches := NewNoopPipeline().ForStream(lbs).ProcessString(0, "")
+	ls, lbr, matches := pipeline.ForStream(lbs).ProcessString(0, "")
 	require.Equal(t, "", ls)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
 	require.Equal(t, true, matches)
+
+	pipeline.Reset()
+	require.Len(t, pipeline.cache, 0)
 }
 
 func TestPipeline(t *testing.T) {
@@ -28,7 +33,8 @@ func TestPipeline(t *testing.T) {
 	p := NewPipeline([]Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		newMustLineFormatter("lbs {{.foo}}"),
-	})
+	}).(*pipeline)
+
 	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"))
 	require.Equal(t, []byte("lbs bar"), l)
 	require.Equal(t, NewLabelsResult(lbs, lbs.Hash()), lbr)
@@ -48,14 +54,18 @@ func TestPipeline(t *testing.T) {
 	require.Equal(t, "", ls)
 	require.Equal(t, nil, lbr)
 	require.Equal(t, false, matches)
+
+	// Reset caches
+	p.baseBuilder.del = []string{"foo", "bar"}
+	p.baseBuilder.add = labels.FromStrings("baz", "blip")
+
+	p.Reset()
+	require.Len(t, p.streamPipelines, 0)
+	require.Len(t, p.baseBuilder.del, 0)
+	require.Len(t, p.baseBuilder.add, 0)
 }
 
 func TestFilteringPipeline(t *testing.T) {
-	p := NewFilteringPipeline([]PipelineFilter{
-		newPipelineFilter(2, 4, labels.FromStrings("foo", "bar", "bar", "baz"), "e"),
-		newPipelineFilter(3, 5, labels.FromStrings("baz", "foo"), "e"),
-	}, newStubPipeline())
-
 	tt := []struct {
 		name              string
 		ts                int64
@@ -73,12 +83,21 @@ func TestFilteringPipeline(t *testing.T) {
 	}
 
 	for _, test := range tt {
+		downstream := newStubPipeline()
+		p := NewFilteringPipeline([]PipelineFilter{
+			newPipelineFilter(2, 4, labels.FromStrings("foo", "bar", "bar", "baz"), "e"),
+			newPipelineFilter(3, 5, labels.FromStrings("baz", "foo"), "e"),
+		}, downstream)
+
 		t.Run(test.name, func(t *testing.T) {
 			_, _, matches := p.ForStream(test.inputStreamLabels).Process(test.ts, []byte(test.line))
 			require.Equal(t, test.ok, matches)
 
 			_, _, matches = p.ForStream(test.inputStreamLabels).ProcessString(test.ts, test.line)
 			require.Equal(t, test.ok, matches)
+
+			p.Reset()
+			require.True(t, downstream.resetCalled)
 		})
 	}
 }
@@ -104,11 +123,16 @@ func newStubPipeline() *stubPipeline {
 
 // A stub always returns the same data
 type stubPipeline struct {
-	sp *stubStreamPipeline
+	sp          *stubStreamPipeline
+	resetCalled bool
 }
 
 func (p *stubPipeline) ForStream(_ labels.Labels) StreamPipeline {
 	return p.sp
+}
+
+func (p *stubPipeline) Reset() {
+	p.resetCalled = true
 }
 
 // A stub always returns the same data

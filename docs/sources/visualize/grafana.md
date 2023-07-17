@@ -1,6 +1,6 @@
 ---
 title: Visualize log data
-menuTitle: Visualize data
+menuTitle: Visualize
 description: Visualize your log data with Grafana
 aliases:
    - ../getting-started/grafana/

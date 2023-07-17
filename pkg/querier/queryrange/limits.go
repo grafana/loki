@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -471,34 +472,12 @@ func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, 
 	return transport
 }
 
-type work struct {
-	req    queryrangebase.Request
-	ctx    context.Context
-	result chan result
-}
-
-type result struct {
-	response queryrangebase.Response
-	err      error
-}
-
-func newWork(ctx context.Context, req queryrangebase.Request) work {
-	return work{
-		req:    req,
-		ctx:    ctx,
-		result: make(chan result, 1),
-	}
-}
-
 func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	var (
-		wg           sync.WaitGroup
-		intermediate = make(chan work)
-		ctx, cancel  = context.WithCancel(r.Context())
+		ctx, cancel = context.WithCancel(r.Context())
 	)
 	defer func() {
 		cancel()
-		wg.Wait()
 	}()
 
 	// Do not forward any request header.
@@ -528,40 +507,28 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 		return nil, httpgrpc.Errorf(http.StatusTooManyRequests, ErrMaxQueryParalellism.Error())
 	}
 
-	for i := 0; i < parallelism; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for {
-				select {
-				case w := <-intermediate:
-					resp, err := rt.do(w.ctx, w.req)
-					w.result <- result{response: resp, err: err}
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
+	sem := semaphore.NewWeighted(int64(parallelism))
 
 	response, err := rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-			w := newWork(ctx, r)
-			select {
-			case intermediate <- w:
-			case <-ctx.Done():
-				return nil, ctx.Err()
+			// This inner handler is called multiple times by
+			// sharding outer middlewares such as the downstreamer.
+			// The number of concurrent calls to `next.RoundTrip` should
+			// be limited, because the downstream calls can be in
+			// the thousands.
+			// Note: It is the responsibility of the caller to run
+			// the handler in parallel.
+			if err := sem.Acquire(ctx, int64(1)); err != nil {
+				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
-			select {
-			case response := <-w.result:
-				return response.response, response.err
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
+			defer sem.Release(int64(1))
+
+			return rt.do(ctx, r)
 		})).Do(ctx, request)
 	if err != nil {
 		return nil, err
 	}
+
 	return rt.codec.EncodeResponse(ctx, r, response)
 }
 
