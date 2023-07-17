@@ -604,7 +604,7 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 					Command: []string{
 						"sh",
 						"-c",
-						"while ! [ -s /etc/az-annotation/az ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat /etc/az-annotation/az",
+						"while ! [ -s /etc/az-annotation/az ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat /etc/az-annotation/az; echo",
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
