@@ -2,7 +2,6 @@ package ring
 
 import (
 	"context"
-	"errors"
 	"sort"
 	"time"
 )
@@ -90,71 +89,19 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	return results, nil
 }
 
-type DoUntilQuorumConfig struct {
-	// If true, enable request minimization.
-	// See docs for DoUntilQuorum for more information.
-	MinimizeRequests bool
-
-	// If non-zero and MinimizeRequests is true, enables hedging.
-	// See docs for DoUntilQuorum for more information.
-	HedgingDelay time.Duration
-}
-
-func (c DoUntilQuorumConfig) Validate() error {
-	if c.HedgingDelay < 0 {
-		return errors.New("invalid DoUntilQuorumConfig: HedgingDelay must be non-negative")
-	}
-
-	return nil
-}
-
 // DoUntilQuorum runs function f in parallel for all replicas in r.
 //
-// # Result selection
-//
-// If r.MaxUnavailableZones is greater than zero, DoUntilQuorum operates in zone-aware mode:
+// If r.MaxUnavailableZones is greater than zero:
 //   - DoUntilQuorum returns an error if calls to f for instances in more than r.MaxUnavailableZones zones return errors
 //   - Otherwise, DoUntilQuorum returns all results from all replicas in the first zones for which f succeeds
 //     for every instance in that zone (eg. if there are 3 zones and r.MaxUnavailableZones is 1, DoUntilQuorum will
 //     return the results from all instances in 2 zones, even if all calls to f succeed).
 //
-// Otherwise, DoUntilQuorum operates in non-zone-aware mode:
+// Otherwise:
 //   - DoUntilQuorum returns an error if more than r.MaxErrors calls to f return errors
 //   - Otherwise, DoUntilQuorum returns all results from the first len(r.Instances) - r.MaxErrors instances
 //     (eg. if there are 6 replicas and r.MaxErrors is 2, DoUntilQuorum will return the results from the first 4
 //     successful calls to f, even if all 6 calls to f succeed).
-//
-// # Request minimization
-//
-// cfg.MinimizeRequests enables or disables request minimization.
-//
-// Regardless of the value of cfg.MinimizeRequests, if one of the termination conditions above is satisfied or ctx is
-// cancelled before f is called for an instance, f may not be called for that instance at all.
-//
-// ## When disabled
-//
-// If request minimization is disabled, DoUntilQuorum will call f for each instance in r. The value of cfg.HedgingDelay
-// is ignored.
-//
-// ## When enabled
-//
-// If request minimization is enabled, DoUntilQuorum will initially call f for the minimum number of instances needed to
-// reach the termination conditions above, and later call f for further instances if required. For example, if
-// r.MaxUnavailableZones is 1 and there are three zones, DoUntilQuorum will initially only call f for instances in two
-// zones, and only call f for instances in the remaining zone if a request in the initial two zones fails.
-//
-// DoUntilQuorum will randomly select available zones / instances such that calling DoUntilQuorum multiple times with
-// the same ReplicationSet should evenly distribute requests across all zones / instances.
-//
-// If cfg.HedgingDelay is non-zero, DoUntilQuorum will call f for an additional zone's instances (if zone-aware) / an
-// additional instance (if not zone-aware) every cfg.HedgingDelay until one of the termination conditions above is
-// reached. For example, if r.MaxUnavailableZones is 2, cfg.HedgingDelay is 4 seconds and there are fives zones,
-// DoUntilQuorum will initially only call f for instances in three zones, and unless one of the termination conditions
-// is reached earlier, will then call f for instances in a fourth zone approximately 4 seconds later, and then call f
-// for instances in the final zone approximately 4 seconds after that (ie. roughly 8 seconds since the call to
-// DoUntilQuorum began).
-//
-// # Cleanup
 //
 // Any results from successful calls to f that are not returned by DoUntilQuorum will be passed to cleanupFunc,
 // including when DoUntilQuorum returns an error or only returns a subset of successful results. cleanupFunc may
@@ -162,40 +109,11 @@ func (c DoUntilQuorumConfig) Validate() error {
 //
 // A call to f is considered successful if it returns a nil error.
 //
-// # Contexts
-//
-// The context.Context passed to an invocation of f may be cancelled at any time if the result of that invocation of
-// f will not be used.
-//
-// DoUntilQuorum cancels the context.Context passed to each invocation of f before DoUntilQuorum returns.
-func DoUntilQuorum[T any](ctx context.Context, r ReplicationSet, cfg DoUntilQuorumConfig, f func(context.Context, *InstanceDesc) (T, error), cleanupFunc func(T)) ([]T, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	wrappedF := func(ctx context.Context, desc *InstanceDesc, _ context.CancelFunc) (T, error) {
-		return f(ctx, desc)
-	}
-
-	return DoUntilQuorumWithoutSuccessfulContextCancellation(ctx, r, cfg, wrappedF, cleanupFunc)
-}
-
-// DoUntilQuorumWithoutSuccessfulContextCancellation behaves the same as DoUntilQuorum, except it does not cancel
-// the context.Context passed to invocations of f whose results are returned.
-//
-// For example, this is useful in situations where DoUntilQuorumWithoutSuccessfulContextCancellation is used
-// to establish a set of streams that will be used after DoUntilQuorumWithoutSuccessfulContextCancellation returns.
-//
-// It is the caller's responsibility to ensure that either of the following are eventually true:
-//   - ctx is cancelled, or
-//   - the corresponding context.CancelFunc is called for all invocations of f whose results are returned by
-//     DoUntilQuorumWithoutSuccessfulContextCancellation
-//
-// Failing to do this may result in a memory leak.
-func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Context, r ReplicationSet, cfg DoUntilQuorumConfig, f func(context.Context, *InstanceDesc, context.CancelFunc) (T, error), cleanupFunc func(T)) ([]T, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, err
-	}
-
+// DoUntilQuorum cancels the context.Context passed to each invocation of f if the result of that invocation of
+// f will not be returned. If the result of that invocation of f will be returned, the context.Context passed
+// to that invocation of f will not be cancelled by DoUntilQuorum, but the context.Context is a child of ctx
+// passed to DoUntilQuorum and so will be cancelled if ctx is cancelled.
+func DoUntilQuorum[T any](ctx context.Context, r ReplicationSet, f func(context.Context, *InstanceDesc) (T, error), cleanupFunc func(T)) ([]T, error) {
 	resultsChan := make(chan instanceResult[T], len(r.Instances))
 	resultsRemaining := len(r.Instances)
 
@@ -222,28 +140,12 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 		contextTracker = newDefaultContextTracker(ctx, r.Instances)
 	}
 
-	if cfg.MinimizeRequests {
-		resultTracker.startMinimumRequests()
-	} else {
-		resultTracker.startAllRequests()
-	}
-
 	for i := range r.Instances {
 		instance := &r.Instances[i]
-		ctx, ctxCancel := contextTracker.contextFor(instance)
+		instanceCtx := contextTracker.contextFor(instance)
 
 		go func(desc *InstanceDesc) {
-			if err := resultTracker.awaitStart(ctx, desc); err != nil {
-				// Post to resultsChan so that the deferred cleanup handler above eventually terminates.
-				resultsChan <- instanceResult[T]{
-					err:      err,
-					instance: desc,
-				}
-
-				return
-			}
-
-			result, err := f(ctx, desc, ctxCancel)
+			result, err := f(instanceCtx, desc)
 			resultsChan <- instanceResult[T]{
 				result:   result,
 				err:      err,
@@ -259,14 +161,6 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 		}
 	}
 
-	var hedgingTrigger <-chan time.Time
-
-	if cfg.HedgingDelay > 0 {
-		ticker := time.NewTicker(cfg.HedgingDelay)
-		defer ticker.Stop()
-		hedgingTrigger = ticker.C
-	}
-
 	for !resultTracker.succeeded() {
 		select {
 		case <-ctx.Done():
@@ -274,8 +168,6 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 			cleanupResultsAlreadyReceived()
 
 			return nil, ctx.Err()
-		case <-hedgingTrigger:
-			resultTracker.startAdditionalRequests()
 		case result := <-resultsChan:
 			resultsRemaining--
 			resultTracker.done(result.instance, result.err)

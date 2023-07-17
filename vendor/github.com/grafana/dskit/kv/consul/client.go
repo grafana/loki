@@ -401,7 +401,7 @@ func (c *Client) createRateLimiter() *rate.Limiter {
 
 // WithCodec Clones and changes the codec of the consul client.
 func (c *Client) WithCodec(codec codec.Codec) *Client {
-	n := *c
-	n.codec = codec
-	return &n
+	new := *c
+	new.codec = codec
+	return &new
 }

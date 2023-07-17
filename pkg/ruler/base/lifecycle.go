@@ -4,7 +4,7 @@ import (
 	"github.com/grafana/dskit/ring"
 )
 
-func (r *Ruler) OnRingInstanceRegister(l *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
+func (r *Ruler) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the ruler instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it ACTIVE, while we keep existing
 	// tokens (if any).
@@ -14,7 +14,7 @@ func (r *Ruler) OnRingInstanceRegister(l *ring.BasicLifecycler, ringDesc ring.De
 	}
 
 	takenTokens := ringDesc.GetTokens()
-	newTokens := l.GetTokenGenerator().GenerateTokens(r.cfg.Ring.NumTokens-len(tokens), takenTokens)
+	newTokens := ring.GenerateTokens(r.cfg.Ring.NumTokens-len(tokens), takenTokens)
 
 	// Tokens sorting will be enforced by the parent caller.
 	tokens = append(tokens, newTokens...)
