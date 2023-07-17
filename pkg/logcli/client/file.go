@@ -187,6 +187,11 @@ func (f *FileClient) GetStats(queryStr string, start, end time.Time, quiet bool)
 	return nil, ErrNotSupported
 }
 
+func (f *FileClient) GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }

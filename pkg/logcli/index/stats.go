@@ -1,4 +1,4 @@
-package stats
+package index
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ func (q *StatsQuery) DoStats(c client.Client) {
 	stats := q.Stats(c)
 	kvs := stats.LoggingKeyValues()
 
-  fmt.Print("{\n")
+	fmt.Print("{\n")
 	for i := 0; i < len(kvs)-1; i = i + 2 {
 		k := kvs[i].(string)
 		v := kvs[i+1]
@@ -33,7 +33,7 @@ func (q *StatsQuery) DoStats(c client.Client) {
 
 		fmt.Printf("  %s: %d\n", color.BlueString(k), v)
 	}
-  fmt.Print("}\n")
+	fmt.Print("}\n")
 }
 
 // Stats returns an index stats response

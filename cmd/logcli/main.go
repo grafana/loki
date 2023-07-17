@@ -20,7 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
-	"github.com/grafana/loki/pkg/logcli/stats"
+	"github.com/grafana/loki/pkg/logcli/index"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	_ "github.com/grafana/loki/pkg/util/build"
 )
@@ -198,7 +198,7 @@ automatically or if using  --timezone flag.
 
 Example:
 
-	logcli query
+	logcli stats
 	   --timezone=UTC
 	   --from="2021-01-19T10:00:00Z"
 	   --to="2021-01-19T20:00:00Z"
@@ -206,6 +206,30 @@ Example:
 	   'my-query'
   `)
 	statsQuery = newStatsQuery(statsCmd)
+
+	volumeCmd = app.Command("volume", `Run a volume query.
+
+The "volume" command will take the provided label selector(s) and return aggregate
+volumes for series matching those volumes. This only works
+against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli volume
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output=jsonl
+	   'my-query'
+  `)
+	volumeQuery = newVolumeQuery(volumeCmd)
 )
 
 func main() {
@@ -319,6 +343,24 @@ func main() {
 		}
 	case statsCmd.FullCommand():
 		statsQuery.DoStats(queryClient)
+	case volumeCmd.FullCommand():
+		location, err := time.LoadLocation(*timezone)
+		if err != nil {
+			log.Fatalf("Unable to load timezone '%s': %s", *timezone, err)
+		}
+
+		outputOptions := &output.LogOutputOptions{
+			Timezone:      location,
+			NoLabels:      rangeQuery.NoLabels,
+			ColoredOutput: rangeQuery.ColoredOutput,
+		}
+
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
+		if err != nil {
+			log.Fatalf("Unable to create log output: %s", err)
+		}
+
+		volumeQuery.DoVolume(queryClient, out, *statistics)
 	}
 }
 
@@ -519,12 +561,12 @@ func defaultQueryRangeStep(start, end time.Time) time.Duration {
 	return time.Duration(step) * time.Second
 }
 
-func newStatsQuery(cmd *kingpin.CmdClause) *stats.StatsQuery {
+func newStatsQuery(cmd *kingpin.CmdClause) *index.StatsQuery {
 	// calculate query range from cli params
 	var from, to string
 	var since time.Duration
 
-	q := &stats.StatsQuery{}
+	q := &index.StatsQuery{}
 
 	// executed after all command flags are parsed
 	cmd.Action(func(_ *kingpin.ParseContext) error {
@@ -543,6 +585,37 @@ func newStatsQuery(cmd *kingpin.CmdClause) *stats.StatsQuery {
 	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
 	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+
+	return q
+}
+
+func newVolumeQuery(cmd *kingpin.CmdClause) *index.VolumeQuery {
+	// calculate query range from cli params
+	var from, to string
+	var since time.Duration
+
+	q := &index.VolumeQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+
+		q.Quiet = *quiet
+
+		return nil
+	})
+
+	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"}").Required().StringVar(&q.QueryString)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+
+	cmd.Flag("limit", "Limit on number of series to return volumes for.").Default("30").IntVar(&q.Limit)
+	cmd.Flag("step", "Query resolution step width, roll up volumes into buckets cover step time each.").Default("1h").DurationVar(&q.Step)
 
 	return q
 }

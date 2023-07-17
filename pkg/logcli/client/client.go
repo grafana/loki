@@ -33,6 +33,7 @@ const (
 	seriesPath        = "/loki/api/v1/series"
 	tailPath          = "/loki/api/v1/tail"
 	statsPath         = "/loki/api/v1/index/stats"
+	volumePath         = "/loki/api/v1/index/series_volume"
 	defaultAuthHeader = "Authorization"
 )
 
@@ -48,6 +49,7 @@ type Client interface {
 	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
+	GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -178,6 +180,21 @@ func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bo
 		return nil, err
 	}
 	return &statsResponse, nil
+}
+
+func (c *DefaultClient) GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+	params.SetString("step", fmt.Sprintf("%d", int(step.Seconds())))
+	params.SetString("limit", fmt.Sprintf("%d", limit))
+
+	var resp loghttp.QueryResponse
+	if err := c.doRequest(volumePath, params.Encode(), quiet, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
