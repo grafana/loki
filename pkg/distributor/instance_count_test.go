@@ -4,10 +4,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/grafana/dskit/kv/consul"
-	"github.com/stretchr/testify/assert"
-
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -95,17 +91,12 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 
 	sentry1 := map[string]int{}
 	sentry2 := map[string]int{}
-	store, closer := consul.NewInMemoryClient(ring.GetCodec(), log.NewNopLogger(), nil)
-	t.Cleanup(func() { assert.NoError(t, closer.Close()) })
 
 	var delegate ring.BasicLifecyclerDelegate
 	delegate = ring.NewInstanceRegisterDelegate(ring.ACTIVE, 1 /* tokenCount */)
 	delegate = &sentryDelegate{BasicLifecyclerDelegate: delegate, calls: sentry1} // sentry delegate BEFORE newHealthyInstancesDelegate
 	delegate = newHealthyInstanceDelegate(counter, time.Second, delegate)
 	delegate = &sentryDelegate{BasicLifecyclerDelegate: delegate, calls: sentry2} // sentry delegate AFTER newHealthyInstancesDelegate
-
-	lifecycler, err := ring.NewBasicLifecycler(ring.BasicLifecyclerConfig{}, "test-ring", "test-ring-key", store, delegate, log.NewNopLogger(), nil)
-	require.NoError(t, err)
 
 	ingesters := ring.NewDesc()
 	ingesters.AddIngester("ingester-0", "ingester-0:3100", "zone-a", []uint32{1}, ring.ACTIVE, time.Now())
@@ -120,19 +111,19 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.Equal(t, 0, sentry1["Tokens"])
 	require.Equal(t, 0, sentry2["Tokens"])
 
-	delegate.OnRingInstanceHeartbeat(lifecycler, ingesters, nil)
+	delegate.OnRingInstanceHeartbeat(nil, ingesters, nil)
 	require.Equal(t, 1, sentry1["Heartbeat"])
 	require.Equal(t, 1, sentry2["Heartbeat"])
 
-	delegate.OnRingInstanceRegister(lifecycler, *ingesters, true, "ingester-0", ring.InstanceDesc{})
+	delegate.OnRingInstanceRegister(nil, *ingesters, true, "ingester-0", ring.InstanceDesc{})
 	require.Equal(t, 1, sentry1["Register"])
 	require.Equal(t, 1, sentry2["Register"])
 
-	delegate.OnRingInstanceStopping(lifecycler)
+	delegate.OnRingInstanceStopping(nil)
 	require.Equal(t, 1, sentry1["Stopping"])
 	require.Equal(t, 1, sentry2["Stopping"])
 
-	delegate.OnRingInstanceTokens(lifecycler, ring.Tokens{})
+	delegate.OnRingInstanceTokens(nil, ring.Tokens{})
 	require.Equal(t, 1, sentry1["Stopping"])
 	require.Equal(t, 1, sentry2["Stopping"])
 }

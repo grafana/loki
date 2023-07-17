@@ -2,7 +2,7 @@ package ring
 
 import (
 	"context"
-	"math"
+	"math/rand"
 	"sort"
 	"time"
 
@@ -11,6 +11,39 @@ import (
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/netutil"
 )
+
+// GenerateTokens make numTokens unique random tokens, none of which clash
+// with takenTokens. Generated tokens are sorted.
+func GenerateTokens(numTokens int, takenTokens []uint32) []uint32 {
+	if numTokens <= 0 {
+		return []uint32{}
+	}
+
+	r := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	used := make(map[uint32]bool, len(takenTokens))
+	for _, v := range takenTokens {
+		used[v] = true
+	}
+
+	tokens := make([]uint32, 0, numTokens)
+	for i := 0; i < numTokens; {
+		candidate := r.Uint32()
+		if used[candidate] {
+			continue
+		}
+		used[candidate] = true
+		tokens = append(tokens, candidate)
+		i++
+	}
+
+	// Ensure returned tokens are sorted.
+	sort.Slice(tokens, func(i, j int) bool {
+		return tokens[i] < tokens[j]
+	})
+
+	return tokens
+}
 
 // GetInstanceAddr returns the address to use to register the instance
 // in the ring.
@@ -134,14 +167,4 @@ func searchToken(tokens []uint32, key uint32) int {
 		i = 0
 	}
 	return i
-}
-
-// tokenDistance returns the distance between the given tokens from and to.
-// The distance between a token and itself is the whole ring, i.e., math.MaxUint32 + 1.
-func tokenDistance(from, to uint32) int64 {
-	if from < to {
-		return int64(to - from)
-	}
-	// the trailing +1 is needed to ensure that token 0 is counted
-	return math.MaxUint32 - int64(from) + int64(to) + 1
 }
