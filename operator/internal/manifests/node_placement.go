@@ -63,11 +63,13 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 		Env: []corev1.EnvVar{availabilityZoneEnvVar},
 	}
 
-	for i, dst := range podTemplate.Spec.Containers {
-		if err := mergo.Merge(&dst, src, mergo.WithAppendSlice); err != nil {
-			return err
+	if component != LabelGatewayComponent {
+		for i, dst := range podTemplate.Spec.Containers {
+			if err := mergo.Merge(&dst, src, mergo.WithAppendSlice); err != nil {
+				return err
+			}
+			podTemplate.Spec.Containers[i] = dst
 		}
-		podTemplate.Spec.Containers[i] = dst
 	}
 
 	if err := mergo.Merge(podTemplate, template); err != nil {
