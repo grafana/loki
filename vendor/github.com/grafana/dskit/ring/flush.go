@@ -31,6 +31,6 @@ func NewNoopFlushTransferer() *NoopFlushTransferer {
 func (t *NoopFlushTransferer) Flush() {}
 
 // TransferOut is a noop
-func (t *NoopFlushTransferer) TransferOut(_ context.Context) error {
+func (t *NoopFlushTransferer) TransferOut(ctx context.Context) error {
 	return nil
 }
