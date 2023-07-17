@@ -307,11 +307,11 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &unorderedHeadBlock{
 		format: UnorderedWithMetadataHeadBlockFmt,
-		rt:     (recovered.(*unorderedHeadBlock)).rt,
-		lines:  (recovered.(*unorderedHeadBlock)).lines,
-		size:   (recovered.(*unorderedHeadBlock)).size,
-		mint:   (recovered.(*unorderedHeadBlock)).mint,
-		maxt:   (recovered.(*unorderedHeadBlock)).maxt,
+		rt:     unordered.rt,
+		lines:  unordered.lines,
+		size:   unordered.size,
+		mint:   unordered.mint,
+		maxt:   unordered.maxt,
 	}, recovered)
 
 	// Ensure we can recover unordered checkpoint into ordered headblock
@@ -326,15 +326,14 @@ func TestHeadBlockInterop(t *testing.T) {
 
 	// Ensure we can recover unordered checkpoint into unordered with metadata headblock
 	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithMetadataHeadBlockFmt)
-	// we compare the data with unordered because unordered head block does not contain metaLabels.
 	require.NoError(t, err)
 	require.Equal(t, &unorderedHeadBlock{
 		format: UnorderedWithMetadataHeadBlockFmt,
-		rt:     (recovered.(*unorderedHeadBlock)).rt,
-		lines:  (recovered.(*unorderedHeadBlock)).lines,
-		size:   (recovered.(*unorderedHeadBlock)).size,
-		mint:   (recovered.(*unorderedHeadBlock)).mint,
-		maxt:   (recovered.(*unorderedHeadBlock)).maxt,
+		rt:     unordered.rt,
+		lines:  unordered.lines,
+		size:   unordered.size,
+		mint:   unordered.mint,
+		maxt:   unordered.maxt,
 	}, recovered)
 
 	// Ensure we can recover unordered with metadata checkpoint into ordered headblock
