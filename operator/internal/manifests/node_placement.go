@@ -11,11 +11,11 @@ import (
 )
 
 const (
-	availabilityZoneEnvVarName = "INSTANCE_AVAILABILITY_ZONE"
-	availabilityZoneFieldPath  = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
-	availabilityZoneInitVolumeName = "az-annotation"
+	availabilityZoneEnvVarName          = "INSTANCE_AVAILABILITY_ZONE"
+	availabilityZoneFieldPath           = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
+	availabilityZoneInitVolumeName      = "az-annotation"
 	availabilityZoneInitVolumeMountPath = "/etc/az-annotation"
-	availabilityZoneInitVolumeFileName = "az"
+	availabilityZoneInitVolumeFileName  = "az"
 )
 
 var availabilityZoneEnvVar = corev1.EnvVar{
