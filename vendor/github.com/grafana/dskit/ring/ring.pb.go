@@ -59,7 +59,6 @@ func (InstanceState) EnumDescriptor() ([]byte, []int) {
 	return fileDescriptor_26381ed67e202a6e, []int{0}
 }
 
-// Desc is the top-level type used to model a ring, containing information for individual instances.
 type Desc struct {
 	Ingesters map[string]InstanceDesc `protobuf:"bytes,1,rep,name=ingesters,proto3" json:"ingesters" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 }
@@ -103,7 +102,6 @@ func (m *Desc) GetIngesters() map[string]InstanceDesc {
 	return nil
 }
 
-// InstanceDesc is the top-level type used to model per-instance information in a ring.
 type InstanceDesc struct {
 	Addr string `protobuf:"bytes,1,opt,name=addr,proto3" json:"addr,omitempty"`
 	// Unix timestamp (with seconds precision) of the last heartbeat sent

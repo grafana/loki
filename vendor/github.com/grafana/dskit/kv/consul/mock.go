@@ -95,7 +95,7 @@ func (m *mockKV) loop() {
 	}
 }
 
-func (m *mockKV) Put(p *consul.KVPair, _ *consul.WriteOptions) (*consul.WriteMeta, error) {
+func (m *mockKV) Put(p *consul.KVPair, q *consul.WriteOptions) (*consul.WriteMeta, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -119,7 +119,7 @@ func (m *mockKV) Put(p *consul.KVPair, _ *consul.WriteOptions) (*consul.WriteMet
 	return nil, nil
 }
 
-func (m *mockKV) CAS(p *consul.KVPair, _ *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
+func (m *mockKV) CAS(p *consul.KVPair, q *consul.WriteOptions) (bool, *consul.WriteMeta, error) {
 	level.Debug(m.logger).Log("msg", "CAS", "key", p.Key, "modify_index", p.ModifyIndex, "value", fmt.Sprintf("%.40q", p.Value))
 
 	m.mtx.Lock()
@@ -226,7 +226,7 @@ func (m *mockKV) List(prefix string, q *consul.QueryOptions) (consul.KVPairs, *c
 	return result, &consul.QueryMeta{LastIndex: m.current}, nil
 }
 
-func (m *mockKV) Delete(key string, _ *consul.WriteOptions) (*consul.WriteMeta, error) {
+func (m *mockKV) Delete(key string, q *consul.WriteOptions) (*consul.WriteMeta, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	delete(m.kvps, key)

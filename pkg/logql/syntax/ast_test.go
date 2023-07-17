@@ -652,6 +652,16 @@ func TestFilterReodering(t *testing.T) {
 		require.Len(t, stages, 5)
 		require.Equal(t, `|= "foo" |= "next" |= "bar" |= "baz" | logfmt | line_format "{{.foo}}" |= "1" |= "2" |= "3" | logfmt`, MultiStageExpr(stages).String())
 	})
+
+	t.Run("unpack test", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 5)
+		require.Equal(t, `|= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`, MultiStageExpr(stages).String())
+	})
 }
 
 var result bool
