@@ -1,5 +1,6 @@
 ## Main
 
+- [9963](https://github.com/grafana/loki/pull/9963) **xperimental**: Fix application tenant alertmanager configuration
 - [9795](https://github.com/grafana/loki/pull/9795) **JoaoBraveCoding**: Add initContainer to zone aware components to gatekeep them from starting without the AZ annotation
 - [9503](https://github.com/grafana/loki/pull/9503) **shwetaap**: Add Pod annotations with node topology labels to support zone aware scheduling
 - [9930](https://github.com/grafana/loki/pull/9930) **periklis**: Use PodAntiAffinity for all components
