@@ -1,16 +1,20 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
 	"io"
 	"os"
 	"testing"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
+	"github.com/grafana/loki/operator/internal/handlers"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	"github.com/stretchr/testify/require"
@@ -18,7 +22,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -237,6 +243,12 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 			featureGates:      configv1.FeatureGates{},
 			pred:              createUpdateOrDeletePred,
 		},
+		{
+			src:               &source.Kind{Type: &corev1.Node{}},
+			index:             2,
+			watchesCallsCount: 3,
+			pred:              createOrUpdatePodWithLabelPred,
+		},
 	}
 	for _, tst := range table {
 		b := &k8sfakes.FakeBuilder{}
@@ -255,4 +267,87 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		require.Equal(t, tst.src, src)
 		require.Equal(t, tst.pred, opts[0])
 	}
+}
+
+func TestLokiStackController_NodeLabelMismatch(t *testing.T) {
+	// test not yet complete
+	k := &k8sfakes.FakeClient{}
+	b := &k8sfakes.FakeBuilder{}
+	c := &LokiStackReconciler{Client: k, Scheme: scheme}
+
+	b.ForReturns(b)
+	b.OwnsReturns(b)
+	b.WatchesReturns(b)
+
+	err := c.buildController(b)
+	require.NoError(t, err)
+
+	testPod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "some-ns",
+			Labels: map[string]string{
+				lokiv1.LabelZoneAwarePod: "enabled",
+			},
+			Annotations: map[string]string{
+				lokiv1.AnnotationAvailabilityZoneLabels: generateTopologyKeyAnnotationFromNodeLabels(corev1.LabelHostname, corev1.LabelTopologyZone, corev1.LabelTopologyRegion),
+			},
+		},
+		Spec: corev1.PodSpec{
+			NodeName: "test-node",
+		},
+	}
+
+	testNode := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-node",
+			Namespace: "some-ns",
+			Labels: map[string]string{
+				corev1.LabelHostname:       "test-node",
+				corev1.LabelTopologyZone:   "us-east-2c",
+				corev1.LabelTopologyRegion: "us-east-2",
+			},
+		},
+	}
+
+	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		if name.Name == testPod.Spec.NodeName {
+			k.SetClientObject(object, &testNode)
+			return nil
+		}
+		return kverrors.New("failed to lookup node")
+	}
+
+	err = handlers.AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &testPod)
+	require.NoError(t, err)
+	expectedPatch, _ := json.Marshal(map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]string{
+				lokiv1.AnnotationAvailabilityZone: "test-node_us-east-2c_us-east-2",
+			},
+		},
+	})
+
+	require.Equal(t, 1, k.PatchCallCount())
+	_, p, patch, _ := k.PatchArgsForCall(0)
+	require.Equal(t, p, &testPod)
+	actualPatch, _ := patch.Data(nil)
+	require.Equal(t, actualPatch, expectedPatch)
+
+	testNode.ObjectMeta.Labels[corev1.LabelTopologyZone] = "us-east-2b"
+
+	expectedPatch, _ = json.Marshal(map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"annotations": map[string]string{
+				lokiv1.AnnotationAvailabilityZone: "test-node_us-east-2b_us-east-2",
+			},
+		},
+	})
+
+	require.Equal(t, 1, k.PatchCallCount())
+	_, p, patch, _ = k.PatchArgsForCall(0)
+	require.Equal(t, p, &testPod)
+	actualPatch, _ = patch.Data(nil)
+	require.Equal(t, actualPatch, expectedPatch)
+
 }

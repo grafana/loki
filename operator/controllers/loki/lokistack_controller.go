@@ -16,6 +16,7 @@ import (
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -208,7 +209,8 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
+		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
+		Watches(&source.Kind{Type: &corev1.Node{}}, r.enqueueForNodeLabelChanges(), updateOrDeleteWithStatusPred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -327,4 +329,64 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 
 		return requests
 	})
+}
+
+func (r *LokiStackReconciler) enqueueForNodeLabelChanges() handler.EventHandler {
+	ctx := context.TODO()
+	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
+		lokiStacks := &lokiv1.LokiStackList{}
+		if err := r.Client.List(ctx, lokiStacks); err != nil {
+			r.Log.Error(err, "Error getting LokiStack resources in event handler")
+			return nil
+		}
+
+		var requests []reconcile.Request
+		for _, stack := range lokiStacks.Items {
+			podList := &corev1.PodList{}
+			if err := r.Client.List(ctx, podList, &client.ListOptions{
+				Namespace: stack.Namespace,
+				LabelSelector: labels.SelectorFromSet(labels.Set{
+					"app.kubernetes.io/instance": stack.Name,
+				}),
+			}); err != nil {
+				r.Log.Error(err, "Error getting pod resources in event handler")
+				return nil
+			}
+
+			for _, pod := range podList.Items {
+				assignedNode := &corev1.Node{}
+				key := client.ObjectKey{Name: pod.Spec.NodeName}
+				if err := r.Client.Get(ctx, key, assignedNode); err != nil {
+					r.Log.Error(err, "Error getting node resources in event handler")
+					return nil
+				}
+
+				labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
+				if !ok {
+					err := kverrors.New("Zone-aware pod is missing node-labels annotation", "annotation", lokiv1.AnnotationAvailabilityZoneLabels)
+					r.Log.Error(err, "Zone-aware pod is missing node-labels annotation")
+					return nil
+				}
+				nodeLabels := generateTopologyKeyAnnotationFromNodeLabels(assignedNode.Labels[corev1.LabelHostname], assignedNode.Labels[corev1.LabelTopologyZone], assignedNode.Labels[corev1.LabelTopologyRegion])
+
+				if nodeLabels != labelsAnnotation {
+					err := kverrors.New("Topology key pod annotation does not match its node's labels")
+					r.Log.Error(err, "Topology key pod annotation does not match its node's labels")
+					return nil
+					// still don't know how to handle it from here
+
+					/*return status.DegradedError{
+						Reason: lokiv1.ReasonZoneLabelsMismatch,
+					}*/
+				}
+			}
+
+		}
+
+		return requests
+	})
+}
+
+func generateTopologyKeyAnnotationFromNodeLabels(LabelHostname string, LabelTopologyZone string, LabelTopologyRegion string) string {
+	return LabelHostname + "," + LabelTopologyZone + "," + LabelTopologyRegion
 }

@@ -279,6 +279,10 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
+	if len(stack.Spec.Replication.Zones) > 0 {
+		//zoneAwareness, err := manifests.PodAnnotationMatchingNodeLabel(stack.Spec.Replication.Zones)
+	}
+
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
