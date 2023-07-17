@@ -37,7 +37,7 @@ var queryTests = []struct {
 					{
 						Timestamp: time.Unix(0, 123456789012346),
 						Line:      "super line with labels",
-						NonIndexedLabels: labels.Labels{
+						NonIndexedLabels: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						},
@@ -500,7 +500,7 @@ var tailTests = []struct {
 						{
 							Timestamp: time.Unix(0, 123456789012346),
 							Line:      "super line with labels",
-							NonIndexedLabels: labels.Labels{
+							NonIndexedLabels: []logproto.LabelAdapter{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							},
