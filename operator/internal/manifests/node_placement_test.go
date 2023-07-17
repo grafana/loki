@@ -561,6 +561,11 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 					},
 				},
 			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
+				},
+			},
 		},
 	}
 
@@ -658,6 +663,9 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 				},
 			},
 			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
+				},
 				{
 					Name: "az-annotation",
 					VolumeSource: corev1.VolumeSource{

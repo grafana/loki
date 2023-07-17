@@ -44,9 +44,7 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 			Annotations: map[string]string{},
 		},
 		Spec: corev1.PodSpec{
-			InitContainers: []corev1.Container{initContainerAZAnnotationCheck(podTemplate.Spec.Containers[0].Image)},
-			Containers:     make([]corev1.Container, len(podTemplate.Spec.Containers)),
-			Volumes:        []corev1.Volume{azAnnotationVolume()},
+			Containers: make([]corev1.Container, len(podTemplate.Spec.Containers)),
 		},
 	}
 
@@ -69,16 +67,25 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 	topologyKey := strings.Join(zoneKeys, ",")
 	template.Annotations[lokiv1.AnnotationAvailabilityZoneLabels] = topologyKey
 
-	src := corev1.Container{
-		Env: []corev1.EnvVar{availabilityZoneEnvVar},
-	}
-
 	if component != LabelGatewayComponent {
+		template.Spec.InitContainers = []corev1.Container{
+			initContainerAZAnnotationCheck(podTemplate.Spec.Containers[0].Image),
+		}
+
+		src := corev1.Container{
+			Env: []corev1.EnvVar{availabilityZoneEnvVar},
+		}
+
 		for i, dst := range podTemplate.Spec.Containers {
 			if err := mergo.Merge(&dst, src, mergo.WithAppendSlice); err != nil {
 				return err
 			}
 			podTemplate.Spec.Containers[i] = dst
+		}
+
+		vols := []corev1.Volume{azAnnotationVolume()}
+		if err := mergo.Merge(&podTemplate.Spec.Volumes, vols, mergo.WithAppendSlice); err != nil {
+			return err
 		}
 	}
 
