@@ -204,7 +204,7 @@ type Downstreamer interface {
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
-	defaultEvaluator Evaluator[promql.Vector]
+	defaultEvaluator Evaluator
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
@@ -256,10 +256,10 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 // StepEvaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator[promql.Vector],
+	nextEv SampleEvaluator,
 	expr syntax.SampleExpr,
 	params Params,
-) (StepEvaluator[promql.Vector], error) {
+) (StepEvaluator, error) {
 	switch e := expr.(type) {
 
 	case DownstreamSampleExpr:
@@ -298,7 +298,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 			return nil, err
 		}
 
-		xs := make([]StepEvaluator[promql.Vector], 0, len(queries))
+		xs := make([]StepEvaluator, 0, len(queries))
 		for i, res := range results {
 			stepper, err := ResultStepEvaluator(res, params)
 			if err != nil {
@@ -384,15 +384,18 @@ func (ev *DownstreamEvaluator) Iterator(
 
 // ConcatEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
-func ConcatEvaluator(evaluators []StepEvaluator[promql.Vector]) (StepEvaluator[promql.Vector], error) {
+func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	return NewStepEvaluator(
-		func() (ok bool, ts int64, vec promql.Vector) {
-			var cur promql.Vector
+		func() (bool, int64, StepResult) {
+			var cur StepResult
+			var vec promql.Vector
+			var ok bool
+			var ts int64
 			for _, eval := range evaluators {
 				ok, ts, cur = eval.Next()
-				vec = append(vec, cur...)
+				vec = append(vec, cur.SampleVector()...)
 			}
-			return ok, ts, vec
+			return ok, ts, SampleVector(vec)
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {
@@ -422,7 +425,7 @@ func ConcatEvaluator(evaluators []StepEvaluator[promql.Vector]) (StepEvaluator[p
 }
 
 // ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator[promql.Vector], error) {
+func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (
 		start = params.Start()
 		end   = params.End()
@@ -432,10 +435,10 @@ func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator[pr
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		var exhausted bool
-		return NewStepEvaluator(func() (bool, int64, promql.Vector) {
+		return NewStepEvaluator(func() (bool, int64, StepResult) {
 			if !exhausted {
 				exhausted = true
-				return true, start.UnixNano() / int64(time.Millisecond), data
+				return true, start.UnixNano() / int64(time.Millisecond), SampleVector(data)
 			}
 			return false, 0, nil
 		}, nil, nil)

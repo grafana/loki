@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/promql"
-	"github.com/prometheus/prometheus/promql/parser"
 )
 
 // MatrixStepper exposes a promql.Matrix as a StepEvaluator.
@@ -32,14 +31,14 @@ func NewMatrixStepper(start, end time.Time, step time.Duration, m promql.Matrix)
 	}
 }
 
-func (m *MatrixStepper) Type() parser.ValueType {
-	return parser.ValueTypeVector
+func (m *MatrixStepper) Type() T {
+	return VecType
 }
 
-func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
+func (m *MatrixStepper) Next() (bool, int64, StepResult) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
-		return false, 0, nil
+		return false, 0, SampleVector{}
 	}
 
 	ts := m.ts.UnixNano() / int64(time.Millisecond)
@@ -60,7 +59,7 @@ func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
 		m.m[i].Floats = m.m[i].Floats[1:]
 	}
 
-	return true, ts, vec
+	return true, ts, SampleVector(vec)
 }
 
 func (m *MatrixStepper) Close() error { return nil }

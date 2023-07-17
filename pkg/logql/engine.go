@@ -27,7 +27,6 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -182,7 +181,7 @@ func (ng *Engine) Query(params Params) Query {
 }
 
 type ProbabilisticEngine struct {
-	evaluator Evaluator[sketch.TopKVector]
+	evaluator Evaluator
 	Engine
 }
 
@@ -232,7 +231,7 @@ type query struct {
 	params       Params
 	parse        func(context.Context, string) (syntax.Expr, error)
 	limits       Limits
-	evaluator    Evaluator[promql.Vector]
+	evaluator    Evaluator
 	record       bool
 	logExecQuery bool
 }
@@ -401,7 +400,11 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, vec := stepEvaluator.Next()
+	next, ts, r := stepEvaluator.Next()
+	if r == nil {
+		fmt.Println("empty")
+	}
+	vec := r.SampleVector()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -452,7 +455,8 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
-		next, ts, vec = stepEvaluator.Next()
+		next, ts, r = stepEvaluator.Next()
+		vec = r.SampleVector()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}

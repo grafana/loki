@@ -29,7 +29,7 @@ type ProbabilisticEvaluator struct {
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator[promql_parser.Value] {
+func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
 	d := NewDefaultEvaluator(querier, maxLookBackPeriod)
 	p := &ProbabilisticEvaluator{DefaultEvaluator: *d}
 	return p
@@ -37,27 +37,24 @@ func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration)
 
 func (p *ProbabilisticEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator[promql_parser.Value],
+	nextEv SampleEvaluator,
 	expr syntax.SampleExpr,
 	q Params,
-) (StepEvaluator[promql_parser.Value], error) {
+) (StepEvaluator, error) {
 
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if e.Operation != syntax.OpTypeTopK {
-			//return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
-			return p.newDefaultStepEvaluator(ctx, nil, expr, q)
+			return p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
 		}
-		//return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
-		return p.newProbabilisticVectorAggEvaluator(ctx, nil, e, q)
+		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
-		//return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
-		return p.newDefaultStepEvaluator(ctx, nil, expr, q)
+		return p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
 	}
 }
 
 type probabilisticQuery struct {
-	evaluator Evaluator[promql_parser.Value]
+	evaluator Evaluator
 	query
 }
 
@@ -140,9 +137,9 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
 	switch stepEvaluator.Type() {
-	case promql_parser.ValueTypeVector:
+	case VecType:
 		return q.aggregateSampleVectors(ctx, stepEvaluator, tenantIDs)
-	case sketch.ValueTypeTopKVector:
+	case TopKVecType:
 		return q.aggregateTopKVectors(ctx, stepEvaluator, tenantIDs)
 	default:
 		return nil, nil
@@ -151,7 +148,7 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 
 func (q *probabilisticQuery) aggregateSampleVectors(
 	ctx context.Context,
-	stepEvaluator StepEvaluator[promql_parser.Value],
+	stepEvaluator StepEvaluator,
 	tenantIDs []string,
 ) (promql_parser.Value, error) {
 
@@ -160,7 +157,7 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, val := stepEvaluator.Next()
-	vec := val.(promql.Vector)
+	vec := val.SampleVector()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -213,7 +210,7 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 		}
 
 		next, ts, val = stepEvaluator.Next()
-		vec = val.(promql.Vector)
+		vec = val.SampleVector()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
@@ -231,39 +228,18 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 
 func (q *probabilisticQuery) aggregateTopKVectors(
 	ctx context.Context,
-	stepEvaluator StepEvaluator[promql_parser.Value],
+	stepEvaluator StepEvaluator,
 	tenantIDs []string,
 ) (promql_parser.Value, error) {
 	return nil, nil
 }
 
-func (p *ProbabilisticEvaluator) newDefaultStepEvaluator(
-	ctx context.Context,
-	nextEv SampleEvaluator[promql.Vector],
-	expr syntax.SampleExpr,
-	q Params,
-) (StepEvaluator[promql_parser.Value], error) {
-	ev, err := p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
-
-	if err != nil {
-		return nil, err
-	}
-
-	// Wrap evaluator
-	return NewStepEvaluator[promql_parser.Value](func() (ok bool, ts int64, vec promql_parser.Value) {
-		ok, ts, vec = ev.Next()
-		return
-	},
-		ev.Close,
-		ev.Error)
-}
-
 func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator[promql.Vector],
+	ev SampleEvaluator,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (StepEvaluator[promql_parser.Value], error) {
+) (StepEvaluator, error) {
 
 	if expr.Operation != syntax.OpTypeTopK {
 		return nil, errors.Errorf("unexpected operation: want 'topk', have '%q'", expr.Operation)
@@ -282,7 +258,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
-	return NewStepEvaluator[promql_parser.Value](func() (bool, int64, promql_parser.Value) {
+	return NewStepEvaluator(func() (bool, int64, StepResult) {
 		next, ts, vec := nextEvaluator.Next()
 
 		if !next {
@@ -292,7 +268,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 		if expr.Params < 1 {
 			return next, ts, nil
 		}
-		for _, s := range vec {
+		for _, s := range vec.SampleVector() {
 			metric := s.Metric
 
 			var groupingKey uint64
@@ -327,7 +303,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 				group, err = sketch.NewCMSTopkForCardinality(p.logger, 10, 100000)
 				if err != nil {
 					// TODO(karsten): return error
-					return next, ts, sketch.TopKVector{}
+					return next, ts, nil
 				}
 				result[groupingKey] = group
 			}
@@ -342,6 +318,8 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 			// TODO(karsten): How are we handling groups?
 			r.Topk = aggr
 		}
-		return next, ts, r
+
+		// TODO(karsten): set topkvector values
+		return next, ts, TopKVector([]sketch.Topk{})
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
