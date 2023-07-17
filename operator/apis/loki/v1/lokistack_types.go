@@ -185,12 +185,12 @@ type OIDCSpec struct {
 
 // MTLSSpec specifies mTLS configuration parameters.
 type MTLSSpec struct {
-	// CASpec defines the spec for the custom CA for tenant's authentication.
+	// CA defines the spec for the custom CA for tenant's authentication.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap"
-	CASpec *CASpec `json:"caSpec"`
+	CA *CASpec `json:"ca"`
 }
 
 // AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.

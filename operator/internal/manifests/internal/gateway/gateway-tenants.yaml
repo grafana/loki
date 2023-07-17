@@ -37,9 +37,9 @@
   {{- range $secret := $l.TenantSecrets }}
   {{- if eq $secret.TenantName $spec.TenantName }}
   {{- if $secret.OIDC }}
-  {{ template "oidc" (arr $secret $spec) }}
+  {{ template "oidc" (make_array $secret $spec) }}
   {{- else if $secret.MTLS }}
-  {{ template "mTLS" (arr $secret) }}
+  {{ template "mTLS" (make_array $secret) }}
   {{- end -}}
   {{- end -}}
   {{- end }}
@@ -51,7 +51,7 @@ tenants:
 {{- range $spec := $l.Stack.Tenants.Authentication }}
 - name: {{ $spec.TenantName }}
   id: {{ $spec.TenantID }}
-  {{ template "authorization" (arr $l $spec) }}
+  {{ template "authorization" (make_array $l $spec) }}
   opa:
     query: data.lokistack.allow
     paths:
@@ -63,7 +63,7 @@ tenants:
 {{- range $spec := $tenant.Authentication }}
 - name: {{ $spec.TenantName }}
   id: {{ $spec.TenantID }}
-  {{ template "authorization" (arr $l $spec) }}
+  {{ template "authorization" (make_array $l $spec) }}
   opa:
     url: {{ $tenant.Authorization.OPA.URL }}
 {{- end -}}

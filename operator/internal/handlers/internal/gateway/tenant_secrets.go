@@ -62,7 +62,7 @@ func GetTenantSecrets(
 				OIDCSecret: oidcSecret,
 			})
 		case tenant.MTLS != nil:
-			key := client.ObjectKey{Name: tenant.MTLS.CASpec.CA, Namespace: req.Namespace}
+			key := client.ObjectKey{Name: tenant.MTLS.CA.CA, Namespace: req.Namespace}
 			if err := k.Get(ctx, key, &caConfigMap); err != nil {
 				if apierrors.IsNotFound(err) {
 					return nil, &status.DegradedError{
@@ -76,8 +76,8 @@ func GetTenantSecrets(
 			}
 			// Default key if the user doesn't specify it
 			cmKey := "service-ca.crt"
-			if tenant.MTLS.CASpec.CAKey != "" {
-				cmKey = tenant.MTLS.CASpec.CAKey
+			if tenant.MTLS.CA.CAKey != "" {
+				cmKey = tenant.MTLS.CA.CAKey
 			}
 			err := checkKeyIsPresent(&caConfigMap, cmKey)
 			if err != nil {

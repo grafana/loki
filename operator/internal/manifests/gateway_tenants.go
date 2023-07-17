@@ -221,7 +221,7 @@ func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
-							Name: tenant.MTLS.CASpec.CA,
+							Name: tenant.MTLS.CA.CA,
 						},
 					},
 				},
@@ -249,7 +249,7 @@ func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 		},
 		Volumes: gwVolumes,
 	}
-	if err := mergo.Merge(d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge server pki into container spec ")
 	}
 	return nil
