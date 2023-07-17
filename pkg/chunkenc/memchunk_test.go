@@ -883,11 +883,7 @@ func TestGenerateDataSize(t *testing.T) {
 func BenchmarkHeadBlockIterator(b *testing.B) {
 	for _, j := range []int{100000, 50000, 15000, 10000} {
 		for _, withNonIndexedLabels := range []bool{false, true} {
-			name := fmt.Sprintf("Size %d", j)
-			if withNonIndexedLabels {
-				name += " with non-indexed labels"
-			}
-			b.Run(name, func(b *testing.B) {
+			b.Run(fmt.Sprintf("size=%d nonIndexedLabels=%v", j, withNonIndexedLabels), func(b *testing.B) {
 				h := headBlock{}
 
 				var nonIndexedLabels labels.Labels
@@ -918,11 +914,7 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	for _, j := range []int{20000, 10000, 8000, 5000} {
 		for _, withNonIndexedLabels := range []bool{false, true} {
-			name := fmt.Sprintf("Size %d", j)
-			if withNonIndexedLabels {
-				name += " with non-indexed labels"
-			}
-			b.Run(name, func(b *testing.B) {
+			b.Run(fmt.Sprintf("size=%d nonIndexedLabels=%v", j, withNonIndexedLabels), func(b *testing.B) {
 				h := headBlock{}
 
 				var nonIndexedLabels labels.Labels
