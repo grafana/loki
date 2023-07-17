@@ -1,7 +1,7 @@
 ---
 title: Monitoring
 description: monitoring
-weight: 900
+weight: 500
 aliases:
   - /docs/installation/helm/monitor-and-alert
 keywords:

@@ -1,7 +1,9 @@
 ---
 title: Build from source
-description: Build from source
-weight: 50
+menuTitle:  Install from source
+description: Describes how to install Loki from the source code.
+aliases: 
+weight: 700
 ---
 # Build from source
 

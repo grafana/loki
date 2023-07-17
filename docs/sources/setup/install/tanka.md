@@ -1,7 +1,9 @@
 ---
-title: Tanka
-description: Install Grafana Loki with Tanka
-weight: 10
+title: Tanka 
+menuTitle: Install using Tanka
+description: Install Loki using Tanka
+aliases: 
+weight: 300
 ---
 # Tanka
 

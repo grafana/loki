@@ -3,7 +3,8 @@ title: Configure storage
 menuTitle: Configure storage 
 description: Configure Loki storage
 aliases:
-  - /docs/installation/helm/storage
+  - ../installation/helm/configure-storage/
+  - ../installation/helm/storage
 weight: 500
 keywords:
   - object store
@@ -37,7 +38,7 @@ This guide assumes Loki will be installed in one of the modes above and that a `
 
 **To grant access to S3 via an IAM role without providing credentials:**
 
-1. Provision an IAM role, policy and S3 bucket as described in [Storage]({{< relref "../../../storage#aws-deployment-s3-single-store" >}}).
+1. Provision an IAM role, policy and S3 bucket as described in [Storage]({{< relref "../../../../storage#aws-deployment-s3-single-store" >}}).
    - If the Terraform module was used note the annotation emitted by `terraform output -raw annotation`.
 
 2. Add the IAM role annotation to the service account in `values.yaml`:

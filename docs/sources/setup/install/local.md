@@ -1,7 +1,9 @@
 ---
 title: Local
-description: Install and run Grafana Loki locally
-weight: 40
+menuTitle:  Install locally
+description: Install and run Grafana Loki locally 
+aliases: 
+weight: 500
 ---
 # Local
 
@@ -31,7 +33,7 @@ The configuration specifies running Loki as a single binary.
 1. Navigate to the [release page](https://github.com/grafana/loki/releases/).
 2. Scroll down to the Assets section under the version that you want to install.
 3. Download the Loki and Promtail .zip files that correspond to your system.
-   **Note:** Do not download LogCLI or Loki Canary at this time. `LogCLI` allows you to run Loki queries in a command line interface. [Loki Canary]({{< relref "../operations/loki-canary" >}}) is a tool to audit Loki performance.
+   **Note:** Do not download LogCLI or Loki Canary at this time. `LogCLI` allows you to run Loki queries in a command line interface. [Loki Canary]({{< relref "../../operations/loki-canary" >}}) is a tool to audit Loki performance.
 4. Unzip the package contents into the same directory. This is where the two programs will run.
 5. In the command line, change directory (`cd` on most systems) to the directory with Loki and Promtail. Copy and paste the commands below into your command line to download generic configuration files.
    **Note:** Use the corresponding Git refs that match your downloaded Loki version to get the correct configuration file. For example, if you are using Loki version 2.6.1, you need to use the `https://raw.githubusercontent.com/grafana/loki/v2.6.1/cmd/loki/loki-local-config.yaml` URL to download the configuration file that corresponds to the Loki version you aim to run.
@@ -56,7 +58,7 @@ The configuration specifies running Loki as a single binary.
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
 The next step will be running an agent to send logs to Loki.
-To do so with Promtail, refer to the [Promtail configuration]({{< relref "../clients/promtail" >}}).
+To do so with Promtail, refer to the [Promtal configuration]({{< relref "../../clients/promtail" >}}).
 
 ## Release binaries - openSUSE Linux only
 

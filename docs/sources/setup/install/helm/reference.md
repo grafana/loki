@@ -2,7 +2,7 @@
 title: Helm Chart Values
 menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 200
+weight: 400
 keywords: []
 ---
 

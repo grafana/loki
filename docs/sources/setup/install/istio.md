@@ -1,7 +1,10 @@
 ---
-title: Installing on Istio
-description: Installation instructions for Istio
-weight: 50
+title: Install on Istio
+menuTitle:  
+description: Installation instructions for Istio service mesh
+aliases: 
+weight: 600
+keywords: 
 ---
 # Installing on Istio 
 

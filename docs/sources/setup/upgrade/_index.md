@@ -1,10 +1,12 @@
 ---
-title: Upgrading
+title: Upgrade Loki
+menuTitle:  Upgrade
 description: Upgrading Grafana Loki
-weight: 250
+aliases: 
+weight: 400
 ---
 
-# Upgrading
+# Upgrade
 
 Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 
@@ -462,7 +464,7 @@ limits_config:
   retention_period: [30d]
 ```
 
-See the [retention docs]({{< relref "../operations/storage/retention" >}}) for more info.
+See the [retention docs]({{< relref "../../operations/storage/retention" >}}) for more info.
 
 #### Log messages on startup: proto: duplicate proto type registered:
 
@@ -924,7 +926,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../clients/promtail/configuration#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../../clients/promtail/configuration#pipeline_stages" >}}) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 
@@ -958,7 +960,7 @@ schema_config:
 ④ Make sure this matches your existing config (e.g. maybe you were using gcs for your object_store)
 ⑤ 24h is required for boltdb-shipper
 
-There are more examples on the [Storage description page]({{< relref "../storage/_index.md#examples" >}}) including the information you need to setup the `storage` section for boltdb-shipper.
+There are more examples on the [Storage description page]({{< relref "../../storage/_index.md#examples" >}}) including the information you need to setup the `storage` section for boltdb-shipper.
 
 
 ## 1.6.0
@@ -1248,7 +1250,7 @@ max_retries:
 
 Loki 1.4.0 vendors Cortex v0.7.0-rc.0 which contains [several breaking config changes](https://github.com/cortexproject/cortex/blob/v0.7.0-rc.0/CHANGELOG).
 
-In the [cache_config]({{< relref "../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
+In the [cache_config]({{< relref "../../configure#cache_config" >}}), `defaul_validity` has changed to `default_validity`.
 
 If you configured your schema via arguments and not a config file, this is no longer supported. This is not something we had ever provided as an option via docs and is unlikely anyone is doing, but worth mentioning.
 
