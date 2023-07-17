@@ -63,7 +63,7 @@ func NewManager(metrics *Metrics, logger log.Logger, limits limit.Config, reg pr
 	watcherMetrics := wal.NewWatcherMetrics(reg)
 
 	if len(clientCfgs) == 0 {
-		return nil, fmt.Errorf("at least one client config should be provided")
+		return nil, fmt.Errorf("at least one client config must be provided")
 	}
 
 	clientsCheck := make(map[string]struct{})
@@ -120,6 +120,10 @@ func NewManager(metrics *Metrics, logger log.Logger, limits limit.Config, reg pr
 }
 
 // startWithConsume starts the main manager routine, which reads and discards entries from the exposed channel.
+// This is necessary since to treat the WAL-enabled manager the same way as the WAL-disabled one, the processing pipeline
+// send entries both to the WAL writer, and the channel exposed by the manager. In the case the WAL is enabled, these entries
+// are not used since they are read from the WAL, so we need a routine to just read the entries received through the channel
+// and discarding them, to not block the sending side.
 func (m *Manager) startWithConsume() {
 	m.wg.Add(1)
 	go func() {
@@ -153,7 +157,6 @@ func (m *Manager) StopNow() {
 
 func (m *Manager) Name() string {
 	var sb strings.Builder
-	// name contains wal since manager is used as client only when WAL enabled for now
 	sb.WriteString(m.name)
 	sb.WriteString(":")
 	for i, c := range m.clients {

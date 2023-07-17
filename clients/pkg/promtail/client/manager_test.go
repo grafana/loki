@@ -26,7 +26,7 @@ import (
 	lokiflag "github.com/grafana/loki/pkg/util/flagext"
 )
 
-var limitsConfig = limit.Config{
+var testLimitsConfig = limit.Config{
 	MaxLineSizeTruncate: false,
 	MaxStreams:          0,
 	MaxLineSize:         0,
@@ -41,7 +41,7 @@ func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 	for _, walEnabled := range []bool{true, false} {
 		t.Run(fmt.Sprintf("wal-enabled = %t", walEnabled), func(t *testing.T) {
 			walDir := t.TempDir()
-			_, err := NewManager(nilMetrics, log.NewLogfmtLogger(os.Stdout), limitsConfig, prometheus.NewRegistry(), wal.Config{
+			_, err := NewManager(nilMetrics, log.NewLogfmtLogger(os.Stdout), testLimitsConfig, prometheus.NewRegistry(), wal.Config{
 				Dir:         walDir,
 				Enabled:     walEnabled,
 				WatchConfig: wal.DefaultWatchConfig,
@@ -63,7 +63,7 @@ func TestManager_ErrorCreatingWhenRepeatedConfigs(t *testing.T) {
 	for _, walEnabled := range []bool{true, false} {
 		t.Run(fmt.Sprintf("wal-enabled = %t", walEnabled), func(t *testing.T) {
 			walDir := t.TempDir()
-			_, err := NewManager(nilMetrics, log.NewLogfmtLogger(os.Stdout), limitsConfig, prometheus.NewRegistry(), wal.Config{
+			_, err := NewManager(nilMetrics, log.NewLogfmtLogger(os.Stdout), testLimitsConfig, prometheus.NewRegistry(), wal.Config{
 				Dir:         walDir,
 				Enabled:     walEnabled,
 				WatchConfig: wal.DefaultWatchConfig,
@@ -123,7 +123,7 @@ func TestManager_WALEnabled(t *testing.T) {
 	// start writer and manager
 	writer, err := wal.NewWriter(walConfig, logger, reg)
 	require.NoError(t, err)
-	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, writer, testClientConfig)
+	manager, err := NewManager(clientMetrics, logger, testLimitsConfig, prometheus.NewRegistry(), walConfig, writer, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "wal:test-client", manager.Name())
 
@@ -178,7 +178,7 @@ func TestManager_WALDisabled(t *testing.T) {
 	clientMetrics := NewMetrics(reg)
 
 	// start writer and manager
-	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, NilNotifier, testClientConfig)
+	manager, err := NewManager(clientMetrics, logger, testLimitsConfig, prometheus.NewRegistry(), walConfig, NilNotifier, testClientConfig)
 	require.NoError(t, err)
 	require.Equal(t, "multi:test-client", manager.Name())
 
@@ -246,7 +246,7 @@ func TestManager_WALDisabled_MultipleConfigs(t *testing.T) {
 	clientMetrics := NewMetrics(reg)
 
 	// start writer and manager
-	manager, err := NewManager(clientMetrics, logger, limitsConfig, prometheus.NewRegistry(), walConfig, NilNotifier, testClientConfig, testClientConfig2)
+	manager, err := NewManager(clientMetrics, logger, testLimitsConfig, prometheus.NewRegistry(), walConfig, NilNotifier, testClientConfig, testClientConfig2)
 	require.NoError(t, err)
 	require.Equal(t, "multi:test-client,test-client-2", manager.Name())
 
