@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"fmt"
 	"strings"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -12,6 +13,13 @@ import (
 const (
 	availabilityZoneEnvVarName = "INSTANCE_AVAILABILITY_ZONE"
 	availabilityZoneFieldPath  = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
+	// availabilityZoneVolumeName is the name of the volume that will contain the
+	// availability zone annotation we get from DownwardAPI
+	availabilityZoneVolumeName = "az-annotation"
+	// availabilityZoneVolumeMountPath path where the volume will be mounted on the init container
+	availabilityZoneVolumeMountPath = "/etc/az-annotation"
+	// availabilityZoneVolumeFileName name of the file containg the availability zone annotation
+	availabilityZoneVolumeFileName = "az"
 )
 
 var availabilityZoneEnvVar = corev1.EnvVar{
@@ -36,9 +44,9 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 			Annotations: map[string]string{},
 		},
 		Spec: corev1.PodSpec{
-			InitContainers: []corev1.Container{initContainerZoneAnnotationCheck(podTemplate.Spec.Containers[0].Image)},
+			InitContainers: []corev1.Container{initContainerAZAnnotationCheck(podTemplate.Spec.Containers[0].Image)},
 			Containers:     make([]corev1.Container, len(podTemplate.Spec.Containers)),
-			Volumes:        []corev1.Volume{zoneAnnotationVolumeMount()},
+			Volumes:        []corev1.Volume{azAnnotationVolume()},
 		},
 	}
 
@@ -79,4 +87,41 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 	}
 
 	return nil
+}
+
+func initContainerAZAnnotationCheck(image string) corev1.Container {
+	azPath := fmt.Sprintf("%s/%s", availabilityZoneVolumeMountPath, availabilityZoneVolumeFileName)
+	return corev1.Container{
+		Name:  "az-annotation-check",
+		Image: image,
+		Command: []string{
+			"sh",
+			"-c",
+			fmt.Sprintf("while ! [ -s %s ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat %s", azPath, azPath),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      availabilityZoneVolumeName,
+				MountPath: availabilityZoneVolumeMountPath,
+			},
+		},
+	}
+}
+
+func azAnnotationVolume() corev1.Volume {
+	return corev1.Volume{
+		Name: availabilityZoneVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			DownwardAPI: &corev1.DownwardAPIVolumeSource{
+				Items: []corev1.DownwardAPIVolumeFile{
+					{
+						Path: availabilityZoneVolumeFileName,
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: availabilityZoneFieldPath,
+						},
+					},
+				},
+			},
+		},
+	}
 }

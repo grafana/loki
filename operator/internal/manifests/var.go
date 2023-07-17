@@ -52,14 +52,6 @@ const (
 
 	rulerContainerName = "loki-ruler"
 
-	// availabilityZoneVolumeName is the name of the volume that will contain the
-	// availability zone annotation we get from DownwardAPI
-	availabilityZoneVolumeName = "az-annotation"
-	// availabilityZoneVolumeMountPath path where the volume will be mounted on the init container
-	availabilityZoneVolumeMountPath = "/etc/az-annotation"
-	// availabilityZoneVolumeFileName name of the file containg the availability zone annotation
-	availabilityZoneVolumeFileName = "az"
-
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
@@ -576,42 +568,5 @@ func lokiReadinessProbe() *corev1.Probe {
 		TimeoutSeconds:      1,
 		SuccessThreshold:    1,
 		FailureThreshold:    3,
-	}
-}
-
-func initContainerZoneAnnotationCheck(image string) corev1.Container {
-	azPath := fmt.Sprintf("%s/%s", availabilityZoneVolumeMountPath, availabilityZoneVolumeFileName)
-	return corev1.Container{
-		Name:  "az-annotation-check",
-		Image: image,
-		Command: []string{
-			"sh",
-			"-c",
-			fmt.Sprintf("while ! [ -s %s ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat %s", azPath, azPath),
-		},
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      availabilityZoneVolumeName,
-				MountPath: availabilityZoneVolumeMountPath,
-			},
-		},
-	}
-}
-
-func zoneAnnotationVolumeMount() corev1.Volume {
-	return corev1.Volume{
-		Name: availabilityZoneVolumeName,
-		VolumeSource: corev1.VolumeSource{
-			DownwardAPI: &corev1.DownwardAPIVolumeSource{
-				Items: []corev1.DownwardAPIVolumeFile{
-					{
-						Path: availabilityZoneVolumeFileName,
-						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: availabilityZoneFieldPath,
-						},
-					},
-				},
-			},
-		},
 	}
 }
