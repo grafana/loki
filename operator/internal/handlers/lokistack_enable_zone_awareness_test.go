@@ -17,24 +17,22 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var (
-	defaultPod = corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "some-ns",
-			Labels: map[string]string{
-				lokiv1.LabelZoneAwarePod: "enabled",
-			},
-			Annotations: map[string]string{
-				lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelTopologyZone,
-				lokiv1.AnnotationAvailabilityZone:       "us-east-zone-2c",
-			},
+var defaultPod = corev1.Pod{
+	ObjectMeta: metav1.ObjectMeta{
+		Name:      "test-pod",
+		Namespace: "some-ns",
+		Labels: map[string]string{
+			lokiv1.LabelZoneAwarePod: "enabled",
 		},
-		Spec: corev1.PodSpec{
-			NodeName: "test-node",
+		Annotations: map[string]string{
+			lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelTopologyZone,
+			lokiv1.AnnotationAvailabilityZone:       "us-east-zone-2c",
 		},
-	}
-)
+	},
+	Spec: corev1.PodSpec{
+		NodeName: "test-node",
+	},
+}
 
 func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsTheError(t *testing.T) {
 	k := &k8sfakes.FakeClient{}
