@@ -43,7 +43,7 @@ func (p *ProbabilisticEvaluator) StepEvaluator(
 ) (StepEvaluator[promql_parser.Value], error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
-		if _, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
+		if e.Operation != syntax.OpTypeTopK {
 			return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
 		}
 		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
@@ -256,9 +256,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 ) (StepEvaluator[promql_parser.Value], error) {
 
 	if expr.Operation != syntax.OpTypeTopK {
-		// TODO(karsten): This the the core of the type problem.
-		//return newVectorAggEvaluator(ctx, ev, expr, q)
-		return nil, nil
+		return nil, errors.Errorf("unexpected operation: want 'topk', have '%q'", expr.Operation)
 	}
 
 	// TODO(karsten): Below is just copy-pasta from newVectorAggEvaluator.
