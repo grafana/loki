@@ -270,7 +270,7 @@ func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorSe
 	}
 
 	lokiOverrides.Ruler.AlertManager = &config.AlertManagerConfig{
-		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
+		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserWorkloadNS),
 		EnableV2:        true,
 		EnableDiscovery: true,
 		RefreshInterval: "1m",

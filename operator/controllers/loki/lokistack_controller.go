@@ -280,7 +280,7 @@ func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHand
 		var requests []reconcile.Request
 
 		if obj.GetName() == openshift.MonitoringSVCOperated &&
-			(obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS ||
+			(obj.GetNamespace() == openshift.MonitoringUserWorkloadNS ||
 				obj.GetNamespace() == openshift.MonitoringNS) {
 
 			for _, stack := range lokiStacks.Items {
