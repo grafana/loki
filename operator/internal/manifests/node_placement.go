@@ -18,7 +18,7 @@ const (
 	availabilityZoneVolumeName = "az-annotation"
 	// availabilityZoneVolumeMountPath path where the volume will be mounted on the init container
 	availabilityZoneVolumeMountPath = "/etc/az-annotation"
-	// availabilityZoneVolumeFileName name of the file containg the availability zone annotation
+	// availabilityZoneVolumeFileName name of the file containing the availability zone annotation
 	availabilityZoneVolumeFileName = "az"
 )
 

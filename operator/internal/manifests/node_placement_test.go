@@ -603,7 +603,7 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 					},
 					VolumeMounts: []corev1.VolumeMount{
 						{
-							Name: "az-annotation",
+							Name:      "az-annotation",
 							MountPath: "/etc/az-annotation",
 						},
 					},
