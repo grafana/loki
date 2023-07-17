@@ -52,6 +52,14 @@ const (
 
 	rulerContainerName = "loki-ruler"
 
+	// availabilityZoneVolumeName is the name of the volume that will contain the
+	// availability zone annotation we get from DownwardAPI
+	availabilityZoneVolumeName = "az-annotation"
+	// availabilityZoneVolumeMountPath path where the volume will be mounted on the init container
+	availabilityZoneVolumeMountPath = "/etc/az-annotation"
+	// availabilityZoneVolumeFileName name of the file containg the availability zone annotation
+	availabilityZoneVolumeFileName = "az"
+
 	// EnvRelatedImageLoki is the environment variable to fetch the Loki image pullspec.
 	EnvRelatedImageLoki = "RELATED_IMAGE_LOKI"
 	// EnvRelatedImageGateway is the environment variable to fetch the Gateway image pullspec.
@@ -572,18 +580,19 @@ func lokiReadinessProbe() *corev1.Probe {
 }
 
 func initContainerZoneAnnotationCheck(image string) corev1.Container {
+	azPath := fmt.Sprintf("%s/%s", availabilityZoneVolumeMountPath, availabilityZoneVolumeFileName)
 	return corev1.Container{
-		Name:  "zone-annotation-check",
+		Name:  "az-annotation-check",
 		Image: image,
 		Command: []string{
 			"sh",
 			"-c",
-			"while ! [ -s /etc/zone-annotation/annotation ]; do echo Waiting for zone annotation to be set; sleep 2; done; echo Zone annotation is set; cat /etc/zone-annotation/annotation",
+			fmt.Sprintf("while ! [ -s %s ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat %s", azPath, azPath),
 		},
 		VolumeMounts: []corev1.VolumeMount{
 			{
-				Name:      "zone-annotation",
-				MountPath: "/etc/zone-annotation",
+				Name:      availabilityZoneVolumeName,
+				MountPath: availabilityZoneVolumeMountPath,
 			},
 		},
 	}
@@ -591,14 +600,14 @@ func initContainerZoneAnnotationCheck(image string) corev1.Container {
 
 func zoneAnnotationVolumeMount() corev1.Volume {
 	return corev1.Volume{
-		Name: "zone-annotation",
+		Name: availabilityZoneVolumeName,
 		VolumeSource: corev1.VolumeSource{
 			DownwardAPI: &corev1.DownwardAPIVolumeSource{
 				Items: []corev1.DownwardAPIVolumeFile{
 					{
-						Path: "annotation",
+						Path: availabilityZoneVolumeFileName,
 						FieldRef: &corev1.ObjectFieldSelector{
-							FieldPath: "metadata.annotations['loki_instance_availability_zone']",
+							FieldPath: availabilityZoneFieldPath,
 						},
 					},
 				},
