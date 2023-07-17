@@ -21,19 +21,17 @@ type WriterEventsNotifier interface {
 	SubscribeWrite(subscriber wal.WriteEventSubscriber)
 }
 
-// notifier implements WriteEventsNotifier so that we can create a no-op notifier.
-type notifier func(subscriber wal.CleanupEventSubscriber)
-
-func (n notifier) SubscribeCleanup(subscriber wal.CleanupEventSubscriber) {
-	n(subscriber)
-}
-
-func (n notifier) SubscribeWrite(_ wal.WriteEventSubscriber) {}
-
 var (
-	// NilNotifier is a no-op notifier.
-	NilNotifier = notifier(func(_ wal.CleanupEventSubscriber) {})
+	// NilNotifier is a no-op WriterEventsNotifier.
+	NilNotifier = nilNotifier{}
 )
+
+// nilNotifier implements WriterEventsNotifier with no-ops callbacks.
+type nilNotifier struct{}
+
+func (n nilNotifier) SubscribeCleanup(_ wal.CleanupEventSubscriber) {}
+
+func (n nilNotifier) SubscribeWrite(_ wal.WriteEventSubscriber) {}
 
 type Stoppable interface {
 	Stop()

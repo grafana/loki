@@ -18,9 +18,8 @@ import (
 )
 
 var (
-	yellow      = color.New(color.FgYellow)
-	blue        = color.New(color.FgBlue)
-	nilNotifier = notifier(func(_ wal.CleanupEventSubscriber) {})
+	yellow = color.New(color.FgYellow)
+	blue   = color.New(color.FgBlue)
 )
 
 func init() {
