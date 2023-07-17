@@ -182,6 +182,11 @@ func (f *FileClient) GetOrgID() string {
 	return f.orgID
 }
 
+func (f *FileClient) GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }

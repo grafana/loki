@@ -32,6 +32,7 @@ const (
 	labelValuesPath   = "/loki/api/v1/label/%s/values"
 	seriesPath        = "/loki/api/v1/series"
 	tailPath          = "/loki/api/v1/tail"
+	statsPath         = "/loki/api/v1/index/stats"
 	defaultAuthHeader = "Authorization"
 )
 
@@ -46,6 +47,7 @@ type Client interface {
 	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
 	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
+	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -163,6 +165,19 @@ func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duratio
 
 func (c *DefaultClient) GetOrgID() string {
 	return c.OrgID
+}
+
+func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+
+	var statsResponse logproto.IndexStatsResponse
+	if err := c.doRequest(statsPath, params.Encode(), quiet, &statsResponse); err != nil {
+		return nil, err
+	}
+	return &statsResponse, nil
 }
 
 func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {

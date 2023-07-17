@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
+	"github.com/grafana/loki/pkg/logcli/stats"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	_ "github.com/grafana/loki/pkg/util/build"
 )
@@ -181,6 +182,30 @@ This is helpful to find high cardinality labels.
 	seriesQuery = newSeriesQuery(seriesCmd)
 
 	fmtCmd = app.Command("fmt", "Formats a LogQL query.")
+
+	statsCmd = app.Command("stats", `Run a stats query.
+
+The "stats" command will take the provided query and return statistics
+from the index for how much data that query will hit. This only works
+against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli query
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   --output=jsonl
+	   'my-query'
+  `)
+	statsQuery = newStatsQuery(statsCmd)
 )
 
 func main() {
@@ -292,6 +317,8 @@ func main() {
 		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
 			log.Fatalf("unable to format logql: %s", err)
 		}
+	case statsCmd.FullCommand():
+		statsQuery.DoStats(queryClient)
 	}
 }
 
@@ -490,4 +517,32 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 func defaultQueryRangeStep(start, end time.Time) time.Duration {
 	step := int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 	return time.Duration(step) * time.Second
+}
+
+func newStatsQuery(cmd *kingpin.CmdClause) *stats.StatsQuery {
+	// calculate query range from cli params
+	var from, to string
+	var since time.Duration
+
+	q := &stats.StatsQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+
+		q.Quiet = *quiet
+
+		return nil
+	})
+
+	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+
+	return q
 }
