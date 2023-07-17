@@ -244,6 +244,23 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+
+	// OpenshiftLoggingSpec defines the configuration specific to Openshift modes.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OpenshiftLogging"
+	OpenshiftLogging *OpenshiftLoggingSpec `json:"openshiftLogging,omitempty"`
+}
+
+// OpenshiftLoggingSpec defines the configuration specific to Openshift modes.
+type OpenshiftLoggingSpec struct {
+	// AdminGroups defines the list of group to be considered cluster admins by the Loki Operator.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
+	AdminGroups []string `json:"adminGroups"`
 }
 
 // LokiComponentSpec defines the requirements to configure scheduling
@@ -838,13 +855,6 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
-
-	// AdminGroups defines the list of group to be considered cluster admins by the Loki Operator.
-	//
-	// +optional
-	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
-	AdminGroups []string `json:"adminGroups,omitempty"`
 }
 
 type ReplicationSpec struct {

@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-07-12T12:22:13Z"
+    createdAt: "2023-07-17T13:11:09Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -270,10 +270,6 @@ spec:
         name: ""
         version: v1
       specDescriptors:
-      - description: AdminGroups defines the list of group to be considered cluster
-          admins by the Loki Operator.
-        displayName: Admin Groups
-        path: adminGroups
       - description: HashRing defines the spec for the distributed hash ring configuration.
         displayName: Hash Ring
         path: hashRing
@@ -766,6 +762,14 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: OpenshiftLoggingSpec defines the configuration specific to Openshift
+          modes.
+        displayName: OpenshiftLogging
+        path: tenants.openshiftLogging
+      - description: AdminGroups defines the list of group to be considered cluster
+          admins by the Loki Operator.
+        displayName: Admin Groups
+        path: tenants.openshiftLogging.adminGroups
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

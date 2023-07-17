@@ -77,7 +77,11 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		adminGroups := opts.Stack.AdminGroups
+		var adminGroups []string = nil
+		if opts.Stack.Tenants.OpenshiftLogging != nil {
+			adminGroups = opts.Stack.Tenants.OpenshiftLogging.AdminGroups
+		}
+
 		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers, adminGroups); err != nil {
 			return nil, err
 		}

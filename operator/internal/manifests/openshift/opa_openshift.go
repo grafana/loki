@@ -38,12 +38,15 @@ func newOPAOpenShiftContainer(mode lokiv1.ModeType, secretVolumeName, tlsDir, mi
 	uriScheme = corev1.URISchemeHTTP
 	args = []string{
 		"--log.level=warn",
-		"--opa.skip-tenants=audit,infrastructure",
-		fmt.Sprintf("--opa.admin-groups=%s", adminGroups),
 		fmt.Sprintf("--web.listen=:%d", GatewayOPAHTTPPort),
 		fmt.Sprintf("--web.internal.listen=:%d", GatewayOPAInternalPort),
 		fmt.Sprintf("--web.healthchecks.url=http://localhost:%d", GatewayOPAHTTPPort),
+		"--opa.skip-tenants=audit,infrastructure",
 		fmt.Sprintf("--opa.package=%s", opaDefaultPackage),
+	}
+
+	if len(adminGroups) > 0 {
+		args = append(args, fmt.Sprintf("--opa.admin-groups=%s", adminGroups))
 	}
 
 	if mode != lokiv1.OpenshiftNetwork {

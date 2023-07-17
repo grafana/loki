@@ -182,10 +182,6 @@ spec:
         name: ""
         version: v1
       specDescriptors:
-      - description: AdminGroups defines the list of group to be considered cluster
-          admins by the Loki Operator.
-        displayName: Admin Groups
-        path: adminGroups
       - description: HashRing defines the spec for the distributed hash ring configuration.
         displayName: Hash Ring
         path: hashRing
@@ -678,6 +674,14 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: OpenshiftLoggingSpec defines the configuration specific to Openshift
+          modes.
+        displayName: OpenshiftLogging
+        path: tenants.openshiftLogging
+      - description: AdminGroups defines the list of group to be considered cluster
+          admins by the Loki Operator.
+        displayName: Admin Groups
+        path: tenants.openshiftLogging.adminGroups
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment

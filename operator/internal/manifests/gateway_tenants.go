@@ -71,7 +71,7 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeTyp
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
 		adminGroupsStr := "system:cluster-admins,cluster-admin,dedicated-admin"
-		if len(adminGroups) != 0 {
+		if adminGroups != nil {
 			adminGroupsStr = strings.Join(adminGroups, ",")
 		}
 
