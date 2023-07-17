@@ -6,11 +6,22 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-const ValueTypeTopKMatrix = "topk_matrix"
+const (
+	ValueTypeTopKVector = "topk_vector"
+	ValueTypeTopKMatrix = "topk_matrix"
+)
 
 type TopKVector struct {
 	Topk *Topk
 	TS   uint64
+}
+
+// Type implements `promql.Value` and `parser.Value`
+func (TopKVector) Type() parser.ValueType { return ValueTypeTopKVector }
+
+// String implements `promql.Value` and `parser.Value`
+func (TopKVector) String() string {
+	return ""
 }
 
 // TopkMatrix is `promql.Value` and `parser.Value`

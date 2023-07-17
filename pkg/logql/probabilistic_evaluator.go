@@ -2,6 +2,8 @@ package logql
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -14,9 +16,9 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -27,7 +29,7 @@ type ProbabilisticEvaluator struct {
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator[sketch.TopKVector] {
+func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator[promql_parser.Value] {
 	d := NewDefaultEvaluator(querier, maxLookBackPeriod)
 	p := &ProbabilisticEvaluator{DefaultEvaluator: *d}
 	return p
@@ -35,23 +37,23 @@ func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration)
 
 func (p *ProbabilisticEvaluator) StepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator[sketch.TopKVector], // Wrong type
+	nextEv SampleEvaluator[promql.Vector], // Wrong type
 	expr syntax.SampleExpr,
 	q Params,
-) (StepEvaluator[sketch.TopKVector], error) {
+) (StepEvaluator[promql_parser.Value], error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if _, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
-			return p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+			return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
 		}
-		return newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
+		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
-		return p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+		return p.newDefaultStepEvaluator(ctx, nextEv, expr, q)
 	}
 }
 
 type probabilisticQuery struct {
-	evaluator    Evaluator[sketch.TopKVector]
+	evaluator    Evaluator[promql_parser.Value]
 	query
 }
 
@@ -127,24 +129,39 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 		return nil, err
 	}
 
-	var stepEvaluator StepEvaluator[sketch.TopKVector]
-	stepEvaluator, err = q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	//maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-	//maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-	//seriesIndex := map[uint64]*promql.Series{}
+	switch stepEvaluator.Type() {
+	case promql_parser.ValueTypeVector:
+		return q.evalSampleVector(ctx, stepEvaluator, tenantIDs)
+	case sketch.ValueTypeTopKVector:
+		// TODO
+		return nil, nil
+	default:
+		return nil, nil
+	}
+}
 
-	// TODO(karsten): actually use next
-	//next, ts, vec := stepEvaluator.Next()
+func(q *probabilisticQuery) evalSampleVector(
+	ctx context.Context,
+	stepEvaluator StepEvaluator[promql_parser.Value],
+	tenantIDs []string,
+) (promql_parser.Value, error) {
+
+	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+	seriesIndex := map[uint64]*promql.Series{}
+
+	next, ts, val := stepEvaluator.Next()
+	vec := val.(promql.Vector)
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
-	/*
 	// fail fast for the first step or instant query
 	if len(vec) > maxSeries {
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
@@ -165,6 +182,7 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 	if stepCount <= 0 {
 		stepCount = 1
 	}
+
 
 	for next {
 		for _, p := range vec {
@@ -191,7 +209,9 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
-		next, ts, vec = stepEvaluator.Next()
+
+		next, ts, val = stepEvaluator.Next()
+		vec = val.(promql.Vector)
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
@@ -203,9 +223,29 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 	}
 	result := promql.Matrix(series)
 	sort.Sort(result)
-	*/
 
-	return nil, stepEvaluator.Error()
+	return result, stepEvaluator.Error()
+}
+
+func (p *ProbabilisticEvaluator) newDefaultStepEvaluator(
+	ctx context.Context,
+	nextEv SampleEvaluator[promql.Vector],
+	expr syntax.SampleExpr,
+	q Params,
+) (StepEvaluator[promql_parser.Value], error) {
+	ev, err := p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+
+	if err != nil {
+		return nil, err
+	}
+
+	// Wrap evaluator
+	return NewStepEvaluator[promql_parser.Value](func() (ok bool, ts int64, vec promql_parser.Value) {
+			ok, ts, vec = ev.Next()
+			return
+		},
+		ev.Close,
+		ev.Error,)
 }
 
 func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
@@ -213,11 +253,12 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	ev SampleEvaluator[promql.Vector],
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (StepEvaluator[sketch.TopKVector], error) {
+) (StepEvaluator[promql_parser.Value], error) {
 
 	if expr.Operation != syntax.OpTypeTopK {
 		// TODO(karsten): This the the core of the type problem.
-		return newVectorAggEvaluator(ctx, ev, expr, q)
+		//return newVectorAggEvaluator(ctx, ev, expr, q)
+		return nil, nil
 	}
 
 	// TODO(karsten): Below is just copy-pasta from newVectorAggEvaluator.
@@ -233,15 +274,15 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
-	return NewStepEvaluator[sketch.TopKVector](func() (bool, int64, sketch.TopKVector) {
+	return NewStepEvaluator[promql_parser.Value](func() (bool, int64, promql_parser.Value) {
 		next, ts, vec := nextEvaluator.Next()
 
 		if !next {
-			return false, 0, sketch.TopKVector{}
+			return false, 0, nil
 		}
 		result := map[uint64]*sketch.Topk{}
 		if expr.Params < 1 {
-			return next, ts, sketch.TopKVector{}
+			return next, ts, nil
 		}
 		for _, s := range vec {
 			metric := s.Metric

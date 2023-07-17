@@ -3,6 +3,7 @@ package logql
 import (
 	"errors"
 
+	"github.com/prometheus/prometheus/promql/parser"
 )
 
 // StepEvaluator evaluate a single step of a query.
@@ -13,12 +14,15 @@ type StepEvaluator[V any] interface {
 	Close() error
 	// Reports any error
 	Error() error
+
+	Type() parser.ValueType // TODO(use own type definition)
 }
 
 type stepEvaluator[V any] struct {
 	fn    func() (bool, int64, V)
 	close func() error
 	err   func() error
+	t     parser.ValueType
 }
 
 func NewStepEvaluator[V any](fn func() (bool, int64, V), closeFn func() error, err func() error) (StepEvaluator[V], error) {
@@ -38,6 +42,10 @@ func NewStepEvaluator[V any](fn func() (bool, int64, V), closeFn func() error, e
 		close: closeFn,
 		err:   err,
 	}, nil
+}
+
+func (e *stepEvaluator[V]) Type() parser.ValueType {
+	return e.t
 }
 
 func (e *stepEvaluator[V]) Next() (bool, int64, V) {

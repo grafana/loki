@@ -11,6 +11,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -485,6 +486,9 @@ type rangeVectorEvaluator struct {
 
 	err error
 }
+func (r *rangeVectorEvaluator) Type() parser.ValueType {
+	return parser.ValueTypeVector
+}
 
 func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
@@ -516,6 +520,10 @@ type absentRangeVectorEvaluator struct {
 	lbs  labels.Labels
 
 	err error
+}
+
+func (r *absentRangeVectorEvaluator) Type() parser.ValueType {
+	return parser.ValueTypeVector
 }
 
 func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
@@ -953,6 +961,10 @@ func newVectorIterator(val float64,
 		endMs:     endMs,
 		currentMs: startMs - stepMs,
 	}
+}
+
+func (r *vectorIterator) Type() parser.ValueType {
+	return parser.ValueTypeVector
 }
 
 func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
