@@ -94,6 +94,10 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if err := configureReplication(&dpl.Spec.Template, opts.Stack.Replication, LabelGatewayComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return objs, nil
 }
 
@@ -218,10 +222,6 @@ func NewGatewayDeployment(opts Options, sha1C string) *appsv1.Deployment {
 	if opts.Stack.Template != nil && opts.Stack.Template.Gateway != nil {
 		podSpec.Tolerations = opts.Stack.Template.Gateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Gateway.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelGatewayComponent, opts.Name)...)
 	}
 
 	return &appsv1.Deployment{

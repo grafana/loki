@@ -37,6 +37,7 @@ const (
 
 // ReadRing represents the read interface to the ring.
 type ReadRing interface {
+
 	// Get returns n (or more) instances which form the replicas for the given key.
 	// bufDescs, bufHosts and bufZones are slices to be overwritten for the return value
 	// to avoid memory allocation; can be nil, or created with ring.MakeBuffersForGet().
@@ -151,7 +152,7 @@ type instanceInfo struct {
 	Zone       string
 }
 
-// Ring is a Service that maintains an in-memory copy of a ring and watches for changes.
+// Ring holds the information about the members of the consistent hash ring.
 type Ring struct {
 	services.Service
 
@@ -170,7 +171,7 @@ type Ring struct {
 	oldestRegisteredTimestamp int64
 
 	// Maps a token with the information of the instance holding it. This map is immutable and
-	// cannot be changed in place because it's shared "as is" between subrings (the only way to
+	// cannot be chanced in place because it's shared "as is" between subrings (the only way to
 	// change it is to create a new one and replace it).
 	ringInstanceByToken map[uint32]instanceInfo
 
@@ -238,19 +239,16 @@ func NewWithStoreClientAndStrategy(cfg Config, name, key string, store kv.Client
 		numMembersGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_members",
 			Help:        "Number of members in the ring",
-			ConstLabels: map[string]string{"name": name},
-		},
+			ConstLabels: map[string]string{"name": name}},
 			[]string{"state"}),
 		totalTokensGauge: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
 			Name:        "ring_tokens_total",
 			Help:        "Number of tokens in the ring",
-			ConstLabels: map[string]string{"name": name},
-		}),
+			ConstLabels: map[string]string{"name": name}}),
 		oldestTimestampGaugeVec: promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "ring_oldest_member_timestamp",
 			Help:        "Timestamp of the oldest member in the ring.",
-			ConstLabels: map[string]string{"name": name},
-		},
+			ConstLabels: map[string]string{"name": name}},
 			[]string{"state"}),
 		logger: logger,
 	}
@@ -525,31 +523,26 @@ func (r *Ring) GetReplicationSetForOperation(op Operation) (ReplicationSet, erro
 }
 
 // CountTokens returns the number tokens within the range for each instance.
-// In case of zone-awareness, this method takes into account only tokens of
-// the same zone. More precisely, for each instance only the distance between
-// its tokens and tokens of the instances from the same zone will be considered.
-func (r *Desc) CountTokens() map[string]int64 {
+func (r *Desc) CountTokens() map[string]uint32 {
 	var (
-		owned               = make(map[string]int64, len(r.Ingesters))
-		ringTokensByZone    = r.getTokensByZone()
+		owned               = make(map[string]uint32, len(r.Ingesters))
+		ringTokens          = r.GetTokens()
 		ringInstanceByToken = r.getTokensInfo()
 	)
 
-	for _, ringTokens := range ringTokensByZone {
-		for i, token := range ringTokens {
-			var prevToken uint32
+	for i, token := range ringTokens {
+		var diff uint32
 
-			// Compute how many tokens are within the range.
-			if i == 0 {
-				prevToken = ringTokens[len(ringTokens)-1]
-			} else {
-				prevToken = ringTokens[i-1]
-			}
-
-			diff := tokenDistance(prevToken, token)
-			info := ringInstanceByToken[token]
-			owned[info.InstanceID] = owned[info.InstanceID] + diff
+		// Compute how many tokens are within the range.
+		if i == 0 {
+			lastToken := ringTokens[len(ringTokens)-1]
+			diff = token + (math.MaxUint32 - lastToken)
+		} else {
+			diff = token - ringTokens[i-1]
 		}
+
+		info := ringInstanceByToken[token]
+		owned[info.InstanceID] = owned[info.InstanceID] + diff
 	}
 
 	// Set to 0 the number of owned tokens by instances which don't have tokens yet.
@@ -734,7 +727,7 @@ func (r *Ring) shuffleShard(identifier string, size int, lookbackPeriod time.Dur
 					panic(ErrInconsistentTokensInfo)
 				}
 
-				// Ensure we select a unique instance.
+				// Ensure we select an unique instance.
 				if _, ok := shard[info.InstanceID]; ok {
 					continue
 				}
@@ -1021,7 +1014,7 @@ func (r *Ring) casRing(ctx context.Context, f func(in interface{}) (out interfac
 	return r.KVClient.CAS(ctx, r.key, f)
 }
 
-func (r *Ring) getRing(_ context.Context) (*Desc, error) {
+func (r *Ring) getRing(ctx context.Context) (*Desc, error) {
 	r.mtx.RLock()
 	defer r.mtx.RUnlock()
 
