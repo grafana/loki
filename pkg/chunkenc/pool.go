@@ -367,7 +367,7 @@ func (pool *NoopPool) GetReader(src io.Reader) (io.Reader, error) {
 }
 
 // PutReader places back in the pool a CompressionReader
-func (pool *NoopPool) PutReader(reader io.Reader) {}
+func (pool *NoopPool) PutReader(_ io.Reader) {}
 
 type noopCloser struct {
 	io.Writer
@@ -381,4 +381,4 @@ func (pool *NoopPool) GetWriter(dst io.Writer) io.WriteCloser {
 }
 
 // PutWriter places back in the pool a CompressionWriter
-func (pool *NoopPool) PutWriter(writer io.WriteCloser) {}
+func (pool *NoopPool) PutWriter(_ io.WriteCloser) {}

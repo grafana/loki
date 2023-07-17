@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/tenant"
@@ -88,7 +90,7 @@ type Querier interface {
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
-	LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error)
+	SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
 
 type Limits interface {
@@ -767,14 +769,17 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	)
 }
 
-func (q *SingleTenantQuerier) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.SeriesVolume")
+	defer sp.Finish()
+
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil && req.Matchers != labelvolume.MatchAny {
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
@@ -783,18 +788,71 @@ func (q *SingleTenantQuerier) LabelVolume(ctx context.Context, req *logproto.Lab
 
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/LabelVolume")
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Volume")
 		queryTimeout = q.cfg.QueryTimeout
 	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
-	return q.store.LabelVolume(
-		ctx,
-		userID,
-		req.From,
-		req.Through,
-		req.Limit,
-		matchers...,
+	sp.LogKV(
+		"user", userID,
+		"from", req.From.Time(),
+		"through", req.Through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", req.Limit,
+		"targetLabels", req.TargetLabels,
 	)
+
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
+
+	queryIngesters := !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil
+	queryStore := !q.cfg.QueryIngesterOnly && storeQueryInterval != nil
+
+	numResponses := 0
+	if queryIngesters {
+		numResponses++
+	}
+	if queryStore {
+		numResponses++
+	}
+	responses := make([]*logproto.VolumeResponse, 0, numResponses)
+
+	if queryIngesters {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+
+		resp, err := q.ingesterQuerier.SeriesVolume(
+			ctx,
+			userID,
+			model.TimeFromUnix(ingesterQueryInterval.start.Unix()),
+			model.TimeFromUnix(ingesterQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	if queryStore {
+		resp, err := q.store.SeriesVolume(
+			ctx,
+			userID,
+			model.TimeFromUnix(storeQueryInterval.start.Unix()),
+			model.TimeFromUnix(storeQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	return seriesvolume.Merge(responses, req.Limit), nil
 }

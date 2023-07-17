@@ -175,6 +175,14 @@ func main() {
 			os.Exit(1)
 		}
 	}
+
+	if err = (&lokictrl.LokiStackZoneAwarePodReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("lokistack-zoneaware-pod"),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "lokistack-zoneaware-pod")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err = mgr.AddHealthzCheck("health", healthz.Ping); err != nil {

@@ -3,10 +3,7 @@ package util
 import (
 	"hash/fnv"
 
-	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 // TokenFor generates a token used for finding ingesters from ring
@@ -25,25 +22,5 @@ func IsInReplicationSet(r ring.ReadRing, ringKey uint32, address string) (bool, 
 	if err != nil {
 		return false, err
 	}
-
-	addrs := rs.GetAddresses()
-	for _, a := range addrs {
-		if a == address {
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-// IsAssignedKey replies wether the given instance address is in the ReplicationSet responsible for the given key or not, based on the tokens.
-//
-// The result will be defined based on the tokens assigned to each ring component, queried through the ring client.
-func IsAssignedKey(ringClient ring.ReadRing, instanceAddress string, key string) bool {
-	token := TokenFor(key, "" /* labels */)
-	inSet, err := IsInReplicationSet(ringClient, token, instanceAddress)
-	if err != nil {
-		level.Error(util_log.Logger).Log("msg", "error checking if key is in replicationset", "error", err, "key", key)
-		return false
-	}
-	return inSet
+	return StringsContain(rs.GetAddresses(), address), nil
 }

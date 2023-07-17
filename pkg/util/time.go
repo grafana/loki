@@ -92,6 +92,11 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
 func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+	if interval <= 0 {
+		callback(start, end)
+		return
+	}
+
 	ogStart := start
 	startNs := start.UnixNano()
 	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())

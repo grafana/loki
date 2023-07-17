@@ -22,41 +22,41 @@ import (
 
 type mockStore int
 
-func (m mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+func (m mockStore) Put(_ context.Context, _ []chunk.Chunk) error {
 	return nil
 }
 
-func (m mockStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+func (m mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }
 
-func (m mockStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (m mockStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (m mockStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {}
+func (m mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (m mockStore) GetChunkRefs(tx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m mockStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
-func (m mockStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+func (m mockStore) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]labels.Labels, error) {
 	return nil, nil
 }
 
-func (m mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (m mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
 	return nil, nil
 }
 
-func (m mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (m mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m mockStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (m mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
-func (m mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 
@@ -195,11 +195,11 @@ type mockStoreLabel struct {
 	values []string
 }
 
-func (m mockStoreLabel) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (m mockStoreLabel) LabelValuesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return m.values, nil
 }
 
-func (m mockStoreLabel) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (m mockStoreLabel) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
 	return m.values, nil
 }
 
@@ -251,7 +251,7 @@ type mockStoreGetChunkFetcher struct {
 	chunkFetcher *fetcher.Fetcher
 }
 
-func (m mockStoreGetChunkFetcher) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (m mockStoreGetChunkFetcher) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return m.chunkFetcher
 }
 
@@ -299,45 +299,45 @@ func TestCompositeStore_GetChunkFetcher(t *testing.T) {
 	}
 }
 
-type mockStoreLabelVolume struct {
+type mockStoreSeriesVolume struct {
 	mockStore
-	value *logproto.LabelVolumeResponse
+	value *logproto.VolumeResponse
 	err   error
 }
 
-func (m mockStoreLabelVolume) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (m mockStoreSeriesVolume) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return m.value, m.err
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestSeriesVolume(t *testing.T) {
 	t.Run("it returns volumes from all stores", func(t *testing.T) {
 		cs := compositeStore{
 			stores: []compositeStoreEntry{
-				{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore: mockStore(0), value: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
+				{model.TimeFromUnix(10), mockStoreSeriesVolume{mockStore: mockStore(0), value: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Volume: 15}}, Limit: 10,
 				}}},
-				{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore: mockStore(1), value: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 30}}, Limit: 10,
+				{model.TimeFromUnix(20), mockStoreSeriesVolume{mockStore: mockStore(1), value: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Volume: 30}}, Limit: 10,
 				}}},
 			},
 		}
 
-		volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, 10, nil)
+		volumes, err := cs.SeriesVolume(context.Background(), "fake", 10001, 20001, 10, nil)
 		require.NoError(t, err)
-		require.Equal(t, []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 45}}, volumes.Volumes)
+		require.Equal(t, []logproto.Volume{{Name: `{foo="bar"}`, Volume: 45}}, volumes.Volumes)
 	})
 
 	t.Run("it returns an error if any store returns an error", func(t *testing.T) {
 		cs := compositeStore{
 			stores: []compositeStoreEntry{
-				{model.TimeFromUnix(10), mockStoreLabelVolume{mockStore: mockStore(0), value: &logproto.LabelVolumeResponse{
-					Volumes: []logproto.LabelVolume{{Name: "foo", Value: "bar", Volume: 15}}, Limit: 10,
+				{model.TimeFromUnix(10), mockStoreSeriesVolume{mockStore: mockStore(0), value: &logproto.VolumeResponse{
+					Volumes: []logproto.Volume{{Name: `{foo="bar"}`, Volume: 15}}, Limit: 10,
 				}}},
-				{model.TimeFromUnix(20), mockStoreLabelVolume{mockStore: mockStore(1), err: errors.New("something bad")}},
+				{model.TimeFromUnix(20), mockStoreSeriesVolume{mockStore: mockStore(1), err: errors.New("something bad")}},
 			},
 		}
 
-		volumes, err := cs.LabelVolume(context.Background(), "fake", 10001, 20001, 10, nil)
+		volumes, err := cs.SeriesVolume(context.Background(), "fake", 10001, 20001, 10, nil)
 		require.Error(t, err, "something bad")
 		require.Nil(t, volumes)
 	})

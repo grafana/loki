@@ -5,6 +5,7 @@ package marshal
 import (
 	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
@@ -14,7 +15,34 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
+
+func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
+	switch result := v.(type) {
+	case logqlmodel.Result:
+		version := loghttp.GetVersion(r.RequestURI)
+		if version == loghttp.VersionV1 {
+			return WriteQueryResponseJSON(result, w)
+		}
+
+		return marshal_legacy.WriteQueryResponseJSON(result, w)
+	case *logproto.LabelResponse:
+		version := loghttp.GetVersion(r.RequestURI)
+		if version == loghttp.VersionV1 {
+			return WriteLabelResponseJSON(*result, w)
+		}
+
+		return marshal_legacy.WriteLabelResponseJSON(*result, w)
+	case *logproto.SeriesResponse:
+		return WriteSeriesResponseJSON(*result, w)
+	case *stats.Stats:
+		return WriteIndexStatsResponseJSON(result, w)
+	case *logproto.VolumeResponse:
+		return WriteSeriesVolumeResponseJSON(result, w)
+	}
+	return fmt.Errorf("unknown response type %T", v)
+}
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
@@ -99,9 +127,9 @@ func WriteIndexStatsResponseJSON(r *stats.Stats, w io.Writer) error {
 	return s.Flush()
 }
 
-// WriteIndexStatsResponseJSON marshals a gatewaypb.Stats to JSON and then
+// WriteSeriesVolumeResponseJSON marshals a logproto.VolumeResponse to JSON and then
 // writes it to the provided io.Writer.
-func WriteLabelVolumeResponseJSON(r *logproto.LabelVolumeResponse, w io.Writer) error {
+func WriteSeriesVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	s.WriteVal(r)

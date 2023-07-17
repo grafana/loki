@@ -2,9 +2,12 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/grafana/loki/pkg/logproto"
 
@@ -24,7 +27,7 @@ func (m mockIndexShipperIndexIterator) ForEachConcurrent(ctx context.Context, ta
 	return m.ForEach(ctx, tableName, userID, callback)
 }
 
-func (m mockIndexShipperIndexIterator) ForEach(ctx context.Context, tableName, userID string, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ string, callback index_shipper.ForEachIndexCallback) error {
 	indexes := m.tables[tableName]
 	for _, idx := range indexes {
 		if err := callback(false, idx); err != nil {
@@ -76,7 +79,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -142,7 +145,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
 	for _, tc := range []struct {
 		name               string
@@ -217,7 +220,7 @@ func TestIndexClient_Stats(t *testing.T) {
 	}
 }
 
-func TestIndexClient_LabelVolume(t *testing.T) {
+func TestIndexClient_SeriesVolume(t *testing.T) {
 	tempDir := t.TempDir()
 	tableRange := config.TableRange{
 		Start: 0,
@@ -270,29 +273,49 @@ func TestIndexClient_LabelVolume(t *testing.T) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	limits := &fakeLimits{volumeMaxSeries: 5}
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits)
+	from := indexStartYesterday
+	through := indexStartToday + 1000
 
-	t.Run("it returns label volumes from the whole index", func(t *testing.T) {
-		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 10, nil...)
+	t.Run("it returns series volumes from the whole index", func(t *testing.T) {
+		vol, err := indexClient.SeriesVolume(context.Background(), "", from, through, 10, nil, nil...)
 		require.NoError(t, err)
 
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: 300 * 1024},
-				{Name: "fizz", Value: "buzz", Volume: 200 * 1024},
-				{Name: "ping", Value: "pong", Volume: 100 * 1024},
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 200 * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: 100 * 1024},
+				{Name: `{fizz="buzz"}`, Volume: 100 * 1024},
+				{Name: `{ping="pong"}`, Volume: 100 * 1024},
 			},
-			Limit: 10}, vol)
+			Limit: 10,
+		}, vol)
 	})
 
-	t.Run("it returns largest label from the index", func(t *testing.T) {
-		vol, err := indexClient.LabelVolume(context.Background(), "", indexStartYesterday, indexStartToday+1000, 1, nil...)
+	t.Run("it returns largest series from the index", func(t *testing.T) {
+		vol, err := indexClient.SeriesVolume(context.Background(), "", from, through, 1, nil, nil...)
 		require.NoError(t, err)
 
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: 300 * 1024},
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 200 * 1024},
 			},
-			Limit: 1}, vol)
+			Limit: 1,
+		}, vol)
 	})
+
+	t.Run("it returns an error when the number of selected series exceeds the limit", func(t *testing.T) {
+		limits.volumeMaxSeries = 0
+		_, err := indexClient.SeriesVolume(context.Background(), "", from, through, 1, nil, nil...)
+		require.EqualError(t, err, fmt.Sprintf(seriesvolume.ErrVolumeMaxSeriesHit, 0))
+	})
+}
+
+type fakeLimits struct {
+	volumeMaxSeries int
+}
+
+func (f *fakeLimits) VolumeMaxSeries(_ string) int {
+	return f.volumeMaxSeries
 }

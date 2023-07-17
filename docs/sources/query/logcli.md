@@ -3,9 +3,8 @@ title: LogCLI
 menuTItle:  
 description: LogCLI, Grafana Loki's command-line interface
 aliases:
-- /docs/loki/latest/getting-started/logcli/
-- /docs/loki/latest/tools/logcli/
-- /docs/loki/latest/query/logcli/
+- ../getting-started/logcli/
+- ../tools/logcli/
 weight: 700  
 ---
 
@@ -368,7 +367,7 @@ Flags:
       --from=FROM               Start looking for logs at this absolute time (inclusive)
       --to=TO                   Stop looking for logs at this absolute time (exclusive)
       --step=STEP               Query resolution step width, for metric queries. Evaluate the query at the specified step over the time range.
-      --interval=INTERVAL       Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, please see Issue 1779**
+      --interval=INTERVAL       Query interval, for log queries. Return entries at the specified interval, ignoring those between. **This parameter is experimental, see Issue 1779**
       --batch=1000              Query batch size to use until 'limit' is reached
       --parallel-duration=1h    Split the range into jobs of this length to download the logs in parallel. This will result in the logs being out of order. Use --part-path-prefix to create
                                 a file per job to maintain ordering.

@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -35,7 +36,7 @@ func NewQueryShardMiddleware(
 	logger log.Logger,
 	confs ShardingConfigs,
 	engineOpts logql.EngineOpts,
-	codec queryrangebase.Codec,
+	_ queryrangebase.Codec,
 	middlewareMetrics *queryrangebase.InstrumentMiddlewareMetrics,
 	shardingMetrics *logql.MapperMetrics,
 	limits Limits,
@@ -161,6 +162,13 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
+	// The shard resolver uses index stats to determine the number of shards.
+	// We want to store the cache stats for the requests to get the index stats.
+	// Later on, the query engine overwrites the stats context with other stats,
+	// so we create a separate stats context here for the resolver that we
+	// will merge with the stats returned from the engine.
+	resolverStats, ctx := stats.NewContext(ctx)
+
 	resolver, ok := shardResolverForConf(
 		ctx,
 		conf,
@@ -216,6 +224,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	if err != nil {
 		return nil, err
 	}
+
+	// Merge index stats result cache stats from shard resolver into the query stats.
+	res.Statistics.Caches.StatsResult.Merge(resolverStats.Caches().StatsResult)
 
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {

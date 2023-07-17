@@ -128,6 +128,11 @@ spec:
                         description: QueryLimits defines the limit applied on querying
                           log streams.
                         properties:
+                          cardinalityLimit:
+                            description: CardinalityLimit defines the cardinality
+                              limit for index queries.
+                            format: int32
+                            type: integer
                           maxChunksPerQuery:
                             description: MaxChunksPerQuery defines the maximum number
                               of chunks that can be fetched by a single query.
@@ -139,8 +144,8 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
-                              unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the maximum of unique
+                              series that is returned by a metric query.
                             format: int32
                             type: integer
                           queryTimeout:
@@ -250,6 +255,11 @@ spec:
                           description: QueryLimits defines the limit applied on querying
                             log streams.
                           properties:
+                            cardinalityLimit:
+                              description: CardinalityLimit defines the cardinality
+                                limit for index queries.
+                              format: int32
+                              type: integer
                             maxChunksPerQuery:
                               description: MaxChunksPerQuery defines the maximum number
                                 of chunks that can be fetched by a single query.
@@ -262,8 +272,8 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
-                                of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the maximum of unique
+                                series that is returned by a metric query.
                               format: int32
                               type: integer
                             queryTimeout:
@@ -484,6 +494,7 @@ spec:
                 description: Size defines one of the support Loki deployment scale
                   out sizes.
                 enum:
+                - 1x.demo
                 - 1x.extra-small
                 - 1x.small
                 - 1x.medium
@@ -4040,8 +4051,8 @@ spec:
                             format: int32
                             type: integer
                           maxQuerySeries:
-                            description: MaxQuerySeries defines the the maximum of
-                              unique series that is returned by a metric query.
+                            description: MaxQuerySeries defines the maximum of unique
+                              series that is returned by a metric query.
                             format: int32
                             type: integer
                         type: object
@@ -4111,8 +4122,8 @@ spec:
                               format: int32
                               type: integer
                             maxQuerySeries:
-                              description: MaxQuerySeries defines the the maximum
-                                of unique series that is returned by a metric query.
+                              description: MaxQuerySeries defines the maximum of unique
+                                series that is returned by a metric query.
                               format: int32
                               type: integer
                           type: object

@@ -9,7 +9,7 @@ In certain situations, you may not be able to control the queries being sent to 
 may be intentionally or unintentionally expensive to run, and they may affect the overall stability or cost of running
 your service.
 
-You can block queries using [per-tenant overrides]({{<relref "../configuration/#runtime-configuration-file">}}), like so:
+You can block queries using [per-tenant overrides]({{< relref "../configure#runtime-configuration-file" >}}), like so:
 
 ```yaml
 overrides:
@@ -35,7 +35,7 @@ overrides:
         types: filter,limited
 ```
 
-NOTE: changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file]({{<relref "../configuration/#runtime-configuration-file">}}).
+NOTE: changes to these configurations **do not require a restart**; they are defined in the [runtime configuration file]({{< relref "../configure#runtime-configuration-file" >}}).
 
 The available query types are:
 
@@ -60,4 +60,4 @@ Blocked queries are logged, as well as counted in the `loki_blocked_queries` met
 
 ## Scope
 
-Queries received via the API and executed as [alerting/recording rules]({{<relref "../alert">}}) will be blocked.
+Queries received via the API and executed as [alerting/recording rules]({{< relref "../alert" >}}) will be blocked.

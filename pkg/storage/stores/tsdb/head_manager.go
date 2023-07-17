@@ -738,7 +738,7 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
@@ -748,7 +748,7 @@ func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, thr
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
-func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, _ []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
@@ -783,12 +783,12 @@ func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through mo
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
-func (t *tenantHeads) LabelVolume(ctx context.Context, userID string, from, through model.Time, acc LabelVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (t *tenantHeads) SeriesVolume(ctx context.Context, userID string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, matchers ...*labels.Matcher) error {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil
 	}
-	return idx.LabelVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+	return idx.SeriesVolume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, matchers...)
 }
 
 // helper only used in building TSDBs

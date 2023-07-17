@@ -472,7 +472,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.28.3',
+    local build_image_tag = '0.29.3',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -551,7 +551,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'cd -',
       ]) { depends_on: ['clone'], when: onPRs },
       make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
-      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
+      run('test-target-branch', commands=['cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
         'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',

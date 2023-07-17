@@ -231,7 +231,7 @@ We need a service account with the following permissions:
 
 This enables Promtail to read log entries from the pubsub subscription created before.
 
-You can find an example for Promtail scrape config for `gcplog` [here]({{<relref "scraping/#gcp-log-scraping">}})
+You can find an example for Promtail scrape config for `gcplog` [here]({{< relref "./scraping#gcp-log-scraping" >}})
 
 If you are scraping logs from multiple GCP projects, then this serviceaccount should have above permissions in all the projects you are tyring to scrape.
 

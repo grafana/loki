@@ -9,7 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 
 	"github.com/go-kit/log"
@@ -370,21 +370,26 @@ func TestTSDBIndex_Stats(t *testing.T) {
 	}
 }
 
-func TestTSDBIndex_LabelVolume(t *testing.T) {
+func TestTSDBIndex_SeriesVolume(t *testing.T) {
+	now := time.Now()
+	t1 := now.Add(-time.Hour)
+	t2 := now.Add(-time.Minute)
+
 	series := []LoadableSeries{
 		{
-			Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz", __loki_tenant__="fake"}`),
+
 			Chunks: []index.ChunkMeta{
 				{
-					MinTime:  0,
-					MaxTime:  10,
+					MinTime:  t1.UnixMilli(),
+					MaxTime:  t1.Add(30 * time.Minute).UnixMilli(),
 					Checksum: 1,
 					Entries:  10,
 					KB:       10,
 				},
 				{
-					MinTime:  10,
-					MaxTime:  20,
+					MinTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					MaxTime:  t2.UnixMilli(),
 					Checksum: 2,
 					Entries:  20,
 					KB:       20,
@@ -392,18 +397,18 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 			},
 		},
 		{
-			Labels: mustParseLabels(`{foo="bar", ping="pong"}`),
+			Labels: mustParseLabels(`{foo="bar", fizz="fizz", __loki_tenant__="fake"}`),
 			Chunks: []index.ChunkMeta{
 				{
-					MinTime:  0,
-					MaxTime:  10,
+					MinTime:  t1.UnixMilli(),
+					MaxTime:  t1.Add(30 * time.Minute).UnixMilli(),
 					Checksum: 3,
 					Entries:  30,
 					KB:       30,
 				},
 				{
-					MinTime:  10,
-					MaxTime:  20,
+					MinTime:  t1.Add(30 * time.Minute).UnixMilli(),
+					MaxTime:  t2.UnixMilli(),
 					Checksum: 4,
 					Entries:  40,
 					KB:       40,
@@ -416,41 +421,96 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 	tempDir := t.TempDir()
 	tsdbIndex := BuildIndex(t, tempDir, series)
 
-	t.Run("it matches all the series", func(t *testing.T) {
+	from := model.TimeFromUnixNano(t1.UnixNano())
+	through := model.TimeFromUnixNano(t2.UnixNano())
+
+	t.Run("it matches all the series when the match all matcher is passed", func(t *testing.T) {
 		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
-		acc := labelvolume.NewAccumulator(10)
-		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, matcher)
 		require.NoError(t, err)
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: (10 + 20 + 30 + 40) * 1024},
-				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
-				{Name: "fizz", Value: "buzz", Volume: (10 + 20) * 1024},
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
 			},
-			Limit: 10}, acc.Volumes())
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it ignores the tenant label matcher", func(t *testing.T) {
+		matcher := []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+"),
+			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+		}
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, withTenantLabelMatcher("fake", matcher)...)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
 	})
 
 	t.Run("it matches none of the series", func(t *testing.T) {
 		matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "baz")
-		acc := labelvolume.NewAccumulator(10)
-		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, matcher)
 		require.NoError(t, err)
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{},
-			Limit:   10}, acc.Volumes())
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{},
+			Limit:   10,
+		}, acc.Volumes())
 	})
 
-	t.Run("it matches a subset", func(t *testing.T) {
-		matcher := labels.MustNewMatcher(labels.MatchEqual, "ping", "pong")
-		acc := labelvolume.NewAccumulator(10)
-		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+	t.Run("it only returns results for the labels in the matcher", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, matcher)
 		require.NoError(t, err)
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{
-				{Name: "foo", Value: "bar", Volume: (30 + 40) * 1024},
-				{Name: "ping", Value: "pong", Volume: (30 + 40) * 1024},
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: (10 + 20 + 30 + 40) * 1024},
 			},
-			Limit: 10}, acc.Volumes())
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it returns results for label names in matchers", func(t *testing.T) {
+		matchers := []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+			labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+"),
+		}
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, matchers...)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("it returns results for label names in matchers", func(t *testing.T) {
+		matchers := []*labels.Matcher{
+			labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"),
+			labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+"),
+		}
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, matchers...)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
 	})
 
 	t.Run("it can filter chunks", func(t *testing.T) {
@@ -458,24 +518,82 @@ func TestTSDBIndex_LabelVolume(t *testing.T) {
 		defer tsdbIndex.SetChunkFilterer(nil)
 
 		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
-		acc := labelvolume.NewAccumulator(10)
-		err := tsdbIndex.LabelVolume(context.Background(), "fake", 0, 20, acc, nil, nil, matcher)
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, nil, matcher)
 
 		require.NoError(t, err)
-		require.Equal(t, &logproto.LabelVolumeResponse{
-			Volumes: []logproto.LabelVolume{},
-			Limit:   10}, acc.Volumes())
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{},
+			Limit:   10,
+		}, acc.Volumes())
+	})
+
+	t.Run("only gets factor of stream size within time bounds", func(t *testing.T) {
+		matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+		acc := seriesvolume.NewAccumulator(10, 10)
+		err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through.Add(-30*time.Minute), acc, nil, nil, nil, matcher)
+		require.NoError(t, err)
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{fizz="fizz", foo="bar"}`, Volume: (29) * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: (9) * 1024},
+			},
+			Limit: 10,
+		}, acc.Volumes())
+	})
+
+	t.Run("when targetLabels provided, it aggregates by those labels only", func(t *testing.T) {
+		t.Run("all targetLabels are added to matchers", func(t *testing.T) {
+			matcher := labels.MustNewMatcher(labels.MatchEqual, "", "")
+			acc := seriesvolume.NewAccumulator(10, 10)
+			err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, []string{"fizz"}, matcher)
+			require.NoError(t, err)
+			require.Equal(t, &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{Name: `{fizz="fizz"}`, Volume: (30 + 40) * 1024},
+					{Name: `{fizz="buzz"}`, Volume: (10 + 20) * 1024},
+				},
+				Limit: 10,
+			}, acc.Volumes())
+		})
+
+		t.Run("with a specific equals matcher", func(t *testing.T) {
+			matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+			acc := seriesvolume.NewAccumulator(10, 10)
+			err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, []string{"fizz"}, matcher)
+			require.NoError(t, err)
+			require.Equal(t, &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{Name: `{fizz="fizz"}`, Volume: (30 + 40) * 1024},
+					{Name: `{fizz="buzz"}`, Volume: (10 + 20) * 1024},
+				},
+				Limit: 10,
+			}, acc.Volumes())
+		})
+
+		t.Run("with a specific regexp matcher", func(t *testing.T) {
+			matcher := labels.MustNewMatcher(labels.MatchRegexp, "fizz", ".+")
+			acc := seriesvolume.NewAccumulator(10, 10)
+			err := tsdbIndex.SeriesVolume(context.Background(), "fake", from, through, acc, nil, nil, []string{"foo"}, matcher)
+			require.NoError(t, err)
+			require.Equal(t, &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{Name: `{foo="bar"}`, Volume: (100) * 1024},
+				},
+				Limit: 10,
+			}, acc.Volumes())
+		})
 	})
 }
 
 type filterAll struct{}
 
-func (f *filterAll) ForRequest(ctx context.Context) chunk.Filterer {
+func (f *filterAll) ForRequest(_ context.Context) chunk.Filterer {
 	return &filterAllFilterer{}
 }
 
 type filterAllFilterer struct{}
 
-func (f *filterAllFilterer) ShouldFilter(metric labels.Labels) bool {
+func (f *filterAllFilterer) ShouldFilter(_ labels.Labels) bool {
 	return true
 }

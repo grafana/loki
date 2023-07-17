@@ -97,7 +97,7 @@ func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, directi
 	}, nil
 }
 
-func (c *dumbChunk) SampleIterator(_ context.Context, from, through time.Time, _ log.StreamSampleExtractor) iter.SampleIterator {
+func (c *dumbChunk) SampleIterator(_ context.Context, _, _ time.Time, _ log.StreamSampleExtractor) iter.SampleIterator {
 	return nil
 }
 
@@ -109,7 +109,7 @@ func (c *dumbChunk) BytesWith(_ []byte) ([]byte, error) {
 	return nil, nil
 }
 
-func (c *dumbChunk) WriteTo(w io.Writer) (int64, error) { return 0, nil }
+func (c *dumbChunk) WriteTo(_ io.Writer) (int64, error) { return 0, nil }
 
 func (c *dumbChunk) Blocks(_ time.Time, _ time.Time) []Block {
 	return nil
@@ -123,7 +123,7 @@ func (c *dumbChunk) Close() error {
 	return nil
 }
 
-func (c *dumbChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
+func (c *dumbChunk) Rebound(_, _ time.Time, _ filter.Func) (Chunk, error) {
 	return nil, nil
 }
 

@@ -3,8 +3,7 @@ title: Log queries
 menuTItle:  
 description: Overview of how log queries are constructed and parsed.
 aliases: 
-- /docs/loki/latest/logql/log_queries/
-- /docs/loki/latest/query/log_queries/
+- ../logql/log_queries/
 weight: 10 
 ---
 
@@ -200,7 +199,7 @@ will always run faster than
 Line filter expressions are the fastest way to filter logs once the
 log stream selectors have been applied.
 
-Line filter expressions have support matching IP addresses. See [Matching IP addresses]({{<relref "../ip">}}) for details.
+Line filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
 
 
 ### Removing color codes
@@ -240,7 +239,7 @@ Using Duration, Number and Bytes will convert the label value prior to comparisi
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{<relref "../#pipeline-errors">}}) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{< relref "..#pipeline-errors" >}}) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
@@ -271,7 +270,7 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 > Label filter expressions are the only expression allowed after the unwrap expression. This is mainly to allow filtering errors from the metric extraction.
 
-Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{<relref "../ip">}}) for details.
+Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
 
 ### Distinct filter expression
 
@@ -291,7 +290,7 @@ The expression `{app="order"} | json | distinct id` will return the distinct occ
 ```
 ### Parser expression
 
-Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{<relref "../metric_queries">}}).
+Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{< relref "../metric_queries" >}}).
 
 Extracted label keys are automatically sanitized by all parsers, to follow Prometheus metric name convention.(They can only contain ASCII letters and digits, as well as underscores and colons. They cannot start with a digit.)
 
@@ -311,7 +310,7 @@ If an extracted label key name already exists in the original log stream, the ex
 Loki supports  [JSON](#json), [logfmt](#logfmt), [pattern](#pattern), [regexp](#regular-expression) and [unpack](#unpack) parsers.
 
 It's easier to use the predefined parsers `json` and `logfmt` when you can. If you can't, the `pattern` and `regexp` parsers can be used for log lines with an unusual structure. The `pattern` parser is easier and faster to write; it also outperforms the `regexp` parser.
-Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers]({{<relref "../query_examples#examples-that-use-multiple-parsers">}}).
+Multiple parsers can be used by a single log pipeline. This is useful for parsing complex logs. There are examples in [Multiple parsers]({{< relref "../query_examples#examples-that-use-multiple-parsers" >}}).
 
 #### JSON
 
@@ -456,12 +455,41 @@ The **logfmt** parser can operate in two modes:
     ```logfmt
     at=info method=GET path=/ host=grafana.net fwd="124.133.124.161" service=8ms status=200
     ```
-    
+
     And rename `fwd` to `fwd_ip`:
     ```kv
     "host" => "grafana.net"
     "fwd_ip" => "124.133.124.161"
     ```
+
+The logfmt parser also supports the following flags:
+- `--strict` to enable strict parsing
+
+    With strict parsing enabled, the logfmt parser immediately stops scanning the log line and returns early with an error when it encounters any poorly formatted key/value pair.
+    ```
+    // accepted key/value pairs
+    key=value key="value in double quotes"
+
+    // invalid key/value pairs
+    =value // no key
+    foo=bar=buzz
+    fo"o=bar
+    ```
+
+    Without the `--strict` flag the parser skips invalid key/value pairs and continues parsing the rest of the log line.
+    Non-strict mode offers the flexibility to parse semi-structed log lines, though note that this is only best-effort.
+
+- `--keep-empty` to retain standalone keys with empty value
+
+    With `--keep-empty` flag set, the logfmt parser retains standalone keys(keys without a value) as labels with value set to empty string.
+    If the standalone key is explicitly requested using label extraction parameters, there is no need to add this flag.
+
+Note: flags if any should appear right after logfmt and before label extraction parameters
+```
+| logfmt --strict
+| logfmt --strict host, fwd_ip="fwd"
+| logfmt --keep-empty --strict host
+```
 
 #### Pattern
 
@@ -582,7 +610,7 @@ If we have the following labels `ip=1.1.1.1`, `status=200` and `duration=3000`(m
 
 The above query will give us the `line` as `1.1.1.1 200 3`
 
-See [template functions]({{<relref "../template_functions/">}}) to learn about available functions in the template format.
+See [template functions]({{< relref "../template_functions" >}}) to learn about available functions in the template format.
 
 ### Labels format expression
 
@@ -641,3 +669,44 @@ the result will be
 {host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 {app="other-service", host="grafana.net", job="varlogs", method="GET", status="200"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
+
+### Keep Labels expression
+
+**Syntax**:  `|keep name, other_name, some_name="some_value"`
+
+The `| keep` expression will keep only the specified labels in the pipeline and drop all the other labels.
+
+{{% admonition type="note" %}}
+The keep stage will not drop the  __error__ or __error_details__ labels added by Loki at query time. To drop these labels, refer to [drop](#drop-labels-expression) stage.
+{{% /admonition %}}
+
+Query examples:
+
+For the query `{job="varlogs"}|json|keep level, method="GET"`, with the following log lines:
+
+```
+{"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{level="info", method="GET"} {"level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{level="info"} {"level": "info", "method": "POST", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+For the query `{job="varlogs"}|json|keep level, tenant, app=~"some-api.*"`, with the following log lines:
+
+```
+{"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+
+the result will be
+
+```
+{app="some-api-service", level="info"} {"app": "some-api-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+{level="info"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
+```
+

@@ -58,6 +58,10 @@ func BuildIndexGateway(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIndexGatewayGRPCService(opts),
@@ -135,10 +139,6 @@ func NewIndexGatewayStatefulSet(opts Options) *appsv1.StatefulSet {
 	if opts.Stack.Template != nil && opts.Stack.Template.IndexGateway != nil {
 		podSpec.Tolerations = opts.Stack.Template.IndexGateway.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.IndexGateway.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIndexGatewayComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

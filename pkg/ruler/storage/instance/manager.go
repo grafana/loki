@@ -363,7 +363,7 @@ func (m MockManager) Ready() bool {
 	return true
 }
 
-func (m MockManager) InstanceReady(name string) bool {
+func (m MockManager) InstanceReady(_ string) bool {
 	return true
 }
 

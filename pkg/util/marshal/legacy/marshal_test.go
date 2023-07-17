@@ -27,6 +27,14 @@ var queryTests = []struct {
 						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
 						Line:      "super line",
 					},
+					{
+						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
+						Line:      "super line with labels",
+						NonIndexedLabels: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+					},
 				},
 				Labels: `{test="test"}`,
 			},
@@ -39,6 +47,14 @@ var queryTests = []struct {
 						{
 							"ts": "2019-09-13T18:32:22.380001319Z",
 							"line": "super line"
+						},
+						{
+							"ts": "2019-09-13T18:32:23.380001319Z",
+							"line": "super line with labels",
+							"nonIndexedLabels": {
+								"foo": "a",
+								"bar": "b"
+							}
 						}
 					]
 				}
@@ -164,6 +180,14 @@ var tailTests = []struct {
 							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:22.380001319Z"),
 							Line:      "super line",
 						},
+						{
+							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
+							Line:      "super line with labels",
+							NonIndexedLabels: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
 					},
 					Labels: "{test=\"test\"}",
 				},
@@ -183,6 +207,14 @@ var tailTests = []struct {
 						{
 							"ts": "2019-09-13T18:32:22.380001319Z",
 							"line": "super line"
+						},
+						{
+							"ts": "2019-09-13T18:32:23.380001319Z",
+							"line": "super line with labels",
+							"nonIndexedLabels": {
+								"foo": "a",
+								"bar": "b"
+							}						
 						}
 					]
 				}

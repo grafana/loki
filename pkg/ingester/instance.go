@@ -8,8 +8,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
-
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -23,6 +21,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
@@ -34,6 +33,7 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -106,6 +106,8 @@ type instance struct {
 
 	chunkFilter          chunk.RequestChunkFilterer
 	streamRateCalculator *StreamRateCalculator
+
+	writeFailures *writefailures.Manager
 }
 
 func newInstance(
@@ -119,6 +121,7 @@ func newInstance(
 	flushOnShutdownSwitch *OnceSwitch,
 	chunkFilter chunk.RequestChunkFilterer,
 	streamRateCalculator *StreamRateCalculator,
+	writeFailures *writefailures.Manager,
 ) (*instance, error) {
 	invertedIndex, err := index.NewMultiInvertedIndex(periodConfigs, uint32(cfg.IndexShards))
 	if err != nil {
@@ -145,6 +148,8 @@ func newInstance(
 		chunkFilter: chunkFilter,
 
 		streamRateCalculator: streamRateCalculator,
+
+		writeFailures: writeFailures,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err
@@ -274,7 +279,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -306,7 +311,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics)
+	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -618,15 +623,20 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
-func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
+func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
-	if err != nil && req.Matchers != labelvolume.MatchAny {
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
-	from, through := req.From.Time(), req.Through.Time()
+	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(req.TargetLabels, matchers)
+	matchAny = matchAny || len(matchers) == 0
 
-	volumes := make(map[string]map[string]uint64)
+	seriesNames := make(map[uint64]string)
+	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
+
+	from, through := req.From.Time(), req.Through.Time()
+	volumes := make(map[string]uint64)
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
@@ -646,13 +656,21 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 				}
 			}
 
+			seriesLabels = seriesLabels[:0]
 			for _, l := range s.labels {
-				if _, ok := volumes[l.Name]; !ok {
-					volumes[l.Name] = make(map[string]uint64)
+				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					seriesLabels = append(seriesLabels, l)
 				}
-				volumes[l.Name][l.Value] += size
 			}
 
+			// If the labels are < 1k, this does not alloc
+			// https://github.com/prometheus/prometheus/pull/8025
+			hash := seriesLabels.Hash()
+			if _, ok := seriesNames[hash]; !ok {
+				seriesNames[hash] = seriesLabels.String()
+			}
+
+			volumes[seriesNames[hash]] += size
 			s.chunkMtx.RUnlock()
 		}
 		return nil
@@ -660,7 +678,7 @@ func (i *instance) GetLabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	res := labelvolume.MapToLabelVolumeResponse(volumes, int(req.Limit))
+	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 

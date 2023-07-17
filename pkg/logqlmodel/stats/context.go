@@ -69,15 +69,6 @@ func NewContext(ctx context.Context) (*Context, context.Context) {
 	return contextData, ctx
 }
 
-func GetOrCreateContext(ctx context.Context) (*Context, context.Context) {
-	v, ok := ctx.Value(statsKey).(*Context)
-	if !ok {
-		return NewContext(ctx)
-	}
-
-	return v, ctx
-}
-
 // FromContext returns the statistics context.
 func FromContext(ctx context.Context) *Context {
 	v, ok := ctx.Value(statsKey).(*Context)
@@ -101,9 +92,10 @@ func (c *Context) Ingester() Ingester {
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
-		Chunk:  c.caches.Chunk,
-		Index:  c.caches.Index,
-		Result: c.caches.Result,
+		Chunk:       c.caches.Chunk,
+		Index:       c.caches.Index,
+		Result:      c.caches.Result,
+		StatsResult: c.caches.StatsResult,
 	}
 }
 
@@ -390,6 +382,10 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	}
 
 	atomic.AddInt32(&stats.Requests, int32(i))
+}
+
+func (c *Context) AddSplitQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.Splits, num)
 }
 
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {

@@ -13,7 +13,7 @@ import (
 	strings "strings"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/labelvolume"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -35,9 +35,13 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 
-var LokiCodec = &Codec{}
+var DefaultCodec = &Codec{}
 
 type Codec struct{}
+
+type RequestProtobufCodec struct {
+	Codec
+}
 
 func (r *LokiRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
@@ -48,29 +52,29 @@ func (r *LokiRequest) GetStart() int64 {
 }
 
 func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &new
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
 }
 
 func (r *LokiRequest) WithStartEndTime(s time.Time, e time.Time) *LokiRequest {
-	new := *r
-	new.StartTs = s
-	new.EndTs = e
-	return &new
+	clone := *r
+	clone.StartTs = s
+	clone.EndTs = e
+	return &clone
 }
 
 func (r *LokiRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	new.Query = query
-	return &new
+	clone := *r
+	clone.Query = query
+	return &clone
 }
 
 func (r *LokiRequest) WithShards(shards logql.Shards) *LokiRequest {
-	new := *r
-	new.Shards = shards.Encode()
-	return &new
+	clone := *r
+	clone.Shards = shards.Encode()
+	return &clone
 }
 
 func (r *LokiRequest) LogToSpan(sp opentracing.Span) {
@@ -100,22 +104,22 @@ func (r *LokiInstantRequest) GetStart() int64 {
 	return r.TimeTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
-func (r *LokiInstantRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.TimeTs = time.Unix(0, s*int64(time.Millisecond))
-	return &new
+func (r *LokiInstantRequest) WithStartEnd(s int64, _ int64) queryrangebase.Request {
+	clone := *r
+	clone.TimeTs = time.Unix(0, s*int64(time.Millisecond))
+	return &clone
 }
 
 func (r *LokiInstantRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	new.Query = query
-	return &new
+	clone := *r
+	clone.Query = query
+	return &clone
 }
 
 func (r *LokiInstantRequest) WithShards(shards logql.Shards) *LokiInstantRequest {
-	new := *r
-	new.Shards = shards.Encode()
-	return &new
+	clone := *r
+	clone.Shards = shards.Encode()
+	return &clone
 }
 
 func (r *LokiInstantRequest) LogToSpan(sp opentracing.Span) {
@@ -139,15 +143,15 @@ func (r *LokiSeriesRequest) GetStart() int64 {
 }
 
 func (r *LokiSeriesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &new
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
 }
 
-func (r *LokiSeriesRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	return &new
+func (r *LokiSeriesRequest) WithQuery(_ string) queryrangebase.Request {
+	clone := *r
+	return &clone
 }
 
 func (r *LokiSeriesRequest) GetQuery() string {
@@ -178,15 +182,15 @@ func (r *LokiLabelNamesRequest) GetStart() int64 {
 }
 
 func (r *LokiLabelNamesRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
-	new := *r
-	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
-	return &new
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
 }
 
-func (r *LokiLabelNamesRequest) WithQuery(query string) queryrangebase.Request {
-	new := *r
-	return &new
+func (r *LokiLabelNamesRequest) WithQuery(_ string) queryrangebase.Request {
+	clone := *r
+	return &clone
 }
 
 func (r *LokiLabelNamesRequest) GetStep() int64 {
@@ -202,7 +206,7 @@ func (r *LokiLabelNamesRequest) LogToSpan(sp opentracing.Span) {
 
 func (*LokiLabelNamesRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
 
-func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []string) (queryrangebase.Request, error) {
+func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (queryrangebase.Request, error) {
 	if err := r.ParseForm(); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
@@ -271,24 +275,40 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, forwardHeaders []
 			Through:  through,
 			Matchers: req.Query,
 		}, err
-	case LabelVolumeOp:
-		req, err := loghttp.ParseLabelVolumeQuery(r)
+	case SeriesVolumeOp:
+		req, err := loghttp.ParseSeriesVolumeInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
-		return &logproto.LabelVolumeRequest{
-			From:     from,
-			Through:  through,
-			Matchers: req.Query,
-			Limit:    int32(req.Limit),
+		return &logproto.VolumeRequest{
+			From:         from,
+			Through:      through,
+			Matchers:     req.Query,
+			Limit:        int32(req.Limit),
+			Step:         0,
+			TargetLabels: req.TargetLabels,
+		}, err
+	case SeriesVolumeRangeOp:
+		req, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &logproto.VolumeRequest{
+			From:         from,
+			Through:      through,
+			Matchers:     req.Query,
+			Limit:        int32(req.Limit),
+			Step:         req.Step.Milliseconds(),
+			TargetLabels: req.TargetLabels,
 		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
 	}
 }
 
-func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
+func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
 	header := make(http.Header)
 	queryTags := getQueryTags(ctx)
 	if queryTags != "" {
@@ -414,16 +434,30 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			Header:     header,
 		}
 		return req.WithContext(ctx), nil
-	case *logproto.LabelVolumeRequest:
+	case *logproto.VolumeRequest:
 		params := url.Values{
 			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
 			"query": []string{request.GetQuery()},
 			"limit": []string{fmt.Sprintf("%d", request.Limit)},
 		}
-		u := &url.URL{
-			Path:     "/loki/api/v1/index/label_volume",
-			RawQuery: params.Encode(),
+
+		if len(request.TargetLabels) > 0 {
+			params["targetLabels"] = []string{strings.Join(request.TargetLabels, ",")}
+		}
+
+		var u *url.URL
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
+			u = &url.URL{
+				Path:     "/loki/api/v1/index/series_volume_range",
+				RawQuery: params.Encode(),
+			}
+		} else {
+			u = &url.URL{
+				Path:     "/loki/api/v1/index/series_volume",
+				RawQuery: params.Encode(),
+			}
 		}
 		req := &http.Request{
 			Method:     "GET",
@@ -438,15 +472,35 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 	}
 }
 
+func (p RequestProtobufCodec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http.Request, error) {
+	req, err := p.Codec.EncodeRequest(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/vnd.google.protobuf")
+	return req, nil
+}
+
 type Buffer interface {
 	Bytes() []byte
 }
 
-func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (Codec) DecodeResponse(_ context.Context, r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := io.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
 	}
+
+	if r.Header.Get("Content-Type") == ProtobufType {
+		return decodeResponseProtobuf(r, req)
+	}
+
+	// Default to JSON.
+	return decodeResponseJSON(r, req)
+}
+
+func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
 
 	var buf []byte
 	var err error
@@ -500,12 +554,12 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
-	case *logproto.LabelVolumeRequest:
-		var resp logproto.LabelVolumeResponse
+	case *logproto.VolumeRequest:
+		var resp logproto.VolumeResponse
 		if err := json.Unmarshal(buf, &resp); err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
 		}
-		return &LabelVolumeResponse{
+		return &VolumeResponse{
 			Response: &resp,
 			Headers:  httpResponseHeadersToPromResponseHeaders(r.Header),
 		}, nil
@@ -585,7 +639,57 @@ func (Codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 	}
 }
 
-func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (queryrangebase.Response, error) {
+	var buf []byte
+	var err error
+	if buffer, ok := r.Body.(Buffer); ok {
+		buf = buffer.Bytes()
+	} else {
+		buf, err = io.ReadAll(r.Body)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+	}
+
+	resp := &QueryResponse{}
+	err = resp.Unmarshal(buf)
+	if err != nil {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+	}
+
+	headers := httpResponseHeadersToPromResponseHeaders(r.Header)
+	switch req.(type) {
+	case *LokiSeriesRequest:
+		return resp.GetSeries().WithHeaders(headers), nil
+	case *LokiLabelNamesRequest:
+		return resp.GetLabels().WithHeaders(headers), nil
+	case *logproto.IndexStatsRequest:
+		return resp.GetStats().WithHeaders(headers), nil
+	default:
+		switch concrete := resp.Response.(type) {
+		case *QueryResponse_Prom:
+			return concrete.Prom.WithHeaders(headers), nil
+		case *QueryResponse_Streams:
+			return concrete.Streams.WithHeaders(headers), nil
+		case *QueryResponse_TopkSketches:
+			return concrete.TopkSketches.WithHeaders(headers), nil
+		default:
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
+		}
+	}
+}
+
+func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryrangebase.Response) (*http.Response, error) {
+	if req.Header.Get("Accept") == ProtobufType {
+		return encodeResponseProtobuf(ctx, res)
+	}
+
+	// Default to JSON.
+	version := loghttp.GetVersion(req.RequestURI)
+	return encodeResponseJSON(ctx, version, res)
+}
+
+func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -606,7 +710,7 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 			Data:       logqlmodel.Streams(streams),
 			Statistics: response.Statistics,
 		}
-		if loghttp.Version(response.Version) == loghttp.VersionLegacy {
+		if version == loghttp.VersionLegacy {
 			if err := marshal_legacy.WriteQueryResponseJSON(result, &buf); err != nil {
 				return nil, err
 			}
@@ -637,8 +741,8 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 		if err := marshal.WriteIndexStatsResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
-	case *LabelVolumeResponse:
-		if err := marshal.WriteLabelVolumeResponseJSON(response.Response, &buf); err != nil {
+	case *VolumeResponse:
+		if err := marshal.WriteSeriesVolumeResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
 	default:
@@ -649,9 +753,47 @@ func (Codec) EncodeResponse(ctx context.Context, res queryrangebase.Response) (*
 
 	resp := http.Response{
 		Header: http.Header{
-			"Content-Type": []string{"application/json"},
+			"Content-Type": []string{"application/json; charset=UTF-8"},
 		},
 		Body:       io.NopCloser(&buf),
+		StatusCode: http.StatusOK,
+	}
+	return &resp, nil
+}
+
+func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*http.Response, error) {
+	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
+	defer sp.Finish()
+
+	p := QueryResponse{}
+
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		p.Response = &QueryResponse_Prom{response}
+	case *LokiResponse:
+		p.Response = &QueryResponse_Streams{response}
+	case *LokiSeriesResponse:
+		p.Response = &QueryResponse_Series{response}
+	case *LokiLabelNamesResponse:
+		p.Response = &QueryResponse_Labels{response}
+	case *IndexStatsResponse:
+		p.Response = &QueryResponse_Stats{response}
+	case *TopKSketchesResponse:
+		p.Response = &QueryResponse_TopkSketches{response}
+	default:
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+	}
+
+	buf, err := p.Marshal()
+	if err != nil {
+		return nil, fmt.Errorf("could not marshal protobuf: %w", err)
+	}
+
+	resp := http.Response{
+		Header: http.Header{
+			"Content-Type": []string{ProtobufType},
+		},
+		Body:       io.NopCloser(bytes.NewBuffer(buf)),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil
@@ -742,20 +884,19 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Response: &mergedIndexStats,
 			Headers:  headers,
 		}, nil
-	case *LabelVolumeResponse:
-		resp0 := responses[0].(*LabelVolumeResponse)
+	case *VolumeResponse:
+		resp0 := responses[0].(*VolumeResponse)
 		headers := resp0.Headers
 
-		resps := make([]*logproto.LabelVolumeResponse, 0, len(responses))
+		resps := make([]*logproto.VolumeResponse, 0, len(responses))
 		for _, r := range responses {
-			resps = append(resps, r.(*LabelVolumeResponse).Response)
+			resps = append(resps, r.(*VolumeResponse).Response)
 		}
 
-		return &LabelVolumeResponse{
-			Response: labelvolume.Merge(resps, resp0.Response.Limit),
+		return &VolumeResponse{
+			Response: seriesvolume.Merge(resps, resp0.Response.Limit),
 			Headers:  headers,
 		}, nil
-
 	default:
 		return nil, errors.New("unknown response in merging responses")
 	}
@@ -923,6 +1064,16 @@ func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 	case *LokiRequest:
 		return &paramsRangeWrapper{
 			LokiRequest: r,
+		}, nil
+	case *logproto.VolumeRequest:
+		return &paramsRangeWrapper{
+			LokiRequest: &LokiRequest{
+				Query:   r.GetQuery(),
+				Limit:   uint32(r.GetLimit()),
+				Step:    r.GetStep(),
+				StartTs: time.UnixMilli(r.GetStart()),
+				EndTs:   time.UnixMilli(r.GetEnd()),
+			},
 		}, nil
 	case *LokiInstantRequest:
 		return &paramsInstantWrapper{

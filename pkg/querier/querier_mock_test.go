@@ -23,11 +23,13 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // querierClientMock is a mockable version of QuerierClient, used in querier
@@ -78,7 +80,7 @@ func (c *querierClientMock) Tail(ctx context.Context, in *logproto.TailRequest, 
 	return res.(logproto.Querier_TailClient), args.Error(1)
 }
 
-func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesRequest, opts ...grpc.CallOption) (*logproto.SeriesResponse, error) {
+func (c *querierClientMock) Series(ctx context.Context, in *logproto.SeriesRequest, _ ...grpc.CallOption) (*logproto.SeriesResponse, error) {
 	args := c.Called(ctx, in)
 	res := args.Get(0)
 	if res == nil {
@@ -105,13 +107,13 @@ func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChu
 	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
 }
 
-func (c *querierClientMock) GetLabelVolume(ctx context.Context, in *logproto.LabelVolumeRequest, opts ...grpc.CallOption) (*logproto.LabelVolumeResponse, error) {
+func (c *querierClientMock) GetSeriesVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	args := c.Called(ctx, in, opts)
 	res := args.Get(0)
 	if res == nil {
-		return (*logproto.LabelVolumeResponse)(nil), args.Error(1)
+		return (*logproto.VolumeResponse)(nil), args.Error(1)
 	}
-	return res.(*logproto.LabelVolumeResponse), args.Error(1)
+	return res.(*logproto.VolumeResponse), args.Error(1)
 }
 
 func (c *querierClientMock) Context() context.Context {
@@ -176,11 +178,11 @@ func (c *queryClientMock) CloseSend() error {
 	return nil
 }
 
-func (c *queryClientMock) SendMsg(m interface{}) error {
+func (c *queryClientMock) SendMsg(_ interface{}) error {
 	return nil
 }
 
-func (c *queryClientMock) RecvMsg(m interface{}) error {
+func (c *queryClientMock) RecvMsg(_ interface{}) error {
 	return nil
 }
 
@@ -219,11 +221,11 @@ func (c *querySampleClientMock) CloseSend() error {
 	return nil
 }
 
-func (c *querySampleClientMock) SendMsg(m interface{}) error {
+func (c *querySampleClientMock) SendMsg(_ interface{}) error {
 	return nil
 }
 
-func (c *querySampleClientMock) RecvMsg(m interface{}) error {
+func (c *querySampleClientMock) RecvMsg(_ interface{}) error {
 	return nil
 }
 
@@ -265,11 +267,11 @@ func (c *tailClientMock) Context() context.Context {
 	return context.Background()
 }
 
-func (c *tailClientMock) SendMsg(m interface{}) error {
+func (c *tailClientMock) SendMsg(_ interface{}) error {
 	return nil
 }
 
-func (c *tailClientMock) RecvMsg(m interface{}) error {
+func (c *tailClientMock) RecvMsg(_ interface{}) error {
 	return nil
 }
 
@@ -322,15 +324,15 @@ func (s *storeMock) GetChunkRefs(ctx context.Context, userID string, from, throu
 	return args.Get(0).([][]chunk.Chunk), args.Get(0).([]*fetcher.Fetcher), args.Error(2)
 }
 
-func (s *storeMock) Put(ctx context.Context, chunks []chunk.Chunk) error {
+func (s *storeMock) Put(_ context.Context, _ []chunk.Chunk) error {
 	return errors.New("storeMock.Put() has not been mocked")
 }
 
-func (s *storeMock) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+func (s *storeMock) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return errors.New("storeMock.PutOne() has not been mocked")
 }
 
-func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (s *storeMock) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, _ ...*labels.Matcher) ([]string, error) {
 	args := s.Called(ctx, userID, from, through, metricName, labelName)
 	return args.Get(0).([]string), args.Error(1)
 }
@@ -357,17 +359,17 @@ func (s *storeMock) Series(ctx context.Context, req logql.SelectLogParams) ([]lo
 	return res.([]logproto.SeriesIdentifier), args.Error(1)
 }
 
-func (s *storeMock) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+func (s *storeMock) GetSeries(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]labels.Labels, error) {
 	panic("don't call me please")
 }
 
-func (s *storeMock) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
-func (s *storeMock) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	args := s.Called(ctx, userID, from, through, matchers)
-	return args.Get(0).(*logproto.LabelVolumeResponse), args.Error(1)
+func (s *storeMock) SeriesVolume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }
 
 func (s *storeMock) Stop() {
@@ -388,17 +390,17 @@ func newReadRingMock(ingesters []ring.InstanceDesc, maxErrors int) *readRingMock
 	}
 }
 
-func (r *readRingMock) Describe(ch chan<- *prometheus.Desc) {
+func (r *readRingMock) Describe(_ chan<- *prometheus.Desc) {
 }
 
-func (r *readRingMock) Collect(ch chan<- prometheus.Metric) {
+func (r *readRingMock) Collect(_ chan<- prometheus.Metric) {
 }
 
-func (r *readRingMock) Get(key uint32, op ring.Operation, buf []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
+func (r *readRingMock) Get(_ uint32, _ ring.Operation, _ []ring.InstanceDesc, _ []string, _ []string) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
-func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
+func (r *readRingMock) ShuffleShard(_ string, size int) ring.ReadRing {
 	// pass by value to copy
 	return func(r readRingMock) *readRingMock {
 		r.replicationSet.Instances = r.replicationSet.Instances[:size]
@@ -406,15 +408,15 @@ func (r *readRingMock) ShuffleShard(identifier string, size int) ring.ReadRing {
 	}(*r)
 }
 
-func (r *readRingMock) BatchGet(keys []uint32, op ring.Operation) ([]ring.ReplicationSet, error) {
+func (r *readRingMock) BatchGet(_ []uint32, _ ring.Operation) ([]ring.ReplicationSet, error) {
 	return []ring.ReplicationSet{r.replicationSet}, nil
 }
 
-func (r *readRingMock) GetAllHealthy(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetAllHealthy(_ ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
-func (r *readRingMock) GetReplicationSetForOperation(op ring.Operation) (ring.ReplicationSet, error) {
+func (r *readRingMock) GetReplicationSetForOperation(_ ring.Operation) (ring.ReplicationSet, error) {
 	return r.replicationSet, nil
 }
 
@@ -426,7 +428,7 @@ func (r *readRingMock) InstancesCount() int {
 	return len(r.replicationSet.Instances)
 }
 
-func (r *readRingMock) Subring(key uint32, n int) ring.ReadRing {
+func (r *readRingMock) Subring(_ uint32, _ int) ring.ReadRing {
 	return r
 }
 
@@ -439,13 +441,13 @@ func (r *readRingMock) HasInstance(instanceID string) bool {
 	return false
 }
 
-func (r *readRingMock) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
+func (r *readRingMock) ShuffleShardWithLookback(_ string, _ int, _ time.Duration, _ time.Time) ring.ReadRing {
 	return r
 }
 
-func (r *readRingMock) CleanupShuffleShardCache(identifier string) {}
+func (r *readRingMock) CleanupShuffleShardCache(_ string) {}
 
-func (r *readRingMock) GetInstanceState(instanceID string) (ring.InstanceState, error) {
+func (r *readRingMock) GetInstanceState(_ string) (ring.InstanceState, error) {
 	return 0, nil
 }
 
@@ -528,16 +530,16 @@ func (q *querierMock) Series(ctx context.Context, req *logproto.SeriesRequest) (
 	return args.Get(0).(func() *logproto.SeriesResponse)(), args.Error(1)
 }
 
-func (q *querierMock) Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error) {
+func (q *querierMock) Tail(_ context.Context, _ *logproto.TailRequest) (*Tailer, error) {
 	return nil, errors.New("querierMock.Tail() has not been mocked")
 }
 
-func (q *querierMock) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*stats.Stats, error) {
 	return nil, nil
 }
 
-func (q *querierMock) LabelVolume(ctx context.Context, req *logproto.LabelVolumeRequest) (*logproto.LabelVolumeResponse, error) {
-	args := q.MethodCalled("LabelVolume", ctx, req)
+func (q *querierMock) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	args := q.MethodCalled("SeriesVolume", ctx, req)
 
 	resp := args.Get(0)
 	err := args.Error(1)
@@ -545,5 +547,41 @@ func (q *querierMock) LabelVolume(ctx context.Context, req *logproto.LabelVolume
 		return nil, err
 	}
 
-	return resp.(*logproto.LabelVolumeResponse), err
+	return resp.(*logproto.VolumeResponse), err
+}
+
+type engineMock struct {
+	util.ExtendedMock
+}
+
+func newEngineMock() *engineMock {
+	return &engineMock{}
+}
+
+func (e *engineMock) Query(p logql.Params) logql.Query {
+	args := e.Called(p)
+	return args.Get(0).(logql.Query)
+}
+
+type queryMock struct {
+	result logqlmodel.Result
+}
+
+func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
+	return q.result, nil
+}
+
+type mockTenantLimits map[string]*validation.Limits
+
+func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+	limits, ok := tl[userID]
+	if !ok {
+		return &validation.Limits{}
+	}
+
+	return limits
+}
+
+func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return tl
 }

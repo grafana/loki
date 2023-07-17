@@ -421,7 +421,7 @@ type mockBucket struct {
 	names []string
 }
 
-func (mb mockBucket) Iter(_ context.Context, dir string, f func(string) error, options ...objstore.IterOption) error {
+func (mb mockBucket) Iter(_ context.Context, _ string, f func(string) error, _ ...objstore.IterOption) error {
 	for _, n := range mb.names {
 		if err := f(n); err != nil {
 			return err

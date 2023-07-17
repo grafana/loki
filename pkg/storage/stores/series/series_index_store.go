@@ -14,6 +14,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/concurrency"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -220,8 +222,6 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 	// group chunks by series
 	chunksBySeries, keys := filterChunkRefsByUniqueFingerprint(c.schemaCfg, in)
 
-	results := make([]labels.Labels, 0, len(chunksBySeries))
-
 	// bound concurrency
 	groups := make([]chunkGroup, 0, len(chunksBySeries)/c.chunkBatchSize+1)
 
@@ -244,31 +244,64 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}
 	}
 
-	for _, group := range groups {
-		sort.Sort(group)
-		chunks, err := c.fetcher.FetchChunks(ctx, group.chunks, group.keys)
-		if err != nil {
-			return nil, err
-		}
+	type f func() ([]labels.Labels, error)
+	jobs := make([]f, 0, len(groups))
 
-	outer:
-		for _, chk := range chunks {
-			for _, matcher := range matchers {
-				if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
-					continue
+	for _, g := range groups {
+		group := g
+		jobs = append(jobs, f(func() ([]labels.Labels, error) {
+			sort.Sort(group)
+			chunks, err := c.fetcher.FetchChunks(ctx, group.chunks, group.keys)
+			if err != nil {
+				return nil, err
+			}
+
+			lbls := make([]labels.Labels, 0, len(chunks))
+		outer:
+			for _, chk := range chunks {
+				for _, matcher := range matchers {
+					if matcher.Name == astmapper.ShardLabel || matcher.Name == labels.MetricName {
+						continue
+					}
+					if !matcher.Matches(chk.Metric.Get(matcher.Name)) {
+						continue outer
+					}
 				}
-				if !matcher.Matches(chk.Metric.Get(matcher.Name)) {
+
+				if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Metric) {
 					continue outer
 				}
+
+				lbls = append(lbls, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
 			}
 
-			if chunkFilterer != nil && chunkFilterer.ShouldFilter(chk.Metric) {
-				continue outer
-			}
-
-			results = append(results, labels.NewBuilder(chk.Metric).Del(labels.MetricName).Labels())
-		}
+			return lbls, nil
+		}))
 	}
+
+	results := make([]labels.Labels, 0, len(chunksBySeries))
+
+	// Picking an arbitrary bound of 20 numConcurrent jobs.
+	numConcurrent := len(jobs)
+	if numConcurrent > 20 {
+		numConcurrent = 20
+	}
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		numConcurrent,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			if res != nil {
+				results = append(results, res...)
+			}
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
 	sort.Slice(results, func(i, j int) bool {
 		return labels.Compare(results[i], results[j]) < 0
 	})
@@ -712,11 +745,11 @@ func (c *indexReaderWriter) convertChunkIDsToChunkRefs(_ context.Context, userID
 }
 
 // old index stores do not implement stats -- skip
-func (c *indexReaderWriter) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (c *indexReaderWriter) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return nil, nil
 }
 
 // old index stores do not implement label volume -- skip
-func (c *indexReaderWriter) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
+func (c *indexReaderWriter) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }

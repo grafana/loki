@@ -28,6 +28,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
@@ -50,7 +51,7 @@ func TestPrepareShutdownMarkerPathNotSet(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -73,7 +74,7 @@ func TestPrepareShutdown(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -134,7 +135,7 @@ func TestIngester_GetStreamRates_Correctness(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -166,7 +167,7 @@ func BenchmarkGetStreamRatesAllocs(b *testing.B) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(b, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -190,7 +191,7 @@ func TestIngester(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -372,7 +373,7 @@ func TestIngesterStreamLimitExceeded(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, overrides, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -420,15 +421,15 @@ func (s *mockStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
-func (s *mockStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *mockStore) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
 	return nil, nil
 }
 
-func (s *mockStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (s *mockStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
 }
 
-func (s *mockStore) GetSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *mockStore) GetSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	return nil, nil
 }
 
@@ -440,27 +441,27 @@ func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
 }
 
 // chunk.Store methods
-func (s *mockStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+func (s *mockStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }
 
-func (s *mockStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *mockStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
-func (s *mockStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (s *mockStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return []string{"val1", "val2"}, nil
 }
 
-func (s *mockStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (s *mockStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
 	return nil, nil
 }
 
-func (s *mockStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (s *mockStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (s *mockStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *mockStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{
 		Streams: 2,
 		Chunks:  5,
@@ -469,10 +470,10 @@ func (s *mockStore) Stats(ctx context.Context, userID string, from, through mode
 	}, nil
 }
 
-func (s *mockStore) LabelVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.LabelVolumeResponse, error) {
-	return &logproto.LabelVolumeResponse{
-		Volumes: []logproto.LabelVolume{
-			{Name: "foo", Value: "bar", Volume: 38},
+func (s *mockStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, limit int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return &logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{foo="bar"}`, Volume: 38},
 		},
 		Limit: limit,
 	}, nil
@@ -719,7 +720,7 @@ func Test_InMemoryLabels(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 
@@ -1059,7 +1060,7 @@ func TestStats(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
@@ -1081,31 +1082,62 @@ func TestStats(t *testing.T) {
 	}, resp)
 }
 
-func TestLabelVolume(t *testing.T) {
+func TestSeriesVolume(t *testing.T) {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	i.instances["test"] = defaultInstance(t)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	volumes, err := i.GetLabelVolume(ctx, &logproto.LabelVolumeRequest{
-		From:     0,
-		Through:  10000,
-		Matchers: "{}",
-		Limit:    4,
-	})
-	require.NoError(t, err)
 
-	require.Equal(t, []logproto.LabelVolume{
-		{Name: "host", Value: "agent", Volume: 160},
-		{Name: "job", Value: "3", Volume: 160},
-		{Name: "log_stream", Value: "dispatcher", Volume: 90},
-		{Name: "log_stream", Value: "worker", Volume: 70},
-	}, volumes.Volumes)
+	t.Run("matching a single label", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{log_stream="worker"}`, Volume: 70},
+		}, volumes.Volumes)
+	})
+
+	t.Run("matching multiple labels, exact", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker", host="agent"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{host="agent", log_stream="worker"}`, Volume: 70},
+		}, volumes.Volumes)
+	})
+
+	t.Run("matching multiple labels, regex", func(t *testing.T) {
+		volumes, err := i.GetSeriesVolume(ctx, &logproto.VolumeRequest{
+			From:     0,
+			Through:  10000,
+			Matchers: `{log_stream=~"dispatcher|worker", host=~".+"}`,
+			Limit:    2,
+		})
+		require.NoError(t, err)
+
+		require.Equal(t, []logproto.Volume{
+			{Name: `{host="agent", log_stream="dispatcher"}`, Volume: 90},
+			{Name: `{host="agent", log_stream="worker"}`, Volume: 70},
+		}, volumes.Volumes)
+	})
 }
 
 type ingesterClient struct {
@@ -1133,7 +1165,7 @@ func createIngesterServer(t *testing.T, ingesterConfig Config) (ingesterClient, 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil)
+	ing, err := New(ingesterConfig, client.Config{}, &mockStore{}, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	listener := bufconn.Listen(1024 * 1024)
