@@ -3,7 +3,7 @@ title: Install the scalable monolithic Helm chart
 menuTitle: Install scalable Loki
 description: Install Loki in scalable mode.
 aliases:
-  - /docs/installation/helm/scalable
+  - ../../../../installation/helm/scalable/
 weight: 300
 keywords: 
 ---

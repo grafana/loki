@@ -3,8 +3,8 @@ title: Configure storage
 menuTitle: Configure storage 
 description: Configure Loki storage
 aliases:
-  - ../installation/helm/configure-storage/
-  - ../installation/helm/storage
+  - ../../../installation/helm/configure-storage/
+  - ../../../installation/helm/storage
 weight: 500
 keywords:
   - object store

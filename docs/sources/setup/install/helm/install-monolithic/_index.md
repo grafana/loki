@@ -3,9 +3,9 @@ title: Install the monolithic Helm chart
 menuTitle: Install monolithic Loki
 description: Install Loki in monolithic, single binary mode.
 aliases:
-  - ./installation/helm/monolithic/
+  - ../../../installation/helm/monolithic
+ - ../../../installation/helm/install-monolithic/
 weight: 100
-keywords: 
 ---
 
 # Install the monolithic Helm chart
