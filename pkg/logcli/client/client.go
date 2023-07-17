@@ -33,7 +33,8 @@ const (
 	seriesPath        = "/loki/api/v1/series"
 	tailPath          = "/loki/api/v1/tail"
 	statsPath         = "/loki/api/v1/index/stats"
-	volumePath         = "/loki/api/v1/index/series_volume"
+	volumePath        = "/loki/api/v1/index/series_volume"
+	volumeRangePath   = "/loki/api/v1/index/series_volume_range"
 	defaultAuthHeader = "Authorization"
 )
 
@@ -50,6 +51,7 @@ type Client interface {
 	GetOrgID() string
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 	GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
+	GetVolumeRange(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -183,15 +185,26 @@ func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bo
 }
 
 func (c *DefaultClient) GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	return c.getVolume(volumePath, queryStr, start, end, step, limit, quiet)
+}
+
+func (c *DefaultClient) GetVolumeRange(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	return c.getVolume(volumeRangePath, queryStr, start, end, step, limit, quiet)
+}
+
+func (c *DefaultClient) getVolume(path string, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", start.UnixNano())
 	params.SetInt("end", end.UnixNano())
 	params.SetString("query", queryStr)
-	params.SetString("step", fmt.Sprintf("%d", int(step.Seconds())))
 	params.SetString("limit", fmt.Sprintf("%d", limit))
 
+	if step != 0 {
+		params.SetString("step", fmt.Sprintf("%d", int(step.Seconds())))
+	}
+
 	var resp loghttp.QueryResponse
-	if err := c.doRequest(volumePath, params.Encode(), quiet, &resp); err != nil {
+	if err := c.doRequest(path, params.Encode(), quiet, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
