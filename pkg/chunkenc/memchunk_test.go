@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -101,7 +102,7 @@ func TestBlock(t *testing.T) {
 				cases := []struct {
 					ts  int64
 					str string
-					lbs labels.Labels
+					lbs []logproto.LabelAdapter
 					cut bool
 				}{
 					{
@@ -111,14 +112,14 @@ func TestBlock(t *testing.T) {
 					{
 						ts:  2,
 						str: "hello, world2!",
-						lbs: labels.Labels{
+						lbs: []logproto.LabelAdapter{
 							{Name: "app", Value: "myapp"},
 						},
 					},
 					{
 						ts:  3,
 						str: "hello, world3!",
-						lbs: labels.Labels{
+						lbs: []logproto.LabelAdapter{
 							{Name: "a", Value: "a"},
 							{Name: "b", Value: "b"},
 						},
@@ -143,7 +144,7 @@ func TestBlock(t *testing.T) {
 					{
 						ts:  8,
 						str: "hello, worl\nd8!",
-						lbs: labels.Labels{
+						lbs: []logproto.LabelAdapter{
 							{Name: "a", Value: "a2"},
 							{Name: "b", Value: "b"},
 						},
@@ -180,7 +181,7 @@ func TestBlock(t *testing.T) {
 					if chunkFormat < chunkFormatV4 {
 						require.Empty(t, e.NonIndexedLabels)
 					} else {
-						require.Equal(t, cases[idx].lbs, e.NonIndexedLabels)
+						require.Equal(t, push.LabelsAdapter(cases[idx].lbs), e.NonIndexedLabels)
 					}
 					idx++
 				}

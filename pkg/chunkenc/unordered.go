@@ -256,7 +256,6 @@ func (hb *unorderedHeadBlock) Iterator(
 		mint,
 		maxt,
 		func(ts int64, line string, nonIndexedLabels labels.Labels) error {
-			// TODO: This should go to a separate PR
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
 			if !matches {
 				return nil
@@ -276,7 +275,7 @@ func (hb *unorderedHeadBlock) Iterator(
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp:        time.Unix(0, ts),
 				Line:             newLine,
-				NonIndexedLabels: nonIndexedLabels,
+				NonIndexedLabels: logproto.FromLabelsToLabelAdapters(nonIndexedLabels),
 			})
 			return nil
 		},

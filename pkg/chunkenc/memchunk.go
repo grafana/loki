@@ -685,7 +685,7 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	if err := c.head.Append(entryTimestamp, entry.Line, entry.NonIndexedLabels); err != nil {
+	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.NonIndexedLabels)); err != nil {
 		return err
 	}
 
@@ -1038,7 +1038,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		stream.Entries = append(stream.Entries, logproto.Entry{
 			Timestamp:        time.Unix(0, e.t),
 			Line:             newLine,
-			NonIndexedLabels: e.nonIndexedLabels,
+			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(e.nonIndexedLabels),
 		})
 	}
 
@@ -1431,9 +1431,9 @@ func (e *entryBufferedIterator) Next() bool {
 			return false
 		}
 
-		var nonIndexedLabels labels.Labels
+		var nonIndexedLabels []logproto.LabelAdapter
 		if len(e.currMetadataLabels) > 0 {
-			nonIndexedLabels = make(labels.Labels, len(e.currMetadataLabels)/2)
+			nonIndexedLabels = make([]logproto.LabelAdapter, len(e.currMetadataLabels)/2)
 			for i := 0; i < len(e.currMetadataLabels); i += 2 {
 				nonIndexedLabels[i/2].Name = string(e.currMetadataLabels[i])
 				nonIndexedLabels[i/2].Value = string(e.currMetadataLabels[i+1])

@@ -4,8 +4,6 @@ import (
 	"math/rand"
 	"time"
 
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/pkg/chunkenc/testdata"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -17,7 +15,7 @@ func logprotoEntry(ts int64, line string) *logproto.Entry {
 	}
 }
 
-func logprotoEntryWithMetadata(ts int64, line string, nonIndexedLabels labels.Labels) *logproto.Entry {
+func logprotoEntryWithMetadata(ts int64, line string, nonIndexedLabels []logproto.LabelAdapter) *logproto.Entry {
 	return &logproto.Entry{
 		Timestamp:        time.Unix(0, ts),
 		Line:             line,
