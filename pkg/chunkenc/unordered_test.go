@@ -21,8 +21,9 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
 		require.Equal(t, logproto.Entry{
-			Timestamp: time.Unix(0, exp[i].t),
-			Line:      exp[i].s,
+			Timestamp:        time.Unix(0, exp[i].t),
+			Line:             exp[i].s,
+			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(exp[i].nonIndexedLabels),
 		}, got.Entry())
 		i++
 	}
@@ -84,68 +85,67 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		input, exp []entry
 		dir        logproto.Direction
 	}{
-		// TODO: add metaLabels?
 		{
 			desc: "simple forward",
 			input: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			exp: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 		},
 		{
 			desc: "simple backward",
 			input: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			exp: []entry{
-				{2, "c", nil}, {1, "b", nil}, {0, "a", nil},
+				{2, "c", labels.Labels{{Name: "a", Value: "b"}}}, {1, "b", nil}, {0, "a", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "unordered forward",
 			input: []entry{
-				{1, "b", nil}, {0, "a", nil}, {2, "c", nil},
+				{1, "b", nil}, {0, "a", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			exp: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", nil},
+				{0, "a", nil}, {1, "b", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 		},
 		{
 			desc: "unordered backward",
 			input: []entry{
-				{1, "b", nil}, {0, "a", nil}, {2, "c", nil},
+				{1, "b", nil}, {0, "a", nil}, {2, "c", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			exp: []entry{
-				{2, "c", nil}, {1, "b", nil}, {0, "a", nil},
+				{2, "c", labels.Labels{{Name: "a", Value: "b"}}}, {1, "b", nil}, {0, "a", nil},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "ts collision forward",
 			input: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
+				{0, "a", nil}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}}, {1, "c", nil},
 			},
 			exp: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
+				{0, "a", nil}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}}, {1, "c", nil},
 			},
 		},
 		{
 			desc: "ts collision backward",
 			input: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
+				{0, "a", labels.Labels{{Name: "a", Value: "b"}}}, {0, "b", nil}, {1, "c", nil},
 			},
 			exp: []entry{
-				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
+				{1, "c", nil}, {0, "b", nil}, {0, "a", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			dir: logproto.BACKWARD,
 		},
 		{
 			desc: "ts remove exact dupe forward",
 			input: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", nil},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			exp: []entry{
 				{0, "a", nil}, {0, "b", nil}, {1, "c", nil},
@@ -155,7 +155,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		{
 			desc: "ts remove exact dupe backward",
 			input: []entry{
-				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", nil},
+				{0, "a", nil}, {0, "b", nil}, {1, "c", nil}, {0, "b", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			exp: []entry{
 				{1, "c", nil}, {0, "b", nil}, {0, "a", nil},
@@ -164,20 +164,35 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
-			for _, e := range tc.input {
-				require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
+			for _, format := range []HeadBlockFmt{
+				UnorderedHeadBlockFmt,
+				UnorderedWithMetadataHeadBlockFmt,
+			} {
+				t.Run(format.String(), func(t *testing.T) {
+					hb := newUnorderedHeadBlock(format)
+					for _, e := range tc.input {
+						require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
+					}
+
+					itr := hb.Iterator(
+						context.Background(),
+						tc.dir,
+						0,
+						math.MaxInt64,
+						noopStreamPipeline,
+					)
+
+					expected := make([]entry, len(tc.exp))
+					copy(expected, tc.exp)
+					if format < UnorderedWithMetadataHeadBlockFmt {
+						for i := range expected {
+							expected[i].nonIndexedLabels = nil
+						}
+					}
+
+					iterEq(t, expected, itr)
+				})
 			}
-
-			itr := hb.Iterator(
-				context.Background(),
-				tc.dir,
-				0,
-				math.MaxInt64,
-				noopStreamPipeline,
-			)
-
-			iterEq(t, tc.exp, itr)
 		})
 	}
 }
@@ -190,16 +205,15 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		input      []entry
 		exp        []entry
 	}{
-		// TODO: Add metaLabels?
 		{
 			desc: "simple",
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
+				{0, "a", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
 			},
 			exp: []entry{
-				{1, "b", nil}, {2, "c", nil}, {3, "d", nil},
+				{1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil},
 			},
 		},
 		{
@@ -207,10 +221,10 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a", nil}, {1, "b", nil}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
+				{0, "a", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil}, {4, "e", nil},
 			},
 			exp: []entry{
-				{3, "d", nil}, {2, "c", nil}, {1, "b", nil},
+				{3, "d", nil}, {2, "c", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}},
 			},
 			dir: logproto.BACKWARD,
 		},
@@ -219,28 +233,43 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 			mint: 1,
 			maxt: 4,
 			input: []entry{
-				{0, "a", nil}, {2, "c", nil}, {1, "b", nil}, {4, "e", nil}, {3, "d", nil},
+				{0, "a", nil}, {2, "c", nil}, {1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {4, "e", nil}, {3, "d", nil},
 			},
 			exp: []entry{
-				{1, "b", nil}, {2, "c", nil}, {3, "d", nil},
+				{1, "b", labels.Labels{{Name: "a", Value: "b"}}}, {2, "c", nil}, {3, "d", nil},
 			},
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
-			for _, e := range tc.input {
-				require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
+			for _, format := range []HeadBlockFmt{
+				UnorderedHeadBlockFmt,
+				UnorderedWithMetadataHeadBlockFmt,
+			} {
+				t.Run(format.String(), func(t *testing.T) {
+					hb := newUnorderedHeadBlock(format)
+					for _, e := range tc.input {
+						require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
+					}
+
+					itr := hb.Iterator(
+						context.Background(),
+						tc.dir,
+						tc.mint,
+						tc.maxt,
+						noopStreamPipeline,
+					)
+
+					expected := make([]entry, len(tc.exp))
+					copy(expected, tc.exp)
+					if format < UnorderedWithMetadataHeadBlockFmt {
+						for i := range expected {
+							expected[i].nonIndexedLabels = nil
+						}
+					}
+
+					iterEq(t, expected, itr)
+				})
 			}
-
-			itr := hb.Iterator(
-				context.Background(),
-				tc.dir,
-				tc.mint,
-				tc.maxt,
-				noopStreamPipeline,
-			)
-
-			iterEq(t, tc.exp, itr)
 		})
 	}
 }
@@ -276,12 +305,14 @@ func TestHeadBlockInterop(t *testing.T) {
 	// Ensure we can recover ordered checkpoint into unordered headblock with metadata
 	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithMetadataHeadBlockFmt)
 	require.NoError(t, err)
-	require.Equal(t, UnorderedWithMetadataHeadBlockFmt, recovered.Format())
-	require.IsType(t, &unorderedHeadBlock{}, recovered)
-	require.IsType(t, unordered.rt, (recovered.(*unorderedHeadBlock)).rt)
-	require.IsType(t, unordered.size, (recovered.(*unorderedHeadBlock)).size)
-	require.IsType(t, unordered.mint, (recovered.(*unorderedHeadBlock)).mint)
-	require.IsType(t, unordered.maxt, (recovered.(*unorderedHeadBlock)).maxt)
+	require.Equal(t, &unorderedHeadBlock{
+		format: UnorderedWithMetadataHeadBlockFmt,
+		rt:     (recovered.(*unorderedHeadBlock)).rt,
+		lines:  (recovered.(*unorderedHeadBlock)).lines,
+		size:   (recovered.(*unorderedHeadBlock)).size,
+		mint:   (recovered.(*unorderedHeadBlock)).mint,
+		maxt:   (recovered.(*unorderedHeadBlock)).maxt,
+	}, recovered)
 
 	// Ensure we can recover unordered checkpoint into ordered headblock
 	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, OrderedHeadBlockFmt)
@@ -297,12 +328,14 @@ func TestHeadBlockInterop(t *testing.T) {
 	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithMetadataHeadBlockFmt)
 	// we compare the data with unordered because unordered head block does not contain metaLabels.
 	require.NoError(t, err)
-	require.Equal(t, UnorderedWithMetadataHeadBlockFmt, recovered.Format())
-	require.IsType(t, &unorderedHeadBlock{}, recovered)
-	require.IsType(t, unordered.rt, (recovered.(*unorderedHeadBlock)).rt)
-	require.IsType(t, unordered.size, (recovered.(*unorderedHeadBlock)).size)
-	require.IsType(t, unordered.mint, (recovered.(*unorderedHeadBlock)).mint)
-	require.IsType(t, unordered.maxt, (recovered.(*unorderedHeadBlock)).maxt)
+	require.Equal(t, &unorderedHeadBlock{
+		format: UnorderedWithMetadataHeadBlockFmt,
+		rt:     (recovered.(*unorderedHeadBlock)).rt,
+		lines:  (recovered.(*unorderedHeadBlock)).lines,
+		size:   (recovered.(*unorderedHeadBlock)).size,
+		mint:   (recovered.(*unorderedHeadBlock)).mint,
+		maxt:   (recovered.(*unorderedHeadBlock)).maxt,
+	}, recovered)
 
 	// Ensure we can recover unordered with metadata checkpoint into ordered headblock
 	recovered, err = HeadFromCheckpoint(unorderedWithMetadataCheckpointBytes, OrderedHeadBlockFmt)
@@ -367,35 +400,42 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			unorderedWrites: true,
 		},
 	} {
-		// build writes before we start benchmarking so random number generation, etc,
-		// isn't included in our timing info
-		writes := make([]entry, 0, nWrites)
-		rnd := rand.NewSource(0)
-		for i := 0; i < nWrites; i++ {
-			if tc.unorderedWrites {
-				ts := rnd.Int63()
+		for _, withNonIndexedLabels := range []bool{false, true} {
+			// build writes before we start benchmarking so random number generation, etc,
+			// isn't included in our timing info
+			writes := make([]entry, 0, nWrites)
+			rnd := rand.NewSource(0)
+			for i := 0; i < nWrites; i++ {
+				ts := int64(i)
+				if tc.unorderedWrites {
+					ts = rnd.Int63()
+				}
+
+				var nonIndexedLabels labels.Labels
+				if withNonIndexedLabels {
+					nonIndexedLabels = labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}}
+				}
+
 				writes = append(writes, entry{
 					t:                ts,
-					s:                fmt.Sprint("line:", ts),
-					nonIndexedLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}},
-				})
-			} else {
-				writes = append(writes, entry{
-					t:                int64(i),
 					s:                fmt.Sprint("line:", i),
-					nonIndexedLabels: labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}},
+					nonIndexedLabels: nonIndexedLabels,
 				})
 			}
-		}
 
-		b.Run(tc.desc, func(b *testing.B) {
-			for n := 0; n < b.N; n++ {
-				writeFn := tc.fn()
-				for _, w := range writes {
-					writeFn(w.t, w.s, w.nonIndexedLabels)
-				}
+			name := tc.desc
+			if withNonIndexedLabels {
+				name += " with non-indexed labels"
 			}
-		})
+			b.Run(name, func(b *testing.B) {
+				for n := 0; n < b.N; n++ {
+					writeFn := tc.fn()
+					for _, w := range writes {
+						writeFn(w.t, w.s, w.nonIndexedLabels)
+					}
+				}
+			})
+		}
 	}
 }
 

@@ -91,11 +91,8 @@ func TestBlocksInclusive(t *testing.T) {
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
 		enc := enc
-		for chunkFormat, headBlockFmt := range map[byte]HeadBlockFmt{
-			chunkFormatV3: UnorderedHeadBlockFmt,
-			chunkFormatV4: UnorderedWithMetadataHeadBlockFmt,
-		} {
-			chunkFormat, headBlockFmt := chunkFormat, headBlockFmt
+		for _, format := range allPossibleFormats {
+			chunkFormat, headBlockFmt := format.chunkFormat, format.headBlockFmt
 			t.Run(fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt), func(t *testing.T) {
 				t.Parallel()
 				chk := newMemChunkWithFormat(chunkFormat, enc, headBlockFmt, testBlockSize, testTargetSize)
@@ -738,23 +735,34 @@ func BenchmarkWrite(b *testing.B) {
 
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
-			b.Run(fmt.Sprintf("%v-%v", f, enc), func(b *testing.B) {
-				uncompressedBytes, compressedBytes := 0, 0
-				for n := 0; n < b.N; n++ {
-					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-					// adds until full so we trigger cut which serialize using gzip
-					for c.SpaceFor(entry) {
-						_ = c.Append(entry)
-						entry.Timestamp = time.Unix(0, i)
-						entry.Line = testdata.LogString(i)
-						i++
-					}
-					uncompressedBytes += c.UncompressedSize()
-					compressedBytes += c.CompressedSize()
+			for _, withNonIndexedLabels := range []bool{false, true} {
+				name := fmt.Sprintf("%v-%v", f, enc)
+				if withNonIndexedLabels {
+					name += "-withNonIndexedLabels"
 				}
-				b.SetBytes(int64(uncompressedBytes) / int64(b.N))
-				b.ReportMetric(float64(compressedBytes)/float64(uncompressedBytes)*100, "%compressed")
-			})
+				b.Run(name, func(b *testing.B) {
+					uncompressedBytes, compressedBytes := 0, 0
+					for n := 0; n < b.N; n++ {
+						c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
+						// adds until full so we trigger cut which serialize using gzip
+						for c.SpaceFor(entry) {
+							_ = c.Append(entry)
+							entry.Timestamp = time.Unix(0, i)
+							entry.Line = testdata.LogString(i)
+							if withNonIndexedLabels {
+								entry.NonIndexedLabels = []logproto.LabelAdapter{
+									{Name: "foo", Value: fmt.Sprint(i)},
+								}
+							}
+							i++
+						}
+						uncompressedBytes += c.UncompressedSize()
+						compressedBytes += c.CompressedSize()
+					}
+					b.SetBytes(int64(uncompressedBytes) / int64(b.N))
+					b.ReportMetric(float64(compressedBytes)/float64(uncompressedBytes)*100, "%compressed")
+				})
+			}
 		}
 	}
 }
@@ -874,50 +882,72 @@ func TestGenerateDataSize(t *testing.T) {
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
 	for _, j := range []int{100000, 50000, 15000, 10000} {
-		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
-			h := headBlock{}
-
-			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string", labels.Labels{{Name: "foo", Value: "foo"}}); err != nil {
-					b.Fatal(err)
-				}
+		for _, withNonIndexedLabels := range []bool{false, true} {
+			name := fmt.Sprintf("Size %d", j)
+			if withNonIndexedLabels {
+				name += " with non-indexed labels"
 			}
+			b.Run(name, func(b *testing.B) {
+				h := headBlock{}
 
-			b.ResetTimer()
-
-			for n := 0; n < b.N; n++ {
-				iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
-
-				for iter.Next() {
-					_ = iter.Entry()
+				var nonIndexedLabels labels.Labels
+				if withNonIndexedLabels {
+					nonIndexedLabels = labels.Labels{{Name: "foo", Value: "foo"}}
 				}
-			}
-		})
+
+				for i := 0; i < j; i++ {
+					if err := h.Append(int64(i), "this is the append string", nonIndexedLabels); err != nil {
+						b.Fatal(err)
+					}
+				}
+
+				b.ResetTimer()
+
+				for n := 0; n < b.N; n++ {
+					iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
+
+					for iter.Next() {
+						_ = iter.Entry()
+					}
+				}
+			})
+		}
 	}
 }
 
 func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	for _, j := range []int{20000, 10000, 8000, 5000} {
-		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
-			h := headBlock{}
-
-			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string", labels.Labels{{Name: "foo", Value: "foo"}}); err != nil {
-					b.Fatal(err)
-				}
+		for _, withNonIndexedLabels := range []bool{false, true} {
+			name := fmt.Sprintf("Size %d", j)
+			if withNonIndexedLabels {
+				name += " with non-indexed labels"
 			}
+			b.Run(name, func(b *testing.B) {
+				h := headBlock{}
 
-			b.ResetTimer()
-
-			for n := 0; n < b.N; n++ {
-				iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
-
-				for iter.Next() {
-					_ = iter.Sample()
+				var nonIndexedLabels labels.Labels
+				if withNonIndexedLabels {
+					nonIndexedLabels = labels.Labels{{Name: "foo", Value: "foo"}}
 				}
-				iter.Close()
-			}
-		})
+
+				for i := 0; i < j; i++ {
+					if err := h.Append(int64(i), "this is the append string", nonIndexedLabels); err != nil {
+						b.Fatal(err)
+					}
+				}
+
+				b.ResetTimer()
+
+				for n := 0; n < b.N; n++ {
+					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+
+					for iter.Next() {
+						_ = iter.Sample()
+					}
+					iter.Close()
+				}
+			})
+		}
 	}
 }
 
@@ -1386,4 +1416,137 @@ func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matching
 	}
 
 	return chk
+}
+
+func TestMemChunk_SpaceFor(t *testing.T) {
+	for _, tc := range []struct {
+		desc string
+
+		nBlocks      int
+		targetSize   int
+		headSize     int
+		cutBlockSize int
+		entry        logproto.Entry
+
+		expect     bool
+		expectFunc func(chunkFormat byte, headFmt HeadBlockFmt) bool
+	}{
+		{
+			desc:    "targetSize not defined",
+			nBlocks: blocksPerChunk - 1,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: true,
+		},
+		{
+			desc:    "targetSize not defined and too many blocks",
+			nBlocks: blocksPerChunk + 1,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: false,
+		},
+		{
+			desc:         "head too big",
+			targetSize:   10,
+			headSize:     100,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: false,
+		},
+		{
+			desc:         "cut blocks too big",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 100,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: false,
+		},
+		{
+			desc:         "entry fits",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 9),
+			},
+			expect: true,
+		},
+		{
+			desc:         "entry fits with metadata",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 2),
+				NonIndexedLabels: []logproto.LabelAdapter{
+					{Name: "foo", Value: strings.Repeat("a", 2)},
+				},
+			},
+			expect: true,
+		},
+		{
+			desc:         "entry too big",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 100),
+			},
+			expect: false,
+		},
+		{
+			desc:         "entry too big because metadata",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 5),
+				NonIndexedLabels: []logproto.LabelAdapter{
+					{Name: "foo", Value: strings.Repeat("a", 5)},
+				},
+			},
+
+			expectFunc: func(chunkFormat byte, _ HeadBlockFmt) bool {
+				// Succeed unless we're using chunk format v4, which should
+				// take the metadata into account.
+				return chunkFormat < chunkFormatV4
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, format := range allPossibleFormats {
+				t.Run(fmt.Sprintf("chunk_v%d_head_%s", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
+					chk := newMemChunkWithFormat(format.chunkFormat, EncNone, format.headBlockFmt, 1024, tc.targetSize)
+
+					chk.blocks = make([]block, tc.nBlocks)
+					chk.cutBlockSize = tc.cutBlockSize
+					for i := 0; i < tc.headSize; i++ {
+						require.NoError(t, chk.head.Append(int64(i), "a", nil))
+					}
+
+					expect := tc.expect
+					if tc.expectFunc != nil {
+						expect = tc.expectFunc(format.chunkFormat, format.headBlockFmt)
+					}
+
+					require.Equal(t, expect, chk.SpaceFor(&tc.entry))
+				})
+			}
+
+		})
+	}
 }
