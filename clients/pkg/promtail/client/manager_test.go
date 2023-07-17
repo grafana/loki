@@ -45,7 +45,7 @@ func TestManager_ErrorCreatingWhenNoClientConfigsProvided(t *testing.T) {
 				Dir:         walDir,
 				Enabled:     walEnabled,
 				WatchConfig: wal.DefaultWatchConfig,
-			}, notifier(func(subscriber wal.CleanupEventSubscriber) {}))
+			}, NilNotifier)
 			require.Error(t, err)
 		})
 	}
@@ -67,7 +67,7 @@ func TestManager_ErrorCreatingWhenRepeatedConfigs(t *testing.T) {
 				Dir:         walDir,
 				Enabled:     walEnabled,
 				WatchConfig: wal.DefaultWatchConfig,
-			}, notifier(func(subscriber wal.CleanupEventSubscriber) {}), config1, config1Copy)
+			}, NilNotifier, config1, config1Copy)
 			require.Error(t, err)
 		})
 	}
