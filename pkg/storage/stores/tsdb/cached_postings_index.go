@@ -79,6 +79,9 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 // Length argument is expected number of postings, used for preallocating buffer.
 func diffVarintEncodeNoHeader(p []storage.SeriesRef) ([]byte, error) {
 	length := len(p)
+	if length == 0 {
+		return []byte{0}, nil
+	}
 
 	buf := encoding.Encbuf{}
 	buf.PutUvarint32(uint32(length))
@@ -112,6 +115,9 @@ func decodeToPostings(b []byte) index.Postings {
 
 	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
 	postingsLen := decoder.Uvarint32()
+	if postingsLen == 0 {
+		return index.EmptyPostings()
+	}
 	refs := make([]storage.SeriesRef, 0, postingsLen)
 	prev := storage.SeriesRef(0)
 
