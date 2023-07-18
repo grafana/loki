@@ -191,7 +191,6 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				// TODO: Test labels and metadata labels here.
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -1551,6 +1550,9 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 	for _, enc := range testEncoding {
 		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
+			streamLabels := labels.Labels{
+				{Name: "job", Value: "fake"},
+			}
 			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			require.NoError(t, chk.Append(logprotoEntryWithMetadata(1, "lineA", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "123"},
@@ -1570,30 +1572,64 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				{Name: "user", Value: "d"},
 			})))
 
-			expectedLines := []string{"lineA", "lineB", "lineC", "lineD"}
-			expectedStreams := []string{
-				labels.FromStrings("traceID", "123", "user", "a").String(),
-				labels.FromStrings("traceID", "456", "user", "b").String(),
-				labels.FromStrings("traceID", "789", "user", "c").String(),
-				labels.FromStrings("traceID", "123", "user", "d").String(),
-			}
+			for _, tc := range []struct {
+				name            string
+				query           string
+				expectedLines   []string
+				expectedStreams []string
+			}{
+				{
+					name:          "no-filter",
+					query:         `{job="fake"}`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+				},
+				{
+					name:          "filter",
+					query:         `{job="fake"} | traceID="789"`,
+					expectedLines: []string{"lineC"},
+				},
+				{
+					name:          "filter-regex-or",
+					query:         `{job="fake"} | traceID=~"456|789"`,
+					expectedLines: []string{"lineB", "lineC"},
+				},
+				{
+					name:          "filter-regex-contains",
+					query:         `{job="fake"} | traceID=~".*5.*"`,
+					expectedLines: []string{"lineB"},
+				},
+				{
+					name:          "filter-regex-complex",
+					query:         `{job="fake"} | traceID=~"^[0-9]2.*"`,
+					expectedLines: []string{"lineA", "lineD"},
+				},
+				{
+					name:          "multiple-filters",
+					query:         `{job="fake"} | traceID="123" | user="d"`,
+					expectedLines: []string{"lineD"},
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					expr, err := syntax.ParseLogSelector(tc.query, true)
+					require.NoError(t, err)
 
-			// We will run the test twice so the iterator will be created twice.
-			// This is to ensure that the iterator is correctly closed.
-			for i := 0; i < 2; i++ {
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
-				require.NoError(t, err)
+					pipeline, err := expr.Pipeline()
+					require.NoError(t, err)
 
-				var lines []string
-				var streams []string
-				for it.Next() {
-					require.NoError(t, it.Error())
-					e := it.Entry()
-					lines = append(lines, e.Line)
-					streams = append(streams, logproto.FromLabelAdaptersToLabels(e.NonIndexedLabels).String())
-				}
-				assert.ElementsMatch(t, expectedLines, lines)
-				assert.ElementsMatch(t, expectedStreams, streams)
+					// We will run the test twice so the iterator will be created twice.
+					// This is to ensure that the iterator is correctly closed.
+					for i := 0; i < 2; i++ {
+						it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+						require.NoError(t, err)
+
+						var lines []string
+						for it.Next() {
+							e := it.Entry()
+							lines = append(lines, e.Line)
+						}
+						assert.ElementsMatch(t, tc.expectedLines, lines)
+					}
+				})
 			}
 		})
 	}
