@@ -9,7 +9,64 @@ import (
 )
 
 func TestBuild_StaticMode(t *testing.T) {
-	expTntCfg := `
+	for _, tc := range []struct {
+		name          string
+		authNSpec     []lokiv1.AuthenticationSpec
+		tenantSecrets []*Secret
+		authZSpec     *lokiv1.AuthorizationSpec
+		expTntCfg     string
+		expRbacCfg    string
+	}{
+		{
+			name: "oidc",
+			authNSpec: []lokiv1.AuthenticationSpec{
+				{
+					TenantName: "test-a",
+					TenantID:   "test",
+					OIDC: &lokiv1.OIDCSpec{
+						Secret: &lokiv1.TenantSecretSpec{
+							Name: "test",
+						},
+						IssuerURL:     "https://127.0.0.1:5556/dex",
+						RedirectURL:   "https://localhost:8443/oidc/test-a/callback",
+						GroupClaim:    "test",
+						UsernameClaim: "test",
+					},
+				},
+			},
+			tenantSecrets: []*Secret{
+				{
+					TenantName: "test-a",
+					OIDC: &OIDC{
+						ClientID:     "test",
+						ClientSecret: "test123",
+						IssuerCAPath: "/tmp/ca/path",
+					},
+				},
+			},
+			authZSpec: &lokiv1.AuthorizationSpec{
+				Roles: []lokiv1.RoleSpec{
+					{
+						Name:        "some-name",
+						Resources:   []string{"metrics"},
+						Tenants:     []string{"test-a"},
+						Permissions: []lokiv1.PermissionType{"read"},
+					},
+				},
+				RoleBindings: []lokiv1.RoleBindingsSpec{
+					{
+						Name: "test-a",
+						Subjects: []lokiv1.Subject{
+							{
+								Name: "test@example.com",
+								Kind: "user",
+							},
+						},
+						Roles: []string{"read-write"},
+					},
+				},
+			},
+			expTntCfg: `
 tenants:
 - name: test-a
   id: test
@@ -26,8 +83,8 @@ tenants:
     paths:
     - /etc/lokistack-gateway/rbac.yaml
     - /etc/lokistack-gateway/lokistack-gateway.rego
-`
-	expRbacCfg := `
+`,
+			expRbacCfg: `
 roleBindings:
 - name: test-a
   roles:
@@ -43,72 +100,140 @@ roles:
   - metrics
   tenants:
   - test-a
-`
-	opts := Options{
-		Stack: lokiv1.LokiStackSpec{
-			Tenants: &lokiv1.TenantsSpec{
-				Mode: lokiv1.Static,
-				Authentication: []lokiv1.AuthenticationSpec{
+`,
+		},
+		{
+			name: "mTLS",
+			authNSpec: []lokiv1.AuthenticationSpec{
+				{
+					TenantName: "test-a",
+					TenantID:   "test",
+					MTLS: &lokiv1.MTLSSpec{
+						CA: &lokiv1.CASpec{
+							CA:    "my-custom-ca",
+							CAKey: "special-ca.crt",
+						},
+					},
+				},
+			},
+			tenantSecrets: []*Secret{
+				{
+					TenantName: "test-a",
+					MTLS: &MTLS{
+						CAPath: "/var/run/tls/tenants/test-a/special-ca.crt",
+					},
+				},
+			},
+			authZSpec: &lokiv1.AuthorizationSpec{
+				Roles: []lokiv1.RoleSpec{
 					{
-						TenantName: "test-a",
-						TenantID:   "test",
-						OIDC: &lokiv1.OIDCSpec{
-							Secret: &lokiv1.TenantSecretSpec{
-								Name: "test",
-							},
-							IssuerURL:     "https://127.0.0.1:5556/dex",
-							RedirectURL:   "https://localhost:8443/oidc/test-a/callback",
-							GroupClaim:    "test",
-							UsernameClaim: "test",
-						},
+						Name:        "some-name",
+						Resources:   []string{"metrics"},
+						Tenants:     []string{"test-a"},
+						Permissions: []lokiv1.PermissionType{"read"},
 					},
 				},
-				Authorization: &lokiv1.AuthorizationSpec{
-					Roles: []lokiv1.RoleSpec{
-						{
-							Name:        "some-name",
-							Resources:   []string{"metrics"},
-							Tenants:     []string{"test-a"},
-							Permissions: []lokiv1.PermissionType{"read"},
-						},
-					},
-					RoleBindings: []lokiv1.RoleBindingsSpec{
-						{
-							Name: "test-a",
-							Subjects: []lokiv1.Subject{
-								{
-									Name: "test@example.com",
-									Kind: "user",
-								},
+				RoleBindings: []lokiv1.RoleBindingsSpec{
+					{
+						Name: "test-a",
+						Subjects: []lokiv1.Subject{
+							{
+								Name: "test@example.com",
+								Kind: "user",
 							},
-							Roles: []string{"read-write"},
 						},
+						Roles: []string{"read-write"},
 					},
 				},
 			},
+			expTntCfg: `
+tenants:
+- name: test-a
+  id: test
+  mTLS:
+    caPath: /var/run/tls/tenants/test-a/special-ca.crt
+  opa:
+    query: data.lokistack.allow
+    paths:
+    - /etc/lokistack-gateway/rbac.yaml
+    - /etc/lokistack-gateway/lokistack-gateway.rego
+`,
+			expRbacCfg: `
+roleBindings:
+- name: test-a
+  roles:
+  - read-write
+  subjects:
+  - kind: user
+    name: test@example.com
+roles:
+- name: some-name
+  permissions:
+  - read
+  resources:
+  - metrics
+  tenants:
+  - test-a
+`,
 		},
-		Namespace: "test-ns",
-		Name:      "test",
-		TenantSecrets: []*Secret{
-			{
-				TenantName: "test-a",
-				OIDC: &OIDC{
-					ClientID:     "test",
-					ClientSecret: "test123",
-					IssuerCAPath: "/tmp/ca/path",
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.Static,
+						Authentication: tc.authNSpec,
+						Authorization:  tc.authZSpec,
+					},
 				},
-			},
-		},
+				Namespace:     "test-ns",
+				Name:          "test",
+				TenantSecrets: tc.tenantSecrets,
+			}
+			rbacConfig, tenantsConfig, regoCfg, err := Build(opts)
+			require.NoError(t, err)
+			require.YAMLEq(t, tc.expTntCfg, string(tenantsConfig))
+			require.YAMLEq(t, tc.expRbacCfg, string(rbacConfig))
+			require.NotEmpty(t, regoCfg)
+		})
 	}
-	rbacConfig, tenantsConfig, regoCfg, err := Build(opts)
-	require.NoError(t, err)
-	require.YAMLEq(t, expTntCfg, string(tenantsConfig))
-	require.YAMLEq(t, expRbacCfg, string(rbacConfig))
-	require.NotEmpty(t, regoCfg)
 }
 
 func TestBuild_DynamicMode(t *testing.T) {
-	expTntCfg := `
+	for _, tc := range []struct {
+		name          string
+		authNSpec     []lokiv1.AuthenticationSpec
+		tenantSecrets []*Secret
+		expTntCfg     string
+	}{
+		{
+			name: "oidc",
+			authNSpec: []lokiv1.AuthenticationSpec{
+				{
+					TenantName: "test-a",
+					TenantID:   "test",
+					OIDC: &lokiv1.OIDCSpec{
+						Secret: &lokiv1.TenantSecretSpec{
+							Name: "test",
+						},
+						IssuerURL:     "https://127.0.0.1:5556/dex",
+						RedirectURL:   "https://localhost:8443/oidc/test-a/callback",
+						GroupClaim:    "test",
+						UsernameClaim: "test",
+					},
+				},
+			},
+			tenantSecrets: []*Secret{
+				{
+					TenantName: "test-a",
+					OIDC: &OIDC{
+						ClientID:     "test",
+						ClientSecret: "test123",
+						IssuerCAPath: "/tmp/ca/path",
+					},
+				},
+			},
+			expTntCfg: `
 tenants:
 - name: test-a
   id: test
@@ -122,51 +247,65 @@ tenants:
     groupClaim: test
   opa:
     url: http://127.0.0.1:8181/v1/data/observatorium/allow
-`
-	opts := Options{
-		Stack: lokiv1.LokiStackSpec{
-			Tenants: &lokiv1.TenantsSpec{
-				Mode: lokiv1.Dynamic,
-				Authentication: []lokiv1.AuthenticationSpec{
-					{
-						TenantName: "test-a",
-						TenantID:   "test",
-						OIDC: &lokiv1.OIDCSpec{
-							Secret: &lokiv1.TenantSecretSpec{
-								Name: "test",
-							},
-							IssuerURL:     "https://127.0.0.1:5556/dex",
-							RedirectURL:   "https://localhost:8443/oidc/test-a/callback",
-							GroupClaim:    "test",
-							UsernameClaim: "test",
+`,
+		},
+		{
+			name: "mTLS",
+			authNSpec: []lokiv1.AuthenticationSpec{
+				{
+					TenantName: "test-a",
+					TenantID:   "test",
+					MTLS: &lokiv1.MTLSSpec{
+						CA: &lokiv1.CASpec{
+							CA:    "my-custom-ca",
+							CAKey: "special-ca.crt",
 						},
 					},
 				},
-				Authorization: &lokiv1.AuthorizationSpec{
-					OPA: &lokiv1.OPASpec{
-						URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
+			},
+			tenantSecrets: []*Secret{
+				{
+					TenantName: "test-a",
+					MTLS: &MTLS{
+						CAPath: "/var/run/tls/tenants/test-a/special-ca.crt",
 					},
 				},
 			},
+			expTntCfg: `
+tenants:
+- name: test-a
+  id: test
+  mTLS:
+    caPath: /var/run/tls/tenants/test-a/special-ca.crt
+  opa:
+    url: http://127.0.0.1:8181/v1/data/observatorium/allow
+`,
 		},
-		Namespace: "test-ns",
-		Name:      "test",
-		TenantSecrets: []*Secret{
-			{
-				TenantName: "test-a",
-				OIDC: &OIDC{
-					ClientID:     "test",
-					ClientSecret: "test123",
-					IssuerCAPath: "/tmp/ca/path",
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := Options{
+				Stack: lokiv1.LokiStackSpec{
+					Tenants: &lokiv1.TenantsSpec{
+						Mode:           lokiv1.Dynamic,
+						Authentication: tc.authNSpec,
+						Authorization: &lokiv1.AuthorizationSpec{
+							OPA: &lokiv1.OPASpec{
+								URL: "http://127.0.0.1:8181/v1/data/observatorium/allow",
+							},
+						},
+					},
 				},
-			},
-		},
+				Namespace:     "test-ns",
+				Name:          "test",
+				TenantSecrets: tc.tenantSecrets,
+			}
+			rbacConfig, tenantsConfig, regoCfg, err := Build(opts)
+			require.NoError(t, err)
+			require.YAMLEq(t, tc.expTntCfg, string(tenantsConfig))
+			require.Empty(t, rbacConfig)
+			require.Empty(t, regoCfg)
+		})
 	}
-	rbacConfig, tenantsConfig, regoCfg, err := Build(opts)
-	require.NoError(t, err)
-	require.YAMLEq(t, expTntCfg, string(tenantsConfig))
-	require.Empty(t, rbacConfig)
-	require.Empty(t, regoCfg)
 }
 
 func TestBuild_OpenshiftLoggingMode(t *testing.T) {
