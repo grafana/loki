@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers/internal/tlsprofile"
 
-	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	openshiftlokiv1beta1 "github.com/openshift/api/config/v1"
 	"github.com/stretchr/testify/assert"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,35 +20,35 @@ import (
 func TestGetTLSSecurityProfile(t *testing.T) {
 	type tt struct {
 		desc     string
-		profile  configv1.TLSProfileType
-		expected openshiftconfigv1.TLSSecurityProfile
+		profile  lokiv1beta1.TLSProfileType
+		expected openshiftlokiv1beta1.TLSSecurityProfile
 	}
 
 	tc := []tt{
 		{
 			desc:    "Old profile",
-			profile: configv1.TLSProfileOldType,
-			expected: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileOldType,
+			profile: lokiv1beta1.TLSProfileOldType,
+			expected: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileOldType,
 			},
 		},
 		{
 			desc:    "Intermediate profile",
-			profile: configv1.TLSProfileIntermediateType,
-			expected: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileIntermediateType,
+			profile: lokiv1beta1.TLSProfileIntermediateType,
+			expected: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileIntermediateType,
 			},
 		},
 		{
 			desc:    "Modern profile",
-			profile: configv1.TLSProfileModernType,
-			expected: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileModernType,
+			profile: lokiv1beta1.TLSProfileModernType,
+			expected: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileModernType,
 			},
 		},
 	}
 
-	apiServer := openshiftconfigv1.APIServer{
+	apiServer := openshiftlokiv1beta1.APIServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "cluster",
 		},
@@ -85,21 +85,21 @@ func TestGetTLSSecurityProfile_CustomProfile(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 
-	tlsCustomProfile := &openshiftconfigv1.TLSSecurityProfile{
-		Type: openshiftconfigv1.TLSProfileCustomType,
-		Custom: &openshiftconfigv1.CustomTLSProfile{
-			TLSProfileSpec: openshiftconfigv1.TLSProfileSpec{
+	tlsCustomProfile := &openshiftlokiv1beta1.TLSSecurityProfile{
+		Type: openshiftlokiv1beta1.TLSProfileCustomType,
+		Custom: &openshiftlokiv1beta1.CustomTLSProfile{
+			TLSProfileSpec: openshiftlokiv1beta1.TLSProfileSpec{
 				Ciphers:       []string{"custom-cipher"},
 				MinTLSVersion: "VersionTLS12",
 			},
 		},
 	}
 
-	apiServer := openshiftconfigv1.APIServer{
+	apiServer := openshiftlokiv1beta1.APIServer{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "cluster",
 		},
-		Spec: openshiftconfigv1.APIServerSpec{
+		Spec: openshiftlokiv1beta1.APIServerSpec{
 			TLSSecurityProfile: tlsCustomProfile,
 		},
 	}
@@ -114,7 +114,7 @@ func TestGetTLSSecurityProfile_CustomProfile(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, configv1.TLSProfileType("custom"))
+	profile, err := tlsprofile.GetTLSSecurityProfile(context.TODO(), k, lokiv1beta1.TLSProfileType("custom"))
 
 	assert.Nil(t, err)
 	assert.NotNil(t, profile)

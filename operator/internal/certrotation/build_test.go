@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -13,7 +13,7 @@ import (
 )
 
 func TestBuildAll(t *testing.T) {
-	cfg := configv1.BuiltInCertManagement{
+	cfg := lokiv1beta1.BuiltInCertManagement{
 		CACertValidity: "10m",
 		CACertRefresh:  "5m",
 		CertValidity:   "2m",
@@ -45,7 +45,7 @@ func TestBuildAll(t *testing.T) {
 }
 
 func TestApplyDefaultSettings_EmptySecrets(t *testing.T) {
-	cfg := configv1.BuiltInCertManagement{
+	cfg := lokiv1beta1.BuiltInCertManagement{
 		CACertValidity: "10m",
 		CACertRefresh:  "5m",
 		CertValidity:   "2m",
@@ -84,7 +84,7 @@ func TestApplyDefaultSettings_ExistingSecrets(t *testing.T) {
 		stackNamespace = "ns"
 	)
 
-	cfg := configv1.BuiltInCertManagement{
+	cfg := lokiv1beta1.BuiltInCertManagement{
 		CACertValidity: "10m",
 		CACertRefresh:  "5m",
 		CertValidity:   "2m",

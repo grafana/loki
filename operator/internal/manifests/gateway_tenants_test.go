@@ -8,7 +8,7 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
@@ -49,8 +49,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -69,8 +69,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -121,8 +121,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -141,8 +141,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -176,8 +176,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -215,8 +215,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -292,8 +292,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -321,8 +321,8 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 				Name:              "lokistack-ocp",
 				Namespace:         "stack-ns",
 				GatewayBaseDomain: "example.com",
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						Enabled: true,
 					},
 				},
@@ -400,7 +400,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		mode         lokiv1.ModeType
 		stackName    string
 		stackNs      string
-		featureGates configv1.FeatureGates
+		featureGates lokiv1beta1.FeatureGates
 		dpl          *appsv1.Deployment
 		want         *appsv1.Deployment
 	}
@@ -514,7 +514,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			mode:      lokiv1.OpenshiftLogging,
 			stackName: "test",
 			stackNs:   "test-ns",
-			featureGates: configv1.FeatureGates{
+			featureGates: lokiv1beta1.FeatureGates{
 				HTTPEncryption:             true,
 				ServiceMonitorTLSEndpoints: true,
 			},
@@ -733,7 +733,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			mode:      lokiv1.OpenshiftNetwork,
 			stackName: "test",
 			stackNs:   "test-ns",
-			featureGates: configv1.FeatureGates{
+			featureGates: lokiv1beta1.FeatureGates{
 				HTTPEncryption:             true,
 				ServiceMonitorTLSEndpoints: true,
 			},
@@ -920,7 +920,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 		desc         string
 		opts         Options
 		mode         lokiv1.ModeType
-		featureGates configv1.FeatureGates
+		featureGates lokiv1beta1.FeatureGates
 		sm           *monitoringv1.ServiceMonitor
 		want         *monitoringv1.ServiceMonitor
 	}
@@ -1004,7 +1004,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 						Mode: lokiv1.OpenshiftLogging,
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
 				},
@@ -1075,7 +1075,7 @@ func TestConfigureServiceMonitorForMode(t *testing.T) {
 						Mode: lokiv1.OpenshiftNetwork,
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
 				},

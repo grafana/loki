@@ -8,7 +8,7 @@ import (
 	"os"
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/grafana/loki/operator/internal/handlers"
@@ -37,10 +37,10 @@ var (
 	logger logr.Logger
 
 	scheme       = runtime.NewScheme()
-	featureGates = configv1.FeatureGates{
+	featureGates = lokiv1beta1.FeatureGates{
 		ServiceMonitors:            false,
 		ServiceMonitorTLSEndpoints: false,
-		BuiltInCertManagement: configv1.BuiltInCertManagement{
+		BuiltInCertManagement: lokiv1beta1.BuiltInCertManagement{
 			Enabled:        true,
 			CACertValidity: "10m",
 			CACertRefresh:  "5m",
@@ -1064,7 +1064,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 		Requeue: false,
 	}
 
-	ff := configv1.FeatureGates{
+	ff := lokiv1beta1.FeatureGates{
 		LokiStackGateway: true,
 	}
 
@@ -1148,7 +1148,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 		Requeue: true,
 	}
 
-	ff := configv1.FeatureGates{
+	ff := lokiv1beta1.FeatureGates{
 		LokiStackGateway: true,
 	}
 
@@ -1237,7 +1237,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 		Requeue: true,
 	}
 
-	ff := configv1.FeatureGates{
+	ff := lokiv1beta1.FeatureGates{
 		LokiStackGateway: true,
 	}
 
@@ -1330,7 +1330,7 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 		Requeue: false,
 	}
 
-	ff := configv1.FeatureGates{
+	ff := lokiv1beta1.FeatureGates{
 		LokiStackGateway: true,
 	}
 

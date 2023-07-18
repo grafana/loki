@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/gateway"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -212,7 +212,7 @@ func TestBuildGateway_HasConfigForTenantMode(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
 		},
 		Stack: lokiv1.LokiStackSpec{
@@ -239,9 +239,9 @@ func TestBuildGateway_HasExtraObjectsForTenantMode(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
-			OpenShift: configv1.OpenShiftFeatureGates{
+			OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 				Enabled: true,
 			},
 		},
@@ -273,9 +273,9 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_RouteSvcMatches(t *testing.T
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
-			OpenShift: configv1.OpenShiftFeatureGates{
+			OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 				Enabled: true,
 			},
 		},
@@ -314,7 +314,7 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ServiceAccountNameMatches(t 
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
 		},
 		OpenShiftOptions: openshift.Options{
@@ -350,9 +350,9 @@ func TestBuildGateway_WithExtraObjectsForTenantMode_ReplacesIngressWithRoute(t *
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
-			OpenShift: configv1.OpenShiftFeatureGates{
+			OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 				Enabled: true,
 			},
 		},
@@ -400,10 +400,10 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			options: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 					HTTPEncryption:   true,
-					TLSProfile:       string(configv1.TLSProfileOldType),
+					TLSProfile:       string(lokiv1beta1.TLSProfileOldType),
 				},
 				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
@@ -453,10 +453,10 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			options: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 					HTTPEncryption:   true,
-					TLSProfile:       string(configv1.TLSProfileOldType),
+					TLSProfile:       string(lokiv1beta1.TLSProfileOldType),
 				},
 				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
@@ -484,10 +484,10 @@ func TestBuildGateway_WithTLSProfile(t *testing.T) {
 			options: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 					HTTPEncryption:   true,
-					TLSProfile:       string(configv1.TLSProfileOldType),
+					TLSProfile:       string(lokiv1beta1.TLSProfileOldType),
 				},
 				TLSProfile: TLSProfileSpec{
 					MinTLSVersion: "min-version",
@@ -540,7 +540,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 				},
 				Stack: lokiv1.LokiStackSpec{
@@ -587,7 +587,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 				},
 				Stack: lokiv1.LokiStackSpec{
@@ -637,7 +637,7 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 				},
 				Stack: lokiv1.LokiStackSpec{
@@ -665,10 +665,10 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 					HTTPEncryption:   true,
-					OpenShift: configv1.OpenShiftFeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						ServingCertsService: true,
 					},
 				},
@@ -698,10 +698,10 @@ func TestBuildGateway_WithRulesEnabled(t *testing.T) {
 			opts: Options{
 				Name:      "abcd",
 				Namespace: "efgh",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway: true,
 					HTTPEncryption:   true,
-					OpenShift: configv1.OpenShiftFeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						ServingCertsService: true,
 					},
 				},
@@ -750,7 +750,7 @@ func TestBuildGateway_WithHTTPEncryption(t *testing.T) {
 	objs, err := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
 			HTTPEncryption:   true,
 		},
@@ -932,9 +932,9 @@ func TestBuildGateway_PodDisruptionBudget(t *testing.T) {
 	opts := Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
-			OpenShift: configv1.OpenShiftFeatureGates{
+			OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 				Enabled: true,
 			},
 		},
@@ -967,7 +967,7 @@ func TestBuildGateway_TopologySpreadConstraint(t *testing.T) {
 	obj, _ := BuildGateway(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			LokiStackGateway: true,
 		},
 		Stack: lokiv1.LokiStackSpec{

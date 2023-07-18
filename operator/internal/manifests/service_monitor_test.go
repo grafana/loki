@@ -6,7 +6,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/assert"
@@ -21,8 +21,8 @@ func TestServiceMonitorMatchLabels(t *testing.T) {
 		ServiceMonitor *monitoringv1.ServiceMonitor
 	}
 
-	featureGates := configv1.FeatureGates{
-		BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+	featureGates := lokiv1beta1.FeatureGates{
+		BuiltInCertManagement:      lokiv1beta1.BuiltInCertManagement{Enabled: true},
 		ServiceMonitors:            true,
 		ServiceMonitorTLSEndpoints: true,
 	}
@@ -118,8 +118,8 @@ func TestServiceMonitorEndpoints_ForBuiltInCertRotation(t *testing.T) {
 		ServiceMonitor *monitoringv1.ServiceMonitor
 	}
 
-	featureGates := configv1.FeatureGates{
-		BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+	featureGates := lokiv1beta1.FeatureGates{
+		BuiltInCertManagement:      lokiv1beta1.BuiltInCertManagement{Enabled: true},
 		ServiceMonitors:            true,
 		ServiceMonitorTLSEndpoints: true,
 	}
@@ -249,9 +249,9 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				Name:      "test",
 				Namespace: "test",
 				Image:     "test",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway:           true,
-					BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+					BuiltInCertManagement:      lokiv1beta1.BuiltInCertManagement{Enabled: true},
 					ServiceMonitors:            true,
 					ServiceMonitorTLSEndpoints: true,
 				},
@@ -333,9 +333,9 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				Name:      "test",
 				Namespace: "test",
 				Image:     "test",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway:           true,
-					BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+					BuiltInCertManagement:      lokiv1beta1.BuiltInCertManagement{Enabled: true},
 					ServiceMonitors:            true,
 					ServiceMonitorTLSEndpoints: true,
 				},
@@ -441,9 +441,9 @@ func TestServiceMonitorEndpoints_ForGatewayServiceMonitor(t *testing.T) {
 				Name:      "test",
 				Namespace: "test",
 				Image:     "test",
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway:           true,
-					BuiltInCertManagement:      configv1.BuiltInCertManagement{Enabled: true},
+					BuiltInCertManagement:      lokiv1beta1.BuiltInCertManagement{Enabled: true},
 					ServiceMonitors:            true,
 					ServiceMonitorTLSEndpoints: true,
 				},

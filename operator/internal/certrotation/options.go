@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/openshift/library-go/pkg/crypto"
 	corev1 "k8s.io/api/core/v1"
 )
@@ -56,7 +56,7 @@ type Rotation struct {
 }
 
 // ParseRotation builds a new RotationOptions struct from the feature gate string values.
-func ParseRotation(cfg configv1.BuiltInCertManagement) (Rotation, error) {
+func ParseRotation(cfg lokiv1beta1.BuiltInCertManagement) (Rotation, error) {
 	caValidity, err := time.ParseDuration(cfg.CACertValidity)
 	if err != nil {
 		return Rotation{}, kverrors.Wrap(err, "failed to parse CA validity duration", "value", cfg.CACertValidity)

@@ -8,6 +8,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
+	"github.com/grafana/loki/operator/controllers/loki/internal/lokistackconfig"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers"
@@ -113,9 +114,9 @@ var (
 // LokiStackReconciler reconciles a LokiStack object
 type LokiStackReconciler struct {
 	client.Client
-	Log          logr.Logger
-	Scheme       *runtime.Scheme
-	FeatureGates configv1.FeatureGates
+	Log        logr.Logger
+	Scheme     *runtime.Scheme
+	BundleType configv1.BundleType
 }
 
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
@@ -153,14 +154,19 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	if r.FeatureGates.BuiltInCertManagement.Enabled {
-		err = handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	lc, err := lokistackconfig.Get(ctx, r.Client, r.BundleType)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	if lc.Spec.Gates.BuiltInCertManagement.Enabled {
+		err = handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, lc.Spec.Gates)
 		if err != nil {
 			return handleDegradedError(ctx, r.Client, req, err)
 		}
 	}
 
-	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
+	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, lc.Spec.Gates)
 	if err != nil {
 		return handleDegradedError(ctx, r.Client, req, err)
 	}
@@ -196,7 +202,7 @@ func (r *LokiStackReconciler) SetupWithManager(mgr manager.Manager) error {
 }
 
 func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
-	bld = bld.
+	return bld.
 		For(&lokiv1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Secret{}, updateOrDeleteOnlyPred).
@@ -208,28 +214,14 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.ClusterRoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
+		Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred).
+		Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
+		Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred).
+		Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred).
+		Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred).
 		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
-
-	if r.FeatureGates.LokiStackAlerts {
-		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
-	}
-
-	if r.FeatureGates.OpenShift.Enabled {
-		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
-	} else {
-		bld = bld.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)
-	}
-
-	if r.FeatureGates.OpenShift.ClusterTLSPolicy {
-		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
-	}
-
-	if r.FeatureGates.OpenShift.ClusterProxy {
-		bld = bld.Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred)
-	}
-
-	return bld.Complete(r)
+		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
+		Complete(r)
 }
 
 func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler {

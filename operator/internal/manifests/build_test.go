@@ -5,12 +5,12 @@ import (
 	"testing"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	openshiftlokiv1beta1 "github.com/openshift/api/config/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
@@ -94,7 +94,7 @@ func TestApplyUserOptions_AlwaysSetCompactorReplicasToOne(t *testing.T) {
 func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	type tt struct {
 		desc     string
-		profile  openshiftconfigv1.TLSSecurityProfile
+		profile  openshiftlokiv1beta1.TLSSecurityProfile
 		expected TLSProfileSpec
 		err      error
 	}
@@ -102,8 +102,8 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	tc := []tt{
 		{
 			desc: "Old profile",
-			profile: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileOldType,
+			profile: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileOldType,
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS10",
@@ -131,8 +131,8 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 		},
 		{
 			desc: "Intermediate profile",
-			profile: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileIntermediateType,
+			profile: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileIntermediateType,
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS12",
@@ -148,8 +148,8 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 		},
 		{
 			desc: "Modern profile",
-			profile: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileModernType,
+			profile: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileModernType,
 			},
 			expected: TLSProfileSpec{
 				MinTLSVersion: "VersionTLS13",
@@ -160,10 +160,10 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 		},
 		{
 			desc: "custom profile",
-			profile: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileCustomType,
-				Custom: &openshiftconfigv1.CustomTLSProfile{
-					TLSProfileSpec: openshiftconfigv1.TLSProfileSpec{
+			profile: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileCustomType,
+				Custom: &openshiftlokiv1beta1.CustomTLSProfile{
+					TLSProfileSpec: openshiftlokiv1beta1.TLSProfileSpec{
 						MinTLSVersion: "VersionTLS11",
 						Ciphers: []string{
 							"ECDHE-ECDSA-CHACHA20-POLY1305",
@@ -186,8 +186,8 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 		},
 		{
 			desc: "broken custom profile",
-			profile: openshiftconfigv1.TLSSecurityProfile{
-				Type: openshiftconfigv1.TLSProfileCustomType,
+			profile: openshiftlokiv1beta1.TLSSecurityProfile{
+				Type: openshiftlokiv1beta1.TLSProfileCustomType,
 			},
 			err: kverrors.New("missing TLS custom profile spec"),
 		},
@@ -227,10 +227,10 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 						Enabled: true,
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					ServiceMonitors:            false,
 					ServiceMonitorTLSEndpoints: false,
-					OpenShift: configv1.OpenShiftFeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						ServingCertsService: false,
 					},
 				},
@@ -246,10 +246,10 @@ func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXSmall,
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					ServiceMonitors:            true,
 					ServiceMonitorTLSEndpoints: false,
-					OpenShift: configv1.OpenShiftFeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						ServingCertsService: false,
 					},
 				},
@@ -289,10 +289,10 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXSmall,
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					ServiceMonitors:            false,
 					ServiceMonitorTLSEndpoints: false,
-					OpenShift: configv1.OpenShiftFeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						ServingCertsService: false,
 					},
 				},
@@ -307,10 +307,10 @@ func TestBuildAll_WithFeatureGates_OpenShift_ServingCertsService(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXSmall,
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					ServiceMonitors:            false,
 					ServiceMonitorTLSEndpoints: false,
-					OpenShift: configv1.OpenShiftFeatureGates{
+					OpenShift: lokiv1beta1.OpenShiftFeatureGates{
 						ServingCertsService: true,
 					},
 				},
@@ -352,7 +352,7 @@ func TestBuildAll_WithFeatureGates_HTTPEncryption(t *testing.T) {
 				Enabled: true,
 			},
 		},
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			HTTPEncryption: true,
 		},
 		Timeouts: defaultTimeoutConfig,
@@ -424,7 +424,7 @@ func TestBuildAll_WithFeatureGates_ServiceMonitorTLSEndpoints(t *testing.T) {
 				Enabled: true,
 			},
 		},
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			ServiceMonitors:            true,
 			HTTPEncryption:             true,
 			ServiceMonitorTLSEndpoints: true,
@@ -531,7 +531,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 						},
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					GRPCEncryption: false,
 				},
 				Timeouts: defaultTimeoutConfig,
@@ -574,7 +574,7 @@ func TestBuildAll_WithFeatureGates_GRPCEncryption(t *testing.T) {
 						},
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					GRPCEncryption: true,
 				},
 				Timeouts: defaultTimeoutConfig,
@@ -699,7 +699,7 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 						},
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					RestrictedPodSecurityStandard: false,
 				},
 				Timeouts: defaultTimeoutConfig,
@@ -742,7 +742,7 @@ func TestBuildAll_WithFeatureGates_RestrictedPodSecurityStandard(t *testing.T) {
 						},
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					RestrictedPodSecurityStandard: true,
 				},
 				Timeouts: defaultTimeoutConfig,
@@ -819,7 +819,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXSmall,
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway:           false,
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: false,
@@ -858,7 +858,7 @@ func TestBuildAll_WithFeatureGates_LokiStackGateway(t *testing.T) {
 						},
 					},
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					LokiStackGateway:           true,
 					HTTPEncryption:             true,
 					ServiceMonitorTLSEndpoints: true,
@@ -898,7 +898,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXSmall,
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					ServiceMonitors: false,
 					LokiStackAlerts: false,
 				},
@@ -913,7 +913,7 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 				Stack: lokiv1.LokiStackSpec{
 					Size: lokiv1.SizeOneXSmall,
 				},
-				Gates: configv1.FeatureGates{
+				Gates: lokiv1beta1.FeatureGates{
 					ServiceMonitors: true,
 					LokiStackAlerts: true,
 				},

@@ -8,11 +8,12 @@ import (
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -76,97 +77,75 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 
 	// Require owned resources
 	type test struct {
-		obj           client.Object
-		index         int
-		ownCallsCount int
-		featureGates  configv1.FeatureGates
-		pred          builder.OwnsOption
+		obj   client.Object
+		index int
+		pred  builder.OwnsOption
 	}
 	table := []test{
 		{
-			obj:           &corev1.ConfigMap{},
-			index:         0,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &corev1.ConfigMap{},
+			index: 0,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &corev1.Secret{},
-			index:         1,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &corev1.Secret{},
+			index: 1,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &corev1.ServiceAccount{},
-			index:         2,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &corev1.ServiceAccount{},
+			index: 2,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &corev1.Service{},
-			index:         3,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &corev1.Service{},
+			index: 3,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &appsv1.Deployment{},
-			index:         4,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteWithStatusPred,
+			obj:   &appsv1.Deployment{},
+			index: 4,
+			pred:  updateOrDeleteWithStatusPred,
 		},
 		{
-			obj:           &appsv1.StatefulSet{},
-			index:         5,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteWithStatusPred,
+			obj:   &appsv1.StatefulSet{},
+			index: 5,
+			pred:  updateOrDeleteWithStatusPred,
 		},
 		{
-			obj:           &rbacv1.ClusterRole{},
-			index:         6,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &rbacv1.ClusterRole{},
+			index: 6,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &rbacv1.ClusterRoleBinding{},
-			index:         7,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &rbacv1.ClusterRoleBinding{},
+			index: 7,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &rbacv1.Role{},
-			index:         8,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
+			obj:   &rbacv1.Role{},
+			index: 8,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &rbacv1.RoleBinding{},
-			index:         9,
-			ownCallsCount: 11,
-			pred:          updateOrDeleteOnlyPred,
-		},
-		// The next two share the same index, because the
-		// controller either reconciles an Ingress (i.e. Kubernetes)
-		// or a Route (i.e. OpenShift).
-		{
-			obj:           &networkingv1.Ingress{},
-			index:         10,
-			ownCallsCount: 11,
-			featureGates: configv1.FeatureGates{
-				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled: false,
-				},
-			},
-			pred: updateOrDeleteOnlyPred,
+			obj:   &rbacv1.RoleBinding{},
+			index: 9,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			obj:           &routev1.Route{},
-			index:         10,
-			ownCallsCount: 11,
-			featureGates: configv1.FeatureGates{
-				OpenShift: configv1.OpenShiftFeatureGates{
-					Enabled: true,
-				},
-			},
-			pred: updateOrDeleteOnlyPred,
+			obj:   &monitoringv1.PrometheusRule{},
+			index: 10,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &routev1.Route{},
+			index: 11,
+			pred:  updateOrDeleteOnlyPred,
+		},
+		{
+			obj:   &networkingv1.Ingress{},
+			index: 12,
+			pred:  updateOrDeleteOnlyPred,
 		},
 	}
 	for _, tst := range table {
@@ -175,12 +154,12 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		b.OwnsReturns(b)
 		b.WatchesReturns(b)
 
-		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
+		c := &LokiStackReconciler{Client: k, Scheme: scheme}
 		err := c.buildController(b)
 		require.NoError(t, err)
 
 		// Require Owns-Calls for all owned resources
-		require.Equal(t, tst.ownCallsCount, b.OwnsCallCount())
+		require.Equal(t, 13, b.OwnsCallCount())
 
 		// Require Owns-call options to have delete predicate only
 		obj, opts := b.OwnsArgsForCall(tst.index)
@@ -194,48 +173,33 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 
 	// Require owned resources
 	type test struct {
-		index             int
-		watchesCallsCount int
-		featureGates      configv1.FeatureGates
-		src               source.Source
-		pred              builder.OwnsOption
+		index        int
+		featureGates lokiv1beta1.FeatureGates
+		src          source.Source
+		pred         builder.OwnsOption
 	}
 	table := []test{
 		{
-			src:               &source.Kind{Type: &openshiftconfigv1.APIServer{}},
-			index:             2,
-			watchesCallsCount: 3,
-			featureGates: configv1.FeatureGates{
-				OpenShift: configv1.OpenShiftFeatureGates{
-					ClusterTLSPolicy: true,
-				},
-			},
-			pred: updateOrDeleteOnlyPred,
+			src:   &source.Kind{Type: &openshiftconfigv1.APIServer{}},
+			index: 0,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			src:               &source.Kind{Type: &openshiftconfigv1.Proxy{}},
-			index:             2,
-			watchesCallsCount: 3,
-			featureGates: configv1.FeatureGates{
-				OpenShift: configv1.OpenShiftFeatureGates{
-					ClusterProxy: true,
-				},
-			},
-			pred: updateOrDeleteOnlyPred,
+			src:   &source.Kind{Type: &openshiftconfigv1.Proxy{}},
+			index: 1,
+			pred:  updateOrDeleteOnlyPred,
 		},
 		{
-			src:               &source.Kind{Type: &corev1.Service{}},
-			index:             0,
-			watchesCallsCount: 2,
-			featureGates:      configv1.FeatureGates{},
-			pred:              createUpdateOrDeletePred,
+			src:          &source.Kind{Type: &corev1.Service{}},
+			index:        2,
+			featureGates: lokiv1beta1.FeatureGates{},
+			pred:         createUpdateOrDeletePred,
 		},
 		{
-			src:               &source.Kind{Type: &corev1.Secret{}},
-			index:             1,
-			watchesCallsCount: 2,
-			featureGates:      configv1.FeatureGates{},
-			pred:              createUpdateOrDeletePred,
+			src:          &source.Kind{Type: &corev1.Secret{}},
+			index:        3,
+			featureGates: lokiv1beta1.FeatureGates{},
+			pred:         createUpdateOrDeletePred,
 		},
 	}
 	for _, tst := range table {
@@ -244,12 +208,12 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		b.OwnsReturns(b)
 		b.WatchesReturns(b)
 
-		c := &LokiStackReconciler{Client: k, Scheme: scheme, FeatureGates: tst.featureGates}
+		c := &LokiStackReconciler{Client: k, Scheme: scheme}
 		err := c.buildController(b)
 		require.NoError(t, err)
 
 		// Require Watches-calls for all watches resources
-		require.Equal(t, tst.watchesCallsCount, b.WatchesCallCount())
+		require.Equal(t, 4, b.WatchesCallCount())
 
 		src, _, opts := b.WatchesArgsForCall(tst.index)
 		require.Equal(t, tst.src, src)

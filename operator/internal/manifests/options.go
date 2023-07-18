@@ -6,7 +6,7 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
@@ -24,7 +24,7 @@ type Options struct {
 	ConfigSHA1             string
 	CertRotationRequiredAt string
 
-	Gates                configv1.FeatureGates
+	Gates                lokiv1beta1.FeatureGates
 	Stack                lokiv1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 

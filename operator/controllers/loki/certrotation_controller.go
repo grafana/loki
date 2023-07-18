@@ -9,6 +9,7 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
+	"github.com/grafana/loki/operator/controllers/loki/internal/lokistackconfig"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -18,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 )
 
 // CertRotationReconciler reconciles the `loki.grafana.com/certRotationRequiredAt` annotation on
@@ -25,9 +27,9 @@ import (
 // and CA bundle configmap.
 type CertRotationReconciler struct {
 	client.Client
-	Log          logr.Logger
-	Scheme       *runtime.Scheme
-	FeatureGates configv1.FeatureGates
+	Log        logr.Logger
+	Scheme     *runtime.Scheme
+	BundleType configv1.BundleType
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -49,7 +51,12 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	rt, err := certrotation.ParseRotation(r.FeatureGates.BuiltInCertManagement)
+	lc, err := lokistackconfig.Get(ctx, r.Client, r.BundleType)
+	if err != nil {
+		return reconcile.Result{}, err
+	}
+
+	rt, err := certrotation.ParseRotation(lc.Spec.Gates.BuiltInCertManagement)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -59,7 +66,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	var expired *certrotation.CertExpiredError
 
-	err = handlers.CheckCertExpiry(ctx, r.Log, req, r.Client, r.FeatureGates)
+	err = handlers.CheckCertExpiry(ctx, r.Log, req, r.Client, lc.Spec.Gates)
 	switch {
 	case errors.As(err, &expired):
 		r.Log.Info("Certificate expired", "msg", expired.Error())

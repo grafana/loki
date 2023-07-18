@@ -9,12 +9,4 @@ webhook:
 leaderElection:
   leaderElect: false
   resourceName: e3716011.grafana.com
-featureGates:
-  lokiStackGateway: true
-  restrictedPodSecurityStandard: false
-  #
-  # Webhook feature gates
-  #
-  lokiStackWebhook: true
-  alertingRuleWebhook: true
-  recordingRuleWebhook: true
+bundleType: community

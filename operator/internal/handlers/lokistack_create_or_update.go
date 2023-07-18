@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
@@ -43,7 +43,7 @@ func CreateOrUpdateLokiStack(
 	req ctrl.Request,
 	k k8s.Client,
 	s *runtime.Scheme,
-	fg configv1.FeatureGates,
+	fg lokiv1beta1.FeatureGates,
 ) error {
 	ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
 
@@ -323,10 +323,10 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	tlsProfileType := configv1.TLSProfileType(fg.TLSProfile)
+	tlsProfileType := lokiv1beta1.TLSProfileType(fg.TLSProfile)
 	// Overwrite the profile from the flags and use the profile from the apiserver instead
 	if fg.OpenShift.ClusterTLSPolicy {
-		tlsProfileType = configv1.TLSProfileType("")
+		tlsProfileType = lokiv1beta1.TLSProfileType("")
 	}
 
 	tlsProfile, err := tlsprofile.GetTLSSecurityProfile(ctx, k, tlsProfileType)

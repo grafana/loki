@@ -6,7 +6,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
-	openshiftconfigv1 "github.com/openshift/api/config/v1"
+	openshiftlokiv1beta1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -141,9 +141,9 @@ func ApplyDefaultSettings(opts *Options) error {
 
 // ApplyTLSSettings manipulates the options to conform to the
 // TLS profile specifications
-func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfile) error {
-	tlsSecurityProfile := &openshiftconfigv1.TLSSecurityProfile{
-		Type: openshiftconfigv1.TLSProfileIntermediateType,
+func ApplyTLSSettings(opts *Options, profile *openshiftlokiv1beta1.TLSSecurityProfile) error {
+	tlsSecurityProfile := &openshiftlokiv1beta1.TLSSecurityProfile{
+		Type: openshiftlokiv1beta1.TLSProfileIntermediateType,
 	}
 
 	if profile != nil {
@@ -151,19 +151,19 @@ func ApplyTLSSettings(opts *Options, profile *openshiftconfigv1.TLSSecurityProfi
 	}
 
 	var (
-		minTLSVersion openshiftconfigv1.TLSProtocolVersion
+		minTLSVersion openshiftlokiv1beta1.TLSProtocolVersion
 		ciphers       []string
 	)
 
 	switch tlsSecurityProfile.Type {
-	case openshiftconfigv1.TLSProfileCustomType:
+	case openshiftlokiv1beta1.TLSProfileCustomType:
 		if tlsSecurityProfile.Custom == nil {
 			return kverrors.New("missing TLS custom profile spec")
 		}
 		minTLSVersion = tlsSecurityProfile.Custom.MinTLSVersion
 		ciphers = tlsSecurityProfile.Custom.Ciphers
-	case openshiftconfigv1.TLSProfileOldType, openshiftconfigv1.TLSProfileIntermediateType, openshiftconfigv1.TLSProfileModernType:
-		spec := openshiftconfigv1.TLSProfiles[tlsSecurityProfile.Type]
+	case openshiftlokiv1beta1.TLSProfileOldType, openshiftlokiv1beta1.TLSProfileIntermediateType, openshiftlokiv1beta1.TLSProfileModernType:
+		spec := openshiftlokiv1beta1.TLSProfiles[tlsSecurityProfile.Type]
 		minTLSVersion = spec.MinTLSVersion
 		ciphers = spec.Ciphers
 	default:

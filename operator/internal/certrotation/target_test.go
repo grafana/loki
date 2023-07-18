@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,7 +19,7 @@ func TestCertificatesExpired(t *testing.T) {
 		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
 		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
 		rawCA, caBytes      = newTestCABundle(t, "dev-ca")
-		cfg                 = configv1.BuiltInCertManagement{
+		cfg                 = lokiv1beta1.BuiltInCertManagement{
 			CACertValidity: "10m",
 			CACertRefresh:  "5m",
 			CertValidity:   "2m",
@@ -79,7 +79,7 @@ func TestCertificatesExpired(t *testing.T) {
 func TestBuildTargetCertKeyPairSecrets_Create(t *testing.T) {
 	var (
 		rawCA, _ = newTestCABundle(t, "test-ca")
-		cfg      = configv1.BuiltInCertManagement{
+		cfg      = lokiv1beta1.BuiltInCertManagement{
 			CACertValidity: "10m",
 			CACertRefresh:  "5m",
 			CertValidity:   "2m",
@@ -109,7 +109,7 @@ func TestBuildTargetCertKeyPairSecrets_Rotate(t *testing.T) {
 		rawCA, _            = newTestCABundle(t, "test-ca")
 		invalidNotAfter, _  = time.Parse(time.RFC3339, "")
 		invalidNotBefore, _ = time.Parse(time.RFC3339, "")
-		cfg                 = configv1.BuiltInCertManagement{
+		cfg                 = lokiv1beta1.BuiltInCertManagement{
 			CACertValidity: "10m",
 			CACertRefresh:  "5m",
 			CertValidity:   "2m",

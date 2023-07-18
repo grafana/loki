@@ -3,7 +3,7 @@ package manifests
 import (
 	"testing"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/assert"
@@ -294,7 +294,7 @@ func TestDefaultNodeAffinityForEachComponent(t *testing.T) {
 				},
 			},
 		},
-		Gates: configv1.FeatureGates{
+		Gates: lokiv1beta1.FeatureGates{
 			DefaultNodeAffinity: true,
 		},
 	}

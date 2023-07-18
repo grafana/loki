@@ -5,7 +5,7 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -18,7 +18,7 @@ import (
 // CheckCertExpiry handles the case if the LokiStack managed signing CA, client and/or serving
 // certificates expired. Returns true if any of those expired and an error representing the reason
 // of expiry.
-func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, fg configv1.FeatureGates) error {
+func CheckCertExpiry(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, fg lokiv1beta1.FeatureGates) error {
 	ll := log.WithValues("lokistack", req.String(), "event", "checkCertExpiry")
 
 	var stack lokiv1.LokiStack

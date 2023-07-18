@@ -7,8 +7,8 @@ import (
 	"path"
 	"strings"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 
@@ -24,7 +24,7 @@ type config struct {
 	Namespace string
 	Image     string
 
-	featureFlags  configv1.FeatureGates
+	featureFlags  lokiv1beta1.FeatureGates
 	objectStorage storage.Options
 
 	crFilepath string
@@ -133,9 +133,9 @@ func main() {
 	}
 
 	if cfg.featureFlags.TLSProfile != "" &&
-		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileOldType) &&
-		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileIntermediateType) &&
-		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileModernType) {
+		cfg.featureFlags.TLSProfile != string(lokiv1beta1.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(lokiv1beta1.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(lokiv1beta1.TLSProfileModernType) {
 		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
 		os.Exit(1)
 	}

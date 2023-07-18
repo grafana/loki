@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -40,7 +40,7 @@ func BuildAll(opts Options) ([]client.Object, error) {
 }
 
 // ApplyDefaultSettings merges the default options with the ones we give.
-func ApplyDefaultSettings(opts *Options, cfg configv1.BuiltInCertManagement) error {
+func ApplyDefaultSettings(opts *Options, cfg lokiv1beta1.BuiltInCertManagement) error {
 	rotation, err := ParseRotation(cfg)
 	if err != nil {
 		return err

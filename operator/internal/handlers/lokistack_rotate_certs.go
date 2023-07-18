@@ -7,7 +7,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/certrotation"
 	"github.com/grafana/loki/operator/internal/external/k8s"
@@ -25,7 +25,7 @@ import (
 // CreateOrRotateCertificates handles the LokiStack client and serving certificate creation and rotation
 // including the signing CA and a ca bundle or else returns an error. It returns only a degrade-condition-worthy
 // error if building the manifests fails for any reason.
-func CreateOrRotateCertificates(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, s *runtime.Scheme, fg configv1.FeatureGates) error {
+func CreateOrRotateCertificates(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, s *runtime.Scheme, fg lokiv1beta1.FeatureGates) error {
 	ll := log.WithValues("lokistack", req.String(), "event", "createOrRotateCerts")
 
 	var stack lokiv1.LokiStack
