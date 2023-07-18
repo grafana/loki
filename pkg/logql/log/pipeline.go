@@ -46,7 +46,7 @@ func NewNoopPipeline() Pipeline {
 type noopPipeline struct {
 	cache       map[uint64]*noopStreamPipeline
 	baseBuilder *BaseLabelsBuilder
-	mu    sync.RWMutex
+	mu          sync.RWMutex
 }
 
 func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
@@ -296,13 +296,13 @@ func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
 	return sp.pipeline.BaseLabels()
 }
 
-func (sp *filteringStreamPipeline) Process(ts int64, line []byte, _ ...labels.Label) ([]byte, LabelsResult, bool) {
+func (sp *filteringStreamPipeline) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) ([]byte, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.Process(ts, line)
+		_, _, matches := filter.pipeline.Process(ts, line, nonIndexedLabels...)
 		if matches { // When the filter matches, don't run the next step
 			return nil, nil, false
 		}
@@ -311,13 +311,13 @@ func (sp *filteringStreamPipeline) Process(ts int64, line []byte, _ ...labels.La
 	return sp.pipeline.Process(ts, line)
 }
 
-func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, _ ...labels.Label) (string, LabelsResult, bool) {
+func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (string, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		_, _, matches := filter.pipeline.ProcessString(ts, line, nonIndexedLabels...)
 		if matches { // When the filter matches, don't run the next step
 			return "", nil, false
 		}

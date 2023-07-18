@@ -251,13 +251,13 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte, _ ...labels.Label) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.Process(ts, line)
+		_, _, matches := filter.pipeline.Process(ts, line, nonIndexedLabels...)
 		if matches { // When the filter matches, don't run the next step
 			return 0, nil, false
 		}
@@ -266,13 +266,13 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte, _ ...labels.L
 	return sp.extractor.Process(ts, line)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, _ ...labels.Label) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.ProcessString(ts, line)
+		_, _, matches := filter.pipeline.ProcessString(ts, line, nonIndexedLabels...)
 		if matches { // When the filter matches, don't run the next step
 			return 0, nil, false
 		}

@@ -272,32 +272,36 @@ func TestNewLineSampleExtractor(t *testing.T) {
 
 func TestFilteringSampleExtractor(t *testing.T) {
 	se := NewFilteringSampleExtractor([]PipelineFilter{
-		newPipelineFilter(2, 4, labels.FromStrings("foo", "bar", "bar", "baz"), "e"),
-		newPipelineFilter(3, 5, labels.FromStrings("baz", "foo"), "e"),
+		newPipelineFilter(2, 4, labels.FromStrings("foo", "bar", "bar", "baz"), nil, "e"),
+		newPipelineFilter(3, 5, labels.FromStrings("baz", "foo"), nil, "e"),
+		newPipelineFilter(3, 5, labels.FromStrings("foo", "baz"), labels.FromStrings("user", "bob"), "e"),
 	}, newStubExtractor())
 
 	tt := []struct {
-		name   string
-		ts     int64
-		line   string
-		labels labels.Labels
-		ok     bool
+		name             string
+		ts               int64
+		line             string
+		labels           labels.Labels
+		nonIndexedLabels labels.Labels
+		ok               bool
 	}{
-		{"it is after the timerange", 6, "line", labels.FromStrings("baz", "foo"), true},
-		{"it is before the timerange", 1, "line", labels.FromStrings("baz", "foo"), true},
-		{"it doesn't match the filter", 3, "all good", labels.FromStrings("baz", "foo"), true},
-		{"it doesn't match all the selectors", 3, "line", labels.FromStrings("foo", "bar"), true},
-		{"it doesn't match any selectors", 3, "line", labels.FromStrings("beep", "boop"), true},
-		{"it matches all selectors", 3, "line", labels.FromStrings("foo", "bar", "bar", "baz"), false},
-		{"it tries all the filters", 5, "line", labels.FromStrings("baz", "foo"), false},
+		{"it is after the timerange", 6, "line", labels.FromStrings("baz", "foo"), nil, true},
+		{"it is before the timerange", 1, "line", labels.FromStrings("baz", "foo"), nil, true},
+		{"it doesn't match the filter", 3, "all good", labels.FromStrings("baz", "foo"), nil, true},
+		{"it doesn't match all the selectors", 3, "line", labels.FromStrings("foo", "bar"), nil, true},
+		{"it doesn't match any selectors", 3, "line", labels.FromStrings("beep", "boop"), nil, true},
+		{"it matches all selectors", 3, "line", labels.FromStrings("foo", "bar", "bar", "baz"), nil, false},
+		{"it doesn't match all non-indexed labels", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "alice"), true},
+		{"it matches all non-indexed labels", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "bob"), false},
+		{"it tries all the filters", 5, "line", labels.FromStrings("baz", "foo"), nil, false},
 	}
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line))
+			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.nonIndexedLabels...)
 			require.Equal(t, test.ok, ok)
 
-			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line)
+			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.nonIndexedLabels...)
 			require.Equal(t, test.ok, ok)
 		})
 	}
