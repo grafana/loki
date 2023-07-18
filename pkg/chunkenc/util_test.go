@@ -15,6 +15,14 @@ func logprotoEntry(ts int64, line string) *logproto.Entry {
 	}
 }
 
+func logprotoEntryWithMetadata(ts int64, line string, nonIndexedLabels []logproto.LabelAdapter) *logproto.Entry {
+	return &logproto.Entry{
+		Timestamp:        time.Unix(0, ts),
+		Line:             line,
+		NonIndexedLabels: nonIndexedLabels,
+	}
+}
+
 func generateData(enc Encoding, chunksCount, blockSize, targetSize int) ([]Chunk, uint64) {
 	chunks := []Chunk{}
 	i := int64(0)
