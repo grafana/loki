@@ -2,6 +2,7 @@ package logql
 
 import (
 	"errors"
+
 	"github.com/prometheus/prometheus/promql"
 )
 

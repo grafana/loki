@@ -540,7 +540,7 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 		}
 	}
 	if len(vec) > 0 {
-		return next, ts, nil
+		return next, ts, promql.Vector{}
 	}
 	// values are missing.
 	return next, ts, promql.Vector{
@@ -639,7 +639,6 @@ func binOpStepEvaluator(
 			ts       int64
 			next     bool
 			lhs, rhs promql.Vector
-			r        StepResult
 		)
 		next, ts, rhs = rse.Next()
 		// These should _always_ happen at the same step on each evaluator.
@@ -653,7 +652,6 @@ func binOpStepEvaluator(
 		}
 
 		next, ts, lhs = lse.Next()
-		lhs = r.SampleVector()
 		if !next {
 			return next, ts, nil
 		}
