@@ -18,6 +18,8 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+const maxInt = int(^uint(0) >> 1)
+
 type LRUCacheConfig struct {
 	MaxSizeBytes     flagext.ByteSize `yaml:"max_size_bytes"`
 	MaxItemSizeBytes flagext.ByteSize `yaml:"max_item_size_bytes"`
@@ -38,7 +40,7 @@ func (cfg *LRUCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f
 	f.Var(&cfg.MaxSizeBytes, prefix+".max-size-bytes", description+"Maximum memory size of the whole cache. A unit suffix (KB, MB, GB) may be applied. Default: 1GB.")
 	cfg.MaxSizeBytes = flagext.ByteSize(1 * gigabyte)
 
-	f.IntVar(&cfg.MaxItems, prefix+".max-items", 50000, description+"Maximum items in the cache.")
+	f.IntVar(&cfg.MaxItems, prefix+".max-items", maxInt, description+"Maximum items in the cache.")
 
 	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, description+"Whether a LRU cache (last-recently used) should be enabled or not.")
 }
