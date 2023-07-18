@@ -30,7 +30,6 @@ func GetTenantSecrets(
 	var (
 		tenantSecrets []*manifests.TenantSecrets
 		gatewaySecret corev1.Secret
-		caConfigMap   corev1.ConfigMap
 	)
 
 	for _, tenant := range stack.Spec.Tenants.Authentication {
@@ -57,40 +56,27 @@ func GetTenantSecrets(
 					Requeue: true,
 				}
 			}
-			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
+			tennantSecret := &manifests.TenantSecrets{
 				TenantName: tenant.TenantName,
 				OIDCSecret: oidcSecret,
-			})
+			}
+			if tenant.OIDC.IssuerCA != nil {
+				caPath, err := extractCAPath(ctx, k, req.Namespace, tenant.TenantName, tenant.OIDC.IssuerCA)
+				if err != nil {
+					return nil, err
+				}
+				tennantSecret.OIDCSecret.IssuerCAPath = caPath
+			}
+			tenantSecrets = append(tenantSecrets, tennantSecret)
 		case tenant.MTLS != nil:
-			key := client.ObjectKey{Name: tenant.MTLS.CA.CA, Namespace: req.Namespace}
-			if err := k.Get(ctx, key, &caConfigMap); err != nil {
-				if apierrors.IsNotFound(err) {
-					return nil, &status.DegradedError{
-						Message: fmt.Sprintf("Missing configmap for tenant %s", tenant.TenantName),
-						Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
-						Requeue: true,
-					}
-				}
-				return nil, kverrors.Wrap(err, "failed to lookup lokistack gateway tenant configMap",
-					"name", key)
-			}
-			// Default key if the user doesn't specify it
-			cmKey := "service-ca.crt"
-			if tenant.MTLS.CA.CAKey != "" {
-				cmKey = tenant.MTLS.CA.CAKey
-			}
-			err := checkKeyIsPresent(&caConfigMap, cmKey)
+			caPath, err := extractCAPath(ctx, k, req.Namespace, tenant.TenantName, tenant.OIDC.IssuerCA)
 			if err != nil {
-				return nil, &status.DegradedError{
-					Message: "Invalid gateway tenant configmap contents",
-					Reason:  lokiv1.ReasonInvalidGatewayTenantConfigMap,
-					Requeue: true,
-				}
+				return nil, err
 			}
 			tenantSecrets = append(tenantSecrets, &manifests.TenantSecrets{
 				TenantName: tenant.TenantName,
 				MTLSSecret: &manifests.MTLSSecret{
-					CAPath: manifests.TenantMTLSCAPath(tenant.TenantName, cmKey),
+					CAPath: caPath,
 				},
 			})
 		default:
@@ -113,12 +99,10 @@ func extractOIDCSecret(s *corev1.Secret) (*manifests.OIDCSecret, error) {
 		return nil, kverrors.New("missing clientID field", "field", "clientID")
 	}
 	clientSecret := s.Data["clientSecret"]
-	issuerCAPath := s.Data["issuerCAPath"]
 
 	return &manifests.OIDCSecret{
 		ClientID:     string(clientID),
 		ClientSecret: string(clientSecret),
-		IssuerCAPath: string(issuerCAPath),
 	}, nil
 }
 
@@ -129,4 +113,35 @@ func checkKeyIsPresent(cm *corev1.ConfigMap, key string) error {
 		return kverrors.New(fmt.Sprintf("missing %s field", key), "field", key)
 	}
 	return nil
+}
+
+func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tennantName string, caSpec *lokiv1.CASpec) (string, error) {
+	var caConfigMap corev1.ConfigMap
+	key := client.ObjectKey{Name: caSpec.CA, Namespace: namespace}
+	if err := k.Get(ctx, key, &caConfigMap); err != nil {
+		if apierrors.IsNotFound(err) {
+			return "", &status.DegradedError{
+				Message: fmt.Sprintf("Missing configmap for tenant %s", tennantName),
+				Reason:  lokiv1.ReasonMissingGatewayTenantConfigMap,
+				Requeue: true,
+			}
+		}
+		return "", kverrors.Wrap(err, "failed to lookup lokistack gateway tenant configMap",
+			"name", key)
+	}
+	// Default key if the user doesn't specify it
+	cmKey := "service-ca.crt"
+	if caSpec.CAKey != "" {
+		cmKey = caSpec.CAKey
+	}
+	err := checkKeyIsPresent(&caConfigMap, cmKey)
+	if err != nil {
+		return "", &status.DegradedError{
+			Message: "Invalid gateway tenant configmap contents",
+			Reason:  lokiv1.ReasonInvalidGatewayTenantConfigMap,
+			Requeue: true,
+		}
+	}
+	return manifests.TenantCAPath(tennantName, cmKey), nil
+
 }

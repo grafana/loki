@@ -211,13 +211,14 @@ func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 
 	mTLS := false
 	for _, tenant := range tenants.Authentication {
-		if tenant.MTLS != nil {
+		switch {
+		case tenant.MTLS != nil:
 			gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-				Name:      tenantMTLSVolumeName(tenant.TenantName),
-				MountPath: tenantMTLSCADir(tenant.TenantName),
+				Name:      tenantCAVolumeName(tenant.TenantName),
+				MountPath: tenantCADir(tenant.TenantName),
 			})
 			gwVolumes = append(gwVolumes, corev1.Volume{
-				Name: tenantMTLSVolumeName(tenant.TenantName),
+				Name: tenantCAVolumeName(tenant.TenantName),
 				VolumeSource: corev1.VolumeSource{
 					ConfigMap: &corev1.ConfigMapVolumeSource{
 						LocalObjectReference: corev1.LocalObjectReference{
@@ -227,22 +228,38 @@ func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 				},
 			})
 			mTLS = true
+		case tenant.OIDC != nil:
+			if tenant.OIDC.IssuerCA != nil {
+				gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+					Name:      tenantCAVolumeName(tenant.TenantName),
+					MountPath: tenantCADir(tenant.TenantName),
+				})
+				gwVolumes = append(gwVolumes, corev1.Volume{
+					Name: tenantCAVolumeName(tenant.TenantName),
+					VolumeSource: corev1.VolumeSource{
+						ConfigMap: &corev1.ConfigMapVolumeSource{
+							LocalObjectReference: corev1.LocalObjectReference{
+								Name: tenant.OIDC.IssuerCA.CA,
+							},
+						},
+					},
+				})
+			}
 		}
 	}
-	if !mTLS {
-		return nil // nothing to configure
-	}
 
-	// Remove old tls.client-auth-type
-	for i, arg := range gwArgs {
-		if strings.HasPrefix(arg, "--tls.client-auth-type=") {
-			gwArgs = append(gwArgs[:i], gwArgs[i+1:]...)
-			break
+	if mTLS {
+		// Remove old tls.client-auth-type
+		for i, arg := range gwArgs {
+			if strings.HasPrefix(arg, "--tls.client-auth-type=") {
+				gwArgs = append(gwArgs[:i], gwArgs[i+1:]...)
+				break
+			}
 		}
+		gwArgs = append(gwArgs, "--tls.client-auth-type=RequestClientCert")
+		gwContainer.Args = gwArgs
 	}
-	gwArgs = append(gwArgs, "--tls.client-auth-type=RequestClientCert")
 
-	gwContainer.Args = gwArgs
 	p := corev1.PodSpec{
 		Containers: []corev1.Container{
 			*gwContainer,
