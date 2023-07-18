@@ -210,7 +210,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
 		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Node{}}, r.enqueueForNodeLabelChanges(), updateOrDeleteWithStatusPred)
+		Watches(&source.Kind{Type: &corev1.Node{}}, r.enqueueForNodeLabelChanges(), createOrUpdatePodWithLabelPred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
