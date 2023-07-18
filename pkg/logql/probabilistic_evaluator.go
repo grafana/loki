@@ -34,7 +34,7 @@ type StepResult interface {
 	Type() T
 
 	SampleVector() promql.Vector
-	TopkVector() []sketch.Topk
+	TopkVector() sketch.TopKVector
 }
 
 type SampleVector promql.Vector
@@ -47,11 +47,11 @@ func (s SampleVector) SampleVector() promql.Vector {
 	return promql.Vector(s)
 }
 
-func (s SampleVector) TopkVector() []sketch.Topk {
-	return nil
+func (s SampleVector) TopkVector() sketch.TopKVector {
+	return sketch.TopKVector{}
 }
 
-type TopKVector []sketch.Topk
+type TopKVector sketch.TopKVector
 
 func (TopKVector) Type() T {
 	return TopKVecType
@@ -61,8 +61,8 @@ func (v TopKVector) SampleVector() promql.Vector {
 	return nil
 }
 
-func (v TopKVector) TopkVector() []sketch.Topk {
-	return v
+func (v TopKVector) TopkVector() sketch.TopKVector {
+	return sketch.TopKVector(v)
 }
 
 // ProbabilisticStepEvaluator evaluate a single step of a probabilistic query type.
@@ -266,7 +266,7 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 	case VecType:
 		return q.aggregateSampleVectors(ctx, stepEvaluator, tenantIDs)
 	case TopKVecType:
-		return q.aggregateTopKVectors(ctx, stepEvaluator, tenantIDs)
+		return q.aggregateTopKVectors(stepEvaluator)
 	default:
 		return nil, nil
 	}
@@ -354,22 +354,18 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 	return result, stepEvaluator.Error()
 }
 
-func (q *probabilisticQuery) aggregateTopKVectors(
-	ctx context.Context,
-	stepEvaluator ProbabilisticStepEvaluator,
-	tenantIDs []string,
-) (promql_parser.Value, error) {
+func (q *probabilisticQuery) aggregateTopKVectors(stepEvaluator ProbabilisticStepEvaluator) (promql_parser.Value, error) {
 	next, _, r := stepEvaluator.Next()
 
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
+	topkMatrix := sketch.TopKMatrix{}
+
 	for next {
 
-		s := r.TopkVector()
-	
-		// TODO: Merge topk results
+		topkMatrix = append(topkMatrix, r.TopkVector())
 
 		next, _, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
@@ -377,7 +373,7 @@ func (q *probabilisticQuery) aggregateTopKVectors(
 		}
 	}
 
-	return sketch.TopKMatrix{}, nil
+	return topkMatrix, nil
 }
 
 func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
@@ -401,8 +397,6 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	lb := labels.NewBuilder(nil)
-	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
 	return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
 		next, ts, vec := nextEvaluator.Next()
@@ -410,62 +404,29 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 		if !next {
 			return false, 0, nil
 		}
-		result := map[uint64]*sketch.Topk{}
 		if expr.Params < 1 {
 			return next, ts, nil
 		}
+
+		// We only use one aggregation. The topk sketch compresses all
+		// information and thus we don't need to take care of grouping
+		// here.
+		topkAggregation, err := sketch.NewCMSTopkForCardinality(p.logger, 10, 100000)
+		if err != nil {
+			// TODO(karsten): capture error
+			return false, ts, nil
+		}
+
 		for _, s := range vec {
-			metric := s.Metric
-
-			var groupingKey uint64
-			if expr.Grouping.Without {
-				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
-			} else {
-				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
-			}
-			group, ok := result[groupingKey]
-			// Add a new group if it doesn't exist.
-			if !ok {
-				var m labels.Labels
-
-				if expr.Grouping.Without {
-					lb.Reset(metric)
-					lb.Del(expr.Grouping.Groups...)
-					lb.Del(labels.MetricName)
-					m = lb.Labels()
-				} else {
-					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
-					for _, l := range metric {
-						for _, n := range expr.Grouping.Groups {
-							if l.Name == n {
-								m = append(m, l)
-								break
-							}
-						}
-					}
-					sort.Sort(m)
-				}
-				// TODO(karsten): get k and c.
-				group, err = sketch.NewCMSTopkForCardinality(p.logger, 10, 100000)
-				if err != nil {
-					// TODO(karsten): return error
-					return next, ts, nil
-				}
-				result[groupingKey] = group
-			}
-
 			// TODO(karsten): add s.F instead
-			group.Observe(s.Metric.String())
-		}
-		r := sketch.TopKVector{
-			TS: uint64(ts),
-		}
-		for _, aggr := range result {
-			// TODO(karsten): How are we handling groups?
-			r.Topk = aggr
+			topkAggregation.Observe(s.Metric.String())
 		}
 
-		// TODO(karsten): set topkvector values
-		return next, ts, TopKVector([]sketch.Topk{})
+		r := sketch.TopKVector{
+			TS:   uint64(ts),
+			Topk: topkAggregation,
+		}
+
+		return next, ts, TopKVector(r)
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
