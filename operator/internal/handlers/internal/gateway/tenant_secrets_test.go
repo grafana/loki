@@ -56,7 +56,7 @@ func TestGetTenantSecrets(t *testing.T) {
 						OIDCSecret: &manifests.OIDCSecret{
 							ClientID:     "test",
 							ClientSecret: "test",
-							IssuerCAPath: "/path/to/ca/fie",
+							IssuerCAPath: "/path/to/ca/file",
 						},
 					},
 				},
