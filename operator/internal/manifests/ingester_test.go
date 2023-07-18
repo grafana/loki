@@ -10,8 +10,8 @@ import (
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	v1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	v1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 )
 

@@ -6,8 +6,8 @@ import (
 	"github.com/imdario/mergo"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 

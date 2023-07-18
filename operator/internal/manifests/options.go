@@ -6,8 +6,8 @@ import (
 
 	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"

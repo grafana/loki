@@ -8,8 +8,8 @@ import (
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	"github.com/stretchr/testify/require"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	appsv1 "k8s.io/api/apps/v1"

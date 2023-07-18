@@ -10,8 +10,8 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
 
 	"github.com/stretchr/testify/require"

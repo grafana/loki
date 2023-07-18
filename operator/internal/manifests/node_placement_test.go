@@ -3,8 +3,8 @@ package manifests
 import (
 	"testing"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
