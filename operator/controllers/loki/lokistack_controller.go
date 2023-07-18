@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -342,51 +343,58 @@ func (r *LokiStackReconciler) enqueueForNodeLabelChanges() handler.EventHandler 
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			podList := &corev1.PodList{}
-			if err := r.Client.List(ctx, podList, &client.ListOptions{
-				Namespace: stack.Namespace,
-				LabelSelector: labels.SelectorFromSet(labels.Set{
-					"app.kubernetes.io/instance": stack.Name,
-				}),
-			}); err != nil {
-				r.Log.Error(err, "Error getting pod resources in event handler")
-				return nil
+			if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
+				podList := &corev1.PodList{}
+				if err := r.Client.List(ctx, podList, &client.ListOptions{
+					Namespace: stack.Namespace,
+					LabelSelector: labels.SelectorFromSet(labels.Set{
+						"app.kubernetes.io/instance": stack.Name,
+					}),
+				}); err != nil {
+					r.Log.Error(err, "Error getting pod resources in event handler")
+					return nil
+				}
+
+				for _, pod := range podList.Items {
+					assignedNode := &corev1.Node{}
+					key := client.ObjectKey{Name: pod.Spec.NodeName}
+					if err := r.Client.Get(ctx, key, assignedNode); err != nil {
+						r.Log.Error(err, "Error getting node resources in event handler")
+						return nil
+					}
+
+					labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
+					if !ok {
+						err := kverrors.New("Zone-aware pod is missing node-labels annotation", "annotation", lokiv1.AnnotationAvailabilityZoneLabels)
+						r.Log.Error(err, "Zone-aware pod is missing node-labels annotation")
+						return nil
+					}
+					labelKeys := strings.Split(labelsAnnotation, ",")
+
+					availabilityZone, err := handlers.GetAvailabilityZone(labelKeys, assignedNode.Labels)
+					if err != nil {
+						r.Log.Error(err, "failed to get pod availability zone", "name", pod.Name)
+						return nil
+					}
+
+					if availabilityZone != assignedNode.Labels[corev1.LabelZoneFailureDomain] {
+						err := kverrors.New("Topology key pod annotation does not match its node's labels")
+						r.Log.Error(err, "Topology key pod annotation does not match its node's labels")
+
+						if err = handlers.AnnotatePodWithAvailabilityZone(ctx, r.Log, r.Client, &pod); err != nil {
+							r.Log.Error(err, "Error annotating pod")
+						}
+
+						requests = append(requests, reconcile.Request{
+							NamespacedName: types.NamespacedName{
+								Namespace: stack.Namespace,
+								Name:      stack.Name,
+							},
+						})
+					}
+				}
 			}
-
-			for _, pod := range podList.Items {
-				assignedNode := &corev1.Node{}
-				key := client.ObjectKey{Name: pod.Spec.NodeName}
-				if err := r.Client.Get(ctx, key, assignedNode); err != nil {
-					r.Log.Error(err, "Error getting node resources in event handler")
-					return nil
-				}
-
-				labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
-				if !ok {
-					err := kverrors.New("Zone-aware pod is missing node-labels annotation", "annotation", lokiv1.AnnotationAvailabilityZoneLabels)
-					r.Log.Error(err, "Zone-aware pod is missing node-labels annotation")
-					return nil
-				}
-				nodeLabels := generateTopologyKeyAnnotationFromNodeLabels(assignedNode.Labels[corev1.LabelHostname], assignedNode.Labels[corev1.LabelTopologyZone], assignedNode.Labels[corev1.LabelTopologyRegion])
-
-				if nodeLabels != labelsAnnotation {
-					err := kverrors.New("Topology key pod annotation does not match its node's labels")
-					r.Log.Error(err, "Topology key pod annotation does not match its node's labels")
-					return nil
-					// still don't know how to handle it from here
-
-					/*return status.DegradedError{
-						Reason: lokiv1.ReasonZoneLabelsMismatch,
-					}*/
-				}
-			}
-
 		}
-
 		return requests
 	})
-}
-
-func generateTopologyKeyAnnotationFromNodeLabels(LabelHostname string, LabelTopologyZone string, LabelTopologyRegion string) string {
-	return LabelHostname + "," + LabelTopologyZone + "," + LabelTopologyRegion
 }

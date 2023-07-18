@@ -38,7 +38,7 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 	}
 	labelKeys := strings.Split(labelsAnnotation, ",")
 
-	availabilityZone, err := getAvailabilityZone(labelKeys, node.Labels)
+	availabilityZone, err := GetAvailabilityZone(labelKeys, node.Labels)
 	if err != nil {
 		ll.Error(err, "failed to get pod availability zone", "name", pod.Name)
 		return kverrors.Wrap(err, "failed to get pod availability zone", "name", pod.Name)
@@ -68,7 +68,7 @@ func AnnotatePodWithAvailabilityZone(ctx context.Context, log logr.Logger, c k8s
 	return nil
 }
 
-func getAvailabilityZone(labelKeys []string, nodeLabels map[string]string) (string, error) {
+func GetAvailabilityZone(labelKeys []string, nodeLabels map[string]string) (string, error) {
 	labelValues := []string{}
 	for _, key := range labelKeys {
 		value, ok := nodeLabels[key]

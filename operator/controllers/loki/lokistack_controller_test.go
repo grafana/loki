@@ -290,7 +290,7 @@ func TestLokiStackController_NodeLabelMismatch(t *testing.T) {
 				lokiv1.LabelZoneAwarePod: "enabled",
 			},
 			Annotations: map[string]string{
-				lokiv1.AnnotationAvailabilityZoneLabels: generateTopologyKeyAnnotationFromNodeLabels(corev1.LabelHostname, corev1.LabelTopologyZone, corev1.LabelTopologyRegion),
+				lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelHostname + "," + corev1.LabelTopologyZone + "," + corev1.LabelTopologyRegion,
 			},
 		},
 		Spec: corev1.PodSpec{

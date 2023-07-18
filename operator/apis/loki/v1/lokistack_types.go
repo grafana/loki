@@ -990,7 +990,8 @@ const (
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
 	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
-	// ReasonAvailabilityZoneLabelsMismatch when there is a mismatch between the node label and pod annotation for the zone
+	// ReasonAvailabilityZoneLabelsMismatch when there is a mismatch between the node label and pod annotation
+	// for the availability zone when lokiStack zone-awareness is enabled
 	ReasonAvailabilityZoneLabelsMismatch LokiStackConditionReason = "ReasonAvailabilityZoneLabelsMismatch"
 )
 
