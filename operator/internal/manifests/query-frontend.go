@@ -52,6 +52,10 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewQueryFrontendGRPCService(opts),
@@ -141,10 +145,6 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
 		podSpec.Tolerations = opts.Stack.Template.QueryFrontend.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
 	}
 
 	return &appsv1.Deployment{

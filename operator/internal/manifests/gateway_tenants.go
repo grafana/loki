@@ -180,7 +180,7 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	case lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureOptions(cfg, opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled, false, "", "", "")
 	case lokiv1.OpenshiftLogging:
-		monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserwWrkloadNS)
+		monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserWorkloadNS)
 		return openshift.ConfigureOptions(
 			cfg,
 			opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled,

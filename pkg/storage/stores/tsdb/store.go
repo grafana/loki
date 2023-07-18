@@ -138,7 +138,7 @@ func (s *store) init(name string, indexShipperCfg indexshipper.Config, schemaCfg
 	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
-	s.Reader = NewIndexClient(multiIndex, opts)
+	s.Reader = NewIndexClient(multiIndex, opts, limits)
 
 	return nil
 }

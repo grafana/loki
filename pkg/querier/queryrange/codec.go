@@ -282,11 +282,12 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
-			From:     from,
-			Through:  through,
-			Matchers: req.Query,
-			Limit:    int32(req.Limit),
-			Step:     0,
+			From:         from,
+			Through:      through,
+			Matchers:     req.Query,
+			Limit:        int32(req.Limit),
+			Step:         0,
+			TargetLabels: req.TargetLabels,
 		}, err
 	case SeriesVolumeRangeOp:
 		req, err := loghttp.ParseSeriesVolumeRangeQuery(r)
@@ -295,11 +296,12 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		}
 		from, through := util.RoundToMilliseconds(req.Start, req.End)
 		return &logproto.VolumeRequest{
-			From:     from,
-			Through:  through,
-			Matchers: req.Query,
-			Limit:    int32(req.Limit),
-			Step:     req.Step.Milliseconds(),
+			From:         from,
+			Through:      through,
+			Matchers:     req.Query,
+			Limit:        int32(req.Limit),
+			Step:         req.Step.Milliseconds(),
+			TargetLabels: req.TargetLabels,
 		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
@@ -438,6 +440,10 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
 			"query": []string{request.GetQuery()},
 			"limit": []string{fmt.Sprintf("%d", request.Limit)},
+		}
+
+		if len(request.TargetLabels) > 0 {
+			params["targetLabels"] = []string{strings.Join(request.TargetLabels, ",")}
 		}
 
 		var u *url.URL
@@ -665,6 +671,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 			return concrete.Prom.WithHeaders(headers), nil
 		case *QueryResponse_Streams:
 			return concrete.Streams.WithHeaders(headers), nil
+		case *QueryResponse_TopkSketches:
+			return concrete.TopkSketches.WithHeaders(headers), nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
 		}
@@ -770,6 +778,8 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
 		p.Response = &QueryResponse_Stats{response}
+	case *TopKSketchesResponse:
+		p.Response = &QueryResponse_TopkSketches{response}
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}

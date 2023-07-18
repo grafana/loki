@@ -195,10 +195,10 @@ func (c compositeStore) Stats(ctx context.Context, userID string, from, through 
 	return &res, err
 }
 
-func (c compositeStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (c compositeStore) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	volumes := make([]*logproto.VolumeResponse, 0, len(c.stores))
 	err := c.forStores(ctx, from, through, func(innerCtx context.Context, from, through model.Time, store Store) error {
-		volume, err := store.SeriesVolume(innerCtx, userID, from, through, limit, matchers...)
+		volume, err := store.SeriesVolume(innerCtx, userID, from, through, limit, targetLabels, matchers...)
 		volumes = append(volumes, volume)
 		return err
 	})

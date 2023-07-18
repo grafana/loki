@@ -6,7 +6,6 @@ weight: 300
 aliases:
     - ../architecture/
     - ../fundamentals/architecture/
-    - ../get-started/architecture/
 ---
 # Loki architecture
 
@@ -139,7 +138,7 @@ To summarize, the read path works as follows:
 
 ## Write Path
 
-![chunk_diagram](./chunks_diagram.png)
+![chunk_diagram](../chunks_diagram.png "Chunk diagram")
 
 To summarize, the write path works as follows:
 
