@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"fmt"
 	"log"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -41,12 +44,15 @@ func deflateString(source string) string {
 }
 
 func TestParseRequest(t *testing.T) {
-	tests := []struct {
+	var previousBytesReceived, previousLinesReceived int
+	for index, test := range []struct {
 		path            string
 		body            string
 		contentType     string
 		contentEncoding string
 		valid           bool
+		expectedBytes   int
+		expectedLines   int
 	}{
 		{
 			path:        `/loki/api/v1/push`,
@@ -61,10 +67,12 @@ func TestParseRequest(t *testing.T) {
 			valid:       false,
 		},
 		{
-			path:        `/loki/api/v1/push`,
-			body:        `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
-			contentType: `application/json`,
-			valid:       true,
+			path:          `/loki/api/v1/push`,
+			body:          `{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz" ] ] }]}`,
+			contentType:   `application/json`,
+			valid:         true,
+			expectedBytes: len("fizzbuzz"),
+			expectedLines: 1,
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -72,6 +80,8 @@ func TestParseRequest(t *testing.T) {
 			contentType:     `application/json`,
 			contentEncoding: ``,
 			valid:           true,
+			expectedBytes:   len("fizzbuzz"),
+			expectedLines:   1,
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -86,6 +96,8 @@ func TestParseRequest(t *testing.T) {
 			contentType:     `application/json`,
 			contentEncoding: `gzip`,
 			valid:           true,
+			expectedBytes:   len("fizzbuzz"),
+			expectedLines:   1,
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -93,6 +105,8 @@ func TestParseRequest(t *testing.T) {
 			contentType:     `application/json`,
 			contentEncoding: `deflate`,
 			valid:           true,
+			expectedBytes:   len("fizzbuzz"),
+			expectedLines:   1,
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -107,6 +121,8 @@ func TestParseRequest(t *testing.T) {
 			contentType:     `application/json; charset=utf-8`,
 			contentEncoding: `gzip`,
 			valid:           true,
+			expectedBytes:   len("fizzbuzz"),
+			expectedLines:   1,
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -114,6 +130,8 @@ func TestParseRequest(t *testing.T) {
 			contentType:     `application/json; charset=utf-8`,
 			contentEncoding: `deflate`,
 			valid:           true,
+			expectedBytes:   len("fizzbuzz"),
+			expectedLines:   1,
 		},
 		{
 			path:            `/loki/api/v1/push`,
@@ -157,24 +175,50 @@ func TestParseRequest(t *testing.T) {
 			contentEncoding: `deflate`,
 			valid:           false,
 		},
-	}
+		{
+			path:            `/loki/api/v1/push`,
+			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz", {"a": "a", "b": "b"} ] ] }]}`),
+			contentType:     `application/json; charset=utf-8`,
+			contentEncoding: `deflate`,
+			valid:           true,
+			expectedBytes:   len("fizzbuzz") + 2*len("a") + 2*len("b"),
+			expectedLines:   1,
+		},
+	} {
+		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
+			bytesIngested.Reset()
+			linesIngested.Reset()
 
-	// Testing input array
-	for index, test := range tests {
-		request := httptest.NewRequest("POST", test.path, strings.NewReader(test.body))
-		if len(test.contentType) > 0 {
-			request.Header.Add("Content-Type", test.contentType)
-		}
-		if len(test.contentEncoding) > 0 {
-			request.Header.Add("Content-Encoding", test.contentEncoding)
-		}
-		data, err := ParseRequest(util_log.Logger, "", request, nil)
-		if test.valid {
-			assert.Nil(t, err, "Should not give error for %d", index)
-			assert.NotNil(t, data, "Should give data for %d", index)
-		} else {
-			assert.NotNil(t, err, "Should give error for %d", index)
-			assert.Nil(t, data, "Should not give data for %d", index)
-		}
+			request := httptest.NewRequest("POST", test.path, strings.NewReader(test.body))
+			if len(test.contentType) > 0 {
+				request.Header.Add("Content-Type", test.contentType)
+			}
+			if len(test.contentEncoding) > 0 {
+				request.Header.Add("Content-Encoding", test.contentEncoding)
+			}
+
+			data, err := ParseRequest(util_log.Logger, "fake", request, nil)
+
+			bytesReceived := int(bytesReceivedStats.Value()["total"].(int64)) - previousBytesReceived
+			previousBytesReceived += bytesReceived
+			linesReceived := int(linesReceivedStats.Value()["total"].(int64)) - previousLinesReceived
+			previousLinesReceived += linesReceived
+
+			if test.valid {
+				assert.Nil(t, err, "Should not give error for %d", index)
+				assert.NotNil(t, data, "Should give data for %d", index)
+				require.Equal(t, test.expectedBytes, bytesReceived)
+				require.Equal(t, test.expectedLines, linesReceived)
+				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
+				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
+			} else {
+				assert.NotNil(t, err, "Should give error for %d", index)
+				assert.Nil(t, data, "Should not give data for %d", index)
+				require.Equal(t, 0, bytesReceived)
+				require.Equal(t, 0, linesReceived)
+				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
+				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
+			}
+		})
 	}
 }

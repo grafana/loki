@@ -45,7 +45,7 @@ var (
 	MonitoringSVCOperated = "alertmanager-operated"
 
 	MonitoringSVCUserWorkload = "alertmanager-user-workload"
-	MonitoringUserwWrkloadNS  = "openshift-user-workload-monitoring"
+	MonitoringUserWorkloadNS  = "openshift-user-workload-monitoring"
 )
 
 func authorizerRbacName(componentName string) string {

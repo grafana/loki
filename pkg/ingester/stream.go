@@ -594,7 +594,7 @@ func (s *stream) resetCounter() {
 
 func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
 	if unorderedWrites {
-		return chunkenc.UnorderedHeadBlockFmt
+		return chunkenc.DefaultHeadBlockFmt
 	}
 	return chunkenc.OrderedHeadBlockFmt
 }
