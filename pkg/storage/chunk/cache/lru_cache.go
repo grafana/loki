@@ -31,10 +31,10 @@ type LRUCacheConfig struct {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *LRUCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	cfg.MaxItemSizeBytes.Set("100MB")
+	cfg.MaxItemSizeBytes.Set("100MB") //nolint:errcheck
 	f.Var(&cfg.MaxItemSizeBytes, prefix+".max-item-size-bytes", description+"Maximum memory size of a single item in the cache. A unit suffix (KB, MB, GB) may be applied.")
 
-	cfg.MaxSizeBytes.Set("1GB")
+	cfg.MaxSizeBytes.Set("1GB") //nolint:errcheck
 	f.Var(&cfg.MaxSizeBytes, prefix+".max-size-bytes", description+"Maximum memory size of the whole cache. A unit suffix (KB, MB, GB) may be applied.")
 
 	f.IntVar(&cfg.MaxItems, prefix+".max-items", maxInt, description+"Maximum items in the cache.")
