@@ -23,8 +23,8 @@ type StreamPipeline interface {
 	BaseLabels() LabelsResult
 	// Process processes a log line and returns the transformed line and the labels.
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
-	Process(ts int64, line []byte, metadataLabels ...labels.Label) (resultLine []byte, resultLabels LabelsResult, matches bool)
-	ProcessString(ts int64, line string, metadataLabels ...labels.Label) (resultLine string, resultLabels LabelsResult, matches bool)
+	Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (resultLine []byte, resultLabels LabelsResult, matches bool)
+	ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (resultLine string, resultLabels LabelsResult, matches bool)
 }
 
 // Stage is a single step of a Pipeline.
@@ -87,14 +87,14 @@ type noopStreamPipeline struct {
 	builder *LabelsBuilder
 }
 
-func (n noopStreamPipeline) Process(_ int64, line []byte, metadataLabels ...labels.Label) ([]byte, LabelsResult, bool) {
+func (n noopStreamPipeline) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
-	n.builder.Add(metadataLabels...)
+	n.builder.Add(nonIndexedLabels...)
 	return line, n.builder.LabelsResult(), true
 }
 
-func (n noopStreamPipeline) ProcessString(ts int64, line string, metadataLabels ...labels.Label) (string, LabelsResult, bool) {
-	lb, lr, ok := n.Process(ts, unsafeGetBytes(line), metadataLabels...)
+func (n noopStreamPipeline) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (string, LabelsResult, bool) {
+	lb, lr, ok := n.Process(ts, unsafeGetBytes(line), nonIndexedLabels...)
 	return string(lb), lr, ok
 }
 
@@ -201,10 +201,10 @@ func (p *pipeline) Reset() {
 	}
 }
 
-func (p *streamPipeline) Process(ts int64, line []byte, metadataLabels ...labels.Label) ([]byte, LabelsResult, bool) {
+func (p *streamPipeline) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
-	p.builder.Add(metadataLabels...)
+	p.builder.Add(nonIndexedLabels...)
 
 	for _, s := range p.stages {
 		line, ok = s.Process(ts, line, p.builder)
@@ -215,9 +215,9 @@ func (p *streamPipeline) Process(ts int64, line []byte, metadataLabels ...labels
 	return line, p.builder.LabelsResult(), true
 }
 
-func (p *streamPipeline) ProcessString(ts int64, line string, metadataLabels ...labels.Label) (string, LabelsResult, bool) {
+func (p *streamPipeline) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (string, LabelsResult, bool) {
 	// Stages only read from the line.
-	lb, lr, ok := p.Process(ts, unsafeGetBytes(line), metadataLabels...)
+	lb, lr, ok := p.Process(ts, unsafeGetBytes(line), nonIndexedLabels...)
 	// but the returned line needs to be copied.
 	return string(lb), lr, ok
 }
