@@ -132,8 +132,8 @@ type block struct {
 // emptied into a block with only compressed entries.
 type headBlock struct {
 	// This is the list of raw entries.
-	entries []entry
-	size    int // size of uncompressed bytes.
+	ebs  []entryBlock
+	size int // size of uncompressed bytes.
 
 	mint, maxt int64
 }
@@ -141,16 +141,22 @@ type headBlock struct {
 func (hb *headBlock) Format() HeadBlockFmt { return OrderedHeadBlockFmt }
 
 func (hb *headBlock) IsEmpty() bool {
-	return len(hb.entries) == 0
+	return len(hb.ebs) == 0
 }
 
-func (hb *headBlock) Entries() int { return len(hb.entries) }
+func (hb *headBlock) Entries() int {
+	n := 0
+	for _, eb := range hb.ebs {
+		n += len(eb.entries)
+	}
+	return n
+}
 
 func (hb *headBlock) UncompressedSize() int { return hb.size }
 
 func (hb *headBlock) Reset() {
-	if hb.entries != nil {
-		hb.entries = hb.entries[:0]
+	if hb.ebs != nil {
+		hb.ebs = hb.ebs[:0]
 	}
 	hb.size = 0
 	hb.mint = 0
@@ -164,7 +170,39 @@ func (hb *headBlock) Append(ts int64, line string) error {
 		return ErrOutOfOrder
 	}
 
-	hb.entries = append(hb.entries, entry{ts, line})
+	var headEBlock *entryBlock
+
+	offset := 0
+	if len(hb.ebs) != 0 {
+		headEBlock = &hb.ebs[len(hb.ebs)-1]
+
+		// Find the offset to write to
+		if len(headEBlock.entries) != 0 {
+			offset = int(headEBlock.entries[len(headEBlock.entries)-1].o + headEBlock.entries[len(headEBlock.entries)-1].l)
+		}
+
+		// Allocate a new entry block if there is not enough room
+		if offset+len(line) > len(headEBlock.pool) {
+			headEBlock = nil
+			offset = 0
+		}
+	}
+
+	if headEBlock == nil {
+		poolSize := 4096
+		if len(line) > poolSize {
+			poolSize = len(line)
+		}
+		hb.ebs = append(hb.ebs, entryBlock{
+			pool: make([]byte, poolSize),
+		})
+		headEBlock = &hb.ebs[len(hb.ebs)-1]
+	}
+
+	// Write the entry at offset
+	copy(headEBlock.pool[offset:], line)
+
+	headEBlock.entries = append(headEBlock.entries, entry{ts, int64(offset), int64(len(line))})
 	if hb.mint == 0 || hb.mint > ts {
 		hb.mint = ts
 	}
@@ -185,14 +223,16 @@ func (hb *headBlock) Serialise(pool WriterPool) ([]byte, error) {
 	encBuf := make([]byte, binary.MaxVarintLen64)
 	compressedWriter := pool.GetWriter(outBuf)
 	defer pool.PutWriter(compressedWriter)
-	for _, logEntry := range hb.entries {
-		n := binary.PutVarint(encBuf, logEntry.t)
-		inBuf.Write(encBuf[:n])
+	for _, eb := range hb.ebs {
+		for _, logEntry := range eb.entries {
+			n := binary.PutVarint(encBuf, logEntry.t)
+			inBuf.Write(encBuf[:n])
 
-		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
-		inBuf.Write(encBuf[:n])
+			n = binary.PutUvarint(encBuf, uint64(logEntry.l))
+			inBuf.Write(encBuf[:n])
 
-		inBuf.WriteString(logEntry.s)
+			inBuf.Write(eb.pool[logEntry.o : logEntry.o+logEntry.l])
+		}
 	}
 
 	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
@@ -216,14 +256,12 @@ func (hb *headBlock) CheckpointBytes(b []byte) ([]byte, error) {
 
 // CheckpointSize returns the estimated size of the headblock checkpoint.
 func (hb *headBlock) CheckpointSize() int {
-	size := 1                                                                 // version
-	size += binary.MaxVarintLen32 * 2                                         // total entries + total size
-	size += binary.MaxVarintLen64 * 2                                         // mint,maxt
-	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * len(hb.entries) // ts + len of log line.
+	size := 1                                                              // version
+	size += binary.MaxVarintLen32 * 2                                      // total entries + total size
+	size += binary.MaxVarintLen64 * 2                                      // mint,maxt
+	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * hb.Entries() // ts + len of log line.
+	size += hb.size
 
-	for _, e := range hb.entries {
-		size += len(e.s)
-	}
 	return size
 }
 
@@ -241,7 +279,7 @@ func (hb *headBlock) CheckpointTo(w io.Writer) error {
 	}
 	eb.reset()
 
-	eb.putUvarint(len(hb.entries))
+	eb.putUvarint(hb.Entries())
 	eb.putUvarint(hb.size)
 	eb.putVarint64(hb.mint)
 	eb.putVarint64(hb.maxt)
@@ -252,20 +290,23 @@ func (hb *headBlock) CheckpointTo(w io.Writer) error {
 	}
 	eb.reset()
 
-	for _, entry := range hb.entries {
-		eb.putVarint64(entry.t)
-		eb.putUvarint(len(entry.s))
-		_, err = w.Write(eb.get())
-		if err != nil {
-			return errors.Wrap(err, "write headBlock entry ts")
-		}
-		eb.reset()
+	for _, e := range hb.ebs {
+		for _, entry := range e.entries {
+			eb.putVarint64(entry.t)
+			eb.putUvarint(int(entry.l))
+			_, err = w.Write(eb.get())
+			if err != nil {
+				return errors.Wrap(err, "write headBlock entry ts")
+			}
+			eb.reset()
 
-		_, err := io.WriteString(w, entry.s)
-		if err != nil {
-			return errors.Wrap(err, "write headblock entry line")
+			_, err = w.Write(e.pool[entry.o : entry.o+entry.l])
+			if err != nil {
+				return errors.Wrap(err, "write headblock entry line")
+			}
 		}
 	}
+
 	return nil
 }
 
@@ -295,13 +336,12 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 		return errors.Wrap(err, "verifying headblock metadata")
 	}
 
-	hb.entries = make([]entry, ln)
 	for i := 0; i < ln && db.err() == nil; i++ {
-		var entry entry
-		entry.t = db.varint64()
+		entryt := db.varint64()
 		lineLn := db.uvarint()
-		entry.s = string(db.bytes(lineLn))
-		hb.entries[i] = entry
+		entrys := string(db.bytes(lineLn))
+
+		hb.Append(entryt, entrys)
 	}
 
 	if err := db.err(); err != nil {
@@ -317,17 +357,27 @@ func (hb *headBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 	}
 	out := newUnorderedHeadBlock()
 
-	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s); err != nil {
-			return nil, err
+	for _, eb := range hb.ebs {
+		for _, e := range eb.entries {
+			line := string(eb.pool[e.o : e.o+e.l])
+			if err := out.Append(e.t, line); err != nil {
+				return nil, err
+			}
 		}
 	}
+
 	return out, nil
+}
+
+type entryBlock struct {
+	pool    []byte
+	entries []entry
 }
 
 type entry struct {
 	t int64
-	s string
+	o int64
+	l int64
 }
 
 // NewMemChunk returns a new in-mem chunk.
@@ -1000,16 +1050,17 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
 	// cutting of blocks.
-	stats.AddHeadChunkLines(int64(len(hb.entries)))
+	stats.AddHeadChunkLines(int64(hb.Entries()))
 	streams := map[string]*logproto.Stream{}
 	baseHash := pipeline.BaseLabels().Hash()
-	process := func(e entry) {
+	process := func(e entry, ebs *entryBlock) {
 		// apply time filtering
 		if e.t < mint || e.t >= maxt {
 			return
 		}
-		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
+		stats.AddHeadChunkBytes(int64(e.l))
+		line := string(ebs.pool[e.o : e.o+e.l])
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, line)
 		if !matches {
 			return
 		}
@@ -1030,12 +1081,17 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 	}
 
 	if direction == logproto.FORWARD {
-		for _, e := range hb.entries {
-			process(e)
+		for _, eb := range hb.ebs {
+			for _, e := range eb.entries {
+				process(e, &eb)
+			}
 		}
 	} else {
-		for i := len(hb.entries) - 1; i >= 0; i-- {
-			process(hb.entries[i])
+		// reverse order
+		for i := len(hb.ebs) - 1; i >= 0; i-- {
+			for f := len(hb.ebs[i].entries) - 1; f >= 0; f-- {
+				process(hb.ebs[i].entries[f], &hb.ebs[i])
+			}
 		}
 	}
 
@@ -1054,36 +1110,40 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		return iter.NoopIterator
 	}
 	stats := stats.FromContext(ctx)
-	stats.AddHeadChunkLines(int64(len(hb.entries)))
+	stats.AddHeadChunkLines(int64(hb.Entries()))
 	series := map[string]*logproto.Series{}
 	baseHash := extractor.BaseLabels().Hash()
 
-	for _, e := range hb.entries {
-		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
-		if !ok {
-			continue
-		}
-		var (
-			found bool
-			s     *logproto.Series
-		)
-
-		lbs := parsedLabels.String()
-		if s, found = series[lbs]; !found {
-			s = &logproto.Series{
-				Labels:     lbs,
-				Samples:    SamplesPool.Get(len(hb.entries)).([]logproto.Sample)[:0],
-				StreamHash: baseHash,
+	for _, eb := range hb.ebs {
+		for _, e := range eb.entries {
+			stats.AddHeadChunkBytes(int64(e.l))
+			linebytes := eb.pool[e.o : e.o+e.l]
+			line := string(linebytes)
+			value, parsedLabels, ok := extractor.ProcessString(e.t, line)
+			if !ok {
+				continue
 			}
-			series[lbs] = s
-		}
+			var (
+				found bool
+				s     *logproto.Series
+			)
 
-		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
-			Value:     value,
-			Hash:      xxhash.Sum64(unsafeGetBytes(e.s)),
-		})
+			lbs := parsedLabels.String()
+			if s, found = series[lbs]; !found {
+				s = &logproto.Series{
+					Labels:     lbs,
+					Samples:    SamplesPool.Get(hb.Entries()).([]logproto.Sample)[:0],
+					StreamHash: baseHash,
+				}
+				series[lbs] = s
+			}
+
+			s.Samples = append(s.Samples, logproto.Sample{
+				Timestamp: e.t,
+				Value:     value,
+				Hash:      xxhash.Sum64(linebytes),
+			})
+		}
 	}
 
 	if len(series) == 0 {
