@@ -1,7 +1,9 @@
 ---
 title: Contributing to Loki
 description: Contributing to Loki
+weight: 200
 ---
+
 # Contributing to Loki
 
 Loki uses [GitHub](https://github.com/grafana/loki) to manage reviews of pull requests:

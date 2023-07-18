@@ -34,6 +34,14 @@ var queryTests = []struct {
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
 					},
+					{
+						Timestamp: time.Unix(0, 123456789012346),
+						Line:      "super line with labels",
+						NonIndexedLabels: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+					},
 				},
 				Labels: `{test="test"}`,
 			},
@@ -48,7 +56,8 @@ var queryTests = []struct {
 							"test": "test"
 						},
 						"values":[
-							[ "123456789012345", "super line" ]
+							[ "123456789012345", "super line"],
+							[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 						]
 					}
 				],
@@ -488,6 +497,14 @@ var tailTests = []struct {
 							Timestamp: time.Unix(0, 123456789012345),
 							Line:      "super line",
 						},
+						{
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							NonIndexedLabels: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
 					},
 					Labels: "{test=\"test\"}",
 				},
@@ -506,7 +523,8 @@ var tailTests = []struct {
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line" ]
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 					]
 				}
 			],

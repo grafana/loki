@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	cloud.google.com/go/bigtable v1.18.1
-	cloud.google.com/go/pubsub v1.28.0
+	cloud.google.com/go/pubsub v1.30.0
 	cloud.google.com/go/storage v1.29.0
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-blob-go v0.14.0
@@ -53,7 +53,7 @@ require (
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
-	github.com/grafana/tail v0.0.0-20230321215411-205c7713cbcd
+	github.com/grafana/tail v0.0.0-20230510142333-77b18831edf0
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
 	github.com/grpc-ecosystem/grpc-opentracing v0.0.0-20180507213350-8e809c8a8645
 	github.com/hashicorp/consul/api v1.20.0
@@ -100,11 +100,11 @@ require (
 	go.uber.org/atomic v1.10.0
 	go.uber.org/goleak v1.2.1
 	golang.org/x/crypto v0.11.0
-	golang.org/x/net v0.10.0
+	golang.org/x/net v0.12.0
 	golang.org/x/sync v0.2.0
 	golang.org/x/sys v0.10.0
 	golang.org/x/time v0.3.0
-	google.golang.org/api v0.114.0
+	google.golang.org/api v0.126.0
 	google.golang.org/grpc v1.55.0
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.4.0
@@ -114,8 +114,10 @@ require (
 
 require (
 	github.com/Azure/go-autorest/autorest v0.11.29
+	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.13.1
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
+	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.59
@@ -125,15 +127,15 @@ require (
 	github.com/willf/bloom v2.0.3+incompatible
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
-	golang.org/x/oauth2 v0.7.0
+	golang.org/x/oauth2 v0.10.0
 	golang.org/x/text v0.11.0
 )
 
 require (
-	cloud.google.com/go v0.110.0 // indirect
-	cloud.google.com/go/compute v1.18.0 // indirect
+	cloud.google.com/go v0.110.2 // indirect
+	cloud.google.com/go/compute v1.20.1 // indirect
 	cloud.google.com/go/compute/metadata v0.2.3 // indirect
-	cloud.google.com/go/iam v0.12.0 // indirect
+	cloud.google.com/go/iam v0.13.0 // indirect
 	cloud.google.com/go/longrunning v0.4.1 // indirect
 	github.com/Azure/azure-sdk-for-go v65.0.0+incompatible // indirect
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.2.0 // indirect
@@ -176,6 +178,7 @@ require (
 	github.com/coreos/go-semver v0.3.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/dennwc/varint v1.0.0 // indirect
+	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/digitalocean/godo v1.98.0 // indirect
 	github.com/dimchansky/utfbom v1.1.1 // indirect
@@ -217,8 +220,9 @@ require (
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/pprof v0.0.0-20230228050547-1710fef4ab10 // indirect
+	github.com/google/s2a-go v0.1.4 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.2.3 // indirect
-	github.com/googleapis/gax-go/v2 v2.7.1 // indirect
+	github.com/googleapis/gax-go/v2 v2.11.0 // indirect
 	github.com/gophercloud/gophercloud v1.2.0 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -302,8 +306,10 @@ require (
 	golang.org/x/tools v0.7.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
-	google.golang.org/genproto v0.0.0-20230306155012-7f2fa6fef1f4 // indirect
-	google.golang.org/protobuf v1.30.0 // indirect
+	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20230530153820-e85fd2cbaebc // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
+	google.golang.org/protobuf v1.31.0 // indirect
 	gopkg.in/fsnotify/fsnotify.v1 v1.4.7 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect

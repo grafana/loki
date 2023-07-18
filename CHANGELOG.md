@@ -63,6 +63,8 @@
 * [9754](https://github.com/grafana/loki/pull/9754) **ashwanthgoli**: Fixes an issue with indexes becoming unqueriable if the index prefix is different from the one configured in the latest period config.
 * [9763](https://github.com/grafana/loki/pull/9763) **ssncferreira**: Fix the logic of the `offset` operator for downstream queries on instant query splitting of (range) vector aggregation expressions containing an offset.
 * [9773](https://github.com/grafana/loki/pull/9773) **ssncferreira**: Fix instant query summary statistic's `splits` corresponding to the number of subqueries a query is split into based on `split_queries_by_interval`.
+* [9949](https://github.com/grafana/loki/pull/9949) **masslessparticle**: Fix pipelines to clear caches when tailing to avoid resource exhaustion.
+* [9936](https://github.com/grafana/loki/pull/9936) **masslessparticle**: Fix the way query stages are reordered when `unpack` is present.
 
 ##### Changes
 
@@ -83,6 +85,7 @@
 * [9155](https://github.com/grafana/loki/pull/9155) **farodin91**: Promtail: Break on iterate journal failure.
 * [8987](https://github.com/grafana/loki/pull/8987) **darxriggs**: Promtail: Fix file descriptor leak.
 * [9863](https://github.com/grafana/loki/pull/9863) **ashwanthgoli**: Promtail: Apply defaults to HTTP client config. This ensures follow_redirects is set to true.
+* [9915](https://github.com/grafana/loki/pull/9915) **frittentheke**: Promtail: Update grafana/tail to address issue in retry logic
 
 #### LogCLI
 
