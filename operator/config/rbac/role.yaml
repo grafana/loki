@@ -103,6 +103,32 @@ rules:
 - apiGroups:
   - loki.grafana.com
   resources:
+  - lokistackconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - lokistackconfigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - lokistackconfigs/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - loki.grafana.com
+  resources:
   - lokistacks
   verbs:
   - create

@@ -149,6 +149,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
       version: v1beta1
+    - description: LokiStackConfig is the Schema for the lokistackconfigs API
+      displayName: Loki Stack Config
+      kind: LokiStackConfig
+      name: lokistackconfigs.loki.grafana.com
+      version: v1beta1
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack

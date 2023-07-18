@@ -1,0 +1,12 @@
+apiVersion: loki.grafana.com/v1beta1
+kind: LokiStackConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: lokistackconfig
+    app.kubernetes.io/instance: lokistackconfig-sample
+    app.kubernetes.io/part-of: loki-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: loki-operator
+  name: cluster
+spec:
+  # TODO(user): Add fields here

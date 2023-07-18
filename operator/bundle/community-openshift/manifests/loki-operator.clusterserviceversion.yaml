@@ -144,13 +144,28 @@ metadata:
               "refreshPeriod": "10s"
             }
           }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1beta1",
+          "kind": "LokiStackConfig",
+          "metadata": {
+            "labels": {
+              "app.kubernetes.io/created-by": "loki-operator",
+              "app.kubernetes.io/instance": "lokistackconfig-sample",
+              "app.kubernetes.io/managed-by": "kustomize",
+              "app.kubernetes.io/name": "lokistackconfig",
+              "app.kubernetes.io/part-of": "loki-operator"
+            },
+            "name": "cluster"
+          },
+          "spec": null
         }
       ]
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-07-04T17:17:17Z"
+    createdAt: "2023-07-18T09:11:15Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -224,6 +239,11 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes.conditions
       version: v1
+    - description: LokiStackConfig is the Schema for the lokistackconfigs API
+      displayName: Loki Stack Config
+      kind: LokiStackConfig
+      name: lokistackconfigs.loki.grafana.com
+      version: v1beta1
     - description: LokiStack is the Schema for the lokistacks API
       displayName: LokiStack
       kind: LokiStack
@@ -1420,6 +1440,32 @@ spec:
           - loki.grafana.com
           resources:
           - alertingrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - lokistackconfigs
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - lokistackconfigs/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - lokistackconfigs/status
           verbs:
           - get
           - patch

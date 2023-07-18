@@ -24,6 +24,7 @@ import (
 	ctrlconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
 	"github.com/grafana/loki/operator/internal/metrics"
 
@@ -186,6 +187,15 @@ func main() {
 		Log:    logger.WithName("controllers").WithName("lokistack-zoneaware-pod"),
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "lokistack-zoneaware-pod")
+		os.Exit(1)
+	}
+
+	if err = (&lokictrl.LokiStackConfigReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("lokistackconfig"),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "LokiStackConfig")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

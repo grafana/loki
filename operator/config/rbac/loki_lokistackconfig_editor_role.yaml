@@ -1,0 +1,31 @@
+# permissions for end users to edit lokistackconfigs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: lokistackconfig-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: loki-operator
+    app.kubernetes.io/part-of: loki-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: lokistackconfig-editor-role
+rules:
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - lokistackconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - loki.grafana.com
+  resources:
+  - lokistackconfigs/status
+  verbs:
+  - get
