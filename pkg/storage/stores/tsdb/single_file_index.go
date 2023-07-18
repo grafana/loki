@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
@@ -332,7 +333,17 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 //
 // {foo="a"} which would be the sum of {foo="a", fizz="a"} and {foo="a", fizz="b"}
 // {foo="b"} which would be the sum of {foo="b", fizz="a"} and {foo="b", fizz="b"}
-func (i *TSDBIndex) Volume(ctx context.Context, _ string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *TSDBIndex) Volume(
+	ctx context.Context,
+	_ string,
+	from, through model.Time,
+	acc VolumeAccumulator,
+	shard *index.ShardAnnotation,
+	_ shouldIncludeChunk,
+	targetLabels []string,
+	aggregateBy string,
+	matchers ...*labels.Matcher,
+) error {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
 	defer sp.Finish()
 
@@ -364,12 +375,13 @@ func (i *TSDBIndex) Volume(ctx context.Context, _ string, from, through model.Ti
 			}
 
 			if stats.Entries > 0 {
-
-				// This generates the
 				seriesLabels = seriesLabels[:0]
+				labelVolumes := make(map[string]uint64, len(ls))
+
 				for _, l := range ls {
 					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 						seriesLabels = append(seriesLabels, l)
+						labelVolumes[l.Name] += stats.KB << 10
 					}
 				}
 
@@ -380,8 +392,16 @@ func (i *TSDBIndex) Volume(ctx context.Context, _ string, from, through model.Ti
 					seriesNames[hash] = seriesLabels.String()
 				}
 
-				if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
-					return err
+				if seriesvolume.AggregateBySeries(aggregateBy) {
+					if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
+						return err
+					}
+				} else {
+					for label, volume := range labelVolumes {
+						if err = acc.AddVolume(label, volume); err != nil {
+							return err
+						}
+					}
 				}
 			}
 		}

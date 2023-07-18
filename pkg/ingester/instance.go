@@ -657,9 +657,11 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 			}
 
 			seriesLabels = seriesLabels[:0]
+			labelVolumes := make(map[string]uint64, len(s.labels))
 			for _, l := range s.labels {
 				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
 					seriesLabels = append(seriesLabels, l)
+					labelVolumes[l.Name] += size
 				}
 			}
 
@@ -670,7 +672,13 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 				seriesNames[hash] = seriesLabels.String()
 			}
 
-			volumes[seriesNames[hash]] += size
+			if seriesvolume.AggregateBySeries(req.AggregateBy) {
+				volumes[seriesNames[hash]] += size
+			} else {
+				for k, v := range labelVolumes {
+					volumes[k] += v
+				}
+			}
 			s.chunkMtx.RUnlock()
 		}
 		return nil
