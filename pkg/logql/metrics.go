@@ -134,7 +134,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"splits", stats.Summary.Splits,
-		"sharded", stats.Summary.Shards > 1,
+		"sharded", stats.Summary.Shards,
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
 		"cache_chunk_bytes_stored", stats.Caches.Chunk.BytesSent,
@@ -157,9 +157,12 @@ func RecordRangeAndInstantQueryMetrics(
 		logValues...,
 	)
 
-	shards := strconv.FormatInt(stats.Summary.Shards, 10)
+	sharded := strconv.FormatBool(false)
+	if stats.Summary.Shards > 1 {
+		sharded = strconv.FormatBool(true)
+	}
 
-	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, shards).
+	bytesPerSecond.WithLabelValues(status, queryType, rt, latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, rt).
 		Observe(stats.Summary.ExecTime)
@@ -212,8 +215,12 @@ func RecordLabelQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
-	shards := strconv.FormatInt(stats.Summary.Shards, 10)
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, shards).
+	sharded := strconv.FormatBool(false)
+	if stats.Summary.Shards > 1 {
+		sharded = strconv.FormatBool(true)
+	}
+
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, "").
 		Observe(stats.Summary.ExecTime)
@@ -264,8 +271,11 @@ func RecordSeriesQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
-	shards := strconv.FormatInt(stats.Summary.Shards, 10)
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, shards).
+	sharded := strconv.FormatBool(false)
+	if stats.Summary.Shards > 1 {
+		sharded = strconv.FormatBool(true)
+	}
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, sharded).
 		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, "").
 		Observe(stats.Summary.ExecTime)
