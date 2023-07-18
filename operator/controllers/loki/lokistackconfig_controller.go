@@ -6,10 +6,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/go-logr/logr"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
 )
 
 // LokiStackConfigReconciler reconciles a LokiStackConfig object
@@ -33,9 +33,10 @@ type LokiStackConfigReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
 func (r *LokiStackConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
-
-	r.Log.Info("Reconciliation for LokiStackConfig resource", "name", req.Name)
+	if err := lokistack.AnnotateForLokiStackConfig(ctx, r.Client); err != nil {
+		r.Log.Error(err, "failed to annotate lokistackconfig change", "name", req.String())
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }

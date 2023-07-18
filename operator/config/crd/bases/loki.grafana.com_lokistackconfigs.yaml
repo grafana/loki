@@ -123,10 +123,6 @@ spec:
                     description: OpenShift contains a set of feature gates supported
                       only on OpenShift.
                     properties:
-                      clusterProxy:
-                        description: 'ClusterProxy enables usage of the proxy variables
-                          set in the proxy resource. More details: https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy'
-                        type: boolean
                       clusterTLSPolicy:
                         description: 'ClusterTLSPolicy enables usage of TLS policies
                           set in the API Server. More details: https://docs.openshift.com/container-platform/4.11/security/tls-security-profiles.html'
@@ -135,11 +131,6 @@ spec:
                         description: Enabled defines the flag to enable that these
                           feature gates are used against OpenShift Container Platform
                           releases.
-                        type: boolean
-                      ruleExtendedValidation:
-                        description: ExtendedRuleValidation enables extended validation
-                          of AlertingRule and RecordingRule to enforce tenancy in
-                          an OpenShift context.
                         type: boolean
                       servingCertsService:
                         description: 'ServingCertsService enables OpenShift service-ca
