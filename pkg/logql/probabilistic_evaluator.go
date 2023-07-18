@@ -416,6 +416,14 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 			// TODO(karsten): capture error
 			return false, ts, nil
 		}
+		/*
+			var groupingKey uint64
+			if expr.Grouping.Without {
+				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
+			} else {
+				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
+			}
+		*/
 
 		for _, s := range vec {
 			// TODO(karsten): add s.F instead
