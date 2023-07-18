@@ -134,7 +134,7 @@ func RecordRangeAndInstantQueryMetrics(
 		"store_chunks_download_time", stats.ChunksDownloadTime(),
 		"queue_time", logql_stats.ConvertSecondsToNanoseconds(stats.Summary.QueueTime),
 		"splits", stats.Summary.Splits,
-		"sharded", stats.Summary.Shards,
+		"shards", stats.Summary.Shards,
 		"cache_chunk_req", stats.Caches.Chunk.EntriesRequested,
 		"cache_chunk_hit", stats.Caches.Chunk.EntriesFound,
 		"cache_chunk_bytes_stored", stats.Caches.Chunk.BytesSent,
