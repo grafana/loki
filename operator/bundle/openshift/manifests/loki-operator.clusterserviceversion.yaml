@@ -173,7 +173,7 @@ metadata:
     operatorframework.io/arch.arm64: supported
     operatorframework.io/arch.ppc64le: supported
     operatorframework.io/arch.s390x: supported
-  name: loki-operator.v0.1.0
+  name: loki-operator.v0.0.1-cc7335a557fc
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -847,6 +847,9 @@ spec:
           alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
       - description: The name of the time series to output to. Must be a valid metric
           name.
         displayName: Metric Name
