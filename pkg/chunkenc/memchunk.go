@@ -1024,7 +1024,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.metaLabels...)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.nonIndexedLabels...)
 		if !matches {
 			return
 		}
@@ -1175,7 +1175,7 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, metaLabelsBuff, ok := si.moveNext()
+	ts, line, nonIndexedLabelsBuff, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
@@ -1184,20 +1184,23 @@ func (si *bufferedIterator) Next() bool {
 	si.stats.AddDecompressedBytes(int64(len(line)) + 2*binary.MaxVarintLen64)
 	si.stats.AddDecompressedLines(1)
 
-	if len(metaLabelsBuff)%2 != 0 {
-		si.err = fmt.Errorf("expected even number of metadata labels, got %d", len(si.currMetadataLabels))
-		return false
-	}
+	var nonIndexedLabels labels.Labels
+	if len(nonIndexedLabelsBuff) > 0 {
+		if len(nonIndexedLabelsBuff)%2 != 0 {
+			si.err = fmt.Errorf("expected even number of metadata labels, got %d", len(nonIndexedLabelsBuff))
+			return false
+		}
 
-	metaLabels := make(labels.Labels, len(metaLabelsBuff)/2)
-	for i := 0; i < len(metaLabelsBuff); i += 2 {
-		metaLabels[i/2].Name = string(metaLabelsBuff[i])
-		metaLabels[i/2].Value = string(metaLabelsBuff[i+1])
+		nonIndexedLabels = make(labels.Labels, len(nonIndexedLabelsBuff)/2)
+		for i := 0; i < len(nonIndexedLabelsBuff); i += 2 {
+			nonIndexedLabels[i/2].Name = string(nonIndexedLabelsBuff[i])
+			nonIndexedLabels[i/2].Value = string(nonIndexedLabelsBuff[i+1])
+		}
 	}
 
 	si.currTs = ts
 	si.currLine = line
-	si.currMetadataLabels = metaLabels
+	si.currMetadataLabels = nonIndexedLabels
 	return true
 }
 
