@@ -69,7 +69,7 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, tenants *lokiv1.Ten
 	switch tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
 		if tenants != nil {
-			return configureMTLS(d, tenants)
+			return configureCAVolumes(d, tenants)
 		}
 		return nil
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
@@ -194,9 +194,9 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	return nil
 }
 
-// configureMTLS will mount CA bundles and fix CLI arguments for the gateway container
-// if any tenant configured mTLS authentication
-func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
+// configureCAVolumes will mount CA bundles for both OIDC and mTLS. Furthermore
+// if a user configures mTLS it will also update the arg --tls.client-auth-type 
+func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
 		if c.Name == gatewayContainerName {
