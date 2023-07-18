@@ -132,25 +132,25 @@ func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration)
 	return p
 }
 
-type testEval struct {
+type stepEvaluatorAdapter struct {
 	d StepEvaluator
 }
 
-func (p testEval) Next() (ok bool, ts int64, r StepResult) {
+func (p stepEvaluatorAdapter) Next() (ok bool, ts int64, r StepResult) {
 	a, s, d := p.d.Next()
 	return a, s, SampleVector(d)
 }
 
-func (p testEval) Close() error {
+func (p stepEvaluatorAdapter) Close() error {
 	return p.d.Close()
 }
 
-func (p testEval) Error() error {
+func (p stepEvaluatorAdapter) Error() error {
 	return p.d.Error()
 }
 
-func (p testEval) Type() T {
-	return p.d.Type()
+func (p stepEvaluatorAdapter) Type() T {
+	return VecType
 }
 
 func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
@@ -167,7 +167,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 			if err != nil {
 				return nil, err
 			}
-			return testEval{dEval}, nil
+			return stepEvaluatorAdapter{dEval}, nil
 		}
 		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
@@ -175,12 +175,12 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return testEval{dEval}, nil
+		return stepEvaluatorAdapter{dEval}, nil
 	}
 }
 
 type probabilisticQuery struct {
-	evaluator Evaluator
+	evaluator ProbabilisticEvaluator
 	query
 }
 
@@ -256,7 +256,7 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.ProbabilisticStepEvaluator(ctx, &q.evaluator.DefaultEvaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
@@ -274,20 +274,23 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 
 func (q *probabilisticQuery) aggregateSampleVectors(
 	ctx context.Context,
-	stepEvaluator StepEvaluator,
+	stepEvaluator ProbabilisticStepEvaluator,
 	tenantIDs []string,
 ) (promql_parser.Value, error) {
+
+	// Assert stepEvaluator.Type() == VecType
 
 	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, vec := stepEvaluator.Next()
+	next, ts, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
 
 	// fail fast for the first step or instant query
+	vec := r.SampleVector() // TODO(karsten): maybe we have to check for r == nil
 	if len(vec) > maxSeries {
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
@@ -334,10 +337,11 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
 
-		next, ts, vec = stepEvaluator.Next()
+		next, ts, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
+		vec = r.SampleVector()
 	}
 
 	series := make([]promql.Series, 0, len(seriesIndex))
@@ -352,10 +356,28 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 
 func (q *probabilisticQuery) aggregateTopKVectors(
 	ctx context.Context,
-	stepEvaluator StepEvaluator,
+	stepEvaluator ProbabilisticStepEvaluator,
 	tenantIDs []string,
 ) (promql_parser.Value, error) {
-	return nil, nil
+	next, _, r := stepEvaluator.Next()
+
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	for next {
+
+		s := r.TopkVector()
+	
+		// TODO: Merge topk results
+
+		next, _, r = stepEvaluator.Next()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
+	}
+
+	return sketch.TopKMatrix{}, nil
 }
 
 func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(

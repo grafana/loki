@@ -14,8 +14,6 @@ type StepEvaluator interface {
 	Close() error
 	// Reports any error
 	Error() error
-
-	Type() T
 }
 
 type stepEvaluator struct {
