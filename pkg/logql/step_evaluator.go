@@ -2,58 +2,13 @@ package logql
 
 import (
 	"errors"
-
 	"github.com/prometheus/prometheus/promql"
-
-	"github.com/grafana/loki/pkg/logql/sketch"
 )
-
-type T int64
-
-const (
-	VecType T = iota
-	TopKVecType
-)
-
-type StepResult interface {
-	Type() T
-
-	SampleVector() promql.Vector
-	TopkVector() []sketch.Topk
-}
-
-type SampleVector promql.Vector
-
-func (SampleVector) Type() T {
-	return VecType
-}
-
-func (s SampleVector) SampleVector() promql.Vector {
-	return promql.Vector(s)
-}
-
-func (s SampleVector) TopkVector() []sketch.Topk {
-	return nil
-}
-
-type TopKVector []sketch.Topk
-
-func (TopKVector) Type() T {
-	return TopKVecType
-}
-
-func (v TopKVector) SampleVector() promql.Vector {
-	return nil
-}
-
-func (v TopKVector) TopkVector() []sketch.Topk {
-	return v
-}
 
 // StepEvaluator evaluate a single step of a query.
 type StepEvaluator interface {
 	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
-	Next() (ok bool, ts int64, r StepResult)
+	Next() (ok bool, ts int64, vec promql.Vector)
 	// Close all resources used.
 	Close() error
 	// Reports any error
@@ -63,13 +18,13 @@ type StepEvaluator interface {
 }
 
 type stepEvaluator struct {
-	fn    func() (bool, int64, StepResult)
+	fn    func() (bool, int64, promql.Vector)
 	close func() error
 	err   func() error
 	t     T
 }
 
-func NewStepEvaluator(fn func() (bool, int64, StepResult), closeFn func() error, err func() error) (StepEvaluator, error) {
+func NewStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() error, err func() error) (StepEvaluator, error) {
 	if fn == nil {
 		return nil, errors.New("nil step evaluator fn")
 	}
@@ -92,7 +47,7 @@ func (e *stepEvaluator) Type() T {
 	return e.t
 }
 
-func (e *stepEvaluator) Next() (bool, int64, StepResult) {
+func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
 	return e.fn()
 }
 

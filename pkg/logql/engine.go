@@ -400,11 +400,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, r := stepEvaluator.Next()
-	if r == nil {
-		fmt.Println("empty")
-	}
-	vec := r.SampleVector()
+	next, ts, vec := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -455,8 +451,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
-		next, ts, r = stepEvaluator.Next()
-		vec = r.SampleVector()
+		next, ts, vec = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}

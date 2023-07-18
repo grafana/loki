@@ -254,17 +254,16 @@ func newVectorAggEvaluator(
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
-	return NewStepEvaluator(func() (bool, int64, StepResult) {
-		next, ts, r := nextEvaluator.Next()
-		vec := r.SampleVector()
+	return NewStepEvaluator(func() (bool, int64, promql.Vector) {
+		next, ts, vec := nextEvaluator.Next()
 
 		if !next {
-			return false, 0, SampleVector{}
+			return false, 0, promql.Vector{}
 		}
 		result := map[uint64]*groupedAggregation{}
 		if expr.Operation == syntax.OpTypeTopK || expr.Operation == syntax.OpTypeBottomK {
 			if expr.Params < 1 {
-				return next, ts, SampleVector{}
+				return next, ts, promql.Vector{}
 			}
 		}
 		for _, s := range vec {
@@ -447,7 +446,7 @@ func newVectorAggEvaluator(
 				F:      aggr.value,
 			})
 		}
-		return next, ts, SampleVector(vec)
+		return next, ts, vec
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
 
@@ -491,20 +490,20 @@ func (r *rangeVectorEvaluator) Type() T {
 	return VecType
 }
 
-func (r *rangeVectorEvaluator) Next() (bool, int64, StepResult) {
+func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, SampleVector{}
+		return false, 0, promql.Vector{}
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, SampleVector{}
+			return false, 0, promql.Vector{}
 		}
 	}
-	return true, ts, SampleVector(vec)
+	return true, ts, vec
 }
 
 func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
@@ -527,30 +526,30 @@ func (r *absentRangeVectorEvaluator) Type() T {
 	return VecType
 }
 
-func (r *absentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
+func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, SampleVector{}
+		return false, 0, promql.Vector{}
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, SampleVector{}
+			return false, 0, promql.Vector{}
 		}
 	}
 	if len(vec) > 0 {
 		return next, ts, nil
 	}
 	// values are missing.
-	return next, ts, SampleVector(promql.Vector{
+	return next, ts, promql.Vector{
 		promql.Sample{
 			T:      ts,
 			F:      1.,
 			Metric: r.lbs,
 		},
-	})
+	}
 }
 
 func (r absentRangeVectorEvaluator) Close() error { return r.iter.Close() }
@@ -635,18 +634,17 @@ func binOpStepEvaluator(
 	// implementation of this StepEvaluator
 	var scopedErr error
 
-	return NewStepEvaluator(func() (bool, int64, StepResult) {
+	return NewStepEvaluator(func() (bool, int64, promql.Vector) {
 		var (
 			ts       int64
 			next     bool
 			lhs, rhs promql.Vector
 			r        StepResult
 		)
-		next, ts, r = rse.Next()
-		rhs = r.SampleVector()
+		next, ts, rhs = rse.Next()
 		// These should _always_ happen at the same step on each evaluator.
 		if !next {
-			return next, ts, SampleVector{}
+			return next, ts, nil
 		}
 		// build matching signature for each sample in right vector
 		rsigs := make([]uint64, len(rhs))
@@ -654,10 +652,10 @@ func binOpStepEvaluator(
 			rsigs[i] = matchingSignature(sample, expr.Opts)
 		}
 
-		next, ts, r = lse.Next()
+		next, ts, lhs = lse.Next()
 		lhs = r.SampleVector()
 		if !next {
-			return next, ts, SampleVector{}
+			return next, ts, nil
 		}
 		// build matching signature for each sample in left vector
 		lsigs := make([]uint64, len(lhs))
@@ -676,7 +674,7 @@ func binOpStepEvaluator(
 		default:
 			results, scopedErr = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
 		}
-		return true, ts, SampleVector(results)
+		return true, ts, results
 	}, func() (lastError error) {
 		for _, ev := range []StepEvaluator{lse, rse} {
 			if err := ev.Close(); err != nil {
@@ -905,9 +903,8 @@ func literalStepEvaluator(
 	var mergeErr error
 
 	return NewStepEvaluator(
-		func() (bool, int64, StepResult) {
-			ok, ts, r := eval.Next()
-			vec := r.SampleVector()
+		func() (bool, int64, promql.Vector) {
+			ok, ts, vec := eval.Next()
 			results := make(promql.Vector, 0, len(vec))
 			for _, sample := range vec {
 
@@ -937,7 +934,7 @@ func literalStepEvaluator(
 				}
 			}
 
-			return ok, ts, SampleVector(results)
+			return ok, ts, results
 		},
 		eval.Close,
 		func() error {
@@ -972,15 +969,15 @@ func (r *vectorIterator) Type() T {
 	return VecType
 }
 
-func (r *vectorIterator) Next() (bool, int64, StepResult) {
+func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
 	r.currentMs = r.currentMs + r.stepMs
 	if r.currentMs > r.endMs {
-		return false, 0, SampleVector{}
+		return false, 0, nil
 	}
 	results := make(promql.Vector, 0)
 	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
 	results = append(results, vectorPoint)
-	return true, r.currentMs, SampleVector(results)
+	return true, r.currentMs, results
 }
 
 func (r *vectorIterator) Close() error {
@@ -1004,11 +1001,10 @@ func labelReplaceEvaluator(
 	}
 	buf := make([]byte, 0, 1024)
 	var labelCache map[uint64]labels.Labels
-	return NewStepEvaluator(func() (bool, int64, StepResult) {
-		next, ts, r := nextEvaluator.Next()
-		vec := r.SampleVector()
+	return NewStepEvaluator(func() (bool, int64, promql.Vector) {
+		next, ts, vec := nextEvaluator.Next()
 		if !next {
-			return false, 0, SampleVector{}
+			return false, 0, promql.Vector{}
 		}
 		if labelCache == nil {
 			labelCache = make(map[uint64]labels.Labels, len(vec))
@@ -1037,7 +1033,7 @@ func labelReplaceEvaluator(
 			labelCache[hash] = outLbs
 			vec[i].Metric = outLbs
 		}
-		return next, ts, SampleVector(vec)
+		return next, ts, vec
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
 

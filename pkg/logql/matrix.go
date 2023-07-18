@@ -35,10 +35,10 @@ func (m *MatrixStepper) Type() T {
 	return VecType
 }
 
-func (m *MatrixStepper) Next() (bool, int64, StepResult) {
+func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
-		return false, 0, SampleVector{}
+		return false, 0, nil
 	}
 
 	ts := m.ts.UnixNano() / int64(time.Millisecond)
@@ -59,7 +59,7 @@ func (m *MatrixStepper) Next() (bool, int64, StepResult) {
 		m.m[i].Floats = m.m[i].Floats[1:]
 	}
 
-	return true, ts, SampleVector(vec)
+	return true, ts, vec
 }
 
 func (m *MatrixStepper) Close() error { return nil }

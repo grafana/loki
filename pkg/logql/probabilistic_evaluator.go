@@ -23,9 +23,106 @@ import (
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
+type T int64
+
+const (
+	VecType T = iota
+	TopKVecType
+)
+
+type StepResult interface {
+	Type() T
+
+	SampleVector() promql.Vector
+	TopkVector() []sketch.Topk
+}
+
+type SampleVector promql.Vector
+
+func (SampleVector) Type() T {
+	return VecType
+}
+
+func (s SampleVector) SampleVector() promql.Vector {
+	return promql.Vector(s)
+}
+
+func (s SampleVector) TopkVector() []sketch.Topk {
+	return nil
+}
+
+type TopKVector []sketch.Topk
+
+func (TopKVector) Type() T {
+	return TopKVecType
+}
+
+func (v TopKVector) SampleVector() promql.Vector {
+	return nil
+}
+
+func (v TopKVector) TopkVector() []sketch.Topk {
+	return v
+}
+
+// ProbabilisticStepEvaluator evaluate a single step of a probabilistic query type.
+type ProbabilisticStepEvaluator interface {
+	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
+	Next() (ok bool, ts int64, r StepResult)
+	// Close all resources used.
+	Close() error
+	// Reports any error
+	Error() error
+
+	Type() T
+}
+
 type ProbabilisticEvaluator struct {
 	DefaultEvaluator
 	logger log.Logger
+}
+
+type pStepEvaluator struct {
+	fn    func() (bool, int64, StepResult)
+	close func() error
+	err   func() error
+	t     T
+}
+
+func (e *pStepEvaluator) Type() T {
+	return e.t
+}
+
+func (e *pStepEvaluator) Next() (bool, int64, StepResult) {
+	return e.fn()
+}
+
+func (e *pStepEvaluator) Close() error {
+	return e.close()
+}
+
+func (e *pStepEvaluator) Error() error {
+	return e.err()
+}
+
+// this function is just copy paste from the regular step eval, maybe we don't need it?
+func NewProbabilisticStepEvaluator(fn func() (bool, int64, StepResult), closeFn func() error, err func() error) (ProbabilisticStepEvaluator, error) {
+	if fn == nil {
+		return nil, errors.New("nil step evaluator fn")
+	}
+
+	if closeFn == nil {
+		closeFn = func() error { return nil }
+	}
+
+	if err == nil {
+		err = func() error { return nil }
+	}
+	return &pStepEvaluator{
+		fn:    fn,
+		close: closeFn,
+		err:   err,
+	}, nil
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
@@ -35,21 +132,50 @@ func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration)
 	return p
 }
 
-func (p *ProbabilisticEvaluator) StepEvaluator(
+type testEval struct {
+	d StepEvaluator
+}
+
+func (p testEval) Next() (ok bool, ts int64, r StepResult) {
+	a, s, d := p.d.Next()
+	return a, s, SampleVector(d)
+}
+
+func (p testEval) Close() error {
+	return p.d.Close()
+}
+
+func (p testEval) Error() error {
+	return p.d.Error()
+}
+
+func (p testEval) Type() T {
+	return p.d.Type()
+}
+
+func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 	ctx context.Context,
 	nextEv SampleEvaluator,
 	expr syntax.SampleExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (ProbabilisticStepEvaluator, error) {
 
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if e.Operation != syntax.OpTypeTopK {
-			return p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+			dEval, err := p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+			if err != nil {
+				return nil, err
+			}
+			return testEval{dEval}, nil
 		}
 		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
-		return p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+		dEval, err := p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+		if err != nil {
+			return nil, err
+		}
+		return testEval{dEval}, nil
 	}
 }
 
@@ -156,8 +282,7 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, val := stepEvaluator.Next()
-	vec := val.SampleVector()
+	next, ts, vec := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -209,8 +334,7 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
 
-		next, ts, val = stepEvaluator.Next()
-		vec = val.SampleVector()
+		next, ts, vec = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
@@ -239,7 +363,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	ev SampleEvaluator,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (ProbabilisticStepEvaluator, error) {
 
 	if expr.Operation != syntax.OpTypeTopK {
 		return nil, errors.Errorf("unexpected operation: want 'topk', have '%q'", expr.Operation)
@@ -258,7 +382,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	lb := labels.NewBuilder(nil)
 	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
-	return NewStepEvaluator(func() (bool, int64, StepResult) {
+	return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
 		next, ts, vec := nextEvaluator.Next()
 
 		if !next {
@@ -268,7 +392,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 		if expr.Params < 1 {
 			return next, ts, nil
 		}
-		for _, s := range vec.SampleVector() {
+		for _, s := range vec {
 			metric := s.Metric
 
 			var groupingKey uint64

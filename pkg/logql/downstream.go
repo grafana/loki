@@ -386,16 +386,13 @@ func (ev *DownstreamEvaluator) Iterator(
 // Contract: They must be of identical start, end, and step values.
 func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	return NewStepEvaluator(
-		func() (bool, int64, StepResult) {
-			var cur StepResult
-			var vec promql.Vector
-			var ok bool
-			var ts int64
+		func() (ok bool, ts int64, vec promql.Vector) {
+			var cur promql.Vector
 			for _, eval := range evaluators {
 				ok, ts, cur = eval.Next()
-				vec = append(vec, cur.SampleVector()...)
+				vec = append(vec, cur...)
 			}
-			return ok, ts, SampleVector(vec)
+			return ok, ts, vec
 		},
 		func() (lastErr error) {
 			for _, eval := range evaluators {
@@ -435,10 +432,10 @@ func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, e
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		var exhausted bool
-		return NewStepEvaluator(func() (bool, int64, StepResult) {
+		return NewStepEvaluator(func() (bool, int64, promql.Vector) {
 			if !exhausted {
 				exhausted = true
-				return true, start.UnixNano() / int64(time.Millisecond), SampleVector(data)
+				return true, start.UnixNano() / int64(time.Millisecond), data
 			}
 			return false, 0, nil
 		}, nil, nil)
