@@ -3,6 +3,7 @@ title: Upgrade Loki
 menuTitle:  Upgrade
 description: Upgrading Grafana Loki
 aliases: 
+  - ../upgrading/
 weight: 400
 ---
 

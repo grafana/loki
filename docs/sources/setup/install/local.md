@@ -3,6 +3,7 @@ title: Local
 menuTitle:  Install locally
 description: Install and run Grafana Loki locally 
 aliases: 
+  - ../../installation/local/
 weight: 500
 ---
 # Local

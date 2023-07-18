@@ -3,6 +3,7 @@ title: Tanka
 menuTitle: Install using Tanka
 description: Install Loki using Tanka
 aliases: 
+  - ../../installation/tanka/
 weight: 300
 ---
 # Tanka

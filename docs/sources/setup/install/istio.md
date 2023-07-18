@@ -3,6 +3,7 @@ title: Install on Istio
 menuTitle:  
 description: Installation instructions for Istio service mesh
 aliases: 
+  - ../../installation/istio/
 weight: 600
 keywords: 
 ---

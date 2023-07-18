@@ -2,7 +2,9 @@
 title: Helm Chart Values
 menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 400
+weight: 500
+aliases:
+  - ../../../installation/helm/reference/
 keywords: []
 ---
 

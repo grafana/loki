@@ -1,7 +1,7 @@
 ---
 title: Setup Loki
 menuTitle: Setup
-description:  REQUIRED
+description:  How to install and upgrade Loki, and how to migrate configurations.
 aliases:
 weight: 300
 ---

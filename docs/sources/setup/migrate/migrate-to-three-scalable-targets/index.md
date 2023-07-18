@@ -3,7 +3,7 @@ title: Migrate to three scalable targets
 menuTitle: Migrate to three targets
 description: Migration guide for moving from two scalable to three scalable targets
 aliases:
-  - /docs/installation/helm/migrate-from-distributed
+  - ../../installation/helm/migrate-to-three-scalable-targets/
 weight: 700
 keywords:
   - migrate
