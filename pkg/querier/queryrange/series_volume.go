@@ -18,6 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -112,7 +113,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 				return nil, err
 			}
 
-			promResp := toPrometheusResponse(collector)
+			promResp := ToPrometheusResponse(collector, seriesvolume.AggregateBySeries(volReq.AggregateBy))
 			return promResp, nil
 		})
 	})
@@ -123,7 +124,7 @@ type bucketedVolumeResponse struct {
 	response *VolumeResponse
 }
 
-func toPrometheusResponse(respsCh chan *bucketedVolumeResponse) *LokiPromResponse {
+func ToPrometheusResponse(respsCh chan *bucketedVolumeResponse, aggregateBySeries bool) *LokiPromResponse {
 	var headers []*definitions.PrometheusResponseHeader
 	samplesByName := make(map[string][]logproto.LegacySample)
 
@@ -153,7 +154,7 @@ func toPrometheusResponse(respsCh chan *bucketedVolumeResponse) *LokiPromRespons
 
 	promResponse := queryrangebase.PrometheusResponse{
 		Status:  loghttp.QueryStatusSuccess,
-		Data:    toPrometheusData(samplesByName),
+		Data:    toPrometheusData(samplesByName, aggregateBySeries),
 		Headers: headers,
 	}
 
@@ -164,7 +165,7 @@ func toPrometheusResponse(respsCh chan *bucketedVolumeResponse) *LokiPromRespons
 }
 
 func toPrometheusSample(volume logproto.Volume, t time.Time) logproto.LegacySample {
-	ts := model.TimeFromUnix(t.Unix())
+	ts := model.TimeFromUnixNano(t.UnixNano())
 	return logproto.LegacySample{
 		Value:       float64(volume.Volume),
 		TimestampMs: ts.UnixNano() / 1e6,
@@ -177,7 +178,7 @@ type sortableSampleStream struct {
 	samples []logproto.LegacySample
 }
 
-func toPrometheusData(series map[string][]logproto.LegacySample) queryrangebase.PrometheusData {
+func toPrometheusData(series map[string][]logproto.LegacySample, aggregateBySeries bool) queryrangebase.PrometheusData {
 	resultType := loghttp.ResultTypeVector
 	sortableResult := make([]sortableSampleStream, 0, len(series))
 
@@ -186,7 +187,18 @@ func toPrometheusData(series map[string][]logproto.LegacySample) queryrangebase.
 			resultType = loghttp.ResultTypeMatrix
 		}
 
-		lbls, err := syntax.ParseLabels(name)
+		var lbls labels.Labels
+		var err error
+
+		if aggregateBySeries {
+			lbls, err = syntax.ParseLabels(name)
+		} else {
+			lbls = labels.Labels{{
+				Name:  name,
+				Value: "",
+			}}
+		}
+
 		if err != nil {
 			continue
 		}
