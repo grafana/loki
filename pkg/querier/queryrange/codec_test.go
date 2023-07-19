@@ -1830,7 +1830,7 @@ func generateStream() (res []logproto.Stream) {
 	return res
 }
 
-func generateSeries() (res logproto.SeriesIdentifiers) {
+func generateSeries() (res []logproto.SeriesIdentifier) {
 	for i := 0; i < 1000; i++ {
 		labels := make(map[string]string)
 		for l := 0; l < 10; l++ {

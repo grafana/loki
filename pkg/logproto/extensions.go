@@ -14,18 +14,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-// Note, this is not very efficient and use should be minimized as it requires label construction on each comparison
-type SeriesIdentifiers []SeriesIdentifier
-
-/*
-func (ids SeriesIdentifiers) Len() int      { return len(ids) }
-func (ids SeriesIdentifiers) Swap(i, j int) { ids[i], ids[j] = ids[j], ids[i] }
-func (ids SeriesIdentifiers) Less(i, j int) bool {
-	a, b := labels.FromMap(ids[i].Labels), labels.FromMap(ids[j].Labels)
-	return labels.Compare(a, b) <= 0
-}
-*/
-
 var seps = []byte{'\xff'}
 
 func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) uint64 {
