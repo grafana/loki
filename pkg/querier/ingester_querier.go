@@ -74,7 +74,37 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 		return nil, err
 	}
 
-	return q.forGivenIngesters(ctx, replicationSet, f)
+	return q.forGivenIngesters2(ctx, replicationSet, f)
+}
+
+func (q *IngesterQuerier) forGivenIngesters2(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
+	cfg := ring.DoUntilQuorumConfig{
+		//TODO: what should this be?
+	}
+	results, err := ring.DoUntilQuorum(ctx, replicationSet, cfg, func(ctx context.Context, ingester *ring.InstanceDesc) (responseFromIngesters, error) {
+		client, err := q.pool.GetClientFor(ingester.Addr)
+		if err != nil {
+			return responseFromIngesters{addr: ingester.Addr}, err
+		}
+
+		resp, err := f(ctx, client.(logproto.QuerierClient))
+		if err != nil {
+			return responseFromIngesters{addr: ingester.Addr}, err
+		}
+
+		return responseFromIngesters{ingester.Addr, resp}, nil
+	}, func(responseFromIngesters) {
+		// Nothing to do
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]responseFromIngesters, 0, len(results))
+	responses = append(responses, results...)
+
+	return responses, err
 }
 
 // forGivenIngesters runs f, in parallel, for given ingesters
