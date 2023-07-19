@@ -87,7 +87,7 @@ type noopStreamPipeline struct {
 	builder *LabelsBuilder
 }
 
-func (n noopStreamPipeline) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) ([]byte, LabelsResult, bool) {
+func (n noopStreamPipeline) Process(_ int64, line []byte, nonIndexedLabels ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
 	n.builder.Add(nonIndexedLabels...)
 	return line, n.builder.LabelsResult(), true
