@@ -230,7 +230,8 @@ func TestIngester(t *testing.T) {
 		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 2)
 
 	result = mockQuerierServer{
@@ -243,7 +244,8 @@ func TestIngester(t *testing.T) {
 		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 1)
 	require.Equal(t, `{bar="baz1", foo="bar"}`, result.resps[0].Streams[0].Labels)
 
@@ -257,7 +259,8 @@ func TestIngester(t *testing.T) {
 		End:      time.Unix(1, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 1)
 	require.Equal(t, `{bar="baz2", foo="bar"}`, result.resps[0].Streams[0].Labels)
 

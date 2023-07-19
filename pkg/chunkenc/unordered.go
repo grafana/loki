@@ -181,7 +181,7 @@ func (hb *unorderedHeadBlock) forEntries(
 	direction logproto.Direction,
 	mint,
 	maxt int64,
-	entryFn func(int64, string, labels.Labels) error, // returning an error exits early
+	entryFn func(*stats.Context, int64, string, labels.Labels) error, // returning an error exits early
 ) (err error) {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return
@@ -213,7 +213,7 @@ func (hb *unorderedHeadBlock) forEntries(
 			line := es.entries[i].line
 			metadataLabels := es.entries[i].metadataLabels
 			chunkStats.AddHeadChunkBytes(int64(len(line)))
-			err = entryFn(es.ts, line, metadataLabels)
+			err = entryFn(chunkStats, es.ts, line, metadataLabels)
 
 		}
 	}
@@ -255,12 +255,12 @@ func (hb *unorderedHeadBlock) Iterator(
 		direction,
 		mint,
 		maxt,
-		func(ts int64, line string, nonIndexedLabels labels.Labels) error {
+		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabels labels.Labels) error {
 			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
 			if !matches {
 				return nil
 			}
-
+			statsCtx.AddPostFilterLines(1)
 			var stream *logproto.Stream
 			labels := parsedLbs.String()
 			var ok bool
@@ -305,11 +305,12 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		logproto.FORWARD,
 		mint,
 		maxt,
-		func(ts int64, line string, metaLabels labels.Labels) error {
+		func(statsCtx *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
 			value, parsedLabels, ok := extractor.ProcessString(ts, line)
 			if !ok {
 				return nil
 			}
+			statsCtx.AddPostFilterLines(1)
 			var (
 				found bool
 				s     *logproto.Series
@@ -368,7 +369,7 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, line string, metaLabels labels.Labels) error {
+		func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
 			n := binary.PutVarint(encBuf, ts)
 			inBuf.Write(encBuf[:n])
 
@@ -416,7 +417,7 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, line string, metaLabels labels.Labels) error {
+		func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
 			return out.Append(ts, line, metaLabels)
 		},
 	)
@@ -435,7 +436,7 @@ func (hb *unorderedHeadBlock) CheckpointSize() int {
 			logproto.FORWARD,
 			0,
 			math.MaxInt64,
-			func(ts int64, line string, metaLabels labels.Labels) error {
+			func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
 				// len of meta labels
 				size += binary.MaxVarintLen32
 				// len of name and value of each meta label, the size of values is already included into hb.size
@@ -484,7 +485,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, line string, metaLabels labels.Labels) error {
+		func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
 			eb.putVarint64(ts)
 			eb.putUvarint(len(line))
 			_, err = w.Write(eb.get())
