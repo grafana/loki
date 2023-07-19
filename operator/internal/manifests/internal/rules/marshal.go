@@ -48,6 +48,16 @@ func MarshalRecordingRule(a lokiv1.RecordingRule) (string, error) {
 		Groups: aa.Spec.Groups,
 	}
 
+	for _, group := range ar.Groups {
+		for _, rule := range group.Rules {
+			if rule.Labels == nil {
+				rule.Labels = map[string]string{}
+			}
+
+			rule.Labels[tenantLabel] = aa.Spec.TenantID
+		}
+	}
+
 	content, err := yaml.Marshal(ar)
 	if err != nil {
 		return "", kverrors.Wrap(err, "failed to marshal recording rule", "name", aa.Name, "namespace", aa.Namespace)
