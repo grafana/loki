@@ -173,7 +173,7 @@ metadata:
     operatorframework.io/arch.arm64: supported
     operatorframework.io/arch.ppc64le: supported
     operatorframework.io/arch.s390x: supported
-  name: loki-operator.v0.0.1-cc7335a557fc
+  name: loki-operator.v0.1.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}

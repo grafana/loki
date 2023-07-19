@@ -6,7 +6,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal/rules"
 	"github.com/stretchr/testify/require"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestMarshalAlertingRule(t *testing.T) {
@@ -123,7 +123,7 @@ groups:
 `
 
 	r := lokiv1.RecordingRule{
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "test-ns",
 		},
 		Spec: lokiv1.RecordingRuleSpec{
