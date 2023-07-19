@@ -1542,3 +1542,55 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 		})
 	}
 }
+
+func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
+	for _, enc := range testEncoding {
+		enc := enc
+		t.Run(enc.String(), func(t *testing.T) {
+			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+			require.NoError(t, chk.Append(logprotoEntryWithMetadata(1, "lineA", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "123"},
+				{Name: "user", Value: "a"},
+			})))
+			require.NoError(t, chk.Append(logprotoEntryWithMetadata(2, "lineB", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "456"},
+				{Name: "user", Value: "b"},
+			})))
+			require.NoError(t, chk.cut())
+			require.NoError(t, chk.Append(logprotoEntryWithMetadata(3, "lineC", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "789"},
+				{Name: "user", Value: "c"},
+			})))
+			require.NoError(t, chk.Append(logprotoEntryWithMetadata(4, "lineD", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "123"},
+				{Name: "user", Value: "d"},
+			})))
+
+			expectedLines := []string{"lineA", "lineB", "lineC", "lineD"}
+			expectedStreams := []string{
+				labels.FromStrings("traceID", "123", "user", "a").String(),
+				labels.FromStrings("traceID", "456", "user", "b").String(),
+				labels.FromStrings("traceID", "789", "user", "c").String(),
+				labels.FromStrings("traceID", "123", "user", "d").String(),
+			}
+
+			// We will run the test twice so the iterator will be created twice.
+			// This is to ensure that the iterator is correctly closed.
+			for i := 0; i < 2; i++ {
+				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+				require.NoError(t, err)
+
+				var lines []string
+				var streams []string
+				for it.Next() {
+					require.NoError(t, it.Error())
+					e := it.Entry()
+					lines = append(lines, e.Line)
+					streams = append(streams, logproto.FromLabelAdaptersToLabels(e.NonIndexedLabels).String())
+				}
+				assert.ElementsMatch(t, expectedLines, lines)
+				assert.ElementsMatch(t, expectedStreams, streams)
+			}
+		})
+	}
+}
