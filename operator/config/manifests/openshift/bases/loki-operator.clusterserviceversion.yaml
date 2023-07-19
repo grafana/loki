@@ -623,6 +623,23 @@ spec:
           configuration spec per tenant.
         displayName: Authentication
         path: tenants.authentication
+      - description: TLSConfig defines the spec for the mTLS tenant's authentication.
+        displayName: mTLS Configuration
+        path: tenants.authentication[0].mTLS
+      - description: CA defines the spec for the custom CA for tenant's authentication.
+        displayName: CA ConfigMap
+        path: tenants.authentication[0].mTLS.ca
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].mTLS.ca.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].mTLS.ca.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: OIDC defines the spec for the OIDC tenant's authentication.
         displayName: OIDC Configuration
         path: tenants.authentication[0].oidc
@@ -1179,6 +1196,9 @@ spec:
           alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
       - description: The name of the time series to output to. Must be a valid metric
           name.
         displayName: Metric Name
