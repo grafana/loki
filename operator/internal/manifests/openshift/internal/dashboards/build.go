@@ -21,32 +21,31 @@ var lokiStackDashboards embed.FS
 // ReadDashboards returns the byte slices one for each LokiStack dashboard
 // from the embedded filesystem or an error.
 func ReadDashboards() (map[string][]byte, error) {
-	chunks, err := lokiStackDashboards.ReadFile(path.Join(staticDir, lokiStackChunkDashboardFile))
+	subDir, err := fs.Sub(lokiStackDashboards, staticDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read chunks-dashboard file: %w", err)
+		return nil, fmt.Errorf("failed to read embed fs subdir: %w", err)
 	}
 
-	reads, err := lokiStackDashboards.ReadFile(path.Join(staticDir, lokiStackReadsDashboardFile))
+	jsonFiles, err := fs.Glob(subDir, "*.json")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read reads-dashboard file: %w", err)
+		return nil, fmt.Errorf("failed to list files: %w", err)
 	}
 
-	writes, err := lokiStackDashboards.ReadFile(path.Join(staticDir, lokiStackWritesDashboardFile))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read writes-dashboard file: %w", err)
+	dashboardMap := map[string][]byte{}
+	for _, file := range jsonFiles {
+		if file == lokiStackDashboardRulesFile {
+			continue
+		}
+
+		content, err := fs.ReadFile(subDir, file)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read %q: %w", file, err)
+		}
+
+		dashboardMap[file] = content
 	}
 
-	retention, err := lokiStackDashboards.ReadFile(path.Join(staticDir, lokiStackRetentionDashboardFile))
-	if err != nil {
-		return nil, fmt.Errorf("failed to read retention-dashboard file: %w", err)
-	}
-
-	return map[string][]byte{
-		lokiStackChunkDashboardFile:     chunks,
-		lokiStackReadsDashboardFile:     reads,
-		lokiStackWritesDashboardFile:    writes,
-		lokiStackRetentionDashboardFile: retention,
-	}, nil
+	return dashboardMap, nil
 }
 
 // ReadDashboardRules returns the byte slice for the recording rules
