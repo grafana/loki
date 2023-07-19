@@ -1677,29 +1677,58 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-					expr, err := syntax.ParseLogSelector(tc.query, true)
-					require.NoError(t, err)
 
-					pipeline, err := expr.Pipeline()
-					require.NoError(t, err)
-
-					// We will run the test twice so the iterator will be created twice.
-					// This is to ensure that the iterator is correctly closed.
-					for i := 0; i < 2; i++ {
-						it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+					t.Run("log", func(t *testing.T) {
+						expr, err := syntax.ParseLogSelector(tc.query, true)
 						require.NoError(t, err)
 
-						var lines []string
-						var streams []string
-						for it.Next() {
-							require.NoError(t, it.Error())
-							e := it.Entry()
-							lines = append(lines, e.Line)
-							streams = append(streams, it.Labels())
+						pipeline, err := expr.Pipeline()
+						require.NoError(t, err)
+
+						// We will run the test twice so the iterator will be created twice.
+						// This is to ensure that the iterator is correctly closed.
+						for i := 0; i < 2; i++ {
+							it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+							require.NoError(t, err)
+
+							var lines []string
+							var streams []string
+							for it.Next() {
+								require.NoError(t, it.Error())
+								e := it.Entry()
+								lines = append(lines, e.Line)
+								streams = append(streams, it.Labels())
+							}
+							assert.ElementsMatch(t, tc.expectedLines, lines)
+							assert.ElementsMatch(t, tc.expectedStreams, streams)
 						}
-						assert.ElementsMatch(t, tc.expectedLines, lines)
-						assert.ElementsMatch(t, tc.expectedStreams, streams)
-					}
+					})
+
+					t.Run("metric", func(t *testing.T) {
+						query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+						expr, err := syntax.ParseSampleExpr(query)
+						require.NoError(t, err)
+
+						extractor, err := expr.Extractor()
+						require.NoError(t, err)
+
+						// We will run the test twice so the iterator will be created twice.
+						// This is to ensure that the iterator is correctly closed.
+						for i := 0; i < 2; i++ {
+							it := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+
+							var sumValues int
+							var streams []string
+							for it.Next() {
+								require.NoError(t, it.Error())
+								e := it.Sample()
+								sumValues += int(e.Value)
+								streams = append(streams, it.Labels())
+							}
+							require.Equal(t, len(tc.expectedLines), sumValues)
+							assert.ElementsMatch(t, tc.expectedStreams, streams)
+						}
+					})
 				})
 			}
 		})
