@@ -5,7 +5,7 @@ description:  Reference topics for Loki.
 weight: 1100
 ---
 
-# Loki reference topics 
+# Loki reference topics
 
 This section provides reference material for Loki.
 

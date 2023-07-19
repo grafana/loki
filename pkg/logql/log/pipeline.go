@@ -2,6 +2,7 @@ package log
 
 import (
 	"reflect"
+	"sync"
 	"unsafe"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -13,6 +14,7 @@ var NoopStage Stage = &noopStage{}
 // Pipeline can create pipelines for each log stream.
 type Pipeline interface {
 	ForStream(labels labels.Labels) StreamPipeline
+	Reset()
 }
 
 // StreamPipeline transform and filter log lines and labels.
@@ -42,6 +44,35 @@ func NewNoopPipeline() Pipeline {
 
 type noopPipeline struct {
 	cache map[uint64]*noopStreamPipeline
+	mu    sync.RWMutex
+}
+
+func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
+	h := labels.Hash()
+
+	n.mu.RLock()
+	if cached, ok := n.cache[h]; ok {
+		n.mu.RUnlock()
+		return cached
+	}
+	n.mu.RUnlock()
+
+	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
+
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	n.cache[h] = sp
+	return sp
+}
+
+func (n *noopPipeline) Reset() {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	for k := range n.cache {
+		delete(n.cache, k)
+	}
 }
 
 // IsNoopPipeline tells if a pipeline is a Noop.
@@ -63,16 +94,6 @@ func (n noopStreamPipeline) ProcessString(_ int64, line string) (string, LabelsR
 }
 
 func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.LabelsResult }
-
-func (n *noopPipeline) ForStream(labels labels.Labels) StreamPipeline {
-	h := labels.Hash()
-	if cached, ok := n.cache[h]; ok {
-		return cached
-	}
-	sp := &noopStreamPipeline{LabelsResult: NewLabelsResult(labels, h)}
-	n.cache[h] = sp
-	return sp
-}
 
 type noopStage struct{}
 
@@ -103,6 +124,7 @@ type pipeline struct {
 	AnalyzablePipeline
 	stages      []Stage
 	baseBuilder *BaseLabelsBuilder
+	mu          sync.RWMutex
 
 	streamPipelines map[uint64]StreamPipeline
 }
@@ -147,13 +169,31 @@ func NewStreamPipeline(stages []Stage, labelsBuilder *LabelsBuilder) StreamPipel
 
 func (p *pipeline) ForStream(labels labels.Labels) StreamPipeline {
 	hash := p.baseBuilder.Hash(labels)
+
+	p.mu.RLock()
 	if res, ok := p.streamPipelines[hash]; ok {
+		p.mu.RUnlock()
 		return res
 	}
+	p.mu.RUnlock()
 
 	res := NewStreamPipeline(p.stages, p.baseBuilder.ForLabels(labels, hash))
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	p.streamPipelines[hash] = res
 	return res
+}
+
+func (p *pipeline) Reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.baseBuilder.Reset()
+	for k := range p.streamPipelines {
+		delete(p.streamPipelines, k)
+	}
 }
 
 func (p *streamPipeline) Process(ts int64, line []byte) ([]byte, LabelsResult, bool) {
@@ -219,6 +259,10 @@ func (p *filteringPipeline) ForStream(labels labels.Labels) StreamPipeline {
 		filters:  streamFilters,
 		pipeline: p.pipeline.ForStream(labels),
 	}
+}
+
+func (p *filteringPipeline) Reset() {
+	p.pipeline.Reset()
 }
 
 func allMatch(matchers []*labels.Matcher, labels labels.Labels) bool {

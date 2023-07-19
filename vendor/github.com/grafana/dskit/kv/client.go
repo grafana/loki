@@ -105,16 +105,13 @@ type Client interface {
 	// be returned if the key does not exist.
 	Delete(ctx context.Context, key string) error
 
-	// CAS stands for Compare-And-Swap. Will call provided callback f with the
+	// CAS stands for Compare-And-Swap.  Will call provided callback f with the
 	// current value of the key and allow callback to return a different value.
 	// Will then attempt to atomically swap the current value for the new value.
 	// If that doesn't succeed will try again - callback will be called again
-	// with new value etc. Guarantees that only a single concurrent CAS
-	// succeeds. Callback can return nil to indicate it is happy with existing
+	// with new value etc.  Guarantees that only a single concurrent CAS
+	// succeeds.  Callback can return nil to indicate it is happy with existing
 	// value.
-	//
-	// If the callback returns an error and true for retry, and the max number of
-	// attempts is not exceeded, the operation will be retried.
 	CAS(ctx context.Context, key string, f func(in interface{}) (out interface{}, retry bool, err error)) error
 
 	// WatchKey calls f whenever the value stored under key changes.
