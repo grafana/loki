@@ -197,10 +197,11 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket"] = record.S3.Bucket.Name
 	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
-	var matchingType *string
 	for key, p := range parsers {
 		if p.filenameRegex.MatchString(labels["key"]) {
-			matchingType = aws.String(key)
+			if labels["type"] == "" {
+				labels["type"] = key
+			}
 			match := p.filenameRegex.FindStringSubmatch(labels["key"])
 			for i, name := range p.filenameRegex.SubexpNames() {
 				if i != 0 && name != "" {
@@ -208,9 +209,6 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 				}
 			}
 		}
-	}
-	if labels["type"] == "" {
-		labels["type"] = *matchingType
 	}
 	return labels, nil
 }

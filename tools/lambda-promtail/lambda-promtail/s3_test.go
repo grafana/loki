@@ -187,6 +187,32 @@ func Test_getLabels(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "missing_parser",
+			args: args{
+				record: events.S3EventRecord{
+					AWSRegion: "us-east-1",
+					S3: events.S3Entity{
+						Bucket: events.S3Bucket{
+							Name: "missing_parser",
+							OwnerIdentity: events.S3UserIdentity{
+								PrincipalID: "test",
+							},
+						},
+						Object: events.S3Object{
+							Key: "some-object.json",
+						},
+					},
+				},
+			},
+			want: map[string]string{
+				"bucket":        "missing_parser",
+				"bucket_owner":  "test",
+				"bucket_region": "us-east-1",
+				"key":           "some-object.json",
+			},
+			wantErr: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -306,6 +332,26 @@ func Test_parseS3Log(t *testing.T) {
 			expectedLen:    1,
 			expectedStream: `{__aws_log_type="s3_cloudfront", __aws_s3_cloudfront="DISTRIBUTIONID", __aws_s3_cloudfront_owner="path/to/file"}`,
 			wantErr:        false,
+		},
+		{
+			name: "missing_parser",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/kinesis-event.json",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"bucket":        "missing_parser",
+					"bucket_owner":  "test",
+					"bucket_region": "us-east-1",
+					"key":           "some-object.json",
+					"type":          "",
+				},
+			},
+			expectedLen:    0,
+			expectedStream: "",
+			wantErr:        true,
 		},
 	}
 	for _, tt := range tests {
