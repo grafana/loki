@@ -76,12 +76,11 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Stack.Tenants != nil {
-		mode := opts.Stack.Tenants.Mode
-		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers); err != nil {
+		if err := configureGatewayDeploymentForMode(dpl, opts.Stack.Tenants, opts.Gates, minTLSVersion, ciphers); err != nil {
 			return nil, err
 		}
 
-		if err := configureGatewayServiceForMode(&svc.Spec, mode); err != nil {
+		if err := configureGatewayServiceForMode(&svc.Spec, opts.Stack.Tenants.Mode); err != nil {
 			return nil, err
 		}
 
@@ -441,13 +440,25 @@ func gatewayConfigObjs(opt Options) (*corev1.ConfigMap, *corev1.Secret, string, 
 
 // gatewayConfigOptions converts Options to gateway.Options
 func gatewayConfigOptions(opt Options) gateway.Options {
-	var gatewaySecrets []*gateway.Secret
+	var (
+		gatewaySecrets []*gateway.Secret
+		gatewaySecret  *gateway.Secret
+	)
 	for _, secret := range opt.Tenants.Secrets {
-		gatewaySecret := &gateway.Secret{
-			TenantName:   secret.TenantName,
-			ClientID:     secret.ClientID,
-			ClientSecret: secret.ClientSecret,
-			IssuerCAPath: secret.IssuerCAPath,
+		gatewaySecret = &gateway.Secret{
+			TenantName: secret.TenantName,
+		}
+		switch {
+		case secret.OIDCSecret != nil:
+			gatewaySecret.OIDC = &gateway.OIDC{
+				ClientID:     secret.OIDCSecret.ClientID,
+				ClientSecret: secret.OIDCSecret.ClientSecret,
+				IssuerCAPath: secret.OIDCSecret.IssuerCAPath,
+			}
+		case secret.MTLSSecret != nil:
+			gatewaySecret.MTLS = &gateway.MTLS{
+				CAPath: secret.MTLSSecret.CAPath,
+			}
 		}
 		gatewaySecrets = append(gatewaySecrets, gatewaySecret)
 	}
