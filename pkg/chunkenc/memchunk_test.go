@@ -1582,31 +1582,98 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					name:          "no-filter",
 					query:         `{job="fake"}`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						`{job="fake", traceID="123", user="a"}`,
+						`{job="fake", traceID="456", user="b"}`,
+						`{job="fake", traceID="789", user="c"}`,
+						`{job="fake", traceID="123", user="d"}`,
+					},
 				},
 				{
 					name:          "filter",
 					query:         `{job="fake"} | traceID="789"`,
 					expectedLines: []string{"lineC"},
+					expectedStreams: []string{
+						`{job="fake", traceID="789", user="c"}`,
+					},
 				},
 				{
 					name:          "filter-regex-or",
 					query:         `{job="fake"} | traceID=~"456|789"`,
 					expectedLines: []string{"lineB", "lineC"},
+					expectedStreams: []string{
+						`{job="fake", traceID="456", user="b"}`,
+						`{job="fake", traceID="789", user="c"}`,
+					},
 				},
 				{
 					name:          "filter-regex-contains",
 					query:         `{job="fake"} | traceID=~".*5.*"`,
 					expectedLines: []string{"lineB"},
+					expectedStreams: []string{
+						`{job="fake", traceID="456", user="b"}`,
+					},
 				},
 				{
 					name:          "filter-regex-complex",
 					query:         `{job="fake"} | traceID=~"^[0-9]2.*"`,
 					expectedLines: []string{"lineA", "lineD"},
+					expectedStreams: []string{
+						`{job="fake", traceID="123", user="a"}`,
+						`{job="fake", traceID="123", user="d"}`,
+					},
 				},
 				{
 					name:          "multiple-filters",
 					query:         `{job="fake"} | traceID="123" | user="d"`,
 					expectedLines: []string{"lineD"},
+					expectedStreams: []string{
+						`{job="fake", traceID="123", user="d"}`,
+					},
+				},
+				{
+					name:          "metadata-and-keep",
+					query:         `{job="fake"} | keep job, user`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						`{job="fake", user="a"}`,
+						`{job="fake", user="b"}`,
+						`{job="fake", user="c"}`,
+						`{job="fake", user="d"}`,
+					},
+				},
+				{
+					name:          "metadata-and-keep-filter",
+					query:         `{job="fake"} | keep job, user="b"`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						`{job="fake"}`,
+						`{job="fake", user="b"}`,
+						`{job="fake"}`,
+						`{job="fake"}`,
+					},
+				},
+				{
+					name:          "metadata-and-drop",
+					query:         `{job="fake"} | drop traceID`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						`{job="fake", user="a"}`,
+						`{job="fake", user="b"}`,
+						`{job="fake", user="c"}`,
+						`{job="fake", user="d"}`,
+					},
+				},
+				{
+					name:          "metadata-and-drop-filter",
+					query:         `{job="fake"} | drop traceID="123"`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						`{job="fake", user="a"}`,
+						`{job="fake", traceID="456", user="b"}`,
+						`{job="fake", traceID="789", user="c"}`,
+						`{job="fake", user="d"}`,
+					},
 				},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
@@ -1623,11 +1690,15 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						require.NoError(t, err)
 
 						var lines []string
+						var streams []string
 						for it.Next() {
+							require.NoError(t, it.Error())
 							e := it.Entry()
 							lines = append(lines, e.Line)
+							streams = append(streams, it.Labels())
 						}
 						assert.ElementsMatch(t, tc.expectedLines, lines)
+						assert.ElementsMatch(t, tc.expectedStreams, streams)
 					}
 				})
 			}
