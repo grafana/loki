@@ -28,8 +28,8 @@ func (ids SeriesIdentifiers) Less(i, j int) bool {
 
 var seps = []byte{'\xff'}
 
-func (id SeriesIdentifier) Hash(b []byte) uint64 {
-	keysForLabels := make([]string, 0, len(id.Labels))
+func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) uint64 {
+	keysForLabels = keysForLabels[:0]
 	for k := range id.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
