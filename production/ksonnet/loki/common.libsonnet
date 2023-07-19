@@ -48,7 +48,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   // functions for k8s objects
   newLokiPdb(deploymentName, maxUnavailable=1)::
-    local podDisruptionBudget = $.policy.v1beta1.podDisruptionBudget;
+    local podDisruptionBudget = $.policy.v1.podDisruptionBudget;
     local pdbName = '%s-pdb' % deploymentName;
 
     podDisruptionBudget.new() +

@@ -82,7 +82,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     else
       k.util.serviceFor($.ingester_statefulset, $._config.service_ignored_labels),
 
-  local podDisruptionBudget = k.policy.v1beta1.podDisruptionBudget,
+  local podDisruptionBudget = k.policy.v1.podDisruptionBudget,
 
   ingester_pdb:
     podDisruptionBudget.new() +
