@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -250,4 +251,42 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 	}
 
 	return nil
+}
+
+func processSNSEvent(ctx context.Context, evt *events.SNSEvent) error {
+	for _, record := range evt.Records {
+		event, err := stringToRawEvent(record.SNS.Message)
+		if err != nil {
+			return err
+		}
+		err = handler(ctx, event)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processSQSEvent(ctx context.Context, evt *events.SQSEvent) error {
+	for _, record := range evt.Records {
+		// retrieve nested
+		event, err := stringToRawEvent(record.Body)
+		if err != nil {
+			return err
+		}
+		err = handler(ctx, event)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stringToRawEvent(body string) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+	err := json.Unmarshal([]byte(body), &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }
