@@ -34,6 +34,7 @@ var (
 					"decompressedLines": 3,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
+					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
@@ -53,6 +54,7 @@ var (
 					"decompressedLines": 13,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
+					"postFilterLines": 0,
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
@@ -108,7 +110,8 @@ var (
 			"subqueries": 0,
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
-			"totalLinesProcessed": 25
+			"totalLinesProcessed": 25,
+			"totalPostFilterLines": 0
 		}
 	}`
 	statsResult = stats.Result{

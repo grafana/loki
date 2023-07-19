@@ -1028,6 +1028,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		if !matches {
 			return
 		}
+		stats.AddPostFilterLines(1)
 		var stream *logproto.Stream
 		labels := parsedLbs.Labels().String()
 		var ok bool
@@ -1080,6 +1081,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 		if !ok {
 			continue
 		}
+		stats.AddPostFilterLines(1)
 		var (
 			found bool
 			s     *logproto.Series
@@ -1451,6 +1453,7 @@ func (e *entryBufferedIterator) Next() bool {
 			continue
 		}
 
+		e.stats.AddPostFilterLines(1)
 		e.currLabels = lbs
 		e.cur.NonIndexedLabels = nonIndexedLabels
 		e.cur.Timestamp = time.Unix(0, e.currTs)
@@ -1483,6 +1486,7 @@ func (e *sampleBufferedIterator) Next() bool {
 		if !ok {
 			continue
 		}
+		e.stats.AddPostFilterLines(1)
 		e.currLabels = labels
 		e.cur.Value = val
 		e.cur.Hash = xxhash.Sum64(e.currLine)
