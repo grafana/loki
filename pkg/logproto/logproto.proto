@@ -4,6 +4,7 @@ package logproto;
 
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/wrappers.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 
@@ -186,6 +187,7 @@ message SeriesResponse {
 
 message SeriesIdentifier {
   map<string, string> labels = 1;
+  google.protobuf.UInt64Value hash = 2;
 }
 
 message DroppedStream {

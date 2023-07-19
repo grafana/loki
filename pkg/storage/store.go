@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -431,6 +432,7 @@ func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logpro
 	for i, s := range series {
 		result[i] = logproto.SeriesIdentifier{
 			Labels: s.Map(),
+			Hash: &wrappers.UInt64Value{Value: s.Hash()},
 		}
 	}
 	return result, nil
