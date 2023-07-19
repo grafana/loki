@@ -17,7 +17,7 @@ There are several methods of installing Loki and Promtail:
 - [Install and run locally]({{< relref "./local" >}})
 - [Install from source]({{< relref "./install-from-source" >}})
 
-The [Sizing Tool]({{< relref "../size/" >}}) can be used to determine the proper cluster sizing
+The [Sizing Tool]({{< relref "../size" >}}) can be used to determine the proper cluster sizing
 given an expected ingestion rate and query performance.  It targets the Helm
 installation on Kubernetes.
 
