@@ -829,13 +829,16 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 
 		var lokiSeriesData []logproto.SeriesIdentifier
 		uniqueSeries := make(map[uint64]struct{})
+		//uniqueSeries := make(map[string]struct{})
 
 		// only unique series should be merged
+		b := make([]byte, 0, 1024)
 		for _, res := range responses {
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
-				key := series.Hash()
+				//key := series.String()
+				key := series.Hash(b)
 				if _, ok := uniqueSeries[key]; !ok {
 					lokiSeriesData = append(lokiSeriesData, series)
 					uniqueSeries[key] = struct{}{}

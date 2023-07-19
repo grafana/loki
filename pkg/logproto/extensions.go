@@ -1,9 +1,11 @@
 package logproto
 
 import (
+	"sort"
 	"strings"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -20,10 +22,44 @@ func (ids SeriesIdentifiers) Less(i, j int) bool {
 	a, b := labels.FromMap(ids[i].Labels), labels.FromMap(ids[j].Labels)
 	return labels.Compare(a, b) <= 0
 }
-func (id SeriesIdentifier) Hash() uint64 {
+
+var seps = []byte{'\xff'}
+
+func (id SeriesIdentifier) Hash(b []byte) uint64 {
 	// TODO(karsten): It might be faster to copy the hash function. Also,
 	// the map might not be ordered.
-	return labels.FromMap(id.Labels).Hash()
+	//return labels.FromMap(id.Labels).Hash()
+
+	keysForLabels := make([]string, 0, len(id.Labels))
+	for k := range id.Labels {
+		keysForLabels = append(keysForLabels, k)
+	}
+	sort.Strings(keysForLabels)
+
+	// Use xxhash.Sum64(b) for fast path as it's faster.
+	b = b[:0]
+	for i, name := range keysForLabels {
+		value := id.Labels[name]
+		if len(b)+len(name)+len(value)+2 >= cap(b) {
+			// If labels entry is 1KB+ do not allocate whole entry.
+			h := xxhash.New()
+			_, _ = h.Write(b)
+			for _, name := range keysForLabels[i:] {
+				value := id.Labels[name]
+				_, _ = h.WriteString(name)
+				_, _ = h.Write(seps)
+				_, _ = h.WriteString(value)
+				_, _ = h.Write(seps)
+			}
+			return h.Sum64()
+		}
+
+		b = append(b, name...)
+		b = append(b, seps[0])
+		b = append(b, value...)
+		b = append(b, seps[0])
+	}
+	return xxhash.Sum64(b)
 }
 
 type Streams []Stream
