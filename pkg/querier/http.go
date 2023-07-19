@@ -49,27 +49,25 @@ type QueryResponse struct {
 
 type Engine interface {
 	Query(logql.Params) logql.Query
+	ProbabilisticQuery(logql.Params) logql.Query
 }
 
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
-	querier  Querier
-	cfg      Config
-	limits   Limits
-	engine   Engine
-	pengine  Engine // Probabilisitic query engine.
+	querier Querier
+	cfg     Config
+	limits  Limits
+	engine  Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
 func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger) *QuerierAPI {
 	engine := logql.NewEngine(cfg.Engine, querier, limits, logger)
-	pengine := logql.NewProbabilisticEngine(cfg.Engine, querier, limits, logger)
 	return &QuerierAPI{
 		cfg:     cfg,
 		limits:  limits,
 		querier: querier,
 		engine:  engine,
-		pengine: pengine,
 	}
 }
 
@@ -135,7 +133,7 @@ func (q *QuerierAPI) ProbabilisticRangeQueryHandler(w http.ResponseWriter, r *ht
 		request.Limit,
 		request.Shards,
 	)
-	query := q.pengine.Query(params)
+	query := q.engine.ProbabilisticQuery(params)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)

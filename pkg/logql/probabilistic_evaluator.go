@@ -79,8 +79,8 @@ type ProbabilisticStepEvaluator interface {
 }
 
 type ProbabilisticEvaluator struct {
-	DefaultEvaluator
-	logger log.Logger
+	Evaluator // this evaluator should be a DefaultEvaluator
+	logger    log.Logger
 }
 
 type pStepEvaluator struct {
@@ -129,7 +129,7 @@ func NewProbabilisticStepEvaluator(fn func() (bool, int64, StepResult), closeFn 
 // NewDefaultEvaluator constructs a DefaultEvaluator
 func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
 	d := NewDefaultEvaluator(querier, maxLookBackPeriod)
-	p := &ProbabilisticEvaluator{DefaultEvaluator: *d}
+	p := &ProbabilisticEvaluator{Evaluator: d}
 	return p
 }
 
@@ -164,7 +164,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if e.Operation != syntax.OpTypeTopK {
-			dEval, err := p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+			dEval, err := p.Evaluator.StepEvaluator(ctx, nextEv, expr, q)
 			if err != nil {
 				return nil, err
 			}
@@ -172,7 +172,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 		}
 		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
-		dEval, err := p.DefaultEvaluator.StepEvaluator(ctx, nextEv, expr, q)
+		dEval, err := p.Evaluator.StepEvaluator(ctx, nextEv, expr, q)
 		if err != nil {
 			return nil, err
 		}
@@ -257,7 +257,7 @@ func (q *probabilisticQuery) probabilisticEvalSample(ctx context.Context, expr s
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.ProbabilisticStepEvaluator(ctx, &q.evaluator.DefaultEvaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.ProbabilisticStepEvaluator(ctx, q.evaluator.Evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}

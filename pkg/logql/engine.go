@@ -180,6 +180,27 @@ func (ng *Engine) Query(params Params) Query {
 	}
 }
 
+// PrbabilistcQuery creates a new LogQL query. Instant/Range type is derived from the parameters.
+func (ng *Engine) ProbabilisticQuery(params Params) Query {
+	return &probabilisticQuery{
+		evaluator: ProbabilisticEvaluator{
+			ng.evaluator,
+			ng.logger,
+		},
+		query: query{
+			logger:    ng.logger,
+			params:    params,
+			evaluator: ng.evaluator,
+			parse: func(_ context.Context, query string) (syntax.Expr, error) {
+				return syntax.ParseExpr(query)
+			},
+			record:       true,
+			logExecQuery: ng.opts.LogExecutingQuery,
+			limits:       ng.limits,
+		},
+	}
+}
+
 // Query is a LogQL query to be executed.
 type Query interface {
 	// Exec processes the query.
