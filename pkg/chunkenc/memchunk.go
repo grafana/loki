@@ -1260,6 +1260,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 
 	// TODO: This is pretty similar to how we read the line size, and the metadata name and value sizes
 	//       Maybe we can extract it to a separate function and reuse it?
+	lastAttempt = 0
 	var labelsWidth, nLabels int
 	for labelsWidth == 0 { // Read until we have enough bytes for the labels.
 		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
@@ -1288,7 +1289,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 
 	// If not enough space for the labels, create a new buffer slice and put the old one back in the pool.
 	metaLabelsBufLen := nLabels * 2
-	if metaLabelsBufLen > cap(si.metaLabelsBuf) {
+	if si.metaLabelsBuf == nil || metaLabelsBufLen > cap(si.metaLabelsBuf) {
 		if si.metaLabelsBuf != nil {
 			for i := range si.metaLabelsBuf {
 				if si.metaLabelsBuf[i] != nil {
@@ -1309,6 +1310,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	// Read all the label-value pairs, into the buffer slice.
 	for i := 0; i < metaLabelsBufLen; i++ {
 		// Read the length of the label.
+		lastAttempt = 0
 		var labelWidth, labelSize int
 		for labelWidth == 0 { // Read until we have enough bytes for the name.
 			n, err := si.reader.Read(si.readBuf[si.readBufValid:])
@@ -1395,6 +1397,7 @@ func (si *bufferedIterator) close() {
 		for i := range si.metaLabelsBuf {
 			if si.metaLabelsBuf[i] != nil {
 				BytesBufferPool.Put(si.metaLabelsBuf[i])
+				si.metaLabelsBuf[i] = nil
 			}
 		}
 		LabelsPool.Put(si.metaLabelsBuf)
