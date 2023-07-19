@@ -834,12 +834,13 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		// only unique series should be merged
 		b := make([]byte, 0, 1024)
 		keyBuffer := make([]string, 0, 32)
+		var key uint64
 		for _, res := range responses {
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
 				//key := series.String()
-				key := series.Hash(b, keyBuffer)
+				key, keyBuffer = series.Hash(b, keyBuffer)
 				if _, ok := uniqueSeries[key]; !ok {
 					lokiSeriesData = append(lokiSeriesData, series)
 					uniqueSeries[key] = struct{}{}

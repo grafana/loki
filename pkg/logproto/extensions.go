@@ -16,7 +16,7 @@ import (
 
 var seps = []byte{'\xff'}
 
-func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) uint64 {
+func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) (uint64, []string) {
 	keysForLabels = keysForLabels[:0]
 	for k := range id.Labels {
 		keysForLabels = append(keysForLabels, k)
@@ -38,7 +38,7 @@ func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) uint64 {
 				_, _ = h.WriteString(value)
 				_, _ = h.Write(seps)
 			}
-			return h.Sum64()
+			return h.Sum64(), keysForLabels
 		}
 
 		b = append(b, name...)
@@ -46,7 +46,7 @@ func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) uint64 {
 		b = append(b, value...)
 		b = append(b, seps[0])
 	}
-	return xxhash.Sum64(b)
+	return xxhash.Sum64(b), keysForLabels
 }
 
 type Streams []Stream
