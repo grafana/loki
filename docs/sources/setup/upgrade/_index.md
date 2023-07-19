@@ -7,7 +7,7 @@ aliases:
 weight: 400
 ---
 
-# Upgrade
+# Upgrade Loki
 
 Every attempt is made to keep Grafana Loki backwards compatible, such that upgrades should be low risk and low friction.
 

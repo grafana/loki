@@ -7,7 +7,7 @@ aliases:
 weight: 600
 keywords: 
 ---
-# Installing on Istio 
+# Install on Istio 
 
 When installing Loki on Istio service mesh you must complete some additional steps. Without these steps, the ingester, querier, etc. might start, but you will see logs like the following:
 
