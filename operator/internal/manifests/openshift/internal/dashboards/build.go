@@ -3,6 +3,7 @@ package dashboards
 import (
 	"embed"
 	"fmt"
+	"io/fs"
 	"path"
 )
 
