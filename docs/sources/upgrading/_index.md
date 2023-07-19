@@ -93,6 +93,18 @@ If you have a use-case that relies on strict parsing where you expect the parser
 logfmt parser doesn't include standalone keys(keys without a value) in the resulting label set anymore.
 You can use `--keep-empty` flag to retain them.
 
+### Jsonnet
+
+##### Deprecated PodDisruptionBudget definition has been removed
+
+The `policy/v1beta1` API version of PodDisruptionBudget is no longer served as of Kubernetes v1.25.
+To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21. 
+
+No impact is expected if you use Kubernetes v1.21 or newer.
+
+Please refer to [official migration guide](https://kubernetes.io/docs/reference/using-api/deprecation-guide/#poddisruptionbudget-v125) for more details.
+
+
 ## 2.8.0
 
 ### Loki
