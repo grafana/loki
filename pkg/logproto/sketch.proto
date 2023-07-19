@@ -19,7 +19,13 @@ message TopK {
     string event = 1;
     uint32 count = 2;
   }
-  repeated Pair list = 2;
+
+  message Result {
+    string key = 1;
+    repeated Pair list = 2;
+  }
+
+  repeated Result results = 2;
 
   bytes hyperloglog = 3;
 }

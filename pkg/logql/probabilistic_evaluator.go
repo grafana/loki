@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/go-kit/log"
@@ -416,18 +417,21 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 			// TODO(karsten): capture error
 			return false, ts, nil
 		}
-		/*
+
+		buf := make([]byte, 0, 1024)
+		sort.Strings(expr.Grouping.Groups)
+
+		for _, s := range vec {
+			metric := s.Metric
 			var groupingKey uint64
 			if expr.Grouping.Without {
 				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
 			} else {
 				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
 			}
-		*/
 
-		for _, s := range vec {
-			// TODO(karsten): add s.F instead
-			topkAggregation.Observe(s.Metric.String())
+			// TODO(karsten): support floats.
+			topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), uint32(s.F))
 		}
 
 		r := sketch.TopKVector{
