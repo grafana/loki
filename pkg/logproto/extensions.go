@@ -20,6 +20,11 @@ func (ids SeriesIdentifiers) Less(i, j int) bool {
 	a, b := labels.FromMap(ids[i].Labels), labels.FromMap(ids[j].Labels)
 	return labels.Compare(a, b) <= 0
 }
+func (id SeriesIdentifier) Hash() uint64 {
+	// TODO(karsten): It might be faster to copy the hash function. Also,
+	// the map might not be ordered.
+	return labels.FromMap(id.Labels).Hash()
+}
 
 type Streams []Stream
 

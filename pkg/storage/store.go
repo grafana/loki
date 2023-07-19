@@ -432,7 +432,6 @@ func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logpro
 	for i, s := range series {
 		result[i] = logproto.SeriesIdentifier{
 			Labels: s.Map(),
-			Hash: &wrappers.UInt64Value{Value: s.Hash()},
 		}
 	}
 	return result, nil
