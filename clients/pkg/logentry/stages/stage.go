@@ -3,6 +3,7 @@ package stages
 import (
 	"os"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log"
@@ -15,31 +16,32 @@ import (
 )
 
 const (
-	StageTypeJSON            = "json"
-	StageTypeLogfmt          = "logfmt"
-	StageTypeRegex           = "regex"
-	StageTypeReplace         = "replace"
-	StageTypeMetric          = "metrics"
-	StageTypeLabel           = "labels"
-	StageTypeLabelDrop       = "labeldrop"
-	StageTypeTimestamp       = "timestamp"
-	StageTypeOutput          = "output"
-	StageTypeDocker          = "docker"
-	StageTypeCRI             = "cri"
-	StageTypeMatch           = "match"
-	StageTypeTemplate        = "template"
-	StageTypePipeline        = "pipeline"
-	StageTypeTenant          = "tenant"
-	StageTypeDrop            = "drop"
-	StageTypeSampling        = "sampling"
-	StageTypeLimit           = "limit"
-	StageTypeMultiline       = "multiline"
-	StageTypePack            = "pack"
-	StageTypeLabelAllow      = "labelallow"
-	StageTypeStaticLabels    = "static_labels"
-	StageTypeDecolorize      = "decolorize"
-	StageTypeEventLogMessage = "eventlogmessage"
-	StageTypeGeoIP           = "geoip"
+	StageTypeJSON             = "json"
+	StageTypeLogfmt           = "logfmt"
+	StageTypeRegex            = "regex"
+	StageTypeReplace          = "replace"
+	StageTypeMetric           = "metrics"
+	StageTypeLabel            = "labels"
+	StageTypeLabelDrop        = "labeldrop"
+	StageTypeTimestamp        = "timestamp"
+	StageTypeOutput           = "output"
+	StageTypeDocker           = "docker"
+	StageTypeCRI              = "cri"
+	StageTypeMatch            = "match"
+	StageTypeTemplate         = "template"
+	StageTypePipeline         = "pipeline"
+	StageTypeTenant           = "tenant"
+	StageTypeDrop             = "drop"
+	StageTypeSampling         = "sampling"
+	StageTypeLimit            = "limit"
+	StageTypeMultiline        = "multiline"
+	StageTypePack             = "pack"
+	StageTypeLabelAllow       = "labelallow"
+	StageTypeStaticLabels     = "static_labels"
+	StageTypeDecolorize       = "decolorize"
+	StageTypeEventLogMessage  = "eventlogmessage"
+	StageTypeGeoIP            = "geoip"
+	StageTypeNonIndexedLabels = "non_indexed_labels"
 )
 
 // Processor takes an existing set of labels, timestamp and log entry and returns either a possibly mutated
@@ -107,134 +109,119 @@ func toStage(p Processor) Stage {
 	}
 }
 
+type StageCreationParams struct {
+	logger     log.Logger
+	config     interface{}
+	registerer prometheus.Registerer
+	jobName    *string
+}
+
+type stageCreator func(StageCreationParams) (Stage, error)
+
+var stageCreators map[string]stageCreator
+
+var stageCreatorsInitLock sync.Mutex
+
+// getStageCreators uses lazyLoading to resolve circular dependencies issue.
+func getStageCreators() map[string]stageCreator {
+	if stageCreators != nil {
+		return stageCreators
+	}
+	stageCreatorsInitLock.Lock()
+	defer stageCreatorsInitLock.Unlock()
+	if stageCreators != nil {
+		return stageCreators
+	}
+	stageCreators = map[string]stageCreator{
+		StageTypeDocker: func(params StageCreationParams) (Stage, error) {
+			return NewDocker(params.logger, params.registerer)
+		},
+		StageTypeCRI: func(params StageCreationParams) (Stage, error) {
+			return NewCRI(params.logger, params.config, params.registerer)
+		},
+		StageTypeJSON: func(params StageCreationParams) (Stage, error) {
+			return newJSONStage(params.logger, params.config)
+		},
+		StageTypeLogfmt: func(params StageCreationParams) (Stage, error) {
+			return newLogfmtStage(params.logger, params.config)
+		},
+		StageTypeRegex: func(params StageCreationParams) (Stage, error) {
+			return newRegexStage(params.logger, params.config)
+		},
+		StageTypeMetric: func(params StageCreationParams) (Stage, error) {
+			return newMetricStage(params.logger, params.config, params.registerer)
+		},
+		StageTypeLabel: func(params StageCreationParams) (Stage, error) {
+			return newLabelStage(params.logger, params.config)
+		},
+		StageTypeLabelDrop: func(params StageCreationParams) (Stage, error) {
+			return newLabelDropStage(params.config)
+		},
+		StageTypeTimestamp: func(params StageCreationParams) (Stage, error) {
+			return newTimestampStage(params.logger, params.config)
+		},
+		StageTypeOutput: func(params StageCreationParams) (Stage, error) {
+			return newOutputStage(params.logger, params.config)
+		},
+		StageTypeMatch: func(params StageCreationParams) (Stage, error) {
+			return newMatcherStage(params.logger, params.jobName, params.config, params.registerer)
+		},
+		StageTypeTemplate: func(params StageCreationParams) (Stage, error) {
+			return newTemplateStage(params.logger, params.config)
+		},
+		StageTypeTenant: func(params StageCreationParams) (Stage, error) {
+			return newTenantStage(params.logger, params.config)
+		},
+		StageTypeReplace: func(params StageCreationParams) (Stage, error) {
+			return newReplaceStage(params.logger, params.config)
+		},
+		StageTypeDrop: func(params StageCreationParams) (Stage, error) {
+			return newDropStage(params.logger, params.config, params.registerer)
+		},
+		StageTypeSampling: func(params StageCreationParams) (Stage, error) {
+			return newSamplingStage(params.logger, params.config, params.registerer)
+		},
+		StageTypeLimit: func(params StageCreationParams) (Stage, error) {
+			return newLimitStage(params.logger, params.config, params.registerer)
+		},
+		StageTypeMultiline: func(params StageCreationParams) (Stage, error) {
+			return newMultilineStage(params.logger, params.config)
+		},
+		StageTypePack: func(params StageCreationParams) (Stage, error) {
+			return newPackStage(params.logger, params.config, params.registerer)
+		},
+		StageTypeLabelAllow: func(params StageCreationParams) (Stage, error) {
+			return newLabelAllowStage(params.config)
+		},
+		StageTypeStaticLabels: func(params StageCreationParams) (Stage, error) {
+			return newStaticLabelsStage(params.logger, params.config)
+		},
+		StageTypeDecolorize: func(params StageCreationParams) (Stage, error) {
+			return newDecolorizeStage(params.config)
+		},
+		StageTypeEventLogMessage: func(params StageCreationParams) (Stage, error) {
+			return newEventLogMessageStage(params.logger, params.config)
+		},
+		StageTypeGeoIP: func(params StageCreationParams) (Stage, error) {
+			return newGeoIPStage(params.logger, params.config)
+		},
+		StageTypeNonIndexedLabels: newNonIndexedLabelsStage,
+	}
+	return stageCreators
+}
+
 // New creates a new stage for the given type and configuration.
 func New(logger log.Logger, jobName *string, stageType string,
 	cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
-	var s Stage
-	var err error
-	switch stageType {
-	case StageTypeDocker:
-		s, err = NewDocker(logger, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeCRI:
-		s, err = NewCRI(logger, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeJSON:
-		s, err = newJSONStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeLogfmt:
-		s, err = newLogfmtStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeRegex:
-		s, err = newRegexStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeMetric:
-		s, err = newMetricStage(logger, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeLabel:
-		s, err = newLabelStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeLabelDrop:
-		s, err = newLabelDropStage(cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeTimestamp:
-		s, err = newTimestampStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeOutput:
-		s, err = newOutputStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeMatch:
-		s, err = newMatcherStage(logger, jobName, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeTemplate:
-		s, err = newTemplateStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeTenant:
-		s, err = newTenantStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeReplace:
-		s, err = newReplaceStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeDrop:
-		s, err = newDropStage(logger, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeSampling:
-		s, err = newSamplingStage(logger, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeLimit:
-		s, err = newLimitStage(logger, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeMultiline:
-		s, err = newMultilineStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypePack:
-		s, err = newPackStage(logger, cfg, registerer)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeLabelAllow:
-		s, err = newLabelAllowStage(cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeStaticLabels:
-		s, err = newStaticLabelsStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeDecolorize:
-		s, err = newDecolorizeStage(cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeEventLogMessage:
-		s, err = newEventLogMessageStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	case StageTypeGeoIP:
-		s, err = newGeoIPStage(logger, cfg)
-		if err != nil {
-			return nil, err
-		}
-	default:
+	creator, ok := getStageCreators()[stageType]
+	if !ok {
 		return nil, errors.Errorf("Unknown stage type: %s", stageType)
 	}
-	return s, nil
+	params := StageCreationParams{
+		logger:     logger,
+		config:     cfg,
+		registerer: registerer,
+		jobName:    jobName,
+	}
+	return creator(params)
 }
