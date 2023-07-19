@@ -74,8 +74,11 @@ func main() {
 	}
 
 	utilruntime.Must(monitoringv1.AddToScheme(scheme))
-	utilruntime.Must(configv1.AddToScheme(scheme))
-	utilruntime.Must(routev1.AddToScheme(scheme))
+
+	if ctrlCfg.IsOpenShiftBundle() {
+		utilruntime.Must(configv1.AddToScheme(scheme))
+		utilruntime.Must(routev1.AddToScheme(scheme))
+	}
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), options)
 	if err != nil {
@@ -84,10 +87,10 @@ func main() {
 	}
 
 	if err = (&lokictrl.LokiStackReconciler{
-		Client:     mgr.GetClient(),
-		Log:        logger.WithName("controllers").WithName("lokistack"),
-		Scheme:     mgr.GetScheme(),
-		BundleType: ctrlCfg.BundleType,
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("lokistack"),
+		Scheme: mgr.GetScheme(),
+		Config: &ctrlCfg,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "lokistack")
 		os.Exit(1)
@@ -109,7 +112,7 @@ func main() {
 	}
 
 	av := &validation.AlertingRuleValidator{}
-	if ctrlconfigv1.IsOpenShiftBundle(ctrlCfg.BundleType) {
+	if ctrlCfg.IsOpenShiftBundle() {
 		av.ExtendedValidator = openshift.AlertingRuleValidator
 	}
 	if err = av.SetupWebhookWithManager(mgr); err != nil {
@@ -127,7 +130,7 @@ func main() {
 	}
 
 	rv := &validation.RecordingRuleValidator{}
-	if ctrlconfigv1.IsOpenShiftBundle(ctrlCfg.BundleType) {
+	if ctrlCfg.IsOpenShiftBundle() {
 		rv.ExtendedValidator = openshift.RecordingRuleValidator
 	}
 	if err = rv.SetupWebhookWithManager(mgr); err != nil {
@@ -150,10 +153,10 @@ func main() {
 	}
 
 	if err = (&lokictrl.CertRotationReconciler{
-		Client:     mgr.GetClient(),
-		Log:        logger.WithName("controllers").WithName("certrotation"),
-		Scheme:     mgr.GetScheme(),
-		BundleType: ctrlCfg.BundleType,
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("certrotation"),
+		Scheme: mgr.GetScheme(),
+		Config: &ctrlCfg,
 	}).SetupWithManager(mgr); err != nil {
 		logger.Error(err, "unable to create controller", "controller", "certrotation")
 		os.Exit(1)

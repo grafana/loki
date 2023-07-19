@@ -25,8 +25,8 @@ type ProjectConfig struct {
 	BundleType BundleType `json:"bundleType"`
 }
 
-func IsOpenShiftBundle(t BundleType) bool {
-	return t == BundleTypeCommunityOpenShift || t == BundleTypeOpenShift
+func (p *ProjectConfig) IsOpenShiftBundle() bool {
+	return p.BundleType == BundleTypeCommunityOpenShift || p.BundleType == BundleTypeOpenShift
 }
 
 func init() {

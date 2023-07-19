@@ -4,12 +4,13 @@ import (
 	"flag"
 	"io"
 	"os"
+	"reflect"
 	"testing"
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
@@ -54,7 +55,7 @@ func TestMain(m *testing.M) {
 func TestLokiStackController_RegistersCustomResourceForCreateOrUpdate(t *testing.T) {
 	b := &k8sfakes.FakeBuilder{}
 	k := &k8sfakes.FakeClient{}
-	c := &LokiStackReconciler{Client: k, Scheme: scheme}
+	c := &LokiStackReconciler{Client: k, Scheme: scheme, Config: &configv1.ProjectConfig{}}
 
 	b.ForReturns(b)
 	b.OwnsReturns(b)
@@ -80,91 +81,120 @@ func TestLokiStackController_RegisterOwnedResourcesForUpdateOrDeleteOnly(t *test
 		obj   client.Object
 		index int
 		pred  builder.OwnsOption
+		cfg   *configv1.ProjectConfig
 	}
 	table := []test{
 		{
 			obj:   &corev1.ConfigMap{},
 			index: 0,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &corev1.Secret{},
 			index: 1,
 			pred:  updateOrDeleteOnlyPred,
+			cfg:   &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &corev1.ServiceAccount{},
 			index: 2,
 			pred:  updateOrDeleteOnlyPred,
+			cfg:   &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &corev1.Service{},
 			index: 3,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &appsv1.Deployment{},
 			index: 4,
 			pred:  updateOrDeleteWithStatusPred,
+			cfg:   &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &appsv1.StatefulSet{},
 			index: 5,
-			pred:  updateOrDeleteWithStatusPred,
+
+			pred: updateOrDeleteWithStatusPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &rbacv1.ClusterRole{},
 			index: 6,
 			pred:  updateOrDeleteOnlyPred,
+			cfg:   &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &rbacv1.ClusterRoleBinding{},
 			index: 7,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &rbacv1.Role{},
 			index: 8,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &rbacv1.RoleBinding{},
 			index: 9,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &monitoringv1.PrometheusRule{},
 			index: 10,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 		{
 			obj:   &routev1.Route{},
 			index: 11,
-			pred:  updateOrDeleteOnlyPred,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg: &configv1.ProjectConfig{
+				BundleType: configv1.BundleTypeOpenShift,
+			},
 		},
 		{
 			obj:   &networkingv1.Ingress{},
-			index: 12,
-			pred:  updateOrDeleteOnlyPred,
+			index: 11,
+
+			pred: updateOrDeleteOnlyPred,
+			cfg:  &configv1.ProjectConfig{},
 		},
 	}
 	for _, tst := range table {
-		b := &k8sfakes.FakeBuilder{}
-		b.ForReturns(b)
-		b.OwnsReturns(b)
-		b.WatchesReturns(b)
+		tst := tst
+		oType := reflect.TypeOf(tst.obj)
+		t.Run(oType.String(), func(t *testing.T) {
+			b := &k8sfakes.FakeBuilder{}
+			b.ForReturns(b)
+			b.OwnsReturns(b)
+			b.WatchesReturns(b)
 
-		c := &LokiStackReconciler{Client: k, Scheme: scheme}
-		err := c.buildController(b)
-		require.NoError(t, err)
+			c := &LokiStackReconciler{Client: k, Scheme: scheme, Config: tst.cfg}
+			err := c.buildController(b)
+			require.NoError(t, err)
 
-		// Require Owns-Calls for all owned resources
-		require.Equal(t, 13, b.OwnsCallCount())
+			// Require Owns-Calls for all owned resources
+			require.Equal(t, 12, b.OwnsCallCount())
 
-		// Require Owns-call options to have delete predicate only
-		obj, opts := b.OwnsArgsForCall(tst.index)
-		require.Equal(t, tst.obj, obj)
-		require.Equal(t, tst.pred, opts[0])
+			// Require Owns-call options to have delete predicate only
+			obj, opts := b.OwnsArgsForCall(tst.index)
+			require.Equal(t, tst.obj, obj)
+			require.Equal(t, tst.pred, opts[0])
+		})
 	}
 }
 
@@ -173,33 +203,40 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 
 	// Require owned resources
 	type test struct {
-		index        int
-		featureGates lokiv1beta1.FeatureGates
-		src          source.Source
-		pred         builder.OwnsOption
+		index  int
+		wcount int
+		src    source.Source
+		pred   builder.OwnsOption
+		cfg    *configv1.ProjectConfig
 	}
 	table := []test{
 		{
-			src:   &source.Kind{Type: &openshiftconfigv1.APIServer{}},
-			index: 0,
-			pred:  updateOrDeleteOnlyPred,
+			src:    &source.Kind{Type: &corev1.Secret{}},
+			index:  0,
+			wcount: 1,
+			pred:   createUpdateOrDeletePred,
+			cfg:    &configv1.ProjectConfig{},
 		},
 		{
-			src:   &source.Kind{Type: &openshiftconfigv1.Proxy{}},
-			index: 1,
-			pred:  updateOrDeleteOnlyPred,
+			src:    &source.Kind{Type: &openshiftconfigv1.APIServer{}},
+			index:  1,
+			wcount: 4,
+			pred:   updateOrDeleteOnlyPred,
+			cfg:    &configv1.ProjectConfig{BundleType: configv1.BundleTypeOpenShift},
 		},
 		{
-			src:          &source.Kind{Type: &corev1.Service{}},
-			index:        2,
-			featureGates: lokiv1beta1.FeatureGates{},
-			pred:         createUpdateOrDeletePred,
+			src:    &source.Kind{Type: &openshiftconfigv1.Proxy{}},
+			index:  2,
+			wcount: 4,
+			pred:   updateOrDeleteOnlyPred,
+			cfg:    &configv1.ProjectConfig{BundleType: configv1.BundleTypeOpenShift},
 		},
 		{
-			src:          &source.Kind{Type: &corev1.Secret{}},
-			index:        3,
-			featureGates: lokiv1beta1.FeatureGates{},
-			pred:         createUpdateOrDeletePred,
+			src:    &source.Kind{Type: &corev1.Service{}},
+			index:  3,
+			wcount: 4,
+			pred:   createUpdateOrDeletePred,
+			cfg:    &configv1.ProjectConfig{BundleType: configv1.BundleTypeOpenShift},
 		},
 	}
 	for _, tst := range table {
@@ -208,12 +245,12 @@ func TestLokiStackController_RegisterWatchedResources(t *testing.T) {
 		b.OwnsReturns(b)
 		b.WatchesReturns(b)
 
-		c := &LokiStackReconciler{Client: k, Scheme: scheme}
+		c := &LokiStackReconciler{Client: k, Scheme: scheme, Config: tst.cfg}
 		err := c.buildController(b)
 		require.NoError(t, err)
 
 		// Require Watches-calls for all watches resources
-		require.Equal(t, 4, b.WatchesCallCount())
+		require.Equal(t, tst.wcount, b.WatchesCallCount())
 
 		src, _, opts := b.WatchesArgsForCall(tst.index)
 		require.Equal(t, tst.src, src)

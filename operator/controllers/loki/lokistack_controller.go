@@ -114,9 +114,9 @@ var (
 // LokiStackReconciler reconciles a LokiStack object
 type LokiStackReconciler struct {
 	client.Client
-	Log        logr.Logger
-	Scheme     *runtime.Scheme
-	BundleType configv1.BundleType
+	Log    logr.Logger
+	Scheme *runtime.Scheme
+	Config *configv1.ProjectConfig
 }
 
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks,verbs=get;list;watch;create;update;patch;delete
@@ -153,7 +153,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, nil
 	}
 
-	lc, err := lokistackconfig.Get(ctx, r.Client, r.BundleType)
+	lc, err := lokistackconfig.Get(ctx, r.Client, r.Config.BundleType)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
@@ -201,7 +201,7 @@ func (r *LokiStackReconciler) SetupWithManager(mgr manager.Manager) error {
 }
 
 func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
-	return bld.
+	b := bld.
 		For(&lokiv1.LokiStack{}, createOrUpdateOnlyPred).
 		Owns(&corev1.ConfigMap{}, updateOrDeleteOnlyPred).
 		Owns(&corev1.Secret{}, updateOrDeleteOnlyPred).
@@ -214,13 +214,19 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred).
-		Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
-		Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred).
-		Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred).
-		Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred).
-		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
-		Complete(r)
+		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
+
+	if r.Config.IsOpenShiftBundle() {
+		b = b.
+			Owns(&routev1.Route{}, updateOrDeleteOnlyPred).
+			Watches(&source.Kind{Type: &openshiftconfigv1.APIServer{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred).
+			Watches(&source.Kind{Type: &openshiftconfigv1.Proxy{}}, r.enqueueAllLokiStacksHandler(), updateOrDeleteOnlyPred).
+			Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred)
+	} else {
+		b = b.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)
+	}
+
+	return b.Complete(r)
 }
 
 func (r *LokiStackReconciler) enqueueAllLokiStacksHandler() handler.EventHandler {

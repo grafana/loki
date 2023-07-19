@@ -27,9 +27,9 @@ import (
 // and CA bundle configmap.
 type CertRotationReconciler struct {
 	client.Client
-	Log        logr.Logger
-	Scheme     *runtime.Scheme
-	BundleType configv1.BundleType
+	Log    logr.Logger
+	Scheme *runtime.Scheme
+	Config *configv1.ProjectConfig
 }
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
@@ -51,7 +51,7 @@ func (r *CertRotationReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, nil
 	}
 
-	lc, err := lokistackconfig.Get(ctx, r.Client, r.BundleType)
+	lc, err := lokistackconfig.Get(ctx, r.Client, r.Config.BundleType)
 	if err != nil {
 		return reconcile.Result{}, err
 	}
