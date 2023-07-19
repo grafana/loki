@@ -127,9 +127,9 @@ func NewProbabilisticStepEvaluator(fn func() (bool, int64, StepResult), closeFn 
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
-func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) Evaluator {
+func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration) ProbabilisticEvaluator {
 	d := NewDefaultEvaluator(querier, maxLookBackPeriod)
-	p := &ProbabilisticEvaluator{DefaultEvaluator: *d}
+	p := ProbabilisticEvaluator{DefaultEvaluator: *d}
 	return p
 }
 

@@ -142,11 +142,11 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
-	Timeout   time.Duration
-	logger    log.Logger
-	evaluator Evaluator
-	limits    Limits
-	opts      EngineOpts
+	Timeout time.Duration
+	logger  log.Logger
+	querier Querier
+	limits  Limits
+	opts    EngineOpts
 }
 
 // NewEngine creates a new LogQL Engine.
@@ -157,11 +157,11 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
-		logger:    logger,
-		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
-		limits:    l,
-		Timeout:   queryTimeout,
-		opts:      opts,
+		logger:  logger,
+		querier: q,
+		limits:  l,
+		Timeout: queryTimeout,
+		opts:    opts,
 	}
 }
 
@@ -170,13 +170,53 @@ func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
 		params:    params,
-		evaluator: ng.evaluator,
+		evaluator: NewDefaultEvaluator(ng.querier, ng.opts.MaxLookBackPeriod),
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
+	}
+}
+
+type ProbabilisticEngine struct {
+	evaluator ProbabilisticEvaluator
+	Engine
+}
+
+// NewProbabilisticEngine creates a new LogQL Engine.
+func NewProbabilisticEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *ProbabilisticEngine {
+	queryTimeout := opts.Timeout
+	opts.applyDefault()
+	if logger == nil {
+		logger = log.NewNopLogger()
+	}
+	e := Engine{
+		logger:  logger,
+		querier: q,
+		limits:  l,
+		Timeout: queryTimeout,
+		opts:    opts,
+	}
+
+	return &ProbabilisticEngine{Engine: e}
+}
+
+func (p *ProbabilisticEngine) Query(params Params) Query {
+	return &probabilisticQuery{
+		evaluator: NewProbabilisticEvaluator(p.querier, p.opts.MaxLookBackPeriod),
+		query: query{
+			logger:    p.logger,
+			params:    params,
+			evaluator: NewDefaultEvaluator(p.querier, p.opts.MaxLookBackPeriod),
+			parse: func(_ context.Context, query string) (syntax.Expr, error) {
+				return syntax.ParseExpr(query)
+			},
+			record:       true,
+			logExecQuery: p.Engine.opts.LogExecutingQuery,
+			limits:       p.Engine.limits,
+		},
 	}
 }
 
