@@ -18,21 +18,25 @@ type element struct {
 	Count int64
 }
 
-type TopKResult []element
+type TopKResult struct {
+	groupingKey string
+	result      []element
+}
 
-func (t TopKResult) Len() int { return len(t) }
+func (t TopKResult) Len() int { return len(t.result) }
 
 // for topk we actually want the largest item first
-func (t TopKResult) Less(i, j int) bool { return t[i].Count > t[j].Count }
-func (t TopKResult) Swap(i, j int)      { t[i], t[j] = t[j], t[i] }
+func (t TopKResult) Less(i, j int) bool { return t.result[i].Count > t.result[j].Count }
+func (t TopKResult) Swap(i, j int)      { t.result[i], t.result[j] = t.result[j], t.result[i] }
 
 // Topk is a structure that uses a Count Min Sketch and a Min-Heap to track the top k events by frequency.
 // We also use the sketch-bf (https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ell2.12482) notion of a
 // bloomfilter per count min sketch row to avoid having to iterate though the heap each time we want to check for
 // existence of a given event (by identifier) in the heap.
 type Topk struct {
-	max                 int
-	heap                *MinHeap
+	max int
+	// the heap field is a map to allow for doing topk queries by groupingKey, like topk(10, query) by (endpoint)
+	heaps               map[string]*MinHeap
 	sketch              *CountMinSketch
 	bf                  [][]bool
 	hll                 *hyperloglog.Sketch
@@ -100,7 +104,7 @@ func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 	}
 	return &Topk{
 		max:    k,
-		heap:   &MinHeap{},
+		heaps:  make(map[string]*MinHeap),
 		sketch: s,
 		hll:    hyperloglog.New16(),
 		bf:     makeBF(w, d),
@@ -124,20 +128,25 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 		return nil, err
 	}
 
-	h := &MinHeap{}
-	for _, p := range t.List {
-		node := &node{
-			event: p.Event,
-			count: p.Count,
+	heaps := make(map[string]*MinHeap)
+	for _, res := range t.Results {
+		h := &MinHeap{}
+		for _, e := range res.List {
+			node := &node{
+				event: e.Event,
+				count: e.Count,
+			}
+			heap.Push(h, node)
 		}
-		heap.Push(h, node)
+
+		heaps[res.Key] = h
 	}
 
 	// TODO(karsten): should we set expected cardinality as well?
 	topk := &Topk{
 		sketch: cms,
 		hll:    hll,
-		heap:   h,
+		heaps:  heaps,
 	}
 	return topk, nil
 }
@@ -157,19 +166,23 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 		return nil, err
 	}
 
-	list := make([]*logproto.TopK_Pair, 0, len(*t.heap))
-	for _, node := range *t.heap {
-		pair := &logproto.TopK_Pair{
-			Event: node.event,
-			Count: node.count,
+	list := make([]*logproto.TopK_Result, 0, len(t.heaps))
+	for key := range t.heaps {
+		res := make([]*logproto.TopK_Pair, 0, len(*t.heaps[key]))
+		for _, node := range *t.heaps[key] {
+			pair := &logproto.TopK_Pair{
+				Event: node.event,
+				Count: node.count,
+			}
+			res = append(res, pair)
 		}
-		list = append(list, pair)
+		list = append(list, &logproto.TopK_Result{Key: key, List: res})
 	}
 
 	topk := &logproto.TopK{
 		Cms:         cms,
 		Hyperloglog: hllBytes,
-		List:        list,
+		Results:     list,
 	}
 	return topk, nil
 }
@@ -187,11 +200,11 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
 // as well as replacing the min heap element with the new event and it's count
-func (t *Topk) heapMinReplace(event string, estimate uint32, removed string) {
+func (t *Topk) heapMinReplace(event, groupingKey string, estimate uint32, removed string) {
 	t.updateBF(removed, event)
-	(*t.heap)[0].event = event
-	(*t.heap)[0].count = estimate
-	heap.Fix(t.heap, 0)
+	(*t.heaps[groupingKey])[0].event = event
+	(*t.heaps[groupingKey])[0].count = estimate
+	heap.Fix(t.heaps[groupingKey], 0)
 }
 
 // updates the BF to ensure that the removed event won't be mistakenly thought
@@ -220,7 +233,7 @@ func unsafeGetBytes(s string) []byte {
 	)[:len(s):len(s)]
 }
 
-// Observe is our sketch event observation function, which is a bit more complex than the original count min sketch + heap TopK
+// ObserveForGroupingKey is our sketch event observation function, which is a bit more complex than the original count min sketch + heap TopK
 // literature outlines. We're using some optimizations from the sketch-bf paper (here: http://www.eecs.harvard.edu/~michaelm/postscripts/tr-02-05.pdf)
 // in order to reduce the # of heap operations required over time. As an example, with a cardinality of 100k we saw nearly 3x improvement
 // in CPU usage by using these optimizations.
@@ -236,29 +249,33 @@ func unsafeGetBytes(s string) []byte {
 // new estimate is greater than the thing that's the current minimum value heap element. At that point, we update the values
 // for each node in the heap and rebalance the heap, and then if the event we're observing has an estimate that is still
 // greater than the minimum heap element count, we should put this event into the heap and remove the other one.
-func (t *Topk) Observe(event string) {
-	estimate, h1, h2 := t.sketch.ConservativeIncrement(event)
+func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count uint32) {
+	estimate, h1, h2 := t.sketch.ConservativeAdd(event, count)
 	t.hll.Insert(unsafeGetBytes(event))
+
+	if t.heaps[groupingKey] == nil {
+		t.heaps[groupingKey] = &MinHeap{}
+	}
 
 	if t.InTopk(h1, h2) {
 		return
 	}
 
-	if len(*t.heap) < t.max {
-		t.heapPush(t.heap, event, estimate, h1, h2)
+	if len(*t.heaps[groupingKey]) < t.max {
+		t.heapPush(t.heaps[groupingKey], event, estimate, h1, h2)
 		return
 	}
 
-	if estimate > t.heap.Peek().(*node).count {
+	if estimate > t.heaps[groupingKey].Peek().(*node).count {
 		var h1, h2 uint32
 		var pos uint32
-		for i := range *t.heap {
-			(*t.heap)[i].count = t.sketch.Count((*t.heap)[i].event)
-			if i <= len(*t.heap)/2 {
-				heap.Fix(t.heap, i)
+		for i := range *t.heaps[groupingKey] {
+			(*t.heaps[groupingKey])[i].count = t.sketch.Count((*t.heaps[groupingKey])[i].event)
+			if i <= len(*t.heaps[groupingKey])/2 {
+				heap.Fix(t.heaps[groupingKey], i)
 			}
 			// ensure all the bf buckets are truthy for the event
-			h1, h2 = hashn((*t.heap)[i].event)
+			h1, h2 = hashn((*t.heaps[groupingKey])[i].event)
 			for j := range t.bf {
 				pos = t.sketch.getPos(h1, h2, uint32(j))
 				t.bf[j][pos] = true
@@ -273,29 +290,35 @@ func (t *Topk) Observe(event string) {
 
 	// after we've updated the heap, if the estimate is still > the min heap element
 	// we should replace the min heap element with the current event and rebalance the heap
-	if estimate > t.heap.Peek().(*node).count {
-		if len(*t.heap) == t.max {
-			e := t.heap.Peek().(*node).event
+	if estimate > t.heaps[groupingKey].Peek().(*node).count {
+		if len(*t.heaps[groupingKey]) == t.max {
+			e := t.heaps[groupingKey].Peek().(*node).event
 			//r1, r2 := hashn(e)
-			t.heapMinReplace(event, estimate, e)
+			t.heapMinReplace(event, groupingKey, estimate, e)
 			return
 		}
-		t.heapPush(t.heap, event, estimate, h1, h2)
+		t.heapPush(t.heaps[groupingKey], event, estimate, h1, h2)
 	}
+}
+
+// Observe should only be used when there is no grouping key present for the overall query
+func (t *Topk) Observe(event string, count uint32) {
+	t.ObserveForGroupingKey(event, "", count)
 }
 
 func removeDuplicates(t TopKResult) TopKResult {
 	processed := map[string]struct{}{}
 	w := 0
-	for _, e := range t {
+	for _, e := range t.result {
 		if _, exists := processed[e.Event]; !exists {
 			// If this city has not been seen yet, add it to the list
 			processed[e.Event] = struct{}{}
-			t[w] = e
+			t.result[w] = e
 			w++
 		}
 	}
-	return t[:w]
+	t.result = t.result[:w]
+	return t
 }
 
 // Merge the given sketch into this one.
@@ -310,24 +333,40 @@ func (t *Topk) Merge(from *Topk) error {
 	}
 
 	var all TopKResult
-	for _, e := range *t.heap {
-		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+	processed := make(map[string]struct{})
+	for key := range t.heaps {
+		processed[key] = struct{}{}
+		if _, ok := from.heaps[key]; !ok {
+			continue
+		}
+		all.result = all.result[:0]
+		all.groupingKey = key
+		for _, e := range *t.heaps[key] {
+			all.result = append(all.result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		}
+
+		for _, e := range *from.heaps[key] {
+			all.result = append(all.result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		}
+
+		all = removeDuplicates(all)
+		sort.Sort(all)
+		temp := &MinHeap{}
+		var h1, h2 uint32
+		// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
+		for _, e := range all.result[:t.max] {
+			h1, h2 = hashn(e.Event)
+			t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
+		}
+		t.heaps[key] = temp
 	}
 
-	for _, e := range *from.heap {
-		all = append(all, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+	for key := range from.heaps {
+		if _, ok := processed[key]; ok {
+			continue
+		}
+		t.heaps[key] = from.heaps[key]
 	}
-
-	all = removeDuplicates(all)
-	sort.Sort(all)
-	temp := &MinHeap{}
-	var h1, h2 uint32
-	// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
-	for _, e := range all[:t.max] {
-		h1, h2 = hashn(e.Event)
-		t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
-	}
-	t.heap = temp
 
 	return nil
 }
@@ -345,20 +384,52 @@ func (t *Topk) InTopk(h1, h2 uint32) bool {
 	return ret
 }
 
-func (t *Topk) Topk() TopKResult {
-	n := t.max
-	if len(*t.heap) < t.max {
-		n = len(*t.heap)
+func (t *Topk) Topk() []TopKResult {
+	res := make([]TopKResult, 0, len(t.heaps))
+	//i := 0
+	for key := range t.heaps {
+		n := t.max
+
+		keyRes := TopKResult{
+			groupingKey: key,
+			result:      make([]element, 0, len(*t.heaps[key])),
+		}
+		if len(*t.heaps[key]) < t.max {
+			n = len(*t.heaps[key])
+		}
+		for _, e := range *t.heaps[key] {
+			keyRes.result = append(keyRes.result, element{
+				Event: e.event,
+				Count: int64(t.sketch.Count(e.event)),
+			})
+		}
+		sort.Sort(keyRes)
+		keyRes.result = keyRes.result[:n]
+		res = append(res, keyRes)
 	}
-	res := make(TopKResult, 0, len(*t.heap))
-	for _, e := range *t.heap {
-		res = append(res, element{
+
+	return res
+}
+
+func (t *Topk) TopkForGroupingKey(groupingKey string) TopKResult {
+	n := t.max
+	if len(*t.heaps[groupingKey]) < t.max {
+		n = len(*t.heaps[groupingKey])
+	}
+	res := TopKResult{
+		groupingKey: "",
+		result:      make([]element, 0, len(*t.heaps[groupingKey])),
+	}
+
+	for _, e := range *t.heaps[groupingKey] {
+		res.result = append(res.result, element{
 			Event: e.event,
 			Count: int64(t.sketch.Count(e.event)),
 		})
 	}
 	sort.Sort(res)
-	return res[:n]
+	res.result = res.result[:n]
+	return res
 }
 
 // Cardinality returns the estimated cardinality of the input plus whether the size of t's

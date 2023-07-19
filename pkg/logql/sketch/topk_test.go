@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"container/heap"
 	"io"
+	"math"
 	"math/rand"
 	"os"
 	"sort"
@@ -26,7 +27,7 @@ func TestTopkCardinality(t *testing.T) {
 	topk, err := newCMSTopK(100, 10, 10)
 	assert.NoError(t, err)
 	for i := 0; i < max; i++ {
-		topk.Observe(strconv.Itoa(i))
+		topk.Observe(strconv.Itoa(i), 1)
 	}
 	c, bigEnough := topk.Cardinality()
 	// hll has a typical error accuracy of 2%
@@ -36,7 +37,7 @@ func TestTopkCardinality(t *testing.T) {
 	topk, err = NewCMSTopkForCardinality(nil, 100, max)
 	assert.NoError(t, err)
 	for i := 0; i < max; i++ {
-		topk.Observe(strconv.Itoa(i))
+		topk.Observe(strconv.Itoa(i), 1)
 	}
 	c, bigEnough = topk.Cardinality()
 	assert.Truef(t, bigEnough, "Cardinality of %d was not big enough.", c)
@@ -78,13 +79,13 @@ func TestTopK_Merge(t *testing.T) {
 	assert.NoError(t, err, "error creating topk")
 	for i := 0; i < (len(events) / 2); i++ {
 		for j := 0; j < events[i].count; j++ {
-			topk1.Observe(events[i].name)
+			topk1.Observe(events[i].name, 1)
 		}
 	}
 
 	for i := len(events) / 2; i < len(events); i++ {
 		for j := 0; j < events[i].count; j++ {
-			topk2.Observe(events[i].name)
+			topk2.Observe(events[i].name, 1)
 		}
 	}
 
@@ -94,11 +95,12 @@ func TestTopK_Merge(t *testing.T) {
 	mergedTopk := topk1.Topk()
 	var eventName string
 	mergedMissing := 0
+	require.Equal(t, len(mergedTopk), 1, "merged topk has topks for multiple grouping keys when it should not")
 outer:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(mergedTopk); j++ {
-			if mergedTopk[j].Event == eventName {
+		for j := 0; j < len(mergedTopk[0].result); j++ {
+			if mergedTopk[0].result[j].Event == eventName {
 				continue outer
 			}
 		}
@@ -112,18 +114,19 @@ outer:
 	topk3, _ := NewCMSTopkForCardinality(nil, k, nStreams)
 	for _, e := range events {
 		for j := 0; j < e.count; j++ {
-			topk3.Observe(e.name)
+			topk3.Observe(e.name, 1)
 		}
 	}
 
 	singleTopk := topk3.Topk()
+	require.Equal(t, len(singleTopk), 1, "single topk has topks for multiple grouping keys when it should not")
 
 	singleMissing := 0
 outer2:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(singleTopk); j++ {
-			if singleTopk[j].Event == eventName {
+		for j := 0; j < len(singleTopk[0].result); j++ {
+			if singleTopk[0].result[j].Event == eventName {
 				continue outer2
 			}
 		}
@@ -170,9 +173,12 @@ func TestRealTopK(t *testing.T) {
 		}
 	}
 
-	res := make(TopKResult, 0, len(h))
+	res := TopKResult{
+		groupingKey: "",
+		result:      make([]element, 0, len(h)),
+	}
 	for i := 0; i < len(h); i++ {
-		res = append(res, element{h[i].event, int64(h[i].count)})
+		res.result = append(res.result, element{h[i].event, int64(h[i].count)})
 	}
 	sort.Sort(res)
 
@@ -186,13 +192,14 @@ func TestRealTopK(t *testing.T) {
 	// Scan all words from the file.
 	for scanner.Scan() {
 		s = scanner.Text()
-		cms.Observe(s)
+		cms.Observe(s, 1)
 	}
 	cmsTop := cms.Topk()
 	cmsMissing := 0
+	assert.Equal(t, len(cmsTop), 1, "expected to only have one topk but there's multiple topks for grouping keys")
 outer:
-	for _, t := range res {
-		for _, t2 := range cmsTop {
+	for _, t := range res.result {
+		for _, t2 := range cmsTop[0].result {
 			if t2.Event == t.Event {
 				continue outer
 			}
@@ -251,9 +258,12 @@ func TestRealTop_Merge(t *testing.T) {
 		}
 	}
 
-	res := make(TopKResult, 0, len(h))
+	res := TopKResult{
+		groupingKey: "",
+		result:      make([]element, 0, len(h)),
+	}
 	for i := 0; i < len(h); i++ {
-		res = append(res, element{h[i].event, int64(h[i].count)})
+		res.result = append(res.result, element{h[i].event, int64(h[i].count)})
 	}
 	sort.Sort(res)
 
@@ -275,19 +285,23 @@ func TestRealTop_Merge(t *testing.T) {
 	for scanner.Scan() {
 		idx := i % shards
 		s = scanner.Text()
-		cms[idx].Observe(s)
+		cms[idx].Observe(s, 1)
 		i++
 	}
-	mergedCMS, _ := newCMSTopK(k, 2048, 5)
-	for _, c := range cms {
+	var mergedCMS = cms[0]
+	for _, c := range cms[1:] {
 		err = mergedCMS.Merge(c)
+		require.Equal(t, 1, len(mergedCMS.Topk()), "expected to only have one topk but there's multiple topks for grouping keys")
+
 		require.NoError(t, err)
 	}
 	cmsTop := mergedCMS.Topk()
 	cmsMissing := 0
+	assert.Equal(t, 1, len(cmsTop), "expected to only have one topk but there's multiple topks for grouping keys")
+
 outer:
-	for _, t := range res {
-		for _, t2 := range cmsTop {
+	for _, t := range res.result {
+		for _, t2 := range cmsTop[0].result {
 			if t2.Event == t.Event {
 				continue outer
 			}
@@ -314,7 +328,7 @@ func TestRealTop_MergeProto(t *testing.T) {
 
 	for scanner.Scan() {
 		s := scanner.Text()
-		cms1.Observe(s)
+		cms1.Observe(s, 1)
 	}
 
 	// read the second dataset into sketch2
@@ -324,7 +338,7 @@ func TestRealTop_MergeProto(t *testing.T) {
 	scanner = bufio.NewScanner(r2)
 	for scanner.Scan() {
 		s := scanner.Text()
-		cms1.Observe(s)
+		cms1.Observe(s, 1)
 	}
 	mergedCMS, _ := newCMSTopK(k, 2048, 5)
 	require.NoError(t, mergedCMS.Merge(cms1), "error merging")
@@ -351,4 +365,85 @@ func TestRealTop_MergeProto(t *testing.T) {
 	mCardinality, _ := mergedCMS.Cardinality()
 	dCardinality, _ := dMerged.Cardinality()
 	require.Equal(t, mCardinality, dCardinality, "hll cardinality estimate was not correct after deserializing and merging")
+}
+
+func TestTopK_MergeGroupingKeys(t *testing.T) {
+	nStreams := 300
+	k := 1
+	maxPerStream := 1000
+	events := make([]event, 0)
+	max := int64(0)
+	r := rand.New(rand.NewSource(99))
+
+	for i := 0; i < nStreams-k; i++ {
+		num := int64(maxPerStream)
+		n := r.Int63n(num) + 1
+		if n > max {
+			max = n
+		}
+		for j := 0; j < int(n); j++ {
+			events = append(events, event{name: strconv.Itoa(i), count: 1})
+		}
+	}
+	// then another set of things more than the max of the previous entries
+	for i := nStreams - k; i < nStreams; i++ {
+		n := rand.Int63n(int64(maxPerStream)) + 1 + max
+		for j := 0; j < int(n); j++ {
+			events = append(events, event{name: strconv.Itoa(i), count: 1})
+		}
+	}
+
+	rand.Seed(time.Now().UnixNano()) //nolint:all
+	rand.Shuffle(len(events), func(i, j int) { events[i], events[j] = events[j], events[i] })
+
+	topk1, err := NewCMSTopkForCardinality(nil, k, nStreams)
+	assert.NoError(t, err, "error creating topk")
+	topk2, err := NewCMSTopkForCardinality(nil, k, nStreams)
+	assert.NoError(t, err, "error creating topk")
+	for i := 0; i < (len(events) / 3); i++ {
+		for j := 0; j < events[i].count; j++ {
+			topk1.ObserveForGroupingKey(events[i].name, "asdf", 1)
+		}
+	}
+
+	for i := len(events) / 3; i < len(events)/2; i++ {
+		for j := 0; j < events[i].count; j++ {
+			topk1.ObserveForGroupingKey(events[i].name, "xyz", 1)
+		}
+	}
+	// really ugly casting, but this should get us from 50% -> 66...%
+	for i := len(events) / 2; i < int(math.Floor(float64(len(events))/float64(1.5))); i++ {
+		for j := 0; j < events[i].count; j++ {
+			topk2.ObserveForGroupingKey(events[i].name, "xyz", 1)
+		}
+	}
+	for i := int(math.Floor(float64(len(events)) / float64(1.5))); i < len(events); i++ {
+		for j := 0; j < events[i].count; j++ {
+			topk2.ObserveForGroupingKey(events[i].name, "qwer", 1)
+		}
+	}
+
+	require.Equal(t, 2, len(topk1.Topk()), "first topk does not have topks for expected grouping keys")
+	require.Equal(t, 2, len(topk2.Topk()), "second topk does not have topks for expected grouping keys")
+
+	err = topk1.Merge(topk2)
+	require.NoError(t, err)
+
+	mergedTopk := topk1.Topk()
+	var eventName string
+	mergedMissing := 0
+	require.Equal(t, 3, len(mergedTopk), "merged topk does not have topks for expected grouping keys")
+outer:
+	for i := nStreams - k; i < nStreams; i++ {
+		eventName = strconv.Itoa(i)
+		for j := 0; j < len(mergedTopk[0].result); j++ {
+			if mergedTopk[0].result[j].Event == eventName {
+				continue outer
+			}
+		}
+
+		mergedMissing++
+	}
+
+	require.LessOrEqualf(t, mergedMissing, 2, "more than acceptable misses: %d > %d", mergedMissing, 2)
 }
