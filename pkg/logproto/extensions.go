@@ -8,7 +8,8 @@ import (
 	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
+
+	//"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
@@ -16,20 +17,18 @@ import (
 // Note, this is not very efficient and use should be minimized as it requires label construction on each comparison
 type SeriesIdentifiers []SeriesIdentifier
 
+/*
 func (ids SeriesIdentifiers) Len() int      { return len(ids) }
 func (ids SeriesIdentifiers) Swap(i, j int) { ids[i], ids[j] = ids[j], ids[i] }
 func (ids SeriesIdentifiers) Less(i, j int) bool {
 	a, b := labels.FromMap(ids[i].Labels), labels.FromMap(ids[j].Labels)
 	return labels.Compare(a, b) <= 0
 }
+*/
 
 var seps = []byte{'\xff'}
 
 func (id SeriesIdentifier) Hash(b []byte) uint64 {
-	// TODO(karsten): It might be faster to copy the hash function. Also,
-	// the map might not be ordered.
-	//return labels.FromMap(id.Labels).Hash()
-
 	keysForLabels := make([]string, 0, len(id.Labels))
 	for k := range id.Labels {
 		keysForLabels = append(keysForLabels, k)
