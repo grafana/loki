@@ -91,7 +91,7 @@ After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters
 
 ### Kubernetes hacking
 
-Statefulsets are significantly more cumbersome to work with, upgrade, etc. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes statefulsets.
+Statefulsets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes statefulsets.
 
 In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`. This will leave the pods alive but delete the statefulset. Then you may recreate the (updated) statefulset and one-by-one start deleting the `ingester-0` through `ingester-n` pods _in that order_, allowing the statefulset to spin up new pods to replace them.
 
