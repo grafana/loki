@@ -60,7 +60,7 @@ func ConfigureGatewayDeployment(
 	mode lokiv1.ModeType,
 	secretVolumeName, tlsDir string,
 	minTLSVersion, ciphers string,
-	withTLS bool, adminGroups string,
+	withTLS bool, adminGroups []string,
 ) error {
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),

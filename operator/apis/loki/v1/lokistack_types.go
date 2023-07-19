@@ -245,17 +245,23 @@ type TenantsSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
 
-	// OpenshiftLoggingSpec defines the configuration specific to Openshift modes.
+	// Openshift defines the configuration specific to Openshift modes.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OpenshiftLogging"
-	OpenshiftLogging *OpenshiftLoggingSpec `json:"openshiftLogging,omitempty"`
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
+	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
 }
 
-// OpenshiftLoggingSpec defines the configuration specific to Openshift modes.
-type OpenshiftLoggingSpec struct {
-	// AdminGroups defines the list of group to be considered cluster admins by the Loki Operator.
+// OpenshiftTenantSpec defines the configuration specific to Openshift modes.
+type OpenshiftTenantSpec struct {
+	// AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+	// Setting this to an empty array disables admin groups.
+	//
+	// By default the following groups are considered admin-groups:
+	//  - system:cluster-admins
+	//  - cluster-admin
+	//  - dedicated-admin
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

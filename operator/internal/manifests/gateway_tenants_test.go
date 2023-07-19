@@ -420,10 +420,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			want: &appsv1.Deployment{},
 		},
 		{
-			desc:      "openshift-logging mode",
-			mode:      lokiv1.OpenshiftLogging,
-			stackName: "test",
-			stackNs:   "test-ns",
+			desc:        "openshift-logging mode",
+			mode:        lokiv1.OpenshiftLogging,
+			stackName:   "test",
+			stackNs:     "test-ns",
+			adminGroups: defaultAdminGroups,
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -511,10 +512,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc:      "openshift-logging mode with http encryption",
-			mode:      lokiv1.OpenshiftLogging,
-			stackName: "test",
-			stackNs:   "test-ns",
+			desc:        "openshift-logging mode with http encryption",
+			mode:        lokiv1.OpenshiftLogging,
+			stackName:   "test",
+			stackNs:     "test-ns",
+			adminGroups: defaultAdminGroups,
 			featureGates: configv1.FeatureGates{
 				HTTPEncryption:             true,
 				ServiceMonitorTLSEndpoints: true,
@@ -630,10 +632,11 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc:      "openshift-network mode",
-			mode:      lokiv1.OpenshiftNetwork,
-			stackName: "test",
-			stackNs:   "test-ns",
+			desc:        "openshift-network mode",
+			mode:        lokiv1.OpenshiftNetwork,
+			stackName:   "test",
+			stackNs:     "test-ns",
+			adminGroups: defaultAdminGroups,
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -738,6 +741,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				HTTPEncryption:             true,
 				ServiceMonitorTLSEndpoints: true,
 			},
+			adminGroups: defaultAdminGroups,
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",

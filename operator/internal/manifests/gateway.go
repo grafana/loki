@@ -26,7 +26,14 @@ const (
 	tlsSecretVolume = "tls-secret"
 )
 
-var logsEndpointRe = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
+var (
+	logsEndpointRe     = regexp.MustCompile(`^--logs\.(?:read|tail|write|rules)\.endpoint=http://.+`)
+	defaultAdminGroups = []string{
+		"system:cluster-admins",
+		"cluster-admin",
+		"dedicated-admin",
+	}
+)
 
 // BuildGateway returns a list of k8s objects for Loki Stack Gateway
 func BuildGateway(opts Options) ([]client.Object, error) {
@@ -77,9 +84,9 @@ func BuildGateway(opts Options) ([]client.Object, error) {
 
 	if opts.Stack.Tenants != nil {
 		mode := opts.Stack.Tenants.Mode
-		var adminGroups []string = nil
-		if opts.Stack.Tenants.OpenshiftLogging != nil {
-			adminGroups = opts.Stack.Tenants.OpenshiftLogging.AdminGroups
+		adminGroups := defaultAdminGroups
+		if opts.Stack.Tenants.Openshift != nil && opts.Stack.Tenants.Openshift.AdminGroups != nil {
+			adminGroups = opts.Stack.Tenants.Openshift.AdminGroups
 		}
 
 		if err := configureGatewayDeploymentForMode(dpl, mode, opts.Gates, minTLSVersion, ciphers, adminGroups); err != nil {

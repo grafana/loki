@@ -1,8 +1,6 @@
 package manifests
 
 import (
-	"strings"
-
 	"github.com/ViaQ/logerr/v2/kverrors"
 
 	"github.com/imdario/mergo"
@@ -70,12 +68,8 @@ func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeTyp
 		return nil // nothing to configure
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
-		adminGroupsStr := "system:cluster-admins,cluster-admin,dedicated-admin"
-		if adminGroups != nil {
-			adminGroupsStr = strings.Join(adminGroups, ",")
-		}
 
-		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroupsStr)
+		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroups)
 	}
 
 	return nil
