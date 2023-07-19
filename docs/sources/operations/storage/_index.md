@@ -44,7 +44,7 @@ The following are supported for the chunks:
 - [Amazon S3](https://aws.amazon.com/s3)
 - [Google Cloud Storage](https://cloud.google.com/storage/)
 - [Filesystem]({{< relref "./filesystem" >}}) (please read more about the filesystem to understand the pros/cons before using with production data)
-- [Baidu Object Storage](https://cloud.baidu.com/product/bos.html)
+- [Baidu Object Storage](https://intl.cloud.baidu.com/product/bos.html)
 - [IBM Cloud Object Storage](https://www.ibm.com/cloud/object-storage)
 
 ## Cloud Storage Permissions
