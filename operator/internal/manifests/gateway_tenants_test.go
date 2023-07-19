@@ -18,6 +18,25 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+func defaultGatewayDeployment() *appsv1.Deployment {
+	return &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "test-ns",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Template: corev1.PodTemplateSpec{
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name: gatewayContainerName,
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
 func TestApplyGatewayDefaultsOptions(t *testing.T) {
 	type tt struct {
 		desc string
@@ -397,32 +416,50 @@ func TestApplyGatewayDefaultsOptions(t *testing.T) {
 func TestConfigureDeploymentForMode(t *testing.T) {
 	type tt struct {
 		desc         string
-		mode         lokiv1.ModeType
 		stackName    string
 		stackNs      string
 		featureGates lokiv1beta1.FeatureGates
+		tenants      *lokiv1.TenantsSpec
 		dpl          *appsv1.Deployment
 		want         *appsv1.Deployment
 	}
 
 	tc := []tt{
 		{
-			desc: "static mode",
-			mode: lokiv1.Static,
-			dpl:  &appsv1.Deployment{},
-			want: &appsv1.Deployment{},
+			desc: "static mode without tenants",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+			},
+			dpl:  defaultGatewayDeployment(),
+			want: defaultGatewayDeployment(),
 		},
 		{
 			desc: "dynamic mode",
-			mode: lokiv1.Dynamic,
-			dpl:  &appsv1.Deployment{},
-			want: &appsv1.Deployment{},
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Dynamic,
+			},
+			dpl:  defaultGatewayDeployment(),
+			want: defaultGatewayDeployment(),
 		},
 		{
-			desc:      "openshift-logging mode",
-			mode:      lokiv1.OpenshiftLogging,
+			desc:      "static mode with mTLS tenant configured",
 			stackName: "test",
 			stackNs:   "test-ns",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+				Authentication: []lokiv1.AuthenticationSpec{
+					{
+						TenantName: "test-a",
+						TenantID:   "a",
+						MTLS: &lokiv1.MTLSSpec{
+							CA: &lokiv1.CASpec{
+								CA:    "my-ca",
+								CAKey: "my-ca-key",
+							},
+						},
+					},
+				},
+			},
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -433,12 +470,113 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{"--tls.client-auth-type=NoClientCert"},
 								},
 							},
 						},
 					},
 				},
 			},
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{"--tls.client-auth-type=RequestClientCert"},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test-a-ca-bundle",
+											MountPath: "/var/run/tls/tenants/test-a",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test-a-ca-bundle",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-ca",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc:      "dynamic mode with mTLS tenant configured",
+			stackName: "test",
+			stackNs:   "test-ns",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Dynamic,
+				Authentication: []lokiv1.AuthenticationSpec{
+					{
+						TenantName: "test-a",
+						TenantID:   "a",
+						MTLS: &lokiv1.MTLSSpec{
+							CA: &lokiv1.CASpec{
+								CA:    "my-ca",
+								CAKey: "my-ca-key",
+							},
+						},
+					},
+				},
+			},
+			dpl: defaultGatewayDeployment(),
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{"--tls.client-auth-type=RequestClientCert"},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test-a-ca-bundle",
+											MountPath: "/var/run/tls/tenants/test-a",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test-a-ca-bundle",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-ca",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+			stackName: "test",
+			stackNs:   "test-ns",
+			dpl:       defaultGatewayDeployment(),
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -510,8 +648,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc:      "openshift-logging mode with http encryption",
-			mode:      lokiv1.OpenshiftLogging,
+			desc: "openshift-logging mode with http encryption",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
 			stackName: "test",
 			stackNs:   "test-ns",
 			featureGates: lokiv1beta1.FeatureGates{
@@ -629,8 +769,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc:      "openshift-network mode",
-			mode:      lokiv1.OpenshiftNetwork,
+			desc: "openshift-network mode",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftNetwork,
+			},
 			stackName: "test",
 			stackNs:   "test-ns",
 			dpl: &appsv1.Deployment{
@@ -729,8 +871,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			},
 		},
 		{
-			desc:      "openshift-network mode with http encryption",
-			mode:      lokiv1.OpenshiftNetwork,
+			desc: "openshift-network mode with http encryption",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftNetwork,
+			},
 			stackName: "test",
 			stackNs:   "test-ns",
 			featureGates: lokiv1beta1.FeatureGates{
@@ -849,7 +993,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.mode, tc.featureGates, "min-version", "cipher1,cipher2")
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2")
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
