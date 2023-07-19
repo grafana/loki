@@ -561,6 +561,11 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 					},
 				},
 			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
+				},
+			},
 		},
 	}
 
@@ -592,6 +597,23 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 			},
 		},
 		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{
+					Name:  "az-annotation-check",
+					Image: "an-image:latest",
+					Command: []string{
+						"sh",
+						"-c",
+						"while ! [ -s /etc/az-annotation/az ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat /etc/az-annotation/az; echo",
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "az-annotation",
+							MountPath: "/etc/az-annotation",
+						},
+					},
+				},
+			},
 			Containers: []corev1.Container{
 				{
 					Name:  "a-container",
@@ -636,6 +658,26 @@ func TestCustomTopologySpreadConstraints(t *testing.T) {
 						MatchLabels: map[string]string{
 							kubernetesComponentLabel: "component",
 							kubernetesInstanceLabel:  "a-stack",
+						},
+					},
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
+				},
+				{
+					Name: "az-annotation",
+					VolumeSource: corev1.VolumeSource{
+						DownwardAPI: &corev1.DownwardAPIVolumeSource{
+							Items: []corev1.DownwardAPIVolumeFile{
+								{
+									Path: "az",
+									FieldRef: &corev1.ObjectFieldSelector{
+										FieldPath: availabilityZoneFieldPath,
+									},
+								},
+							},
 						},
 					},
 				},
