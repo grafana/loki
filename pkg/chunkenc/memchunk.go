@@ -1276,6 +1276,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	//       Maybe we can extract it to a separate function and reuse it?
 	lastAttempt = 0
 	var labelsWidth, nLabels int
+	lastAttempt = 0
 	for labelsWidth == 0 { // Read until we have enough bytes for the labels.
 		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
 		si.readBufValid += n
@@ -1322,6 +1323,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	si.metaLabelsBuf = si.metaLabelsBuf[:nLabels*2]
 
 	// Read all the label-value pairs, into the buffer slice.
+	lastAttempt = 0
 	for i := 0; i < metaLabelsBufLen; i++ {
 		// Read the length of the label.
 		lastAttempt = 0
