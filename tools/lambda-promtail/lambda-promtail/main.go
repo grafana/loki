@@ -192,9 +192,9 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 	case *events.KinesisEvent:
 		return processKinesisEvent(ctx, evt, pClient)
 	case *events.SQSEvent:
-		return processSQSEvent(ctx, evt)
+		return processSQSEvent(ctx, evt, handler)
 	case *events.SNSEvent:
-		return processSNSEvent(ctx, evt)
+		return processSNSEvent(ctx, evt, handler)
 	// When setting up S3 Notification on a bucket, a test event is first sent, see: https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html
 	case *events.S3TestEvent:
 		return nil

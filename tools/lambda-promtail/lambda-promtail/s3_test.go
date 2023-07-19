@@ -389,3 +389,47 @@ func TestStringToRawEvent(t *testing.T) {
 		}
 	}
 }
+
+func TestProcessSNSEvent(t *testing.T) {
+	evt := &events.SNSEvent{
+		Records: []events.SNSEventRecord{
+			{
+				SNS: events.SNSEntity{
+					Message: `{"pass": "pass"}`,
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	handlerCalled := false
+
+	err := processSNSEvent(ctx, evt, func(ctx context.Context, ev map[string]interface{}) error {
+		handlerCalled = true
+		require.Equal(t, map[string]interface{}{"pass": "pass"}, ev)
+		return nil
+	})
+	require.Nil(t, err)
+	require.True(t, handlerCalled)
+}
+
+func TestProcessSQSEvent(t *testing.T) {
+	evt := &events.SQSEvent{
+		Records: []events.SQSMessage{
+			{
+				Body: `{"pass": "pass"}`,
+			},
+		},
+	}
+
+	ctx := context.Background()
+	handlerCalled := false
+
+	err := processSQSEvent(ctx, evt, func(ctx context.Context, ev map[string]interface{}) error {
+		handlerCalled = true
+		require.Equal(t, map[string]interface{}{"pass": "pass"}, ev)
+		return nil
+	})
+	require.Nil(t, err)
+	require.True(t, handlerCalled)
+}

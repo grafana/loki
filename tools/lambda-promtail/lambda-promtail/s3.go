@@ -253,7 +253,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 	return nil
 }
 
-func processSNSEvent(ctx context.Context, evt *events.SNSEvent) error {
+func processSNSEvent(ctx context.Context, evt *events.SNSEvent, handler func(ctx context.Context, ev map[string]interface{}) error) error {
 	for _, record := range evt.Records {
 		event, err := stringToRawEvent(record.SNS.Message)
 		if err != nil {
@@ -267,7 +267,7 @@ func processSNSEvent(ctx context.Context, evt *events.SNSEvent) error {
 	return nil
 }
 
-func processSQSEvent(ctx context.Context, evt *events.SQSEvent) error {
+func processSQSEvent(ctx context.Context, evt *events.SQSEvent, handler func(ctx context.Context, ev map[string]interface{}) error) error {
 	for _, record := range evt.Records {
 		// retrieve nested
 		event, err := stringToRawEvent(record.Body)
