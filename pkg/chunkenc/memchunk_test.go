@@ -1574,10 +1574,21 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				labels.FromStrings("traceID", "123", "user", "d").String(),
 			}
 
+			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
+			var expectedBytes int
+			// First we add the bytes read from the store (aka decompressed). That's
+			// bytes = n. lines * (ts <int> + line length <int> + line + n. labels <int> + (2 * n. labels) * (label length <int> + label))
+			expectedBytes += 2 * (2*binary.MaxVarintLen64 + len("lineA") + binary.MaxVarintLen64 + (binary.MaxVarintLen64 + len("traceID") + binary.MaxVarintLen64 + len("123") + binary.MaxVarintLen64 + len("user") + binary.MaxVarintLen64 + len("a")))
+			// Now we add the bytes read from the head chunk. That's
+			// bytes = n. lines * (line + n. labels * (label name + label value)
+			expectedBytes += 2 * (len("lineC") + (len("traceID") + len("789") + len("user") + len("c")))
+
 			// We will run the test twice so the iterator will be created twice.
 			// This is to ensure that the iterator is correctly closed.
 			for i := 0; i < 2; i++ {
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
+				sts, ctx := stats.NewContext(context.Background())
+
+				it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
 				var lines []string
@@ -1590,6 +1601,9 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				}
 				assert.ElementsMatch(t, expectedLines, lines)
 				assert.ElementsMatch(t, expectedStreams, streams)
+
+				resultStats := sts.Result(0, 0, len(lines))
+				require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
 			}
 		})
 	}

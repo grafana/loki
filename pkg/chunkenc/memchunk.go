@@ -1177,13 +1177,14 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, metaLabels, ok := si.moveNext()
+	ts, line, metaLabels, decompressedBytes, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
 	}
+
 	// we decode always the line length and ts as varint
-	si.stats.AddDecompressedBytes(int64(len(line)) + 2*binary.MaxVarintLen64)
+	si.stats.AddDecompressedBytes(decompressedBytes)
 	si.stats.AddDecompressedLines(1)
 
 	si.currTs = ts
@@ -1193,7 +1194,8 @@ func (si *bufferedIterator) Next() bool {
 }
 
 // moveNext moves the buffer to the next entry
-func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
+func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, int64, bool) {
+	var decompressedBytes int64
 	var ts int64
 	var tWidth, lWidth, lineSize, lastAttempt int
 	for lWidth == 0 { // Read until both varints have enough bytes.
@@ -1202,14 +1204,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 		}
 		var l uint64
@@ -1219,9 +1221,12 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		lastAttempt = si.readBufValid
 	}
 
+	// TS and line length
+	decompressedBytes += 2 * binary.MaxVarintLen64
+
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
-		return 0, nil, nil, false
+		return 0, nil, nil, 0, false
 	}
 	// If the buffer is not yet initialize or too small, we get a new one.
 	if si.buf == nil || lineSize > cap(si.buf) {
@@ -1232,7 +1237,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		si.buf = BytesBufferPool.Get(lineSize).([]byte)
 		if lineSize > cap(si.buf) {
 			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
-			return 0, nil, nil, false
+			return 0, nil, nil, 0, false
 		}
 	}
 	si.buf = si.buf[:lineSize]
@@ -1252,12 +1257,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 				continue
 			}
 			si.err = err
-			return 0, nil, nil, false
+			return 0, nil, nil, 0, false
 		}
 	}
 
+	decompressedBytes += int64(lineSize)
+
 	if si.format < chunkFormatV4 {
-		return ts, si.buf[:lineSize], nil, true
+		return ts, si.buf[:lineSize], nil, decompressedBytes, true
 	}
 
 	// TODO: This is pretty similar to how we read the line size, and the metadata name and value sizes
@@ -1270,14 +1277,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		if err != nil {
 			if err != io.EOF {
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 				si.err = fmt.Errorf("invalid data in chunk")
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 		}
 		var l uint64
@@ -1285,6 +1292,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		nLabels = int(l)
 		lastAttempt = si.readBufValid
 	}
+
+	// Number of labels
+	decompressedBytes += binary.MaxVarintLen64
 
 	// Shift down what is still left in the fixed-size read buffer, if any.
 	si.readBufValid = copy(si.readBuf[:], si.readBuf[labelsWidth:si.readBufValid])
@@ -1303,7 +1313,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		si.metaLabelsBuf = LabelsPool.Get(metaLabelsBufLen).([][]byte)
 		if metaLabelsBufLen > cap(si.metaLabelsBuf) {
 			si.err = fmt.Errorf("could not get a labels matrix of size %d, actual %d", metaLabelsBufLen, cap(si.metaLabelsBuf))
-			return 0, nil, nil, false
+			return 0, nil, nil, 0, false
 		}
 	}
 
@@ -1320,14 +1330,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 			if err != nil {
 				if err != io.EOF {
 					si.err = err
-					return 0, nil, nil, false
+					return 0, nil, nil, 0, false
 				}
 				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-					return 0, nil, nil, false
+					return 0, nil, nil, 0, false
 				}
 				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 					si.err = fmt.Errorf("invalid data in chunk")
-					return 0, nil, nil, false
+					return 0, nil, nil, 0, false
 				}
 			}
 			var l uint64
@@ -1335,6 +1345,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 			labelSize = int(l)
 			lastAttempt = si.readBufValid
 		}
+
+		// Label size
+		decompressedBytes += binary.MaxVarintLen64
 
 		// If the buffer is not yet initialize or too small, we get a new one.
 		if si.metaLabelsBuf[i] == nil || labelSize > cap(si.metaLabelsBuf[i]) {
@@ -1345,7 +1358,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 			si.metaLabelsBuf[i] = BytesBufferPool.Get(labelSize).([]byte)
 			if labelSize > cap(si.metaLabelsBuf[i]) {
 				si.err = fmt.Errorf("could not get a label buffer of size %d, actual %d", labelSize, cap(si.metaLabelsBuf[i]))
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 		}
 
@@ -1366,12 +1379,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 					continue
 				}
 				si.err = err
-				return 0, nil, nil, false
+				return 0, nil, nil, 0, false
 			}
 		}
+
+		decompressedBytes += int64(labelSize)
 	}
 
-	return ts, si.buf[:lineSize], si.metaLabelsBuf[:metaLabelsBufLen], true
+	return ts, si.buf[:lineSize], si.metaLabelsBuf[:metaLabelsBufLen], decompressedBytes, true
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
