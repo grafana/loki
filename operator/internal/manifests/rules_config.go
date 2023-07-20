@@ -45,6 +45,11 @@ func RulesConfigMapShards(opts *Options) ([]*corev1.ConfigMap, error) {
 	}
 
 	for _, r := range opts.RecordingRules {
+		r := r
+		if opts.Stack.Tenants != nil {
+			configureRecordingRuleForMode(&r, opts.Stack.Tenants.Mode)
+		}
+
 		c, err := rules.MarshalRecordingRule(r)
 		if err != nil {
 			return nil, err
@@ -87,6 +92,17 @@ func configureAlertingRuleForMode(ar *lokiv1.AlertingRule, mode lokiv1.ModeType)
 		// Do nothing
 	case lokiv1.OpenshiftLogging:
 		openshift.AlertingRuleTenantLabels(ar)
+	case lokiv1.OpenshiftNetwork:
+		// Do nothing
+	}
+}
+
+func configureRecordingRuleForMode(r *lokiv1.RecordingRule, mode lokiv1.ModeType) {
+	switch mode {
+	case lokiv1.Static, lokiv1.Dynamic:
+		// Do nothing
+	case lokiv1.OpenshiftLogging:
+		openshift.RecordingRuleTenantLabels(r)
 	case lokiv1.OpenshiftNetwork:
 		// Do nothing
 	}

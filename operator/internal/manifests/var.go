@@ -97,6 +97,8 @@ const (
 	httpTLSDir = "/var/run/tls/http"
 	// grpcTLSDir is the path that is mounted from the secret for TLS
 	grpcTLSDir = "/var/run/tls/grpc"
+	// tenantMTLSDir is the path that is mounted from the configmaps for mTLS
+	tenantMTLSDir = "/var/run/tls/tenants"
 	// LokiStackCABundleDir is the path that is mounted from the configmap for TLS
 	caBundleDir = "/var/run/ca"
 	// caFile is the file name of the certificate authority file
@@ -143,7 +145,7 @@ func commonLabels(stackName string) map[string]string {
 	}
 }
 
-func componentInstaceLabels(component string, stackName string) map[string]string {
+func componentInstanceLabels(component string, stackName string) map[string]string {
 	return map[string]string{
 		kubernetesInstanceLabel:  stackName,
 		kubernetesComponentLabel: component,
@@ -156,28 +158,6 @@ func serviceAnnotations(serviceName string, enableSigningService bool) map[strin
 		annotations[openshift.ServingCertKey] = serviceName
 	}
 	return annotations
-}
-
-func topologySpreadConstraints(spec lokiv1.ReplicationSpec, component string, stackName string) []corev1.TopologySpreadConstraint {
-	var tsc []corev1.TopologySpreadConstraint
-	if len(spec.Zones) > 0 {
-		tsc = make([]corev1.TopologySpreadConstraint, len(spec.Zones))
-		for i, z := range spec.Zones {
-			tsc[i] = corev1.TopologySpreadConstraint{
-				MaxSkew:           int32(z.MaxSkew),
-				TopologyKey:       z.TopologyKey,
-				WhenUnsatisfiable: corev1.DoNotSchedule,
-				LabelSelector: &metav1.LabelSelector{
-					MatchLabels: map[string]string{
-						kubernetesComponentLabel: component,
-						kubernetesInstanceLabel:  stackName,
-					},
-				},
-			}
-		}
-	}
-
-	return tsc
 }
 
 // ComponentLabels is a list of all commonLabels including the app.kubernetes.io/component:<component> label
@@ -299,6 +279,18 @@ func gatewayUpstreamHTTPTLSCert() string {
 
 func gatewayUpstreamHTTPTLSKey() string {
 	return path.Join(gatewayUpstreamHTTPTLSDir(), corev1.TLSPrivateKeyKey)
+}
+
+func tenantMTLSVolumeName(tenantName string) string {
+	return fmt.Sprintf("%s-ca-bundle", tenantName)
+}
+
+func tenantMTLSCADir(tennantName string) string {
+	return path.Join(tenantMTLSDir, tennantName)
+}
+
+func TenantMTLSCAPath(tennantName, key string) string {
+	return path.Join(tenantMTLSDir, tennantName, key)
 }
 
 func gatewayClientSecretName(stackName string) string {
@@ -551,7 +543,7 @@ func defaultPodAntiAffinity(componentLabel, stackName string) *corev1.PodAntiAff
 				Weight: 100,
 				PodAffinityTerm: corev1.PodAffinityTerm{
 					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: componentInstaceLabels(componentLabel, stackName),
+						MatchLabels: componentInstanceLabels(componentLabel, stackName),
 					},
 					TopologyKey: kubernetesNodeHostnameLabel,
 				},

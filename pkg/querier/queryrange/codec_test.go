@@ -1327,6 +1327,7 @@ var (
 					"decompressedLines": 3,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
+					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
@@ -1346,6 +1347,7 @@ var (
 					"decompressedLines": 13,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
+                    "postFilterLines": 0,
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
@@ -1401,7 +1403,8 @@ var (
 			"subqueries": 0,
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
-			"totalLinesProcessed": 25
+			"totalLinesProcessed": 25,
+            "totalPostFilterLines": 0
 		}
 	},`
 	matrixString = `{
@@ -1568,6 +1571,7 @@ var (
 			TotalBytesProcessed:     24,
 			TotalLinesProcessed:     25,
 			TotalEntriesReturned:    10,
+			TotalPostFilterLines:    0,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{
@@ -1577,6 +1581,7 @@ var (
 					DecompressedLines: 13,
 					HeadChunkBytes:    14,
 					HeadChunkLines:    15,
+					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
 				ChunksDownloadTime:    16,
@@ -1593,6 +1598,7 @@ var (
 					DecompressedLines: 3,
 					HeadChunkBytes:    4,
 					HeadChunkLines:    5,
+					PostFilterLines:   0,
 					TotalDuplicates:   8,
 				},
 			},

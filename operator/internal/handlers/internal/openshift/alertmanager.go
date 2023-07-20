@@ -36,7 +36,7 @@ func UserWorkloadAlertManagerSVCExists(ctx context.Context, stack lokiv1.LokiSta
 	}
 
 	var svc corev1.Service
-	key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringUserwWrkloadNS}
+	key := client.ObjectKey{Name: openshift.MonitoringSVCOperated, Namespace: openshift.MonitoringUserWorkloadNS}
 
 	err := k.Get(ctx, key, &svc)
 	if err != nil && !apierrors.IsNotFound(err) {

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -101,7 +102,7 @@ func TestBuildDistributor_PodDisruptionBudget(t *testing.T) {
 }
 
 func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
-	d := NewDistributorDeployment(Options{
+	obj, _ := BuildDistributor(Options{
 		Name:      "abcd",
 		Namespace: "efgh",
 		Stack: lokiv1.LokiStackSpec{
@@ -125,7 +126,7 @@ func TestNewDistributorDeployment_TopologySpreadConstraints(t *testing.T) {
 			},
 		},
 	})
-
+	d := obj[0].(*appsv1.Deployment)
 	require.Equal(t, []corev1.TopologySpreadConstraint{
 		{
 			MaxSkew:           2,

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	json "github.com/json-iterator/go"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	loghttp "github.com/grafana/loki/pkg/loghttp/legacy"
@@ -31,7 +30,7 @@ var queryTests = []struct {
 					{
 						Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
 						Line:      "super line with labels",
-						NonIndexedLabels: labels.Labels{
+						NonIndexedLabels: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						},
@@ -72,6 +71,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -91,6 +91,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -141,9 +142,10 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0, 
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			}
 		}`,
@@ -184,7 +186,7 @@ var tailTests = []struct {
 						{
 							Timestamp: mustParse(time.RFC3339Nano, "2019-09-13T18:32:23.380001319Z"),
 							Line:      "super line with labels",
-							NonIndexedLabels: labels.Labels{
+							NonIndexedLabels: []logproto.LabelAdapter{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							},
