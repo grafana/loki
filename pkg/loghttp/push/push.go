@@ -33,7 +33,12 @@ var (
 	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant",
+		Help:      "The total number of uncompressed bytes received per tenant. Includes metadata.",
+	}, []string{"tenant", "retention_hours"})
+	metadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "distributor_metadata_bytes_received_total",
+		Help:      "The total number of uncompressed bytes received per tenant for entries metadata (non-indexed labels)",
 	}, []string{"tenant", "retention_hours"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -41,8 +46,9 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 
-	bytesReceivedStats = analytics.NewCounter("distributor_bytes_received")
-	linesReceivedStats = analytics.NewCounter("distributor_lines_received")
+	bytesReceivedStats         = analytics.NewCounter("distributor_bytes_received")
+	metadataBytesReceivedStats = analytics.NewCounter("distributor_metadata_bytes_received")
+	linesReceivedStats         = analytics.NewCounter("distributor_lines_received")
 )
 
 const applicationJSON = "application/json"
@@ -141,7 +147,9 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 			entriesSize += entrySize
 			nonIndexedLabelsSize += entryLabelsSize
 			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entrySize))
+			metadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entryLabelsSize))
 			bytesReceivedStats.Inc(entrySize)
+			metadataBytesReceivedStats.Inc(entryLabelsSize)
 			if e.Timestamp.After(mostRecentEntry) {
 				mostRecentEntry = e.Timestamp
 			}
