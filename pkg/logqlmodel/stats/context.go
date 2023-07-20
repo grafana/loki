@@ -152,6 +152,7 @@ func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration,
 		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
 		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
+	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
 		r.Summary.BytesProcessedPerSecond = int64(float64(r.Summary.TotalBytesProcessed) /
@@ -176,6 +177,7 @@ func (s *Store) Merge(m Store) {
 	s.Chunk.DecompressedLines += m.Chunk.DecompressedLines
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
+	s.Chunk.PostFilterLines += m.Chunk.PostFilterLines
 }
 
 func (s *Summary) Merge(m Summary) {
@@ -292,6 +294,10 @@ func (c *Context) AddDecompressedBytes(i int64) {
 
 func (c *Context) AddDecompressedLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedLines, i)
+}
+
+func (c *Context) AddPostFilterLines(i int64) {
+	atomic.AddInt64(&c.store.Chunk.PostFilterLines, i)
 }
 
 func (c *Context) AddDuplicates(i int64) {
@@ -419,6 +425,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.HeadChunkLines", r.Ingester.Store.Chunk.HeadChunkLines,
 		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.DecompressedBytes)),
 		"Ingester.DecompressedLines", r.Ingester.Store.Chunk.DecompressedLines,
+		"Ingester.PostFilterLInes", r.Ingester.Store.Chunk.PostFilterLines,
 		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.CompressedBytes)),
 		"Ingester.TotalDuplicates", r.Ingester.Store.Chunk.TotalDuplicates,
 
@@ -429,6 +436,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.HeadChunkLines", r.Querier.Store.Chunk.HeadChunkLines,
 		"Querier.DecompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.DecompressedBytes)),
 		"Querier.DecompressedLines", r.Querier.Store.Chunk.DecompressedLines,
+		"Querier.PostFilterLInes", r.Querier.Store.Chunk.PostFilterLines,
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 	)
@@ -442,6 +450,7 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
+		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
 	)
