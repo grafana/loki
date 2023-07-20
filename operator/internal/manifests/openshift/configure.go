@@ -60,12 +60,12 @@ func ConfigureGatewayDeployment(
 	mode lokiv1.ModeType,
 	secretVolumeName, tlsDir string,
 	minTLSVersion, ciphers string,
-	withTLS bool,
+	withTLS bool, adminGroups []string,
 ) error {
 	p := corev1.PodSpec{
 		ServiceAccountName: d.GetName(),
 		Containers: []corev1.Container{
-			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS),
+			newOPAOpenShiftContainer(mode, secretVolumeName, tlsDir, minTLSVersion, ciphers, withTLS, adminGroups),
 		},
 	}
 
