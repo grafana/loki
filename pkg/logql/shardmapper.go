@@ -28,12 +28,15 @@ func (s ConstantShards) GetStats(_ syntax.Expr) (stats.Stats, error) { return st
 type ShardMapper struct {
 	shards  ShardResolver
 	metrics *MapperMetrics
+
+	probabilisticQueries bool
 }
 
 func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics) ShardMapper {
 	return ShardMapper{
-		shards:  resolver,
-		metrics: metrics,
+		shards:               resolver,
+		metrics:              metrics,
+		probabilisticQueries: false,
 	}
 }
 
@@ -180,12 +183,43 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 	return head, bytesPerShard, nil
 }
 
+func (m ShardMapper) mapTopKSampleExpr(expr syntax.TopkSampleExpr, r *downstreamRecorder) (syntax.TopkSampleExpr, uint64, error) {
+	var head *TopkMergeSampleExpr
+	shards, bytesPerShard, err := m.shards.Shards(expr)
+	if err != nil {
+		return nil, 0, err
+	}
+	if shards == 0 {
+		return &TopkMergeSampleExpr{
+			DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
+				shard:          nil,
+				TopkSampleExpr: expr,
+			},
+		}, bytesPerShard, nil
+	}
+	for i := shards - 1; i >= 0; i-- {
+		head = &TopkMergeSampleExpr{
+			DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
+				shard: &astmapper.ShardAnnotation{
+					Shard: i,
+					Of:    shards,
+				},
+				TopkSampleExpr: expr,
+			},
+			next: head,
+		}
+	}
+	r.Add(shards, MetricsKey)
+
+	return head, bytesPerShard, nil
+}
+
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
-	if !expr.Shardable() {
+	if !expr.Shardable() || expr.Operation == syntax.OpTypeTopK && !m.probabilisticQueries {
 		subMapped, bytesPerShard, err := m.Map(expr.Left, r)
 		if err != nil {
 			return nil, 0, err
@@ -256,6 +290,27 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			Left:      sharded,
 			Grouping:  expr.Grouping,
 			Operation: syntax.OpTypeSum,
+		}, bytesPerShard, nil
+
+	case syntax.OpTypeTopK:
+		var g *syntax.Grouping = nil
+		// this smells, not sure why we need to do this but somehow
+		// if a query doesn't have a grouping the expr.Grouping field
+		// contains an empty string rather than a nil pointer
+		if expr.Grouping != nil && expr.Grouping.String() != "" {
+			g = expr.Grouping
+		}
+		expr.Grouping = g
+		// each step of a sharded topk is a set of topk sketch structs whose count-min sketches can be merged
+		sharded, bytesPerShard, err := m.mapTopKSampleExpr(expr, r)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		return &syntax.VectorAggregationExpr{
+			Left:      sharded,
+			Grouping:  g,
+			Operation: syntax.OpTypeTopKMerge,
 		}, bytesPerShard, nil
 	default:
 		// this should not be reachable. If an operation is shardable it should

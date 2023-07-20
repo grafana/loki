@@ -1047,6 +1047,9 @@ const (
 	// parser flags
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
+
+	// internal only
+	OpTypeTopKMerge = "merge_topk"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1070,6 +1073,15 @@ func IsLogicalBinOp(op string) bool {
 
 // SampleExpr is a LogQL expression filtering logs and returning metric samples.
 type SampleExpr interface {
+	// Selector is the LogQL selector to apply when retrieving logs.
+	Selector() (LogSelectorExpr, error)
+	Extractor() (SampleExtractor, error)
+	MatcherGroups() ([]MatcherRange, error)
+	Expr
+}
+
+// TopKSampleExpr is a LogQL expression filtering logs and returning topk sketches.
+type TopkSampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() (LogSelectorExpr, error)
 	Extractor() (SampleExtractor, error)
@@ -1944,6 +1956,8 @@ var shardableOps = map[string]bool{
 	// avg is only marked as shardable because we remap it into sum/count.
 	OpTypeAvg:   true,
 	OpTypeCount: true,
+	// topk is shardable if it's executed probabilistically
+	OpTypeTopK: true,
 
 	// range vector ops
 	OpRangeTypeCount:     true,

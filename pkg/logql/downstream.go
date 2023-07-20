@@ -97,6 +97,18 @@ func (d DownstreamLogSelectorExpr) String() string {
 
 func (d DownstreamSampleExpr) Walk(f syntax.WalkFn) { f(d) }
 
+// DownstreamSampleExpr is a SampleExpr which signals downstream computation
+type DownstreamTopkSampleExpr struct {
+	shard *astmapper.ShardAnnotation
+	syntax.TopkSampleExpr
+}
+
+func (d DownstreamTopkSampleExpr) String() string {
+	return fmt.Sprintf("downstream<%s, shard=%s>", d.TopkSampleExpr.String(), d.shard)
+}
+
+func (d DownstreamTopkSampleExpr) Walk(f syntax.WalkFn) { f(d) }
+
 var defaultMaxDepth = 4
 
 // ConcatSampleExpr is an expr for concatenating multiple SampleExpr
@@ -183,6 +195,39 @@ func ParseShards(strs []string) (Shards, error) {
 		shards = append(shards, shard)
 	}
 	return shards, nil
+}
+
+// TopkConcatSampleExpr is an expr for concatenating multiple TopkSampleExpr
+// Contract: The embedded TopkSampleExprs within a linked list of TopkConcatSampleExprs must be of the
+// same structure. This makes special implementations of SampleExpr.Associative() unnecessary.
+type TopkMergeSampleExpr struct {
+	DownstreamTopkSampleExpr
+	next *TopkMergeSampleExpr
+}
+
+func (c TopkMergeSampleExpr) String() string {
+	if c.next == nil {
+		return c.DownstreamTopkSampleExpr.String()
+	}
+
+	return fmt.Sprintf("%s, %s", c.DownstreamTopkSampleExpr.String(), c.next.string(defaultMaxDepth-1))
+}
+
+// in order to not display huge queries with thousands of shards,
+// we can limit the number of stringified subqueries.
+func (c TopkMergeSampleExpr) string(maxDepth int) string {
+	if c.next == nil {
+		return c.DownstreamTopkSampleExpr.String()
+	}
+	if maxDepth <= 1 {
+		return fmt.Sprintf("%s, ...", c.DownstreamTopkSampleExpr.String())
+	}
+	return fmt.Sprintf("%s, %s", c.DownstreamTopkSampleExpr.String(), c.next.string(maxDepth-1))
+}
+
+func (c TopkMergeSampleExpr) Walk(f syntax.WalkFn) {
+	f(c)
+	f(c.next)
 }
 
 type Downstreamable interface {
