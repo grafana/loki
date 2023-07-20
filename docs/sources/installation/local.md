@@ -41,7 +41,7 @@ The configuration specifies running Loki as a single binary.
 Loki runs and displays Loki logs in your command line and on http://localhost:3100/metrics.
 
 The next step will be running an agent to send logs to Loki.
-To do so with Promtail, refer to the [Promtal configuration]({{<relref "../clients/promtail">}}).
+To do so with Promtail, refer to the [Promtail configuration]({{< relref "../clients/promtail" >}}).
 
 ## Release binaries - openSUSE Linux only
 
