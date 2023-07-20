@@ -12,12 +12,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 const (
