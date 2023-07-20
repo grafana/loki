@@ -143,5 +143,4 @@ func extractCAPath(ctx context.Context, k k8s.Client, namespace string, tennantN
 		}
 	}
 	return manifests.TenantCAPath(tennantName, cmKey), nil
-
 }

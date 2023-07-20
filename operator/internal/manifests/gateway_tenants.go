@@ -198,7 +198,7 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 // if a user configures mTLS it will also update the arg --tls.client-auth-type
 func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
 	if tenants.Authentication == nil {
-		return nil //nothing to do
+		return nil // nothing to do
 	}
 
 	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tennantName, configmapName string) {

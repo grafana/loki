@@ -582,7 +582,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 						OIDC: &lokiv1.OIDCSpec{
 							IssuerCA: &lokiv1.CASpec{
 								CA:    "my-ca",
-								CAKey: "my-ca-key"},
+								CAKey: "my-ca-key",
+							},
 						},
 					},
 				},
@@ -653,7 +654,8 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 						OIDC: &lokiv1.OIDCSpec{
 							IssuerCA: &lokiv1.CASpec{
 								CA:    "my-ca",
-								CAKey: "my-ca-key"},
+								CAKey: "my-ca-key",
+							},
 						},
 					},
 				},
