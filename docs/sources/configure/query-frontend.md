@@ -1,5 +1,5 @@
 ---
-title: Query frontend
+title: Query frontend example
 menuTitle:  
 description: Kubernetes query frontent example.
 aliases: 
@@ -7,7 +7,7 @@ aliases:
   - ../configure/query-frontend/
 weight:  200
 ---
-# Query frontend
+# Query frontend example
 
 ## Disclaimer
 
