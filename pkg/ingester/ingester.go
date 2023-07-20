@@ -33,6 +33,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
+	"golang.org/x/time/rate"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	server_util "github.com/grafana/loki/v3/pkg/util/server"
@@ -239,6 +240,9 @@ type Ingester struct {
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
 
+	// Spread out calls to the chunk store over the flush period
+	flushRateLimiter *rate.Limiter
+
 	limiter *Limiter
 
 	// Denotes whether the ingester should flush on shutdown.
@@ -294,6 +298,7 @@ func New(cfg Config, clientConfig client.Config, store Store, limits Limits, con
 		periodicConfigs:       store.GetSchemaConfigs(),
 		loopQuit:              make(chan struct{}),
 		flushQueues:           make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		flushRateLimiter:      rate.NewLimiter(rate.Inf, 1),
 		tailersQuit:           make(chan struct{}),
 		metrics:               metrics,
 		flushOnShutdownSwitch: &OnceSwitch{},
