@@ -1014,6 +1014,112 @@ trigger:
 depends_on:
 - check
 kind: pipeline
+name: fluent-bit-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+  - echo ",main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+---
+depends_on:
+- check
+kind: pipeline
+name: fluent-bit-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+  - echo ",main" >> .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+depends_on:
+- check
+kind: pipeline
 name: fluentd-amd64
 platform:
   arch: amd64
@@ -1177,6 +1283,9 @@ depends_on:
 - promtail-amd64
 - promtail-arm64
 - promtail-arm
+- fluent-bit-amd64
+- fluent-bit-arm64
+- fluent-bit-arm
 kind: pipeline
 name: manifest
 steps:
@@ -1245,6 +1354,33 @@ steps:
       from_secret: docker_password
     spec: .drone/docker-manifest-operator.tmpl
     target: loki-operator
+    username:
+      from_secret: docker_username
+trigger:
+  event:
+  - push
+  - tag
+  ref:
+  - refs/heads/main
+  - refs/tags/operator/v*
+---
+depends_on:
+- fluent-bit-amd64
+- fluent-bit-arm64
+- fluent-bit-arm
+kind: pipeline
+name: manifest-operator
+steps:
+- depends_on:
+  - clone
+  image: plugins/manifest:1.4.0
+  name: manifest-fluent-bit
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: fluent-bit-plugin-loki
     username:
       from_secret: docker_username
 trigger:
