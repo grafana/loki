@@ -3659,6 +3659,31 @@ spec:
                       description: AuthenticationSpec defines the oidc configuration
                         per tenant for lokiStack Gateway component.
                       properties:
+                        mTLS:
+                          description: TLSConfig defines the spec for the mTLS tenant's
+                            authentication.
+                          properties:
+                            ca:
+                              description: CA defines the spec for the custom CA for
+                                tenant's authentication.
+                              properties:
+                                caKey:
+                                  description: Key is the data key of a ConfigMap
+                                    containing a CA certificate. It needs to be in
+                                    the same namespace as the LokiStack custom resource.
+                                    If empty, it defaults to "service-ca.crt".
+                                  type: string
+                                caName:
+                                  description: CA is the name of a ConfigMap containing
+                                    a CA certificate. It needs to be in the same namespace
+                                    as the LokiStack custom resource.
+                                  type: string
+                              required:
+                              - caName
+                              type: object
+                          required:
+                          - ca
+                          type: object
                         oidc:
                           description: OIDC defines the spec for the OIDC tenant's
                             authentication.
@@ -3697,7 +3722,6 @@ spec:
                           description: TenantName defines the name of the tenant.
                           type: string
                       required:
-                      - oidc
                       - tenantId
                       - tenantName
                       type: object
@@ -3799,6 +3823,21 @@ spec:
                     - openshift-logging
                     - openshift-network
                     type: string
+                  openshift:
+                    description: Openshift defines the configuration specific to Openshift
+                      modes.
+                    properties:
+                      adminGroups:
+                        description: "AdminGroups defines a list of groups, whose
+                          members are considered to have admin-privileges by the Loki
+                          Operator. Setting this to an empty array disables admin
+                          groups. \n By default the following groups are considered
+                          admin-groups: - system:cluster-admins - cluster-admin -
+                          dedicated-admin"
+                        items:
+                          type: string
+                        type: array
+                    type: object
                 required:
                 - mode
                 type: object

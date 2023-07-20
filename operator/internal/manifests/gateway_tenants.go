@@ -1,8 +1,11 @@
 package manifests
 
 import (
+	"strings"
+
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
+	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -60,13 +63,16 @@ func ApplyGatewayDefaultOptions(opts *Options) error {
 	return nil
 }
 
-func configureGatewayDeploymentForMode(d *appsv1.Deployment, mode lokiv1.ModeType, fg configv1.FeatureGates, minTLSVersion string, ciphers string) error {
-	switch mode {
+func configureGatewayDeploymentForMode(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec, fg configv1.FeatureGates, minTLSVersion string, ciphers string, adminGroups []string) error {
+	switch tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		return nil // nothing to configure
+		if tenants != nil {
+			return configureMTLS(d, tenants)
+		}
+		return nil
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		tlsDir := gatewayServerHTTPTLSDir()
-		return openshift.ConfigureGatewayDeployment(d, mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption)
+		return openshift.ConfigureGatewayDeployment(d, tenants.Mode, tlsSecretVolume, tlsDir, minTLSVersion, ciphers, fg.HTTPEncryption, adminGroups)
 	}
 
 	return nil
@@ -118,7 +124,19 @@ func configureGatewayObjsForMode(objs []client.Object, opts Options) []client.Ob
 
 	switch opts.Stack.Tenants.Mode {
 	case lokiv1.Static, lokiv1.Dynamic:
-		// nothing to configure
+		// If a single tenant configure mTLS change Route termination policy
+		// to Passthrough
+		for _, o := range objs {
+			switch r := o.(type) {
+			case *routev1.Route:
+				for _, secret := range opts.Tenants.Secrets {
+					if secret.MTLSSecret != nil {
+						r.Spec.TLS.Termination = routev1.TLSTerminationPassthrough
+						break
+					}
+				}
+			}
+		}
 	case lokiv1.OpenshiftLogging, lokiv1.OpenshiftNetwork:
 		for _, o := range objs {
 			switch sa := o.(type) {
@@ -160,7 +178,7 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 	case lokiv1.OpenshiftNetwork:
 		return openshift.ConfigureOptions(cfg, opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled, false, "", "", "")
 	case lokiv1.OpenshiftLogging:
-		monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserwWrkloadNS)
+		monitorServerName := fqdn(openshift.MonitoringSVCUserWorkload, openshift.MonitoringUserWorkloadNS)
 		return openshift.ConfigureOptions(
 			cfg,
 			opt.OpenShiftOptions.BuildOpts.AlertManagerEnabled,
@@ -171,5 +189,66 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 		)
 	}
 
+	return nil
+}
+
+// configureMTLS will mount CA bundles and fix CLI arguments for the gateway container
+// if any tenant configured mTLS authentication
+func configureMTLS(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
+	var gwIndex int
+	for i, c := range d.Spec.Template.Spec.Containers {
+		if c.Name == gatewayContainerName {
+			gwIndex = i
+			break
+		}
+	}
+
+	gwContainer := d.Spec.Template.Spec.Containers[gwIndex].DeepCopy()
+	gwArgs := gwContainer.Args
+	gwVolumes := d.Spec.Template.Spec.Volumes
+
+	mTLS := false
+	for _, tenant := range tenants.Authentication {
+		if tenant.MTLS != nil {
+			gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
+				Name:      tenantMTLSVolumeName(tenant.TenantName),
+				MountPath: tenantMTLSCADir(tenant.TenantName),
+			})
+			gwVolumes = append(gwVolumes, corev1.Volume{
+				Name: tenantMTLSVolumeName(tenant.TenantName),
+				VolumeSource: corev1.VolumeSource{
+					ConfigMap: &corev1.ConfigMapVolumeSource{
+						LocalObjectReference: corev1.LocalObjectReference{
+							Name: tenant.MTLS.CA.CA,
+						},
+					},
+				},
+			})
+			mTLS = true
+		}
+	}
+	if !mTLS {
+		return nil // nothing to configure
+	}
+
+	// Remove old tls.client-auth-type
+	for i, arg := range gwArgs {
+		if strings.HasPrefix(arg, "--tls.client-auth-type=") {
+			gwArgs = append(gwArgs[:i], gwArgs[i+1:]...)
+			break
+		}
+	}
+	gwArgs = append(gwArgs, "--tls.client-auth-type=RequestClientCert")
+
+	gwContainer.Args = gwArgs
+	p := corev1.PodSpec{
+		Containers: []corev1.Container{
+			*gwContainer,
+		},
+		Volumes: gwVolumes,
+	}
+	if err := mergo.Merge(&d.Spec.Template.Spec, p, mergo.WithOverride); err != nil {
+		return kverrors.Wrap(err, "failed to merge server pki into container spec ")
+	}
 	return nil
 }

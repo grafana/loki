@@ -34,7 +34,9 @@ var (
 
 	lokiGatewayRbacYAMLTmpl = template.Must(template.ParseFS(lokiGatewayRbacYAMLTmplFile, "gateway-rbac.yaml"))
 
-	lokiGatewayTenantsYAMLTmpl = template.Must(template.ParseFS(lokiGatewayTenantsYAMLTmplFile, "gateway-tenants.yaml"))
+	lokiGatewayTenantsYAMLTmpl = template.Must(template.New("gateway-tenants.yaml").Funcs(template.FuncMap{
+		"make_array": func(els ...any) []any { return els },
+	}).ParseFS(lokiGatewayTenantsYAMLTmplFile, "gateway-tenants.yaml"))
 
 	lokiStackGatewayRegoTmpl = template.Must(template.ParseFS(lokiStackGatewayRegoTmplFile, "lokistack-gateway.rego"))
 )

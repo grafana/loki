@@ -872,10 +872,6 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			limit -= int32(batchSize)
 		}
 
-		if len(batch.Streams) == 0 {
-			return nil
-		}
-
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
@@ -885,6 +881,12 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Streams) == 0 {
+			return nil
+		}
+
 		stats.Reset()
 	}
 	return nil
@@ -897,9 +899,6 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		if err != nil {
 			return err
 		}
-		if len(batch.Series) == 0 {
-			return nil
-		}
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
@@ -908,6 +907,11 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
+		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Series) == 0 {
+			return nil
 		}
 
 		stats.Reset()

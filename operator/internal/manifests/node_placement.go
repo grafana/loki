@@ -1,6 +1,7 @@
 package manifests
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/imdario/mergo"
@@ -11,8 +12,11 @@ import (
 )
 
 const (
-	availabilityZoneEnvVarName = "INSTANCE_AVAILABILITY_ZONE"
-	availabilityZoneFieldPath  = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
+	availabilityZoneEnvVarName          = "INSTANCE_AVAILABILITY_ZONE"
+	availabilityZoneFieldPath           = "metadata.annotations['" + lokiv1.AnnotationAvailabilityZone + "']"
+	availabilityZoneInitVolumeName      = "az-annotation"
+	availabilityZoneInitVolumeMountPath = "/etc/az-annotation"
+	availabilityZoneInitVolumeFileName  = "az"
 )
 
 var availabilityZoneEnvVar = corev1.EnvVar{
@@ -60,16 +64,25 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 	topologyKey := strings.Join(zoneKeys, ",")
 	template.Annotations[lokiv1.AnnotationAvailabilityZoneLabels] = topologyKey
 
-	src := corev1.Container{
-		Env: []corev1.EnvVar{availabilityZoneEnvVar},
-	}
-
 	if component != LabelGatewayComponent {
+		template.Spec.InitContainers = []corev1.Container{
+			initContainerAZAnnotationCheck(podTemplate.Spec.Containers[0].Image),
+		}
+
+		src := corev1.Container{
+			Env: []corev1.EnvVar{availabilityZoneEnvVar},
+		}
+
 		for i, dst := range podTemplate.Spec.Containers {
 			if err := mergo.Merge(&dst, src, mergo.WithAppendSlice); err != nil {
 				return err
 			}
 			podTemplate.Spec.Containers[i] = dst
+		}
+
+		vols := []corev1.Volume{azAnnotationVolume()}
+		if err := mergo.Merge(&podTemplate.Spec.Volumes, vols, mergo.WithAppendSlice); err != nil {
+			return err
 		}
 	}
 
@@ -78,4 +91,41 @@ func configureReplication(podTemplate *corev1.PodTemplateSpec, replication *loki
 	}
 
 	return nil
+}
+
+func initContainerAZAnnotationCheck(image string) corev1.Container {
+	azPath := fmt.Sprintf("%s/%s", availabilityZoneInitVolumeMountPath, availabilityZoneInitVolumeFileName)
+	return corev1.Container{
+		Name:  "az-annotation-check",
+		Image: image,
+		Command: []string{
+			"sh",
+			"-c",
+			fmt.Sprintf("while ! [ -s %s ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat %s; echo", azPath, azPath),
+		},
+		VolumeMounts: []corev1.VolumeMount{
+			{
+				Name:      availabilityZoneInitVolumeName,
+				MountPath: availabilityZoneInitVolumeMountPath,
+			},
+		},
+	}
+}
+
+func azAnnotationVolume() corev1.Volume {
+	return corev1.Volume{
+		Name: availabilityZoneInitVolumeName,
+		VolumeSource: corev1.VolumeSource{
+			DownwardAPI: &corev1.DownwardAPIVolumeSource{
+				Items: []corev1.DownwardAPIVolumeFile{
+					{
+						Path: availabilityZoneInitVolumeFileName,
+						FieldRef: &corev1.ObjectFieldSelector{
+							FieldPath: availabilityZoneFieldPath,
+						},
+					},
+				},
+			},
+		},
+	}
 }

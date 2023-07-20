@@ -70,8 +70,12 @@ message Summary {
   int64 subqueries = 7 [(gogoproto.jsontag) = "subqueries"];
   // Total number of result entries returned
   int64 totalEntriesReturned = 8 [(gogoproto.jsontag) = "totalEntriesReturned"];
+  // Total number of splits by time
   int64 splits = 9 [(gogoproto.jsontag) = "splits"];
+  // Total number of shards
   int64 shards = 10 [(gogoproto.jsontag) = "shards"];
+  // Total lines post query filtering
+  int64 totalPostFilterLines = 11 [(gogoproto.jsontag) = "totalPostFilterLines"];
 }
 
 message Querier {
@@ -124,6 +128,8 @@ message Chunk {
   int64 compressedBytes = 8 [(gogoproto.jsontag) = "compressedBytes"];
   // Total duplicates found while processing.
   int64 totalDuplicates = 9 [(gogoproto.jsontag) = "totalDuplicates"];
+  // Total lines post filtering
+  int64 postFilterLines = 10 [(gogoproto.jsontag) = "postFilterLines"];
 }
 
 message Cache {
