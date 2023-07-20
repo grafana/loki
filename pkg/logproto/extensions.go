@@ -9,13 +9,14 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
 
-	//"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var seps = []byte{'\xff'}
 
+// Hash returns hash of the labels according to Prometheus' Labels.Hash function.
+// `b` and `keysForLabels` are buffers that should be reused to avoid
+// allocations.
 func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) (uint64, []string) {
 	keysForLabels = keysForLabels[:0]
 	for k := range id.Labels {

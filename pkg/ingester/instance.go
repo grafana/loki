@@ -545,6 +545,7 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 					// exit early when this stream was added by an earlier group
 					key := stream.labelHash
 					if _, found := dedupedSeries[key]; found {
+						// TODO(karsten): if keys collide we miss a series
 						return nil
 					}
 

@@ -829,18 +829,33 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 
 		var lokiSeriesData []logproto.SeriesIdentifier
 		uniqueSeries := make(map[uint64]struct{})
-		//uniqueSeries := make(map[string]struct{})
 
-		// only unique series should be merged
+		// The buffers are used by `series.Hash`. They are allocated
+		// outside of the method in order to reuse them for the next
+		// iteration. This saves a lot of allocations.
+		// 1KB is used for `b` after some experimentation. The
+		// benchmarks are ~10% faster in comparison to no buffer with
+		// little overhead. A run with 4MB should the same speedup but
+		// much much more overhead.
 		b := make([]byte, 0, 1024)
 		keyBuffer := make([]string, 0, 32)
 		var key uint64
+
+		// only unique series should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
-				//key := series.String()
+				// Use series hash as the key and reuse key
+				// buffer to avoid extra allocations.
 				key, keyBuffer = series.Hash(b, keyBuffer)
+
+				// TODO(karsten): There is a chance that the
+				// keys match but not the labels due to hash
+				// collision. Ideally there's an else block the
+				// compares the series labels. However, that's
+				// not trivial. Besides, instance.Series has the
+				// same issue in its deduping logic.
 				if _, ok := uniqueSeries[key]; !ok {
 					lokiSeriesData = append(lokiSeriesData, series)
 					uniqueSeries[key] = struct{}{}
