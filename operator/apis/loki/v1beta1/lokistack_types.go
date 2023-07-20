@@ -866,7 +866,9 @@ func (src *LokiStack) ConvertTo(dstRaw conversion.Hub) error {
 	var storageTLS *v1.ObjectStorageTLSSpec
 	if src.Spec.Storage.TLS != nil {
 		storageTLS = &v1.ObjectStorageTLSSpec{
-			CA: src.Spec.Storage.TLS.CA,
+			CASpec: v1.CASpec{
+				CA: src.Spec.Storage.TLS.CA,
+			},
 		}
 	}
 

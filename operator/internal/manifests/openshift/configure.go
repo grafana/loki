@@ -259,24 +259,18 @@ func configureDefaultMonitoringAM(configOpt *config.Options) error {
 }
 
 func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorServerName string) error {
-	if len(configOpt.Overrides) == 0 {
+	if configOpt.Overrides == nil {
 		configOpt.Overrides = map[string]config.LokiOverrides{}
 	}
 
-	lokiOverrides, ok := configOpt.Overrides[tenantApplication]
-	if ok {
+	lokiOverrides := configOpt.Overrides[tenantApplication]
+
+	if lokiOverrides.Ruler.AlertManager != nil {
 		return nil
 	}
 
-	lokiOverrides = config.LokiOverrides{
-		Ruler: config.RulerOverrides{
-			AlertManager: &config.AlertManagerConfig{},
-		},
-	}
-
-	configOpt.Overrides[tenantApplication] = lokiOverrides
-	amOverride := &config.AlertManagerConfig{
-		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserwWrkloadNS),
+	lokiOverrides.Ruler.AlertManager = &config.AlertManagerConfig{
+		Hosts:           fmt.Sprintf("https://_web._tcp.%s.%s.svc", MonitoringSVCOperated, MonitoringUserWorkloadNS),
 		EnableV2:        true,
 		EnableDiscovery: true,
 		RefreshInterval: "1m",
@@ -292,11 +286,6 @@ func configureUserWorkloadAM(configOpt *config.Options, token, caPath, monitorSe
 		},
 	}
 
-	if err := mergo.Merge(lokiOverrides.Ruler.AlertManager, amOverride); err != nil {
-		return kverrors.Wrap(err, "failed merging application tenant AlertManager config")
-	}
-
 	configOpt.Overrides[tenantApplication] = lokiOverrides
-
 	return nil
 }
