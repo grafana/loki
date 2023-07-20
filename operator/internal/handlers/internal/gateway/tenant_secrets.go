@@ -69,7 +69,7 @@ func GetTenantSecrets(
 			}
 			tenantSecrets = append(tenantSecrets, tennantSecret)
 		case tenant.MTLS != nil:
-			caPath, err := extractCAPath(ctx, k, req.Namespace, tenant.TenantName, tenant.OIDC.IssuerCA)
+			caPath, err := extractCAPath(ctx, k, req.Namespace, tenant.TenantName, tenant.MTLS.CA)
 			if err != nil {
 				return nil, err
 			}

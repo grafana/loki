@@ -195,8 +195,29 @@ func ConfigureOptionsForMode(cfg *config.Options, opt Options) error {
 }
 
 // configureCAVolumes will mount CA bundles for both OIDC and mTLS. Furthermore
-// if a user configures mTLS it will also update the arg --tls.client-auth-type 
+// if a user configures mTLS it will also update the arg --tls.client-auth-type
 func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error {
+	if tenants.Authentication == nil {
+		return nil //nothing to do
+	}
+
+	mountCAConfigMap := func(container *corev1.Container, volumes *[]corev1.Volume, tennantName, configmapName string) {
+		container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{
+			Name:      tenantCAVolumeName(tennantName),
+			MountPath: tenantCADir(tennantName),
+		})
+		*volumes = append(*volumes, corev1.Volume{
+			Name: tenantCAVolumeName(tennantName),
+			VolumeSource: corev1.VolumeSource{
+				ConfigMap: &corev1.ConfigMapVolumeSource{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: configmapName,
+					},
+				},
+			},
+		})
+	}
+
 	var gwIndex int
 	for i, c := range d.Spec.Template.Spec.Containers {
 		if c.Name == gatewayContainerName {
@@ -212,39 +233,13 @@ func configureCAVolumes(d *appsv1.Deployment, tenants *lokiv1.TenantsSpec) error
 	mTLS := false
 	for _, tenant := range tenants.Authentication {
 		switch {
-		case tenant.MTLS != nil:
-			gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-				Name:      tenantCAVolumeName(tenant.TenantName),
-				MountPath: tenantCADir(tenant.TenantName),
-			})
-			gwVolumes = append(gwVolumes, corev1.Volume{
-				Name: tenantCAVolumeName(tenant.TenantName),
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: tenant.MTLS.CA.CA,
-						},
-					},
-				},
-			})
-			mTLS = true
 		case tenant.OIDC != nil:
 			if tenant.OIDC.IssuerCA != nil {
-				gwContainer.VolumeMounts = append(gwContainer.VolumeMounts, corev1.VolumeMount{
-					Name:      tenantCAVolumeName(tenant.TenantName),
-					MountPath: tenantCADir(tenant.TenantName),
-				})
-				gwVolumes = append(gwVolumes, corev1.Volume{
-					Name: tenantCAVolumeName(tenant.TenantName),
-					VolumeSource: corev1.VolumeSource{
-						ConfigMap: &corev1.ConfigMapVolumeSource{
-							LocalObjectReference: corev1.LocalObjectReference{
-								Name: tenant.OIDC.IssuerCA.CA,
-							},
-						},
-					},
-				})
+				mountCAConfigMap(gwContainer, &gwVolumes, tenant.TenantName, tenant.OIDC.IssuerCA.CA)
 			}
+		case tenant.MTLS != nil:
+			mountCAConfigMap(gwContainer, &gwVolumes, tenant.TenantName, tenant.MTLS.CA.CA)
+			mTLS = true
 		}
 	}
 

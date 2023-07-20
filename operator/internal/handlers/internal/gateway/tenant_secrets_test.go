@@ -86,7 +86,7 @@ func TestGetTenantSecrets(t *testing.T) {
 					{
 						TenantName: "test",
 						MTLSSecret: &manifests.MTLSSecret{
-							CAPath: "/var/run/tls/tenants/test/special-ca.crt",
+							CAPath: "/var/run/tenants-ca/test/special-ca.crt",
 						},
 					},
 				},
