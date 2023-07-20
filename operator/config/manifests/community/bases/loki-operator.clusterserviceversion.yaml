@@ -679,6 +679,15 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: Openshift defines the configuration specific to Openshift modes.
+        displayName: Openshift
+        path: tenants.openshift
+      - description: "AdminGroups defines a list of groups, whose members are considered
+          to have admin-privileges by the Loki Operator. Setting this to an empty
+          array disables admin groups. \n By default the following groups are considered
+          admin-groups: - system:cluster-admins - cluster-admin - dedicated-admin"
+        displayName: Admin Groups
+        path: tenants.openshift.adminGroups
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment
