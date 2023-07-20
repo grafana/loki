@@ -150,6 +150,8 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
 		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
+	r.Summary.TotalMetadataBytesProcessed = r.Querier.Store.Chunk.DecompressedMetadataBytes + r.Querier.Store.Chunk.HeadChunkMetadataBytes +
+		r.Ingester.Store.Chunk.DecompressedMetadataBytes + r.Ingester.Store.Chunk.HeadChunkMetadataBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
 		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
 	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines
@@ -172,8 +174,10 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
+	s.Chunk.HeadChunkMetadataBytes += m.Chunk.HeadChunkMetadataBytes
 	s.Chunk.HeadChunkLines += m.Chunk.HeadChunkLines
 	s.Chunk.DecompressedBytes += m.Chunk.DecompressedBytes
+	s.Chunk.DecompressedMetadataBytes += m.Chunk.DecompressedMetadataBytes
 	s.Chunk.DecompressedLines += m.Chunk.DecompressedLines
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
@@ -284,12 +288,20 @@ func (c *Context) AddHeadChunkBytes(i int64) {
 	atomic.AddInt64(&c.store.Chunk.HeadChunkBytes, i)
 }
 
+func (c *Context) AddHeadChunkMetadataBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.HeadChunkMetadataBytes, i)
+}
+
 func (c *Context) AddCompressedBytes(i int64) {
 	atomic.AddInt64(&c.store.Chunk.CompressedBytes, i)
 }
 
 func (c *Context) AddDecompressedBytes(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedBytes, i)
+}
+
+func (c *Context) AddDecompressedMetadataBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.DecompressedMetadataBytes, i)
 }
 
 func (c *Context) AddDecompressedLines(i int64) {
