@@ -1,22 +1,23 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+// Provenance-includes-location: https://github.com/thanos-io/thanos/blob/main/pkg/store/postings_codec.go
+// Provenance-includes-license: Apache-2.0
+// Provenance-includes-copyright: The Thanos Authors.
+
 package tsdb
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"sort"
 	"strings"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	promEncoding "github.com/prometheus/prometheus/tsdb/encoding"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type PostingsReader interface {
@@ -74,69 +75,13 @@ func (c *cachedPostingsReader) ForPostings(ctx context.Context, matchers []*labe
 	return fn(index.NewListPostings(expandedPosts))
 }
 
-// diffVarintEncodeNoHeader encodes postings into diff+varint representation.
-// It doesn't add any header to the output bytes.
-// Length argument is expected number of postings, used for preallocating buffer.
-func diffVarintEncodeNoHeader(p []storage.SeriesRef) ([]byte, error) {
-	length := len(p)
-	if length == 0 {
-		return []byte{0}, nil
-	}
-
-	buf := encoding.Encbuf{}
-	buf.PutUvarint32(uint32(length))
-
-	// This encoding uses around ~1 bytes per posting, but let's use
-	// conservative 1.25 bytes per posting to avoid extra allocations.
-	if length > 0 {
-		buf.B = make([]byte, 0, binary.MaxVarintLen32+5*length/4)
-	}
-
-	buf.PutUvarint32(uint32(length)) // first we put the postings length used when decoding.
-
-	prev := storage.SeriesRef(0)
-	for _, ref := range p {
-		if ref < prev {
-			return nil, errors.Errorf("postings entries must be in increasing order, current: %d, previous: %d", ref, prev)
-		}
-
-		// This is the 'diff' part -- compute difference from previous value.
-		buf.PutUvarint32(uint32(ref - prev))
-		prev = ref
-	}
-
-	return buf.Get(), nil
-}
-
-func decodeToPostings(b []byte) index.Postings {
-	if len(b) <= 0 {
-		return index.EmptyPostings()
-	}
-
-	decoder := encoding.DecWrap(promEncoding.Decbuf{B: b})
-	postingsLen := decoder.Uvarint32()
-	if postingsLen == 0 {
-		return index.EmptyPostings()
-	}
-	refs := make([]storage.SeriesRef, 0, postingsLen)
-	prev := storage.SeriesRef(0)
-
-	for i := 0; i < int(postingsLen); i++ {
-		v := storage.SeriesRef(decoder.Uvarint32()) + prev
-		refs = append(refs, v)
-		prev = v
-	}
-
-	return index.NewListPostings(refs)
-}
-
 func (c *cachedPostingsReader) storePostings(ctx context.Context, expandedPostings []storage.SeriesRef, canonicalMatchers string) error {
-	dataToCache, err := diffVarintEncodeNoHeader(expandedPostings)
+	buf, err := diffVarintSnappyEncode(index.NewListPostings(expandedPostings), len(expandedPostings))
 	if err != nil {
-		level.Warn(c.log).Log("msg", "couldn't encode postings", "err", err, "matchers", canonicalMatchers)
+		return fmt.Errorf("couldn't encode postings: %w", err)
 	}
 
-	return c.cacheClient.Store(ctx, []string{canonicalMatchers}, [][]byte{dataToCache})
+	return c.cacheClient.Store(ctx, []string{canonicalMatchers}, [][]byte{buf})
 }
 
 func (c *cachedPostingsReader) fetchPostings(ctx context.Context, key string) (index.Postings, bool) {
@@ -149,10 +94,24 @@ func (c *cachedPostingsReader) fetchPostings(ctx context.Context, key string) (i
 
 	if len(found) > 0 {
 		// we only use a single key so we only care about index=0.
-		return decodeToPostings(bufs[0]), true
+		p, err := decodeToPostings(bufs[0])
+		if err != nil {
+			level.Error(c.log).Log("msg", "failed to fetch postings", "err", err)
+			return nil, false
+		}
+		return p, true
 	}
 
 	return nil, false
+}
+
+func decodeToPostings(b []byte) (index.Postings, error) {
+	p, err := diffVarintSnappyDecode(b)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't decode postings: %w", err)
+	}
+
+	return p, nil
 }
 
 // CanonicalLabelMatchersKey creates a canonical version of LabelMatchersKey
