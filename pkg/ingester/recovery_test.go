@@ -263,7 +263,8 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		End:      time.Unix(10, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	lbls := labels.Labels{{Name: "bar", Value: "baz1"}, {Name: "foo", Value: "bar"}}
 	expected := []logproto.Stream{
 		{

@@ -73,6 +73,7 @@ var queryTests = []struct {
 								"decompressedLines": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						},
@@ -92,6 +93,7 @@ var queryTests = []struct {
 								"decompressedLines": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						}
@@ -142,9 +144,10 @@ var queryTests = []struct {
                         "shards": 0,
                         "splits": 0,
 						"subqueries": 0,
-						"totalBytesProcessed":0,
-                                                "totalEntriesReturned":0,
-						"totalLinesProcessed":0
+						"totalBytesProcessed": 0,
+                        "totalEntriesReturned": 0,
+						"totalLinesProcessed": 0,
+                        "totalPostFilterLines": 0
 					}
 				}
 			}
@@ -219,6 +222,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -238,6 +242,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -288,9 +293,10 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -386,6 +392,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -405,6 +412,7 @@ var queryTests = []struct {
 							"decompressedLines": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -455,9 +463,10 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},

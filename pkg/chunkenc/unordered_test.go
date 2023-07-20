@@ -15,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
+	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
 func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
@@ -44,7 +45,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, _ string, _ labels.Labels) error {
+		func(_ *stats.Context, ts int64, _ string, _ labels.Labels) error {
 			forwardCt++
 			forwardStop = ts
 			if ts == 5 {
@@ -65,7 +66,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.BACKWARD,
 		0,
 		math.MaxInt64,
-		func(ts int64, _ string, _ labels.Labels) error {
+		func(_ *stats.Context, ts int64, _ string, _ labels.Labels) error {
 			backwardCt++
 			backwardStop = ts
 			if ts == 5 {
