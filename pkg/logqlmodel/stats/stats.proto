@@ -78,7 +78,6 @@ message Summary {
   int64 totalPostFilterLines = 11 [(gogoproto.jsontag) = "totalPostFilterLines"];
   // Total bytes processed of metadata.
   int64 totalMetadataBytesProcessed = 12 [(gogoproto.jsontag) = "totalMetadataBytesProcessed"];
-
 }
 
 message Querier {
