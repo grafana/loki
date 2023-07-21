@@ -4,9 +4,10 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/util/marshal"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_commonLabels(t *testing.T) {

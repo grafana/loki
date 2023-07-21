@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +28,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
-
 
 func Test_batch(t *testing.T) {
 	tests := []struct {
@@ -406,7 +404,6 @@ func Test_batch(t *testing.T) {
 	}
 }
 
-
 type testQueryClient struct {
 	engine          *logql.Engine
 	queryRangeCalls int
@@ -472,6 +469,19 @@ func (t *testQueryClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ 
 func (t *testQueryClient) GetOrgID() string {
 	panic("implement me")
 }
+
+func (t *testQueryClient) GetStats(queryStr string, start time.Time, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolume(queryStr string, start time.Time, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolumeRange(queryStr string, start time.Time, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
 
 var schemaConfigContents = `schema_config:
   configs:

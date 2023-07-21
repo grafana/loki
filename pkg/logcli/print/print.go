@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/fatih/color"
+
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/util"
 	"github.com/grafana/loki/pkg/loghttp"

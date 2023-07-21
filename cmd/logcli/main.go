@@ -186,8 +186,8 @@ This is helpful to find high cardinality labels.
 	statsCmd = app.Command("stats", `Run a stats query.
 
 The "stats" command will take the provided query and return statistics
-from the index for how much data that query will hit. This only works
-against Loki instances using the TSDB index format.
+from the index on how much data is contained in the matching stream(s).
+This only works against Loki instances using the TSDB index format.
 
 By default we look over the last hour of data; use --since to modify
 or provide specific start and end times with --from and --to respectively.
