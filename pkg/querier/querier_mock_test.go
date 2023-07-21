@@ -563,6 +563,11 @@ func (e *engineMock) Query(p logql.Params) logql.Query {
 	return args.Get(0).(logql.Query)
 }
 
+func (e *engineMock) ProbabilisticQuery(p logql.Params) logql.Query {
+	args := e.Called(p)
+	return args.Get(0).(logql.Query)
+}
+
 type queryMock struct {
 	result logqlmodel.Result
 }
