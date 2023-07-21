@@ -9,7 +9,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
-	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/sketch"
@@ -383,7 +382,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 
 		xs := make([]ProbabilisticStepEvaluator, 0, len(queries))
 		for i, res := range results {
-			stepper, err := ResultStepEvaluator(res, params)
+			stepper, err := ProbabilisticResultStepEvaluator(res, params)
 			if err != nil {
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
@@ -523,10 +522,10 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 					// TODO(karsten): handle error.
 					ls, _ := syntax.ParseLabels(e.Event)
 					vec = append(vec, promql.Sample{
-						T: ts,
-						F: float64(e.Count),
+						T:      ts,
+						F:      float64(e.Count),
 						Metric: ls,
-					})	
+					})
 				}
 			}
 
@@ -579,6 +578,37 @@ func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, e
 		}, nil, nil)
 	case promql.Matrix:
 		return NewMatrixStepper(start, end, step, data), nil
+	default:
+		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
+	}
+}
+
+// ProbabilisticResultStepEvaluator coerces a downstream StepResult into a
+// ProbabilisticStepEvaluator
+func ProbabilisticResultStepEvaluator(res logqlmodel.Result, params Params) (ProbabilisticStepEvaluator, error) {
+	var (
+		start = params.Start()
+	)
+
+	switch data := res.Data.(type) {
+	case promql.Vector:
+		var exhausted bool
+		return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
+			if !exhausted {
+				exhausted = true
+				return true, start.UnixNano() / int64(time.Millisecond), SampleVector(data)
+			}
+			return false, 0, nil
+		}, nil, nil)
+	case sketch.TopKMatrix:
+		i := 0
+		return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
+			if len(data) > i {
+				i++
+				return true, int64(data[i].TS), TopKVector(data[i])
+			}
+			return false, 0, nil
+		}, nil, nil)
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}

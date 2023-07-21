@@ -133,24 +133,24 @@ func NewProbabilisticEvaluator(querier Querier, maxLookBackPeriod time.Duration)
 	return p
 }
 
-type stepEvaluatorAdapter struct {
+type StepEvaluatorAdapter struct {
 	d StepEvaluator
 }
 
-func (p stepEvaluatorAdapter) Next() (ok bool, ts int64, r StepResult) {
+func (p StepEvaluatorAdapter) Next() (ok bool, ts int64, r StepResult) {
 	a, s, d := p.d.Next()
 	return a, s, SampleVector(d)
 }
 
-func (p stepEvaluatorAdapter) Close() error {
+func (p StepEvaluatorAdapter) Close() error {
 	return p.d.Close()
 }
 
-func (p stepEvaluatorAdapter) Error() error {
+func (p StepEvaluatorAdapter) Error() error {
 	return p.d.Error()
 }
 
-func (p stepEvaluatorAdapter) Type() T {
+func (p StepEvaluatorAdapter) Type() T {
 	return VecType
 }
 
@@ -168,7 +168,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 			if err != nil {
 				return nil, err
 			}
-			return stepEvaluatorAdapter{dEval}, nil
+			return StepEvaluatorAdapter{dEval}, nil
 		}
 		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
@@ -176,7 +176,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return stepEvaluatorAdapter{dEval}, nil
+		return StepEvaluatorAdapter{dEval}, nil
 	}
 }
 
