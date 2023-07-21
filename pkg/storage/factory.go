@@ -326,7 +326,7 @@ func (cfg *Config) Validate() error {
 	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Cassandra Storage config")
 	}
-	if err := cfg.GCPStorageConfig.Validate(util_log.Logger); err != nil {
+	if err := cfg.GCPStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid GCP Storage Storage config")
 	}
 	if err := cfg.Swift.Validate(); err != nil {
