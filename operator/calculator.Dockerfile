@@ -1,5 +1,5 @@
 # Build the calculator binary
-FROM golang:1.19.1 as builder
+FROM golang:1.20.6 as builder
 
 WORKDIR /workspace
 # Copy the Go Modules manifests

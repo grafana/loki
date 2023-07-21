@@ -1,8 +1,13 @@
+ARG BUILD_IMAGE=grafana/loki-build-image:0.29.3-golangci.1.51.2
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile.debug .
 
+<<<<<<< HEAD
 FROM golang:1.20.3-alpine as goenv
+=======
+FROM golang:1.20.6-alpine as goenv
+>>>>>>> 0d81144cf (Backport go 1.20.6 to 2.8 (#9944))
 RUN go env GOARCH > /goarch && \
     go env GOARM > /goarm && \
     go install github.com/go-delve/delve/cmd/dlv@latest
