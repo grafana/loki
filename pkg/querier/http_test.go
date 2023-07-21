@@ -32,10 +32,10 @@ var (
 					"compressedBytes": 1,
 					"decompressedBytes": 2,
 					"decompressedLines": 3,
-					"decompressedMetadataBytes": 0,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
-					"headChunkMetadataBytes": 0,
+					"headChunkNonIndexedLabelsBytes": 0,
 					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
@@ -54,10 +54,10 @@ var (
 					"compressedBytes": 11,
 					"decompressedBytes": 12,
 					"decompressedLines": 13,
-					"decompressedMetadataBytes": 0,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
-					"headChunkMetadataBytes": 0,
+					"headChunkNonIndexedLabelsBytes": 0,
 					"postFilterLines": 0,
 					"totalDuplicates": 19
 				},
@@ -115,7 +115,7 @@ var (
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25,
-			"totalMetadataBytesProcessed": 0,
+			"totalNonIndexedLabelsBytesProcessed": 0,
 			"totalPostFilterLines": 0
 		}
 	}`

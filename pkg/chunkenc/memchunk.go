@@ -1386,7 +1386,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	}
 
 	si.stats.AddDecompressedLines(1)
-	si.stats.AddDecompressedMetadataBytes(decompressedMetadataBytes)
+	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedMetadataBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedMetadataBytes)
 
 	return ts, si.buf[:lineSize], si.metaLabelsBuf[:metaLabelsBufLen], true

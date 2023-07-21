@@ -213,12 +213,12 @@ func (hb *unorderedHeadBlock) forEntries(
 			line := es.entries[i].line
 			metadataLabels := es.entries[i].metadataLabels
 
-			var metadataBytes int64
+			var nonIndexedLabelsBytes int64
 			for _, label := range metadataLabels {
-				metadataBytes += int64(len(label.Name) + len(label.Value))
+				nonIndexedLabelsBytes += int64(len(label.Name) + len(label.Value))
 			}
-			chunkStats.AddHeadChunkMetadataBytes(metadataBytes)
-			chunkStats.AddHeadChunkBytes(int64(len(line)) + metadataBytes)
+			chunkStats.AddHeadChunkNonIndexedLabelsBytes(nonIndexedLabelsBytes)
+			chunkStats.AddHeadChunkBytes(int64(len(line)) + nonIndexedLabelsBytes)
 
 			err = entryFn(chunkStats, es.ts, line, metadataLabels)
 

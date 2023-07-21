@@ -1576,17 +1576,17 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 
 			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
 			// First we add the bytes read from the store (aka decompressed). That's
-			// metadataBytes = n. lines * (n. labels <int> + (2 * n. labels) * (label length <int> + label))
+			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. labels) * (label length <int> + label))
 			// lineBytes = n. lines * (ts <int> + line length <int> + line)
-			expectedMetadataBytes := 2 * (binary.MaxVarintLen64 + (binary.MaxVarintLen64 + len("traceID") + binary.MaxVarintLen64 + len("123") + binary.MaxVarintLen64 + len("user") + binary.MaxVarintLen64 + len("a")))
+			expectedNonIndexedLabelsBytes := 2 * (binary.MaxVarintLen64 + (binary.MaxVarintLen64 + len("traceID") + binary.MaxVarintLen64 + len("123") + binary.MaxVarintLen64 + len("user") + binary.MaxVarintLen64 + len("a")))
 			lineBytes := 2 * (2*binary.MaxVarintLen64 + len("lineA"))
 			// Now we add the bytes read from the head chunk. That's
-			// metadataBytes = n. lines * (n. labels * (label name + label value))
+			// nonIndexedLabelsBytes = n. lines * (n. labels * (label name + label value))
 			// lineBytes = n. lines * (line)
-			expectedMetadataBytes += 2 * (len("traceID") + len("789") + len("user") + len("c"))
+			expectedNonIndexedLabelsBytes += 2 * (len("traceID") + len("789") + len("user") + len("c"))
 			lineBytes += 2 * (len("lineC"))
-			// Finally, the expected total bytes is the line bytes + metadata bytes
-			expectedBytes := lineBytes + expectedMetadataBytes
+			// Finally, the expected total bytes is the line bytes + non-indexed labels bytes
+			expectedBytes := lineBytes + expectedNonIndexedLabelsBytes
 
 			// We will run the test twice so the iterator will be created twice.
 			// This is to ensure that the iterator is correctly closed.
@@ -1609,7 +1609,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 
 				resultStats := sts.Result(0, 0, len(lines))
 				require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
-				require.Equal(t, int64(expectedMetadataBytes), resultStats.Summary.TotalMetadataBytesProcessed)
+				require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
 			}
 		})
 	}
