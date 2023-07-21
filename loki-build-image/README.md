@@ -1,4 +1,4 @@
-i# Build image
+# Build image
 
 ## Versions
 
