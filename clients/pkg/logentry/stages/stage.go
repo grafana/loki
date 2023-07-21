@@ -122,15 +122,15 @@ var stageCreators map[string]stageCreator
 
 var stageCreatorsInitLock sync.Mutex
 
-// getStageCreators uses lazyLoading to resolve circular dependencies issue.
-func getStageCreators() map[string]stageCreator {
+// initCreators uses lazyLoading to resolve circular dependencies issue.
+func initCreators() {
 	if stageCreators != nil {
-		return stageCreators
+		return
 	}
 	stageCreatorsInitLock.Lock()
 	defer stageCreatorsInitLock.Unlock()
 	if stageCreators != nil {
-		return stageCreators
+		return
 	}
 	stageCreators = map[string]stageCreator{
 		StageTypeDocker: func(params StageCreationParams) (Stage, error) {
@@ -207,13 +207,13 @@ func getStageCreators() map[string]stageCreator {
 		},
 		StageTypeNonIndexedLabels: newNonIndexedLabelsStage,
 	}
-	return stageCreators
 }
 
 // New creates a new stage for the given type and configuration.
 func New(logger log.Logger, jobName *string, stageType string,
 	cfg interface{}, registerer prometheus.Registerer) (Stage, error) {
-	creator, ok := getStageCreators()[stageType]
+	initCreators()
+	creator, ok := stageCreators[stageType]
 	if !ok {
 		return nil, errors.Errorf("Unknown stage type: %s", stageType)
 	}

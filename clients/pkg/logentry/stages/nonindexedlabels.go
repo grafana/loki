@@ -2,9 +2,10 @@ package stages
 
 import (
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 func newNonIndexedLabelsStage(params StageCreationParams) (Stage, error) {
