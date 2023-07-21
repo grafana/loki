@@ -4,7 +4,7 @@ menuTitle: Upgrade the Helm chart to 3.0
 description: Upgrade the Helm chart from 2.x to 3.0.
 aliases:
   - ../installation/helm/upgrade
-  - ../installation/helm/upgrade-from-2.x/ 
+  - ../../installation/helm/upgrade-from-2.x/ 
 weight: 800
 keywords:
   - upgrade
