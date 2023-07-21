@@ -47,7 +47,6 @@ func TestGetTenantSecrets(t *testing.T) {
 					Data: map[string][]byte{
 						"clientID":     []byte("test"),
 						"clientSecret": []byte("test"),
-						"issuerCAPath": []byte("/path/to/ca/file"),
 					},
 				},
 				expected: []*manifests.TenantSecrets{
@@ -56,7 +55,6 @@ func TestGetTenantSecrets(t *testing.T) {
 						OIDCSecret: &manifests.OIDCSecret{
 							ClientID:     "test",
 							ClientSecret: "test",
-							IssuerCAPath: "/path/to/ca/file",
 						},
 					},
 				},
@@ -88,7 +86,7 @@ func TestGetTenantSecrets(t *testing.T) {
 					{
 						TenantName: "test",
 						MTLSSecret: &manifests.MTLSSecret{
-							CAPath: "/var/run/tls/tenants/test/special-ca.crt",
+							CAPath: "/var/run/tenants-ca/test/special-ca.crt",
 						},
 					},
 				},
@@ -151,7 +149,6 @@ func TestExtractOIDCSecret(t *testing.T) {
 				Data: map[string][]byte{
 					"clientID":     []byte("test"),
 					"clientSecret": []byte("test"),
-					"issuerCAPath": []byte("/tmp/test"),
 				},
 			},
 		},

@@ -2414,6 +2414,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.labelname</td>
+			<td>string</td>
+			<td>The name of the label to look for at loki when doing the checks.</td>
+			<td><pre lang="json">
+"pod"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.nodeSelector</td>
 			<td>object</td>
 			<td>Node selector for canary pods</td>
