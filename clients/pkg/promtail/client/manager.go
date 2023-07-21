@@ -10,6 +10,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
 )
 
@@ -19,6 +20,18 @@ type WriterEventsNotifier interface {
 	SubscribeCleanup(subscriber wal.CleanupEventSubscriber)
 	SubscribeWrite(subscriber wal.WriteEventSubscriber)
 }
+
+var (
+	// NilNotifier is a no-op WriterEventsNotifier.
+	NilNotifier = nilNotifier{}
+)
+
+// nilNotifier implements WriterEventsNotifier with no-ops callbacks.
+type nilNotifier struct{}
+
+func (n nilNotifier) SubscribeCleanup(_ wal.CleanupEventSubscriber) {}
+
+func (n nilNotifier) SubscribeWrite(_ wal.WriteEventSubscriber) {}
 
 type Stoppable interface {
 	Stop()
@@ -31,6 +44,7 @@ type Stoppable interface {
 // work, tracked in https://github.com/grafana/loki/issues/8197, this Manager will be responsible for instantiating all client
 // types: Logger, Multi and WAL.
 type Manager struct {
+	name        string
 	clients     []Client
 	walWatchers []Stoppable
 
@@ -41,29 +55,20 @@ type Manager struct {
 }
 
 // NewManager creates a new Manager
-func NewManager(
-	metrics *Metrics,
-	logger log.Logger,
-	maxStreams, maxLineSize int,
-	maxLineSizeTruncate bool,
-	reg prometheus.Registerer,
-	walCfg wal.Config,
-	notifier WriterEventsNotifier,
-	clientCfgs ...Config,
-) (*Manager, error) {
-	// TODO: refactor this to instantiate all clients types
+func NewManager(metrics *Metrics, logger log.Logger, limits limit.Config, reg prometheus.Registerer, walCfg wal.Config, notifier WriterEventsNotifier, clientCfgs ...Config) (*Manager, error) {
 	var fake struct{}
 
 	watcherMetrics := wal.NewWatcherMetrics(reg)
 
 	if len(clientCfgs) == 0 {
-		return nil, fmt.Errorf("at least one client config should be provided")
+		return nil, fmt.Errorf("at least one client config must be provided")
 	}
+
 	clientsCheck := make(map[string]struct{})
 	clients := make([]Client, 0, len(clientCfgs))
 	watchers := make([]Stoppable, 0, len(clientCfgs))
 	for _, cfg := range clientCfgs {
-		client, err := New(metrics, cfg, maxStreams, maxLineSize, maxLineSizeTruncate, logger)
+		client, err := New(metrics, cfg, limits.MaxStreams, limits.MaxLineSize.Val(), limits.MaxLineSizeTruncate, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -76,42 +81,68 @@ func NewManager(
 		clientsCheck[client.Name()] = fake
 		clients = append(clients, client)
 
-		// Create and launch wal watcher for this client
+		if walCfg.Enabled {
+			// Create and launch wal watcher for this client
 
-		// add some context information for the logger the watcher uses
-		wlog := log.With(logger, "client", client.Name())
+			// add some context information for the logger the watcher uses
+			wlog := log.With(logger, "client", client.Name())
 
-		writeTo := newClientWriteTo(client.Chan(), wlog)
-		// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
-		// series cache whenever a segment is deleted.
-		notifier.SubscribeCleanup(writeTo)
+			writeTo := newClientWriteTo(client.Chan(), wlog)
+			// subscribe watcher's wal.WriteTo to writer events. This will make the writer trigger the cleanup of the wal.WriteTo
+			// series cache whenever a segment is deleted.
+			notifier.SubscribeCleanup(writeTo)
 
-		watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
-		// subscribe watcher to wal write events
-		notifier.SubscribeWrite(watcher)
+			watcher := wal.NewWatcher(walCfg.Dir, client.Name(), watcherMetrics, writeTo, wlog, walCfg.WatchConfig)
+			// subscribe watcher to wal write events
+			notifier.SubscribeWrite(watcher)
 
-		level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
-		watcher.Start()
+			level.Debug(logger).Log("msg", "starting WAL watcher for client", "client", client.Name())
+			watcher.Start()
 
-		watchers = append(watchers, watcher)
+			watchers = append(watchers, watcher)
+		}
 	}
-
 	manager := &Manager{
 		clients:     clients,
 		walWatchers: watchers,
 		entries:     make(chan api.Entry),
 	}
-	manager.start()
+	if walCfg.Enabled {
+		manager.name = "wal"
+		manager.startWithConsume()
+	} else {
+		manager.name = "multi"
+		manager.startWithForward()
+	}
 	return manager, nil
 }
 
-func (m *Manager) start() {
+// startWithConsume starts the main manager routine, which reads and discards entries from the exposed channel.
+// This is necessary since to treat the WAL-enabled manager the same way as the WAL-disabled one, the processing pipeline
+// send entries both to the WAL writer, and the channel exposed by the manager. In the case the WAL is enabled, these entries
+// are not used since they are read from the WAL, so we need a routine to just read the entries received through the channel
+// and discarding them, to not block the sending side.
+func (m *Manager) startWithConsume() {
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
 		// discard read entries
 		//nolint:revive
 		for range m.entries {
+		}
+	}()
+}
+
+// startWithForward starts the main manager routine, which reads entries from the exposed channel, and forwards them
+// doing a fan-out across all inner clients.
+func (m *Manager) startWithForward() {
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		for e := range m.entries {
+			for _, c := range m.clients {
+				c.Chan() <- e
+			}
 		}
 	}()
 }
@@ -124,8 +155,8 @@ func (m *Manager) StopNow() {
 
 func (m *Manager) Name() string {
 	var sb strings.Builder
-	// name contains wal since manager is used as client only when WAL enabled for now
-	sb.WriteString("wal:")
+	sb.WriteString(m.name)
+	sb.WriteString(":")
 	for i, c := range m.clients {
 		sb.WriteString(c.Name())
 		if i != len(m.clients)-1 {
