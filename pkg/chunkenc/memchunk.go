@@ -1182,9 +1182,6 @@ func (si *bufferedIterator) Next() bool {
 		si.Close()
 		return false
 	}
-	// we decode always the line length and ts as varint
-	si.stats.AddDecompressedBytes(int64(len(line)) + 2*binary.MaxVarintLen64)
-	si.stats.AddDecompressedLines(1)
 
 	si.currTs = ts
 	si.currLine = line
@@ -1194,6 +1191,8 @@ func (si *bufferedIterator) Next() bool {
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
+	var decompressedBytes int64
+	var decompressedMetadataBytes int64
 	var ts int64
 	var tWidth, lWidth, lineSize, lastAttempt int
 	for lWidth == 0 { // Read until both varints have enough bytes.
@@ -1218,6 +1217,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		lineSize = int(l)
 		lastAttempt = si.readBufValid
 	}
+
+	// TS and line length
+	decompressedBytes += 2 * binary.MaxVarintLen64
 
 	if lineSize >= maxLineLength {
 		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
@@ -1256,7 +1258,11 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		}
 	}
 
+	decompressedBytes += int64(lineSize)
+
 	if si.format < chunkFormatV4 {
+		si.stats.AddDecompressedBytes(decompressedBytes)
+		si.stats.AddDecompressedLines(1)
 		return ts, si.buf[:lineSize], nil, true
 	}
 
@@ -1285,6 +1291,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		nLabels = int(l)
 		lastAttempt = si.readBufValid
 	}
+
+	// Number of labels
+	decompressedMetadataBytes += binary.MaxVarintLen64
 
 	// Shift down what is still left in the fixed-size read buffer, if any.
 	si.readBufValid = copy(si.readBuf[:], si.readBuf[labelsWidth:si.readBufValid])
@@ -1336,6 +1345,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 			lastAttempt = si.readBufValid
 		}
 
+		// Label size
+		decompressedMetadataBytes += binary.MaxVarintLen64
+
 		// If the buffer is not yet initialize or too small, we get a new one.
 		if si.metaLabelsBuf[i] == nil || labelSize > cap(si.metaLabelsBuf[i]) {
 			// in case of a replacement we replace back the buffer in the pool
@@ -1369,7 +1381,13 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 				return 0, nil, nil, false
 			}
 		}
+
+		decompressedMetadataBytes += int64(labelSize)
 	}
+
+	si.stats.AddDecompressedLines(1)
+	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedMetadataBytes)
+	si.stats.AddDecompressedBytes(decompressedBytes + decompressedMetadataBytes)
 
 	return ts, si.buf[:lineSize], si.metaLabelsBuf[:metaLabelsBufLen], true
 }
