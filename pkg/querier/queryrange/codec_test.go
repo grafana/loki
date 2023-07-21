@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	strings "strings"
 	"testing"
 	"time"
@@ -1778,6 +1779,27 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 	}
 }
 
+func Benchmark_MergeResponses(b *testing.B) {
+	var responses []queryrangebase.Response = make([]queryrangebase.Response, 100)
+	for i := range responses {
+		responses[i] = &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		result, err := DefaultCodec.MergeResponse(responses...)
+		require.Nil(b, err)
+		require.NotNil(b, result)
+	}
+}
+
 func generateMatrix() (res []queryrangebase.SampleStream) {
 	for i := 0; i < 100; i++ {
 		s := queryrangebase.SampleStream{
@@ -1804,6 +1826,17 @@ func generateStream() (res []logproto.Stream) {
 			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("%d\nyolo", j)})
 		}
 		res = append(res, s)
+	}
+	return res
+}
+
+func generateSeries() (res []logproto.SeriesIdentifier) {
+	for i := 0; i < 1000; i++ {
+		labels := make(map[string]string)
+		for l := 0; l < 100; l++ {
+			labels[fmt.Sprintf("%d-%d", i, l)] = strconv.Itoa(l)
+		}
+		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
 	return res
 }

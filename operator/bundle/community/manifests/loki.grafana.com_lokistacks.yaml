@@ -3841,6 +3841,21 @@ spec:
                     - openshift-logging
                     - openshift-network
                     type: string
+                  openshift:
+                    description: Openshift defines the configuration specific to Openshift
+                      modes.
+                    properties:
+                      adminGroups:
+                        description: "AdminGroups defines a list of groups, whose
+                          members are considered to have admin-privileges by the Loki
+                          Operator. Setting this to an empty array disables admin
+                          groups. \n By default the following groups are considered
+                          admin-groups: - system:cluster-admins - cluster-admin -
+                          dedicated-admin"
+                        items:
+                          type: string
+                        type: array
+                    type: object
                 required:
                 - mode
                 type: object

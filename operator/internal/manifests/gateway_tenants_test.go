@@ -419,6 +419,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 		stackName    string
 		stackNs      string
 		featureGates configv1.FeatureGates
+		adminGroups  []string
 		tenants      *lokiv1.TenantsSpec
 		dpl          *appsv1.Deployment
 		want         *appsv1.Deployment
@@ -442,9 +443,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			want: defaultGatewayDeployment(),
 		},
 		{
-			desc:      "static mode with mTLS tenant configured",
-			stackName: "test",
-			stackNs:   "test-ns",
+			desc:        "static mode with mTLS tenant configured",
+			stackName:   "test",
+			stackNs:     "test-ns",
+			adminGroups: defaultAdminGroups,
 			tenants: &lokiv1.TenantsSpec{
 				Mode: lokiv1.Static,
 				Authentication: []lokiv1.AuthenticationSpec{
@@ -701,9 +703,10 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			tenants: &lokiv1.TenantsSpec{
 				Mode: lokiv1.OpenshiftLogging,
 			},
-			stackName: "test",
-			stackNs:   "test-ns",
-			dpl:       defaultGatewayDeployment(),
+			stackName:   "test",
+			stackNs:     "test-ns",
+			dpl:         defaultGatewayDeployment(),
+			adminGroups: defaultAdminGroups,
 			want: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -720,12 +723,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--opa.skip-tenants=audit,infrastructure",
-										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--opa.matcher=kubernetes_namespace_name",
 										`--openshift.mappings=application=loki.grafana.com`,
 										`--openshift.mappings=infrastructure=loki.grafana.com`,
@@ -785,6 +788,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				HTTPEncryption:             true,
 				ServiceMonitorTLSEndpoints: true,
 			},
+			adminGroups: defaultAdminGroups,
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "test-gateway",
@@ -825,12 +829,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--opa.skip-tenants=audit,infrastructure",
-										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--opa.matcher=kubernetes_namespace_name",
 										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
 										"--tls.internal.server.key-file=/var/run/tls/http/server/tls.key",
@@ -900,8 +904,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 			tenants: &lokiv1.TenantsSpec{
 				Mode: lokiv1.OpenshiftNetwork,
 			},
-			stackName: "test",
-			stackNs:   "test-ns",
+			stackName:   "test",
+			stackNs:     "test-ns",
+			adminGroups: defaultAdminGroups,
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -939,12 +944,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--opa.skip-tenants=audit,infrastructure",
-										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--opa.matcher=SrcK8S_Namespace,DstK8S_Namespace",
 										"--opa.matcher-op=or",
 										`--openshift.mappings=network=loki.grafana.com`,
@@ -1008,6 +1013,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				HTTPEncryption:             true,
 				ServiceMonitorTLSEndpoints: true,
 			},
+			adminGroups: defaultAdminGroups,
 			dpl: &appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: "test-ns",
@@ -1045,12 +1051,12 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									Image: "quay.io/observatorium/opa-openshift:latest",
 									Args: []string{
 										"--log.level=warn",
-										"--opa.skip-tenants=audit,infrastructure",
-										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--web.listen=:8082",
 										"--web.internal.listen=:8083",
 										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
 										"--opa.package=lokistack",
+										"--opa.admin-groups=system:cluster-admins,cluster-admin,dedicated-admin",
 										"--opa.matcher=SrcK8S_Namespace,DstK8S_Namespace",
 										"--opa.matcher-op=or",
 										"--tls.internal.server.cert-file=/var/run/tls/http/server/tls.crt",
@@ -1114,13 +1120,203 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 				},
 			},
 		},
+		{
+			desc: "openshift-logging mode with custom admin group list",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+			stackName: "test",
+			stackNs:   "test-ns",
+			adminGroups: []string{
+				"custom-admins",
+				"other-admins",
+			},
+			dpl: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+								},
+								{
+									Name:  "opa",
+									Image: "quay.io/observatorium/opa-openshift:latest",
+									Args: []string{
+										"--log.level=warn",
+										"--web.listen=:8082",
+										"--web.internal.listen=:8083",
+										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.package=lokistack",
+										"--opa.admin-groups=custom-admins,other-admins",
+										"--opa.matcher=kubernetes_namespace_name",
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
+									},
+									Ports: []corev1.ContainerPort{
+										{
+											Name:          openshift.GatewayOPAHTTPPortName,
+											ContainerPort: openshift.GatewayOPAHTTPPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+										{
+											Name:          openshift.GatewayOPAInternalPortName,
+											ContainerPort: openshift.GatewayOPAInternalPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/live",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   2,
+										PeriodSeconds:    30,
+										FailureThreshold: 10,
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/ready",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   1,
+										PeriodSeconds:    5,
+										FailureThreshold: 12,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc: "openshift-logging mode with empty admin group list",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.OpenshiftLogging,
+			},
+			stackName:   "test",
+			stackNs:     "test-ns",
+			adminGroups: []string{},
+			dpl: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+								},
+								{
+									Name:  "opa",
+									Image: "quay.io/observatorium/opa-openshift:latest",
+									Args: []string{
+										"--log.level=warn",
+										"--web.listen=:8082",
+										"--web.internal.listen=:8083",
+										"--web.healthchecks.url=http://localhost:8082",
+										"--opa.skip-tenants=audit,infrastructure",
+										"--opa.package=lokistack",
+										"--opa.matcher=kubernetes_namespace_name",
+										`--openshift.mappings=application=loki.grafana.com`,
+										`--openshift.mappings=infrastructure=loki.grafana.com`,
+										`--openshift.mappings=audit=loki.grafana.com`,
+									},
+									Ports: []corev1.ContainerPort{
+										{
+											Name:          openshift.GatewayOPAHTTPPortName,
+											ContainerPort: openshift.GatewayOPAHTTPPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+										{
+											Name:          openshift.GatewayOPAInternalPortName,
+											ContainerPort: openshift.GatewayOPAInternalPort,
+											Protocol:      corev1.ProtocolTCP,
+										},
+									},
+									LivenessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/live",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   2,
+										PeriodSeconds:    30,
+										FailureThreshold: 10,
+									},
+									ReadinessProbe: &corev1.Probe{
+										ProbeHandler: corev1.ProbeHandler{
+											HTTPGet: &corev1.HTTPGetAction{
+												Path:   "/ready",
+												Port:   intstr.FromInt(int(openshift.GatewayOPAInternalPort)),
+												Scheme: corev1.URISchemeHTTP,
+											},
+										},
+										TimeoutSeconds:   1,
+										PeriodSeconds:    5,
+										FailureThreshold: 12,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range tc {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2")
+			err := configureGatewayDeploymentForMode(tc.dpl, tc.tenants, tc.featureGates, "min-version", "cipher1,cipher2", tc.adminGroups)
 			require.NoError(t, err)
 			require.Equal(t, tc.want, tc.dpl)
 		})
