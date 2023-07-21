@@ -1597,11 +1597,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"}`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
-						// labels.FromStrings("traceID", "123", "user", "a").String(),
-						`{job="fake", traceID="123", user="a"}`,
-						`{job="fake", traceID="456", user="b"}`,
-						`{job="fake", traceID="789", user="c"}`,
-						`{job="fake", traceID="123", user="d"}`,
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
 				},
 				{
@@ -1609,7 +1608,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | traceID="789"`,
 					expectedLines: []string{"lineC"},
 					expectedStreams: []string{
-						`{job="fake", traceID="789", user="c"}`,
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 					},
 				},
 				{
@@ -1617,8 +1616,8 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | traceID=~"456|789"`,
 					expectedLines: []string{"lineB", "lineC"},
 					expectedStreams: []string{
-						`{job="fake", traceID="456", user="b"}`,
-						`{job="fake", traceID="789", user="c"}`,
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 					},
 				},
 				{
@@ -1626,7 +1625,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | traceID=~".*5.*"`,
 					expectedLines: []string{"lineB"},
 					expectedStreams: []string{
-						`{job="fake", traceID="456", user="b"}`,
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
 					},
 				},
 				{
@@ -1634,8 +1633,8 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | traceID=~"^[0-9]2.*"`,
 					expectedLines: []string{"lineA", "lineD"},
 					expectedStreams: []string{
-						`{job="fake", traceID="123", user="a"}`,
-						`{job="fake", traceID="123", user="d"}`,
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
 				},
 				{
@@ -1643,7 +1642,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | traceID="123" | user="d"`,
 					expectedLines: []string{"lineD"},
 					expectedStreams: []string{
-						`{job="fake", traceID="123", user="d"}`,
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
 				},
 				{
@@ -1651,10 +1650,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | keep job, user`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
-						`{job="fake", user="a"}`,
-						`{job="fake", user="b"}`,
-						`{job="fake", user="c"}`,
-						`{job="fake", user="d"}`,
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
 				},
 				{
@@ -1662,10 +1661,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | keep job, user="b"`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
-						`{job="fake"}`,
-						`{job="fake", user="b"}`,
-						`{job="fake"}`,
-						`{job="fake"}`,
+						labels.FromStrings("job", "fake").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake").String(),
+						labels.FromStrings("job", "fake").String(),
 					},
 				},
 				{
@@ -1673,10 +1672,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | drop traceID`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
-						`{job="fake", user="a"}`,
-						`{job="fake", user="b"}`,
-						`{job="fake", user="c"}`,
-						`{job="fake", user="d"}`,
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
 				},
 				{
@@ -1684,10 +1683,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"} | drop traceID="123"`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
-						`{job="fake", user="a"}`,
-						`{job="fake", traceID="456", user="b"}`,
-						`{job="fake", traceID="789", user="c"}`,
-						`{job="fake", user="d"}`,
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
 				},
 			} {
@@ -1703,7 +1702,6 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-
 							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
 							require.NoError(t, err)
 
@@ -1736,7 +1734,6 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
 							sts, ctx := stats.NewContext(context.Background())
-
 							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
 
 							var sumValues int
