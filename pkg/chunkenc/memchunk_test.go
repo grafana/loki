@@ -1572,6 +1572,20 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				{Name: "user", Value: "d"},
 			})))
 
+			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
+			// First we add the bytes read from the store (aka decompressed). That's
+			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. labels) * (label length <int> + label))
+			// lineBytes = n. lines * (ts <int> + line length <int> + line)
+			expectedNonIndexedLabelsBytes := 2 * (binary.MaxVarintLen64 + (binary.MaxVarintLen64 + len("traceID") + binary.MaxVarintLen64 + len("123") + binary.MaxVarintLen64 + len("user") + binary.MaxVarintLen64 + len("a")))
+			lineBytes := 2 * (2*binary.MaxVarintLen64 + len("lineA"))
+			// Now we add the bytes read from the head chunk. That's
+			// nonIndexedLabelsBytes = n. lines * (n. labels * (label name + label value))
+			// lineBytes = n. lines * (line)
+			expectedNonIndexedLabelsBytes += 2 * (len("traceID") + len("789") + len("user") + len("c"))
+			lineBytes += 2 * (len("lineC"))
+			// Finally, the expected total bytes is the line bytes + non-indexed labels bytes
+			expectedBytes := lineBytes + expectedNonIndexedLabelsBytes
+
 			for _, tc := range []struct {
 				name            string
 				query           string
@@ -1583,6 +1597,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					query:         `{job="fake"}`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
+						// labels.FromStrings("traceID", "123", "user", "a").String(),
 						`{job="fake", traceID="123", user="a"}`,
 						`{job="fake", traceID="456", user="b"}`,
 						`{job="fake", traceID="789", user="c"}`,
@@ -1677,7 +1692,6 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
-
 					t.Run("log", func(t *testing.T) {
 						expr, err := syntax.ParseLogSelector(tc.query, true)
 						require.NoError(t, err)
@@ -1688,7 +1702,9 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						// We will run the test twice so the iterator will be created twice.
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
-							it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+							sts, ctx := stats.NewContext(context.Background())
+
+							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
 							require.NoError(t, err)
 
 							var lines []string
@@ -1701,6 +1717,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 							}
 							assert.ElementsMatch(t, tc.expectedLines, lines)
 							assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+							resultStats := sts.Result(0, 0, len(lines))
+							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
+							require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
 						}
 					})
 
@@ -1715,7 +1735,9 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						// We will run the test twice so the iterator will be created twice.
 						// This is to ensure that the iterator is correctly closed.
 						for i := 0; i < 2; i++ {
-							it := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+							sts, ctx := stats.NewContext(context.Background())
+
+							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
 
 							var sumValues int
 							var streams []string
@@ -1727,6 +1749,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 							}
 							require.Equal(t, len(tc.expectedLines), sumValues)
 							assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+							resultStats := sts.Result(0, 0, 0)
+							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
+							require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
 						}
 					})
 				})

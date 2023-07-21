@@ -1487,7 +1487,7 @@ go.opentelemetry.io/otel/metric/internal/global
 # go.opentelemetry.io/otel/trace v1.14.0
 ## explicit; go 1.18
 go.opentelemetry.io/otel/trace
-# go.uber.org/atomic v1.10.0
+# go.uber.org/atomic v1.11.0
 ## explicit; go 1.18
 go.uber.org/atomic
 # go.uber.org/goleak v1.2.1
