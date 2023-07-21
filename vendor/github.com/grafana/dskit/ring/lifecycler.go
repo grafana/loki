@@ -19,6 +19,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
 
+	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/netutil"
@@ -102,6 +103,19 @@ func (cfg *LifecyclerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.Flag
 	f.BoolVar(&cfg.EnableInet6, prefix+"enable-inet6", false, "Enable IPv6 support. Required to make use of IP addresses from IPv6 interfaces.")
 }
 
+// Validate checks the consistency of LifecyclerConfig, and fails if this cannot be achieved.
+func (cfg *LifecyclerConfig) Validate() error {
+	_, ok := cfg.RingTokenGenerator.(*SpreadMinimizingTokenGenerator)
+	if ok {
+		// If cfg.RingTokenGenerator is a SpreadMinimizingTokenGenerator, we must ensure that
+		// the tokens are not loaded from file.
+		if cfg.TokensFilePath != "" {
+			return errors.New("you can't configure the tokens file path when using the spread minimizing token strategy. Please set the tokens file path to an empty string")
+		}
+	}
+	return nil
+}
+
 /*
 Lifecycler is a Service that is responsible for publishing changes to a ring for a single instance.
 
@@ -151,6 +165,9 @@ type Lifecycler struct {
 	zonesCount            int
 
 	tokenGenerator TokenGenerator
+	// The maximum time allowed to wait on the CanJoin() condition.
+	// Configurable for testing purposes only.
+	canJoinTimeout time.Duration
 
 	lifecyclerMetrics *LifecyclerMetrics
 	logger            log.Logger
@@ -186,6 +203,12 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		tokenGenerator = NewRandomTokenGenerator()
 	}
 
+	// We validate cfg before we create a Lifecycler.
+	err = cfg.Validate()
+	if err != nil {
+		return nil, err
+	}
+
 	l := &Lifecycler{
 		cfg:                   cfg,
 		flushTransferer:       flushTransferer,
@@ -201,6 +224,7 @@ func NewLifecycler(cfg LifecyclerConfig, flushTransferer FlushTransferer, ringNa
 		actorChan:             make(chan func()),
 		state:                 PENDING,
 		tokenGenerator:        tokenGenerator,
+		canJoinTimeout:        5 * time.Minute,
 		lifecyclerMetrics:     NewLifecyclerMetrics(ringName, reg),
 		logger:                logger,
 	}
@@ -759,11 +783,61 @@ func (i *Lifecycler) compareTokens(fromRing Tokens) bool {
 	return true
 }
 
+func (i *Lifecycler) waitBeforeJoining(ctx context.Context) error {
+	if !i.tokenGenerator.CanJoinEnabled() {
+		return nil
+	}
+
+	level.Info(i.logger).Log("msg", "waiting to be able to join the ring", "ring", i.RingName, "id", i.cfg.ID, "timeout", i.canJoinTimeout)
+
+	ctxWithTimeout, cancel := context.WithTimeout(ctx, i.canJoinTimeout)
+	defer cancel()
+	retries := backoff.New(ctxWithTimeout, backoff.Config{
+		MinBackoff: 1 * time.Second,
+		MaxBackoff: 1 * time.Second,
+		MaxRetries: 0,
+	})
+
+	var lastError error
+	for ; retries.Ongoing(); retries.Wait() {
+		var desc interface{}
+		desc, lastError = i.KVStore.Get(ctxWithTimeout, i.RingKey)
+		if lastError != nil {
+			lastError = errors.Wrap(lastError, "error getting the ring from the KV store")
+			continue
+		}
+
+		ringDesc, ok := desc.(*Desc)
+		if !ok || ringDesc == nil {
+			lastError = fmt.Errorf("no ring returned from the KV store")
+			continue
+		}
+		lastError = i.tokenGenerator.CanJoin(ringDesc.GetIngesters())
+		if lastError == nil {
+			level.Info(i.logger).Log("msg", "it is now possible to join the ring", "ring", i.RingName, "id", i.cfg.ID, "retries", retries.NumRetries())
+			return nil
+		}
+	}
+
+	if lastError == nil {
+		lastError = retries.Err()
+	}
+	level.Warn(i.logger).Log("msg", "there was a problem while checking whether this instance could join the ring - will continue anyway", "ring", i.RingName, "id", i.cfg.ID, "err", lastError)
+
+	// Return error only in case the parent context has been cancelled.
+	// In all other cases, we just want to swallow the error and move on.
+	return ctx.Err()
+}
+
 // autoJoin selects random tokens & moves state to targetState
 func (i *Lifecycler) autoJoin(ctx context.Context, targetState InstanceState) error {
-	var ringDesc *Desc
+	err := i.waitBeforeJoining(ctx)
+	if err != nil {
+		return err
+	}
 
-	err := i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
+	var ringDesc *Desc
+	err = i.KVStore.CAS(ctx, i.RingKey, func(in interface{}) (out interface{}, retry bool, err error) {
 		if in == nil {
 			ringDesc = NewDesc()
 		} else {

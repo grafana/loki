@@ -115,7 +115,9 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.Equal(t, 1, sentry1["Heartbeat"])
 	require.Equal(t, 1, sentry2["Heartbeat"])
 
-	delegate.OnRingInstanceRegister(nil, *ingesters, true, "ingester-0", ring.InstanceDesc{})
+	cfg := ring.BasicLifecyclerConfig{}
+	l, _ := ring.NewBasicLifecycler(cfg, "", "", nil, nil, nil, nil)
+	delegate.OnRingInstanceRegister(l, *ingesters, true, "ingester-0", ring.InstanceDesc{})
 	require.Equal(t, 1, sentry1["Register"])
 	require.Equal(t, 1, sentry2["Register"])
 

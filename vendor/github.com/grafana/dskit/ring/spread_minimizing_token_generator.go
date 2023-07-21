@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/pkg/errors"
 
 	"golang.org/x/exp/slices"
 )
@@ -23,7 +24,12 @@ const (
 var (
 	instanceIDRegex          = regexp.MustCompile(`^(.*)-(\d+)$`)
 	errorBadInstanceIDFormat = func(instanceID string) error {
-		return fmt.Errorf("unable to extract instance id from \"%s\"", instanceID)
+		return fmt.Errorf("unable to extract instance id from %q", instanceID)
+	}
+	errorNoPreviousInstance = fmt.Errorf("impossible to find the instance preceding the target instance, because it is the first instance")
+
+	errorMissingPreviousInstance = func(requiredInstanceID string) error {
+		return fmt.Errorf("the instance %q has not been registered to the ring or has no tokens yet", requiredInstanceID)
 	}
 	errorZoneCountOutOfBound = func(zonesCount int) error {
 		return fmt.Errorf("number of zones %d is not correct: it must be greater than 0 and less or equal than %d", zonesCount, maxZonesCount)
@@ -44,12 +50,14 @@ var (
 
 type SpreadMinimizingTokenGenerator struct {
 	instanceID            int
+	instance              string
 	zoneID                int
 	spreadMinimizingZones []string
+	canJoinEnabled        bool
 	logger                log.Logger
 }
 
-func NewSpreadMinimizingTokenGenerator(instance, zone string, spreadMinimizingZones []string, logger log.Logger) (*SpreadMinimizingTokenGenerator, error) {
+func NewSpreadMinimizingTokenGenerator(instance, zone string, spreadMinimizingZones []string, canJoinEnabled bool, logger log.Logger) (*SpreadMinimizingTokenGenerator, error) {
 	if len(spreadMinimizingZones) <= 0 || len(spreadMinimizingZones) > maxZonesCount {
 		return nil, errorZoneCountOutOfBound(len(spreadMinimizingZones))
 	}
@@ -69,8 +77,10 @@ func NewSpreadMinimizingTokenGenerator(instance, zone string, spreadMinimizingZo
 
 	tokenGenerator := &SpreadMinimizingTokenGenerator{
 		instanceID:            instanceID,
+		instance:              instance,
 		zoneID:                zoneID,
 		spreadMinimizingZones: sortedZones,
+		canJoinEnabled:        canJoinEnabled,
 		logger:                logger,
 	}
 	return tokenGenerator, nil
@@ -82,6 +92,26 @@ func parseInstanceID(instanceID string) (int, error) {
 		return 0, errorBadInstanceIDFormat(instanceID)
 	}
 	return strconv.Atoi(parts[2])
+}
+
+// previousInstance determines the string id of the instance preceding the given instance string id.
+// If it is impossible to parse the given instanceID, or it is impossible to determine its predecessor
+// because the passed instanceID has a bad format, or has no predecessor, an error is returned.
+// For examples, my-instance-1 is preceded by instance my-instance-0, but my-instance-0 has no
+// predecessor because its index is 0.
+func previousInstance(instanceID string) (string, error) {
+	parts := instanceIDRegex.FindStringSubmatch(instanceID)
+	if len(parts) != 3 {
+		return "", errorBadInstanceIDFormat(instanceID)
+	}
+	id, err := strconv.Atoi(parts[2])
+	if err != nil {
+		return "", err
+	}
+	if id == 0 {
+		return "", errorNoPreviousInstance
+	}
+	return fmt.Sprintf("%s-%d", parts[1], id-1), nil
 }
 
 // findZoneID gets a zone name and a slice of sorted zones,
@@ -302,4 +332,27 @@ func (t *SpreadMinimizingTokenGenerator) generateTokensByInstanceID() map[int]To
 	}
 
 	return tokensByInstanceID
+}
+
+func (t *SpreadMinimizingTokenGenerator) CanJoin(instances map[string]InstanceDesc) error {
+	if !t.canJoinEnabled {
+		return nil
+	}
+
+	prevInstance, err := previousInstance(t.instance)
+	if err != nil {
+		if errors.Is(err, errorNoPreviousInstance) {
+			return nil
+		}
+		return err
+	}
+	instanceDesc, ok := instances[prevInstance]
+	if ok && len(instanceDesc.Tokens) != 0 {
+		return nil
+	}
+	return errorMissingPreviousInstance(prevInstance)
+}
+
+func (t *SpreadMinimizingTokenGenerator) CanJoinEnabled() bool {
+	return t.canJoinEnabled
 }
