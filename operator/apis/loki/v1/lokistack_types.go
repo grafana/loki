@@ -153,12 +153,17 @@ type TenantSecretSpec struct {
 
 // OIDCSpec defines the oidc configuration spec for lokiStack Gateway component.
 type OIDCSpec struct {
-	// Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant's authentication.
+	// Secret defines the spec for the clientID and clientSecret for tenant's authentication.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant Secret"
 	Secret *TenantSecretSpec `json:"secret"`
+	// IssuerCA defines the spec for the issuer CA for tenant's authentication.
+	//
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="IssuerCA ConfigMap"
+	IssuerCA *CASpec `json:"issuerCA"`
 	// IssuerURL defines the URL for issuer.
 	//
 	// +required
