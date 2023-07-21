@@ -470,18 +470,17 @@ func (t *testQueryClient) GetOrgID() string {
 	panic("implement me")
 }
 
-func (t *testQueryClient) GetStats(queryStr string, start time.Time, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+func (t *testQueryClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
 	panic("not implemented")
 }
 
-func (t *testQueryClient) GetVolume(queryStr string, start time.Time, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) GetVolume(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
-func (t *testQueryClient) GetVolumeRange(queryStr string, start time.Time, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) GetVolumeRange(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
-
 
 var schemaConfigContents = `schema_config:
   configs:

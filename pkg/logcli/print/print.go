@@ -99,9 +99,9 @@ func (r *QueryResultPrinter) printStream(streams loghttp.Streams, out output.Log
 		streams[i].Labels = ls
 
 		// Update max labels length
-		len := len(ls.String())
-		if maxLabelsLen < len {
-			maxLabelsLen = len
+		length := len(ls.String())
+		if maxLabelsLen < length {
+			maxLabelsLen = length
 		}
 	}
 
