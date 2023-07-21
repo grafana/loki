@@ -842,7 +842,7 @@ func TestStreamShardingUsage(t *testing.T) {
 func TestInstance_Volume(t *testing.T) {
 	prepareInstance := func(t *testing.T) *instance {
 		instance := defaultInstance(t)
-		instance.Push(context.TODO(), &logproto.PushRequest{
+		err := instance.Push(context.TODO(), &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
 					Labels: `{host="other"}`,
@@ -852,6 +852,7 @@ func TestInstance_Volume(t *testing.T) {
 				},
 			},
 		})
+		require.NoError(t, err)
 		return instance
 	}
 

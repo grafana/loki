@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -1096,10 +1097,11 @@ func TestVolume(t *testing.T) {
 
 	t.Run("matching a single label", func(t *testing.T) {
 		volumes, err := i.GetVolume(ctx, &logproto.VolumeRequest{
-			From:     0,
-			Through:  10000,
-			Matchers: `{log_stream=~"dispatcher|worker"}`,
-			Limit:    2,
+			From:        0,
+			Through:     10000,
+			Matchers:    `{log_stream=~"dispatcher|worker"}`,
+			AggregateBy: seriesvolume.Series,
+			Limit:       2,
 		})
 		require.NoError(t, err)
 

@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/stretchr/testify/require"
 )
 
 const forRangeQuery = false

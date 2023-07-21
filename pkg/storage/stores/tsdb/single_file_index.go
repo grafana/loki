@@ -392,7 +392,7 @@ func (i *TSDBIndex) Volume(
 					seriesNames[hash] = seriesLabels.String()
 				}
 
-				if seriesvolume.AggregateBySeries(aggregateBy) {
+				if seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == "" {
 					if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
 						return err
 					}

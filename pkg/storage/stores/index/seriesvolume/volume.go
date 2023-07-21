@@ -99,9 +99,9 @@ func MapToVolumeResponse(mergedVolumes map[string]uint64, limit int) *logproto.V
 
 func ValidateAggregateBy(aggregateBy string) bool {
 	switch aggregateBy {
-  case Labels:
+	case Labels:
 		return true
-  case Series:
+	case Series:
 		return true
 	default:
 		return false

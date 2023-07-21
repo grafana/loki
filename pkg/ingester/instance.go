@@ -672,7 +672,7 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 				seriesNames[hash] = seriesLabels.String()
 			}
 
-			if seriesvolume.AggregateBySeries(req.AggregateBy) {
+			if seriesvolume.AggregateBySeries(req.AggregateBy) || req.AggregateBy == "" {
 				volumes[seriesNames[hash]] += size
 			} else {
 				for k, v := range labelVolumes {
