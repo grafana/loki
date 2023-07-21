@@ -20,14 +20,14 @@ type element struct {
 
 type TopKResult struct {
 	groupingKey string
-	result      []element
+	Result      []element
 }
 
-func (t TopKResult) Len() int { return len(t.result) }
+func (t TopKResult) Len() int { return len(t.Result) }
 
 // for topk we actually want the largest item first
-func (t TopKResult) Less(i, j int) bool { return t.result[i].Count > t.result[j].Count }
-func (t TopKResult) Swap(i, j int)      { t.result[i], t.result[j] = t.result[j], t.result[i] }
+func (t TopKResult) Less(i, j int) bool { return t.Result[i].Count > t.Result[j].Count }
+func (t TopKResult) Swap(i, j int)      { t.Result[i], t.Result[j] = t.Result[j], t.Result[i] }
 
 // Topk is a structure that uses a Count Min Sketch and a Min-Heap to track the top k events by frequency.
 // We also use the sketch-bf (https://ietresearch.onlinelibrary.wiley.com/doi/full/10.1049/ell2.12482) notion of a
@@ -309,15 +309,15 @@ func (t *Topk) Observe(event string, count uint32) {
 func removeDuplicates(t TopKResult) TopKResult {
 	processed := map[string]struct{}{}
 	w := 0
-	for _, e := range t.result {
+	for _, e := range t.Result {
 		if _, exists := processed[e.Event]; !exists {
 			// If this city has not been seen yet, add it to the list
 			processed[e.Event] = struct{}{}
-			t.result[w] = e
+			t.Result[w] = e
 			w++
 		}
 	}
-	t.result = t.result[:w]
+	t.Result = t.Result[:w]
 	return t
 }
 
@@ -339,14 +339,14 @@ func (t *Topk) Merge(from *Topk) error {
 		if _, ok := from.heaps[key]; !ok {
 			continue
 		}
-		all.result = all.result[:0]
+		all.Result = all.Result[:0]
 		all.groupingKey = key
 		for _, e := range *t.heaps[key] {
-			all.result = append(all.result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+			all.Result = append(all.Result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
 		}
 
 		for _, e := range *from.heaps[key] {
-			all.result = append(all.result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+			all.Result = append(all.Result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
 		}
 
 		all = removeDuplicates(all)
@@ -354,7 +354,7 @@ func (t *Topk) Merge(from *Topk) error {
 		temp := &MinHeap{}
 		var h1, h2 uint32
 		// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
-		for _, e := range all.result[:t.max] {
+		for _, e := range all.Result[:t.max] {
 			h1, h2 = hashn(e.Event)
 			t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
 		}
@@ -392,19 +392,19 @@ func (t *Topk) Topk() []TopKResult {
 
 		keyRes := TopKResult{
 			groupingKey: key,
-			result:      make([]element, 0, len(*t.heaps[key])),
+			Result:      make([]element, 0, len(*t.heaps[key])),
 		}
 		if len(*t.heaps[key]) < t.max {
 			n = len(*t.heaps[key])
 		}
 		for _, e := range *t.heaps[key] {
-			keyRes.result = append(keyRes.result, element{
+			keyRes.Result = append(keyRes.Result, element{
 				Event: e.event,
 				Count: int64(t.sketch.Count(e.event)),
 			})
 		}
 		sort.Sort(keyRes)
-		keyRes.result = keyRes.result[:n]
+		keyRes.Result = keyRes.Result[:n]
 		res = append(res, keyRes)
 	}
 
@@ -418,17 +418,17 @@ func (t *Topk) TopkForGroupingKey(groupingKey string) TopKResult {
 	}
 	res := TopKResult{
 		groupingKey: "",
-		result:      make([]element, 0, len(*t.heaps[groupingKey])),
+		Result:      make([]element, 0, len(*t.heaps[groupingKey])),
 	}
 
 	for _, e := range *t.heaps[groupingKey] {
-		res.result = append(res.result, element{
+		res.Result = append(res.Result, element{
 			Event: e.event,
 			Count: int64(t.sketch.Count(e.event)),
 		})
 	}
 	sort.Sort(res)
-	res.result = res.result[:n]
+	res.Result = res.Result[:n]
 	return res
 }
 

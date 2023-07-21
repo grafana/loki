@@ -9,8 +9,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/prometheus/promql"
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/metadata"
@@ -359,6 +361,42 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 
 		return ConcatEvaluator(xs)
 
+	case *TopkMergeSampleExpr:
+		cur := e
+		var queries []DownstreamQuery
+		for cur != nil {
+			qry := DownstreamQuery{
+				Expr:   cur.DownstreamTopkSampleExpr.TopkSampleExpr,
+				Params: params,
+			}
+			if shard := cur.DownstreamTopkSampleExpr.shard; shard != nil {
+				qry.Shards = Shards{*shard}
+			}
+			queries = append(queries, qry)
+			cur = cur.next
+		}
+
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]ProbabilisticStepEvaluator, 0, len(queries))
+		for i, res := range results {
+			stepper, err := ResultStepEvaluator(res, params)
+			if err != nil {
+				level.Warn(util_log.Logger).Log(
+					"msg", "could not extract StepEvaluator",
+					"err", err,
+					"expr", queries[i].Expr.String(),
+				)
+				return nil, err
+			}
+			xs = append(xs, stepper)
+		}
+
+		return TopkMergeEvalator(xs)
+
 	default:
 		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
 	}
@@ -437,6 +475,61 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 				ok, ts, cur = eval.Next()
 				vec = append(vec, cur...)
 			}
+			return ok, ts, vec
+		},
+		func() (lastErr error) {
+			for _, eval := range evaluators {
+				if err := eval.Close(); err != nil {
+					lastErr = err
+				}
+			}
+			return lastErr
+		},
+		func() error {
+			var errs []error
+			for _, eval := range evaluators {
+				if err := eval.Error(); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			switch len(errs) {
+			case 0:
+				return nil
+			case 1:
+				return errs[0]
+			default:
+				return util.MultiError(errs)
+			}
+		},
+	)
+}
+
+func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, error) {
+	return NewStepEvaluator(
+		func() (ok bool, ts int64, vec promql.Vector) {
+			var cur StepResult
+			var acc *sketch.Topk
+			for _, eval := range evaluators {
+				ok, ts, cur = eval.Next()
+				if acc == nil {
+					acc = cur.TopkVector().Topk
+				} else {
+					acc.Merge(cur.TopkVector().Topk)
+				}
+			}
+
+			for _, r := range acc.Topk() {
+				for _, e := range r.Result {
+					// TODO(karsten): handle error.
+					ls, _ := syntax.ParseLabels(e.Event)
+					vec = append(vec, promql.Sample{
+						T: ts,
+						F: float64(e.Count),
+						Metric: ls,
+					})	
+				}
+			}
+
 			return ok, ts, vec
 		},
 		func() (lastErr error) {

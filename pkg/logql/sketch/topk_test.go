@@ -99,8 +99,8 @@ func TestTopK_Merge(t *testing.T) {
 outer:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(mergedTopk[0].result); j++ {
-			if mergedTopk[0].result[j].Event == eventName {
+		for j := 0; j < len(mergedTopk[0].Result); j++ {
+			if mergedTopk[0].Result[j].Event == eventName {
 				continue outer
 			}
 		}
@@ -125,8 +125,8 @@ outer:
 outer2:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(singleTopk[0].result); j++ {
-			if singleTopk[0].result[j].Event == eventName {
+		for j := 0; j < len(singleTopk[0].Result); j++ {
+			if singleTopk[0].Result[j].Event == eventName {
 				continue outer2
 			}
 		}
@@ -175,10 +175,10 @@ func TestRealTopK(t *testing.T) {
 
 	res := TopKResult{
 		groupingKey: "",
-		result:      make([]element, 0, len(h)),
+		Result:      make([]element, 0, len(h)),
 	}
 	for i := 0; i < len(h); i++ {
-		res.result = append(res.result, element{h[i].event, int64(h[i].count)})
+		res.Result = append(res.Result, element{h[i].event, int64(h[i].count)})
 	}
 	sort.Sort(res)
 
@@ -198,8 +198,8 @@ func TestRealTopK(t *testing.T) {
 	cmsMissing := 0
 	assert.Equal(t, len(cmsTop), 1, "expected to only have one topk but there's multiple topks for grouping keys")
 outer:
-	for _, t := range res.result {
-		for _, t2 := range cmsTop[0].result {
+	for _, t := range res.Result {
+		for _, t2 := range cmsTop[0].Result {
 			if t2.Event == t.Event {
 				continue outer
 			}
@@ -260,10 +260,10 @@ func TestRealTop_Merge(t *testing.T) {
 
 	res := TopKResult{
 		groupingKey: "",
-		result:      make([]element, 0, len(h)),
+		Result:      make([]element, 0, len(h)),
 	}
 	for i := 0; i < len(h); i++ {
-		res.result = append(res.result, element{h[i].event, int64(h[i].count)})
+		res.Result = append(res.Result, element{h[i].event, int64(h[i].count)})
 	}
 	sort.Sort(res)
 
@@ -300,8 +300,8 @@ func TestRealTop_Merge(t *testing.T) {
 	assert.Equal(t, 1, len(cmsTop), "expected to only have one topk but there's multiple topks for grouping keys")
 
 outer:
-	for _, t := range res.result {
-		for _, t2 := range cmsTop[0].result {
+	for _, t := range res.Result {
+		for _, t2 := range cmsTop[0].Result {
 			if t2.Event == t.Event {
 				continue outer
 			}
@@ -436,8 +436,8 @@ func TestTopK_MergeGroupingKeys(t *testing.T) {
 outer:
 	for i := nStreams - k; i < nStreams; i++ {
 		eventName = strconv.Itoa(i)
-		for j := 0; j < len(mergedTopk[0].result); j++ {
-			if mergedTopk[0].result[j].Event == eventName {
+		for j := 0; j < len(mergedTopk[0].Result); j++ {
+			if mergedTopk[0].Result[j].Event == eventName {
 				continue outer
 			}
 		}
