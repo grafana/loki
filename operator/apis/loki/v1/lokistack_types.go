@@ -153,12 +153,17 @@ type TenantSecretSpec struct {
 
 // OIDCSpec defines the oidc configuration spec for lokiStack Gateway component.
 type OIDCSpec struct {
-	// Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant's authentication.
+	// Secret defines the spec for the clientID and clientSecret for tenant's authentication.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant Secret"
 	Secret *TenantSecretSpec `json:"secret"`
+	// IssuerCA defines the spec for the issuer CA for tenant's authentication.
+	//
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="IssuerCA ConfigMap"
+	IssuerCA *CASpec `json:"issuerCA"`
 	// IssuerURL defines the URL for issuer.
 	//
 	// +required
@@ -259,6 +264,29 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+
+	// Openshift defines the configuration specific to Openshift modes.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
+	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
+}
+
+// OpenshiftTenantSpec defines the configuration specific to Openshift modes.
+type OpenshiftTenantSpec struct {
+	// AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+	// Setting this to an empty array disables admin groups.
+	//
+	// By default the following groups are considered admin-groups:
+	//  - system:cluster-admins
+	//  - cluster-admin
+	//  - dedicated-admin
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
+	AdminGroups []string `json:"adminGroups"`
 }
 
 // LokiComponentSpec defines the requirements to configure scheduling

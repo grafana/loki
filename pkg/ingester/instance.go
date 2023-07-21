@@ -544,6 +544,10 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
 					key := stream.labelHash
+
+					// TODO(karsten): Due to key collision this check is not
+					// enough. Ideally there is a comparison between the
+					// potentail duplicated series.
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}

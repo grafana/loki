@@ -1,4 +1,4 @@
-// Copyright (c) 2020-2023 Uber Technologies, Inc.
+// Copyright (c) 2022 Uber Technologies, Inc.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -18,37 +18,43 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+//go:build go1.18 && !go1.19
+// +build go1.18,!go1.19
+
 package atomic
 
-//go:generate bin/gen-atomicwrapper -name=String -type=string -wrapped Value -pack packString -unpack unpackString -compareandswap -swap -file=string.go
+import "unsafe"
 
-func packString(s string) interface{} {
-	return s
+type Pointer[T any] struct {
+	_ nocmp // disallow non-atomic comparison
+	p UnsafePointer
 }
 
-func unpackString(v interface{}) string {
-	if s, ok := v.(string); ok {
-		return s
+// NewPointer creates a new Pointer.
+func NewPointer[T any](v *T) *Pointer[T] {
+	var p Pointer[T]
+	if v != nil {
+		p.p.Store(unsafe.Pointer(v))
 	}
-	return ""
+	return &p
 }
 
-// String returns the wrapped value.
-func (s *String) String() string {
-	return s.Load()
+// Load atomically loads the wrapped value.
+func (p *Pointer[T]) Load() *T {
+	return (*T)(p.p.Load())
 }
 
-// MarshalText encodes the wrapped string into a textual form.
-//
-// This makes it encodable as JSON, YAML, XML, and more.
-func (s *String) MarshalText() ([]byte, error) {
-	return []byte(s.Load()), nil
+// Store atomically stores the passed value.
+func (p *Pointer[T]) Store(val *T) {
+	p.p.Store(unsafe.Pointer(val))
 }
 
-// UnmarshalText decodes text and replaces the wrapped string with it.
-//
-// This makes it decodable from JSON, YAML, XML, and more.
-func (s *String) UnmarshalText(b []byte) error {
-	s.Store(string(b))
-	return nil
+// Swap atomically swaps the wrapped pointer and returns the old value.
+func (p *Pointer[T]) Swap(val *T) (old *T) {
+	return (*T)(p.p.Swap(unsafe.Pointer(val)))
+}
+
+// CompareAndSwap is an atomic compare-and-swap.
+func (p *Pointer[T]) CompareAndSwap(old, new *T) (swapped bool) {
+	return p.p.CompareAndSwap(unsafe.Pointer(old), unsafe.Pointer(new))
 }
