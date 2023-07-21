@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/push"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/push"
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var pipelineStagesNonIndexedLabelsFromLogfmt = `
