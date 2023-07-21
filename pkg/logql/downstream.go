@@ -513,7 +513,8 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 				if acc == nil {
 					acc = cur.TopkVector().Topk
 				} else {
-					acc.Merge(cur.TopkVector().Topk)
+					// TODO(karsten): handle error
+					acc.Merge(cur.TopkVector().Topk) //nolint:all
 				}
 			}
 

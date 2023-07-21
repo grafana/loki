@@ -293,7 +293,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		}, bytesPerShard, nil
 
 	case syntax.OpTypeTopK:
-		var g *syntax.Grouping = nil
+		var g *syntax.Grouping
 		// this smells, not sure why we need to do this but somehow
 		// if a query doesn't have a grouping the expr.Grouping field
 		// contains an empty string rather than a nil pointer
