@@ -39,7 +39,6 @@
 * [9431](https://github.com/grafana/loki/pull/9431) **dannykopping**: Add more buckets to `loki_memcache_request_duration_seconds` metric; latencies can increase if using memcached with NVMe
 * [8684](https://github.com/grafana/loki/pull/8684) **oleksii-boiko-ua**: Helm: Add hpa templates for read, write and backend components.
 * [9535](https://github.com/grafana/loki/pull/9535) **salvacorts** Index stats cache can be configured independently of the results cache. If it's not configured, but it's enabled, it will use the results cache configuration.
-* [9604](https://github.com/grafana/loki/pull/9604) **dannykopping**: Querier: configurable writeback queue bytes size
 * [9626](https://github.com/grafana/loki/pull/9626) **ashwanthgoli** logfmt: add --strict flag to enable strict parsing, perform nostrict parsing by default
 * [9672](https://github.com/grafana/loki/pull/9672) **zeitlinger**: Add `alignLeft` and `alignRight` line formatting functions.
 * [9693](https://github.com/grafana/loki/pull/9693) **salvacorts** Add `keep` stage to LogQL.
@@ -56,10 +55,8 @@
 * [9252](https://github.com/grafana/loki/pull/9252) **jeschkies**: Use un-escaped regex literal for string matching.
 * [9176](https://github.com/grafana/loki/pull/9176) **DylanGuedes**: Fix incorrect association of per-stream rate limit when sharding is enabled.
 * [9463](https://github.com/grafana/loki/pull/9463) **Totalus**: Fix OpenStack Swift client object listing to fetch all the objects properly.
-* [9471](https://github.com/grafana/loki/pull/9471) **sandeepsukhani**: query-scheduler: fix query distribution in SSD mode.
 * [9495](https://github.com/grafana/loki/pull/9495) **thampiotr**: Promtail: Fix potential goroutine leak in file tailer.
 * [9650](https://github.com/grafana/loki/pull/9650) **ashwanthgoli**: Config: ensure storage config defaults apply to named stores.
-* [9629](https://github.com/grafana/loki/pull/9629) **periklis**: Fix duplicate label values from ingester streams.
 * [9757](https://github.com/grafana/loki/pull/9757) **sandeepsukhani**: Frontend Caching: Fix a bug in negative logs results cache causing Loki to unexpectedly send empty/incorrect results.
 * [9754](https://github.com/grafana/loki/pull/9754) **ashwanthgoli**: Fixes an issue with indexes becoming unqueriable if the index prefix is different from the one configured in the latest period config.
 * [9763](https://github.com/grafana/loki/pull/9763) **ssncferreira**: Fix the logic of the `offset` operator for downstream queries on instant query splitting of (range) vector aggregation expressions containing an offset.
@@ -82,8 +79,6 @@
 
 ##### Fixes
 
-* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
-* [9155](https://github.com/grafana/loki/pull/9155) **farodin91**: Promtail: Break on iterate journal failure.
 * [8987](https://github.com/grafana/loki/pull/8987) **darxriggs**: Promtail: Fix file descriptor leak.
 * [9863](https://github.com/grafana/loki/pull/9863) **ashwanthgoli**: Promtail: Apply defaults to HTTP client config. This ensures follow_redirects is set to true.
 * [9915](https://github.com/grafana/loki/pull/9915) **frittentheke**: Promtail: Update grafana/tail to address issue in retry logic
@@ -115,6 +110,30 @@
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 * [9978](https://github.com/grafana/loki/pull/9978) ****vlad-diachenko****: replaced deprecated `policy.v1beta1` with `policy.v1`.
+
+## 2.8.3 (2023-07-21)
+
+#### Loki
+
+##### Security
+
+* [9913](https://github.com/grafana/loki/pull/9913) **MichelHollands**: Upgrade go version to 1.20.6
+
+##### Enhancements
+
+* [9604](https://github.com/grafana/loki/pull/9604) **dannykopping**: Querier: configurable writeback queue bytes size
+
+##### Fixes
+
+* [9471](https://github.com/grafana/loki/pull/9471) **sandeepsukhani**: query-scheduler: fix query distribution in SSD mode.
+* [9629](https://github.com/grafana/loki/pull/9629) **periklis**: Fix duplicate label values from ingester streams.
+
+#### Promtail
+
+##### Fixes
+
+* [9155](https://github.com/grafana/loki/pull/9155) **farodin91**: Promtail: Break on iterate journal failure.
+* [8988](https://github.com/grafana/loki/pull/8988) **darxriggs**: Promtail: Prevent logging errors on normal shutdown.
 
 ## 2.8.2 (2023-05-03)
 
