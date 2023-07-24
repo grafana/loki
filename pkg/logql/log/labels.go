@@ -244,6 +244,13 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 	return b
 }
 
+func (b *LabelsBuilder) Add(labels ...labels.Label) *LabelsBuilder {
+	for _, l := range labels {
+		b.Set(l.Name, l.Value)
+	}
+	return b
+}
+
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
 func (b *LabelsBuilder) labels() labels.Labels {

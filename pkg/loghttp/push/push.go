@@ -38,7 +38,7 @@ var (
 	nonIndexedLabelsBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_non_indexed_labels_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant for entries metadata (non-indexed labels)",
+		Help:      "The total number of uncompressed bytes received per tenant for entries' non-indexed labels",
 	}, []string{"tenant", "retention_hours"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
