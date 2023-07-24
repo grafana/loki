@@ -2,16 +2,16 @@
 //
 // aws-sdk-go-v2 is the the v2 of the AWS SDK for the Go programming language.
 //
-// Getting started
+// # Getting started
 //
 // The best way to get started working with the SDK is to use `go get` to add the
 // SDK and desired service clients to your Go dependencies explicitly.
 //
-// 	go get github.com/aws/aws-sdk-go-v2
+//	go get github.com/aws/aws-sdk-go-v2
 //	go get github.com/aws/aws-sdk-go-v2/config
 //	go get github.com/aws/aws-sdk-go-v2/service/dynamodb
 //
-// Hello AWS
+// # Hello AWS
 //
 // This example shows how you can use the v2 SDK to make an API request using the
 // SDK's Amazon DynamoDB client.

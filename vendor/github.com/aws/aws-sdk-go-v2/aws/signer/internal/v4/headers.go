@@ -7,6 +7,7 @@ var IgnoredHeaders = Rules{
 			"Authorization":   struct{}{},
 			"User-Agent":      struct{}{},
 			"X-Amzn-Trace-Id": struct{}{},
+			"Expect":          struct{}{},
 		},
 	},
 }

@@ -1,4 +1,4 @@
-#1/usr/bin/env bash
+#!/usr/bin/env bash
 
 PROJECT_DIR=""
 SDK_SOURCE_DIR=$(cd `dirname $0` && pwd)
@@ -30,7 +30,7 @@ while getopts "hs:d:" options; do
 done
 
 if [ "$PROJECT_DIR" != "" ]; then
-  cd $PROJECT_DIR || exit
+  cd "$PROJECT_DIR" || exit
 fi
 
 go mod graph | awk '{print $1}' | cut -d '@' -f 1 | sort | uniq | grep "github.com/aws/aws-sdk-go-v2" | while read x; do
