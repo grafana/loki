@@ -1144,7 +1144,7 @@ type bufferedIterator struct {
 	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
-	nonIndexedLabelsBuf  [][]byte // The buffer for a single entry's non-indexed labels.
+	nonIndexedLabelsBuf  [][]byte      // The buffer for a single entry's non-indexed labels.
 	currNonIndexedLabels labels.Labels // The current labels.
 
 	closed bool
