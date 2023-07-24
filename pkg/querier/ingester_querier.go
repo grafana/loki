@@ -80,13 +80,13 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 // forGivenIngesters runs f, in parallel, for given ingesters
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
+	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(innerCtx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
 			return nil, err
 		}
 
-		resp, err := f(ctx, client.(logproto.QuerierClient))
+		resp, err := f(innerCtx, client.(logproto.QuerierClient))
 		if err != nil {
 			return nil, err
 		}
@@ -106,9 +106,9 @@ func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet 
 }
 
 func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLogParams) ([]iter.EntryIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
-		stats.FromContext(ctx).AddIngesterReached(1)
-		return client.Query(ctx, params.QueryRequest)
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		stats.FromContext(innerCtx).AddIngesterReached(1)
+		return client.Query(innerCtx, params.QueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -122,9 +122,9 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 }
 
 func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectSampleParams) ([]iter.SampleIterator, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
-		stats.FromContext(ctx).AddIngesterReached(1)
-		return client.QuerySample(ctx, params.SampleQueryRequest)
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		stats.FromContext(innerCtx).AddIngesterReached(1)
+		return client.QuerySample(innerCtx, params.SampleQueryRequest)
 	})
 	if err != nil {
 		return nil, err
@@ -138,8 +138,8 @@ func (q *IngesterQuerier) SelectSample(ctx context.Context, params logql.SelectS
 }
 
 func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest) ([][]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
-		return client.Label(ctx, req)
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		return client.Label(innerCtx, req)
 	})
 	if err != nil {
 		return nil, err
@@ -154,8 +154,8 @@ func (q *IngesterQuerier) Label(ctx context.Context, req *logproto.LabelRequest)
 }
 
 func (q *IngesterQuerier) Tail(ctx context.Context, req *logproto.TailRequest) (map[string]logproto.Querier_TailClient, error) {
-	resps, err := q.forAllIngesters(ctx, func(_ context.Context, client logproto.QuerierClient) (interface{}, error) {
-		return client.Tail(ctx, req)
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		return client.Tail(innerCtx, req)
 	})
 	if err != nil {
 		return nil, err
@@ -219,8 +219,8 @@ func (q *IngesterQuerier) TailDisconnectedIngesters(ctx context.Context, req *lo
 }
 
 func (q *IngesterQuerier) Series(ctx context.Context, req *logproto.SeriesRequest) ([][]logproto.SeriesIdentifier, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, client logproto.QuerierClient) (interface{}, error) {
-		return client.Series(ctx, req)
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, client logproto.QuerierClient) (interface{}, error) {
+		return client.Series(innerCtx, req)
 	})
 	if err != nil {
 		return nil, err
@@ -274,8 +274,8 @@ func (q *IngesterQuerier) TailersCount(ctx context.Context) ([]uint32, error) {
 }
 
 func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
-		return querierClient.GetChunkIDs(ctx, &logproto.GetChunkIDsRequest{
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetChunkIDs(innerCtx, &logproto.GetChunkIDsRequest{
 			Matchers: convertMatchersToString(matchers),
 			Start:    from.Time(),
 			End:      through.Time(),
@@ -294,8 +294,8 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 }
 
 func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
-		return querierClient.GetStats(ctx, &logproto.IndexStatsRequest{
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetStats(innerCtx, &logproto.IndexStatsRequest{
 			From:     from,
 			Through:  through,
 			Matchers: syntax.MatchersString(matchers),
@@ -325,8 +325,8 @@ func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through mo
 		matcherString = syntax.MatchersString(matchers)
 	}
 
-	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
-		return querierClient.GetVolume(ctx, &logproto.VolumeRequest{
+	resps, err := q.forAllIngesters(ctx, func(innerCtx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetVolume(innerCtx, &logproto.VolumeRequest{
 			From:         from,
 			Through:      through,
 			Matchers:     matcherString,
