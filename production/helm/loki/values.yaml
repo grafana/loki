@@ -637,6 +637,8 @@ monitoring:
   # that it's working correctly
   lokiCanary:
     enabled: true
+    # -- The name of the label to look for at loki when doing the checks.
+    labelname: pod
     # -- Additional annotations for the `loki-canary` Daemonset
     annotations: {}
     # -- Additional labels for each `loki-canary` pod

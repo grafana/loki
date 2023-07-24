@@ -1024,7 +1024,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.nonIndexedLabels...)
 		if !matches {
 			return
 		}
@@ -1077,7 +1077,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.nonIndexedLabels...)
 		if !ok {
 			continue
 		}
@@ -1145,7 +1145,7 @@ type bufferedIterator struct {
 	currTs   int64
 
 	nonIndexedLabelsBuf  [][]byte // The buffer for a single entry's non-indexed labels.
-	currNonIndexedLabels [][]byte // The current labels.
+	currNonIndexedLabels labels.Labels // The current labels.
 
 	closed bool
 }
@@ -1177,10 +1177,24 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, nonIndexedLabels, ok := si.moveNext()
+	ts, line, nonIndexedLabelsBuff, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
+	}
+
+	var nonIndexedLabels labels.Labels
+	if len(nonIndexedLabelsBuff) > 0 {
+		if len(nonIndexedLabelsBuff)%2 != 0 {
+			si.err = fmt.Errorf("expected even number of metadata labels, got %d", len(nonIndexedLabelsBuff))
+			return false
+		}
+
+		nonIndexedLabels = make(labels.Labels, len(nonIndexedLabelsBuff)/2)
+		for i := 0; i < len(nonIndexedLabelsBuff); i += 2 {
+			nonIndexedLabels[i/2].Name = string(nonIndexedLabelsBuff[i])
+			nonIndexedLabels[i/2].Value = string(nonIndexedLabelsBuff[i+1])
+		}
 	}
 
 	si.currTs = ts
@@ -1452,28 +1466,14 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		if len(e.currNonIndexedLabels)%2 != 0 {
-			e.err = fmt.Errorf("expected even number of non-indexed labels, got %d", len(e.currNonIndexedLabels))
-			return false
-		}
-
-		var nonIndexedLabels []logproto.LabelAdapter
-		if len(e.currNonIndexedLabels) > 0 {
-			nonIndexedLabels = make([]logproto.LabelAdapter, len(e.currNonIndexedLabels)/2)
-			for i := 0; i < len(e.currNonIndexedLabels); i += 2 {
-				nonIndexedLabels[i/2].Name = string(e.currNonIndexedLabels[i])
-				nonIndexedLabels[i/2].Value = string(e.currNonIndexedLabels[i+1])
-			}
-		}
-
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
 		if !matches {
 			continue
 		}
 
 		e.stats.AddPostFilterLines(1)
 		e.currLabels = lbs
-		e.cur.NonIndexedLabels = nonIndexedLabels
+		e.cur.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(e.currNonIndexedLabels)
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 		return true
@@ -1500,7 +1500,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
 		if !ok {
 			continue
 		}

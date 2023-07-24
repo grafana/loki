@@ -300,6 +300,7 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 				Matchers:     r.GetMatchers(),
 				Limit:        r.Limit,
 				TargetLabels: r.TargetLabels,
+				AggregateBy:  r.AggregateBy,
 			})
 		})
 	default:
