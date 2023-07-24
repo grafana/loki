@@ -94,8 +94,8 @@ func (n noopStreamPipeline) Process(_ int64, line []byte, nonIndexedLabels ...la
 }
 
 func (n noopStreamPipeline) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (string, LabelsResult, bool) {
-	lb, lr, ok := n.Process(ts, unsafeGetBytes(line), nonIndexedLabels...)
-	return string(lb), lr, ok
+	_, lr, ok := n.Process(ts, unsafeGetBytes(line), nonIndexedLabels...)
+	return line, lr, ok
 }
 
 func (n noopStreamPipeline) BaseLabels() LabelsResult { return n.builder.currentResult }
