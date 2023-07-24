@@ -279,7 +279,8 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}))
 	}
 
-	results := make([]labels.Labels, 0, len(chunksBySeries))
+	//results := make([]labels.Labels, 0, len(chunksBySeries))
+	resultsChan := make(chan []labels.Labels, len(jobs))
 
 	// Picking an arbitrary bound of 20 numConcurrent jobs.
 	numConcurrent := len(jobs)
@@ -293,13 +294,20 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		numConcurrent,
 		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
-			if res != nil {
-				results = append(results, res...)
+			if err != nil {
+				return err
 			}
-			return err
+			resultsChan <- res
+			return nil
 		},
 	); err != nil {
 		return nil, err
+	}
+	close(resultsChan)
+
+	results := make([]labels.Labels, 0, len(chunksBySeries))
+	for res := range resultsChan {
+		results = append(results, res...)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
