@@ -44,7 +44,7 @@ const (
 	defaultBlockSize = 256 * 1024
 )
 
-var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithMetadataHeadBlockFmt}
+var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithNonIndexedLabelsHeadBlockFmt}
 
 type HeadBlockFmt byte
 
@@ -56,8 +56,8 @@ func (f HeadBlockFmt) String() string {
 		return "ordered"
 	case f == UnorderedHeadBlockFmt:
 		return "unordered"
-	case f == UnorderedWithMetadataHeadBlockFmt:
-		return "unordered with metadata"
+	case f == UnorderedWithNonIndexedLabelsHeadBlockFmt:
+		return "unordered with non-indexed labels"
 	default:
 		return fmt.Sprintf("unknown: %v", byte(f))
 	}
@@ -80,7 +80,7 @@ const (
 	_
 	OrderedHeadBlockFmt
 	UnorderedHeadBlockFmt
-	UnorderedWithMetadataHeadBlockFmt
+	UnorderedWithNonIndexedLabelsHeadBlockFmt
 
 	DefaultHeadBlockFmt = UnorderedHeadBlockFmt
 )
@@ -1024,7 +1024,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.nonIndexedLabels...)
 		if !matches {
 			return
 		}
@@ -1077,7 +1077,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.nonIndexedLabels...)
 		if !ok {
 			continue
 		}
@@ -1144,8 +1144,8 @@ type bufferedIterator struct {
 	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
-	metaLabelsBuf      [][]byte // The buffer for a single entry's metadata labels.
-	currMetadataLabels [][]byte // The current labels.
+	nonIndexedLabelsBuf  [][]byte      // The buffer for a single entry's non-indexed labels.
+	currNonIndexedLabels labels.Labels // The current labels.
 
 	closed bool
 }
@@ -1177,22 +1177,36 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, metaLabels, ok := si.moveNext()
+	ts, line, nonIndexedLabelsBuff, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
 	}
 
+	var nonIndexedLabels labels.Labels
+	if len(nonIndexedLabelsBuff) > 0 {
+		if len(nonIndexedLabelsBuff)%2 != 0 {
+			si.err = fmt.Errorf("expected even number of metadata labels, got %d", len(nonIndexedLabelsBuff))
+			return false
+		}
+
+		nonIndexedLabels = make(labels.Labels, len(nonIndexedLabelsBuff)/2)
+		for i := 0; i < len(nonIndexedLabelsBuff); i += 2 {
+			nonIndexedLabels[i/2].Name = string(nonIndexedLabelsBuff[i])
+			nonIndexedLabels[i/2].Value = string(nonIndexedLabelsBuff[i+1])
+		}
+	}
+
 	si.currTs = ts
 	si.currLine = line
-	si.currMetadataLabels = metaLabels
+	si.currNonIndexedLabels = nonIndexedLabels
 	return true
 }
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	var decompressedBytes int64
-	var decompressedMetadataBytes int64
+	var decompressedNonIndexedLabelsBytes int64
 	var ts int64
 	var tWidth, lWidth, lineSize, lastAttempt int
 	for lWidth == 0 { // Read until both varints have enough bytes.
@@ -1293,33 +1307,33 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 	}
 
 	// Number of labels
-	decompressedMetadataBytes += binary.MaxVarintLen64
+	decompressedNonIndexedLabelsBytes += binary.MaxVarintLen64
 
 	// Shift down what is still left in the fixed-size read buffer, if any.
 	si.readBufValid = copy(si.readBuf[:], si.readBuf[labelsWidth:si.readBufValid])
 
 	// If not enough space for the labels, create a new buffer slice and put the old one back in the pool.
-	metaLabelsBufLen := nLabels * 2
-	if si.metaLabelsBuf == nil || metaLabelsBufLen > cap(si.metaLabelsBuf) {
-		if si.metaLabelsBuf != nil {
-			for i := range si.metaLabelsBuf {
-				if si.metaLabelsBuf[i] != nil {
-					BytesBufferPool.Put(si.metaLabelsBuf[i])
+	nonIndexedLabelsBufLen := nLabels * 2
+	if si.nonIndexedLabelsBuf == nil || nonIndexedLabelsBufLen > cap(si.nonIndexedLabelsBuf) {
+		if si.nonIndexedLabelsBuf != nil {
+			for i := range si.nonIndexedLabelsBuf {
+				if si.nonIndexedLabelsBuf[i] != nil {
+					BytesBufferPool.Put(si.nonIndexedLabelsBuf[i])
 				}
 			}
-			LabelsPool.Put(si.metaLabelsBuf)
+			LabelsPool.Put(si.nonIndexedLabelsBuf)
 		}
-		si.metaLabelsBuf = LabelsPool.Get(metaLabelsBufLen).([][]byte)
-		if metaLabelsBufLen > cap(si.metaLabelsBuf) {
-			si.err = fmt.Errorf("could not get a labels matrix of size %d, actual %d", metaLabelsBufLen, cap(si.metaLabelsBuf))
+		si.nonIndexedLabelsBuf = LabelsPool.Get(nonIndexedLabelsBufLen).([][]byte)
+		if nonIndexedLabelsBufLen > cap(si.nonIndexedLabelsBuf) {
+			si.err = fmt.Errorf("could not get a labels matrix of size %d, actual %d", nonIndexedLabelsBufLen, cap(si.nonIndexedLabelsBuf))
 			return 0, nil, nil, false
 		}
 	}
 
-	si.metaLabelsBuf = si.metaLabelsBuf[:nLabels*2]
+	si.nonIndexedLabelsBuf = si.nonIndexedLabelsBuf[:nLabels*2]
 
 	// Read all the label-value pairs, into the buffer slice.
-	for i := 0; i < metaLabelsBufLen; i++ {
+	for i := 0; i < nonIndexedLabelsBufLen; i++ {
 		// Read the length of the label.
 		lastAttempt = 0
 		var labelWidth, labelSize int
@@ -1346,30 +1360,30 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 		}
 
 		// Label size
-		decompressedMetadataBytes += binary.MaxVarintLen64
+		decompressedNonIndexedLabelsBytes += binary.MaxVarintLen64
 
 		// If the buffer is not yet initialize or too small, we get a new one.
-		if si.metaLabelsBuf[i] == nil || labelSize > cap(si.metaLabelsBuf[i]) {
+		if si.nonIndexedLabelsBuf[i] == nil || labelSize > cap(si.nonIndexedLabelsBuf[i]) {
 			// in case of a replacement we replace back the buffer in the pool
-			if si.metaLabelsBuf[i] != nil {
-				BytesBufferPool.Put(si.metaLabelsBuf[i])
+			if si.nonIndexedLabelsBuf[i] != nil {
+				BytesBufferPool.Put(si.nonIndexedLabelsBuf[i])
 			}
-			si.metaLabelsBuf[i] = BytesBufferPool.Get(labelSize).([]byte)
-			if labelSize > cap(si.metaLabelsBuf[i]) {
-				si.err = fmt.Errorf("could not get a label buffer of size %d, actual %d", labelSize, cap(si.metaLabelsBuf[i]))
+			si.nonIndexedLabelsBuf[i] = BytesBufferPool.Get(labelSize).([]byte)
+			if labelSize > cap(si.nonIndexedLabelsBuf[i]) {
+				si.err = fmt.Errorf("could not get a label buffer of size %d, actual %d", labelSize, cap(si.nonIndexedLabelsBuf[i]))
 				return 0, nil, nil, false
 			}
 		}
 
-		si.metaLabelsBuf[i] = si.metaLabelsBuf[i][:labelSize]
+		si.nonIndexedLabelsBuf[i] = si.nonIndexedLabelsBuf[i][:labelSize]
 		// Take however many bytes are left in the read buffer.
-		n := copy(si.metaLabelsBuf[i], si.readBuf[labelWidth:si.readBufValid])
+		n := copy(si.nonIndexedLabelsBuf[i], si.readBuf[labelWidth:si.readBufValid])
 		// Shift down what is still left in the fixed-size read buffer, if any.
 		si.readBufValid = copy(si.readBuf[:], si.readBuf[labelWidth+n:si.readBufValid])
 
 		// Then process reading the label.
 		for n < labelSize {
-			r, err := si.reader.Read(si.metaLabelsBuf[i][n:labelSize])
+			r, err := si.reader.Read(si.nonIndexedLabelsBuf[i][n:labelSize])
 			n += r
 			if err != nil {
 				// We might get EOF after reading enough bytes to fill the buffer, which is OK.
@@ -1382,14 +1396,14 @@ func (si *bufferedIterator) moveNext() (int64, []byte, [][]byte, bool) {
 			}
 		}
 
-		decompressedMetadataBytes += int64(labelSize)
+		decompressedNonIndexedLabelsBytes += int64(labelSize)
 	}
 
 	si.stats.AddDecompressedLines(1)
-	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedMetadataBytes)
-	si.stats.AddDecompressedBytes(decompressedBytes + decompressedMetadataBytes)
+	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedNonIndexedLabelsBytes)
+	si.stats.AddDecompressedBytes(decompressedBytes + decompressedNonIndexedLabelsBytes)
 
-	return ts, si.buf[:lineSize], si.metaLabelsBuf[:metaLabelsBufLen], true
+	return ts, si.buf[:lineSize], si.nonIndexedLabelsBuf[:nonIndexedLabelsBufLen], true
 }
 
 func (si *bufferedIterator) Error() error { return si.err }
@@ -1413,15 +1427,15 @@ func (si *bufferedIterator) close() {
 		si.buf = nil
 	}
 
-	if si.metaLabelsBuf != nil {
-		for i := range si.metaLabelsBuf {
-			if si.metaLabelsBuf[i] != nil {
-				BytesBufferPool.Put(si.metaLabelsBuf[i])
-				si.metaLabelsBuf[i] = nil
+	if si.nonIndexedLabelsBuf != nil {
+		for i := range si.nonIndexedLabelsBuf {
+			if si.nonIndexedLabelsBuf[i] != nil {
+				BytesBufferPool.Put(si.nonIndexedLabelsBuf[i])
+				si.nonIndexedLabelsBuf[i] = nil
 			}
 		}
-		LabelsPool.Put(si.metaLabelsBuf)
-		si.metaLabelsBuf = nil
+		LabelsPool.Put(si.nonIndexedLabelsBuf)
+		si.nonIndexedLabelsBuf = nil
 	}
 
 	si.origBytes = nil
@@ -1452,28 +1466,14 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		if len(e.currMetadataLabels)%2 != 0 {
-			e.err = fmt.Errorf("expected even number of metadata labels, got %d", len(e.currMetadataLabels))
-			return false
-		}
-
-		var nonIndexedLabels []logproto.LabelAdapter
-		if len(e.currMetadataLabels) > 0 {
-			nonIndexedLabels = make([]logproto.LabelAdapter, len(e.currMetadataLabels)/2)
-			for i := 0; i < len(e.currMetadataLabels); i += 2 {
-				nonIndexedLabels[i/2].Name = string(e.currMetadataLabels[i])
-				nonIndexedLabels[i/2].Value = string(e.currMetadataLabels[i+1])
-			}
-		}
-
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
 		if !matches {
 			continue
 		}
 
 		e.stats.AddPostFilterLines(1)
 		e.currLabels = lbs
-		e.cur.NonIndexedLabels = nonIndexedLabels
+		e.cur.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(e.currNonIndexedLabels)
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 		return true
@@ -1500,7 +1500,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
 		if !ok {
 			continue
 		}
