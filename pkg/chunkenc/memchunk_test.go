@@ -141,10 +141,6 @@ func TestBlock(t *testing.T) {
 					{
 						ts:  8,
 						str: "hello, worl\nd8!",
-						lbs: []logproto.LabelAdapter{
-							{Name: "a", Value: "a2"},
-							{Name: "b", Value: "b"},
-						},
 					},
 					{
 						ts:  8,
@@ -157,6 +153,14 @@ func TestBlock(t *testing.T) {
 					{
 						ts:  9,
 						str: "",
+					},
+					{
+						ts:  10,
+						str: "hello, world10!",
+						lbs: []logproto.LabelAdapter{
+							{Name: "a", Value: "a2"},
+							{Name: "b", Value: "b"},
+						},
 					},
 				}
 
@@ -187,7 +191,6 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
 
-				// TODO: Test labels and metadata labels here.
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
 				for sampleIt.Next() {
@@ -770,10 +773,10 @@ func BenchmarkWrite(b *testing.B) {
 type nomatchPipeline struct{}
 
 func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (nomatchPipeline) Process(_ int64, line []byte) ([]byte, log.LabelsResult, bool) {
+func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
-func (nomatchPipeline) ProcessString(_ int64, line string) (string, log.LabelsResult, bool) {
+func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
@@ -1547,6 +1550,9 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 	for _, enc := range testEncoding {
 		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
+			streamLabels := labels.Labels{
+				{Name: "job", Value: "fake"},
+			}
 			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			require.NoError(t, chk.Append(logprotoEntryWithMetadata(1, "lineA", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "123"},
@@ -1566,14 +1572,6 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 				{Name: "user", Value: "d"},
 			})))
 
-			expectedLines := []string{"lineA", "lineB", "lineC", "lineD"}
-			expectedStreams := []string{
-				labels.FromStrings("traceID", "123", "user", "a").String(),
-				labels.FromStrings("traceID", "456", "user", "b").String(),
-				labels.FromStrings("traceID", "789", "user", "c").String(),
-				labels.FromStrings("traceID", "123", "user", "d").String(),
-			}
-
 			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
 			// First we add the bytes read from the store (aka decompressed). That's
 			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. labels) * (label length <int> + label))
@@ -1588,28 +1586,173 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 			// Finally, the expected total bytes is the line bytes + non-indexed labels bytes
 			expectedBytes := lineBytes + expectedNonIndexedLabelsBytes
 
-			// We will run the test twice so the iterator will be created twice.
-			// This is to ensure that the iterator is correctly closed.
-			for i := 0; i < 2; i++ {
-				sts, ctx := stats.NewContext(context.Background())
+			for _, tc := range []struct {
+				name            string
+				query           string
+				expectedLines   []string
+				expectedStreams []string
+			}{
+				{
+					name:          "no-filter",
+					query:         `{job="fake"}`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+				},
+				{
+					name:          "filter",
+					query:         `{job="fake"} | traceID="789"`,
+					expectedLines: []string{"lineC"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+					},
+				},
+				{
+					name:          "filter-regex-or",
+					query:         `{job="fake"} | traceID=~"456|789"`,
+					expectedLines: []string{"lineB", "lineC"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+					},
+				},
+				{
+					name:          "filter-regex-contains",
+					query:         `{job="fake"} | traceID=~".*5.*"`,
+					expectedLines: []string{"lineB"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+					},
+				},
+				{
+					name:          "filter-regex-complex",
+					query:         `{job="fake"} | traceID=~"^[0-9]2.*"`,
+					expectedLines: []string{"lineA", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+				},
+				{
+					name:          "multiple-filters",
+					query:         `{job="fake"} | traceID="123" | user="d"`,
+					expectedLines: []string{"lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+				},
+				{
+					name:          "metadata-and-keep",
+					query:         `{job="fake"} | keep job, user`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+				},
+				{
+					name:          "metadata-and-keep-filter",
+					query:         `{job="fake"} | keep job, user="b"`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake").String(),
+						labels.FromStrings("job", "fake").String(),
+					},
+				},
+				{
+					name:          "metadata-and-drop",
+					query:         `{job="fake"} | drop traceID`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+				},
+				{
+					name:          "metadata-and-drop-filter",
+					query:         `{job="fake"} | drop traceID="123"`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Run("log", func(t *testing.T) {
+						expr, err := syntax.ParseLogSelector(tc.query, true)
+						require.NoError(t, err)
 
-				it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
-				require.NoError(t, err)
+						pipeline, err := expr.Pipeline()
+						require.NoError(t, err)
 
-				var lines []string
-				var streams []string
-				for it.Next() {
-					require.NoError(t, it.Error())
-					e := it.Entry()
-					lines = append(lines, e.Line)
-					streams = append(streams, logproto.FromLabelAdaptersToLabels(e.NonIndexedLabels).String())
-				}
-				assert.ElementsMatch(t, expectedLines, lines)
-				assert.ElementsMatch(t, expectedStreams, streams)
+						// We will run the test twice so the iterator will be created twice.
+						// This is to ensure that the iterator is correctly closed.
+						for i := 0; i < 2; i++ {
+							sts, ctx := stats.NewContext(context.Background())
+							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+							require.NoError(t, err)
 
-				resultStats := sts.Result(0, 0, len(lines))
-				require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
-				require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
+							var lines []string
+							var streams []string
+							for it.Next() {
+								require.NoError(t, it.Error())
+								e := it.Entry()
+								lines = append(lines, e.Line)
+								streams = append(streams, it.Labels())
+							}
+							assert.ElementsMatch(t, tc.expectedLines, lines)
+							assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+							resultStats := sts.Result(0, 0, len(lines))
+							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
+							require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
+						}
+					})
+
+					t.Run("metric", func(t *testing.T) {
+						query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+						expr, err := syntax.ParseSampleExpr(query)
+						require.NoError(t, err)
+
+						extractor, err := expr.Extractor()
+						require.NoError(t, err)
+
+						// We will run the test twice so the iterator will be created twice.
+						// This is to ensure that the iterator is correctly closed.
+						for i := 0; i < 2; i++ {
+							sts, ctx := stats.NewContext(context.Background())
+							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+
+							var sumValues int
+							var streams []string
+							for it.Next() {
+								require.NoError(t, it.Error())
+								e := it.Sample()
+								sumValues += int(e.Value)
+								streams = append(streams, it.Labels())
+							}
+							require.Equal(t, len(tc.expectedLines), sumValues)
+							assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+							resultStats := sts.Result(0, 0, 0)
+							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
+							require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
+						}
+					})
+				})
 			}
 		})
 	}
