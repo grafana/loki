@@ -16,6 +16,16 @@ This package provides various compression algorithms.
 
 # changelog
 
+* June 13, 2023 - [v1.16.6](https://github.com/klauspost/compress/releases/tag/v1.16.6)
+	* zstd: correctly ignore WithEncoderPadding(1) by @ianlancetaylor in https://github.com/klauspost/compress/pull/806
+	* zstd: Add amd64 match length assembly https://github.com/klauspost/compress/pull/824
+	* gzhttp: Handle informational headers by @rtribotte in https://github.com/klauspost/compress/pull/815
+	* s2: Improve Better compression slightly https://github.com/klauspost/compress/pull/663
+
+* Apr 16, 2023 - [v1.16.5](https://github.com/klauspost/compress/releases/tag/v1.16.5)
+	* zstd: readByte needs to use io.ReadFull by @jnoxon in https://github.com/klauspost/compress/pull/802
+	* gzip: Fix WriterTo after initial read https://github.com/klauspost/compress/pull/804
+
 * Apr 5, 2023 - [v1.16.4](https://github.com/klauspost/compress/releases/tag/v1.16.4)
 	* zstd: Improve zstd best efficiency by @greatroar and @klauspost in https://github.com/klauspost/compress/pull/784
 	* zstd: Respect WithAllLitEntropyCompression https://github.com/klauspost/compress/pull/792

@@ -631,8 +631,8 @@ loki-operator-push: loki-operator-image-cross
 
 documentation-helm-reference-check:
 	@echo "Checking diff"
-	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	$(MAKE) -BC docs sources/setup/install/helm/reference.md
+	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
 
 ########
 # Misc #
