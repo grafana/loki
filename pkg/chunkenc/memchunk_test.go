@@ -68,7 +68,7 @@ var (
 			chunkFormat:  chunkFormatV3,
 		},
 		{
-			headBlockFmt: UnorderedWithMetadataHeadBlockFmt,
+			headBlockFmt: UnorderedWithNonIndexedLabelsHeadBlockFmt,
 			chunkFormat:  chunkFormatV4,
 		},
 	}
@@ -165,7 +165,7 @@ func TestBlock(t *testing.T) {
 				}
 
 				for _, c := range cases {
-					require.NoError(t, chk.Append(logprotoEntryWithMetadata(c.ts, c.str, c.lbs)))
+					require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(c.ts, c.str, c.lbs)))
 					if c.cut {
 						require.NoError(t, chk.cut())
 					}
@@ -1478,7 +1478,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 			expect: true,
 		},
 		{
-			desc:         "entry fits with metadata",
+			desc:         "entry fits with non-indexed labels",
 			targetSize:   10,
 			headSize:     0,
 			cutBlockSize: 0,
@@ -1503,7 +1503,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 			expect: false,
 		},
 		{
-			desc:         "entry too big because metadata",
+			desc:         "entry too big because non-indexed labels",
 			targetSize:   10,
 			headSize:     0,
 			cutBlockSize: 0,
@@ -1517,7 +1517,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 
 			expectFunc: func(chunkFormat byte, _ HeadBlockFmt) bool {
 				// Succeed unless we're using chunk format v4, which should
-				// take the metadata into account.
+				// take the non-indexed labels into account.
 				return chunkFormat < chunkFormatV4
 			},
 		},
@@ -1553,21 +1553,21 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 			streamLabels := labels.Labels{
 				{Name: "job", Value: "fake"},
 			}
-			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithMetadataHeadBlockFmt, testBlockSize, testTargetSize)
-			require.NoError(t, chk.Append(logprotoEntryWithMetadata(1, "lineA", []logproto.LabelAdapter{
+			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "lineA", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "123"},
 				{Name: "user", Value: "a"},
 			})))
-			require.NoError(t, chk.Append(logprotoEntryWithMetadata(2, "lineB", []logproto.LabelAdapter{
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(2, "lineB", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "456"},
 				{Name: "user", Value: "b"},
 			})))
 			require.NoError(t, chk.cut())
-			require.NoError(t, chk.Append(logprotoEntryWithMetadata(3, "lineC", []logproto.LabelAdapter{
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(3, "lineC", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "789"},
 				{Name: "user", Value: "c"},
 			})))
-			require.NoError(t, chk.Append(logprotoEntryWithMetadata(4, "lineD", []logproto.LabelAdapter{
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(4, "lineD", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "123"},
 				{Name: "user", Value: "d"},
 			})))
@@ -1646,7 +1646,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-keep",
+					name:          "keep",
 					query:         `{job="fake"} | keep job, user`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
@@ -1657,7 +1657,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-keep-filter",
+					name:          "keep-filter",
 					query:         `{job="fake"} | keep job, user="b"`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
@@ -1668,7 +1668,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-drop",
+					name:          "drop",
 					query:         `{job="fake"} | drop traceID`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
@@ -1679,7 +1679,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-drop-filter",
+					name:          "drop-filter",
 					query:         `{job="fake"} | drop traceID="123"`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
