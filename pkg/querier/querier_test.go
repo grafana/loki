@@ -966,8 +966,8 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
-func TestQuerier_SeriesVolumes(t *testing.T) {
-	t.Run("it returns series volumes from the store", func(t *testing.T) {
+func TestQuerier_Volumes(t *testing.T) {
+	t.Run("it returns volumes from the store", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Volume: 38},
 		}}
@@ -977,7 +977,7 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 
 		ingesterClient := newQuerierClientMock()
 		store := newStoreMock()
-		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		conf := mockQuerierConfig()
 		conf.QueryIngestersWithin = time.Minute * 30
@@ -997,12 +997,12 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		through := model.TimeFromUnix(now.Add(-35 * time.Minute).Unix())
 		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
 		ctx := user.InjectOrgID(context.Background(), "test")
-		resp, err := querier.SeriesVolume(ctx, req)
+		resp, err := querier.Volume(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
 	})
 
-	t.Run("it returns series volumes from the ingester", func(t *testing.T) {
+	t.Run("it returns volumes from the ingester", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Volume: 38},
 		}}
@@ -1011,7 +1011,7 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		require.NoError(t, err)
 
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		store := newStoreMock()
 
@@ -1033,12 +1033,12 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		through := model.TimeFromUnix(now.Unix())
 		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
 		ctx := user.InjectOrgID(context.Background(), "test")
-		resp, err := querier.SeriesVolume(ctx, req)
+		resp, err := querier.Volume(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
 	})
 
-	t.Run("it merges series volumes from the store and ingester", func(t *testing.T) {
+	t.Run("it merges volumes from the store and ingester", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
 			{Name: "foo", Volume: 38},
 		}}
@@ -1047,10 +1047,10 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		require.NoError(t, err)
 
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		store := newStoreMock()
-		store.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		conf := mockQuerierConfig()
 		conf.QueryIngestersWithin = time.Minute * 30
@@ -1070,7 +1070,7 @@ func TestQuerier_SeriesVolumes(t *testing.T) {
 		through := model.TimeFromUnix(now.Unix())
 		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
 		ctx := user.InjectOrgID(context.Background(), "test")
-		resp, err := querier.SeriesVolume(ctx, req)
+		resp, err := querier.Volume(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 76}}, resp.Volumes)
 	})

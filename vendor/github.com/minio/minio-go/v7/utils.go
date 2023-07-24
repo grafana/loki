@@ -255,7 +255,7 @@ func parseRFC7231Time(lastModified string) (time.Time, error) {
 
 // ToObjectInfo converts http header values into ObjectInfo type,
 // extracts metadata and fills in all the necessary fields in ObjectInfo.
-func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectInfo, error) {
+func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, error) {
 	var err error
 	// Trim off the odd double quotes from ETag in the beginning and end.
 	etag := trimEtag(h.Get("ETag"))

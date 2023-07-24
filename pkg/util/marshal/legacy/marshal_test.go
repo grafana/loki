@@ -69,8 +69,10 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
 							"postFilterLines": 0,
 							"totalDuplicates": 0
 						}
@@ -89,8 +91,10 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
 							"postFilterLines": 0,
 							"totalDuplicates": 0
 						}
@@ -145,6 +149,7 @@ var queryTests = []struct {
 					"totalBytesProcessed": 0, 
                     "totalEntriesReturned": 0,
 					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
                     "totalPostFilterLines": 0
 				}
 			}

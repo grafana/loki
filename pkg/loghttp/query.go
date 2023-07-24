@@ -467,16 +467,17 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	return ParseRangeQuery(r)
 }
 
-type SeriesVolumeInstantQuery struct {
+type VolumeInstantQuery struct {
 	Start        time.Time
 	End          time.Time
 	Query        string
 	Limit        uint32
 	TargetLabels []string
+	AggregateBy  string
 }
 
-func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, error) {
-	err := labelVolumeLimit(r)
+func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
+	err := volumeLimit(r)
 	if err != nil {
 		return nil, err
 	}
@@ -486,10 +487,16 @@ func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, 
 		return nil, err
 	}
 
-	svInstantQuery := SeriesVolumeInstantQuery{
+	aggregateBy, err := volumeAggregateBy(r)
+	if err != nil {
+		return nil, err
+	}
+
+	svInstantQuery := VolumeInstantQuery{
 		Query:        result.Query,
 		Limit:        result.Limit,
 		TargetLabels: targetLabels(r),
+		AggregateBy:  aggregateBy,
 	}
 
 	svInstantQuery.Start, svInstantQuery.End, err = bounds(r)
@@ -504,17 +511,18 @@ func ParseSeriesVolumeInstantQuery(r *http.Request) (*SeriesVolumeInstantQuery, 
 	return &svInstantQuery, nil
 }
 
-type SeriesVolumeRangeQuery struct {
+type VolumeRangeQuery struct {
 	Start        time.Time
 	End          time.Time
 	Step         time.Duration
 	Query        string
 	Limit        uint32
 	TargetLabels []string
+	AggregateBy  string
 }
 
-func ParseSeriesVolumeRangeQuery(r *http.Request) (*SeriesVolumeRangeQuery, error) {
-	err := labelVolumeLimit(r)
+func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
+	err := volumeLimit(r)
 	if err != nil {
 		return nil, err
 	}
@@ -524,13 +532,19 @@ func ParseSeriesVolumeRangeQuery(r *http.Request) (*SeriesVolumeRangeQuery, erro
 		return nil, err
 	}
 
-	return &SeriesVolumeRangeQuery{
+	aggregateBy, err := volumeAggregateBy(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &VolumeRangeQuery{
 		Start:        result.Start,
 		End:          result.End,
 		Step:         result.Step,
 		Query:        result.Query,
 		Limit:        result.Limit,
 		TargetLabels: targetLabels(r),
+		AggregateBy:  aggregateBy,
 	}, nil
 }
 
@@ -543,7 +557,7 @@ func targetLabels(r *http.Request) []string {
 	return lbls
 }
 
-func labelVolumeLimit(r *http.Request) error {
+func volumeLimit(r *http.Request) error {
 	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
 	if err != nil {
 		return err
@@ -559,4 +573,17 @@ func labelVolumeLimit(r *http.Request) error {
 	}
 
 	return nil
+}
+
+func volumeAggregateBy(r *http.Request) (string, error) {
+	l := r.Form.Get("aggregateBy")
+	if l == "" {
+		return seriesvolume.DefaultAggregateBy, nil
+	}
+
+	if seriesvolume.ValidateAggregateBy(l) {
+		return l, nil
+	}
+
+	return "", errors.New("invalid aggregation option")
 }

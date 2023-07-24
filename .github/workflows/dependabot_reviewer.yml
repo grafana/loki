@@ -1,0 +1,38 @@
+# Auto-merge as documented in official Github docs
+# https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions
+
+name: Auto-review Dependabot PRs
+on: pull_request_target
+
+permissions:
+  pull-requests: write
+  contents: write
+
+jobs:
+  dependabot-reviewer:
+    runs-on: ubuntu-latest
+
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v1.6.0
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Approve PR
+        run: gh pr review --approve "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+
+      # According to the doc, this just "enables" auto-merge. Meaning PR will be merged **only** if all the checks are passed.
+      - name: Enable auto-merge
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{github.event.pull_request.html_url}}
+          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}

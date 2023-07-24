@@ -16,6 +16,7 @@ import (
 	"gopkg.in/alecthomas/kingpin.v2"
 
 	"github.com/grafana/loki/pkg/logcli/client"
+	"github.com/grafana/loki/pkg/logcli/index"
 	"github.com/grafana/loki/pkg/logcli/labelquery"
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
@@ -181,6 +182,76 @@ This is helpful to find high cardinality labels.
 	seriesQuery = newSeriesQuery(seriesCmd)
 
 	fmtCmd = app.Command("fmt", "Formats a LogQL query.")
+
+	statsCmd = app.Command("stats", `Run a stats query.
+
+The "stats" command will take the provided query and return statistics
+from the index on how much data is contained in the matching stream(s).
+This only works against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli stats
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   'my-query'
+  `)
+	statsQuery = newStatsQuery(statsCmd)
+
+	volumeCmd = app.Command("volume", `Run a volume query.
+
+The "volume" command will take the provided label selector(s) and return aggregate
+volumes for series matching those volumes. This only works
+against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli volume
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+	   'my-query'
+  `)
+	volumeQuery = newVolumeQuery(false, volumeCmd)
+
+	volumeRangeCmd = app.Command("volume_range", `Run a volume query and return timeseries data.
+
+The "volume_range" command will take the provided label selector(s) and return aggregate
+volumes for series matching those volumes, aggregated into buckets according to the step value.
+This only works against Loki instances using the TSDB index format.
+
+By default we look over the last hour of data; use --since to modify
+or provide specific start and end times with --from and --to respectively.
+
+Notice that when using --from and --to then ensure to use RFC3339Nano
+time format, but without timezone at the end. The local timezone will be added
+automatically or if using  --timezone flag.
+
+Example:
+
+	logcli volume_range
+	   --timezone=UTC
+	   --from="2021-01-19T10:00:00Z"
+	   --to="2021-01-19T20:00:00Z"
+     --step=1h
+	   'my-query'
+  `)
+	volumeRangeQuery = newVolumeQuery(true, volumeRangeCmd)
 )
 
 func main() {
@@ -291,6 +362,30 @@ func main() {
 	case fmtCmd.FullCommand():
 		if err := formatLogQL(os.Stdin, os.Stdout); err != nil {
 			log.Fatalf("unable to format logql: %s", err)
+		}
+	case statsCmd.FullCommand():
+		statsQuery.DoStats(queryClient)
+	case volumeCmd.FullCommand(), volumeRangeCmd.FullCommand():
+		location, err := time.LoadLocation(*timezone)
+		if err != nil {
+			log.Fatalf("Unable to load timezone '%s': %s", *timezone, err)
+		}
+
+		outputOptions := &output.LogOutputOptions{
+			Timezone:      location,
+			NoLabels:      rangeQuery.NoLabels,
+			ColoredOutput: rangeQuery.ColoredOutput,
+		}
+
+		out, err := output.NewLogOutput(os.Stdout, *outputMode, outputOptions)
+		if err != nil {
+			log.Fatalf("Unable to create log output: %s", err)
+		}
+
+		if cmd == volumeRangeCmd.FullCommand() {
+			volumeRangeQuery.DoVolumeRange(queryClient, out, *statistics)
+		} else {
+			volumeQuery.DoVolume(queryClient, out, *statistics)
 		}
 	}
 }
@@ -490,4 +585,66 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 func defaultQueryRangeStep(start, end time.Time) time.Duration {
 	step := int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))
 	return time.Duration(step) * time.Second
+}
+
+func newStatsQuery(cmd *kingpin.CmdClause) *index.StatsQuery {
+	// calculate query range from cli params
+	var from, to string
+	var since time.Duration
+
+	q := &index.StatsQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+
+		q.Quiet = *quiet
+
+		return nil
+	})
+
+	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"} |~ \".*error.*\"'").Required().StringVar(&q.QueryString)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+
+	return q
+}
+
+func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *index.VolumeQuery {
+	// calculate query range from cli params
+	var from, to string
+	var since time.Duration
+
+	q := &index.VolumeQuery{}
+
+	// executed after all command flags are parsed
+	cmd.Action(func(_ *kingpin.ParseContext) error {
+		defaultEnd := time.Now()
+		defaultStart := defaultEnd.Add(-since)
+
+		q.Start = mustParse(from, defaultStart)
+		q.End = mustParse(to, defaultEnd)
+
+		q.Quiet = *quiet
+
+		return nil
+	})
+
+	cmd.Arg("query", "eg '{foo=\"bar\",baz=~\".*blip\"}").Required().StringVar(&q.QueryString)
+	cmd.Flag("since", "Lookback window.").Default("1h").DurationVar(&since)
+	cmd.Flag("from", "Start looking for logs at this absolute time (inclusive)").StringVar(&from)
+	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
+
+	cmd.Flag("limit", "Limit on number of series to return volumes for.").Default("30").IntVar(&q.Limit)
+
+	if rangeQuery {
+		cmd.Flag("step", "Query resolution step width, roll up volumes into buckets cover step time each.").Default("1h").DurationVar(&q.Step)
+	}
+
+	return q
 }
