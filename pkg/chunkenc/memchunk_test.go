@@ -141,10 +141,6 @@ func TestBlock(t *testing.T) {
 					{
 						ts:  8,
 						str: "hello, worl\nd8!",
-						lbs: []logproto.LabelAdapter{
-							{Name: "a", Value: "a2"},
-							{Name: "b", Value: "b"},
-						},
 					},
 					{
 						ts:  8,
