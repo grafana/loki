@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"time"
 
-	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
+	"cloud.google.com/go/storage/internal/apiv2/storagepb"
 	"google.golang.org/api/iterator"
 	raw "google.golang.org/api/storage/v1"
 )

@@ -23,15 +23,17 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 
-	storagepb "cloud.google.com/go/storage/internal/apiv2/stubs"
+	iampb "cloud.google.com/go/iam/apiv1/iampb"
+	storagepb "cloud.google.com/go/storage/internal/apiv2/storagepb"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
-	iampb "google.golang.org/genproto/googleapis/iam/v1"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 )
@@ -49,10 +51,10 @@ type CallOptions struct {
 	SetIamPolicy              []gax.CallOption
 	TestIamPermissions        []gax.CallOption
 	UpdateBucket              []gax.CallOption
-	DeleteNotification        []gax.CallOption
-	GetNotification           []gax.CallOption
-	CreateNotification        []gax.CallOption
-	ListNotifications         []gax.CallOption
+	DeleteNotificationConfig  []gax.CallOption
+	GetNotificationConfig     []gax.CallOption
+	CreateNotificationConfig  []gax.CallOption
+	ListNotificationConfigs   []gax.CallOption
 	ComposeObject             []gax.CallOption
 	DeleteObject              []gax.CallOption
 	CancelResumableWrite      []gax.CallOption
@@ -86,36 +88,394 @@ func defaultGRPCClientOptions() []option.ClientOption {
 
 func defaultCallOptions() *CallOptions {
 	return &CallOptions{
-		DeleteBucket:              []gax.CallOption{},
-		GetBucket:                 []gax.CallOption{},
-		CreateBucket:              []gax.CallOption{},
-		ListBuckets:               []gax.CallOption{},
-		LockBucketRetentionPolicy: []gax.CallOption{},
-		GetIamPolicy:              []gax.CallOption{},
-		SetIamPolicy:              []gax.CallOption{},
-		TestIamPermissions:        []gax.CallOption{},
-		UpdateBucket:              []gax.CallOption{},
-		DeleteNotification:        []gax.CallOption{},
-		GetNotification:           []gax.CallOption{},
-		CreateNotification:        []gax.CallOption{},
-		ListNotifications:         []gax.CallOption{},
-		ComposeObject:             []gax.CallOption{},
-		DeleteObject:              []gax.CallOption{},
-		CancelResumableWrite:      []gax.CallOption{},
-		GetObject:                 []gax.CallOption{},
-		ReadObject:                []gax.CallOption{},
-		UpdateObject:              []gax.CallOption{},
-		WriteObject:               []gax.CallOption{},
-		ListObjects:               []gax.CallOption{},
-		RewriteObject:             []gax.CallOption{},
-		StartResumableWrite:       []gax.CallOption{},
-		QueryWriteStatus:          []gax.CallOption{},
-		GetServiceAccount:         []gax.CallOption{},
-		CreateHmacKey:             []gax.CallOption{},
-		DeleteHmacKey:             []gax.CallOption{},
-		GetHmacKey:                []gax.CallOption{},
-		ListHmacKeys:              []gax.CallOption{},
-		UpdateHmacKey:             []gax.CallOption{},
+		DeleteBucket: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		GetBucket: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		CreateBucket: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		ListBuckets: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		LockBucketRetentionPolicy: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		GetIamPolicy: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		SetIamPolicy: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		TestIamPermissions: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		UpdateBucket: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		DeleteNotificationConfig: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		GetNotificationConfig: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		CreateNotificationConfig: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		ListNotificationConfigs: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		ComposeObject: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		DeleteObject: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		CancelResumableWrite: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		GetObject: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		ReadObject: []gax.CallOption{
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		UpdateObject: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		WriteObject: []gax.CallOption{
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		ListObjects: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		RewriteObject: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		StartResumableWrite: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		QueryWriteStatus: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		GetServiceAccount: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		CreateHmacKey: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		DeleteHmacKey: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		GetHmacKey: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		ListHmacKeys: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
+		UpdateHmacKey: []gax.CallOption{
+			gax.WithTimeout(60000 * time.Millisecond),
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnCodes([]codes.Code{
+					codes.DeadlineExceeded,
+					codes.Unavailable,
+				}, gax.Backoff{
+					Initial:    1000 * time.Millisecond,
+					Max:        60000 * time.Millisecond,
+					Multiplier: 2.00,
+				})
+			}),
+		},
 	}
 }
 
@@ -133,10 +493,10 @@ type internalClient interface {
 	SetIamPolicy(context.Context, *iampb.SetIamPolicyRequest, ...gax.CallOption) (*iampb.Policy, error)
 	TestIamPermissions(context.Context, *iampb.TestIamPermissionsRequest, ...gax.CallOption) (*iampb.TestIamPermissionsResponse, error)
 	UpdateBucket(context.Context, *storagepb.UpdateBucketRequest, ...gax.CallOption) (*storagepb.Bucket, error)
-	DeleteNotification(context.Context, *storagepb.DeleteNotificationRequest, ...gax.CallOption) error
-	GetNotification(context.Context, *storagepb.GetNotificationRequest, ...gax.CallOption) (*storagepb.Notification, error)
-	CreateNotification(context.Context, *storagepb.CreateNotificationRequest, ...gax.CallOption) (*storagepb.Notification, error)
-	ListNotifications(context.Context, *storagepb.ListNotificationsRequest, ...gax.CallOption) *NotificationIterator
+	DeleteNotificationConfig(context.Context, *storagepb.DeleteNotificationConfigRequest, ...gax.CallOption) error
+	GetNotificationConfig(context.Context, *storagepb.GetNotificationConfigRequest, ...gax.CallOption) (*storagepb.NotificationConfig, error)
+	CreateNotificationConfig(context.Context, *storagepb.CreateNotificationConfigRequest, ...gax.CallOption) (*storagepb.NotificationConfig, error)
+	ListNotificationConfigs(context.Context, *storagepb.ListNotificationConfigsRequest, ...gax.CallOption) *NotificationConfigIterator
 	ComposeObject(context.Context, *storagepb.ComposeObjectRequest, ...gax.CallOption) (*storagepb.Object, error)
 	DeleteObject(context.Context, *storagepb.DeleteObjectRequest, ...gax.CallOption) error
 	CancelResumableWrite(context.Context, *storagepb.CancelResumableWriteRequest, ...gax.CallOption) (*storagepb.CancelResumableWriteResponse, error)
@@ -267,27 +627,27 @@ func (c *Client) UpdateBucket(ctx context.Context, req *storagepb.UpdateBucketRe
 	return c.internalClient.UpdateBucket(ctx, req, opts...)
 }
 
-// DeleteNotification permanently deletes a notification subscription.
-func (c *Client) DeleteNotification(ctx context.Context, req *storagepb.DeleteNotificationRequest, opts ...gax.CallOption) error {
-	return c.internalClient.DeleteNotification(ctx, req, opts...)
+// DeleteNotificationConfig permanently deletes a NotificationConfig.
+func (c *Client) DeleteNotificationConfig(ctx context.Context, req *storagepb.DeleteNotificationConfigRequest, opts ...gax.CallOption) error {
+	return c.internalClient.DeleteNotificationConfig(ctx, req, opts...)
 }
 
-// GetNotification view a notification config.
-func (c *Client) GetNotification(ctx context.Context, req *storagepb.GetNotificationRequest, opts ...gax.CallOption) (*storagepb.Notification, error) {
-	return c.internalClient.GetNotification(ctx, req, opts...)
+// GetNotificationConfig view a NotificationConfig.
+func (c *Client) GetNotificationConfig(ctx context.Context, req *storagepb.GetNotificationConfigRequest, opts ...gax.CallOption) (*storagepb.NotificationConfig, error) {
+	return c.internalClient.GetNotificationConfig(ctx, req, opts...)
 }
 
-// CreateNotification creates a notification subscription for a given bucket.
-// These notifications, when triggered, publish messages to the specified
-// Pub/Sub topics.
-// See https://cloud.google.com/storage/docs/pubsub-notifications (at https://cloud.google.com/storage/docs/pubsub-notifications).
-func (c *Client) CreateNotification(ctx context.Context, req *storagepb.CreateNotificationRequest, opts ...gax.CallOption) (*storagepb.Notification, error) {
-	return c.internalClient.CreateNotification(ctx, req, opts...)
+// CreateNotificationConfig creates a NotificationConfig for a given bucket.
+// These NotificationConfigs, when triggered, publish messages to the
+// specified Pub/Sub topics. See
+// https://cloud.google.com/storage/docs/pubsub-notifications (at https://cloud.google.com/storage/docs/pubsub-notifications).
+func (c *Client) CreateNotificationConfig(ctx context.Context, req *storagepb.CreateNotificationConfigRequest, opts ...gax.CallOption) (*storagepb.NotificationConfig, error) {
+	return c.internalClient.CreateNotificationConfig(ctx, req, opts...)
 }
 
-// ListNotifications retrieves a list of notification subscriptions for a given bucket.
-func (c *Client) ListNotifications(ctx context.Context, req *storagepb.ListNotificationsRequest, opts ...gax.CallOption) *NotificationIterator {
-	return c.internalClient.ListNotifications(ctx, req, opts...)
+// ListNotificationConfigs retrieves a list of NotificationConfigs for a given bucket.
+func (c *Client) ListNotificationConfigs(ctx context.Context, req *storagepb.ListNotificationConfigsRequest, opts ...gax.CallOption) *NotificationConfigIterator {
+	return c.internalClient.ListNotificationConfigs(ctx, req, opts...)
 }
 
 // ComposeObject concatenates a list of existing objects into a new object in the same
@@ -296,13 +656,24 @@ func (c *Client) ComposeObject(ctx context.Context, req *storagepb.ComposeObject
 	return c.internalClient.ComposeObject(ctx, req, opts...)
 }
 
-// DeleteObject deletes an object and its metadata. Deletions are permanent if versioning
-// is not enabled for the bucket, or if the generation parameter is used.
+// DeleteObject deletes an object and its metadata.
+//
+// Deletions are normally permanent when versioning is disabled or whenever
+// the generation parameter is used. However, if soft delete is enabled for
+// the bucket, deleted objects can be restored using RestoreObject until the
+// soft delete retention period has passed.
 func (c *Client) DeleteObject(ctx context.Context, req *storagepb.DeleteObjectRequest, opts ...gax.CallOption) error {
 	return c.internalClient.DeleteObject(ctx, req, opts...)
 }
 
 // CancelResumableWrite cancels an in-progress resumable upload.
+//
+// Any attempts to write to the resumable upload after cancelling the upload
+// will fail.
+//
+// The behavior for currently in progress write operations is not guaranteed -
+// they could either complete before the cancellation or fail if the
+// cancellation completes first.
 func (c *Client) CancelResumableWrite(ctx context.Context, req *storagepb.CancelResumableWriteRequest, opts ...gax.CallOption) (*storagepb.CancelResumableWriteResponse, error) {
 	return c.internalClient.CancelResumableWrite(ctx, req, opts...)
 }
@@ -365,8 +736,12 @@ func (c *Client) UpdateObject(ctx context.Context, req *storagepb.UpdateObjectRe
 //	returned persisted_size; in this case, the service will skip data at
 //	offsets that were already persisted (without checking that it matches
 //	the previously written data), and write only the data starting from the
-//	persisted offset. This behavior can make client-side handling simpler
-//	in some cases.
+//	persisted offset. Even though the data isn’t written, it may still
+//	incur a performance cost over resuming at the correct write offset.
+//	This behavior can make client-side handling simpler in some cases.
+//
+//	Clients must only send data that is a multiple of 256 KiB per message,
+//	unless the object is being finished with finish_write set to true.
 //
 // The service will not view the object as complete until the client has
 // sent a WriteObjectRequest with finish_write set to true. Sending any
@@ -454,9 +829,6 @@ type gRPCClient struct {
 	// Connection pool of gRPC connections to the service.
 	connPool gtransport.ConnPool
 
-	// flag to opt out of default deadlines via GOOGLE_API_GO_EXPERIMENTAL_DISABLE_DEFAULT_DEADLINE
-	disableDeadlines bool
-
 	// Points back to the CallOptions field of the containing Client
 	CallOptions **CallOptions
 
@@ -502,11 +874,6 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 		clientOpts = append(clientOpts, hookOpts...)
 	}
 
-	disableDeadlines, err := checkDisableDeadlines()
-	if err != nil {
-		return nil, err
-	}
-
 	connPool, err := gtransport.DialPool(ctx, append(clientOpts, opts...)...)
 	if err != nil {
 		return nil, err
@@ -514,10 +881,9 @@ func NewClient(ctx context.Context, opts ...option.ClientOption) (*Client, error
 	client := Client{CallOptions: defaultCallOptions()}
 
 	c := &gRPCClient{
-		connPool:         connPool,
-		disableDeadlines: disableDeadlines,
-		client:           storagepb.NewStorageClient(connPool),
-		CallOptions:      &client.CallOptions,
+		connPool:    connPool,
+		client:      storagepb.NewStorageClient(connPool),
+		CallOptions: &client.CallOptions,
 	}
 	c.setGoogleClientInfo()
 
@@ -538,7 +904,7 @@ func (c *gRPCClient) Connection() *grpc.ClientConn {
 // the `x-goog-api-client` header passed on each request. Intended for
 // use by Google-written clients.
 func (c *gRPCClient) setGoogleClientInfo(keyval ...string) {
-	kv := append([]string{"gl-go", versionGo()}, keyval...)
+	kv := append([]string{"gl-go", gax.GoVersion}, keyval...)
 	kv = append(kv, "gapic", getVersionClient(), "gax", gax.Version, "grpc", grpc.Version)
 	c.xGoogMetadata = metadata.Pairs("x-goog-api-client", gax.XGoogHeader(kv...))
 }
@@ -602,6 +968,9 @@ func (c *gRPCClient) CreateBucket(ctx context.Context, req *storagepb.CreateBuck
 	routingHeadersMap := make(map[string]string)
 	if reg := regexp.MustCompile("(?P<project>.*)"); reg.MatchString(req.GetParent()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetParent())[1])) > 0 {
 		routingHeadersMap["project"] = url.QueryEscape(reg.FindStringSubmatch(req.GetParent())[1])
+	}
+	if reg := regexp.MustCompile("(?P<project>.*)"); reg.MatchString(req.GetBucket().GetProject()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetBucket().GetProject())[1])) > 0 {
+		routingHeadersMap["project"] = url.QueryEscape(reg.FindStringSubmatch(req.GetBucket().GetProject())[1])
 	}
 	for headerName, headerValue := range routingHeadersMap {
 		routingHeaders = fmt.Sprintf("%s%s=%s&", routingHeaders, headerName, headerValue)
@@ -816,7 +1185,7 @@ func (c *gRPCClient) UpdateBucket(ctx context.Context, req *storagepb.UpdateBuck
 	return resp, nil
 }
 
-func (c *gRPCClient) DeleteNotification(ctx context.Context, req *storagepb.DeleteNotificationRequest, opts ...gax.CallOption) error {
+func (c *gRPCClient) DeleteNotificationConfig(ctx context.Context, req *storagepb.DeleteNotificationConfigRequest, opts ...gax.CallOption) error {
 	routingHeaders := ""
 	routingHeadersMap := make(map[string]string)
 	if reg := regexp.MustCompile("(?P<bucket>projects/[^/]+/buckets/[^/]+)(?:/.*)?"); reg.MatchString(req.GetName()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetName())[1])) > 0 {
@@ -829,16 +1198,16 @@ func (c *gRPCClient) DeleteNotification(ctx context.Context, req *storagepb.Dele
 	md := metadata.Pairs("x-goog-request-params", routingHeaders)
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append((*c.CallOptions).DeleteNotification[0:len((*c.CallOptions).DeleteNotification):len((*c.CallOptions).DeleteNotification)], opts...)
+	opts = append((*c.CallOptions).DeleteNotificationConfig[0:len((*c.CallOptions).DeleteNotificationConfig):len((*c.CallOptions).DeleteNotificationConfig)], opts...)
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		_, err = c.client.DeleteNotification(ctx, req, settings.GRPC...)
+		_, err = c.client.DeleteNotificationConfig(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	return err
 }
 
-func (c *gRPCClient) GetNotification(ctx context.Context, req *storagepb.GetNotificationRequest, opts ...gax.CallOption) (*storagepb.Notification, error) {
+func (c *gRPCClient) GetNotificationConfig(ctx context.Context, req *storagepb.GetNotificationConfigRequest, opts ...gax.CallOption) (*storagepb.NotificationConfig, error) {
 	routingHeaders := ""
 	routingHeadersMap := make(map[string]string)
 	if reg := regexp.MustCompile("(?P<bucket>projects/[^/]+/buckets/[^/]+)(?:/.*)?"); reg.MatchString(req.GetName()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetName())[1])) > 0 {
@@ -851,11 +1220,11 @@ func (c *gRPCClient) GetNotification(ctx context.Context, req *storagepb.GetNoti
 	md := metadata.Pairs("x-goog-request-params", routingHeaders)
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append((*c.CallOptions).GetNotification[0:len((*c.CallOptions).GetNotification):len((*c.CallOptions).GetNotification)], opts...)
-	var resp *storagepb.Notification
+	opts = append((*c.CallOptions).GetNotificationConfig[0:len((*c.CallOptions).GetNotificationConfig):len((*c.CallOptions).GetNotificationConfig)], opts...)
+	var resp *storagepb.NotificationConfig
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.GetNotification(ctx, req, settings.GRPC...)
+		resp, err = c.client.GetNotificationConfig(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -864,7 +1233,7 @@ func (c *gRPCClient) GetNotification(ctx context.Context, req *storagepb.GetNoti
 	return resp, nil
 }
 
-func (c *gRPCClient) CreateNotification(ctx context.Context, req *storagepb.CreateNotificationRequest, opts ...gax.CallOption) (*storagepb.Notification, error) {
+func (c *gRPCClient) CreateNotificationConfig(ctx context.Context, req *storagepb.CreateNotificationConfigRequest, opts ...gax.CallOption) (*storagepb.NotificationConfig, error) {
 	routingHeaders := ""
 	routingHeadersMap := make(map[string]string)
 	if reg := regexp.MustCompile("(?P<bucket>.*)"); reg.MatchString(req.GetParent()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetParent())[1])) > 0 {
@@ -877,11 +1246,11 @@ func (c *gRPCClient) CreateNotification(ctx context.Context, req *storagepb.Crea
 	md := metadata.Pairs("x-goog-request-params", routingHeaders)
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append((*c.CallOptions).CreateNotification[0:len((*c.CallOptions).CreateNotification):len((*c.CallOptions).CreateNotification)], opts...)
-	var resp *storagepb.Notification
+	opts = append((*c.CallOptions).CreateNotificationConfig[0:len((*c.CallOptions).CreateNotificationConfig):len((*c.CallOptions).CreateNotificationConfig)], opts...)
+	var resp *storagepb.NotificationConfig
 	err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 		var err error
-		resp, err = c.client.CreateNotification(ctx, req, settings.GRPC...)
+		resp, err = c.client.CreateNotificationConfig(ctx, req, settings.GRPC...)
 		return err
 	}, opts...)
 	if err != nil {
@@ -890,7 +1259,7 @@ func (c *gRPCClient) CreateNotification(ctx context.Context, req *storagepb.Crea
 	return resp, nil
 }
 
-func (c *gRPCClient) ListNotifications(ctx context.Context, req *storagepb.ListNotificationsRequest, opts ...gax.CallOption) *NotificationIterator {
+func (c *gRPCClient) ListNotificationConfigs(ctx context.Context, req *storagepb.ListNotificationConfigsRequest, opts ...gax.CallOption) *NotificationConfigIterator {
 	routingHeaders := ""
 	routingHeadersMap := make(map[string]string)
 	if reg := regexp.MustCompile("(?P<bucket>.*)"); reg.MatchString(req.GetParent()) && len(url.QueryEscape(reg.FindStringSubmatch(req.GetParent())[1])) > 0 {
@@ -903,11 +1272,11 @@ func (c *gRPCClient) ListNotifications(ctx context.Context, req *storagepb.ListN
 	md := metadata.Pairs("x-goog-request-params", routingHeaders)
 
 	ctx = insertMetadata(ctx, c.xGoogMetadata, md)
-	opts = append((*c.CallOptions).ListNotifications[0:len((*c.CallOptions).ListNotifications):len((*c.CallOptions).ListNotifications)], opts...)
-	it := &NotificationIterator{}
-	req = proto.Clone(req).(*storagepb.ListNotificationsRequest)
-	it.InternalFetch = func(pageSize int, pageToken string) ([]*storagepb.Notification, string, error) {
-		resp := &storagepb.ListNotificationsResponse{}
+	opts = append((*c.CallOptions).ListNotificationConfigs[0:len((*c.CallOptions).ListNotificationConfigs):len((*c.CallOptions).ListNotificationConfigs)], opts...)
+	it := &NotificationConfigIterator{}
+	req = proto.Clone(req).(*storagepb.ListNotificationConfigsRequest)
+	it.InternalFetch = func(pageSize int, pageToken string) ([]*storagepb.NotificationConfig, string, error) {
+		resp := &storagepb.ListNotificationConfigsResponse{}
 		if pageToken != "" {
 			req.PageToken = pageToken
 		}
@@ -918,7 +1287,7 @@ func (c *gRPCClient) ListNotifications(ctx context.Context, req *storagepb.ListN
 		}
 		err := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
 			var err error
-			resp, err = c.client.ListNotifications(ctx, req, settings.GRPC...)
+			resp, err = c.client.ListNotificationConfigs(ctx, req, settings.GRPC...)
 			return err
 		}, opts...)
 		if err != nil {
@@ -926,7 +1295,7 @@ func (c *gRPCClient) ListNotifications(ctx context.Context, req *storagepb.ListN
 		}
 
 		it.Response = resp
-		return resp.GetNotifications(), resp.GetNextPageToken(), nil
+		return resp.GetNotificationConfigs(), resp.GetNextPageToken(), nil
 	}
 	fetch := func(pageSize int, pageToken string) (string, error) {
 		items, nextPageToken, err := it.InternalFetch(pageSize, pageToken)
@@ -1520,9 +1889,9 @@ func (it *HmacKeyMetadataIterator) takeBuf() interface{} {
 	return b
 }
 
-// NotificationIterator manages a stream of *storagepb.Notification.
-type NotificationIterator struct {
-	items    []*storagepb.Notification
+// NotificationConfigIterator manages a stream of *storagepb.NotificationConfig.
+type NotificationConfigIterator struct {
+	items    []*storagepb.NotificationConfig
 	pageInfo *iterator.PageInfo
 	nextFunc func() error
 
@@ -1537,18 +1906,18 @@ type NotificationIterator struct {
 	// InternalFetch returns results from a single call to the underlying RPC.
 	// The number of results is no greater than pageSize.
 	// If there are no more results, nextPageToken is empty and err is nil.
-	InternalFetch func(pageSize int, pageToken string) (results []*storagepb.Notification, nextPageToken string, err error)
+	InternalFetch func(pageSize int, pageToken string) (results []*storagepb.NotificationConfig, nextPageToken string, err error)
 }
 
 // PageInfo supports pagination. See the google.golang.org/api/iterator package for details.
-func (it *NotificationIterator) PageInfo() *iterator.PageInfo {
+func (it *NotificationConfigIterator) PageInfo() *iterator.PageInfo {
 	return it.pageInfo
 }
 
 // Next returns the next result. Its second return value is iterator.Done if there are no more
 // results. Once Next returns Done, all subsequent calls will return Done.
-func (it *NotificationIterator) Next() (*storagepb.Notification, error) {
-	var item *storagepb.Notification
+func (it *NotificationConfigIterator) Next() (*storagepb.NotificationConfig, error) {
+	var item *storagepb.NotificationConfig
 	if err := it.nextFunc(); err != nil {
 		return item, err
 	}
@@ -1557,11 +1926,11 @@ func (it *NotificationIterator) Next() (*storagepb.Notification, error) {
 	return item, nil
 }
 
-func (it *NotificationIterator) bufLen() int {
+func (it *NotificationConfigIterator) bufLen() int {
 	return len(it.items)
 }
 
-func (it *NotificationIterator) takeBuf() interface{} {
+func (it *NotificationConfigIterator) takeBuf() interface{} {
 	b := it.items
 	it.items = nil
 	return b
