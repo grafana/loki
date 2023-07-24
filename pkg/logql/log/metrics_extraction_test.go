@@ -361,7 +361,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestNewLineSampleExtractorWithNonIndexedMetadata(t *testing.T) {
+func TestNewLineSampleExtractorWithNonIndexedLabels(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	nonIndexedLabels := labels.FromStrings("user", "bob")
 	expectedLabelsResults := append(lbs, nonIndexedLabels...)
@@ -459,10 +459,10 @@ func (p *stubStreamExtractor) BaseLabels() LabelsResult {
 	return nil
 }
 
-func (p *stubStreamExtractor) Process(_ int64, _ []byte, _ ...labels.Label) (float64, LabelsResult, bool) {
+func (p *stubStreamExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }
 
-func (p *stubStreamExtractor) ProcessString(_ int64, _ string, _ ...labels.Label) (float64, LabelsResult, bool) {
+func (p *stubStreamExtractor) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	return 0, nil, true
 }

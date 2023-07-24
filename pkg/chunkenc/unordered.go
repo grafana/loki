@@ -336,7 +336,6 @@ func (hb *unorderedHeadBlock) SampleIterator(
 				Timestamp: ts,
 				Value:     value,
 				Hash:      xxhash.Sum64(unsafeGetBytes(line)),
-				// TODO: add metadata labels to sample
 			})
 			return nil
 		},

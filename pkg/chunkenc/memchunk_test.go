@@ -1650,7 +1650,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-keep",
+					name:          "keep",
 					query:         `{job="fake"} | keep job, user`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
@@ -1661,7 +1661,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-keep-filter",
+					name:          "keep-filter",
 					query:         `{job="fake"} | keep job, user="b"`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
@@ -1672,7 +1672,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-drop",
+					name:          "drop",
 					query:         `{job="fake"} | drop traceID`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
@@ -1683,7 +1683,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					},
 				},
 				{
-					name:          "metadata-and-drop-filter",
+					name:          "drop-filter",
 					query:         `{job="fake"} | drop traceID="123"`,
 					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
 					expectedStreams: []string{
