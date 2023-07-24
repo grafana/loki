@@ -263,7 +263,7 @@ func (hb *unorderedHeadBlock) Iterator(
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabels labels.Labels) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, nonIndexedLabels...)
 			if !matches {
 				return nil
 			}
@@ -313,7 +313,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line)
+			value, parsedLabels, ok := extractor.ProcessString(ts, line, metaLabels...)
 			if !ok {
 				return nil
 			}
