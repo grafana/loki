@@ -219,6 +219,9 @@
         "metastore": {
             "component": "metastore"
         },
+        "migrationcenter": {
+            "component": "migrationcenter"
+        },
         "monitoring": {
             "component": "monitoring"
         },
@@ -258,7 +261,10 @@
         "privatecatalog": {
             "component": "privatecatalog"
         },
-        "recaptchaenterprise/v2": {
+        "rapidmigrationassessment": {
+            "component": "rapidmigrationassessment"
+        },
+        "recaptchaenterprise": {
             "component": "recaptchaenterprise"
         },
         "recommendationengine": {
@@ -318,11 +324,11 @@
         "storagetransfer": {
             "component": "storagetransfer"
         },
-        "talent": {
-            "component": "talent"
-        },
         "support": {
             "component": "support"
+        },
+        "talent": {
+            "component": "talent"
         },
         "texttospeech": {
             "component": "texttospeech"
@@ -342,7 +348,7 @@
         "videointelligence": {
             "component": "videointelligence"
         },
-        "vision/v2": {
+        "vision": {
             "component": "vision"
         },
         "vmmigration": {
@@ -367,5 +373,7 @@
             "component": "workstations"
         }
     },
-    "plugins": ["sentence-case"]
+    "plugins": [
+        "sentence-case"
+    ]
 }
