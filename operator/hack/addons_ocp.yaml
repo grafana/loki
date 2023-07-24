@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
         - name: logcli
-          image: docker.io/grafana/logcli:2.8.2-amd64
+          image: docker.io/grafana/logcli:2.8.3-amd64
           imagePullPolicy: IfNotPresent
           command:
             - /bin/sh
@@ -70,7 +70,7 @@ spec:
     spec:
       containers:
         - name: promtail
-          image: docker.io/grafana/promtail:2.8.2
+          image: docker.io/grafana/promtail:2.8.3
           args:
             - -config.file=/etc/promtail/promtail.yaml
             - -log.level=info
