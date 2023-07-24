@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -49,7 +50,7 @@ func (m *MemoryWALReader) Err() error { return nil }
 
 func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 
-func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALReader, []*wal.Record) {
+func buildMemoryReader(users, totalStreams, entriesPerStream int, withNonIndexedLabels bool) (*MemoryWALReader, []*wal.Record) {
 	var recs []*wal.Record
 	reader := &MemoryWALReader{}
 	for i := 0; i < totalStreams; i++ {
@@ -71,10 +72,19 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 
 		var entries []logproto.Entry
 		for j := 0; j < entriesPerStream; j++ {
-			entries = append(entries, logproto.Entry{
+			entry := logproto.Entry{
 				Timestamp: time.Unix(int64(j), 0),
 				Line:      fmt.Sprintf("%d", j),
-			})
+			}
+
+			if withNonIndexedLabels {
+				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+					"traceID", strings.Repeat(fmt.Sprintf("%d", j), 10),
+					"userID", strings.Repeat(fmt.Sprintf("%d", j), 10),
+				))
+			}
+
+			entries = append(entries, entry)
 		}
 		recs = append(recs, &wal.Record{
 			UserID: user,
@@ -162,39 +172,48 @@ func (r *MemRecoverer) Close() { close(r.done) }
 func (r *MemRecoverer) Done() <-chan struct{} { return r.done }
 
 func Test_InMemorySegmentRecover(t *testing.T) {
-	var (
-		users            = 10
-		streamsCt        = 1000
-		entriesPerStream = 50
-	)
-	reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream)
+	for _, withNonIndexedLabels := range []bool{true, false} {
+		t.Run(fmt.Sprintf("nonIndexedLabels=%t", withNonIndexedLabels), func(t *testing.T) {
+			var (
+				users            = 10
+				streamsCt        = 1000
+				entriesPerStream = 50
+			)
 
-	recoverer := NewMemRecoverer()
-
-	require.Nil(t, RecoverWAL(reader, recoverer))
-	recoverer.Close()
-
-	require.Equal(t, users, recoverer.usersCt)
-	require.Equal(t, streamsCt, recoverer.streamsCt)
-	require.Equal(t, streamsCt*entriesPerStream, recoverer.seriesCt)
-
-	for _, rec := range recs {
-		user, ok := recoverer.users[rec.UserID]
-		require.Equal(t, true, ok)
-
-		for _, s := range rec.Series {
-			_, ok := user[s.Ref]
-			require.Equal(t, true, ok)
-		}
-
-		for _, entries := range rec.RefEntries {
-			stream, ok := user[entries.Ref]
-			require.Equal(t, true, ok)
-
-			for i, entry := range entries.Entries {
-				require.Equal(t, entry, stream[i])
+			// TODO: remove once we set v3 as current
+			if wal.CurrentEntriesRec < wal.WALRecordEntriesV3 {
+				withNonIndexedLabels = false
 			}
-		}
+			reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream, withNonIndexedLabels)
+
+			recoverer := NewMemRecoverer()
+
+			require.Nil(t, RecoverWAL(reader, recoverer))
+			recoverer.Close()
+
+			require.Equal(t, users, recoverer.usersCt)
+			require.Equal(t, streamsCt, recoverer.streamsCt)
+			require.Equal(t, streamsCt*entriesPerStream, recoverer.seriesCt)
+
+			for _, rec := range recs {
+				user, ok := recoverer.users[rec.UserID]
+				require.Equal(t, true, ok)
+
+				for _, s := range rec.Series {
+					_, ok := user[s.Ref]
+					require.Equal(t, true, ok)
+				}
+
+				for _, entries := range rec.RefEntries {
+					stream, ok := user[entries.Ref]
+					require.Equal(t, true, ok)
+
+					for i, entry := range entries.Entries {
+						require.Equal(t, entry, stream[i])
+					}
+				}
+			}
+		})
 	}
 }
 

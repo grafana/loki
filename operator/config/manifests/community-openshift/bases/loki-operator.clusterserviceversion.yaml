@@ -1207,6 +1207,9 @@ spec:
           alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
       - description: The name of the time series to output to. Must be a valid metric
           name.
         displayName: Metric Name
