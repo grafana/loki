@@ -345,7 +345,7 @@ func TestConvertMatchersToString(t *testing.T) {
 	}
 }
 
-func TestIngesterQuerier_SeriesVolume(t *testing.T) {
+func TestIngesterQuerier_Volume(t *testing.T) {
 	t.Run("it gets label volumes from all the ingesters", func(t *testing.T) {
 		ret := &logproto.VolumeResponse{
 			Volumes: []logproto.Volume{
@@ -355,7 +355,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 		}
 
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
 
 		ingesterQuerier, err := newIngesterQuerier(
 			mockIngesterClientConfig(),
@@ -365,7 +365,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10, nil)
+		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume{
@@ -375,7 +375,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 
 	t.Run("it returns an empty result when an unimplemented error happens", func(t *testing.T) {
 		ingesterClient := newQuerierClientMock()
-		ingesterClient.On("GetSeriesVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(nil, status.Error(codes.Unimplemented, "something bad"))
 
 		ingesterQuerier, err := newIngesterQuerier(
 			mockIngesterClientConfig(),
@@ -385,7 +385,7 @@ func TestIngesterQuerier_SeriesVolume(t *testing.T) {
 		)
 		require.NoError(t, err)
 
-		volumes, err := ingesterQuerier.SeriesVolume(context.Background(), "", 0, 1, 10, nil)
+		volumes, err := ingesterQuerier.Volume(context.Background(), "", 0, 1, 10, nil, "labels")
 		require.NoError(t, err)
 
 		require.Equal(t, []logproto.Volume(nil), volumes.Volumes)
