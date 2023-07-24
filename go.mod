@@ -117,6 +117,10 @@ require (
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.13.1
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
+	github.com/aws/aws-lambda-go v1.27.0
+	github.com/aws/aws-sdk-go-v2 v1.19.0
+	github.com/aws/aws-sdk-go-v2/config v1.15.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.37.0
 	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
@@ -160,17 +164,20 @@ require (
 	github.com/alicebob/gopher-json v0.0.0-20200520072559-a9ecdc9d1d3a // indirect
 	github.com/armon/go-metrics v0.4.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
-	github.com/aws/aws-sdk-go-v2 v1.16.0 // indirect
-	github.com/aws/aws-sdk-go-v2/config v1.15.1 // indirect
+	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.4.10 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.11.0 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.12.1 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.7 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.1.35 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.4.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/ini v1.3.8 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.1 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.0.27 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.9.11 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.1.30 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.29 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.14.4 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.11.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.16.1 // indirect
-	github.com/aws/smithy-go v1.11.1 // indirect
+	github.com/aws/smithy-go v1.13.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
 	github.com/cncf/udpa/go v0.0.0-20220112060539-c52dc94e7fbe // indirect

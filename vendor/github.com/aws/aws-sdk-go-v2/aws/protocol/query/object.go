@@ -10,8 +10,8 @@ import (
 // values where there is a fixed set of keys whose values each have their
 // own known type. A serialized object might look like the following:
 //
-//     ObjectName.Foo=value
-//     &ObjectName.Bar=5
+//	ObjectName.Foo=value
+//	&ObjectName.Bar=5
 type Object struct {
 	// The query values to add the object to.
 	values url.Values

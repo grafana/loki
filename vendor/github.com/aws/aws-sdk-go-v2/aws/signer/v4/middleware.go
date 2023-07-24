@@ -82,7 +82,7 @@ func (m *dynamicPayloadSigningMiddleware) HandleBuild(
 	}
 
 	// if TLS is enabled, use unsigned payload when supported
-	if strings.EqualFold(req.URL.Scheme, "https") {
+	if req.IsHTTPS() {
 		return (&unsignedPayload{}).HandleBuild(ctx, in, next)
 	}
 
@@ -371,13 +371,8 @@ func haveCredentialProvider(p aws.CredentialsProvider) bool {
 	if p == nil {
 		return false
 	}
-	switch p.(type) {
-	case aws.AnonymousCredentials,
-		*aws.AnonymousCredentials:
-		return false
-	}
 
-	return true
+	return !aws.IsCredentialsProvider(p, (*aws.AnonymousCredentials)(nil))
 }
 
 type payloadHashKey struct{}
