@@ -724,6 +724,11 @@ http {
       proxy_pass       {{ $backendUrl }}$request_uri;
     }
 
+    # Config
+    location = /config {
+      proxy_pass       {{ $backendUrl }}$request_uri;
+    }
+    
     {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
     # Admin API
     location ^~ /admin/api/ {

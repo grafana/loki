@@ -212,7 +212,14 @@ func (hb *unorderedHeadBlock) forEntries(
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i].line
 			metadataLabels := es.entries[i].metadataLabels
-			chunkStats.AddHeadChunkBytes(int64(len(line)))
+
+			var nonIndexedLabelsBytes int64
+			for _, label := range metadataLabels {
+				nonIndexedLabelsBytes += int64(len(label.Name) + len(label.Value))
+			}
+			chunkStats.AddHeadChunkNonIndexedLabelsBytes(nonIndexedLabelsBytes)
+			chunkStats.AddHeadChunkBytes(int64(len(line)) + nonIndexedLabelsBytes)
+
 			err = entryFn(chunkStats, es.ts, line, metadataLabels)
 
 		}
@@ -256,7 +263,7 @@ func (hb *unorderedHeadBlock) Iterator(
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabels labels.Labels) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, nonIndexedLabels...)
 			if !matches {
 				return nil
 			}
@@ -306,7 +313,7 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line)
+			value, parsedLabels, ok := extractor.ProcessString(ts, line, metaLabels...)
 			if !ok {
 				return nil
 			}
