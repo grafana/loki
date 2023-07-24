@@ -243,6 +243,21 @@ func TestFlushMaxAge(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
+func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	// This gives us an initial delay of max 48s
+	// 60s * 0.8 = 48s
+	cfg.FlushCheckPeriod = time.Minute
+
+	start := time.Now()
+	store, ing := newTestStore(t, cfg, nil)
+	defer store.Stop()
+	// immediately stop
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+	duration := time.Since(start)
+	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
