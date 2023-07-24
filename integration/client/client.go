@@ -90,8 +90,8 @@ func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) erro
 	return c.pushLogLine(line, c.Now, nil, extraLabels...)
 }
 
-func (c *Client) PushLogLineWithMetadata(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
-	return c.PushLogLineWithTimestampAndMetadata(line, c.Now, logLabels, extraLabels...)
+func (c *Client) PushLogLineWithNonIndexedLabels(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
+	return c.PushLogLineWithTimestampAndNonIndexedLabels(line, c.Now, logLabels, extraLabels...)
 }
 
 // PushLogLineWithTimestamp creates a new logline at the given timestamp
@@ -100,7 +100,7 @@ func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extr
 	return c.pushLogLine(line, timestamp, nil, extraLabels...)
 }
 
-func (c *Client) PushLogLineWithTimestampAndMetadata(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
+func (c *Client) PushLogLineWithTimestampAndNonIndexedLabels(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
 	// If the logLabels map is empty, labels.FromMap will allocate some empty slices.
 	// Since this code is executed for every log line we receive, as an optimization
 	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.

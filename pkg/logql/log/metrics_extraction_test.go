@@ -361,7 +361,7 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestNewLineSampleExtractorWithNonIndexedMetadata(t *testing.T) {
+func TestNewLineSampleExtractorWithNonIndexedLabels(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
 	nonIndexedLabels := labels.FromStrings("user", "bob")
 	expectedLabelsResults := append(lbs, nonIndexedLabels...)
