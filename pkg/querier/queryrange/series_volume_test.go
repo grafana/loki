@@ -67,7 +67,7 @@ func Test_toPrometheusResponse(t *testing.T) {
 	}
 
 	setupSeries := func(instant bool) chan *bucketedVolumeResponse {
-		return setup(instant, `{foo="bar", fizz="buzz"}`, `{foo="baz"}`)
+		return setup(instant, `{foo="baz"}`, `{foo="bar", fizz="buzz"}`)
 	}
 
 	setupLabels := func(instant bool) chan *bucketedVolumeResponse {
@@ -83,12 +83,8 @@ func Test_toPrometheusResponse(t *testing.T) {
 				{
 					Labels: []push.LabelAdapter{
 						{
-							Name:  "fizz",
-							Value: "buzz",
-						},
-						{
 							Name:  "foo",
-							Value: "bar",
+							Value: "baz",
 						},
 					},
 					Samples: []logproto.LegacySample{
@@ -105,8 +101,12 @@ func Test_toPrometheusResponse(t *testing.T) {
 				{
 					Labels: []push.LabelAdapter{
 						{
+							Name:  "fizz",
+							Value: "buzz",
+						},
+						{
 							Name:  "foo",
-							Value: "baz",
+							Value: "bar",
 						},
 					},
 					Samples: []logproto.LegacySample{
@@ -133,12 +133,8 @@ func Test_toPrometheusResponse(t *testing.T) {
 				{
 					Labels: []push.LabelAdapter{
 						{
-							Name:  "fizz",
-							Value: "buzz",
-						},
-						{
 							Name:  "foo",
-							Value: "bar",
+							Value: "baz",
 						},
 					},
 					Samples: []logproto.LegacySample{
@@ -151,8 +147,12 @@ func Test_toPrometheusResponse(t *testing.T) {
 				{
 					Labels: []push.LabelAdapter{
 						{
+							Name:  "fizz",
+							Value: "buzz",
+						},
+						{
 							Name:  "foo",
-							Value: "baz",
+							Value: "bar",
 						},
 					},
 					Samples: []logproto.LegacySample{
@@ -175,24 +175,6 @@ func Test_toPrometheusResponse(t *testing.T) {
 				{
 					Labels: []push.LabelAdapter{
 						{
-							Name:  "fizz",
-							Value: "",
-						},
-					},
-					Samples: []logproto.LegacySample{
-						{
-							Value:       50,
-							TimestampMs: t1.UnixNano() / 1e6,
-						},
-						{
-							Value:       25,
-							TimestampMs: t2.UnixNano() / 1e6,
-						},
-					},
-				},
-				{
-					Labels: []push.LabelAdapter{
-						{
 							Name:  "foo",
 							Value: "",
 						},
@@ -204,6 +186,24 @@ func Test_toPrometheusResponse(t *testing.T) {
 						},
 						{
 							Value:       50,
+							TimestampMs: t2.UnixNano() / 1e6,
+						},
+					},
+				},
+				{
+					Labels: []push.LabelAdapter{
+						{
+							Name:  "fizz",
+							Value: "",
+						},
+					},
+					Samples: []logproto.LegacySample{
+						{
+							Value:       50,
+							TimestampMs: t1.UnixNano() / 1e6,
+						},
+						{
+							Value:       25,
 							TimestampMs: t2.UnixNano() / 1e6,
 						},
 					},
@@ -221,20 +221,6 @@ func Test_toPrometheusResponse(t *testing.T) {
 				{
 					Labels: []push.LabelAdapter{
 						{
-							Name:  "fizz",
-							Value: "",
-						},
-					},
-					Samples: []logproto.LegacySample{
-						{
-							Value:       50,
-							TimestampMs: t1.UnixNano() / 1e6,
-						},
-					},
-				},
-				{
-					Labels: []push.LabelAdapter{
-						{
 							Name:  "foo",
 							Value: "",
 						},
@@ -242,6 +228,20 @@ func Test_toPrometheusResponse(t *testing.T) {
 					Samples: []logproto.LegacySample{
 						{
 							Value:       100,
+							TimestampMs: t1.UnixNano() / 1e6,
+						},
+					},
+				},
+				{
+					Labels: []push.LabelAdapter{
+						{
+							Name:  "fizz",
+							Value: "",
+						},
+					},
+					Samples: []logproto.LegacySample{
+						{
+							Value:       50,
 							TimestampMs: t1.UnixNano() / 1e6,
 						},
 					},
