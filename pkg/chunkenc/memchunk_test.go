@@ -171,6 +171,8 @@ func TestBlock(t *testing.T) {
 					}
 				}
 
+				var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
+
 				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
@@ -190,6 +192,14 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Error())
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
+
+				countExtractor = func() log.StreamSampleExtractor {
+					ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+					if err != nil {
+						panic(err)
+					}
+					return ex.ForStream(labels.Labels{})
+				}()
 
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
@@ -386,6 +396,7 @@ func TestSerialization(t *testing.T) {
 			enc := enc
 			// run tests with and without non-indexed labels set since it is optional
 			for _, appendWithNonIndexedLabels := range []bool{false, true} {
+				appendWithNonIndexedLabels := appendWithNonIndexedLabels
 				testName := testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt)
 				if appendWithNonIndexedLabels {
 					testName = fmt.Sprintf("%s - append non-indexed labels", testName)
@@ -403,7 +414,7 @@ func TestSerialization(t *testing.T) {
 					for i := 0; i < numSamples; i++ {
 						entry = logprotoEntry(int64(i), strconv.Itoa(i))
 						if appendWithNonIndexedLabels {
-							entry.NonIndexedLabels = []logproto.LabelAdapter{{"foo", strconv.Itoa(i)}}
+							entry.NonIndexedLabels = []logproto.LabelAdapter{{Name: "foo", Value: strconv.Itoa(i)}}
 						}
 						require.NoError(t, chk.Append(entry))
 					}
@@ -447,7 +458,7 @@ func TestSerialization(t *testing.T) {
 						require.Equal(t, int64(i), s.Timestamp)
 						require.Equal(t, 1., s.Value)
 						if testData.chunkFormat >= chunkFormatV4 {
-							// ToDo: Add non-indexed labels check
+							require.Equal(t, fmt.Sprintf(`{foo="%d"}`, i), sampleIt.Labels())
 						} else {
 							require.Equal(t, "{}", sampleIt.Labels())
 						}
