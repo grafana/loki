@@ -641,6 +641,8 @@ func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *index.VolumeQuery 
 	cmd.Flag("to", "Stop looking for logs at this absolute time (exclusive)").StringVar(&to)
 
 	cmd.Flag("limit", "Limit on number of series to return volumes for.").Default("30").IntVar(&q.Limit)
+	cmd.Flag("targetLabels", "List of labels to aggregate results into.").StringsVar(&q.TargetLabels)
+	cmd.Flag("aggregateByLabels", "Whether to aggregate results by label name only.").BoolVar(&q.AggregateByLabels)
 
 	if rangeQuery {
 		cmd.Flag("step", "Query resolution step width, roll up volumes into buckets cover step time each.").Default("1h").DurationVar(&q.Step)

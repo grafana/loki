@@ -11,12 +11,14 @@ import (
 )
 
 type VolumeQuery struct {
-	QueryString string
-	Start       time.Time
-	End         time.Time
-	Step        time.Duration
-	Quiet       bool
-	Limit       int
+	QueryString       string
+	Start             time.Time
+	End               time.Time
+	Step              time.Duration
+	Quiet             bool
+	Limit             int
+	TargetLabels      []string
+	AggregateByLabels bool
 }
 
 // DoVolume executes a volume query and prints the results
@@ -45,9 +47,9 @@ func (q *VolumeQuery) volume(rangeQuery bool, c client.Client) *loghttp.QueryRes
 	var err error
 
 	if rangeQuery {
-		resp, err = c.GetVolumeRange(q.QueryString, q.Start, q.End, q.Step, q.Limit, q.Quiet)
+		resp, err = c.GetVolumeRange(q.QueryString, q.Start, q.End, q.Step, q.Limit, q.TargetLabels, q.AggregateByLabels, q.Quiet)
 	} else {
-		resp, err = c.GetVolume(q.QueryString, q.Start, q.End, q.Step, q.Limit, q.Quiet)
+		resp, err = c.GetVolume(q.QueryString, q.Start, q.End, q.Step, q.Limit, q.TargetLabels, q.AggregateByLabels, q.Quiet)
 	}
 	if err != nil {
 		log.Fatalf("Error doing request: %+v", err)
