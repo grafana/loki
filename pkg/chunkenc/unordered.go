@@ -363,6 +363,13 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 		inBuf.Reset()
 		serializeBytesBufferPool.Put(inBuf)
 	}()
+
+	symbolsSectionBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		symbolsSectionBuf.Reset()
+		serializeBytesBufferPool.Put(symbolsSectionBuf)
+	}()
+
 	outBuf := &bytes.Buffer{}
 
 	encBuf := make([]byte, binary.MaxVarintLen64)
@@ -384,16 +391,29 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 			inBuf.WriteString(line)
 
 			if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
-				// Serialize non-indexed labels
+				symbolsSectionBuf.Reset()
+				// Serialize non-indexed labels symbols to symbolsSectionBuf so that we can find and write its length before
+				// writing symbols section to inbuf since we can't estimate its size beforehand due to variable length encoding.
+
+				// write the number of symbol pairs
 				n = binary.PutUvarint(encBuf, uint64(len(symbols)))
-				inBuf.Write(encBuf[:n])
+				symbolsSectionBuf.Write(encBuf[:n])
+
+				// write the symbols
 				for _, l := range symbols {
 					n = binary.PutUvarint(encBuf, uint64(l.Name))
-					inBuf.Write(encBuf[:n])
+					symbolsSectionBuf.Write(encBuf[:n])
 
 					n = binary.PutUvarint(encBuf, uint64(l.Value))
-					inBuf.Write(encBuf[:n])
+					symbolsSectionBuf.Write(encBuf[:n])
 				}
+
+				// write the length of symbols section first
+				n = binary.PutUvarint(encBuf, uint64(symbolsSectionBuf.Len()))
+				inBuf.Write(encBuf[:n])
+
+				// copy the symbols section
+				inBuf.Write(symbolsSectionBuf.Bytes())
 			}
 			return nil
 		},

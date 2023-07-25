@@ -1418,8 +1418,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	}
 
 	lastAttempt = 0
-	var labelsWidth, nSymbols int
-	for labelsWidth == 0 { // Read until we have enough bytes for the labels.
+	var symbolsSectionLengthWidth, nSymbolsWidth, nSymbols int
+	for nSymbolsWidth == 0 { // Read until we have enough bytes for the labels.
 		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
 		si.readBufValid += n
 		if err != nil {
@@ -1436,7 +1436,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 			}
 		}
 		var l uint64
-		l, labelsWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
+		_, symbolsSectionLengthWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
+		l, nSymbolsWidth = binary.Uvarint(si.readBuf[symbolsSectionLengthWidth:si.readBufValid])
 		nSymbols = int(l)
 		lastAttempt = si.readBufValid
 	}
@@ -1447,7 +1448,31 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	decompressedNonIndexedLabelsBytes += int64(nSymbols * 2 * binary.MaxVarintLen64)
 
 	// Shift down what is still left in the fixed-size read buffer, if any.
-	si.readBufValid = copy(si.readBuf[:], si.readBuf[labelsWidth:si.readBufValid])
+	si.readBufValid = copy(si.readBuf[:], si.readBuf[symbolsSectionLengthWidth+nSymbolsWidth:si.readBufValid])
+
+	/*
+		Commented out tested code, which lets us skip reading the symbols section altogether.
+		Leaving it here if in case we need it in future.
+
+		symbolsSectionLength -= nSymbolsWidth
+		if symbolsSectionLength > 0 {
+			readBufValid := si.readBufValid
+			if symbolsSectionLength >= si.readBufValid {
+				si.readBufValid = 0
+			} else {
+				si.readBufValid = copy(si.readBuf[:], si.readBuf[symbolsSectionLength:si.readBufValid])
+			}
+			symbolsSectionLength -= readBufValid - si.readBufValid
+			if symbolsSectionLength > 0 {
+				_, err := si.reader.Read(make([]byte, symbolsSectionLength))
+				if err != nil {
+					si.err = err
+					return 0, nil, nil, false
+				}
+			}
+			nSymbols = 0
+		}
+	*/
 
 	// If not enough space for the symbols, create a new buffer slice and put the old one back in the pool.
 	if nSymbols > cap(si.symbolsBuf) {
