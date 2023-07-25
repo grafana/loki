@@ -365,7 +365,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		var queries []DownstreamQuery
 		for cur != nil {
 			qry := DownstreamQuery{
-				Expr:   cur.DownstreamTopkSampleExpr.TopkSampleExpr,
+				Expr:   cur.DownstreamTopkSampleExpr,
 				Params: params,
 			}
 			if shard := cur.DownstreamTopkSampleExpr.shard; shard != nil {
@@ -375,6 +375,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 			cur = cur.next
 		}
 
+		// TODO(karsten): use a different downstream method to avoid casting the DownstreamQuery.
 		results, err := ev.Downstream(ctx, queries)
 		if err != nil {
 			return nil, err

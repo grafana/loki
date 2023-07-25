@@ -341,7 +341,7 @@ func TestInstanceDownstream(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Expr:   expr,
+			Expr: expr,
 			Params: params,
 			Shards: logql.Shards{{Shard: 0, Of: 2}},
 		},
@@ -424,7 +424,9 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Expr:   expr,
+			Expr: logql.DownstreamTopkSampleExpr{
+				TopkSampleExpr: expr.(syntax.TopkSampleExpr),
+			},
 			Params: params,
 			Shards: logql.Shards{{Shard: 0, Of: 2}},
 		},

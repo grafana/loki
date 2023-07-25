@@ -46,7 +46,8 @@ message LokiProbabilisticRequest {
     (gogoproto.nullable) = false
   ];
   string path = 6;
-  repeated string shards = 7 [(gogoproto.jsontag) = "shards"];
+  logproto.Direction direction = 7;
+  repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
 }
 
 message LokiInstantRequest {

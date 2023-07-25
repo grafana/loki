@@ -111,11 +111,12 @@ type instance struct {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		var prob bool
-		if _, ok := qry.Expr.(logql.DownstreamTopkSampleExpr); ok {
-			prob = true
+		probExpr, prob := qry.Expr.(logql.DownstreamTopkSampleExpr)
+		expr := qry.Expr
+		if prob {
+			expr = probExpr.TopkSampleExpr
 		}
-		req := ParamsToLokiRequest(prob, qry.Params, qry.Shards).WithQuery(qry.Expr.String())
+		req := ParamsToLokiRequest(prob, qry.Params, qry.Shards).WithQuery(expr.String())
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
 		logger := spanlogger.FromContext(ctx)

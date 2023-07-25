@@ -420,10 +420,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 	case *LokiProbabilisticRequest:
 		// TODO: This block is a copy paste, and only the URL is different, clean up
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
-			"query": []string{request.Query},
-			"limit": []string{fmt.Sprintf("%d", request.Limit)},
+			"start":     []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
+			"end":       []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"query":     []string{request.Query},
+			"limit":     []string{fmt.Sprintf("%d", request.Limit)},
+			"direction": []string{request.Direction.String()},
 		}
 		if len(request.Shards) > 0 {
 			params["shards"] = request.Shards
