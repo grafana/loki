@@ -8,7 +8,7 @@ message CountMinSketch {
   uint32 depth = 1;
   uint32 width = 2;
 
-  // counters is a matrix of depth * width.
+  // counters is a matrix of depth * width as a single slice.
   repeated uint32 counters = 3;
 }
 

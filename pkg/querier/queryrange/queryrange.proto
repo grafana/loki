@@ -32,6 +32,23 @@ message LokiRequest {
   repeated string shards = 8 [(gogoproto.jsontag) = "shards"];
 }
 
+message LokiProbabilisticRequest {
+  string query = 1;
+  uint32 limit = 2;
+  int64 step = 3;
+  int64 interval = 9;
+  google.protobuf.Timestamp startTs = 4 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  google.protobuf.Timestamp endTs = 5 [
+    (gogoproto.stdtime) = true,
+    (gogoproto.nullable) = false
+  ];
+  string path = 6;
+  repeated string shards = 7 [(gogoproto.jsontag) = "shards"];
+}
+
 message LokiInstantRequest {
   string query = 1;
   uint32 limit = 2;

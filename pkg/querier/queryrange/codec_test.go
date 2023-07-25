@@ -589,6 +589,46 @@ func Test_codec_EncodeRequest(t *testing.T) {
 	require.Equal(t, "/loki/api/v1/query_range", req.(*LokiRequest).Path)
 }
 
+func Test_codec_EncodeProbabilisticRequest(t *testing.T) {
+	// we only accept LokiRequest.
+	got, err := DefaultCodec.EncodeRequest(context.TODO(), &queryrangebase.PrometheusRequest{})
+	require.Error(t, err)
+	require.Nil(t, got)
+
+	ctx := context.Background()
+	toEncode := &LokiProbabilisticRequest{
+		Query:    `topk(10,{foo="bar"})`,
+		Limit:    200,
+		Step:     86400000, // nanoseconds
+		Interval: 10000000, // nanoseconds
+		Path:     "/query_range",
+		StartTs:  start,
+		EndTs:    end,
+	}
+	got, err = DefaultCodec.EncodeRequest(ctx, toEncode)
+	require.NoError(t, err)
+	require.Equal(t, ctx, got.Context())
+	require.Equal(t, "/loki/api/v1/probabilistic_query", got.URL.Path)
+	require.Equal(t, fmt.Sprintf("%d", start.UnixNano()), got.URL.Query().Get("start"))
+	require.Equal(t, fmt.Sprintf("%d", end.UnixNano()), got.URL.Query().Get("end"))
+	require.Equal(t, `topk(10,{foo="bar"})`, got.URL.Query().Get("query"))
+	require.Equal(t, fmt.Sprintf("%d", 200), got.URL.Query().Get("limit"))
+	require.Equal(t, `FORWARD`, got.URL.Query().Get("direction"))
+	require.Equal(t, "86400.000000", got.URL.Query().Get("step"))
+	require.Equal(t, "10000.000000", got.URL.Query().Get("interval"))
+
+	// testing a full roundtrip
+	req, err := DefaultCodec.DecodeRequest(context.TODO(), got, nil)
+	require.NoError(t, err)
+	require.Equal(t, toEncode.Query, req.(*LokiProbabilisticRequest).Query)
+	require.Equal(t, toEncode.Step, req.(*LokiProbabilisticRequest).Step)
+	require.Equal(t, toEncode.Interval, req.(*LokiProbabilisticRequest).Interval)
+	require.Equal(t, toEncode.StartTs, req.(*LokiProbabilisticRequest).StartTs)
+	require.Equal(t, toEncode.EndTs, req.(*LokiProbabilisticRequest).EndTs)
+	require.Equal(t, toEncode.Limit, req.(*LokiProbabilisticRequest).Limit)
+	require.Equal(t, "/loki/api/v1/probabilistic_query", req.(*LokiProbabilisticRequest).Path)
+}
+
 func Test_codec_series_EncodeRequest(t *testing.T) {
 	got, err := DefaultCodec.EncodeRequest(context.TODO(), &queryrangebase.PrometheusRequest{})
 	require.Error(t, err)

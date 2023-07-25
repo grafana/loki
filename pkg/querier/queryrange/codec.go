@@ -43,6 +43,54 @@ type RequestProtobufCodec struct {
 	Codec
 }
 
+func (r *LokiProbabilisticRequest) GetEnd() int64 {
+	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiProbabilisticRequest) GetStart() int64 {
+	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
+}
+
+func (r *LokiProbabilisticRequest) WithStartEnd(s int64, e int64) queryrangebase.Request {
+	clone := *r
+	clone.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	clone.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	return &clone
+}
+
+func (r *LokiProbabilisticRequest) WithStartEndTime(s time.Time, e time.Time) *LokiProbabilisticRequest {
+	clone := *r
+	clone.StartTs = s
+	clone.EndTs = e
+	return &clone
+}
+
+func (r *LokiProbabilisticRequest) WithQuery(query string) queryrangebase.Request {
+	clone := *r
+	clone.Query = query
+	return &clone
+}
+
+func (r *LokiProbabilisticRequest) WithShards(shards logql.Shards) *LokiProbabilisticRequest {
+	clone := *r
+	clone.Shards = shards.Encode()
+	return &clone
+}
+
+func (r *LokiProbabilisticRequest) LogToSpan(sp opentracing.Span) {
+	sp.LogFields(
+		otlog.String("query", r.GetQuery()),
+		otlog.String("start", timestamp.Time(r.GetStart()).String()),
+		otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+		otlog.Int64("step (ms)", r.GetStep()),
+		otlog.Int64("interval (ms)", r.GetInterval()),
+		otlog.Int64("limit", int64(r.GetLimit())),
+		otlog.String("shards", strings.Join(r.GetShards(), ",")),
+	)
+}
+
+func (*LokiProbabilisticRequest) GetCachingOptions() (res queryrangebase.CachingOptions) { return }
+
 func (r *LokiRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
@@ -228,6 +276,21 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Path:      r.URL.Path,
 			Shards:    req.Shards,
 		}, nil
+	case ProbabilisticOp:
+		req, err := loghttp.ParseRangeQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		return &LokiProbabilisticRequest{
+			Query:    req.Query,
+			Limit:    req.Limit,
+			StartTs:  req.Start.UTC(),
+			EndTs:    req.End.UTC(),
+			Step:     req.Step.Milliseconds(),
+			Interval: req.Interval.Milliseconds(),
+			Path:     r.URL.Path,
+			Shards:   req.Shards,
+		}, nil
 	case InstantQueryOp:
 		req, err := loghttp.ParseInstantQuery(r)
 		if err != nil {
@@ -341,6 +404,37 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		u := &url.URL{
 			// the request could come /api/prom/query but we want to only use the new api.
 			Path:     "/loki/api/v1/query_range",
+			RawQuery: params.Encode(),
+		}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Body:       http.NoBody,
+			Header:     header,
+		}
+
+		return req.WithContext(ctx), nil
+	case *LokiProbabilisticRequest:
+		// TODO: This block is a copy paste, and only the URL is different, clean up
+		params := url.Values{
+			"start": []string{fmt.Sprintf("%d", request.StartTs.UnixNano())},
+			"end":   []string{fmt.Sprintf("%d", request.EndTs.UnixNano())},
+			"query": []string{request.Query},
+			"limit": []string{fmt.Sprintf("%d", request.Limit)},
+		}
+		if len(request.Shards) > 0 {
+			params["shards"] = request.Shards
+		}
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
+		}
+		if request.Interval != 0 {
+			params["interval"] = []string{fmt.Sprintf("%f", float64(request.Interval)/float64(1e3))}
+		}
+		u := &url.URL{
+			// the request could come /api/prom/query but we want to only use the new api.
+			Path:     "/loki/api/v1/probabilistic_query",
 			RawQuery: params.Encode(),
 		}
 		req := &http.Request{

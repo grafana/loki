@@ -36,7 +36,19 @@ type DownstreamHandler struct {
 	next   queryrangebase.Handler
 }
 
-func ParamsToLokiRequest(params logql.Params, shards logql.Shards) queryrangebase.Request {
+func ParamsToLokiRequest(probabilistic bool, params logql.Params, shards logql.Shards) queryrangebase.Request {
+	if probabilistic {
+		return &LokiProbabilisticRequest{
+			Query:    params.Query(),
+			Limit:    params.Limit(),
+			Step:     params.Step().Milliseconds(),
+			Interval: params.Interval().Milliseconds(),
+			StartTs:  params.Start(),
+			EndTs:    params.End(),
+			Path:     "/loki/api/v1/probabilistic_query",
+			Shards:   shards.Encode(),
+		}
+	}
 	if logql.GetRangeType(params) == logql.InstantType {
 		return &LokiInstantRequest{
 			Query:     params.Query(),
@@ -99,7 +111,11 @@ type instance struct {
 
 func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
-		req := ParamsToLokiRequest(qry.Params, qry.Shards).WithQuery(qry.Expr.String())
+		var prob bool
+		if _, ok := qry.Expr.(logql.DownstreamTopkSampleExpr); ok {
+			prob = true
+		}
+		req := ParamsToLokiRequest(prob, qry.Params, qry.Shards).WithQuery(qry.Expr.String())
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "DownstreamHandler.instance")
 		defer sp.Finish()
 		logger := spanlogger.FromContext(ctx)

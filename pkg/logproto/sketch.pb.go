@@ -28,7 +28,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 type CountMinSketch struct {
 	Depth uint32 `protobuf:"varint,1,opt,name=depth,proto3" json:"depth,omitempty"`
 	Width uint32 `protobuf:"varint,2,opt,name=width,proto3" json:"width,omitempty"`
-	// counters is a matrix of depth * width.
+	// counters is a matrix of depth * width as a single slice.
 	Counters []uint32 `protobuf:"varint,3,rep,packed,name=counters,proto3" json:"counters,omitempty"`
 }
 

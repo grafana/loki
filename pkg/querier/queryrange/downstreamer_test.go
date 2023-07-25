@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/axiomhq/hyperloglog"
 	"sync"
 	"testing"
 	"time"
@@ -353,7 +354,7 @@ func TestInstanceDownstream(t *testing.T) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(params, queries[0].Shards).WithQuery(expr.String())
+			want = ParamsToLokiRequest(false, params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -369,6 +370,91 @@ func TestInstanceDownstream(t *testing.T) {
 
 	require.Equal(t, want, got)
 
+	require.Nil(t, err)
+	require.Equal(t, 1, len(results))
+	require.Equal(t, expected.Data, results[0].Data)
+}
+
+func TestInstanceDownstreamProbabilistic(t *testing.T) {
+	params := logql.NewLiteralParams(
+		"topk(10, count_over_time({ foo = \"bar\" }[5h]))",
+		time.Now(),
+		time.Now(),
+		0,
+		0,
+		logproto.BACKWARD,
+		1000,
+		nil,
+	)
+	expr, err := syntax.ParseExpr(`topk(10, count_over_time({ foo = "bar" }[5h]))`)
+	require.Nil(t, err)
+
+	expectedResp := func() *TopKSketchesResponse {
+		hll := hyperloglog.New16()
+		hll.Insert([]byte("asdf"))
+		hllBytes, err := hll.MarshalBinary()
+		if err != nil {
+			return nil
+		}
+		return &TopKSketchesResponse{
+			Response: &logproto.TopKMatrix{
+				Values: []*logproto.TopKMatrix_Vector{
+					{
+						Topk: &logproto.TopK{
+							Cms: &logproto.CountMinSketch{Depth: 2, Width: 12, Counters: make([]uint32, 2*12)},
+							Results: []*logproto.TopK_Result{
+								{
+									Key: "",
+									List: []*logproto.TopK_Pair{
+										{
+											Event: "asdf",
+											Count: 100,
+										},
+									},
+								},
+							},
+							Hyperloglog: hllBytes,
+						},
+						TimestampMs: 0,
+					},
+				},
+			},
+		}
+	}
+
+	queries := []logql.DownstreamQuery{
+		{
+			Expr:   expr,
+			Params: params,
+			Shards: logql.Shards{{Shard: 0, Of: 2}},
+		},
+	}
+
+	var got queryrangebase.Request
+	var want queryrangebase.Request
+	handler := queryrangebase.HandlerFunc(
+		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			// for some reason these seemingly can't be checked in their own goroutines,
+			// so we assign them to scoped variables for later comparison.
+			got = req
+			want = ParamsToLokiRequest(true, params, queries[0].Shards).WithQuery(expr.String())
+
+			return expectedResp(), nil
+		},
+	)
+
+	expected, err := ResponseToResult(expectedResp())
+	require.Nil(t, err)
+
+	results, err := DownstreamHandler{
+		limits: fakeLimits{},
+		next:   handler,
+	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
+
+	require.Equal(t, want, got)
+
+	_, ok := got.(*LokiProbabilisticRequest)
+	require.True(t, ok)
 	require.Nil(t, err)
 	require.Equal(t, 1, len(results))
 	require.Equal(t, expected.Data, results[0].Data)

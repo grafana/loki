@@ -376,6 +376,7 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 const (
 	InstantQueryOp      = "instant_query"
 	QueryRangeOp        = "query_range"
+	ProbabilisticOp     = "probabilistic_query"
 	SeriesOp            = "series"
 	LabelNamesOp        = "labels"
 	IndexStatsOp        = "index_stats"
@@ -387,6 +388,8 @@ func getOperation(path string) string {
 	switch {
 	case strings.HasSuffix(path, "/query_range") || strings.HasSuffix(path, "/prom/query"):
 		return QueryRangeOp
+	case strings.HasSuffix(path, "/probabilistic_query"):
+		return ProbabilisticOp
 	case strings.HasSuffix(path, "/series"):
 		return SeriesOp
 	case strings.HasSuffix(path, "/labels") || strings.HasSuffix(path, "/label") || strings.HasSuffix(path, "/values"):
