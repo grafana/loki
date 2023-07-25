@@ -435,7 +435,7 @@ func TestSerialization(t *testing.T) {
 						require.Equal(t, int64(i), e.Timestamp.UnixNano())
 						require.Equal(t, strconv.Itoa(i), e.Line)
 						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
-							require.Equal(t, push.LabelsAdapter{{"foo", strconv.Itoa(i)}}, e.NonIndexedLabels)
+							require.Equal(t, push.LabelsAdapter{{Name: "foo", Value: strconv.Itoa(i)}}, e.NonIndexedLabels)
 						} else {
 							require.Nil(t, e.NonIndexedLabels)
 						}
@@ -457,7 +457,7 @@ func TestSerialization(t *testing.T) {
 						s := sampleIt.Sample()
 						require.Equal(t, int64(i), s.Timestamp)
 						require.Equal(t, 1., s.Value)
-						if testData.chunkFormat >= chunkFormatV4 {
+						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
 							require.Equal(t, fmt.Sprintf(`{foo="%d"}`, i), sampleIt.Labels())
 						} else {
 							require.Equal(t, "{}", sampleIt.Labels())
