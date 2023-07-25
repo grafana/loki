@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/axiomhq/hyperloglog"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/axiomhq/hyperloglog"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -341,7 +342,7 @@ func TestInstanceDownstream(t *testing.T) {
 
 	queries := []logql.DownstreamQuery{
 		{
-			Expr: expr,
+			Expr:   expr,
 			Params: params,
 			Shards: logql.Shards{{Shard: 0, Of: 2}},
 		},
