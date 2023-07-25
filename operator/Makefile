@@ -21,7 +21,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= v0.3.0
+VERSION ?= v0.4.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
 SUPPORTED_OCP_VERSIONS="v4.10"
@@ -31,9 +31,6 @@ SUPPORTED_OCP_VERSIONS="v4.10"
 REGISTRY_BASE_COMMUNITY = docker.io/grafana
 REGISTRY_BASE_OPENSHIFT = quay.io/openshift-logging
 REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
-
-# TODO(@periklis): Replace this image tag with VERSION once we have GH tags
-MAIN_IMAGE_TAG = main-ac1c1fd
 
 # Customize for variants: community, community-openshift or openshift
 VARIANT ?= community
@@ -45,11 +42,10 @@ endif
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
-    MAIN_IMAGE_TAG = $(VERSION)
 endif
 
 # Image URL to use all building/pushing image targets
-IMG ?= $(REGISTRY_BASE)/loki-operator:$(MAIN_IMAGE_TAG)
+IMG ?= $(REGISTRY_BASE)/loki-operator:$(subst v,,$(VERSION))
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -72,7 +68,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 
 # BUNDLE_IMG defines the image:tag used for the bundle.
 # You can use it as an arg. (E.g make bundle-build BUNDLE_IMG=<some-registry>/<project-name-bundle>:<tag>)
-BUNDLE_IMG ?= $(REGISTRY_BASE)/loki-operator-bundle:$(VERSION)
+BUNDLE_IMG ?= $(REGISTRY_BASE)/loki-operator-bundle:$(subst v,,$(VERSION))
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
 BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)

@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-07-24T11:44:07Z"
+    containerImage: docker.io/grafana/loki-operator:0.4.0
+    createdAt: "2023-07-25T09:45:04Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -160,7 +160,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.3.0
+  name: loki-operator.v0.4.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -1603,11 +1603,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.3.0
+          app.kubernetes.io/instance: loki-operator-v0.4.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.3.0
+          app.kubernetes.io/version: 0.4.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1641,7 +1641,7 @@ spec:
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:main-ac1c1fd
+                image: docker.io/grafana/loki-operator:0.4.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1754,7 +1754,7 @@ spec:
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
   replaces: loki-operator.v0.2.0
-  version: 0.3.0
+  version: 0.4.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1
