@@ -1627,12 +1627,12 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 
 			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
 			// First we add the bytes read from the store (aka decompressed). That's
-			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. symbols * symbol <int>))
+			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. nonIndexedLabelsSymbols * symbol <int>))
 			// lineBytes = n. lines * (ts <int> + line length <int> + line)
 			expectedNonIndexedLabelsBytes := 2 * (binary.MaxVarintLen64 + (2 * 2 * binary.MaxVarintLen64))
 			lineBytes := 2 * (2*binary.MaxVarintLen64 + len("lineA"))
 			// Now we add the bytes read from the head chunk. That's
-			// nonIndexedLabelsBytes = n. lines * (2 * n. symbols * symbol <uint32>)
+			// nonIndexedLabelsBytes = n. lines * (2 * n. nonIndexedLabelsSymbols * symbol <uint32>)
 			// lineBytes = n. lines * (line)
 			expectedNonIndexedLabelsBytes += 2 * (2 * 2 * 4)
 			lineBytes += 2 * (len("lineC"))

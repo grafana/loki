@@ -29,7 +29,7 @@ type HeadBlock interface {
 	CheckpointSize() int
 	LoadBytes(b []byte) error
 	Serialise(pool WriterPool) ([]byte, error)
-	Reset(*symbolizer)
+	Reset()
 	Bounds() (mint, maxt int64)
 	Entries() int
 	UncompressedSize() int
@@ -90,14 +90,14 @@ func (hb *unorderedHeadBlock) UncompressedSize() int {
 	return hb.size
 }
 
-func (hb *unorderedHeadBlock) Reset(symbolizer *symbolizer) {
-	x := newUnorderedHeadBlock(hb.format, symbolizer)
+func (hb *unorderedHeadBlock) Reset() {
+	x := newUnorderedHeadBlock(hb.format, hb.symbolizer)
 	*hb = *x
 }
 
 type nsEntry struct {
-	line    string
-	symbols symbols
+	line                    string
+	nonIndexedLabelsSymbols symbols
 }
 
 // collection of entries belonging to the same nanosecond
@@ -153,7 +153,7 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, nonIndexedLabels lab
 	}
 
 	hb.size += len(line)
-	hb.size += len(nonIndexedLabels) * 2 * 4 // 4 bytes per label and value pair as symbols
+	hb.size += len(nonIndexedLabels) * 2 * 4 // 4 bytes per label and value pair as nonIndexedLabelsSymbols
 	hb.lines++
 
 	return nil
@@ -214,12 +214,12 @@ func (hb *unorderedHeadBlock) forEntries(
 
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i].line
-			symbols := es.entries[i].symbols
-			nonIndexedLabelsBytes := int64(2 * len(symbols) * 4) // 2 * num_symbols * 4 bytes(uint32)
+			nonIndexedLabelsSymbols := es.entries[i].nonIndexedLabelsSymbols
+			nonIndexedLabelsBytes := int64(2 * len(nonIndexedLabelsSymbols) * 4) // 2 * num_symbols * 4 bytes(uint32)
 			chunkStats.AddHeadChunkNonIndexedLabelsBytes(nonIndexedLabelsBytes)
 			chunkStats.AddHeadChunkBytes(int64(len(line)) + nonIndexedLabelsBytes)
 
-			err = entryFn(chunkStats, es.ts, line, symbols)
+			err = entryFn(chunkStats, es.ts, line, nonIndexedLabelsSymbols)
 
 		}
 	}
@@ -261,8 +261,8 @@ func (hb *unorderedHeadBlock) Iterator(
 		direction,
 		mint,
 		maxt,
-		func(statsCtx *stats.Context, ts int64, line string, symbols symbols) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(symbols)...)
+		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
 			if !matches {
 				return nil
 			}
@@ -281,7 +281,7 @@ func (hb *unorderedHeadBlock) Iterator(
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp:        time.Unix(0, ts),
 				Line:             newLine,
-				NonIndexedLabels: logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(symbols)),
+				NonIndexedLabels: logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols)),
 			})
 			return nil
 		},
@@ -311,8 +311,8 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		logproto.FORWARD,
 		mint,
 		maxt,
-		func(statsCtx *stats.Context, ts int64, line string, symbols symbols) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line, hb.symbolizer.Lookup(symbols)...)
+		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+			value, parsedLabels, ok := extractor.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
 			if !ok {
 				return nil
 			}
@@ -381,7 +381,7 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, symbols symbols) error {
+		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
 			n := binary.PutVarint(encBuf, ts)
 			inBuf.Write(encBuf[:n])
 
@@ -396,11 +396,11 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 				// writing symbols section to inbuf since we can't estimate its size beforehand due to variable length encoding.
 
 				// write the number of symbol pairs
-				n = binary.PutUvarint(encBuf, uint64(len(symbols)))
+				n = binary.PutUvarint(encBuf, uint64(len(nonIndexedLabelsSymbols)))
 				symbolsSectionBuf.Write(encBuf[:n])
 
 				// write the symbols
-				for _, l := range symbols {
+				for _, l := range nonIndexedLabelsSymbols {
 					n = binary.PutUvarint(encBuf, uint64(l.Name))
 					symbolsSectionBuf.Write(encBuf[:n])
 
@@ -440,8 +440,8 @@ func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symboliz
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, symbols symbols) error {
-			return out.Append(ts, line, hb.symbolizer.Lookup(symbols))
+		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+			return out.Append(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
 		},
 	)
 	return out, err
@@ -497,7 +497,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, symbols symbols) error {
+		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
 			eb.putVarint64(ts)
 			eb.putUvarint(len(line))
 			_, err = w.Write(eb.get())
@@ -513,18 +513,18 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 
 			if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
 				// non-indexed labels
-				eb.putUvarint(len(symbols))
+				eb.putUvarint(len(nonIndexedLabelsSymbols))
 				_, err = w.Write(eb.get())
 				if err != nil {
 					return errors.Wrap(err, "write headBlock entry meta labels length")
 				}
 				eb.reset()
-				for _, l := range symbols {
+				for _, l := range nonIndexedLabelsSymbols {
 					eb.putUvarint(int(l.Name))
 					eb.putUvarint(int(l.Value))
 					_, err = w.Write(eb.get())
 					if err != nil {
-						return errors.Wrap(err, "write headBlock entry symbols")
+						return errors.Wrap(err, "write headBlock entry nonIndexedLabelsSymbols")
 					}
 					eb.reset()
 				}
@@ -567,13 +567,13 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 		lineLn := db.uvarint()
 		line := string(db.bytes(lineLn))
 
-		var symbols symbols
+		var nonIndexedLabelsSymbols symbols
 		if version >= UnorderedWithNonIndexedLabelsHeadBlockFmt.Byte() {
 			metaLn := db.uvarint()
 			if metaLn > 0 {
-				symbols = make([]symbol, metaLn)
+				nonIndexedLabelsSymbols = make([]symbol, metaLn)
 				for j := 0; j < metaLn && db.err() == nil; j++ {
-					symbols[j] = symbol{
+					nonIndexedLabelsSymbols[j] = symbol{
 						Name:  uint32(db.uvarint()),
 						Value: uint32(db.uvarint()),
 					}
@@ -581,7 +581,7 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 			}
 		}
 
-		if err := hb.Append(ts, line, hb.symbolizer.Lookup(symbols)); err != nil {
+		if err := hb.Append(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)); err != nil {
 			return err
 		}
 	}

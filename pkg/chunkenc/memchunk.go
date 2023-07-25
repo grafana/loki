@@ -42,6 +42,9 @@ const (
 	// This could wary from configured block size using `ingester.chunks-block-size` flag or equivalent yaml config resulting in
 	// different block size in the new chunk which should be fine.
 	defaultBlockSize = 256 * 1024
+
+	chunkMetasSectionIdx            = 1
+	chunkNonIndexedLabelsSectionIdx = 2
 )
 
 var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithNonIndexedLabelsHeadBlockFmt}
@@ -157,7 +160,7 @@ func (hb *headBlock) Entries() int { return len(hb.entries) }
 
 func (hb *headBlock) UncompressedSize() int { return hb.size }
 
-func (hb *headBlock) Reset(*symbolizer) {
+func (hb *headBlock) Reset() {
 	if hb.entries != nil {
 		hb.entries = hb.entries[:0]
 	}
@@ -415,7 +418,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	metasLen := uint64(0)
 	if version >= chunkFormatV4 {
 		// version >= 4 starts writing length of sections after their offsets
-		metasLen, metasOffset = readSectionLenAndOffset(1)
+		metasLen, metasOffset = readSectionLenAndOffset(chunkMetasSectionIdx)
 	} else {
 		// version <= 3 does not store length of metas. metas are followed by metasOffset + hash and then the chunk ends
 		metasOffset = binary.BigEndian.Uint64(b[len(b)-8:])
@@ -468,7 +471,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	}
 
 	if version >= chunkFormatV4 {
-		nonIndexedLabelsLen, nonIndexedLabelsOffset := readSectionLenAndOffset(2)
+		nonIndexedLabelsLen, nonIndexedLabelsOffset := readSectionLenAndOffset(chunkNonIndexedLabelsSectionIdx)
 		lb := b[nonIndexedLabelsOffset : nonIndexedLabelsOffset+nonIndexedLabelsLen] // non-indexed labels Offset + checksum
 		db = decbuf{b: lb}
 
@@ -869,7 +872,7 @@ func (c *MemChunk) reorder() error {
 
 func (c *MemChunk) ConvertHead(desired HeadBlockFmt) error {
 	if c.head != nil && c.head.Format() != desired {
-		newH, err := c.head.Convert(desired, nil)
+		newH, err := c.head.Convert(desired, c.symbolizer)
 		if err != nil {
 			return err
 		}
@@ -902,7 +905,7 @@ func (c *MemChunk) cut() error {
 
 	c.cutBlockSize += len(b)
 
-	c.head.Reset(c.symbolizer)
+	c.head.Reset()
 	return nil
 }
 

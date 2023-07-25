@@ -37,6 +37,17 @@ func newSymbolizer() *symbolizer {
 	}
 }
 
+// Reset resets all the data and makes the symbolizer ready for reuse
+func (s *symbolizer) Reset() {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+
+	s.symbolsMap = map[string]uint32{}
+	s.labels = s.labels[:0]
+	s.size = 0
+	s.compressedSize = 0
+}
+
 // Add adds new labels pairs to the collection and returns back a symbol for each existing and new label pair
 func (s *symbolizer) Add(lbls labels.Labels) symbols {
 	if len(lbls) == 0 {
@@ -67,7 +78,7 @@ func (s *symbolizer) add(lbl string) uint32 {
 
 	idx, ok = s.symbolsMap[lbl]
 	if !ok {
-		idx = uint32(len(s.symbolsMap))
+		idx = uint32(len(s.labels))
 		s.symbolsMap[lbl] = idx
 		s.labels = append(s.labels, lbl)
 		s.size += len(lbl)
@@ -156,6 +167,7 @@ func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, err
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
+	// write the number of labels without compressing it to make it easier to read the number of labels
 	eb.putUvarint(len(s.labels))
 
 	_, err := crc32Hash.Write(eb.get())
@@ -176,15 +188,19 @@ func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, err
 	outBuf := &bytes.Buffer{}
 
 	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := pool.GetWriter(outBuf)
-	defer pool.PutWriter(compressedWriter)
-
+	// write the labels
 	for _, label := range s.labels {
+		// write the length of the label
 		n := binary.PutUvarint(encBuf, uint64(len(label)))
 		inBuf.Write(encBuf[:n])
 
+		// write the label
 		inBuf.WriteString(label)
 	}
+
+	// compress the labels block
+	compressedWriter := pool.GetWriter(outBuf)
+	defer pool.PutWriter(compressedWriter)
 
 	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
 		return 0, nil, errors.Wrap(err, "appending entry")
@@ -195,11 +211,13 @@ func (s *symbolizer) SerializeTo(w io.Writer, pool WriterPool) (int, []byte, err
 
 	b := outBuf.Bytes()
 
+	// hash the labels block
 	_, err = crc32Hash.Write(b)
 	if err != nil {
 		return writtenBytes, nil, errors.Wrap(err, "build non-indexed labels hash")
 	}
 
+	// write the labels block to writer
 	n, err = w.Write(b)
 	if err != nil {
 		return writtenBytes, nil, errors.Wrap(err, "write non-indexed labels block")
@@ -297,7 +315,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 // symbolizerFromEnc builds symbolizer from the bytes generated during serialization.
 func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 	db := decbuf{b: b}
-	db.uvarint()
+	numSymbols := db.uvarint()
 
 	b = db.b
 
@@ -316,7 +334,7 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 
 	s.compressedSize = len(b)
 
-	for {
+	for i := 0; i < numSymbols; i++ {
 		var lWidth, labelSize, lastAttempt int
 		for lWidth == 0 { // Read until both varints have enough bytes.
 			n, err := reader.Read(readBuf[readBufValid:])
@@ -326,7 +344,7 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 					return nil, err
 				}
 				if readBufValid == 0 { // Got EOF and no data in the buffer.
-					return &s, nil
+					return nil, fmt.Errorf("got unexpected EOF")
 				}
 				if readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
 					return nil, fmt.Errorf("invalid non-indexed labels block in chunk")
@@ -371,4 +389,6 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 		s.labels = append(s.labels, string(buf))
 		s.size += len(buf)
 	}
+
+	return &s, nil
 }
