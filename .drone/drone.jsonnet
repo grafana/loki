@@ -420,7 +420,7 @@ local manifest(apps) = pipeline('manifest') {
   ],
 };
 
-local manifest_operator(app) = pipeline('manifest') {
+local manifest_operator(app) = pipeline('manifest-operator') {
   steps: [{
     name: 'manifest-' + app,
     image: 'plugins/manifest:1.4.0',

@@ -1233,7 +1233,7 @@ depends_on:
 - lokioperator-arm64
 - lokioperator-arm
 kind: pipeline
-name: manifest
+name: manifest-operator
 steps:
 - depends_on:
   - clone
