@@ -436,7 +436,6 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 			params["interval"] = []string{fmt.Sprintf("%f", float64(request.Interval)/float64(1e3))}
 		}
 		u := &url.URL{
-			// the request could come /api/prom/query but we want to only use the new api.
 			Path:     "/loki/api/v1/probabilistic_query",
 			RawQuery: params.Encode(),
 		}

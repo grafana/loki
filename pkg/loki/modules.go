@@ -406,6 +406,11 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			querier.WrapQuerySpanAndTimeout("query.RangeQuery", t.querierAPI),
 		).Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
 
+		"/loki/api/v1/probabilistic_query": middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.ProbabilisticQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.ProbabilisticRangeQueryHandler)),
+
 		"/loki/api/v1/query": middleware.Merge(
 			httpMiddleware,
 			querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.querierAPI),
