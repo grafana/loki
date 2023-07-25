@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.4.0
-    createdAt: "2023-07-25T09:45:04Z"
+    createdAt: "2023-07-25T11:50:27Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -1753,7 +1753,7 @@ spec:
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.2.0
+  replaces: loki-operator.v0.3.0
   version: 0.4.0
   webhookdefinitions:
   - admissionReviewVersions:

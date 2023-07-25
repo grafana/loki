@@ -2198,5 +2198,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.2.0
+  replaces: loki-operator.v0.3.0
   version: 0.0.0
