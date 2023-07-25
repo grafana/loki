@@ -544,6 +544,10 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
 					key := stream.labelHash
+
+					// TODO(karsten): Due to key collision this check is not
+					// enough. Ideally there is a comparison between the
+					// potentail duplicated series.
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
@@ -623,7 +627,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
-func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
@@ -657,9 +661,11 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 			}
 
 			seriesLabels = seriesLabels[:0]
+			labelVolumes := make(map[string]uint64, len(s.labels))
 			for _, l := range s.labels {
 				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
 					seriesLabels = append(seriesLabels, l)
+					labelVolumes[l.Name] += size
 				}
 			}
 
@@ -670,7 +676,13 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 				seriesNames[hash] = seriesLabels.String()
 			}
 
-			volumes[seriesNames[hash]] += size
+			if seriesvolume.AggregateBySeries(req.AggregateBy) || req.AggregateBy == "" {
+				volumes[seriesNames[hash]] += size
+			} else {
+				for k, v := range labelVolumes {
+					volumes[k] += v
+				}
+			}
 			s.chunkMtx.RUnlock()
 		}
 		return nil
@@ -678,7 +690,7 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
+	res := seriesvolume.MapToVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 
@@ -872,10 +884,6 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			limit -= int32(batchSize)
 		}
 
-		if len(batch.Streams) == 0 {
-			return nil
-		}
-
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
@@ -885,6 +893,12 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Streams) == 0 {
+			return nil
+		}
+
 		stats.Reset()
 	}
 	return nil
@@ -897,9 +911,6 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		if err != nil {
 			return err
 		}
-		if len(batch.Series) == 0 {
-			return nil
-		}
 
 		stats.AddIngesterBatch(int64(size))
 		batch.Stats = stats.Ingester()
@@ -908,6 +919,11 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
+		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Series) == 0 {
+			return nil
 		}
 
 		stats.Reset()

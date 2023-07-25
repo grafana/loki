@@ -7603,7 +7603,7 @@ func (c *Lightsail) GetCertificatesRequest(input *GetCertificatesInput) (req *re
 //
 // Returns information about one or more Amazon Lightsail SSL/TLS certificates.
 //
-// To get a summary of a certificate, ommit includeCertificateDetails from your
+// To get a summary of a certificate, omit includeCertificateDetails from your
 // request. The response will include only the certificate Amazon Resource Name
 // (ARN), certificate name, domain name, and tags.
 //
@@ -19655,7 +19655,7 @@ func (s *CacheSettings) SetMinimumTTL(v int64) *CacheSettings {
 
 // Describes the full details of an Amazon Lightsail SSL/TLS certificate.
 //
-// To get a summary of a certificate, use the GetCertificates action and ommit
+// To get a summary of a certificate, use the GetCertificates action and omit
 // includeCertificateDetails from your request. The response will include only
 // the certificate Amazon Resource Name (ARN), certificate name, domain name,
 // and tags.
@@ -30007,6 +30007,13 @@ type GetCertificatesInput struct {
 	// When omitted, the response includes only the certificate names, Amazon Resource
 	// Names (ARNs), domain names, and tags.
 	IncludeCertificateDetails *bool `locationName:"includeCertificateDetails" type:"boolean"`
+
+	// The token to advance to the next page of results from your request.
+	//
+	// To get a page token, perform an initial GetCertificates request. If your
+	// results are paginated, the response will return a next page token that you
+	// can specify as the page token in a subsequent request.
+	PageToken *string `locationName:"pageToken" type:"string"`
 }
 
 // String returns the string representation.
@@ -30045,11 +30052,23 @@ func (s *GetCertificatesInput) SetIncludeCertificateDetails(v bool) *GetCertific
 	return s
 }
 
+// SetPageToken sets the PageToken field's value.
+func (s *GetCertificatesInput) SetPageToken(v string) *GetCertificatesInput {
+	s.PageToken = &v
+	return s
+}
+
 type GetCertificatesOutput struct {
 	_ struct{} `type:"structure"`
 
 	// An object that describes certificates.
 	Certificates []*CertificateSummary `locationName:"certificates" type:"list"`
+
+	// If NextPageToken is returned there are more results available. The value
+	// of NextPageToken is a unique pagination token for each page. Make the call
+	// again using the returned token to retrieve the next page. Keep all other
+	// arguments unchanged.
+	NextPageToken *string `locationName:"nextPageToken" type:"string"`
 }
 
 // String returns the string representation.
@@ -30073,6 +30092,12 @@ func (s GetCertificatesOutput) GoString() string {
 // SetCertificates sets the Certificates field's value.
 func (s *GetCertificatesOutput) SetCertificates(v []*CertificateSummary) *GetCertificatesOutput {
 	s.Certificates = v
+	return s
+}
+
+// SetNextPageToken sets the NextPageToken field's value.
+func (s *GetCertificatesOutput) SetNextPageToken(v string) *GetCertificatesOutput {
+	s.NextPageToken = &v
 	return s
 }
 
@@ -30965,7 +30990,7 @@ type GetCostEstimateInput struct {
 	//
 	//    * Specified in Coordinated Universal Time (UTC).
 	//
-	//    * Specified in the Unix time format. For example, if you wish to use an
+	//    * Specified in the Unix time format. For example, if you want to use an
 	//    end time of October 1, 2018, at 9 PM UTC, specify 1538427600 as the end
 	//    time.
 	//
@@ -30986,7 +31011,7 @@ type GetCostEstimateInput struct {
 	//
 	//    * Specified in Coordinated Universal Time (UTC).
 	//
-	//    * Specified in the Unix time format. For example, if you wish to use a
+	//    * Specified in the Unix time format. For example, if you want to use a
 	//    start time of October 1, 2018, at 8 PM UTC, specify 1538424000 as the
 	//    start time.
 	//

@@ -53,7 +53,7 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 ### Single-Store
 
-Single-Store refers to the using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
+Single-Store refers to using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
 
 #### tsdb (recommended)
 
