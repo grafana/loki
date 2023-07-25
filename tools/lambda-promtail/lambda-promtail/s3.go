@@ -210,6 +210,9 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 			}
 		}
 	}
+	if labels["type"] == "" {
+		return labels, fmt.Errorf("type of S3 event could not be determined for object %q", record.S3.Object.Key)
+	}
 	return labels, nil
 }
 

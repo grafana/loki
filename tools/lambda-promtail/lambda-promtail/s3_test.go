@@ -188,13 +188,13 @@ func Test_getLabels(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "missing_parser",
+			name: "missing_type",
 			args: args{
 				record: events.S3EventRecord{
 					AWSRegion: "us-east-1",
 					S3: events.S3Entity{
 						Bucket: events.S3Bucket{
-							Name: "missing_parser",
+							Name: "missing_type",
 							OwnerIdentity: events.S3UserIdentity{
 								PrincipalID: "test",
 							},
@@ -206,12 +206,12 @@ func Test_getLabels(t *testing.T) {
 				},
 			},
 			want: map[string]string{
-				"bucket":        "missing_parser",
+				"bucket":        "missing_type",
 				"bucket_owner":  "test",
 				"bucket_region": "us-east-1",
 				"key":           "some-object.json",
 			},
-			wantErr: false,
+			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
