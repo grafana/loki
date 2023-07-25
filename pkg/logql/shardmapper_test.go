@@ -1272,6 +1272,58 @@ func TestMapperProbabilistic(t *testing.T) {
 								},
 							},
 						},
+					},
+				},
+			},
+		}, {
+			in: `topk(1, count_over_time({foo="bar"}[5m]))`,
+			expr: &syntax.VectorAggregationExpr{
+				//Grouping:  nil,
+				Params:    0,
+				Operation: syntax.OpTypeTopKMerge,
+				Left: &TopkMergeSampleExpr{
+					DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
+						shard: &astmapper.ShardAnnotation{
+							Shard: 0,
+							Of:    2,
+						},
+						TopkSampleExpr: &syntax.VectorAggregationExpr{
+							Operation: syntax.OpTypeTopK,
+							Params:    1,
+							Left: &syntax.RangeAggregationExpr{
+								Operation: syntax.OpRangeTypeCount,
+								Left: &syntax.LogRange{
+									Left: &syntax.MatchersExpr{
+										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+									},
+									Interval: 5 * time.Minute,
+								},
+								//Grouping: nil,
+							},
+							//Grouping: nil,
+						},
+					},
+					next: &TopkMergeSampleExpr{
+						DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 1,
+								Of:    2,
+							},
+							TopkSampleExpr: &syntax.VectorAggregationExpr{
+								Operation: syntax.OpTypeTopK,
+								Params:    1,
+								Left: &syntax.RangeAggregationExpr{
+									Operation: syntax.OpRangeTypeCount,
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										},
+										Interval: 5 * time.Minute,
+									},
+									//Grouping: nil,
+								},
+							},
+						},
 						next: nil,
 					},
 				},

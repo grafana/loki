@@ -112,6 +112,7 @@ schema_config:
         object_store: s3
         schema: v11
         store: boltdb-shipper
+        row_shards: 4
 server:
     graceful_shutdown_timeout: 5s
     grpc_server_max_concurrent_streams: 1000
