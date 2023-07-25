@@ -21,7 +21,6 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Loki to 2.8.3
 
-
 ## 5.8.11
 
 - [BUGFIX] Fix gateway: Add `/config` proxy_pass to nginx configuration
@@ -29,9 +28,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.8.10
 
 - [ENHANCEMENT] Canary labelname can now be configured via monitoring.lokiCanary.labelname
-## 5.8.10
-
-- [BUGFIX] Fix loki helm chart helper function for loki.host to explicitly include gateway port
 
 ## 5.8.9
 
