@@ -215,7 +215,11 @@ func toPrometheusData(series map[string][]logproto.LegacySample, aggregateBySeri
 	}
 
 	sort.Slice(sortableResult, func(i, j int) bool {
-		return sortableResult[i].name < sortableResult[j].name
+		// Sorting by value only helps instant queries so just grab the first value
+		if sortableResult[i].samples[0].Value == sortableResult[j].samples[0].Value {
+			return sortableResult[i].name < sortableResult[j].name
+		}
+		return sortableResult[i].samples[0].Value > sortableResult[j].samples[0].Value
 	})
 
 	result := make([]queryrangebase.SampleStream, 0, len(sortableResult))

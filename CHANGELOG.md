@@ -284,6 +284,16 @@
 
 ### Dependencies
 
+## 2.7.6 (2023-07-24)
+
+#### Loki
+
+##### Fixes
+
+* [10028](https://github.com/grafana/loki/pull/10028) **MichelHollands**: Use go 1.20.6
+* [9185](https://github.com/grafana/loki/pull/9185) **dannykopping**: Prevent redis client from incorrectly choosing cluster mode with local address.
+* [8824](https://github.com/grafana/loki/pull/8824) **periklis**: Expose optional label matcher for label values handler
+
 ## 2.7.5 (2023-03-28)
 
 #### Loki
