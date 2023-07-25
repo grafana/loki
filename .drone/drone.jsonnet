@@ -330,7 +330,9 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
-      when: onTagOrMain,
+      when: onTagOrMain {
+        ref: ['refs/heads/main', 'refs/tags/operator/v*'],
+      },
       settings+: {},
     },
   ],
@@ -417,6 +419,28 @@ local manifest(apps) = pipeline('manifest') {
     for arch in archs
   ],
 };
+
+local manifest_operator(app) = pipeline('manifest') {
+  steps: [{
+    name: 'manifest-' + app,
+    image: 'plugins/manifest:1.4.0',
+    settings: {
+      // the target parameter is abused for the app's name,
+      // as it is unused in spec mode. See docker-manifest-operator.tmpl
+      target: app,
+      spec: '.drone/docker-manifest-operator.tmpl',
+      ignore_missing: false,
+      username: { from_secret: docker_username_secret.name },
+      password: { from_secret: docker_password_secret.name },
+    },
+    depends_on: ['clone']
+  }],
+  depends_on: [
+    'lokioperator-%s' % arch
+    for arch in archs
+  ],
+};
+
 
 local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
@@ -658,8 +682,16 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
+  manifest(['promtail', 'loki', 'loki-canary']) {
     trigger+: onTagOrMain,
+  },
+  manifest_operator('loki-operator') {
+    trigger+: onTagOrMain {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*'
+      ],
+    },
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
