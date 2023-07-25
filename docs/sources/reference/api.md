@@ -887,7 +887,7 @@ URL query parameters:
 - `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
 - `limit`: How many metric series to return. The parameter is optional, the default is 100.
 - `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies when when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response. This parameter is optional, and only applicable for `query_range`. The default step configured for range queries will be used when not provided.
-- `targetLabels`: A comma seperated list of labels to aggregate into. This parameter is optional. When not provided, volumes will be aggregated into the matching labels or label-value pairs.
+- `targetLabels`: A comma separated list of labels to aggregate into. This parameter is optional. When not provided, volumes will be aggregated into the matching labels or label-value pairs.
 - `aggregateBy`: Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is label-value pairs.
 
 You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
