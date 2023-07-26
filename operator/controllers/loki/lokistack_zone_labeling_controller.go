@@ -29,9 +29,6 @@ var (
 		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
 		GenericFunc: func(e event.GenericEvent) bool { return false },
 	})
-	/* UpdatePodWithLabelPred = builder.WithPredicates(predicate.Funcs{
-		UpdateFunc: func(ue event.UpdateEvent) bool { return hasLabelChanged(e.ObjectNew) },
-	}) */
 )
 
 // LokiStackZoneAwarePodReconciler watches all the loki component pods and updates the pod annotations with the topology node labels.
