@@ -58,6 +58,10 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIngesterComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		statefulSet,
 		NewIngesterGRPCService(opts),
@@ -145,10 +149,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ingester.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

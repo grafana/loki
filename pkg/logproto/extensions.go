@@ -1,24 +1,53 @@
 package logproto
 
 import (
+	"sort"
 	"strings"
 	"sync/atomic" //lint:ignore faillint we can't use go.uber.org/atomic with a protobuf struct without wrapping it.
 
+	"github.com/cespare/xxhash/v2"
 	"github.com/dustin/go-humanize"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
-// Note, this is not very efficient and use should be minimized as it requires label construction on each comparison
-type SeriesIdentifiers []SeriesIdentifier
+var seps = []byte{'\xff'}
 
-func (ids SeriesIdentifiers) Len() int      { return len(ids) }
-func (ids SeriesIdentifiers) Swap(i, j int) { ids[i], ids[j] = ids[j], ids[i] }
-func (ids SeriesIdentifiers) Less(i, j int) bool {
-	a, b := labels.FromMap(ids[i].Labels), labels.FromMap(ids[j].Labels)
-	return labels.Compare(a, b) <= 0
+// Hash returns hash of the labels according to Prometheus' Labels.Hash function.
+// `b` and `keysForLabels` are buffers that should be reused to avoid
+// allocations.
+func (id SeriesIdentifier) Hash(b []byte, keysForLabels []string) (uint64, []string) {
+	keysForLabels = keysForLabels[:0]
+	for k := range id.Labels {
+		keysForLabels = append(keysForLabels, k)
+	}
+	sort.Strings(keysForLabels)
+
+	// Use xxhash.Sum64(b) for fast path as it's faster.
+	b = b[:0]
+	for i, name := range keysForLabels {
+		value := id.Labels[name]
+		if len(b)+len(name)+len(value)+2 >= cap(b) {
+			// If labels entry is 1KB+ do not allocate whole entry.
+			h := xxhash.New()
+			_, _ = h.Write(b)
+			for _, name := range keysForLabels[i:] {
+				value := id.Labels[name]
+				_, _ = h.WriteString(name)
+				_, _ = h.Write(seps)
+				_, _ = h.WriteString(value)
+				_, _ = h.Write(seps)
+			}
+			return h.Sum64(), keysForLabels
+		}
+
+		b = append(b, name...)
+		b = append(b, seps[0])
+		b = append(b, value...)
+		b = append(b, seps[0])
+	}
+	return xxhash.Sum64(b), keysForLabels
 }
 
 type Streams []Stream

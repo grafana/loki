@@ -22,8 +22,9 @@ import (
 
 // implements stores.Index
 type IndexClient struct {
-	idx  Index
-	opts IndexClientOptions
+	idx    Index
+	opts   IndexClientOptions
+	limits Limits
 }
 
 type IndexClientOptions struct {
@@ -47,15 +48,20 @@ type IndexStatsAccumulator interface {
 	Stats() stats.Stats
 }
 
-type SeriesVolumeAccumulator interface {
-	AddVolumes(map[string]uint64)
+type VolumeAccumulator interface {
+	AddVolume(string, uint64) error
 	Volumes() *logproto.VolumeResponse
 }
 
-func NewIndexClient(idx Index, opts IndexClientOptions) *IndexClient {
+type Limits interface {
+	VolumeMaxSeries(string) int
+}
+
+func NewIndexClient(idx Index, opts IndexClientOptions, l Limits) *IndexClient {
 	return &IndexClient{
-		idx:  idx,
-		opts: opts,
+		idx:    idx,
+		opts:   opts,
+		limits: l,
 	}
 }
 
@@ -240,8 +246,8 @@ func (c *IndexClient) Stats(ctx context.Context, userID string, from, through mo
 	return &res, nil
 }
 
-func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.SeriesVolume")
+func (c *IndexClient) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "IndexClient.Volume")
 	defer sp.Finish()
 
 	matchers, shard, err := cleanMatchers(matchers...)
@@ -258,9 +264,9 @@ func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, thr
 		})
 	})
 
-	acc := seriesvolume.NewAccumulator(limit)
+	acc := seriesvolume.NewAccumulator(limit, c.limits.VolumeMaxSeries(userID))
 	for _, interval := range intervals {
-		if err := c.idx.SeriesVolume(ctx, userID, interval.Start, interval.End, acc, shard, nil, matchers...); err != nil {
+		if err := c.idx.Volume(ctx, userID, interval.Start, interval.End, acc, shard, nil, targetLabels, aggregateBy, matchers...); err != nil {
 			return nil, err
 		}
 	}
@@ -272,6 +278,7 @@ func (c *IndexClient) SeriesVolume(ctx context.Context, userID string, from, thr
 		"shard", shard,
 		"intervals", len(intervals),
 		"limit", limit,
+		"aggregateBy", aggregateBy,
 	)
 
 	if err != nil {

@@ -358,6 +358,34 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
+		"incrementing enabled, no dupes, out of order": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {

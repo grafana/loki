@@ -182,6 +182,21 @@ func (f *FileClient) GetOrgID() string {
 	return f.orgID
 }
 
+func (f *FileClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) GetVolume(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) GetVolumeRange(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
 type limiter struct {
 	n int
 }

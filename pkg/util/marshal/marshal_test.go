@@ -34,6 +34,14 @@ var queryTests = []struct {
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
 					},
+					{
+						Timestamp: time.Unix(0, 123456789012346),
+						Line:      "super line with labels",
+						NonIndexedLabels: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+					},
 				},
 				Labels: `{test="test"}`,
 			},
@@ -48,7 +56,8 @@ var queryTests = []struct {
 							"test": "test"
 						},
 						"values":[
-							[ "123456789012345", "super line" ]
+							[ "123456789012345", "super line"],
+							[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 						]
 					}
 				],
@@ -62,8 +71,11 @@ var queryTests = []struct {
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
+								"decompressedNonIndexedLabelsBytes": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+								"headChunkNonIndexedLabelsBytes": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						},
@@ -81,8 +93,11 @@ var queryTests = []struct {
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
+								"decompressedNonIndexedLabelsBytes": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+								"headChunkNonIndexedLabelsBytes": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						}
@@ -133,9 +148,11 @@ var queryTests = []struct {
                         "shards": 0,
                         "splits": 0,
 						"subqueries": 0,
-						"totalBytesProcessed":0,
-                                                "totalEntriesReturned":0,
-						"totalLinesProcessed":0
+						"totalBytesProcessed": 0,
+                        "totalEntriesReturned": 0,
+						"totalLinesProcessed": 0,
+						"totalNonIndexedLabelsBytesProcessed": 0,
+                        "totalPostFilterLines": 0
 					}
 				}
 			}
@@ -208,8 +225,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -227,8 +247,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -279,9 +302,11 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -375,8 +400,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -394,8 +422,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -446,9 +477,11 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -488,6 +521,14 @@ var tailTests = []struct {
 							Timestamp: time.Unix(0, 123456789012345),
 							Line:      "super line",
 						},
+						{
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							NonIndexedLabels: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
 					},
 					Labels: "{test=\"test\"}",
 				},
@@ -506,7 +547,8 @@ var tailTests = []struct {
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line" ]
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 					]
 				}
 			],
@@ -675,7 +717,7 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			err := WriteSeriesResponseJSON(tc.input, &b)
 			require.NoError(t, err)
 
-			require.JSONEqf(t, tc.expected, b.String(), "Label Test %d failed", i)
+			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
 		})
 	}
 }

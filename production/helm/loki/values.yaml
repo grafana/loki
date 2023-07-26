@@ -283,6 +283,7 @@ loki:
       useFederatedToken: false
       userAssignedId: null
       requestTimeout: null
+      endpointSuffix: null
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
@@ -636,6 +637,8 @@ monitoring:
   # that it's working correctly
   lokiCanary:
     enabled: true
+    # -- The name of the label to look for at loki when doing the checks.
+    labelname: pod
     # -- Additional annotations for the `loki-canary` Daemonset
     annotations: {}
     # -- Additional labels for each `loki-canary` pod
@@ -1127,6 +1130,8 @@ ingress:
   #    nginx.ingress.kubernetes.io/auth-secret-type: auth-map
   #    nginx.ingress.kubernetes.io/configuration-snippet: |
   #      proxy_set_header X-Scope-OrgID $remote_user;
+  labels: {}
+  #    blackbox.monitoring.exclude: "true"
   paths:
     write:
       - /api/prom/push

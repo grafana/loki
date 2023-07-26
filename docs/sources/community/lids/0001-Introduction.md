@@ -2,8 +2,7 @@
 title: "0001: Introducing LIDs"
 description: "0001: Introducing LIDs"
 aliases: 
-- /docs/loki/latest/lids
-- /docs/loki/latest/community/lids
+- ../../lids/0001-introduction/
 ---
 
 # 0001: Introducing LIDs

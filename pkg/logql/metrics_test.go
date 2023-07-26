@@ -160,12 +160,14 @@ func Test_testToKeyValues(t *testing.T) {
 		},
 		{
 			name: "canonical-form-multiple-values",
-			in:   "Source=logvolhist,Feature=beta",
+			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
 			exp: []interface{}{
 				"source",
 				"logvolhist",
 				"feature",
 				"beta",
+				"user",
+				"Jinx@grafana.com",
 			},
 		},
 		{

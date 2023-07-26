@@ -5,6 +5,7 @@ package queryrange;
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "pkg/logproto/logproto.proto";
+import "pkg/logproto/sketch.proto";
 import "pkg/logqlmodel/stats/stats.proto";
 import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
@@ -146,15 +147,18 @@ message IndexStatsResponse {
 }
 
 message VolumeRequest {
-  repeated string match = 1;
-  google.protobuf.Timestamp startTs = 2 [
-    (gogoproto.stdtime) = true,
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
-  google.protobuf.Timestamp endTs = 3 [
-    (gogoproto.stdtime) = true,
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
     (gogoproto.nullable) = false
   ];
+  string matchers = 3;
+  int32 limit = 4;
+  int64 step = 5;
+  repeated string targetLabels = 6;
 }
 
 message VolumeResponse {
@@ -163,4 +167,24 @@ message VolumeResponse {
     (gogoproto.jsontag) = "-",
     (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
   ];
+}
+
+message TopKSketchesResponse {
+  logproto.TopKMatrix response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.TopKMatrix"];
+  repeated definitions.PrometheusResponseHeader Headers = 2 [
+    (gogoproto.jsontag) = "-",
+    (gogoproto.customtype) = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions.PrometheusResponseHeader"
+  ];
+}
+
+message QueryResponse {
+  oneof response {
+    LokiSeriesResponse series = 1;
+    LokiLabelNamesResponse labels = 2;
+    IndexStatsResponse stats = 3;
+    LokiPromResponse prom = 4;
+    LokiResponse streams = 5;
+    VolumeResponse volume = 6;
+    TopKSketchesResponse topkSketches = 7;
+  }
 }

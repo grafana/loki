@@ -15,6 +15,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
+	"github.com/grafana/loki/pkg/logcli/util"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/util/unmarshal"
 )
@@ -126,4 +127,8 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 			}
 		}
 	}
+}
+
+func matchLabels(on bool, l loghttp.LabelSet, names []string) loghttp.LabelSet {
+	return util.MatchLabels(on, l, names)
 }

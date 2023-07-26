@@ -93,6 +93,11 @@ type Version struct {
 	// Only returned by MinIO servers.
 	UserTags URLMap `json:"userTags,omitempty" xml:"UserTags"`
 
+	Internal *struct {
+		K int // Data blocks
+		M int // Parity blocks
+	} `xml:"Internal"`
+
 	isDeleteMarker bool
 }
 
