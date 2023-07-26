@@ -90,7 +90,7 @@ type Querier interface {
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
-	SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
+	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
 }
 
 type Limits interface {
@@ -769,8 +769,8 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	)
 }
 
-func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.SeriesVolume")
+func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.Volume")
 	defer sp.Finish()
 
 	userID, err := tenant.TenantID(ctx)
@@ -800,14 +800,62 @@ func (q *SingleTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vo
 		"through", req.Through.Time(),
 		"matchers", syntax.MatchersString(matchers),
 		"limit", req.Limit,
+		"targetLabels", req.TargetLabels,
+		"aggregateBy", req.AggregateBy,
 	)
 
-	return q.store.SeriesVolume(
-		ctx,
-		userID,
-		req.From,
-		req.Through,
-		req.Limit,
-		matchers...,
-	)
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
+
+	queryIngesters := !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil
+	queryStore := !q.cfg.QueryIngesterOnly && storeQueryInterval != nil
+
+	numResponses := 0
+	if queryIngesters {
+		numResponses++
+	}
+	if queryStore {
+		numResponses++
+	}
+	responses := make([]*logproto.VolumeResponse, 0, numResponses)
+
+	if queryIngesters {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+
+		resp, err := q.ingesterQuerier.Volume(
+			ctx,
+			userID,
+			model.TimeFromUnix(ingesterQueryInterval.start.Unix()),
+			model.TimeFromUnix(ingesterQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			req.AggregateBy,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	if queryStore {
+		resp, err := q.store.Volume(
+			ctx,
+			userID,
+			model.TimeFromUnix(storeQueryInterval.start.Unix()),
+			model.TimeFromUnix(storeQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			req.AggregateBy,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	return seriesvolume.Merge(responses, req.Limit), nil
 }

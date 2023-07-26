@@ -106,14 +106,14 @@ func (fw *PollingFileWatcher) ChangeEvents(t *tomb.Tomb, pos int64) (*FileChange
 
 			time.Sleep(bo.WaitTime())
 			deletePending, err := IsDeletePending(fw.File)
-			if err != nil {
-				util.Fatal("Failed to get file info %v: %v", fw.Filename, err)
-			}
 
 			// DeletePending is a windows state where the file has been queued
 			// for delete but won't actually get deleted until all handles are
-			// closed. It's a variation on line 87 below
-			if deletePending {
+			// closed. It's a variation on the NotifyDeleted call below.
+			//
+			// IsDeletePending may fail in cases where the file handle becomes
+			// invalid, so we treat a failed call the same as a pending delete.
+			if err != nil || deletePending {
 				fw.closeFile()
 				changes.NotifyDeleted()
 				return

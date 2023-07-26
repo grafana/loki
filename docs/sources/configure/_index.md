@@ -1442,7 +1442,9 @@ lifecycler:
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 32]
 
-# How often should the ingester see if there are any blocks to flush.
+# How often should the ingester see if there are any blocks to flush. The first
+# flush check is delayed by a random time up to 0.8x the flush check period.
+# Additionally, there is +/- 1% jitter added to the interval.
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 

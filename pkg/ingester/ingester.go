@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -121,7 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush.")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
@@ -173,7 +174,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	SeriesVolume(ctx context.Context, userID string, from, through model.Time, limit int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -273,7 +274,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
-		writeLogManager:       writefailures.NewManager(util_log.Logger, writeFailuresCfg, configs),
+		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -577,7 +578,28 @@ func (i *Ingester) removeShutdownMarkerFile() {
 func (i *Ingester) loop() {
 	defer i.loopDone.Done()
 
-	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
+	// Delay the first flush operation by up to 0.8x the flush time period.
+	// This will ensure that multiple ingesters started at the same time do not
+	// flush at the same time. Flushing at the same time can cause concurrently
+	// writing the same chunk to object storage, which in AWS S3 leads to being
+	// rate limited.
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	initialDelay := time.NewTimer(jitter)
+	defer initialDelay.Stop()
+
+	level.Debug(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+
+	select {
+	case <-initialDelay.C:
+		// do nothing and continue with flush loop
+	case <-i.loopQuit:
+		// ingester stopped while waiting for initial delay
+		return
+	}
+
+	// Add +/- 1% of flush interval as jitter
+	j := i.cfg.FlushCheckPeriod / 100
+	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
 	for {
@@ -898,6 +920,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	sp := opentracing.SpanFromContext(ctx)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -908,9 +931,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	if err != nil {
 		return err
 	}
+
 	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
+	}
+	if sp != nil {
+		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
 	}
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
@@ -1085,8 +1112,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.GetStats")
-	defer sp.Finish()
+	sp := opentracing.SpanFromContext(ctx)
 
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -1128,21 +1154,23 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	merged := index_stats.MergeStats(resps...)
-	sp.LogKV(
-		"user", user,
-		"from", req.From.Time(),
-		"through", req.Through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"streams", merged.Streams,
-		"chunks", merged.Chunks,
-		"bytes", merged.Bytes,
-		"entries", merged.Entries,
-	)
+	if sp != nil {
+		sp.LogKV(
+			"user", user,
+			"from", req.From.Time(),
+			"through", req.Through.Time(),
+			"matchers", syntax.MatchersString(matchers),
+			"streams", merged.Streams,
+			"chunks", merged.Chunks,
+			"bytes", merged.Bytes,
+			"entries", merged.Entries,
+		)
+	}
 
 	return &merged, nil
 }
 
-func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1161,10 +1189,10 @@ func (i *Ingester) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 	type f func() (*logproto.VolumeResponse, error)
 	jobs := []f{
 		f(func() (*logproto.VolumeResponse, error) {
-			return instance.GetSeriesVolume(ctx, req)
+			return instance.GetVolume(ctx, req)
 		}),
 		f(func() (*logproto.VolumeResponse, error) {
-			return i.store.SeriesVolume(ctx, user, req.From, req.Through, req.Limit, matchers...)
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
 		}),
 	}
 	resps := make([]*logproto.VolumeResponse, len(jobs))
@@ -1266,9 +1294,9 @@ func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountReq
 	return &resp, nil
 }
 
-// buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
+// buildStoreRequest returns a store request from an ingester request, returns nil if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
-// we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
+// we only query enough to not miss any data and not add too many duplicates by covering the whole time range in query.
 func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false

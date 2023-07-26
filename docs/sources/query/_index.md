@@ -4,7 +4,6 @@ menuTItle: Query
 description: LogQL, Loki's query language for logs.
 aliases: 
 - ./logql
-- ./query
 weight: 700 
 ---
 

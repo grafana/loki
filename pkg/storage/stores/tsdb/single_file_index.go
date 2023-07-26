@@ -17,8 +17,10 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -340,37 +342,41 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	})
 }
 
-// SeriesVolume returns the volumes of the series described by the passed
+// Volume returns the volumes of the series described by the passed
 // matchers by the names of the passed matchers. All non-requested labels are
 // aggregated into the requested series.
 //
 // ex: Imagine we have two labels: 'foo' and 'fizz' each with two values 'a'
-// and 'b'. Called with the matcher `{foo="a"}`, SeriesVolume returns the
-// aggregated size of the series `{foo="a"}`. If SeriesVolume with
-// `{foo=~".+", fizz=~".+"}, it returns the series volumes aggregated as follows:
+// and 'b'. Called with the matcher `{foo="a"}`, Volume returns the
+// aggregated size of the series `{foo="a"}`. If Volume with
+// `{foo=~".+", fizz=~".+"}, it returns the volumes aggregated as follows:
 //
 // {foo="a", fizz="a"}
 // {foo="a", fizz="b"}
 // {foo="b", fizz="a"}
 // {foo="b", fizz="b"}
-func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through model.Time, acc SeriesVolumeAccumulator, shard *index.ShardAnnotation, _ shouldIncludeChunk, matchers ...*labels.Matcher) error {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.SeriesVolume")
+//
+// Volume optionally accepts a slice of target labels. If provided, volumes are aggregated
+// into those labels only. For example, given the matcher {fizz=~".+"} and target labels of []string{"foo"},
+// volumes would be aggregated as follows:
+//
+// {foo="a"} which would be the sum of {foo="a", fizz="a"} and {foo="a", fizz="b"}
+// {foo="b"} which would be the sum of {foo="b", fizz="a"} and {foo="b", fizz="b"}
+func (i *TSDBIndex) Volume(
+	ctx context.Context,
+	_ string,
+	from, through model.Time,
+	acc VolumeAccumulator,
+	shard *index.ShardAnnotation,
+	_ shouldIncludeChunk,
+	targetLabels []string,
+	aggregateBy string,
+	matchers ...*labels.Matcher,
+) error {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Index.Volume")
 	defer sp.Finish()
 
-	var matchAll bool
-	labelsToMatch := make(map[string]struct{})
-	for _, m := range matchers {
-		if m.Name == "" {
-			matchAll = true
-			continue
-		}
-
-		if m.Name == TenantLabel {
-			continue
-		}
-
-		labelsToMatch[m.Name] = struct{}{}
-	}
+	labelsToMatch, matchers, includeAll := util.PrepareLabelsAndMatchers(targetLabels, matchers, TenantLabel)
 
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
@@ -399,9 +405,12 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 
 			if stats.Entries > 0 {
 				seriesLabels = seriesLabels[:0]
+				labelVolumes := make(map[string]uint64, len(ls))
+
 				for _, l := range ls {
-					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && matchAll || ok {
+					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
 						seriesLabels = append(seriesLabels, l)
+						labelVolumes[l.Name] += stats.KB << 10
 					}
 				}
 
@@ -412,8 +421,16 @@ func (i *TSDBIndex) SeriesVolume(ctx context.Context, _ string, from, through mo
 					seriesNames[hash] = seriesLabels.String()
 				}
 
-				if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
-					return err
+				if seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == "" {
+					if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
+						return err
+					}
+				} else {
+					for label, volume := range labelVolumes {
+						if err = acc.AddVolume(label, volume); err != nil {
+							return err
+						}
+					}
 				}
 			}
 		}
