@@ -282,7 +282,7 @@ func CreateOrUpdateLokiStack(
 
 	if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
 		podList := &corev1.PodList{}
-		if err := k.List(ctx, podList, &client.ListOptions{
+		if err = k.List(ctx, podList, &client.ListOptions{
 			Namespace: stack.Namespace,
 			LabelSelector: labels.SelectorFromSet(labels.Set{
 				"app.kubernetes.io/instance": stack.Name,
@@ -295,14 +295,14 @@ func CreateOrUpdateLokiStack(
 		for _, pod := range podList.Items {
 			assignedNode := &corev1.Node{}
 			key := client.ObjectKey{Name: pod.Spec.NodeName}
-			if err := k.Get(ctx, key, assignedNode); err != nil {
+			if err = k.Get(ctx, key, assignedNode); err != nil {
 				ll.Error(err, "Error getting node resources in event handler")
 				return nil
 			}
 
-			availabilityZone, err := GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
-			if err != nil {
-				ll.Error(err, "failed to get pod availability zone from assigned node", "name", pod.Name)
+			availabilityZone, er := GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
+			if er != nil {
+				ll.Error(er, "failed to get pod availability zone from assigned node", "name", pod.Name)
 				return nil
 			}
 

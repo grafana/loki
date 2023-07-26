@@ -22,14 +22,12 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-var (
-	createOrUpdatePodWithLabelPred = builder.WithPredicates(predicate.Funcs{
-		UpdateFunc:  func(e event.UpdateEvent) bool { return eventPodHasLabel(e.ObjectNew) },
-		CreateFunc:  func(e event.CreateEvent) bool { return eventPodHasLabel(e.Object) },
-		DeleteFunc:  func(e event.DeleteEvent) bool { return false },
-		GenericFunc: func(e event.GenericEvent) bool { return false },
-	})
-)
+var createOrUpdatePodWithLabelPred = builder.WithPredicates(predicate.Funcs{
+	UpdateFunc:  func(e event.UpdateEvent) bool { return eventPodHasLabel(e.ObjectNew) },
+	CreateFunc:  func(e event.CreateEvent) bool { return eventPodHasLabel(e.Object) },
+	DeleteFunc:  func(e event.DeleteEvent) bool { return false },
+	GenericFunc: func(e event.GenericEvent) bool { return false },
+})
 
 // LokiStackZoneAwarePodReconciler watches all the loki component pods and updates the pod annotations with the topology node labels.
 type LokiStackZoneAwarePodReconciler struct {
