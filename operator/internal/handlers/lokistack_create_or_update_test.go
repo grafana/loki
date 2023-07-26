@@ -1609,3 +1609,115 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 	// make sure delete was called twice (delete rules configmap and ruler statefulset)
 	require.Equal(t, 2, k.DeleteCallCount())
 }
+
+func TestCreateOrUpdateLokiStack_ZoneAwareNodeLabelMismatch(t *testing.T) {
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "test-lokistack",
+			Namespace: "some-ns",
+		},
+	}
+
+	testNode := corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-node",
+			Namespace: "some-ns",
+			Labels: map[string]string{
+				corev1.LabelHostname:       "test-node",
+				corev1.LabelTopologyZone:   "us-east-2b",
+				corev1.LabelTopologyRegion: "us-east-2",
+			},
+		},
+	}
+
+	lokiStack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lokistack",
+			Namespace: "test-ns",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Replication: &lokiv1.ReplicationSpec{
+				Zones: []lokiv1.ZoneSpec{
+					{
+						TopologyKey: corev1.LabelZoneFailureDomain,
+					},
+				},
+			},
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV11,
+						EffectiveDate: "2020-10-11",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+		},
+	}
+
+	testPod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "some-ns",
+			Labels: map[string]string{
+				lokiv1.LabelZoneAwarePod: "enabled",
+			},
+			Annotations: map[string]string{
+				lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelHostname + "," + corev1.LabelTopologyZone,
+				corev1.LabelTopologyZone:                "us-east-2c",
+			},
+		},
+		Spec: corev1.PodSpec{
+			NodeName: "test-node",
+		},
+	}
+
+	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		if name.Name == r.Name {
+			k.SetClientObject(object, &lokiStack)
+			return nil
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+			return nil
+		}
+		if defaultGatewaySecret.Name == name.Name {
+			k.SetClientObject(object, &defaultGatewaySecret)
+			return nil
+		}
+		if name.Name == testPod.Name {
+			k.SetClientObject(object, &testPod)
+			return nil
+		}
+		if name.Name == testNode.Name {
+			k.SetClientObject(object, &testNode)
+			return nil
+		}
+		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
+	}
+	k.ListStub = func(ctx context.Context, ol client.ObjectList, _ ...client.ListOption) error {
+		switch ol.(type) {
+		case *corev1.PodList:
+			k.SetClientObjectList(ol, &corev1.PodList{
+				Items: []corev1.Pod{
+					testPod,
+				},
+			})
+		}
+		return nil
+	}
+
+	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	require.Equal(t, err, &status.DegradedError{
+		Message: "Availability zone pod annotation does not match it's node's labels",
+		Reason:  lokiv1.ReasonAvailabilityZoneLabelsMismatch,
+		Requeue: false,
+	})
+}
