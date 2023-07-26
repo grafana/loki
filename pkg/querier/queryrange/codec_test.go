@@ -1784,7 +1784,45 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 			Direction: logproto.BACKWARD,
 			Path:      u.String(),
 		})
-		require.Nil(b, err)
+		require.NoError(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func Benchmark_CodecDecodeSeries(b *testing.B) {
+	ctx := context.Background()
+	u := &url.URL{Path: "/loki/api/v1/series"}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
+		Header: http.Header{
+			"Accept": []string{ProtobufType},
+		},
+	}
+	resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiSeriesResponse{
+		Status:     "200",
+		Version:    1,
+		Statistics: stats.Result{},
+		Data:       generateSeries(),
+	})
+	require.Nil(b, err)
+
+	buf, err := io.ReadAll(resp.Body)
+	require.Nil(b, err)
+	reader := bytes.NewReader(buf)
+	resp.Body = io.NopCloser(reader)
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		_, _ = reader.Seek(0, io.SeekStart)
+		result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiSeriesRequest{
+			StartTs: start,
+			EndTs:   end,
+			Path:    u.String(),
+		})
+		require.NoError(b, err)
 		require.NotNil(b, result)
 	}
 }
