@@ -107,7 +107,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
-		{"series_volume", func() (*http.Request, error) {
+		{"volume", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:         model.TimeFromUnixNano(start.UnixNano()),
 				Through:      model.TimeFromUnixNano(end.UnixNano()),
@@ -115,6 +115,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				Limit:        3,
 				Step:         0,
 				TargetLabels: []string{"job"},
+				AggregateBy:  "labels",
 			})
 		}, &logproto.VolumeRequest{
 			From:         model.TimeFromUnixNano(start.UnixNano()),
@@ -123,21 +124,23 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Limit:        3,
 			Step:         0,
 			TargetLabels: []string{"job"},
+			AggregateBy:  "labels",
 		}, false},
-		{"series_volume_default_limit", func() (*http.Request, error) {
+		{"volume_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    100,
-			Step:     0,
+			From:        model.TimeFromUnixNano(start.UnixNano()),
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:    `{job="foo"}`,
+			Limit:       100,
+			Step:        0,
+			AggregateBy: "series",
 		}, false},
-		{"series_volume_range", func() (*http.Request, error) {
+		{"volume_range", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:         model.TimeFromUnixNano(start.UnixNano()),
 				Through:      model.TimeFromUnixNano(end.UnixNano()),
@@ -153,8 +156,9 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Limit:        3,
 			Step:         30 * 1e3, // step is expected in ms
 			TargetLabels: []string{"fizz", "buzz"},
+			AggregateBy:  "series",
 		}, false},
-		{"series_volume_range_default_limit", func() (*http.Request, error) {
+		{"volume_range_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
@@ -162,11 +166,12 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				Step:     30 * 1e3, // step is expected in ms
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    100,
-			Step:     30 * 1e3, // step is expected in ms; default is 0 or no step
+			From:        model.TimeFromUnixNano(start.UnixNano()),
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:    `{job="foo"}`,
+			Limit:       100,
+			Step:        30 * 1e3, // step is expected in ms; default is 0 or no step
+			AggregateBy: "series",
 		}, false},
 	}
 	for _, tt := range tests {
@@ -302,7 +307,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
+			"volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
 			&logproto.VolumeRequest{},
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
@@ -805,7 +810,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"series volume", "/loki/api/v1/index/series_volume",
+			"volume", "/loki/api/v1/index/volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{

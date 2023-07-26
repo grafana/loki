@@ -627,7 +627,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
-func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
@@ -661,9 +661,11 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 			}
 
 			seriesLabels = seriesLabels[:0]
+			labelVolumes := make(map[string]uint64, len(s.labels))
 			for _, l := range s.labels {
 				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
 					seriesLabels = append(seriesLabels, l)
+					labelVolumes[l.Name] += size
 				}
 			}
 
@@ -674,7 +676,13 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 				seriesNames[hash] = seriesLabels.String()
 			}
 
-			volumes[seriesNames[hash]] += size
+			if seriesvolume.AggregateBySeries(req.AggregateBy) || req.AggregateBy == "" {
+				volumes[seriesNames[hash]] += size
+			} else {
+				for k, v := range labelVolumes {
+					volumes[k] += v
+				}
+			}
 			s.chunkMtx.RUnlock()
 		}
 		return nil
@@ -682,7 +690,7 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
+	res := seriesvolume.MapToVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 
@@ -897,6 +905,8 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	sp := opentracing.SpanFromContext(ctx)
+
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
@@ -919,8 +929,11 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 
 		stats.Reset()
-
+		if sp != nil {
+			sp.LogKV("event", "sent batch", "size", size)
+		}
 	}
+
 	return nil
 }
 

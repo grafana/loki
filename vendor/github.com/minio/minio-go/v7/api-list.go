@@ -97,7 +97,15 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 
 	// Initiate list objects goroutine here.
 	go func(objectStatCh chan<- ObjectInfo) {
-		defer close(objectStatCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				objectStatCh <- ObjectInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(objectStatCh)
+		}()
+
 		// Save continuationToken for next request.
 		var continuationToken string
 		for {
@@ -168,7 +176,7 @@ func (c *Client) listObjectsV2(ctx context.Context, bucketName string, opts List
 // ?delimiter - A delimiter is a character you use to group keys.
 // ?start-after - Sets a marker to start listing lexically at this key onwards.
 // ?max-keys - Sets the maximum number of keys returned in the response body.
-func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter string, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
+func (c *Client) listObjectsV2Query(ctx context.Context, bucketName, objectPrefix, continuationToken string, fetchOwner, metadata bool, delimiter, startAfter string, maxkeys int, headers http.Header) (ListBucketV2Result, error) {
 	// Validate bucket name.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
 		return ListBucketV2Result{}, err
@@ -304,7 +312,14 @@ func (c *Client) listObjects(ctx context.Context, bucketName string, opts ListOb
 
 	// Initiate list objects goroutine here.
 	go func(objectStatCh chan<- ObjectInfo) {
-		defer close(objectStatCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				objectStatCh <- ObjectInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(objectStatCh)
+		}()
 
 		marker := opts.StartAfter
 		for {
@@ -321,6 +336,7 @@ func (c *Client) listObjects(ctx context.Context, bucketName string, opts ListOb
 			for _, object := range result.Contents {
 				// Save the marker.
 				marker = object.Key
+				object.ETag = trimEtag(object.ETag)
 				select {
 				// Send object content.
 				case objectStatCh <- object:
@@ -393,7 +409,14 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 
 	// Initiate list objects goroutine here.
 	go func(resultCh chan<- ObjectInfo) {
-		defer close(resultCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				resultCh <- ObjectInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(resultCh)
+		}()
 
 		var (
 			keyMarker       = ""
@@ -424,6 +447,7 @@ func (c *Client) listObjectVersions(ctx context.Context, bucketName string, opts
 					IsDeleteMarker: version.isDeleteMarker,
 					UserTags:       version.UserTags,
 					UserMetadata:   version.UserMetadata,
+					Internal:       version.Internal,
 				}
 				select {
 				// Send object version info.
@@ -698,6 +722,10 @@ func (o *ListObjectsOptions) Set(key, value string) {
 //	for object := range api.ListObjects(ctx, "mytestbucket", minio.ListObjectsOptions{Prefix: "starthere", Recursive:true}) {
 //	    fmt.Println(object)
 //	}
+//
+// If caller cancels the context, then the last entry on the 'chan ObjectInfo' will be the context.Error()
+// caller must drain the channel entirely and wait until channel is closed before proceeding, without
+// waiting on the channel to be closed completely you might leak goroutines.
 func (c *Client) ListObjects(ctx context.Context, bucketName string, opts ListObjectsOptions) <-chan ObjectInfo {
 	if opts.WithVersions {
 		return c.listObjectVersions(ctx, bucketName, opts)
@@ -738,6 +766,16 @@ func (c *Client) ListIncompleteUploads(ctx context.Context, bucketName, objectPr
 	return c.listIncompleteUploads(ctx, bucketName, objectPrefix, recursive)
 }
 
+// contextCanceled returns whether a context is canceled.
+func contextCanceled(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
 // listIncompleteUploads lists all incomplete uploads.
 func (c *Client) listIncompleteUploads(ctx context.Context, bucketName, objectPrefix string, recursive bool) <-chan ObjectMultipartInfo {
 	// Allocate channel for multipart uploads.
@@ -765,7 +803,15 @@ func (c *Client) listIncompleteUploads(ctx context.Context, bucketName, objectPr
 		return objectMultipartStatCh
 	}
 	go func(objectMultipartStatCh chan<- ObjectMultipartInfo) {
-		defer close(objectMultipartStatCh)
+		defer func() {
+			if contextCanceled(ctx) {
+				objectMultipartStatCh <- ObjectMultipartInfo{
+					Err: ctx.Err(),
+				}
+			}
+			close(objectMultipartStatCh)
+		}()
+
 		// object and upload ID marker for future requests.
 		var objectMarker string
 		var uploadIDMarker string

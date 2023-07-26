@@ -188,7 +188,7 @@ func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQ
 	return &merged, nil
 }
 
-func (q *MultiTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func (q *MultiTenantQuerier) SeriesVolume(ctx context.Context, req *logproto.Vol
 	responses := make([]*logproto.VolumeResponse, len(tenantIDs))
 	for i, id := range tenantIDs {
 		singleContext := user.InjectOrgID(ctx, id)
-		resp, err := q.Querier.SeriesVolume(singleContext, req)
+		resp, err := q.Querier.Volume(singleContext, req)
 		if err != nil {
 			return nil, err
 		}
