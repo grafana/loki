@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/query"
 	"github.com/grafana/loki/pkg/logcli/seriesquery"
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	_ "github.com/grafana/loki/pkg/util/build"
 )
@@ -383,9 +384,9 @@ func main() {
 		}
 
 		if cmd == volumeRangeCmd.FullCommand() {
-			volumeRangeQuery.DoVolumeRange(queryClient, out, *statistics)
+			index.GetVolumeRange(volumeRangeQuery, queryClient, out, *statistics)
 		} else {
-			volumeQuery.DoVolume(queryClient, out, *statistics)
+			index.GetVolume(volumeQuery, queryClient, out, *statistics)
 		}
 	}
 }
@@ -615,12 +616,12 @@ func newStatsQuery(cmd *kingpin.CmdClause) *index.StatsQuery {
 	return q
 }
 
-func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *index.VolumeQuery {
+func newVolumeQuery(rangeQuery bool, cmd *kingpin.CmdClause) *volume.Query {
 	// calculate query range from cli params
 	var from, to string
 	var since time.Duration
 
-	q := &index.VolumeQuery{}
+	q := &volume.Query{}
 
 	// executed after all command flags are parsed
 	cmd.Action(func(_ *kingpin.ParseContext) error {

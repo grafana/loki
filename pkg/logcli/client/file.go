@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -187,12 +188,12 @@ func (f *FileClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.Index
 	return nil, ErrNotSupported
 }
 
-func (f *FileClient) GetVolume(_ string, _, _ time.Time, _ time.Duration, _ int, _ []string, _, _ bool) (*loghttp.QueryResponse, error) {
+func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
 }
 
-func (f *FileClient) GetVolumeRange(_ string, _, _ time.Time, _ time.Duration, _ int, _ []string, _, _ bool) (*loghttp.QueryResponse, error) {
+func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
 	return nil, ErrNotSupported
 }
