@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/regexp/syntax"
 
 	"github.com/grafana/loki/pkg/logql/log"
-	"github.com/grafana/loki/pkg/logql/log/logfmt"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
@@ -388,6 +387,54 @@ func (e *LineFilterExpr) Stage() (log.Stage, error) {
 	return f.ToStage(), nil
 }
 
+type LogfmtParserExpr struct {
+	Strict    bool
+	KeepEmpty bool
+
+	implicit
+}
+
+func newLogfmtParserExpr(flags []string) *LogfmtParserExpr {
+	e := LogfmtParserExpr{}
+	for _, f := range flags {
+		switch f {
+		case OpStrict:
+			e.Strict = true
+		case OpKeepEmpty:
+			e.KeepEmpty = true
+		}
+	}
+
+	return &e
+}
+
+func (e *LogfmtParserExpr) Shardable() bool { return true }
+
+func (e *LogfmtParserExpr) Walk(f WalkFn) { f(e) }
+
+func (e *LogfmtParserExpr) Stage() (log.Stage, error) {
+	return log.NewLogfmtParser(e.Strict, e.KeepEmpty), nil
+}
+
+func (e *LogfmtParserExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(OpPipe)
+	sb.WriteString(" ")
+	sb.WriteString(OpParserTypeLogfmt)
+
+	if e.Strict {
+		sb.WriteString(" ")
+		sb.WriteString(OpStrict)
+	}
+
+	if e.KeepEmpty {
+		sb.WriteString(" ")
+		sb.WriteString(OpKeepEmpty)
+	}
+
+	return sb.String()
+}
+
 type LabelParserExpr struct {
 	Op    string
 	Param string
@@ -422,8 +469,6 @@ func (e *LabelParserExpr) Stage() (log.Stage, error) {
 	switch e.Op {
 	case OpParserTypeJSON:
 		return log.NewJSONParser(), nil
-	case OpParserTypeLogfmt:
-		return log.NewLogfmtParser(), nil
 	case OpParserTypeRegexp:
 		return log.NewRegexpParser(e.Param)
 	case OpParserTypeUnpack:
@@ -709,17 +754,27 @@ type internedStringSet map[string]struct {
 }
 
 type LogfmtExpressionParser struct {
-	Expressions []log.LabelExtractionExpr
-	dec         *logfmt.Decoder
-	keys        internedStringSet
+	Expressions       []log.LabelExtractionExpr
+	Strict, KeepEmpty bool
 
 	implicit
 }
 
-func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr) *LogfmtExpressionParser {
-	return &LogfmtExpressionParser{
+func newLogfmtExpressionParser(expressions []log.LabelExtractionExpr, flags []string) *LogfmtExpressionParser {
+	e := LogfmtExpressionParser{
 		Expressions: expressions,
 	}
+
+	for _, flag := range flags {
+		switch flag {
+		case OpStrict:
+			e.Strict = true
+		case OpKeepEmpty:
+			e.KeepEmpty = true
+		}
+	}
+
+	return &e
 }
 
 func (l *LogfmtExpressionParser) Shardable() bool { return true }
@@ -727,12 +782,22 @@ func (l *LogfmtExpressionParser) Shardable() bool { return true }
 func (l *LogfmtExpressionParser) Walk(f WalkFn) { f(l) }
 
 func (l *LogfmtExpressionParser) Stage() (log.Stage, error) {
-	return log.NewLogfmtExpressionParser(l.Expressions)
+	return log.NewLogfmtExpressionParser(l.Expressions, l.Strict)
 }
 
 func (l *LogfmtExpressionParser) String() string {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpParserTypeLogfmt))
+	if l.Strict {
+		sb.WriteString(OpStrict)
+		sb.WriteString(" ")
+	}
+
+	if l.KeepEmpty {
+		sb.WriteString(OpKeepEmpty)
+		sb.WriteString(" ")
+	}
+
 	for i, exp := range l.Expressions {
 		sb.WriteString(exp.Identifier)
 		sb.WriteString("=")
@@ -963,6 +1028,10 @@ const (
 
 	// keep labels
 	OpKeep = "keep"
+
+	// parser flags
+	OpStrict    = "--strict"
+	OpKeepEmpty = "--keep-empty"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1275,6 +1344,8 @@ func (e *VectorAggregationExpr) Shardable() bool {
 			// for avg, but not for count. Let's refactor to make this
 			// cleaner. For now I'm disallowing sharding on both.
 			case *LabelParserExpr:
+				shardable = false
+			case *LogfmtParserExpr:
 				shardable = false
 			}
 		})

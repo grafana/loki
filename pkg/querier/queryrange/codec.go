@@ -273,7 +273,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Matchers: req.Query,
 		}, err
 	case SeriesVolumeOp:
-		req, err := loghttp.ParseSeriesVolumeQuery(r)
+		req, err := loghttp.ParseSeriesVolumeInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -283,6 +283,20 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Through:  through,
 			Matchers: req.Query,
 			Limit:    int32(req.Limit),
+			Step:     0,
+		}, err
+	case SeriesVolumeRangeOp:
+		req, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+		}
+		from, through := util.RoundToMilliseconds(req.Start, req.End)
+		return &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: req.Query,
+			Limit:    int32(req.Limit),
+			Step:     req.Step.Milliseconds(),
 		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
@@ -422,9 +436,19 @@ func (Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*http
 			"query": []string{request.GetQuery()},
 			"limit": []string{fmt.Sprintf("%d", request.Limit)},
 		}
-		u := &url.URL{
-			Path:     "/loki/api/v1/index/series_volume",
-			RawQuery: params.Encode(),
+
+		var u *url.URL
+		if request.Step != 0 {
+			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
+			u = &url.URL{
+				Path:     "/loki/api/v1/index/series_volume_range",
+				RawQuery: params.Encode(),
+			}
+		} else {
+			u = &url.URL{
+				Path:     "/loki/api/v1/index/series_volume",
+				RawQuery: params.Encode(),
+			}
 		}
 		req := &http.Request{
 			Method:     "GET",
