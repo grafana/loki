@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/prometheus/prometheus/config"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/iter"
@@ -13,7 +14,42 @@ import (
 	rulerbase "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
+	"gopkg.in/yaml.v3"
 )
+
+// TestInvalidRuleGroup tests that a validation error is raised when rule group is invalid
+func TestInvalidRuleGroup(t *testing.T) {
+	ruleGroupValid := rulefmt.RuleGroup{
+		Name: "test",
+		Rules: []rulefmt.RuleNode{
+			{
+				Alert: yaml.Node{Value: "alert-1-name"},
+				Expr:  yaml.Node{Value: "sum by (job) (rate({namespace=~\"test\"} [5m]) > 0)"},
+			},
+			{
+				Alert: yaml.Node{Value: "record-1-name"},
+				Expr:  yaml.Node{Value: "sum by (job) (rate({namespace=~\"test\"} [5m]) > 0)"},
+			},
+		},
+	}
+	require.Nil(t, ValidateGroups(ruleGroupValid))
+
+	ruleGroupInValid := rulefmt.RuleGroup{
+		Name: "test",
+		Rules: []rulefmt.RuleNode{
+			{
+				Alert: yaml.Node{Value: "alert-1-name"},
+				Expr:  yaml.Node{Value: "bad_value"},
+			},
+			{
+				Record: yaml.Node{Value: "record-1-name"},
+				Expr:   yaml.Node{Value: "bad_value"},
+			},
+		},
+	}
+	require.Error(t, ValidateGroups(ruleGroupInValid)[0])
+	require.Error(t, ValidateGroups(ruleGroupInValid)[1])
+}
 
 // TestInvalidRemoteWriteConfig tests that a validation error is raised when config is invalid
 func TestInvalidRemoteWriteConfig(t *testing.T) {
