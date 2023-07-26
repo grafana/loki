@@ -19,8 +19,10 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 )
@@ -33,8 +35,8 @@ const (
 	seriesPath        = "/loki/api/v1/series"
 	tailPath          = "/loki/api/v1/tail"
 	statsPath         = "/loki/api/v1/index/stats"
-	volumePath        = "/loki/api/v1/index/series_volume"
-	volumeRangePath   = "/loki/api/v1/index/series_volume_range"
+	volumePath        = "/loki/api/v1/index/volume"
+	volumeRangePath   = "/loki/api/v1/index/volume_range"
 	defaultAuthHeader = "Authorization"
 )
 
@@ -50,8 +52,8 @@ type Client interface {
 	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
-	GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
-	GetVolumeRange(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
+	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
+	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -184,15 +186,19 @@ func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bo
 	return &statsResponse, nil
 }
 
-func (c *DefaultClient) GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
-	return c.getVolume(volumePath, queryStr, start, end, step, limit, quiet)
+func (c *DefaultClient) GetVolume(query *volume.Query) (*loghttp.QueryResponse, error) {
+	return c.getVolume(volumePath, query)
 }
 
-func (c *DefaultClient) GetVolumeRange(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
-	return c.getVolume(volumeRangePath, queryStr, start, end, step, limit, quiet)
+func (c *DefaultClient) GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error) {
+	return c.getVolume(volumeRangePath, query)
 }
 
-func (c *DefaultClient) getVolume(path string, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.QueryResponse, error) {
+	queryStr, start, end, limit, step, targetLabels, aggregateByLabels, quiet :=
+		query.QueryString, query.Start, query.End, query.Limit, query.Step,
+		query.TargetLabels, query.AggregateByLabels, query.Quiet
+
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", start.UnixNano())
 	params.SetInt("end", end.UnixNano())
@@ -201,6 +207,14 @@ func (c *DefaultClient) getVolume(path string, queryStr string, start, end time.
 
 	if step != 0 {
 		params.SetString("step", fmt.Sprintf("%d", int(step.Seconds())))
+	}
+
+	if len(targetLabels) > 0 {
+		params.SetString("targetLabels", strings.Join(targetLabels, ","))
+	}
+
+	if aggregateByLabels {
+		params.SetString("aggregateBy", seriesvolume.Labels)
 	}
 
 	var resp loghttp.QueryResponse
