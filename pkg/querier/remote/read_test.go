@@ -45,18 +45,6 @@ func TestQuerier_Read(t *testing.T) {
 	querier, err := NewQuerier("test", remoteConf)
 	require.NoError(t, err)
 
-	volumeReq := &logproto.VolumeRequest{
-		From:     0,
-		Through:  1000,
-		Matchers: `{foo="bar"}`,
-		Limit:    10,
-	}
-	_, err = querier.Volume(
-		context.Background(),
-		volumeReq,
-	)
-	require.NoError(t, err)
-
 	request := logproto.QueryRequest{
 		Selector:  `{app="distributor"}`,
 		Limit:     6,
@@ -106,6 +94,18 @@ func TestQuerier_Read(t *testing.T) {
 		req,
 	)
 
+	require.NoError(t, err)
+
+	volumeReq := &logproto.VolumeRequest{
+		From:     0,
+		Through:  1000,
+		Matchers: `{foo="bar"}`,
+		Limit:    10,
+	}
+	_, err = querier.Volume(
+		context.Background(),
+		volumeReq,
+	)
 	require.NoError(t, err)
 
 }
