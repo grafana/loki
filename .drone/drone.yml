@@ -1064,7 +1064,6 @@ trigger:
   - refs/tags/v*
   - refs/pull/*/head
 ---
----
 depends_on:
 - check
 kind: pipeline
