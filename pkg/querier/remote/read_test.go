@@ -119,7 +119,7 @@ func (s *mockLokiHTTPServer) getTenantIDUnsafe() string {
 	return s.tenantID
 }
 
-func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
+func (s *mockLokiHTTPServer) Run(_ *testing.T, from time.Time) {
 	var mux http.ServeMux
 	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, request *http.Request) {
 		tenantID, _, err := user.ExtractOrgIDFromHTTPRequest(request)

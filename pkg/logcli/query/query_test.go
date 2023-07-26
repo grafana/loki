@@ -419,7 +419,7 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	}
 }
 
-func (t *testQueryClient) Query(ctx context.Context, _ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) Query(_ context.Context, _ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	panic("implement me")
 }
 
@@ -450,19 +450,19 @@ func (t *testQueryClient) QueryRange(_ context.Context, queryStr string, limit i
 	return q, nil
 }
 
-func (t *testQueryClient) ListLabelNames(ctx context.Context, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelNames(_ context.Context, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) ListLabelValues(ctx context.Context, name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelValues(_ context.Context, name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) Series(ctx context.Context, matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (t *testQueryClient) Series(_ context.Context, matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) LiveTailQueryConn(ctx context.Context, queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (t *testQueryClient) LiveTailQueryConn(_ context.Context, queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
 	panic("implement me")
 }
 
