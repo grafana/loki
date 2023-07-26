@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -29,137 +28,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
-
-func Test_commonLabels(t *testing.T) {
-	type args struct {
-		lss []loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Extract common labels source > target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`)},
-			},
-			mustParseLabels(t, `{bar="foo"}`),
-		},
-		{
-			"Extract common labels source > target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo", foo="bar", baz="baz"}`)},
-			},
-			mustParseLabels(t, `{foo="bar", bar="foo"}`),
-		},
-		{
-			"Extract common labels source < target",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{bar="foo"}`)},
-			},
-			mustParseLabels(t, `{bar="foo"}`),
-		},
-		{
-			"Extract common labels source < target no common",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar", bar="foo"}`), mustParseLabels(t, `{fo="bar"}`)},
-			},
-			loghttp.LabelSet{},
-		},
-		{
-			"Extract common labels source = target no common",
-			args{
-				[]loghttp.LabelSet{mustParseLabels(t, `{foo="bar"}`), mustParseLabels(t, `{fooo="bar"}`)},
-			},
-			loghttp.LabelSet{},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			var streams []loghttp.Stream
-
-			for _, lss := range tt.args.lss {
-				streams = append(streams, loghttp.Stream{
-					Entries: nil,
-					Labels:  lss,
-				})
-			}
-
-			if got := commonLabels(streams); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("commonLabels() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
-
-func Test_subtract(t *testing.T) {
-	type args struct {
-		a loghttp.LabelSet
-		b loghttp.LabelSet
-	}
-	tests := []struct {
-		name string
-		args args
-		want loghttp.LabelSet
-	}{
-		{
-			"Subtract labels source > target",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{bar="foo", foo="foo", baz="baz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{bar="foo"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source < target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar", bar="foo"}`),
-				mustParseLabels(t, `{fo="bar"}`),
-			},
-			mustParseLabels(t, `{bar="foo", foo="bar"}`),
-		},
-		{
-			"Subtract labels source = target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar"}`),
-				mustParseLabels(t, `{fiz="buz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(t, `{foo="bar"}`),
-				mustParseLabels(t, `{fiz="buz", foo="baz"}`),
-			},
-			mustParseLabels(t, `{foo="bar"}`),
-		},
-		{
-			"Subtract labels source > target no sub",
-			args{
-				mustParseLabels(t, `{a="b", foo="bar", baz="baz", fizz="fizz"}`),
-				mustParseLabels(t, `{foo="bar", baz="baz", buzz="buzz", fizz="fizz"}`),
-			},
-			mustParseLabels(t, `{a="b"}`),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := subtract(tt.args.a, tt.args.b); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("subtract() = %v, want %v", got, tt.want)
-			}
-		})
-	}
-}
 
 func Test_batch(t *testing.T) {
 	tests := []struct {
@@ -536,14 +404,6 @@ func Test_batch(t *testing.T) {
 	}
 }
 
-func mustParseLabels(t *testing.T, s string) loghttp.LabelSet {
-	t.Helper()
-	l, err := marshal.NewLabelSet(s)
-	require.NoErrorf(t, err, "Failed to parse %q", s)
-
-	return l
-}
-
 type testQueryClient struct {
 	engine          *logql.Engine
 	queryRangeCalls int
@@ -559,11 +419,11 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	}
 }
 
-func (t *testQueryClient) Query(ctx context.Context, queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) Query(ctx context.Context, _ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) QueryRange(_ context.Context, queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) QueryRange(_ context.Context, queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
@@ -608,6 +468,18 @@ func (t *testQueryClient) LiveTailQueryConn(ctx context.Context, queryStr string
 
 func (t *testQueryClient) GetOrgID() string {
 	panic("implement me")
+}
+
+func (t *testQueryClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolume(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
+}
+
+func (t *testQueryClient) GetVolumeRange(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
+	panic("not implemented")
 }
 
 var schemaConfigContents = `schema_config:

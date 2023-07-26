@@ -68,7 +68,7 @@ func isReadAt(reader io.Reader) (ok bool) {
 //	maxPartsCount - 10000
 //	minPartSize - 16MiB
 //	maxMultipartPutObjectSize - 5TiB
-func OptimalPartInfo(objectSize int64, configuredPartSize uint64) (totalPartsCount int, partSize int64, lastPartSize int64, err error) {
+func OptimalPartInfo(objectSize int64, configuredPartSize uint64) (totalPartsCount int, partSize, lastPartSize int64, err error) {
 	// object size is '-1' set it to 5TiB.
 	var unknownSize bool
 	if objectSize == -1 {

@@ -2,14 +2,20 @@ package queryrange
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"time"
 
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/tenant"
+	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/util/validation"
 )
 
 type IndexStatsSplitter struct {
@@ -27,7 +33,7 @@ type IndexStatsExtractor struct{}
 // Extract favors the ability to cache over exactness of results. It assumes a constant distribution
 // of log volumes over a range and will extract subsets proportionally.
 func (p IndexStatsExtractor) Extract(start, end int64, res queryrangebase.Response, resStart, resEnd int64) queryrangebase.Response {
-	factor, _, _ := util.GetFactorOfTime(start, end, resStart, resEnd)
+	factor := util.GetFactorOfTime(start, end, resStart, resEnd)
 
 	statsRes := res.(*IndexStatsResponse)
 	return &IndexStatsResponse{
@@ -45,6 +51,39 @@ func (p IndexStatsExtractor) ResponseWithoutHeaders(resp queryrangebase.Response
 	return &IndexStatsResponse{
 		Response: statsRes.Response,
 	}
+}
+
+type IndexStatsCacheConfig struct {
+	queryrangebase.ResultsCacheConfig `yaml:",inline"`
+}
+
+// RegisterFlags registers flags.
+func (cfg *IndexStatsCacheConfig) RegisterFlags(f *flag.FlagSet) {
+	cfg.ResultsCacheConfig.RegisterFlagsWithPrefix(f, "frontend.index-stats-results-cache.")
+}
+
+func (cfg *IndexStatsCacheConfig) Validate() error {
+	return cfg.ResultsCacheConfig.Validate()
+}
+
+// statsCacheMiddlewareNowTimeFunc is a function that returns the current time.
+// It is used to allow tests to override the current time.
+var statsCacheMiddlewareNowTimeFunc = model.Now
+
+// shouldCacheStats returns true if the request should be cached.
+// It returns false if:
+// - The request end time falls within the max_stats_cache_freshness duration.
+func shouldCacheStats(ctx context.Context, req queryrangebase.Request, lim Limits) (bool, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	cacheFreshnessCapture := func(id string) time.Duration { return lim.MaxStatsCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
+
+	now := statsCacheMiddlewareNowTimeFunc()
+	return maxCacheFreshness == 0 || model.Time(req.GetEnd()).Before(now.Add(-maxCacheFreshness)), nil
 }
 
 func NewIndexStatsCacheMiddleware(
@@ -67,7 +106,19 @@ func NewIndexStatsCacheMiddleware(
 		merger,
 		IndexStatsExtractor{},
 		cacheGenNumberLoader,
-		shouldCache,
+		func(ctx context.Context, r queryrangebase.Request) bool {
+			if shouldCache != nil && !shouldCache(ctx, r) {
+				return false
+			}
+
+			cacheStats, err := shouldCacheStats(ctx, r, limits)
+			if err != nil {
+				level.Error(log).Log("msg", "failed to determine if stats should be cached. Won't cache", "err", err)
+				return false
+			}
+
+			return cacheStats
+		},
 		parallelismForReq,
 		retentionEnabled,
 		metrics,

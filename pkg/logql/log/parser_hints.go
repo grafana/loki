@@ -34,7 +34,7 @@ type ParserHint interface {
 	// labels. This assumes that only required labels are ever extracted
 	RecordExtracted(string)
 
-	// Returns true if all the extracted labels have already been extracted
+	// Returns true if all the required labels have already been extracted
 	AllRequiredExtracted() bool
 
 	// Resets the state of extracted labels
@@ -43,7 +43,7 @@ type ParserHint interface {
 	// PreserveError returns true when parsing errors were specifically requested
 	PreserveError() bool
 
-	// ShouldContinueParsingLine ShouldContinueParsing line retruns true when there is no label matcher for the
+	// ShouldContinueParsingLine returns true when there is no label matcher for the
 	// provided label or the passed label and value match what's in the pipeline
 	ShouldContinueParsingLine(labelName string, lbs *LabelsBuilder) bool
 }

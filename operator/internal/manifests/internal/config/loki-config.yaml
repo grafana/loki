@@ -63,6 +63,10 @@ common:
     instance_addr: {{ . }}
     {{- end }}
     instance_port: {{ .InstancePort }}
+    {{- if .EnableInstanceAvailabilityZone }}
+    zone_awareness_enabled: true
+    instance_availability_zone: ${INSTANCE_AVAILABILITY_ZONE}
+    {{- end }}
   {{- end }}
 compactor:
   compaction_interval: 2h
@@ -113,7 +117,7 @@ ingester:
     join_after: 30s
     num_tokens: 512
     ring:
-      replication_factor: {{ .Stack.ReplicationFactor }}
+      replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
   wal:
     enabled: true
@@ -162,7 +166,7 @@ limits_config:
   max_query_length: 721h
   max_query_parallelism: 32
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
-  cardinality_limit: 100000
+  cardinality_limit: {{ .Stack.Limits.Global.QueryLimits.CardinalityLimit }}
   max_streams_matchers_per_query: 1000
   query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
 {{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
@@ -177,8 +181,8 @@ limits_config:
 {{- end }}
 {{- end }}{{- end }}
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
+  per_stream_rate_limit: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}MB
+  per_stream_rate_limit_burst: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}MB
   split_queries_by_interval: 30m
 {{- with .GossipRing }}
 memberlist:
@@ -422,8 +426,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: {{ .HTTPTimeouts.IdleTimeout }}
+  http_server_read_timeout: {{ .HTTPTimeouts.ReadTimeout }}
+  http_server_write_timeout: {{ .HTTPTimeouts.WriteTimeout }}
 {{- if or .Gates.HTTPEncryption .Gates.GRPCEncryption }}
   tls_min_version: {{ .TLS.MinTLSVersion }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}

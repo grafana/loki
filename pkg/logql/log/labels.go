@@ -136,7 +136,7 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 }
 
 // Reset clears all current state for the builder.
-func (b *LabelsBuilder) Reset() {
+func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
@@ -241,6 +241,13 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 	// Sometimes labels are set and later modified. Only record
 	// each label once
 	b.parserKeyHints.RecordExtracted(n)
+	return b
+}
+
+func (b *LabelsBuilder) Add(labels ...labels.Label) *LabelsBuilder {
+	for _, l := range labels {
+		b.Set(l.Name, l.Value)
+	}
 	return b
 }
 
@@ -459,13 +466,13 @@ func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (st
 	if ok {
 		return s.s, s.ok
 	}
-	new, ok := createNew()
+	newStr, ok := createNew()
 	if len(i) >= MaxInternedStrings {
-		return new, ok
+		return newStr, ok
 	}
 	i[string(data)] = struct {
 		s  string
 		ok bool
-	}{s: new, ok: ok}
-	return new, ok
+	}{s: newStr, ok: ok}
+	return newStr, ok
 }

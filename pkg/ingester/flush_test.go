@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/iter"
@@ -105,7 +106,7 @@ func Test_Flush(t *testing.T) {
 		lbs        = makeRandomLabels()
 		ctx        = user.InjectOrgID(context.Background(), "foo")
 	)
-	store.onPut = func(ctx context.Context, chunks []chunk.Chunk) error {
+	store.onPut = func(_ context.Context, chunks []chunk.Chunk) error {
 		for _, c := range chunks {
 			buf, err := c.Encoded()
 			require.Nil(t, err)
@@ -242,6 +243,21 @@ func TestFlushMaxAge(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
+func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	// This gives us an initial delay of max 48s
+	// 60s * 0.8 = 48s
+	cfg.FlushCheckPeriod = time.Minute
+
+	start := time.Now()
+	store, ing := newTestStore(t, cfg, nil)
+	defer store.Stop()
+	// immediately stop
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+	duration := time.Since(start)
+	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
@@ -260,7 +276,7 @@ func newTestStore(t require.TestingT, cfg Config, walOverride WAL) (*testStore, 
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 
-	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil)
+	ing, err := New(cfg, client.Config{}, store, limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	require.NoError(t, services.StartAndAwaitRunning(context.Background(), ing))
 
@@ -327,15 +343,15 @@ func (s *testStore) IsLocal() bool {
 	return false
 }
 
-func (s *testStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *testStore) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter.EntryIterator, error) {
 	return nil, nil
 }
 
-func (s *testStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, nil
 }
 
-func (s *testStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *testStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 
@@ -347,8 +363,12 @@ func (s *testStore) Stop() {}
 
 func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
 
-func (s *testStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
+func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{}, nil
+}
+
+func (s *testStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return &logproto.VolumeResponse{}, nil
 }
 
 func pushTestSamples(t *testing.T, ing logproto.PusherServer) map[string][]logproto.Stream {

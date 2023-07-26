@@ -38,11 +38,21 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
 	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -56,8 +66,10 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
+	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.QueryFrontend),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -126,19 +138,14 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
 		podSpec.Tolerations = opts.Stack.Template.QueryFrontend.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
 	}
-
-	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{

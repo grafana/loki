@@ -24,7 +24,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
@@ -97,13 +96,15 @@ type GatewayClient struct {
 	pool *ring_client.Pool
 
 	ring ring.ReadRing
+
+	limits indexgateway.Limits
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
 //
 // If it is configured to be in ring mode, a pool of GRPC connections to all Index Gateway instances is created.
 // Otherwise, it creates a single GRPC connection to an Index Gateway instance running in simple mode.
-func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, logger log.Logger) (*GatewayClient, error) {
+func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, limits indexgateway.Limits, logger log.Logger) (*GatewayClient, error) {
 	latency := prometheus.NewHistogramVec(prometheus.HistogramOpts{
 		Namespace: "loki",
 		Name:      "index_gateway_request_duration_seconds",
@@ -125,6 +126,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, log
 		cfg:                               cfg,
 		storeGatewayClientRequestDuration: latency,
 		ring:                              cfg.Ring,
+		limits:                            limits,
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -178,7 +180,7 @@ func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, c
 	})
 }
 
-func (s *GatewayClient) QueryIndex(ctx context.Context, in *logproto.QueryIndexRequest, opts ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
+func (s *GatewayClient) QueryIndex(_ context.Context, _ *logproto.QueryIndexRequest, _ ...grpc.CallOption) (logproto.IndexGateway_QueryIndexClient, error) {
 	panic("not implemented")
 }
 
@@ -257,6 +259,21 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 	return s.grpcClient.GetStats(ctx, in, opts...)
 }
 
+func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
+	if s.cfg.Mode == indexgateway.RingMode {
+		var (
+			resp *logproto.VolumeResponse
+			err  error
+		)
+		err = s.ringModeDo(ctx, func(client logproto.IndexGatewayClient) error {
+			resp, err = client.GetVolume(ctx, in, opts...)
+			return err
+		})
+		return resp, err
+	}
+	return s.grpcClient.GetVolume(ctx, in, opts...)
+}
+
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	queryKeyQueryMap := make(map[string]index.Query, len(queries))
 	gatewayQueries := make([]*logproto.IndexQuery, 0, len(queries))
@@ -320,20 +337,10 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 	if err != nil {
 		return errors.Wrap(err, "index gateway client get tenant ID")
 	}
-
-	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-
-	key := util.TokenFor(userID, "" /* labels */)
-	rs, err := s.ring.Get(key, ring.WriteNoExtend, bufDescs, bufHosts, bufZones)
+	addrs, err := s.getServerAddresses(userID)
 	if err != nil {
-		return errors.Wrap(err, "index gateway get ring")
+		return err
 	}
-
-	addrs := rs.GetAddresses()
-	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
-	})
 	var lastErr error
 	for _, addr := range addrs {
 		if s.cfg.LogGatewayRequests {
@@ -359,11 +366,27 @@ func (s *GatewayClient) ringModeDo(ctx context.Context, callback func(client log
 	return lastErr
 }
 
+func (s *GatewayClient) getServerAddresses(tenantID string) ([]string, error) {
+	r := indexgateway.GetShuffleShardingSubring(s.ring, tenantID, s.limits)
+	rs, err := r.GetReplicationSetForOperation(indexgateway.IndexesRead)
+	if err != nil {
+		return nil, errors.Wrap(err, "index gateway get ring")
+	}
+
+	addrs := rs.GetAddresses()
+	// shuffle addresses to make sure we don't always access the same Index Gateway instances in sequence for same tenant.
+	rand.Shuffle(len(addrs), func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
+
+	return addrs, nil
+}
+
 func (s *GatewayClient) NewWriteBatch() index.WriteBatch {
 	panic("unsupported")
 }
 
-func (s *GatewayClient) BatchWrite(ctx context.Context, batch index.WriteBatch) error {
+func (s *GatewayClient) BatchWrite(_ context.Context, _ index.WriteBatch) error {
 	panic("unsupported")
 }
 

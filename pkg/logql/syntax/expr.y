@@ -39,8 +39,12 @@ import (
   BoolModifier            *BinOpOptions
   OnOrIgnoringModifier    *BinOpOptions
   LabelParser             *LabelParserExpr
+  LogfmtParser            *LogfmtParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
+  DistinctLabel           []string
+  ParserFlags             []string
+  DistinctFilter          *DistinctFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -64,7 +68,10 @@ import (
   OffsetExpr              *OffsetExpr
   DropLabel               log.DropLabel
   DropLabels              []log.DropLabel
-  DropLabelsExpr          *DropLabelsExpr 
+  DropLabelsExpr          *DropLabelsExpr
+  KeepLabel               log.KeepLabel
+  KeepLabels              []log.KeepLabel
+  KeepLabelsExpr          *KeepLabelsExpr
 }
 
 %start root
@@ -94,6 +101,7 @@ import (
 %type <BoolModifier>          boolModifier
 %type <OnOrIgnoringModifier>  onOrIgnoringModifier
 %type <LabelParser>           labelParser
+%type <LogfmtParser>          logfmtParser
 %type <PipelineExpr>          pipelineExpr
 %type <PipelineStage>         pipelineStage
 %type <BytesFilter>           bytesFilter
@@ -102,11 +110,17 @@ import (
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
 %type <LineFilter>            lineFilter
+%type <DistinctFilter>        distinctFilter
+%type <DistinctLabel>         distinctLabel
+%type <ParserFlags>           parserFlags
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
 %type <DropLabelsExpr>        dropLabelsExpr
 %type <DropLabels>            dropLabels
 %type <DropLabel>             dropLabel
+%type <KeepLabelsExpr>        keepLabelsExpr
+%type <KeepLabels>            keepLabels
+%type <KeepLabel>             keepLabel
 %type <LabelFormatExpr>       labelFormatExpr
 %type <LabelFormat>           labelFormat
 %type <LabelsFormat>          labelsFormat
@@ -120,14 +134,14 @@ import (
 %type <OffsetExpr>            offsetExpr
 
 %token <bytes> BYTES
-%token <str>      IDENTIFIER STRING NUMBER
+%token <str>      IDENTIFIER STRING NUMBER PARSER_FLAG
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
+                  BYTES_OVER_TIME BYTES_RATE BOOL JSON DISTINCT REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
-                  DECOLORIZE DROP
+                  DECOLORIZE DROP KEEP
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -258,6 +272,7 @@ pipelineExpr:
 
 pipelineStage:
    lineFilters                   { $$ = $1 }
+  | PIPE logfmtParser            { $$ = $2 }
   | PIPE labelParser             { $$ = $2 }
   | PIPE jsonExpressionParser    { $$ = $2 }
   | PIPE logfmtExpressionParser  { $$ = $2 }
@@ -266,7 +281,9 @@ pipelineStage:
   | PIPE decolorizeExpr          { $$ = $2 }
   | PIPE labelFormatExpr         { $$ = $2 }
   | PIPE dropLabelsExpr          { $$ = $2 }
-  ;
+  | PIPE keepLabelsExpr          { $$ = $2 }
+  | PIPE distinctFilter          { $$ = $2 }
+ ;
 
 filterOp:
   IP { $$ = OpFilterIP }
@@ -282,19 +299,30 @@ lineFilters:
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
+parserFlags:
+    PARSER_FLAG               { $$ = []string{ $1 } }
+  | parserFlags PARSER_FLAG   { $$ = append($1, $2) }
+  ;
+
+logfmtParser:
+    LOGFMT                   { $$ = newLogfmtParserExpr(nil) }
+  | LOGFMT parserFlags       { $$ = newLogfmtParserExpr($2) }
+  ;
+
 labelParser:
-    JSON           { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
-  | LOGFMT         { $$ = newLabelParserExpr(OpParserTypeLogfmt, "") }
-  | REGEXP STRING  { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
-  | UNPACK         { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
-  | PATTERN STRING { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
+    JSON                { $$ = newLabelParserExpr(OpParserTypeJSON, "") }
+  | REGEXP STRING       { $$ = newLabelParserExpr(OpParserTypeRegexp, $2) }
+  | UNPACK              { $$ = newLabelParserExpr(OpParserTypeUnpack, "") }
+  | PATTERN STRING      { $$ = newLabelParserExpr(OpParserTypePattern, $2) }
   ;
 
 jsonExpressionParser:
     JSON labelExtractionExpressionList { $$ = newJSONExpressionParser($2) }
-  
+
 logfmtExpressionParser:
-    LOGFMT labelExtractionExpressionList { $$ = newLogfmtExpressionParser($2)}
+    LOGFMT parserFlags labelExtractionExpressionList  { $$ = newLogfmtExpressionParser($3, $2)}
+  | LOGFMT labelExtractionExpressionList              { $$ = newLogfmtExpressionParser($2, nil)}
+  ;
 
 lineFormatExpr: LINE_FMT STRING { $$ = newLineFmtExpr($2) };
 
@@ -313,6 +341,14 @@ labelsFormat:
 
 labelFormatExpr:
       LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
+
+distinctLabel:
+    IDENTIFIER                     { $$ = []string{ $1 } }
+  | distinctLabel COMMA IDENTIFIER { $$ = append($1, $3) }
+  ;
+
+distinctFilter:
+      DISTINCT distinctLabel { $$ = newDistinctFilterExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }
@@ -374,7 +410,7 @@ numberFilter:
     | IDENTIFIER CMP_EQ NUMBER  { $$ = log.NewNumericLabelFilter(log.LabelFilterEqual, $1, mustNewFloat($3))}
     ;
 
-dropLabel: 
+dropLabel:
       IDENTIFIER { $$ = log.NewDropLabel(nil, $1) }
     | matcher { $$ = log.NewDropLabel($1, "") }
 
@@ -384,6 +420,17 @@ dropLabels:
     ;
 
 dropLabelsExpr: DROP dropLabels { $$ = newDropLabelsExpr($2) }
+
+keepLabel:
+      IDENTIFIER { $$ = log.NewKeepLabel(nil, $1) }
+    | matcher { $$ = log.NewKeepLabel($1, "") }
+
+keepLabels:
+      keepLabel                  { $$ = []log.KeepLabel{$1}}
+    | keepLabels COMMA keepLabel { $$ = append($1, $3) }
+    ;
+
+keepLabelsExpr: KEEP keepLabels { $$ = newKeepLabelsExpr($2) }
 
 // Operator precedence only works if each of these is listed separately.
 binOpExpr:

@@ -9,13 +9,13 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
-	"sync"
 
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
-	"github.com/sercand/kuberesolver"
+	"github.com/sercand/kuberesolver/v4"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/logging"
@@ -70,12 +70,8 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 
 // Client is a http.Handler that forwards the request over gRPC.
 type Client struct {
-	mtx       sync.RWMutex
-	service   string
-	namespace string
-	port      string
-	client    httpgrpc.HTTPClient
-	conn      *grpc.ClientConn
+	client httpgrpc.HTTPClient
+	conn   *grpc.ClientConn
 }
 
 // ParseURL deals with direct:// style URLs, as well as kubernetes:// urls.
@@ -134,7 +130,7 @@ func NewClient(address string) (*Client, error) {
 
 	dialOptions := []grpc.DialOption{
 		grpc.WithDefaultServiceConfig(grpcServiceConfig),
-		grpc.WithInsecure(),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithChainUnaryInterceptor(
 			otgrpc.OpenTracingClientInterceptor(opentracing.GlobalTracer()),
 			middleware.ClientUserHeaderInterceptor,

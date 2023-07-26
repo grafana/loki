@@ -279,7 +279,7 @@ func (t *indexSet) syncWithRetry(ctx context.Context, lock, bypassListCache bool
 
 		if errors.Is(err, errIndexListCacheTooStale) && i < maxSyncRetries {
 			level.Info(t.logger).Log("msg", "we have hit stale list cache, refreshing it before retrying")
-			t.baseIndexSet.RefreshIndexListCache(ctx)
+			t.baseIndexSet.RefreshIndexTableCache(ctx, t.tableName)
 		}
 
 		level.Error(t.logger).Log("msg", "sync failed, retrying it", "err", err)

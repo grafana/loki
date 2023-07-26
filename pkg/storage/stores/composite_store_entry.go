@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
+
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
@@ -128,6 +132,30 @@ func (c *storeEntry) Stats(ctx context.Context, userID string, from, through mod
 	return c.indexReader.Stats(ctx, userID, from, through, matchers...)
 }
 
+func (c *storeEntry) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Volume")
+	defer sp.Finish()
+
+	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
+	if err != nil {
+		return nil, err
+	} else if shortcut {
+		return nil, nil
+	}
+
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"err", err,
+		"limit", limit,
+		"aggregateBy", aggregateBy,
+	)
+
+	return c.indexReader.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+}
+
 func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, from *model.Time, through *model.Time) (bool, error) {
 	//nolint:ineffassign,staticcheck //Leaving ctx even though we don't currently use it, we want to make it available for when we might need it and hopefully will ensure us using the correct context at that time
 
@@ -157,7 +185,7 @@ func (c *storeEntry) validateQueryTimeRange(ctx context.Context, userID string, 
 	return false, nil
 }
 
-func (c *storeEntry) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+func (c *storeEntry) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return c.fetcher
 }
 

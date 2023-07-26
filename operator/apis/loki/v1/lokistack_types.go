@@ -25,7 +25,7 @@ const (
 
 // LokiStackSizeType declares the type for loki cluster scale outs.
 //
-// +kubebuilder:validation:Enum="1x.extra-small";"1x.small";"1x.medium"
+// +kubebuilder:validation:Enum="1x.demo";"1x.extra-small";"1x.small";"1x.medium"
 type LokiStackSizeType string
 
 const (
@@ -153,12 +153,17 @@ type TenantSecretSpec struct {
 
 // OIDCSpec defines the oidc configuration spec for lokiStack Gateway component.
 type OIDCSpec struct {
-	// Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant's authentication.
+	// Secret defines the spec for the clientID and clientSecret for tenant's authentication.
 	//
 	// +required
 	// +kubebuilder:validation:Required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenant Secret"
 	Secret *TenantSecretSpec `json:"secret"`
+	// IssuerCA defines the spec for the issuer CA for tenant's authentication.
+	//
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="IssuerCA ConfigMap"
+	IssuerCA *CASpec `json:"issuerCA"`
 	// IssuerURL defines the URL for issuer.
 	//
 	// +required
@@ -183,6 +188,16 @@ type OIDCSpec struct {
 	UsernameClaim string `json:"usernameClaim,omitempty"`
 }
 
+// MTLSSpec specifies mTLS configuration parameters.
+type MTLSSpec struct {
+	// CA defines the spec for the custom CA for tenant's authentication.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="CA ConfigMap"
+	CA *CASpec `json:"ca"`
+}
+
 // AuthenticationSpec defines the oidc configuration per tenant for lokiStack Gateway component.
 type AuthenticationSpec struct {
 	// TenantName defines the name of the tenant.
@@ -199,10 +214,15 @@ type AuthenticationSpec struct {
 	TenantID string `json:"tenantId"`
 	// OIDC defines the spec for the OIDC tenant's authentication.
 	//
-	// +required
-	// +kubebuilder:validation:Required
+	// +optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="OIDC Configuration"
-	OIDC *OIDCSpec `json:"oidc"`
+	OIDC *OIDCSpec `json:"oidc,omitempty"`
+
+	// TLSConfig defines the spec for the mTLS tenant's authentication.
+	//
+	// +optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="mTLS Configuration"
+	MTLS *MTLSSpec `json:"mTLS,omitempty"`
 }
 
 // ModeType is the authentication/authorization mode in which LokiStack Gateway will be configured.
@@ -244,6 +264,29 @@ type TenantsSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Authorization"
 	Authorization *AuthorizationSpec `json:"authorization,omitempty"`
+
+	// Openshift defines the configuration specific to Openshift modes.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Openshift"
+	Openshift *OpenshiftTenantSpec `json:"openshift,omitempty"`
+}
+
+// OpenshiftTenantSpec defines the configuration specific to Openshift modes.
+type OpenshiftTenantSpec struct {
+	// AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+	// Setting this to an empty array disables admin groups.
+	//
+	// By default the following groups are considered admin-groups:
+	//  - system:cluster-admins
+	//  - cluster-admin
+	//  - dedicated-admin
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Admin Groups"
+	AdminGroups []string `json:"adminGroups"`
 }
 
 // LokiComponentSpec defines the requirements to configure scheduling
@@ -269,6 +312,14 @@ type LokiComponentSpec struct {
 	// +optional
 	// +kubebuilder:validation:Optional
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+
+	// PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+	// of a component.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:podAntiAffinity",displayName="PodAntiAffinity"
+	PodAntiAffinity *corev1.PodAntiAffinity `json:"podAntiAffinity,omitempty"`
 }
 
 // LokiTemplateSpec defines the template of all requirements to configure
@@ -406,8 +457,7 @@ type HashRingSpec struct {
 	MemberList *MemberListSpec `json:"memberlist,omitempty"`
 }
 
-// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
-type ObjectStorageTLSSpec struct {
+type CASpec struct {
 	// Key is the data key of a ConfigMap containing a CA certificate.
 	// It needs to be in the same namespace as the LokiStack custom resource.
 	// If empty, it defaults to "service-ca.crt".
@@ -423,6 +473,11 @@ type ObjectStorageTLSSpec struct {
 	// +kubebuilder:validation:required
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:io.kubernetes:ConfigMap",displayName="CA ConfigMap Name"
 	CA string `json:"caName"`
+}
+
+// ObjectStorageTLSSpec is the TLS configuration for reaching the object storage endpoint.
+type ObjectStorageTLSSpec struct {
+	CASpec `json:",inline"`
 }
 
 // ObjectStorageSecretType defines the type of storage which can be used with the Loki cluster.
@@ -541,7 +596,7 @@ type QueryLimitSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Chunk per Query"
 	MaxChunksPerQuery int32 `json:"maxChunksPerQuery,omitempty"`
 
-	// MaxQuerySeries defines the the maximum of unique series
+	// MaxQuerySeries defines the maximum of unique series
 	// that is returned by a metric query.
 	//
 	// + optional
@@ -553,9 +608,16 @@ type QueryLimitSpec struct {
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
-	// +kubebuilder:default:="1m"
+	// +kubebuilder:default:="3m"
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Query Timeout"
 	QueryTimeout string `json:"queryTimeout,omitempty"`
+
+	// CardinalityLimit defines the cardinality limit for index queries.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Cardinality Limit"
+	CardinalityLimit int32 `json:"cardinalityLimit,omitempty"`
 }
 
 // IngestionLimitSpec defines the limits applied at the ingestion path.
@@ -614,6 +676,20 @@ type IngestionLimitSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Line Size"
 	MaxLineSize int32 `json:"maxLineSize,omitempty"`
+
+	// PerStreamRateLimit defines the maximum byte rate per second per stream. Units MB.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Maximum byte rate per second per stream (in MB)"
+	PerStreamRateLimit int32 `json:"perStreamRateLimit,omitempty"`
+
+	// PerStreamRateLimitBurst defines the maximum burst bytes per stream. Units MB.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Maximum burst bytes per stream (in MB)"
+	PerStreamRateLimitBurst int32 `json:"perStreamRateLimitBurst,omitempty"`
 }
 
 // RetentionStreamSpec defines a log stream with separate retention time.
@@ -766,6 +842,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Cluster Proxy"
 	Proxy *ClusterProxy `json:"proxy,omitempty"`
 
+	// Deprecated: Please use replication.factor instead. This field will be removed in future versions of this CRD.
 	// ReplicationFactor defines the policy for log stream replication.
 	//
 	// +optional
@@ -774,7 +851,14 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
 	ReplicationFactor int32 `json:"replicationFactor,omitempty"`
 
-	// Rules defines the spec for the ruler component
+	// Replication defines the configuration for Loki data replication.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Replication Spec"
+	Replication *ReplicationSpec `json:"replication,omitempty"`
+
+	// Rules defines the spec for the ruler component.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -788,7 +872,7 @@ type LokiStackSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:advanced",displayName="Rate Limiting"
 	Limits *LimitsSpec `json:"limits,omitempty"`
 
-	// Template defines the resource/limits/tolerations/nodeselectors per component
+	// Template defines the resource/limits/tolerations/nodeselectors per component.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
@@ -801,6 +885,41 @@ type LokiStackSpec struct {
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Tenants Configuration"
 	Tenants *TenantsSpec `json:"tenants,omitempty"`
+}
+
+type ReplicationSpec struct {
+	// Factor defines the policy for log stream replication.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +kubebuilder:validation:Minimum:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Replication Factor"
+	Factor int32 `json:"factor,omitempty"`
+
+	// Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+	// IMPORTANT: Make sure that the replication factor defined is less than or equal to the number of available zones.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Zones Spec"
+	Zones []ZoneSpec `json:"zones,omitempty"`
+}
+
+// ZoneSpec defines the spec to support zone-aware component deployments.
+type ZoneSpec struct {
+	// MaxSkew describes the maximum degree to which Pods can be unevenly distributed.
+	//
+	// +required
+	// +kubebuilder:default:=1
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:number",displayName="Max Skew"
+	MaxSkew int `json:"maxSkew"`
+
+	// TopologyKey is the key that defines a topology in the Nodes' labels.
+	//
+	// +required
+	// +kubebuilder:validation:Required
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,displayName="Topology Key"
+	TopologyKey string `json:"topologyKey"`
 }
 
 // LokiStackConditionType deifnes the type of condition types of a Loki deployment.
@@ -854,14 +973,23 @@ const (
 	// ReasonMissingGatewayTenantSecret when the required tenant secret
 	// for authentication is missing.
 	ReasonMissingGatewayTenantSecret LokiStackConditionReason = "MissingGatewayTenantSecret"
+	// ReasonMissingGatewayTenantConfigMap when the required tenant configmap
+	// for authentication is missing.
+	ReasonMissingGatewayTenantConfigMap LokiStackConditionReason = "MissingGatewayTenantConfigMap"
 	// ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.
 	ReasonInvalidGatewayTenantSecret LokiStackConditionReason = "InvalidGatewayTenantSecret"
+	// ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.
+	ReasonInvalidGatewayTenantConfigMap LokiStackConditionReason = "InvalidGatewayTenantConfigMap"
+	// ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config
+	ReasonMissingGatewayAuthenticationConfig LokiStackConditionReason = "MissingGatewayTenantAuthenticationConfig"
 	// ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.
 	ReasonInvalidTenantsConfiguration LokiStackConditionReason = "InvalidTenantsConfiguration"
 	// ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.
 	ReasonMissingGatewayOpenShiftBaseDomain LokiStackConditionReason = "MissingGatewayOpenShiftBaseDomain"
 	// ReasonFailedCertificateRotation when the reconciler cannot rotate any of the required TLS certificates.
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
+	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
+	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

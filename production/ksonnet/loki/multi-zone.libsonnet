@@ -2,7 +2,7 @@
   local container = $.core.v1.container,
   local deployment = $.apps.v1.deployment,
   local statefulSet = $.apps.v1.statefulSet,
-  local podDisruptionBudget = $.policy.v1beta1.podDisruptionBudget,
+  local podDisruptionBudget = $.policy.v1.podDisruptionBudget,
   local volume = $.core.v1.volume,
   local roleBinding = $.rbac.v1.roleBinding,
   local role = $.rbac.v1.role,

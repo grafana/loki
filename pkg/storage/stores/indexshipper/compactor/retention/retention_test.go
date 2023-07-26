@@ -43,7 +43,7 @@ func (m *mockChunkClient) DeleteChunk(_ context.Context, _, chunkID string) erro
 	return nil
 }
 
-func (m *mockChunkClient) IsChunkNotFoundErr(err error) bool {
+func (m *mockChunkClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
@@ -177,9 +177,9 @@ func Test_Retention(t *testing.T) {
 
 type noopWriter struct{}
 
-func (noopWriter) Put(chunkID []byte) error { return nil }
-func (noopWriter) Count() int64             { return 0 }
-func (noopWriter) Close() error             { return nil }
+func (noopWriter) Put(_ []byte) error { return nil }
+func (noopWriter) Count() int64       { return 0 }
+func (noopWriter) Close() error       { return nil }
 
 func Test_EmptyTable(t *testing.T) {
 	schema := allSchemas[0]
@@ -315,7 +315,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite first half",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, _ string) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
 					return true
@@ -339,7 +339,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite second half",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, _ string) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.Add(time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano() {
 					return true
@@ -363,7 +363,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite multiple intervals",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(12*time.Hour)),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, _ string) bool {
 				tsUnixNano := ts.UnixNano()
 				if (todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano()) ||
 					(todaysTableInterval.Start.Add(5*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(9*time.Hour).UnixNano()) ||
@@ -393,7 +393,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals - delete partially for each day",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, _ string) bool {
 				tsUnixNano := ts.UnixNano()
 				if (todaysTableInterval.End.Add(-71*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-47*time.Hour).UnixNano()) ||
 					(todaysTableInterval.End.Add(-40*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-30*time.Hour).UnixNano()) ||
@@ -439,7 +439,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals - delete just one whole day",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, _ string) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.UnixNano() {
 					return true
@@ -572,7 +572,7 @@ func newMockExpirationChecker(chunksExpiry map[string]chunkExpiry) *mockExpirati
 	return &mockExpirationChecker{chunksExpiry: chunksExpiry}
 }
 
-func (m *mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, filter.Func) {
+func (m *mockExpirationChecker) Expired(ref ChunkEntry, _ model.Time) (bool, filter.Func) {
 	time.Sleep(m.delay)
 	m.calls++
 
@@ -580,7 +580,7 @@ func (m *mockExpirationChecker) Expired(ref ChunkEntry, now model.Time) (bool, f
 	return ce.isExpired, ce.filterFunc
 }
 
-func (m *mockExpirationChecker) DropFromIndex(ref ChunkEntry, tableEndTime model.Time, now model.Time) bool {
+func (m *mockExpirationChecker) DropFromIndex(_ ChunkEntry, _ model.Time, _ model.Time) bool {
 	return false
 }
 
@@ -673,7 +673,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string) bool {
+					filterFunc: func(ts time.Time, _ string) bool {
 						tsUnixNano := ts.UnixNano()
 						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
 							return true
@@ -729,7 +729,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string) bool {
+					filterFunc: func(ts time.Time, _ string) bool {
 						tsUnixNano := ts.UnixNano()
 						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
 							return true

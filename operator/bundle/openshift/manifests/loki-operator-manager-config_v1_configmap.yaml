@@ -41,7 +41,7 @@ data:
       #
       lokiStackGateway: true
       grafanaLabsUsageReport: false
-      runtimeSeccompProfile: false
+      restrictedPodSecurityStandard: true
       defaultNodeAffinity: true
       #
       # Webhook feature gates
@@ -54,8 +54,8 @@ data:
       # OpenShift feature gates
       #
       openshift:
+        enabled: true
         servingCertsService: true
-        gatewayRoute: true
         ruleExtendedValidation: true
         clusterTLSPolicy: true
         clusterProxy: true

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/go-logr/logr"
 	"github.com/google/go-cmp/cmp"
 	"github.com/grafana/loki/operator/controllers/loki/internal/management/state"
@@ -121,7 +122,6 @@ type LokiStackReconciler struct {
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=loki.grafana.com,resources=lokistacks/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=pods;nodes;services;endpoints;configmaps;secrets;serviceaccounts,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=clusterrolebindings;clusterroles;roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;prometheusrules,verbs=get;list;watch;create;update;delete
@@ -154,14 +154,14 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	if r.FeatureGates.BuiltInCertManagement.Enabled {
 		err = handlers.CreateOrRotateCertificates(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
-		if res, derr := handleDegradedError(ctx, r.Client, req, err); derr != nil {
-			return res, derr
+		if err != nil {
+			return handleDegradedError(ctx, r.Client, req, err)
 		}
 	}
 
 	err = handlers.CreateOrUpdateLokiStack(ctx, r.Log, req, r.Client, r.Scheme, r.FeatureGates)
-	if res, derr := handleDegradedError(ctx, r.Client, req, err); derr != nil {
-		return res, derr
+	if err != nil {
+		return handleDegradedError(ctx, r.Client, req, err)
 	}
 
 	err = status.Refresh(ctx, r.Client, req, time.Now())
@@ -177,7 +177,7 @@ func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request,
 	if errors.As(err, &degraded) {
 		err = status.SetDegradedCondition(ctx, c, req, degraded.Message, degraded.Reason)
 		if err != nil {
-			return ctrl.Result{}, err
+			return ctrl.Result{}, kverrors.Wrap(err, "error setting degraded condition")
 		}
 
 		return ctrl.Result{
@@ -185,11 +185,7 @@ func handleDegradedError(ctx context.Context, c client.Client, req ctrl.Request,
 		}, nil
 	}
 
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, err
 }
 
 // SetupWithManager sets up the controller with the Manager.
@@ -218,7 +214,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
 	}
 
-	if r.FeatureGates.OpenShift.GatewayRoute {
+	if r.FeatureGates.OpenShift.Enabled {
 		bld = bld.Owns(&routev1.Route{}, updateOrDeleteOnlyPred)
 	} else {
 		bld = bld.Owns(&networkingv1.Ingress{}, updateOrDeleteOnlyPred)
@@ -283,7 +279,7 @@ func (r *LokiStackReconciler) enqueueForAlertManagerServices() handler.EventHand
 		var requests []reconcile.Request
 
 		if obj.GetName() == openshift.MonitoringSVCOperated &&
-			(obj.GetNamespace() == openshift.MonitoringUserwWrkloadNS ||
+			(obj.GetNamespace() == openshift.MonitoringUserWorkloadNS ||
 				obj.GetNamespace() == openshift.MonitoringNS) {
 
 			for _, stack := range lokiStacks.Items {

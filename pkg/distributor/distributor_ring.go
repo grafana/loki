@@ -58,7 +58,7 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableIPv6, "distributor.ring.instance-enable-ipv6", false, "Enable using a IPv6 instance address.")
 }
 
-// ToLifecyclerConfig returns a BasicLifecyclerConfig based on the distributor
+// ToBasicLifecyclerConfig returns a BasicLifecyclerConfig based on the distributor
 // ring config.
 func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
 	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger, cfg.EnableIPv6)

@@ -97,9 +97,11 @@ func (e ConfigEntry) Description() string {
 }
 
 type RootBlock struct {
-	Name       string
-	Desc       string
-	StructType reflect.Type
+	Name string
+	Desc string
+	// multiple entries are useful if the root blocks share the same
+	// underlying type
+	StructType []reflect.Type
 }
 
 func Flags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
@@ -629,8 +631,10 @@ func getFieldDescription(cfg interface{}, field reflect.StructField, fallback st
 
 func isRootBlock(t reflect.Type, rootBlocks []RootBlock) (string, string, bool) {
 	for _, rootBlock := range rootBlocks {
-		if t == rootBlock.StructType {
-			return rootBlock.Name, rootBlock.Desc, true
+		for _, structType := range rootBlock.StructType {
+			if t == structType {
+				return rootBlock.Name, rootBlock.Desc, true
+			}
 		}
 	}
 

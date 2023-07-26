@@ -966,7 +966,117 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
-func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, Querier, error) {
+func TestQuerier_Volumes(t *testing.T) {
+	t.Run("it returns volumes from the store", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		store := newStoreMock()
+		store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-1 * time.Hour).Unix())
+		through := model.TimeFromUnix(now.Add(-35 * time.Minute).Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.Volume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+
+	t.Run("it returns volumes from the ingester", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-15 * time.Minute).Unix())
+		through := model.TimeFromUnix(now.Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.Volume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+
+	t.Run("it merges volumes from the store and ingester", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+		store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-time.Hour).Unix())
+		through := model.TimeFromUnix(now.Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.Volume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 76}}, resp.Volumes)
+	})
+}
+
+func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
 	queryClient := newQueryClientMock()
 	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
 
@@ -1188,7 +1298,7 @@ type mockDeleteGettter struct {
 	results []deletion.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

@@ -942,6 +942,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 			name := RemoveRuleTokenFromGroupName(grp.Group.Name)
 			grp.Group.Name = name
 
+			// When merging include the namepsace in case the same group name exists in multiple namespaces
+			name = grp.Group.Namespace + "/" + name
+
 			_, found := merged[name]
 			if found {
 				merged[name].ActiveRules = append(merged[name].ActiveRules, grp.ActiveRules...)
@@ -966,7 +969,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 }
 
 // Rules implements the rules service
-func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) Rules(ctx context.Context, _ *RulesRequest) (*RulesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")

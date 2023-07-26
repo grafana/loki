@@ -58,6 +58,7 @@ const (
 	ChunkCache       CacheType = "chunk" //nolint:staticcheck
 	IndexCache                 = "index"
 	ResultCache                = "result"
+	StatsResultCache           = "stats-result"
 	WriteDedupeCache           = "write-dedupe"
 )
 
@@ -91,9 +92,10 @@ func (c *Context) Ingester() Ingester {
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
-		Chunk:  c.caches.Chunk,
-		Index:  c.caches.Index,
-		Result: c.caches.Result,
+		Chunk:       c.caches.Chunk,
+		Index:       c.caches.Index,
+		Result:      c.caches.Result,
+		StatsResult: c.caches.StatsResult,
 	}
 }
 
@@ -148,8 +150,11 @@ func JoinIngesters(ctx context.Context, inc Ingester) {
 func (r *Result) ComputeSummary(execTime time.Duration, queueTime time.Duration, totalEntriesReturned int) {
 	r.Summary.TotalBytesProcessed = r.Querier.Store.Chunk.DecompressedBytes + r.Querier.Store.Chunk.HeadChunkBytes +
 		r.Ingester.Store.Chunk.DecompressedBytes + r.Ingester.Store.Chunk.HeadChunkBytes
+	r.Summary.TotalNonIndexedLabelsBytesProcessed = r.Querier.Store.Chunk.DecompressedNonIndexedLabelsBytes + r.Querier.Store.Chunk.HeadChunkNonIndexedLabelsBytes +
+		r.Ingester.Store.Chunk.DecompressedNonIndexedLabelsBytes + r.Ingester.Store.Chunk.HeadChunkNonIndexedLabelsBytes
 	r.Summary.TotalLinesProcessed = r.Querier.Store.Chunk.DecompressedLines + r.Querier.Store.Chunk.HeadChunkLines +
 		r.Ingester.Store.Chunk.DecompressedLines + r.Ingester.Store.Chunk.HeadChunkLines
+	r.Summary.TotalPostFilterLines = r.Querier.Store.Chunk.PostFilterLines + r.Ingester.Store.Chunk.PostFilterLines
 	r.Summary.ExecTime = execTime.Seconds()
 	if execTime != 0 {
 		r.Summary.BytesProcessedPerSecond = int64(float64(r.Summary.TotalBytesProcessed) /
@@ -169,11 +174,14 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.ChunksDownloadTime += m.ChunksDownloadTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
+	s.Chunk.HeadChunkNonIndexedLabelsBytes += m.Chunk.HeadChunkNonIndexedLabelsBytes
 	s.Chunk.HeadChunkLines += m.Chunk.HeadChunkLines
 	s.Chunk.DecompressedBytes += m.Chunk.DecompressedBytes
+	s.Chunk.DecompressedNonIndexedLabelsBytes += m.Chunk.DecompressedNonIndexedLabelsBytes
 	s.Chunk.DecompressedLines += m.Chunk.DecompressedLines
 	s.Chunk.CompressedBytes += m.Chunk.CompressedBytes
 	s.Chunk.TotalDuplicates += m.Chunk.TotalDuplicates
+	s.Chunk.PostFilterLines += m.Chunk.PostFilterLines
 }
 
 func (s *Summary) Merge(m Summary) {
@@ -197,6 +205,7 @@ func (c *Caches) Merge(m Caches) {
 	c.Chunk.Merge(m.Chunk)
 	c.Index.Merge(m.Index)
 	c.Result.Merge(m.Result)
+	c.StatsResult.Merge(m.StatsResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -279,6 +288,10 @@ func (c *Context) AddHeadChunkBytes(i int64) {
 	atomic.AddInt64(&c.store.Chunk.HeadChunkBytes, i)
 }
 
+func (c *Context) AddHeadChunkNonIndexedLabelsBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.HeadChunkNonIndexedLabelsBytes, i)
+}
+
 func (c *Context) AddCompressedBytes(i int64) {
 	atomic.AddInt64(&c.store.Chunk.CompressedBytes, i)
 }
@@ -287,8 +300,16 @@ func (c *Context) AddDecompressedBytes(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedBytes, i)
 }
 
+func (c *Context) AddDecompressedNonIndexedLabelsBytes(i int64) {
+	atomic.AddInt64(&c.store.Chunk.DecompressedNonIndexedLabelsBytes, i)
+}
+
 func (c *Context) AddDecompressedLines(i int64) {
 	atomic.AddInt64(&c.store.Chunk.DecompressedLines, i)
+}
+
+func (c *Context) AddPostFilterLines(i int64) {
+	atomic.AddInt64(&c.store.Chunk.PostFilterLines, i)
 }
 
 func (c *Context) AddDuplicates(i int64) {
@@ -381,6 +402,10 @@ func (c *Context) AddCacheRequest(t CacheType, i int) {
 	atomic.AddInt32(&stats.Requests, int32(i))
 }
 
+func (c *Context) AddSplitQueries(num int64) {
+	atomic.AddInt64(&c.result.Summary.Splits, num)
+}
+
 func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 	var stats *Cache
 	switch t {
@@ -390,6 +415,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.Index
 	case ResultCache:
 		stats = &c.caches.Result
+	case StatsResultCache:
+		stats = &c.caches.StatsResult
 	default:
 		return nil
 	}
@@ -410,6 +437,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.HeadChunkLines", r.Ingester.Store.Chunk.HeadChunkLines,
 		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.DecompressedBytes)),
 		"Ingester.DecompressedLines", r.Ingester.Store.Chunk.DecompressedLines,
+		"Ingester.PostFilterLInes", r.Ingester.Store.Chunk.PostFilterLines,
 		"Ingester.CompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.CompressedBytes)),
 		"Ingester.TotalDuplicates", r.Ingester.Store.Chunk.TotalDuplicates,
 
@@ -420,6 +448,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.HeadChunkLines", r.Querier.Store.Chunk.HeadChunkLines,
 		"Querier.DecompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.DecompressedBytes)),
 		"Querier.DecompressedLines", r.Querier.Store.Chunk.DecompressedLines,
+		"Querier.PostFilterLInes", r.Querier.Store.Chunk.PostFilterLines,
 		"Querier.CompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.CompressedBytes)),
 		"Querier.TotalDuplicates", r.Querier.Store.Chunk.TotalDuplicates,
 	)
@@ -433,6 +462,7 @@ func (s Summary) Log(log log.Logger) {
 		"Summary.LinesProcessedPerSecond", s.LinesProcessedPerSecond,
 		"Summary.TotalBytesProcessed", humanize.Bytes(uint64(s.TotalBytesProcessed)),
 		"Summary.TotalLinesProcessed", s.TotalLinesProcessed,
+		"Summary.PostFilterLines", s.TotalPostFilterLines,
 		"Summary.ExecTime", ConvertSecondsToNanoseconds(s.ExecTime),
 		"Summary.QueueTime", ConvertSecondsToNanoseconds(s.QueueTime),
 	)
@@ -454,6 +484,13 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.Index.BytesSent", humanize.Bytes(uint64(c.Index.BytesSent)),
 		"Cache.Index.BytesReceived", humanize.Bytes(uint64(c.Index.BytesReceived)),
 		"Cache.Index.DownloadTime", c.Index.CacheDownloadTime(),
+		"Cache.StatsResult.Requests", c.StatsResult.Requests,
+		"Cache.StatsResult.EntriesRequested", c.StatsResult.EntriesRequested,
+		"Cache.StatsResult.EntriesFound", c.StatsResult.EntriesFound,
+		"Cache.StatsResult.EntriesStored", c.StatsResult.EntriesStored,
+		"Cache.StatsResult.BytesSent", humanize.Bytes(uint64(c.StatsResult.BytesSent)),
+		"Cache.StatsResult.BytesReceived", humanize.Bytes(uint64(c.StatsResult.BytesReceived)),
+		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,
 		"Cache.Result.EntriesFound", c.Result.EntriesFound,

@@ -1,41 +1,60 @@
 package openshift
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
-func TestBuildGatewayObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+func TestBuildGatewayTenantModeObjects_ClusterRoleRefMatches(t *testing.T) {
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", 1*time.Minute, map[string]string{}, "abc").
+		WithTenantsForMode(lokiv1.OpenshiftLogging, "example.com", map[string]TenantData{})
 
-	objs := BuildGatewayObjects(opts)
-	cr := objs[2].(*rbacv1.ClusterRole)
-	rb := objs[3].(*rbacv1.ClusterRoleBinding)
+	objs := BuildGatewayTenantModeObjects(*opts)
+	cr := objs[0].(*rbacv1.ClusterRole)
+	rb := objs[1].(*rbacv1.ClusterRoleBinding)
 
 	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
 func TestBuildGatewayObjects_MonitoringClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", 1*time.Minute, map[string]string{}, "abc")
 
-	objs := BuildGatewayObjects(opts)
-	cr := objs[4].(*rbacv1.Role)
-	rb := objs[5].(*rbacv1.RoleBinding)
+	objs := BuildGatewayObjects(*opts)
+	cr := objs[2].(*rbacv1.Role)
+	rb := objs[3].(*rbacv1.RoleBinding)
 
 	require.Equal(t, cr.Kind, rb.RoleRef.Kind)
 	require.Equal(t, cr.Name, rb.RoleRef.Name)
 }
 
-func TestBuildRulerObjects_ClusterRoleRefMatches(t *testing.T) {
-	opts := NewOptions(lokiv1.OpenshiftLogging, "abc", "ns", "abc", "example.com", "abc", "abc", map[string]string{}, map[string]TenantData{}, "abc")
+func TestBuildGatewayObjets_RouteWithTimeoutAnnotation(t *testing.T) {
+	gwWriteTimeout := 1 * time.Minute
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", gwWriteTimeout, map[string]string{}, "abc")
 
-	objs := BuildRulerObjects(opts)
+	objs := BuildGatewayObjects(*opts)
+	a := objs[0].GetAnnotations()
+
+	got, ok := a[annotationGatewayRouteTimeout]
+	require.True(t, ok)
+
+	routeTimeout := gwWriteTimeout + gatewayRouteTimeoutExtension
+	want := fmt.Sprintf("%.fs", routeTimeout.Seconds())
+	require.Equal(t, want, got)
+}
+
+func TestBuildRulerObjects_ClusterRoleRefMatches(t *testing.T) {
+	opts := NewOptions("abc", "ns", "abc", "abc", "abc", 1*time.Minute, map[string]string{}, "abc")
+
+	objs := BuildRulerObjects(*opts)
 	sa := objs[1].(*corev1.ServiceAccount)
 	cr := objs[2].(*rbacv1.ClusterRole)
 	rb := objs[3].(*rbacv1.ClusterRoleBinding)

@@ -53,7 +53,7 @@ You may use any substitutable services, such as those that implement the S3 API 
 
 ### Single-Store
 
-Single-Store refers to the using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
+Single-Store refers to using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
 
 #### tsdb (recommended)
 
@@ -67,7 +67,7 @@ Performance is comparable to a dedicated index type while providing a much less 
 
 ### Cassandra
 
-Cassandra can also be utilized for the index store and aside from the [boltdb-shipper]({{<relref "../operations/storage/boltdb-shipper">}}), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
+Cassandra can also be utilized for the index store and aside from the [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
 
 ### BigTable
 
@@ -83,7 +83,7 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 
 ### BoltDB
 
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper]({{<relref "../operations/storage/boltdb-shipper">}}) aims to support clustered deployments using `boltdb` as an index.
+BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}) aims to support clustered deployments using `boltdb` as an index.
 
 ### Azure Storage Account
 
@@ -127,7 +127,7 @@ table_manager:
   retention_period: 2520h
 ```
 
-For more information, see the [table manager]({{<relref "../operations/storage/table-manager">}}) documentation.
+For more information, see the [table manager]({{< relref "../operations/storage/table-manager" >}}) documentation.
 
 ### Provisioning
 
@@ -146,13 +146,13 @@ table_manager:
     inactive_read_throughput: <int> | Default = 300
 ```
 
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration]({{<relref "../configuration/#table_manager">}}) in the `table_manager` block documentation for more information.
+Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration]({{< relref "../configure#table_manager" >}}) in the `table_manager` block documentation for more information.
 
 ## Upgrading Schemas
 
 When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query & merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
 
-First, you'll want to create a new [period_config]({{<relref "../configuration#period_config">}}) entry in your [schema_config]({{<relref "../configuration#schema_config">}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
+First, you'll want to create a new [period_config]({{< relref "../configure#period_config" >}}) entry in your [schema_config]({{< relref "../configure#schema_config" >}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
 As an example, let's say it's 2020-07-14 and we want to start using the `v11` schema on the 20th:
 ```yaml
@@ -182,7 +182,7 @@ With the exception of the `filesystem` chunk store, Loki will not delete old chu
 
 We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
 
-For more information, see the [retention configuration]({{<relref "../operations/storage/retention">}}) documentation.
+For more information, see the [retention configuration]({{< relref "../operations/storage/retention" >}}) documentation.
 
 
 ## Examples

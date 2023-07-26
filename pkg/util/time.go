@@ -92,6 +92,11 @@ func NewDisableableTicker(interval time.Duration) (func(), <-chan time.Time) {
 // except for the start time of first split and end time of last split which would be kept same as original start/end
 // When endTimeInclusive is true, it would keep a gap of 1ms between the splits.
 func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive bool, callback func(start, end time.Time)) {
+	if interval <= 0 {
+		callback(start, end)
+		return
+	}
+
 	ogStart := start
 	startNs := start.UnixNano()
 	start = time.Unix(0, startNs-startNs%interval.Nanoseconds())
@@ -128,11 +133,22 @@ func ForInterval(interval time.Duration, start, end time.Time, endTimeInclusive 
 //
 // We get the percentage of time that fits into C
 // factor = C = (T - (A + B)) / T = (chunkTime - (leadingTime + trailingTime)) / chunkTime
-func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float64, leadingTime, trailingTime int64) {
+func GetFactorOfTime(from, through int64, minTime, maxTime int64) (factor float64) {
+	if from > maxTime || through < minTime {
+		return 0
+	}
+
+	if minTime == maxTime {
+		// This function is most often used for chunk overlaps
+		// a chunk maxTime == minTime when it has only 1 entry
+		// return factor 1 to count that chunk's entry
+		return 1
+	}
+
 	totalTime := maxTime - minTime
-	leadingTime = utilsMath.Max64(0, from-minTime)
-	trailingTime = utilsMath.Max64(0, maxTime-through)
+	leadingTime := utilsMath.Max64(0, from-minTime)
+	trailingTime := utilsMath.Max64(0, maxTime-through)
 	factor = float64(totalTime-(leadingTime+trailingTime)) / float64(totalTime)
 
-	return factor, leadingTime, trailingTime
+	return factor
 }

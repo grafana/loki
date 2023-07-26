@@ -63,7 +63,7 @@ const (
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 
 	// The format that will be written by this process
-	LiveFormat = FormatV2
+	LiveFormat = FormatV3
 )
 
 type indexWriterStage uint8
@@ -2392,7 +2392,7 @@ func (dec *Decoder) Series(version int, b []byte, seriesRef storage.SeriesRef, f
 
 	// read chunks based on fmt
 	if err := dec.readChunks(version, d, seriesRef, from, through, chks); err != nil {
-		return 0, err
+		return 0, errors.Wrapf(err, "series %s", lbls.String())
 	}
 	return fprint, nil
 
@@ -2417,8 +2417,13 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 	var (
 		nMarkers int
 		marker   chunkPageMarker
-		markers  chunkPageMarkers
 		prevMaxT int64
+		// whether we should force the first decoded chunk's mint to
+		// the relevant page's mint. important because chunks are delta-encoded
+		// against the previous chunk and the maxt for a page may not be
+		// the maxt of the page's last chunk
+		// since chunks are ordered by mint, not maxt
+		forceMinTime bool
 	)
 
 	startMarkers := d.Len()
@@ -2429,19 +2434,17 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 
 	nMarkers = d.Uvarint()
 
-	markers = chunkPageMarkersPool.Get(nMarkers)
-	markers = markers[:nMarkers]
-	defer chunkPageMarkersPool.Put(markers)
-	for i := range markers {
-		markers[i].decode(d)
+	for i := 0; i < nMarkers; i++ {
+		marker.decode(d)
+		forceMinTime = true
 
-		if overlap(from, through, markers[i].MinTime, markers[i].MaxTime) {
+		if overlap(from, through, marker.MinTime, marker.MaxTime) {
 			d.Skip(markersLn - (startMarkers - d.Len())) // skip the rest of markers
-			marker = markers[i]
-			d.Skip(marker.Offset) // skip to the desired chunks
+			d.Skip(marker.Offset)                        // skip to the desired chunks
 			goto iterate
 		}
 
+		prevMaxT = marker.MaxTime
 		chunksRemaining -= marker.ChunksInPage
 	}
 
@@ -2453,7 +2456,13 @@ func (dec *Decoder) readChunksV3(d *encoding.Decbuf, from int64, through int64, 
 iterate:
 	for i := 0; i < chunksRemaining; i++ {
 		chunkMeta := &ChunkMeta{}
-		if err := readChunkMeta(d, prevMaxT, chunkMeta); err != nil {
+		var err error
+		if i == 0 && forceMinTime {
+			err = readChunkMetaWithForcedMintime(d, marker.MinTime, chunkMeta, true)
+		} else {
+			err = readChunkMeta(d, prevMaxT, chunkMeta)
+		}
+		if err != nil {
 			return errors.Wrapf(d.Err(), "read meta for chunk %d", nChunks-chunksRemaining+i)
 		}
 		prevMaxT = chunkMeta.MaxTime

@@ -12,9 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
@@ -105,7 +103,7 @@ func TestNamedStores(t *testing.T) {
 
 	cfg := Config{
 		NamedStores: NamedStores{
-			Filesystem: map[string]local.FSConfig{
+			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
 			},
 		},
@@ -171,11 +169,11 @@ func TestNamedStores(t *testing.T) {
 func TestNamedStores_populateStoreType(t *testing.T) {
 	t.Run("found duplicates", func(t *testing.T) {
 		ns := NamedStores{
-			AWS: map[string]aws.StorageConfig{
+			AWS: map[string]NamedAWSStorageConfig{
 				"store-1": {},
 				"store-2": {},
 			},
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"store-1": {},
 			},
 		}
@@ -187,7 +185,7 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 	t.Run("illegal store name", func(t *testing.T) {
 		ns := NamedStores{
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"aws": {},
 			},
 		}
@@ -199,11 +197,11 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 	t.Run("lookup populated entries", func(t *testing.T) {
 		ns := NamedStores{
-			AWS: map[string]aws.StorageConfig{
+			AWS: map[string]NamedAWSStorageConfig{
 				"store-1": {},
 				"store-2": {},
 			},
-			GCS: map[string]gcp.GCSConfig{
+			GCS: map[string]NamedGCSConfig{
 				"store-3": {},
 			},
 		}

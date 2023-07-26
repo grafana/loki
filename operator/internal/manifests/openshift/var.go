@@ -2,6 +2,13 @@ package openshift
 
 import (
 	"fmt"
+	"time"
+)
+
+const (
+	annotationGatewayRouteTimeout = "haproxy.router.openshift.io/timeout"
+
+	gatewayRouteTimeoutExtension = 15 * time.Second
 )
 
 var (
@@ -38,7 +45,7 @@ var (
 	MonitoringSVCOperated = "alertmanager-operated"
 
 	MonitoringSVCUserWorkload = "alertmanager-user-workload"
-	MonitoringUserwWrkloadNS  = "openshift-user-workload-monitoring"
+	MonitoringUserWorkloadNS  = "openshift-user-workload-monitoring"
 )
 
 func authorizerRbacName(componentName string) string {

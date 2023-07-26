@@ -9,6 +9,7 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 )
 
 type CombinedLimits interface {
@@ -20,4 +21,5 @@ type CombinedLimits interface {
 	ruler.RulesLimits
 	scheduler.Limits
 	storage.StoreLimits
+	indexgateway.Limits
 }

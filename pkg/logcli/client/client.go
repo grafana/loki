@@ -33,6 +33,9 @@ const (
 	labelValuesPath   = "/loki/api/v1/label/%s/values"
 	seriesPath        = "/loki/api/v1/series"
 	tailPath          = "/loki/api/v1/tail"
+	statsPath         = "/loki/api/v1/index/stats"
+	volumePath        = "/loki/api/v1/index/series_volume"
+	volumeRangePath   = "/loki/api/v1/index/series_volume_range"
 	defaultAuthHeader = "Authorization"
 )
 
@@ -47,6 +50,9 @@ type Client interface {
 	Series(ctx context.Context, matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
 	LiveTailQueryConn(ctx context.Context, queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
+	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
+	GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
+	GetVolumeRange(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
@@ -164,6 +170,45 @@ func (c *DefaultClient) LiveTailQueryConn(ctx context.Context, queryStr string, 
 
 func (c *DefaultClient) GetOrgID() string {
 	return c.OrgID
+}
+
+func (c *DefaultClient) GetStats(ctx context.Context, queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+
+	var statsResponse logproto.IndexStatsResponse
+	if err := c.doRequest(ctx, statsPath, params.Encode(), quiet, &statsResponse); err != nil {
+		return nil, err
+	}
+	return &statsResponse, nil
+}
+
+func (c *DefaultClient) GetVolume(ctx context.Context, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	return c.getVolume(ctx, volumePath, queryStr, start, end, step, limit, quiet)
+}
+
+func (c *DefaultClient) GetVolumeRange(ctx context.Context, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	return c.getVolume(ctx, volumeRangePath, queryStr, start, end, step, limit, quiet)
+}
+
+func (c *DefaultClient) getVolume(ctx context.Context, path string, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+	params.SetString("limit", fmt.Sprintf("%d", limit))
+
+	if step != 0 {
+		params.SetString("step", fmt.Sprintf("%d", int(step.Seconds())))
+	}
+
+	var resp loghttp.QueryResponse
+	if err := c.doRequest(ctx, path, params.Encode(), quiet, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 func (c *DefaultClient) doQuery(ctx context.Context, path string, query string, quiet bool) (*loghttp.QueryResponse, error) {

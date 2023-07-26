@@ -1,12 +1,10 @@
 ---
 title: Visualize log data
-menuTitle: Visualize data
+menuTitle: Visualize
 description: Visualize your log data with Grafana
-
 aliases:
-   - /docs/loki/latest/operations/grafana/
-   - /docs/loki/latest/visualize/grafana/
-   - /docs/loki/latest/getting-started/grafana/
+   - ../getting-started/grafana/
+   - ../operations/grafana/
 weight: 825
 keywords:
    - visualize
@@ -18,7 +16,7 @@ keywords:
 [Grafana 6.0](/grafana/download/6.0.0) and more recent
 versions have built-in support for Grafana Loki.
 Use [Grafana 6.3](/grafana/download/6.3.0) or a more
-recent version to take advantage of [LogQL]({{< relref "../logql/_index.md" >}}) functionality.
+recent version to take advantage of [LogQL]({{< relref "../query/_index.md" >}}) functionality.
 
 1. Log into your Grafana instance. If this is your first time running
    Grafana, the username and password are both defaulted to `admin`.
@@ -33,7 +31,7 @@ recent version to take advantage of [LogQL]({{< relref "../logql/_index.md" >}})
 1. To see the logs, click <kbd>Explore</kbd> on the sidebar, select the Loki
    datasource in the top-left dropdown, and then choose a log stream using the
    <kbd>Log labels</kbd> button.
-1. Learn more about querying by reading about Loki's query language [LogQL]({{< relref "../logql/_index.md" >}}).
+1. Learn more about querying by reading about Loki's query language [LogQL]({{< relref "../query/_index.md" >}}).
 
 Read more about Grafana's Explore feature in the
 [Grafana documentation](http://docs.grafana.org/features/explore) and on how to

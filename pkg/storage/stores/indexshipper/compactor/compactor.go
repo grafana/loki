@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -27,7 +28,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/filter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -66,8 +66,8 @@ const (
 )
 
 var (
-	retentionEnabledStats = usagestats.NewString("compactor_retention_enabled")
-	defaultRetentionStats = usagestats.NewString("compactor_default_retention")
+	retentionEnabledStats = analytics.NewString("compactor_retention_enabled")
+	defaultRetentionStats = analytics.NewString("compactor_default_retention")
 )
 
 type Config struct {
@@ -631,7 +631,7 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) erro
 	var tables []string
 	for _, sc := range c.storeContainers {
 		// refresh index list cache since previous compaction would have changed the index files in the object store
-		sc.indexStorageClient.RefreshIndexListCache(ctx)
+		sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 		tbls, err := sc.indexStorageClient.ListTables(ctx)
 		if err != nil {
 			status = statusFailure
@@ -757,7 +757,7 @@ func (e *expirationChecker) DropFromIndex(ref retention.ChunkEntry, tableEndTime
 	return e.retentionExpiryChecker.DropFromIndex(ref, tableEndTime, now) || e.deletionExpiryChecker.DropFromIndex(ref, tableEndTime, now)
 }
 
-func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, instanceID string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
+func (c *Compactor) OnRingInstanceRegister(_ *ring.BasicLifecycler, ringDesc ring.Desc, instanceExists bool, _ string, instanceDesc ring.InstanceDesc) (ring.InstanceState, ring.Tokens) {
 	// When we initialize the compactor instance in the ring we want to start from
 	// a clean situation, so whatever is the state we set it JOINING, while we keep existing
 	// tokens (if any) or the ones loaded from file.
