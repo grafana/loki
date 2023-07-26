@@ -80,7 +80,8 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			// TODO: test with probabilistic true
+			mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
 			_, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
@@ -145,7 +146,8 @@ func TestShardCounter(t *testing.T) {
 			)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			// TODO: test with probabilistic true
+			mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
 			noop, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 

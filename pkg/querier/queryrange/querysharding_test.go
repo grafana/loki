@@ -119,9 +119,9 @@ func Test_shardSplitter(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			var didShard bool
 			splitter := &shardSplitter{
-				shardingware: queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+				shardingware: queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 					didShard = true
-					return mockHandler(lokiResps[0], nil).Do(ctx, req)
+					return mockHandler(lokiResps[0], nil).Do(ctx, probabilistic, req)
 				}),
 				next: mockHandler(lokiResps[1], nil),
 				now:  func() time.Time { return end },
@@ -132,7 +132,7 @@ func Test_shardSplitter(t *testing.T) {
 				},
 			}
 
-			resp, err := splitter.Do(user.InjectOrgID(context.Background(), "1"), req)
+			resp, err := splitter.Do(user.InjectOrgID(context.Background(), "1"), false, req)
 			require.Nil(t, err)
 
 			require.Equal(t, tc.shouldShard, didShard)
@@ -151,7 +151,7 @@ func Test_astMapper(t *testing.T) {
 	var lock sync.Mutex
 	called := 0
 
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		resp := lokiResps[called]
@@ -159,6 +159,7 @@ func Test_astMapper(t *testing.T) {
 		return resp, nil
 	})
 
+	probabilistic := false
 	mware := newASTMapperware(
 		ShardingConfigs{
 			config.PeriodConfig{
@@ -172,9 +173,10 @@ func Test_astMapper(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		probabilistic,
 	)
 
-	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`{food="bar"}`))
+	resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), probabilistic, defaultReq().WithQuery(`{food="bar"}`))
 	require.Nil(t, err)
 
 	require.Equal(t, []*definitions.PrometheusResponseHeader{
@@ -256,7 +258,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			statsCalled := 0
-			handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			handler := queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 				if casted, ok := req.(*logproto.IndexStatsRequest); ok {
 					statsCalled++
 
@@ -291,6 +293,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 				return nil, nil
 			})
 
+			probabilistic := false
 			mware := newASTMapperware(
 				ShardingConfigs{
 					config.PeriodConfig{
@@ -311,9 +314,10 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 					maxQuerierBytesRead:     tc.maxQuerierBytesSize,
 				},
 				0,
+				probabilistic,
 			)
 
-			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(tc.query))
+			_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), probabilistic, defaultReq().WithQuery(tc.query))
 			if err != nil {
 				require.ErrorContains(t, err, tc.err)
 			}
@@ -326,11 +330,12 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 
 func Test_ShardingByPass(t *testing.T) {
 	called := 0
-	handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 		called++
 		return nil, nil
 	})
 
+	probabilistic := false
 	mware := newASTMapperware(
 		ShardingConfigs{
 			config.PeriodConfig{
@@ -344,9 +349,10 @@ func Test_ShardingByPass(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1},
 		0,
+		probabilistic,
 	)
 
-	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), defaultReq().WithQuery(`1+1`))
+	_, err := mware.Do(user.InjectOrgID(context.Background(), "1"), probabilistic, defaultReq().WithQuery(`1+1`))
 	require.Nil(t, err)
 	require.Equal(t, called, 1)
 }
@@ -390,7 +396,7 @@ func Test_hasShards(t *testing.T) {
 // astmapper successful stream & prom conversion
 
 func mockHandler(resp queryrangebase.Response, err error) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	return queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 		if expired := ctx.Err(); expired != nil {
 			return nil, expired
 		}
@@ -408,6 +414,7 @@ func Test_InstantSharding(t *testing.T) {
 
 	cpyPeriodConf := testSchemas[0]
 	cpyPeriodConf.RowShards = 3
+	probabilistic := false
 	sharding := NewQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
 		cpyPeriodConf,
 	}, testEngineOpts, DefaultCodec, queryrangebase.NewInstrumentMiddlewareMetrics(nil),
@@ -418,8 +425,9 @@ func Test_InstantSharding(t *testing.T) {
 			queryTimeout:        time.Second,
 		},
 		0,
-		nil)
-	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		nil,
+		probabilistic)
+	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 		lock.Lock()
 		defer lock.Unlock()
 		called++
@@ -435,7 +443,7 @@ func Test_InstantSharding(t *testing.T) {
 				},
 			},
 		}}, nil
-	})).Do(ctx, &LokiInstantRequest{
+	})).Do(ctx, probabilistic, &LokiInstantRequest{
 		Query:  `rate({app="foo"}[1m])`,
 		TimeTs: util.TimeFromMillis(10),
 		Path:   "/v1/query",
@@ -479,7 +487,8 @@ func Test_SeriesShardingHandler(t *testing.T) {
 	)
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+	probabilistic := false
+	response, err := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 		req, ok := r.(*LokiSeriesRequest)
 		if !ok {
 			return nil, errors.New("not a series call")
@@ -500,7 +509,7 @@ func Test_SeriesShardingHandler(t *testing.T) {
 				},
 			},
 		}, nil
-	})).Do(ctx, &LokiSeriesRequest{
+	})).Do(ctx, probabilistic, &LokiSeriesRequest{
 		Match:   []string{"foo", "bar"},
 		StartTs: time.Unix(0, 1),
 		EndTs:   time.Unix(0, 10),
@@ -687,7 +696,7 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 			var lock sync.Mutex
 			called := 0
 
-			handler := queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+			handler := queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 				lock.Lock()
 				defer lock.Unlock()
 				called++
@@ -703,9 +712,10 @@ func TestShardingAcrossConfigs_ASTMapper(t *testing.T) {
 				nilShardingMetrics,
 				fakeLimits{maxSeries: math.MaxInt32, maxQueryParallelism: 1, queryTimeout: time.Second},
 				0,
+				false,
 			)
 
-			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), tc.req)
+			resp, err := mware.Do(user.InjectOrgID(context.Background(), "1"), false, tc.req)
 			require.Nil(t, err)
 
 			require.Equal(t, []*definitions.PrometheusResponseHeader{
@@ -781,7 +791,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 				DefaultCodec,
 			)
 
-			_, err := mware.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			_, err := mware.Wrap(queryrangebase.HandlerFunc(func(c context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 				_, ok := r.(*LokiSeriesRequest)
 				if !ok {
 					return nil, errors.New("not a series call")
@@ -794,7 +804,7 @@ func TestShardingAcrossConfigs_SeriesSharding(t *testing.T) {
 					Version: 1,
 					Data:    []logproto.SeriesIdentifier{},
 				}, nil
-			})).Do(ctx, tc.req)
+			})).Do(ctx, false, tc.req)
 			require.NoError(t, err)
 
 			require.Equal(t, tc.numExpectedShards, called)
@@ -806,11 +816,11 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	engineOpts := testEngineOpts
 	engineOpts.MaxLookBackPeriod = 1 * time.Hour
 
-	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	queryHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiResponse{}, nil
 	})
 
-	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
 		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
 
@@ -830,6 +840,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 		nilShardingMetrics,
 		fakeLimits{maxSeries: math.MaxInt32, tsdbMaxQueryParallelism: 1, queryTimeout: time.Second},
 		0,
+		false,
 	)
 
 	lokiReq := &LokiInstantRequest{
@@ -841,7 +852,7 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "foo")
-	_, err := mware.Do(ctx, lokiReq)
+	_, err := mware.Do(ctx, false, lokiReq)
 	require.NoError(t, err)
 
 }

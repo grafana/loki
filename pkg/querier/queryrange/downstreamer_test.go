@@ -193,7 +193,7 @@ func TestDownstreamHandler(t *testing.T) {
 	// Pretty poor test, but this is just a passthrough struct, so ensure we create locks
 	// and can consume them
 	h := DownstreamHandler{limits: fakeLimits{}, next: nil}
-	in := h.Downstreamer(context.Background()).(*instance)
+	in := h.Downstreamer(context.Background(), false).(*instance)
 	require.Equal(t, DefaultDownstreamConcurrency, in.parallelism)
 	require.NotNil(t, in.locks)
 	ensureParallelism(t, in, in.parallelism)
@@ -221,7 +221,7 @@ func TestInstanceFor(t *testing.T) {
 		return DownstreamHandler{
 			limits: fakeLimits{},
 			next:   nil,
-		}.Downstreamer(context.Background()).(*instance)
+		}.Downstreamer(context.Background(), false).(*instance)
 	}
 	in := mkIn()
 	newParams := func() logql.Params {
@@ -351,11 +351,11 @@ func TestInstanceDownstream(t *testing.T) {
 	var got queryrangebase.Request
 	var want queryrangebase.Request
 	handler := queryrangebase.HandlerFunc(
-		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		func(_ context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(false, params, queries[0].Shards).WithQuery(expr.String())
+			want = ParamsToLokiRequest(probabilistic, params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -367,7 +367,7 @@ func TestInstanceDownstream(t *testing.T) {
 	results, err := DownstreamHandler{
 		limits: fakeLimits{},
 		next:   handler,
-	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
+	}.Downstreamer(context.Background(), false).Downstream(context.Background(), false, queries)
 
 	require.Equal(t, want, got)
 
@@ -436,11 +436,11 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 	var got queryrangebase.Request
 	var want queryrangebase.Request
 	handler := queryrangebase.HandlerFunc(
-		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		func(_ context.Context, probalistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(true, params, queries[0].Shards).WithQuery(expr.String())
+			want = ParamsToLokiRequest(probalistic, params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -452,7 +452,7 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 	results, err := DownstreamHandler{
 		limits: fakeLimits{},
 		next:   handler,
-	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
+	}.Downstreamer(context.Background(), true).Downstream(context.Background(), true, queries)
 
 	require.Equal(t, want, got)
 
@@ -468,7 +468,7 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 		return DownstreamHandler{
 			limits: fakeLimits{},
 			next:   nil,
-		}.Downstreamer(context.Background()).(*instance)
+		}.Downstreamer(context.Background(), false).(*instance)
 	}
 	in := mkIn()
 
@@ -504,7 +504,7 @@ func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
 	d := DownstreamHandler{
 		limits: l,
 		next:   nil,
-	}.Downstreamer(ctx)
+	}.Downstreamer(ctx, false)
 
 	i := d.(*instance)
 	close(i.locks)

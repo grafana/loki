@@ -732,7 +732,7 @@ func TestHandleHit(t *testing.T) {
 				limits:            mockLimits{},
 				merger:            PrometheusCodec,
 				parallelismForReq: func(_ context.Context, tenantIDs []string, r Request) int { return 1 },
-				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+				next: HandlerFunc(func(_ context.Context, _ bool, req Request) (Response, error) {
 					return mkAPIResponse(req.GetStart(), req.GetEnd(), req.GetStep()), nil
 				}),
 			}
@@ -774,25 +774,25 @@ func TestResultsCache(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ bool, _ Request) (Response, error) {
 		calls++
 		return parsedResponse, nil
 	}))
 	ctx := user.InjectOrgID(context.Background(), "1")
-	resp, err := rc.Do(ctx, parsedRequest)
+	resp, err := rc.Do(ctx, false, parsedRequest)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing same request again shouldn't change anything.
-	resp, err = rc.Do(ctx, parsedRequest)
+	resp, err = rc.Do(ctx, false, parsedRequest)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing request with new end time should do one more query.
 	req := parsedRequest.WithStartEnd(parsedRequest.GetStart(), parsedRequest.GetEnd()+100)
-	_, err = rc.Do(ctx, req)
+	_, err = rc.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 }
@@ -823,7 +823,7 @@ func TestResultsCacheRecent(t *testing.T) {
 	req := parsedRequest.WithStartEnd(int64(model.Now())-(60*1e3), int64(model.Now()))
 
 	calls := 0
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, r Request) (Response, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ bool, r Request) (Response, error) {
 		calls++
 		assert.Equal(t, r, req)
 		return parsedResponse, nil
@@ -831,13 +831,13 @@ func TestResultsCacheRecent(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	// Request should result in a query.
-	resp, err := rc.Do(ctx, req)
+	resp, err := rc.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, calls)
 	require.Equal(t, parsedResponse, resp)
 
 	// Doing same request again should result in another query.
-	resp, err = rc.Do(ctx, req)
+	resp, err = rc.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, 2, calls)
 	require.Equal(t, parsedResponse, resp)
@@ -858,7 +858,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 		{
 			// should not lookup cache because per-tenant override will be applied
 			fakeLimits: mockLimits{maxCacheFreshness: 10 * time.Minute},
-			Handler: HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
+			Handler: HandlerFunc(func(_ context.Context, _ bool, _ Request) (Response, error) {
 				return parsedResponse, nil
 			}),
 			expectedResponse: parsedResponse,
@@ -899,7 +899,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 			key := constSplitter(day).GenerateCacheKey(context.Background(), "1", req)
 			rc.(*resultsCache).put(ctx, key, []Extent{mkExtent(int64(modelNow)-(600*1e3), int64(modelNow))})
 
-			resp, err := rc.Do(ctx, req)
+			resp, err := rc.Do(ctx, false, req)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedResponse, resp)
 		})
@@ -1045,14 +1045,14 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				nil,
 			)
 			require.NoError(t, err)
-			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
+			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ bool, _ Request) (Response, error) {
 				calls++
 				return parsedResponse, nil
 			}))
 
 			for _, req := range tc.requests {
 				ctx := user.InjectOrgID(context.Background(), "1")
-				_, err := rc.Do(ctx, req)
+				_, err := rc.Do(ctx, false, req)
 				require.NoError(t, err)
 			}
 

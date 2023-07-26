@@ -24,7 +24,7 @@ func TestRetry(t *testing.T) {
 	}{
 		{
 			name: "retry failures",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: HandlerFunc(func(_ context.Context, probabilistic bool, req Request) (Response, error) {
 				if try.Inc() == 5 {
 					return &PrometheusResponse{Status: "Hello World"}, nil
 				}
@@ -34,21 +34,21 @@ func TestRetry(t *testing.T) {
 		},
 		{
 			name: "don't retry 400s",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: HandlerFunc(func(_ context.Context, probabilistic bool, req Request) (Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 			}),
 			err: httpgrpc.Errorf(http.StatusBadRequest, "Bad Request"),
 		},
 		{
 			name: "retry 500s",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: HandlerFunc(func(_ context.Context, probabilistic bool, req Request) (Response, error) {
 				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error")
 			}),
 			err: httpgrpc.Errorf(http.StatusInternalServerError, "Internal Server Error"),
 		},
 		{
 			name: "last error",
-			handler: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			handler: HandlerFunc(func(_ context.Context, probabilistic bool, req Request) (Response, error) {
 				if try.Inc() == 5 {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, "Bad Request")
 				}
@@ -63,7 +63,7 @@ func TestRetry(t *testing.T) {
 			req := &PrometheusRequest{
 				Query: `{env="test"} |= "error"`,
 			}
-			resp, err := h.Do(context.Background(), req)
+			resp, err := h.Do(context.Background(), false, req)
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.resp, resp)
 		})
@@ -79,22 +79,22 @@ func Test_RetryMiddlewareCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := NewRetryMiddleware(log.NewNopLogger(), 5, nil).Wrap(
-		HandlerFunc(func(c context.Context, r Request) (Response, error) {
+		HandlerFunc(func(c context.Context, probabilistic bool, r Request) (Response, error) {
 			try.Inc()
 			return nil, ctx.Err()
 		}),
-	).Do(ctx, req)
+	).Do(ctx, false, req)
 	require.Equal(t, int32(0), try.Load())
 	require.Equal(t, ctx.Err(), err)
 
 	ctx, cancel = context.WithCancel(context.Background())
 	_, err = NewRetryMiddleware(log.NewNopLogger(), 5, nil).Wrap(
-		HandlerFunc(func(c context.Context, r Request) (Response, error) {
+		HandlerFunc(func(c context.Context, probabilistic bool, r Request) (Response, error) {
 			try.Inc()
 			cancel()
 			return nil, errors.New("failed")
 		}),
-	).Do(ctx, req)
+	).Do(ctx, false, req)
 	require.Equal(t, int32(1), try.Load())
 	require.Equal(t, ctx.Err(), err)
 }

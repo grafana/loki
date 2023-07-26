@@ -58,10 +58,10 @@ func Test_LogResultCacheSameRange(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req)
+	resp, err := h.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req), resp)
-	resp, err = h.Do(ctx, req)
+	resp, err = h.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req), resp)
 
@@ -106,10 +106,10 @@ func Test_LogResultCacheSameRangeNonEmpty(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req)
+	resp, err := h.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, nonEmptyResponse(req, time.Unix(61, 0), time.Unix(61, 0), lblFooBar), resp)
-	resp, err = h.Do(ctx, req)
+	resp, err = h.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, nonEmptyResponse(req, time.Unix(62, 0), time.Unix(62, 0), lblFooBar), resp)
 
@@ -148,10 +148,10 @@ func Test_LogResultCacheSmallerRange(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req)
+	resp, err := h.Do(ctx, false, req)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req), resp)
-	resp, err = h.Do(ctx, &LokiRequest{
+	resp, err = h.Do(ctx, false, &LokiRequest{
 		StartTs: time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
 		EndTs:   time.Unix(0, 2*time.Minute.Nanoseconds()-30*time.Second.Nanoseconds()),
 		Limit:   entriesLimit,
@@ -232,10 +232,10 @@ func Test_LogResultCacheDifferentRange(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req1)
+	resp, err := h.Do(ctx, false, req1)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req1), resp)
-	resp, err = h.Do(ctx, req2)
+	resp, err = h.Do(ctx, false, req2)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req2), resp)
 
@@ -308,10 +308,10 @@ func Test_LogResultCacheDifferentRangeNonEmpty(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req1)
+	resp, err := h.Do(ctx, false, req1)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req1), resp)
-	resp, err = h.Do(ctx, req2)
+	resp, err = h.Do(ctx, false, req2)
 	require.NoError(t, err)
 	require.Equal(t, mergeLokiResponse(
 		nonEmptyResponse(&LokiRequest{
@@ -410,10 +410,10 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req1)
+	resp, err := h.Do(ctx, false, req1)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req1), resp)
-	resp, err = h.Do(ctx, req2)
+	resp, err = h.Do(ctx, false, req2)
 	require.NoError(t, err)
 	require.Equal(t, mergeLokiResponse(
 		emptyResponse(req1),
@@ -423,7 +423,7 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 			Limit:   entriesLimit,
 		}, time.Unix(61, 0), time.Unix(61, 0), lblFooBar),
 	), resp)
-	resp, err = h.Do(ctx, req2)
+	resp, err = h.Do(ctx, false, req2)
 	require.NoError(t, err)
 	require.Equal(t, mergeLokiResponse(
 		emptyResponse(req1),
@@ -543,35 +543,35 @@ func Test_LogResultNonOverlappingCache(t *testing.T) {
 
 	h := lrc.Wrap(fake)
 
-	resp, err := h.Do(ctx, req1)
+	resp, err := h.Do(ctx, false, req1)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req1), resp)
 	checkCacheMetrics(0, 1)
 	require.Equal(t, 1, mockCache.NumKeyUpdates())
 
 	// req2 should not update the cache since it has same length as previously cached query
-	resp, err = h.Do(ctx, req2)
+	resp, err = h.Do(ctx, false, req2)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req2), resp)
 	checkCacheMetrics(1, 1)
 	require.Equal(t, 1, mockCache.NumKeyUpdates())
 
 	// req3 should update the cache since it has larger length than previously cached query
-	resp, err = h.Do(ctx, req3)
+	resp, err = h.Do(ctx, false, req3)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req3), resp)
 	checkCacheMetrics(2, 1)
 	require.Equal(t, 2, mockCache.NumKeyUpdates())
 
 	// req4 returns non-empty response so it should not update the cache
-	resp, err = h.Do(ctx, req4)
+	resp, err = h.Do(ctx, false, req4)
 	require.NoError(t, err)
 	require.Equal(t, nonEmptyResponse(req4, time.Unix(71, 0), time.Unix(79, 0), lblFooBar), resp)
 	checkCacheMetrics(3, 1)
 	require.Equal(t, 2, mockCache.NumKeyUpdates())
 
 	// req2 should return back empty response from the cache, without updating the cache
-	resp, err = h.Do(ctx, req2)
+	resp, err = h.Do(ctx, false, req2)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req2), resp)
 	checkCacheMetrics(4, 1)
@@ -682,7 +682,7 @@ func newFakeResponse(responses []mockResponse) fakeResponse {
 	}
 }
 
-func (f fakeResponse) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (f fakeResponse) Do(ctx context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
 		resp queryrangebase.Response
 		err  error
