@@ -1791,7 +1791,7 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 
 func Benchmark_CodecDecodeSeries(b *testing.B) {
 	ctx := context.Background()
-	benchmarks := []struct{
+	benchmarks := []struct {
 		accept string
 	}{
 		{accept: ProtobufType},
