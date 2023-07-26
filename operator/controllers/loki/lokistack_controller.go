@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
@@ -363,37 +362,29 @@ func (r *LokiStackReconciler) enqueueForNodeLabelChanges() handler.EventHandler 
 						return nil
 					}
 
-					labelsAnnotation, ok := pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels]
-					if !ok {
-						err := kverrors.New("Zone-aware pod is missing node-labels annotation", "annotation", lokiv1.AnnotationAvailabilityZoneLabels)
-						r.Log.Error(err, "Zone-aware pod is missing node-labels annotation")
-						return nil
-					}
-					labelKeys := strings.Split(labelsAnnotation, ",")
-
-					availabilityZone, err := handlers.GetAvailabilityZone(labelKeys, assignedNode.Labels)
+					availabilityZone, err := handlers.GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
 					if err != nil {
-						r.Log.Error(err, "failed to get pod availability zone", "name", pod.Name)
+						r.Log.Error(err, "failed to get pod availability zone from assigned node", "name", pod.Name)
 						return nil
 					}
-
-					if availabilityZone != assignedNode.Labels[corev1.LabelZoneFailureDomain] {
+					if availabilityZone != pod.Annotations[corev1.LabelTopologyZone] {
 						err := kverrors.New("Topology key pod annotation does not match its node's labels")
 						r.Log.Error(err, "Topology key pod annotation does not match its node's labels")
 
 						if err = handlers.AnnotatePodWithAvailabilityZone(ctx, r.Log, r.Client, &pod); err != nil {
-							r.Log.Error(err, "Error annotating pod")
+							r.Log.Error(err, "Error annotating pod with availability zone", "pod", availabilityZone)
 						}
-
 						requests = append(requests, reconcile.Request{
 							NamespacedName: types.NamespacedName{
 								Namespace: stack.Namespace,
 								Name:      stack.Name,
 							},
 						})
+						return requests
 					}
 				}
 			}
+			r.Log.Info("Enqueued requests for LokiStack because of Node labels change", "LokiStack", stack.Name, "Node", obj.GetName())
 		}
 		return requests
 	})
