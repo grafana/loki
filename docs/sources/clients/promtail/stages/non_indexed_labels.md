@@ -5,7 +5,7 @@ description: non_indexed_labels stage
 # non_indexed_labels
 
 The labels stage is an action stage that takes data from the extracted map and
-modifies the [non-indexed labels]({{< relref "../get-started/labels/non-indexed-labels" >}}) set that is sent to Loki with the log entry.
+modifies the [non-indexed labels]({{< relref "../../../get-started/labels/non-indexed-labels" >}}) set that is sent to Loki with the log entry.
 
 ## Schema
 

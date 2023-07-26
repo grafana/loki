@@ -1,6 +1,6 @@
 ---
 menuTitle: Non-indexed labels
-title: Non-indexed labels
+title: What are non-indexed labels
 description: Attaching metadata to logs.
 ---
 # What are non-indexed labels
@@ -19,7 +19,7 @@ to extract at query time.
 ## Attaching non-indexed labels to log lines
 
 Non-indexed labels are optionally attached to log lines in the push payload along with each log line and the timestamp.
-For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api" >}}#push-log-entries-to-loki).
+For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
 
 Alternatively, you can use Promtail or the Grafana Agent to extract and attach non-indexed labels to your log lines.
 See the [Promtail configuration documentation]({{< relref "../../clients/promtail/configuration" >}}) for more information.
@@ -27,7 +27,7 @@ See the [Promtail configuration documentation]({{< relref "../../clients/promtai
 ## Querying non-indexed labels
 
 Non-indexed labels are extracted automatically for each returned log line and added to the labels returned for the query.
-You can use non-indexed labels to filter log line using a [label filter expression]({{< relref "../../query/log_queries" >}}#label-filter-expression).
+You can use non-indexed labels to filter log line using a [label filter expression]({{< relref "../../query/log_queries#label-filter-expression" >}}).
 
 For example, if you have a non-indexed label `trace_id` attached to some of your log lines, you can filter log lines using:
 
@@ -42,7 +42,7 @@ Of course, you can filter by multiple non-indexed labels at the same time:
 ```
 
 Note that since non-indexed labels are extracted automatically to the results labels, some metric queries might return 
-an error like `maximum of series (50000) reached for a single query`. You can use the [Keep]({{< relref "../../query/log_queries" >}}#keep-labels-expression) and [Drop]({{< relref "../../query/log_queries" >}}#drop-labels-expression) stages to filter out labels that you don't need.
+an error like `maximum of series (50000) reached for a single query`. You can use the [Keep]({{< relref "../../query/log_queries#keep-labels-expression" >}}) and [Drop]({{< relref "../../query/log_queries#drop-labels-expression" >}}) stages to filter out labels that you don't need.
 For example:
 
 ```logql
