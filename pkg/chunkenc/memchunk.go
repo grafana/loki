@@ -710,18 +710,18 @@ func (c *MemChunk) CheckpointSize() (chunk, head int) {
 	return c.BytesSize(), c.head.CheckpointSize()
 }
 
-func MemchunkFromCheckpoint(chk, head []byte, desired HeadBlockFmt, blockSize int, targetSize int) (*MemChunk, error) {
+func MemchunkFromCheckpoint(chk, head []byte, desiredIfNotUnordered HeadBlockFmt, blockSize int, targetSize int) (*MemChunk, error) {
 	mc, err := newByteChunk(chk, blockSize, targetSize, true)
 	if err != nil {
 		return nil, err
 	}
-	h, err := HeadFromCheckpoint(head, desired, mc.symbolizer)
+	h, err := HeadFromCheckpoint(head, desiredIfNotUnordered, mc.symbolizer)
 	if err != nil {
 		return nil, err
 	}
 
 	mc.head = h
-	mc.headFmt = desired
+	mc.headFmt = h.Format()
 	return mc, nil
 }
 

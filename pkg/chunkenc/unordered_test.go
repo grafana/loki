@@ -315,37 +315,10 @@ func TestHeadBlockInterop(t *testing.T) {
 		maxt:   unordered.maxt,
 	}, recovered)
 
-	// Ensure we can recover unordered checkpoint into ordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, OrderedHeadBlockFmt, nil)
-	require.Nil(t, err)
-	require.Equal(t, ordered, recovered)
-
 	// Ensure we can recover unordered checkpoint into unordered headblock
 	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
-
-	// Ensure we can recover unordered checkpoint into unordered with non-indexed labels
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, nil)
-	require.NoError(t, err)
-	require.Equal(t, &unorderedHeadBlock{
-		format: UnorderedWithNonIndexedLabelsHeadBlockFmt,
-		rt:     unordered.rt,
-		lines:  unordered.lines,
-		size:   unordered.size,
-		mint:   unordered.mint,
-		maxt:   unordered.maxt,
-	}, recovered)
-
-	// Ensure we can recover unordered with non-indexed labels checkpoint into ordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, OrderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
-	require.Nil(t, err)
-	require.Equal(t, ordered, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
-
-	// Ensure we can recover unordered with non-indexed labels checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
-	require.Nil(t, err)
-	require.Equal(t, unordered, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
 
 	// Ensure we can recover unordered with non-indexed checkpoint into unordered with non-indexed headblock
 	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)

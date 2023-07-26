@@ -596,9 +596,9 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 // HeadFromCheckpoint handles reading any head block format and returning the desired form.
 // This is particularly helpful replaying WALs from different configurations
 // such as after enabling unordered writes.
-func HeadFromCheckpoint(b []byte, desired HeadBlockFmt, symbolizer *symbolizer) (HeadBlock, error) {
+func HeadFromCheckpoint(b []byte, desiredIfNotUnordered HeadBlockFmt, symbolizer *symbolizer) (HeadBlock, error) {
 	if len(b) == 0 {
-		return desired.NewBlock(symbolizer), nil
+		return desiredIfNotUnordered.NewBlock(symbolizer), nil
 	}
 
 	db := decbuf{b: b}
@@ -617,8 +617,8 @@ func HeadFromCheckpoint(b []byte, desired HeadBlockFmt, symbolizer *symbolizer) 
 		return nil, err
 	}
 
-	if decodedBlock.Format() != desired {
-		return decodedBlock.Convert(desired, nil)
+	if decodedBlock.Format() < UnorderedHeadBlockFmt && decodedBlock.Format() != desiredIfNotUnordered {
+		return decodedBlock.Convert(desiredIfNotUnordered, nil)
 	}
 	return decodedBlock, nil
 }
