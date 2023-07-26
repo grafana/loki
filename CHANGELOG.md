@@ -6,7 +6,7 @@
 
 ##### Enhancements
 
-* [9621](https://github.com/grafana/loki/pull/9621) **DylanGuedes**: Introduces LRU cache and TSDB postings cache.
+* [9621](https://github.com/grafana/loki/pull/9621) **DylanGuedes**: Introduces TSDB postings cache.
 * [9797](https://github.com/grafana/loki/pull/9797) **chaudum**: Add new `loki_index_gateway_requests_total` counter metric to observe per-tenant RPS
 * [9710](https://github.com/grafana/loki/pull/9710) **chaudum**: Add shuffle sharding to index gateway
 * [9573](https://github.com/grafana/loki/pull/9573) **CCOLLOT**: Lambda-Promtail: Add support for AWS CloudFront log ingestion.

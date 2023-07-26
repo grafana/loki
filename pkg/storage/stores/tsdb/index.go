@@ -31,7 +31,7 @@ type IndexCfg struct {
 }
 
 func (cfg *IndexCfg) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.CachePostings, prefix+"enable-cache-postings", false, "Experimental. Whether TSDB should cache postings or not.")
+	f.BoolVar(&cfg.CachePostings, prefix+"enable-cache-postings", false, "Experimental. Whether TSDB should cache postings or not. The index-read-cache will be used as the backend.")
 
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }

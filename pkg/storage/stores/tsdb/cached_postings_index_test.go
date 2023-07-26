@@ -15,14 +15,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	"github.com/grafana/loki/pkg/util/flagext"
 )
 
 func TestSingleIdxCached(t *testing.T) {
 	// setup cache.
-	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
-	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
-	require.NoError(t, e)
+	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	cases := []LoadableSeries{
@@ -219,9 +217,8 @@ func TestSingleIdxCached(t *testing.T) {
 
 func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 	// setup cache.
-	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
-	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
-	require.NoError(b, e)
+	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	now := model.Now()
@@ -276,9 +273,8 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 
 func TestCacheableTSDBIndex_Stats(t *testing.T) {
 	// setup cache.
-	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
-	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
-	require.NoError(t, e)
+	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	series := []LoadableSeries{
@@ -392,9 +388,8 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 
 func BenchmarkSeriesRepetitive(b *testing.B) {
 	// setup cache.
-	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
-	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
-	require.NoError(b, e)
+	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	series := []LoadableSeries{
@@ -448,9 +443,8 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 
 func TestMultipleIndexesFiles(t *testing.T) {
 	// setup cache.
-	cfg := cache.LRUCacheConfig{MaxSizeBytes: flagext.ByteSize(100000), MaxItems: 5000, MaxItemSizeBytes: flagext.ByteSize(10000), Enabled: true}
-	c, e := cache.NewLRUCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
-	require.NoError(t, e)
+	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	series := []LoadableSeries{

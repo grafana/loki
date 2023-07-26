@@ -35,7 +35,6 @@ type Config struct {
 	MemcacheClient MemcachedClientConfig `yaml:"memcached_client"`
 	Redis          RedisConfig           `yaml:"redis"`
 	EmbeddedCache  EmbeddedCacheConfig   `yaml:"embedded_cache"`
-	LRUCache       LRUCacheConfig        `yaml:"lru_cache" category:"experimental" doc:"description=LRU (Last-recently Used) in-memory cache."`
 	Fifocache      FifoCacheConfig       `yaml:"fifocache"` // deprecated
 
 	// This is to name the cache metrics properly.
@@ -57,7 +56,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, description string, f 
 	cfg.MemcacheClient.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Redis.RegisterFlagsWithPrefix(prefix, description, f)
 	cfg.Fifocache.RegisterFlagsWithPrefix(prefix, description, f)
-	cfg.LRUCache.RegisterFlagsWithPrefix(prefix+"lrucache", description, f)
 	cfg.EmbeddedCache.RegisterFlagsWithPrefix(prefix, description, f)
 	f.IntVar(&cfg.AsyncCacheWriteBackConcurrency, prefix+"max-async-cache-write-back-concurrency", 16, "The maximum number of concurrent asynchronous writeback cache can occur.")
 	f.IntVar(&cfg.AsyncCacheWriteBackBufferSize, prefix+"max-async-cache-write-back-buffer-size", 500, "The maximum number of enqueued asynchronous writeback cache allowed.")
@@ -144,21 +142,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 
 		if cache := NewFifoCache(cfg.Prefix+"embedded-cache", fifocfg, reg, logger, cacheType); cache != nil {
 			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
-		}
-	}
-
-	if cfg.LRUCache.Enabled {
-		cacheName := cfg.Prefix + "inmemory-lru-cache"
-		lruCache, err := NewLRUCache(cacheName, cfg.LRUCache, reg, logger, cacheType)
-		if err != nil {
-			level.Error(logger).Log("msg", "failed to initialize LRU cache", "err", err)
-			return nil, err
-		}
-
-		if lruCache != nil {
-			instrumentCache := Instrument(cacheName, lruCache, reg)
-			backgroundCache := NewBackground(cacheName, cfg.Background, instrumentCache, reg)
-			caches = append(caches, CollectStats(backgroundCache))
 		}
 	}
 
