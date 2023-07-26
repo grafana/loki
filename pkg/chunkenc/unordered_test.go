@@ -320,6 +320,21 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
+	// Ensure trying to recover unordered checkpoint into unordered with non-indexed labels keeps it in unordered format
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, nil)
+	require.NoError(t, err)
+	require.Equal(t, unordered, recovered)
+
+	// Ensure trying to recover unordered with non-indexed labels checkpoint into ordered headblock keeps it in unordered with non-indexed labels format
+	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, OrderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
+	require.Nil(t, err)
+	require.Equal(t, unorderedWithNonIndexedLabels, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+
+	// Ensure trying to recover unordered with non-indexed labels checkpoint into unordered headblock keeps it in unordered with non-indexed labels format
+	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
+	require.Nil(t, err)
+	require.Equal(t, unorderedWithNonIndexedLabels, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+
 	// Ensure we can recover unordered with non-indexed checkpoint into unordered with non-indexed headblock
 	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
 	require.Nil(t, err)
