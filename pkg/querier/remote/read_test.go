@@ -45,6 +45,17 @@ func TestQuerier_Read(t *testing.T) {
 	querier, err := NewQuerier("test", remoteConf)
 	require.NoError(t, err)
 
+	volumeReq := &logproto.VolumeRequest{
+		From:     0,
+		Through:  1000,
+		Matchers: `{foo="bar"}`,
+		Limit:    10,
+	}
+	_, err = querier.Volume(
+		context.Background(),
+		volumeReq,
+	)
+
 	request := logproto.QueryRequest{
 		Selector:  `{app="distributor"}`,
 		Limit:     6,
@@ -166,6 +177,20 @@ func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
 	mux.HandleFunc("/loki/api/v1/series", func(w http.ResponseWriter, request *http.Request) {
 		series := logproto.SeriesResponse{Series: []logproto.SeriesIdentifier{{Labels: map[string]string{"test": "test"}}}}
 		if err := marshal.WriteSeriesResponseJSON(series, w); err != nil {
+			serverutil.WriteError(err, w)
+			return
+		}
+	})
+
+	mux.HandleFunc("/loki/api/v1/index/series_volume", func(w http.ResponseWriter, request *http.Request) {
+		seriesVolume := logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 1024},
+				{Name: `{bar="baz"}`, Volume: 3350},
+			},
+			Limit: 5,
+		}
+		if err := marshal.WriteVolumeResponseJSON(&seriesVolume, w); err != nil {
 			serverutil.WriteError(err, w)
 			return
 		}

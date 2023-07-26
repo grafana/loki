@@ -172,25 +172,25 @@ func (c *DefaultClient) GetOrgID() string {
 	return c.OrgID
 }
 
-func (c *DefaultClient) GetStats(ctx context.Context, queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", start.UnixNano())
 	params.SetInt("end", end.UnixNano())
 	params.SetString("query", queryStr)
 
 	var statsResponse logproto.IndexStatsResponse
-	if err := c.doRequest(ctx, statsPath, params.Encode(), quiet, &statsResponse); err != nil {
+	if err := c.doRequest(context.Background(), statsPath, params.Encode(), quiet, &statsResponse); err != nil {
 		return nil, err
 	}
 	return &statsResponse, nil
 }
 
-func (c *DefaultClient) GetVolume(ctx context.Context, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
-	return c.getVolume(ctx, volumePath, queryStr, start, end, step, limit, quiet)
+func (c *DefaultClient) GetVolume(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	return c.getVolume(context.Background(), volumePath, queryStr, start, end, step, limit, quiet)
 }
 
-func (c *DefaultClient) GetVolumeRange(ctx context.Context, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
-	return c.getVolume(ctx, volumeRangePath, queryStr, start, end, step, limit, quiet)
+func (c *DefaultClient) GetVolumeRange(queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
+	return c.getVolume(context.Background(), volumeRangePath, queryStr, start, end, step, limit, quiet)
 }
 
 func (c *DefaultClient) getVolume(ctx context.Context, path string, queryStr string, start, end time.Time, step time.Duration, limit int, quiet bool) (*loghttp.QueryResponse, error) {
@@ -308,6 +308,7 @@ func (c *DefaultClient) doRequest(ctx context.Context, path, query string, quiet
 			log.Println("error closing body", err)
 		}
 	}()
+
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 

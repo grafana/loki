@@ -2,6 +2,7 @@ package fanout
 
 import (
 	"context"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
@@ -219,7 +220,7 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 
 func (q *Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	if len(q.secondaries) == 0 {
-		return q.IndexStats(ctx, req)
+		return q.Querier.IndexStats(ctx, req)
 	}
 	responses := make([]*stats.Stats, 0)
 	localIndStats, err := q.IndexStats(ctx, req)
@@ -238,4 +239,22 @@ func (q *Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*sta
 	merged := stats.MergeStats(responses...)
 
 	return &merged, nil
+}
+
+func (q *Querier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	if len(q.secondaries) == 0 {
+		return q.Querier.Volume(ctx, req)
+	}
+
+	responses := make([]*logproto.VolumeResponse, 0)
+	for _, querier := range q.secondaries {
+		resp, err := querier.Volume(ctx, req)
+		if err != nil {
+			return nil, err
+		}
+		responses = append(responses, resp)
+	}
+
+	merged := seriesvolume.Merge(responses, req.Limit)
+	return merged, nil
 }

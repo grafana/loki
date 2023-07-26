@@ -37,25 +37,25 @@ func Test_buildURL(t *testing.T) {
 func Test_getHTTPRequestHeader(t *testing.T) {
 	tests := []struct {
 		name    string
-		client  DefaultClient
+		client  Client
 		want    http.Header
 		wantErr bool
 	}{
-		{"empty", DefaultClient{}, http.Header{}, false},
-		{"partial-headers", DefaultClient{
+		{"empty", &DefaultClient{}, http.Header{}, false},
+		{"partial-headers", &DefaultClient{
 			OrgID:     "124",
 			QueryTags: "source=abc",
 		}, http.Header{
 			"X-Scope-OrgID": []string{"124"},
 			"X-Query-Tags":  []string{"source=abc"},
 		}, false},
-		{"basic-auth", DefaultClient{
+		{"basic-auth", &DefaultClient{
 			Username: "123",
 			Password: "secure",
 		}, http.Header{
 			"Authorization": []string{"Basic " + base64.StdEncoding.EncodeToString([]byte("123:secure"))},
 		}, false},
-		{"bearer-token", DefaultClient{
+		{"bearer-token", &DefaultClient{
 			BearerToken: "secureToken",
 		}, http.Header{
 			"Authorization": []string{"Bearer " + "secureToken"},
@@ -63,7 +63,8 @@ func Test_getHTTPRequestHeader(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := tt.client.getHTTPRequestHeader(context.Background())
+			defaultClient := tt.client.(*DefaultClient)
+			got, err := defaultClient.getHTTPRequestHeader(context.Background())
 			if (err != nil) != tt.wantErr {
 				t.Errorf("getHTTPRequestHeader() error = %v, wantErr %v", err, tt.wantErr)
 				return

@@ -190,3 +190,10 @@ func (q Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stat
 	//TODO implement me
 	return &stats.Stats{}, nil
 }
+
+func (q Querier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	//	_, err := q.client.GetVolume(req.GetQuery(), time.UnixMilli(req.GetStart()), time.UnixMilli(req.GetEnd()), time.Duration(req.Step), int(req.Limit), false)
+	//TODO implement me
+	result := &logproto.VolumeResponse{}
+	return result, nil
+}
