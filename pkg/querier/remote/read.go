@@ -182,16 +182,16 @@ func (q Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*logp
 	return &logproto.SeriesResponse{Series: identifiers}, nil
 }
 
-func (q Querier) Tail(ctx context.Context, req *logproto.TailRequest) (*querier.Tailer, error) {
+func (q Querier) Tail(_ context.Context, req *logproto.TailRequest) (*querier.Tailer, error) {
 	panic("unsupported func")
 }
 
-func (q Querier) IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
+func (q Querier) IndexStats(_ context.Context, req *loghttp.RangeQuery) (*stats.Stats, error) {
 	//TODO implement me
 	return &stats.Stats{}, nil
 }
 
-func (q Querier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (q Querier) Volume(_ context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	//	_, err := q.client.GetVolume(req.GetQuery(), time.UnixMilli(req.GetStart()), time.UnixMilli(req.GetEnd()), time.Duration(req.Step), int(req.Limit), false)
 	//TODO implement me
 	result := &logproto.VolumeResponse{}
