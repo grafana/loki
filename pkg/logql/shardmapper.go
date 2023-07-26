@@ -219,7 +219,7 @@ func (m ShardMapper) mapTopKSampleExpr(expr syntax.TopkSampleExpr, r *downstream
 func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
-	if !expr.Shardable() || expr.Operation == syntax.OpTypeTopK && !m.probabilisticQueries {
+	if !expr.Shardable() || (expr.Operation == syntax.OpTypeTopK && !m.probabilisticQueries) {
 		subMapped, bytesPerShard, err := m.Map(expr.Left, r)
 		if err != nil {
 			return nil, 0, err

@@ -103,6 +103,7 @@ query_range:
             memcached_client:
                 addresses: memcached:11211
     required_query_response_format: protobuf
+    execute_probabilistic_queries: true
 schema_config:
     configs:
       - from: "2020-07-30"
