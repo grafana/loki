@@ -396,13 +396,13 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 			cliQueryFrontend.Now = now
 
 			t.Run("ingest-logs", func(t *testing.T) {
-				// ingest logs to the previous period
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-36*time.Hour), map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels("lineA", time.Now().Add(-48*time.Hour), map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineC", map[string]string{"traceID": "789"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineD", map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+
 			})
 
 			t.Run("query-lookback-default", func(t *testing.T) {

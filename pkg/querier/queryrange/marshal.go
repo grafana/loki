@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
@@ -46,7 +47,7 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any
 	case *stats.Stats:
 		return WriteIndexStatsResponseProtobuf(result, w)
 	case *logproto.VolumeResponse:
-		return WriteSeriesVolumeResponseProtobuf(result, w)
+		return WriteVolumeResponseProtobuf(result, w)
 	}
 	return fmt.Errorf("unknown response type %T", v)
 }
@@ -127,7 +128,7 @@ func WriteIndexStatsResponseProtobuf(r *stats.Stats, w io.Writer) error {
 
 // WriteIndexStatsResponseProtobuf marshals a logproto.VolumeResponse to queryrange.QueryResponse
 // and then writes it to the provided io.Writer.
-func WriteSeriesVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) error {
+func WriteVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) error {
 	p := QueryResponse{
 		Response: &QueryResponse_Volume{
 			Volume: &VolumeResponse{
@@ -218,6 +219,16 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 					Status:     "success",
 					Statistics: result.Statistics,
 				},
+			},
+		}, nil
+	case sketch.TopKMatrix:
+		sk, err := data.ToProto()
+		if err != nil {
+			return nil, err
+		}
+		return &QueryResponse{
+			Response: &QueryResponse_TopkSketches{
+				TopkSketches: &TopKSketchesResponse{Response: sk},
 			},
 		}, nil
 	}

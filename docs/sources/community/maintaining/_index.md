@@ -2,9 +2,8 @@
 title: Maintaining
 description: Grafana Loki Maintainers' Guide
 aliases: 
-- /docs/loki/latest/maintaining
-- /docs/loki/latest/community/maintaining
-weight: 1200
+- ../maintaining/
+weight: 400
 ---
 # Maintaining
 

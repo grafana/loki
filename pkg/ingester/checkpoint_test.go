@@ -38,7 +38,8 @@ func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time,
 
 	ln := int(end.Sub(start) / time.Second)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 2)
 	require.Len(t, result.resps[0].Streams[0].Entries, ln)
 	require.Len(t, result.resps[0].Streams[1].Entries, ln)

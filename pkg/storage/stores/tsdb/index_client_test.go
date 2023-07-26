@@ -220,7 +220,7 @@ func TestIndexClient_Stats(t *testing.T) {
 	}
 }
 
-func TestIndexClient_SeriesVolume(t *testing.T) {
+func TestIndexClient_Volume(t *testing.T) {
 	tempDir := t.TempDir()
 	tableRange := config.TableRange{
 		Start: 0,
@@ -278,8 +278,8 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 	from := indexStartYesterday
 	through := indexStartToday + 1000
 
-	t.Run("it returns series volumes from the whole index", func(t *testing.T) {
-		vol, err := indexClient.SeriesVolume(context.Background(), "", from, through, 10, nil...)
+	t.Run("it returns volumes from the whole index", func(t *testing.T) {
+		vol, err := indexClient.Volume(context.Background(), "", from, through, 10, nil, "", nil...)
 		require.NoError(t, err)
 
 		require.Equal(t, &logproto.VolumeResponse{
@@ -294,7 +294,7 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 	})
 
 	t.Run("it returns largest series from the index", func(t *testing.T) {
-		vol, err := indexClient.SeriesVolume(context.Background(), "", from, through, 1, nil...)
+		vol, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil...)
 		require.NoError(t, err)
 
 		require.Equal(t, &logproto.VolumeResponse{
@@ -307,7 +307,7 @@ func TestIndexClient_SeriesVolume(t *testing.T) {
 
 	t.Run("it returns an error when the number of selected series exceeds the limit", func(t *testing.T) {
 		limits.volumeMaxSeries = 0
-		_, err := indexClient.SeriesVolume(context.Background(), "", from, through, 1, nil...)
+		_, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil...)
 		require.EqualError(t, err, fmt.Sprintf(seriesvolume.ErrVolumeMaxSeriesHit, 0))
 	})
 }

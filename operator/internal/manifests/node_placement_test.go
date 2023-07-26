@@ -7,6 +7,7 @@ import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -355,7 +356,108 @@ func TestDefaultNodeAffinityForEachComponent(t *testing.T) {
 	})
 }
 
-func TestPodAntiAffinityForEachComponent(t *testing.T) {
+var podAntiAffinityTestTable = []struct {
+	component string
+	generator func(Options) *corev1.Affinity
+}{
+	{
+		component: "lokistack-gateway",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewGatewayDeployment(opts, "").Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "distributor",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewDistributorDeployment(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "query-frontend",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewQueryFrontendDeployment(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "querier",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewQuerierDeployment(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "ingester",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewIngesterStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "compactor",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewCompactorStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "index-gateway",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewIndexGatewayStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+	{
+		component: "ruler",
+		generator: func(opts Options) *corev1.Affinity {
+			return NewRulerStatefulSet(opts).Spec.Template.Spec.Affinity
+		},
+	},
+}
+
+func TestDefaultPodAntiAffinity(t *testing.T) {
+	opts := Options{
+		// We need to set name here to properly validate default PodAntiAffinity
+		Name: "abcd",
+		Stack: lokiv1.LokiStackSpec{
+			Template: &lokiv1.LokiTemplateSpec{
+				Compactor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Distributor: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ingester: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Querier: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				QueryFrontend: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				IndexGateway: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+				Ruler: &lokiv1.LokiComponentSpec{
+					Replicas: 1,
+				},
+			},
+		},
+	}
+
+	for _, tc := range podAntiAffinityTestTable {
+		tc := tc
+		t.Run(tc.component, func(t *testing.T) {
+			t.Parallel()
+
+			wantAffinity := defaultPodAntiAffinity(tc.component, "abcd")
+
+			affinity := tc.generator(opts)
+			assert.Equal(t, wantAffinity, affinity.PodAntiAffinity)
+		})
+	}
+}
+
+func TestCustomPodAntiAffinity(t *testing.T) {
 	paTerm := []corev1.WeightedPodAffinityTerm{
 		{
 			Weight: 100,
@@ -369,171 +471,221 @@ func TestPodAntiAffinityForEachComponent(t *testing.T) {
 			},
 		},
 	}
-	expectedPATerm := &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"foo": "bar",
-						},
-					},
-					TopologyKey: "foo",
-				},
-			},
-		},
+
+	wantAffinity := &corev1.PodAntiAffinity{
+		PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
 	}
-	optsWithNoPodAntiAffinity := Options{
-		// We need to set name here to propperly validate default PodAntiAffinity
-		Name: "abcd",
+
+	opts := Options{
 		Stack: lokiv1.LokiStackSpec{
 			Template: &lokiv1.LokiTemplateSpec{
 				Compactor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Distributor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
+				},
+				Gateway: &lokiv1.LokiComponentSpec{
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Ingester: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Querier: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				QueryFrontend: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				IndexGateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 				Ruler: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-				},
-			},
-		},
-	}
-	optsWithPodAntiAffinity := Options{
-		Stack: lokiv1.LokiStackSpec{
-			Template: &lokiv1.LokiTemplateSpec{
-				Compactor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
-				},
-				Distributor: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
-				},
-				Ingester: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
-				},
-				Querier: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
-				},
-				QueryFrontend: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
-				},
-				IndexGateway: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
-				},
-				Ruler: &lokiv1.LokiComponentSpec{
-					Replicas: 1,
-					PodAntiAffinity: &corev1.PodAntiAffinity{
-						PreferredDuringSchedulingIgnoredDuringExecution: paTerm,
-					},
+					Replicas:        1,
+					PodAntiAffinity: wantAffinity,
 				},
 			},
 		},
 	}
 
-	t.Run("distributor", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewDistributorDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewDistributorDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
-		}
-	})
+	for _, tc := range podAntiAffinityTestTable {
+		tc := tc
+		t.Run(tc.component, func(t *testing.T) {
+			t.Parallel()
 
-	t.Run("query_frontend", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewQueryFrontendDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewQueryFrontendDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("query-frontend"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("querier", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewQuerierDeployment(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewQuerierDeployment(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("ingester", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewIngesterStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewIngesterStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("ingester"), affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("compactor", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewCompactorStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewCompactorStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("index_gateway", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewIndexGatewayStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewIndexGatewayStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Empty(t, affinity.PodAntiAffinity)
-		}
-	})
-
-	t.Run("ruler", func(t *testing.T) {
-		assert.Equal(t, expectedPATerm, NewRulerStatefulSet(optsWithPodAntiAffinity).Spec.Template.Spec.Affinity.PodAntiAffinity)
-		affinity := NewRulerStatefulSet(optsWithNoPodAntiAffinity).Spec.Template.Spec.Affinity
-		if affinity != nil {
-			assert.Equal(t, expectedDefaultPodAntiAffinity("ruler"), affinity.PodAntiAffinity)
-		}
-	})
+			affinity := tc.generator(opts)
+			assert.Equal(t, wantAffinity, affinity.PodAntiAffinity)
+		})
+	}
 }
 
-func expectedDefaultPodAntiAffinity(component string) *corev1.PodAntiAffinity {
-	return &corev1.PodAntiAffinity{
-		PreferredDuringSchedulingIgnoredDuringExecution: []corev1.WeightedPodAffinityTerm{
-			{
-				Weight: 100,
-				PodAffinityTerm: corev1.PodAffinityTerm{
-					LabelSelector: &metav1.LabelSelector{
-						MatchLabels: map[string]string{
-							"app.kubernetes.io/instance":  "abcd",
-							"app.kubernetes.io/component": component,
+func TestCustomTopologySpreadConstraints(t *testing.T) {
+	template := &corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"abc": "edf",
+				"gfi": "jkl",
+			},
+			Annotations: map[string]string{
+				"one": "value",
+				"two": "values",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name:  "a-container",
+					Image: "an-image:latest",
+					Env: []corev1.EnvVar{
+						{
+							Name:  "test",
+							Value: "other",
 						},
 					},
-					TopologyKey: "kubernetes.io/hostname",
+				},
+				{
+					Name:  "b-container",
+					Image: "an-image:latest",
+					Env: []corev1.EnvVar{
+						{
+							Name:  "test",
+							Value: "other",
+						},
+					},
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
 				},
 			},
 		},
 	}
+
+	spec := &lokiv1.ReplicationSpec{
+		Factor: 2,
+		Zones: []lokiv1.ZoneSpec{
+			{
+				MaxSkew:     1,
+				TopologyKey: "datacenter",
+			},
+			{
+				MaxSkew:     1,
+				TopologyKey: "rack",
+			},
+		},
+	}
+
+	expectedTemplate := &corev1.PodTemplateSpec{
+		ObjectMeta: metav1.ObjectMeta{
+			Labels: map[string]string{
+				"abc":                    "edf",
+				"gfi":                    "jkl",
+				lokiv1.LabelZoneAwarePod: "enabled",
+			},
+			Annotations: map[string]string{
+				"one":                                   "value",
+				"two":                                   "values",
+				lokiv1.AnnotationAvailabilityZoneLabels: "datacenter,rack",
+			},
+		},
+		Spec: corev1.PodSpec{
+			InitContainers: []corev1.Container{
+				{
+					Name:  "az-annotation-check",
+					Image: "an-image:latest",
+					Command: []string{
+						"sh",
+						"-c",
+						"while ! [ -s /etc/az-annotation/az ]; do echo Waiting for availability zone annotation to be set; sleep 2; done; echo availability zone annotation is set; cat /etc/az-annotation/az; echo",
+					},
+					VolumeMounts: []corev1.VolumeMount{
+						{
+							Name:      "az-annotation",
+							MountPath: "/etc/az-annotation",
+						},
+					},
+				},
+			},
+			Containers: []corev1.Container{
+				{
+					Name:  "a-container",
+					Image: "an-image:latest",
+					Env: []corev1.EnvVar{
+						{
+							Name:  "test",
+							Value: "other",
+						},
+						availabilityZoneEnvVar,
+					},
+				},
+				{
+					Name:  "b-container",
+					Image: "an-image:latest",
+					Env: []corev1.EnvVar{
+						{
+							Name:  "test",
+							Value: "other",
+						},
+						availabilityZoneEnvVar,
+					},
+				},
+			},
+			TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
+				{
+					MaxSkew:           int32(1),
+					TopologyKey:       "datacenter",
+					WhenUnsatisfiable: corev1.DoNotSchedule,
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							kubernetesComponentLabel: "component",
+							kubernetesInstanceLabel:  "a-stack",
+						},
+					},
+				},
+				{
+					MaxSkew:           int32(1),
+					TopologyKey:       "rack",
+					WhenUnsatisfiable: corev1.DoNotSchedule,
+					LabelSelector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{
+							kubernetesComponentLabel: "component",
+							kubernetesInstanceLabel:  "a-stack",
+						},
+					},
+				},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "test-volume",
+				},
+				{
+					Name: "az-annotation",
+					VolumeSource: corev1.VolumeSource{
+						DownwardAPI: &corev1.DownwardAPIVolumeSource{
+							Items: []corev1.DownwardAPIVolumeFile{
+								{
+									Path: "az",
+									FieldRef: &corev1.ObjectFieldSelector{
+										FieldPath: availabilityZoneFieldPath,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := configureReplication(template, spec, "component", "a-stack")
+	require.NoError(t, err)
+	require.Equal(t, expectedTemplate, template)
 }
