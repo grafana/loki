@@ -920,6 +920,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	sp := opentracing.SpanFromContext(ctx)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -930,9 +931,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	if err != nil {
 		return err
 	}
+
 	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
+	}
+	if sp != nil {
+		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
 	}
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
@@ -1107,8 +1112,7 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "Ingester.GetStats")
-	defer sp.Finish()
+	sp := opentracing.SpanFromContext(ctx)
 
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -1150,16 +1154,18 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	merged := index_stats.MergeStats(resps...)
-	sp.LogKV(
-		"user", user,
-		"from", req.From.Time(),
-		"through", req.Through.Time(),
-		"matchers", syntax.MatchersString(matchers),
-		"streams", merged.Streams,
-		"chunks", merged.Chunks,
-		"bytes", merged.Bytes,
-		"entries", merged.Entries,
-	)
+	if sp != nil {
+		sp.LogKV(
+			"user", user,
+			"from", req.From.Time(),
+			"through", req.Through.Time(),
+			"matchers", syntax.MatchersString(matchers),
+			"streams", merged.Streams,
+			"chunks", merged.Chunks,
+			"bytes", merged.Bytes,
+			"entries", merged.Entries,
+		)
+	}
 
 	return &merged, nil
 }
@@ -1288,9 +1294,9 @@ func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountReq
 	return &resp, nil
 }
 
-// buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
+// buildStoreRequest returns a store request from an ingester request, returns nil if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
-// we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
+// we only query enough to not miss any data and not add too many duplicates by covering the whole time range in query.
 func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false
