@@ -583,11 +583,21 @@ JSON post body can be sent in the following format:
       },
       "values": [
           [ "<unix epoch in nanoseconds>", "<log line>" ],
-          [ "<unix epoch in nanoseconds>", "<log line>" ]
+          [ "<unix epoch in nanoseconds>", "<log line>", {"optiona_non_indexed_label": "label_value", "trace_ID": "1234"}]
       ]
     }
   ]
 }
+```
+
+You can optionally attach [non-indexed labels]({{< relref "../get-started/labels/non-indexed-labels" >}}) to each log line by adding a JSON object to the end of the log line array.
+The JSON object must be a valid JSON object with string keys and string values.
+The JSON object must be the last element in the log line array. Here is an example of a log line with a non-indexed label attached:
+
+```
+"values": [
+    [ "<unix epoch in nanoseconds>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
+]
 ```
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.

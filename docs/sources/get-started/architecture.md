@@ -21,9 +21,11 @@ index and in stored chunks.
 
 ```
   -------------------------------------------------------------------
-  |                               |                                 |
-  |        MagicNumber(4b)        |           version(1b)           |
-  |                               |                                 |
+  |                      |                   |                      |
+  |    MagicNumber(4b)   |    version(1b)    |     encoding (1b)    |
+  |                      |                   |                      |
+  -------------------------------------------------------------------
+  |         #symbols bytes        |     checksum(from #symbols)     |
   -------------------------------------------------------------------
   |         block-1 bytes         |          checksum (4b)          |
   -------------------------------------------------------------------
@@ -43,12 +45,36 @@ index and in stored chunks.
   -------------------------------------------------------------------
   |                      checksum(from #blocks)                     |
   -------------------------------------------------------------------
-  |                    #blocks section byte offset                  |
+  |    #symbols len (uvarint)     |    #symbols offset (uvarint)    |
+  -------------------------------------------------------------------
+  |    #blocks len (uvarint)      |    #blocks offset (uvarint)     |
   -------------------------------------------------------------------
 ```
 
 `mint` and `maxt` describe the minimum and maximum Unix nanosecond timestamp,
 respectively.
+
+### Symbols format
+
+Symbols stores non-repeated strings. It is used to store label names and label values from
+[non-indexed labels]({{< relref "./labels/non-indexed-labels" >}}).
+
+Note that the bytes of the symbols section are stored compressed using Gzip. The following
+is their form when uncompressed:
+
+```
+  -------------------------------------------------------------------
+  |                   number of symbols (uvarint)                   |
+  -------------------------------------------------------------------
+  |     symbol 1 len (uvarint)    |          symbol 1 bytes         |
+  -------------------------------------------------------------------
+  |     symbol 2 len (uvarint)    |          symbol 2 bytes         |
+  -------------------------------------------------------------------
+  |     symbol 3 len (uvarint)    |          symbol 3 bytes         |
+  -------------------------------------------------------------------
+  |     symbol n len (uvarint)    |          symbol n bytes         |
+  -------------------------------------------------------------------
+```
 
 ### Block Format
 
