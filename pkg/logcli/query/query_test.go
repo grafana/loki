@@ -450,19 +450,19 @@ func (t *testQueryClient) QueryRange(_ context.Context, queryStr string, limit i
 	return q, nil
 }
 
-func (t *testQueryClient) ListLabelNames(_ context.Context, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelNames(_ context.Context, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) ListLabelValues(_ context.Context, name string, quiet bool, from, through time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelValues(_ context.Context, _ string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) Series(_ context.Context, matchers []string, from, through time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (t *testQueryClient) Series(_ context.Context, _ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) LiveTailQueryConn(_ context.Context, queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (t *testQueryClient) LiveTailQueryConn(_ context.Context, _ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	panic("implement me")
 }
 
