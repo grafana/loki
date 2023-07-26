@@ -583,7 +583,6 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 		tIndexGateway = clu.AddComponent(
 			"index-gateway",
 			"-target=index-gateway",
-			"-store.index-cache-read.lrucache.enabled=true",
 			"-tsdb.enable-cache-postings=true",
 		)
 	)
