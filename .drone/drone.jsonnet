@@ -433,7 +433,7 @@ local manifest_operator(app) = pipeline('manifest-operator') {
       username: { from_secret: docker_username_secret.name },
       password: { from_secret: docker_password_secret.name },
     },
-    depends_on: ['clone']
+    depends_on: ['clone'],
   }],
   depends_on: [
     'lokioperator-%s' % arch
@@ -689,7 +689,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     trigger+: onTagOrMain {
       ref: [
         'refs/heads/main',
-        'refs/tags/operator/v*'
+        'refs/tags/operator/v*',
       ],
     },
   },
