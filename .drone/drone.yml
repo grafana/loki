@@ -834,6 +834,9 @@ steps:
     event:
     - push
     - tag
+    ref:
+    - refs/heads/main
+    - refs/tags/operator/v*
 trigger:
   ref:
   - refs/heads/main
@@ -888,6 +891,9 @@ steps:
     event:
     - push
     - tag
+    ref:
+    - refs/heads/main
+    - refs/tags/operator/v*
 trigger:
   ref:
   - refs/heads/main
@@ -942,6 +948,9 @@ steps:
     event:
     - push
     - tag
+    ref:
+    - refs/heads/main
+    - refs/tags/operator/v*
 trigger:
   ref:
   - refs/heads/main
@@ -1209,19 +1218,6 @@ steps:
     target: loki-canary
     username:
       from_secret: docker_username
-- depends_on:
-  - clone
-  - manifest-loki-canary
-  image: plugins/manifest:1.4.0
-  name: manifest-loki-operator
-  settings:
-    ignore_missing: false
-    password:
-      from_secret: docker_password
-    spec: .drone/docker-manifest.tmpl
-    target: loki-operator
-    username:
-      from_secret: docker_username
 trigger:
   event:
   - push
@@ -1231,6 +1227,33 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+---
+depends_on:
+- lokioperator-amd64
+- lokioperator-arm64
+- lokioperator-arm
+kind: pipeline
+name: manifest-operator
+steps:
+- depends_on:
+  - clone
+  image: plugins/manifest:1.4.0
+  name: manifest-loki-operator
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest-operator.tmpl
+    target: loki-operator
+    username:
+      from_secret: docker_username
+trigger:
+  event:
+  - push
+  - tag
+  ref:
+  - refs/heads/main
+  - refs/tags/operator/v*
 ---
 depends_on:
 - manifest
@@ -1771,6 +1794,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: d7648b4b008582e9d427082fbaa6bb92796e784c41c51c698751e4976e92fdb7
+hmac: 06e7ff691dfc5cb9a9fec614d23c781f698f8871d406b2d25e06e7761fb345d8
 
 ...

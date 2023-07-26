@@ -905,6 +905,8 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	sp := opentracing.SpanFromContext(ctx)
+
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
@@ -927,8 +929,11 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 
 		stats.Reset()
-
+		if sp != nil {
+			sp.LogKV("event", "sent batch", "size", size)
+		}
 	}
+
 	return nil
 }
 

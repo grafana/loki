@@ -335,13 +335,13 @@ func tagsToKeyValues(queryTags string) []interface{} {
 		if len(val) != 2 {
 			continue
 		}
-		vals = append(vals, val...)
+		vals = append(vals, strings.ToLower(val[0]), val[1])
 	}
 
 	res := make([]interface{}, 0, len(vals))
 
 	for _, val := range vals {
-		res = append(res, strings.ToLower(val))
+		res = append(res, val)
 	}
 
 	return res

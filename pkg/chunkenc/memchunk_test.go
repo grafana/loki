@@ -171,6 +171,8 @@ func TestBlock(t *testing.T) {
 					}
 				}
 
+				var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
+
 				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
@@ -190,6 +192,14 @@ func TestBlock(t *testing.T) {
 				require.NoError(t, it.Error())
 				require.NoError(t, it.Close())
 				require.Equal(t, len(cases), idx)
+
+				countExtractor = func() log.StreamSampleExtractor {
+					ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+					if err != nil {
+						panic(err)
+					}
+					return ex.ForStream(labels.Labels{})
+				}()
 
 				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
 				idx = 0
@@ -384,50 +394,83 @@ func TestSerialization(t *testing.T) {
 	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncoding {
 			enc := enc
-			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
-				t.Parallel()
-
-				chk := NewMemChunk(enc, testData.headBlockFmt, testBlockSize, testTargetSize)
-				chk.format = testData.chunkFormat
-				numSamples := 50000
-
-				for i := 0; i < numSamples; i++ {
-					require.NoError(t, chk.Append(logprotoEntry(int64(i), strconv.Itoa(i))))
+			// run tests with and without non-indexed labels set since it is optional
+			for _, appendWithNonIndexedLabels := range []bool{false, true} {
+				appendWithNonIndexedLabels := appendWithNonIndexedLabels
+				testName := testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt)
+				if appendWithNonIndexedLabels {
+					testName = fmt.Sprintf("%s - append non-indexed labels", testName)
+				} else {
+					testName = fmt.Sprintf("%s - without non-indexed labels", testName)
 				}
-				require.NoError(t, chk.Close())
+				t.Run(testName, func(t *testing.T) {
+					t.Parallel()
 
-				byt, err := chk.Bytes()
-				require.NoError(t, err)
+					chk := NewMemChunk(enc, testData.headBlockFmt, testBlockSize, testTargetSize)
+					chk.format = testData.chunkFormat
+					numSamples := 50000
+					var entry *logproto.Entry
 
-				bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
-				require.NoError(t, err)
+					for i := 0; i < numSamples; i++ {
+						entry = logprotoEntry(int64(i), strconv.Itoa(i))
+						if appendWithNonIndexedLabels {
+							entry.NonIndexedLabels = []logproto.LabelAdapter{{Name: "foo", Value: strconv.Itoa(i)}}
+						}
+						require.NoError(t, chk.Append(entry))
+					}
+					require.NoError(t, chk.Close())
 
-				it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
-				require.NoError(t, err)
-				for i := 0; i < numSamples; i++ {
-					require.True(t, it.Next())
+					byt, err := chk.Bytes()
+					require.NoError(t, err)
 
-					e := it.Entry()
-					require.Equal(t, int64(i), e.Timestamp.UnixNano())
-					require.Equal(t, strconv.Itoa(i), e.Line)
-				}
-				require.NoError(t, it.Error())
+					bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
+					require.NoError(t, err)
 
-				sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
-				for i := 0; i < numSamples; i++ {
-					require.True(t, sampleIt.Next(), i)
+					it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					require.NoError(t, err)
+					for i := 0; i < numSamples; i++ {
+						require.True(t, it.Next())
 
-					s := sampleIt.Sample()
-					require.Equal(t, int64(i), s.Timestamp)
-					require.Equal(t, 1., s.Value)
-				}
-				require.NoError(t, sampleIt.Error())
+						e := it.Entry()
+						require.Equal(t, int64(i), e.Timestamp.UnixNano())
+						require.Equal(t, strconv.Itoa(i), e.Line)
+						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
+							require.Equal(t, push.LabelsAdapter{{Name: "foo", Value: strconv.Itoa(i)}}, e.NonIndexedLabels)
+						} else {
+							require.Nil(t, e.NonIndexedLabels)
+						}
+					}
+					require.NoError(t, it.Error())
 
-				byt2, err := chk.Bytes()
-				require.NoError(t, err)
+					countExtractor = func() log.StreamSampleExtractor {
+						ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+						if err != nil {
+							panic(err)
+						}
+						return ex.ForStream(labels.Labels{})
+					}()
 
-				require.True(t, bytes.Equal(byt, byt2))
-			})
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					for i := 0; i < numSamples; i++ {
+						require.True(t, sampleIt.Next(), i)
+
+						s := sampleIt.Sample()
+						require.Equal(t, int64(i), s.Timestamp)
+						require.Equal(t, 1., s.Value)
+						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
+							require.Equal(t, fmt.Sprintf(`{foo="%d"}`, i), sampleIt.Labels())
+						} else {
+							require.Equal(t, "{}", sampleIt.Labels())
+						}
+					}
+					require.NoError(t, sampleIt.Error())
+
+					byt2, err := chk.Bytes()
+					require.NoError(t, err)
+
+					require.True(t, bytes.Equal(byt, byt2))
+				})
+			}
 		}
 	}
 }
@@ -1043,15 +1086,19 @@ func TestCheckpointEncoding(t *testing.T) {
 	t.Parallel()
 
 	blockSize, targetSize := 256*1024, 1500*1024
-	for _, f := range HeadBlockFmts {
-		t.Run(f.String(), func(t *testing.T) {
-			c := NewMemChunk(EncSnappy, f, blockSize, targetSize)
+	for _, f := range allPossibleFormats {
+		t.Run(testNameWithFormats(EncSnappy, f.chunkFormat, f.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(f.chunkFormat, EncSnappy, f.headBlockFmt, blockSize, targetSize)
 
 			// add a few entries
 			for i := 0; i < 5; i++ {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(int64(i), 0),
 					Line:      fmt.Sprintf("hi there - %d", i),
+					NonIndexedLabels: push.LabelsAdapter{{
+						Name:  fmt.Sprintf("name%d", i),
+						Value: fmt.Sprintf("val%d", i),
+					}},
 				}
 				require.Equal(t, true, c.SpaceFor(entry))
 				require.Nil(t, c.Append(entry))
@@ -1077,8 +1124,14 @@ func TestCheckpointEncoding(t *testing.T) {
 			err := c.SerializeForCheckpointTo(&chk, &head)
 			require.Nil(t, err)
 
-			cpy, err := MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f, blockSize, targetSize)
+			cpy, err := MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
+
+			if f.chunkFormat <= chunkFormatV2 {
+				for i := range c.blocks {
+					c.blocks[i].uncompressedSize = 0
+				}
+			}
 
 			require.Equal(t, c, cpy)
 		})
@@ -1574,14 +1627,14 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 
 			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
 			// First we add the bytes read from the store (aka decompressed). That's
-			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. labels) * (label length <int> + label))
+			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. nonIndexedLabelsSymbols * symbol <int>))
 			// lineBytes = n. lines * (ts <int> + line length <int> + line)
-			expectedNonIndexedLabelsBytes := 2 * (binary.MaxVarintLen64 + (binary.MaxVarintLen64 + len("traceID") + binary.MaxVarintLen64 + len("123") + binary.MaxVarintLen64 + len("user") + binary.MaxVarintLen64 + len("a")))
+			expectedNonIndexedLabelsBytes := 2 * (binary.MaxVarintLen64 + (2 * 2 * binary.MaxVarintLen64))
 			lineBytes := 2 * (2*binary.MaxVarintLen64 + len("lineA"))
 			// Now we add the bytes read from the head chunk. That's
-			// nonIndexedLabelsBytes = n. lines * (n. labels * (label name + label value))
+			// nonIndexedLabelsBytes = n. lines * (2 * n. nonIndexedLabelsSymbols * symbol <uint32>)
 			// lineBytes = n. lines * (line)
-			expectedNonIndexedLabelsBytes += 2 * (len("traceID") + len("789") + len("user") + len("c"))
+			expectedNonIndexedLabelsBytes += 2 * (2 * 2 * 4)
 			lineBytes += 2 * (len("lineC"))
 			// Finally, the expected total bytes is the line bytes + non-indexed labels bytes
 			expectedBytes := lineBytes + expectedNonIndexedLabelsBytes
