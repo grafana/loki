@@ -9,12 +9,13 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/require"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql"
 	rulerbase "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
-	"gopkg.in/yaml.v3"
 )
 
 // TestInvalidRuleGroup tests that a validation error is raised when rule group is invalid
