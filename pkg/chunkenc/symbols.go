@@ -297,10 +297,11 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 	}
 
 	db := decbuf{b: b}
-	s := symbolizer{
-		symbolsMap: map[string]uint32{},
-	}
 	numLabels := db.uvarint()
+	s := symbolizer{
+		symbolsMap: make(map[string]uint32, numLabels),
+		labels:     make([]string, 0, numLabels),
+	}
 
 	for i := 0; i < numLabels; i++ {
 		label := string(db.bytes(db.uvarint()))
@@ -315,7 +316,7 @@ func symbolizerFromCheckpoint(b []byte) *symbolizer {
 // symbolizerFromEnc builds symbolizer from the bytes generated during serialization.
 func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 	db := decbuf{b: b}
-	numSymbols := db.uvarint()
+	numLabels := db.uvarint()
 
 	b = db.b
 
@@ -325,16 +326,18 @@ func symbolizerFromEnc(b []byte, pool ReaderPool) (*symbolizer, error) {
 	}
 	defer pool.PutReader(reader)
 
+	s := symbolizer{
+		labels:         make([]string, 0, numLabels),
+		compressedSize: len(b),
+	}
+
 	var (
 		readBuf      [10]byte // Enough bytes to store one varint.
 		readBufValid int      // How many bytes are left in readBuf from previous read.
-		s            symbolizer
 		buf          []byte
 	)
 
-	s.compressedSize = len(b)
-
-	for i := 0; i < numSymbols; i++ {
+	for i := 0; i < numLabels; i++ {
 		var lWidth, labelSize, lastAttempt int
 		for lWidth == 0 { // Read until both varints have enough bytes.
 			n, err := reader.Read(readBuf[readBufValid:])
