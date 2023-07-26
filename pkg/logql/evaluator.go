@@ -132,13 +132,13 @@ type Evaluator interface {
 type SampleEvaluator interface {
 	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// StepEvaluator implementations which can be composed.
-	StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+	StepEvaluator(ctx context.Context, probabilistic bool, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, _ bool, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 
-func (s SampleEvaluatorFunc) StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
-	return s(ctx, nextEvaluator, expr, p)
+func (s SampleEvaluatorFunc) StepEvaluator(ctx context.Context, _ bool, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+	return s(ctx, false, nextEvaluator, expr, p)
 }
 
 type EntryEvaluator interface {
@@ -185,6 +185,7 @@ func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr syntax.LogSelecto
 
 func (ev *DefaultEvaluator) StepEvaluator(
 	ctx context.Context,
+	probabilistc bool,
 	nextEv SampleEvaluator,
 	expr syntax.SampleExpr,
 	q Params,
@@ -194,7 +195,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEv = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluator, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+			nextEv = SampleEvaluatorFunc(func(ctx context.Context, _ bool, _ SampleEvaluator, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
@@ -247,7 +248,7 @@ func newVectorAggEvaluator(
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, false, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -575,7 +576,7 @@ func binOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		rhs, err := ev.StepEvaluator(ctx, false, ev, expr.RHS, q)
 		if err != nil {
 			return nil, err
 		}
@@ -588,7 +589,7 @@ func binOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		lhs, err := ev.StepEvaluator(ctx, false, ev, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
@@ -610,7 +611,7 @@ func binOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		lse, err = ev.StepEvaluator(ctx, false, ev, expr.SampleExpr, q)
 		if err != nil {
 			cancel()
 		}
@@ -618,7 +619,7 @@ func binOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		rse, err = ev.StepEvaluator(ctx, false, ev, expr.RHS, q)
 		if err != nil {
 			cancel()
 		}
@@ -993,7 +994,7 @@ func labelReplaceEvaluator(
 	expr *syntax.LabelReplaceExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, false, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}

@@ -52,7 +52,7 @@ func NewRetryMiddleware(log log.Logger, maxRetries int, metrics *RetryMiddleware
 	})
 }
 
-func (r retry) Do(ctx context.Context, req Request) (Response, error) {
+func (r retry) Do(ctx context.Context, probabilistic bool, req Request) (Response, error) {
 	tries := 0
 	defer func() { r.metrics.retriesCount.Observe(float64(tries)) }()
 
@@ -61,7 +61,7 @@ func (r retry) Do(ctx context.Context, req Request) (Response, error) {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		resp, err := r.next.Do(ctx, req)
+		resp, err := r.next.Do(ctx, probabilistic, req)
 		if err == nil {
 			return resp, nil
 		}

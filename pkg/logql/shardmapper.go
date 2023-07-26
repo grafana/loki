@@ -32,11 +32,11 @@ type ShardMapper struct {
 	probabilisticQueries bool
 }
 
-func NewShardMapper(resolver ShardResolver, metrics *MapperMetrics) ShardMapper {
+func NewShardMapper(resolver ShardResolver, probabilistic bool, metrics *MapperMetrics) ShardMapper {
 	return ShardMapper{
 		shards:               resolver,
 		metrics:              metrics,
-		probabilisticQueries: false,
+		probabilisticQueries: probabilistic,
 	}
 }
 

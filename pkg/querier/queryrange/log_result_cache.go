@@ -80,7 +80,7 @@ type logResultCache struct {
 	logger  log.Logger
 }
 
-func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (l *logResultCache) Do(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "logResultCache.Do")
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -89,14 +89,14 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 
 	if l.shouldCache != nil && !l.shouldCache(ctx, req) {
-		return l.next.Do(ctx, req)
+		return l.next.Do(ctx, probabilistic, req)
 	}
 
 	cacheFreshnessCapture := func(id string) time.Duration { return l.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if req.GetEnd() > maxCacheTime {
-		return l.next.Do(ctx, req)
+		return l.next.Do(ctx, probabilistic, req)
 	}
 
 	lokiReq, ok := req.(*LokiRequest)
@@ -107,7 +107,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, l.limits.QuerySplitDuration)
 	// skip caching by if interval is unset
 	if interval == 0 {
-		return l.next.Do(ctx, req)
+		return l.next.Do(ctx, probabilistic, req)
 	}
 	// The first subquery might not be aligned.
 	alignedStart := time.Unix(0, lokiReq.GetStartTs().UnixNano()-(lokiReq.GetStartTs().UnixNano()%interval.Nanoseconds()))
@@ -127,12 +127,12 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	_, buff, _, err := l.cache.Fetch(ctx, []string{cache.HashKey(cacheKey)})
 	if err != nil {
 		level.Warn(l.logger).Log("msg", "error fetching cache", "err", err, "cacheKey", cacheKey)
-		return l.next.Do(ctx, req)
+		return l.next.Do(ctx, probabilistic, req)
 	}
 	// we expect only one key to be found or missing.
 	if len(buff) > 1 {
 		level.Warn(l.logger).Log("msg", "unexpected length of cache return values", "buff", len(buff))
-		return l.next.Do(ctx, req)
+		return l.next.Do(ctx, probabilistic, req)
 	}
 
 	if len(buff) == 0 {
@@ -145,7 +145,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 	err = proto.Unmarshal(buff[0], &cachedRequest)
 	if err != nil {
 		level.Warn(l.logger).Log("msg", "error unmarshalling request from cache", "err", err)
-		return l.next.Do(ctx, req)
+		return l.next.Do(ctx, probabilistic, req)
 	}
 	return l.handleHit(ctx, cacheKey, &cachedRequest, lokiReq)
 }
@@ -153,7 +153,7 @@ func (l *logResultCache) Do(ctx context.Context, req queryrangebase.Request) (qu
 func (l *logResultCache) handleMiss(ctx context.Context, cacheKey string, req *LokiRequest) (queryrangebase.Response, error) {
 	l.metrics.CacheMiss.Inc()
 	level.Debug(l.logger).Log("msg", "cache miss", "key", cacheKey)
-	resp, err := l.next.Do(ctx, req)
+	resp, err := l.next.Do(ctx, false, req)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +192,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 	// if the query does not overlap cached interval, do not try to fill the gap since it requires extending the queries beyond what is requested in the query.
 	// Extending the queries beyond what is requested could result in empty responses due to response limit set in the queries.
 	if !overlap(lokiReq.StartTs, lokiReq.EndTs, cachedRequest.StartTs, cachedRequest.EndTs) {
-		resp, err := l.next.Do(ctx, lokiReq)
+		resp, err := l.next.Do(ctx, false, lokiReq)
 		if err != nil {
 			return nil, err
 		}
@@ -216,7 +216,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		if lokiReq.GetStartTs().Before(cachedRequest.GetStartTs()) {
 			g.Go(func() error {
 				startRequest = lokiReq.WithStartEndTime(lokiReq.GetStartTs(), cachedRequest.GetStartTs())
-				resp, err := l.next.Do(ctx, startRequest)
+				resp, err := l.next.Do(ctx, false, startRequest)
 				if err != nil {
 					return err
 				}
@@ -233,7 +233,7 @@ func (l *logResultCache) handleHit(ctx context.Context, cacheKey string, cachedR
 		if lokiReq.GetEndTs().After(cachedRequest.GetEndTs()) {
 			g.Go(func() error {
 				endRequest = lokiReq.WithStartEndTime(cachedRequest.GetEndTs(), lokiReq.GetEndTs())
-				resp, err := l.next.Do(ctx, endRequest)
+				resp, err := l.next.Do(ctx, false, endRequest)
 				if err != nil {
 					return err
 				}

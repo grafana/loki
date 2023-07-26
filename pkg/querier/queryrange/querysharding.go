@@ -42,6 +42,7 @@ func NewQueryShardMiddleware(
 	limits Limits,
 	maxShards int,
 	statsHandler queryrangebase.Handler,
+	probabilistic bool,
 ) queryrangebase.Middleware {
 	noshards := !hasShards(confs)
 
@@ -55,7 +56,7 @@ func NewQueryShardMiddleware(
 	}
 
 	mapperware := queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards)
+		return newASTMapperware(confs, engineOpts, next, statsHandler, logger, shardingMetrics, limits, maxShards, probabilistic)
 	})
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
@@ -80,16 +81,18 @@ func newASTMapperware(
 	metrics *logql.MapperMetrics,
 	limits Limits,
 	maxShards int,
+	probabilistic bool,
 ) *astMapperware {
 	ast := &astMapperware{
-		confs:        confs,
-		logger:       log.With(logger, "middleware", "QueryShard.astMapperware"),
-		limits:       limits,
-		next:         next,
-		statsHandler: next,
-		ng:           logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
-		metrics:      metrics,
-		maxShards:    maxShards,
+		confs:         confs,
+		logger:        log.With(logger, "middleware", "QueryShard.astMapperware"),
+		limits:        limits,
+		next:          next,
+		statsHandler:  next,
+		ng:            logql.NewDownstreamEngine(engineOpts, DownstreamHandler{next: next, limits: limits}, limits, logger),
+		metrics:       metrics,
+		maxShards:     maxShards,
+		probabilistic: probabilistic,
 	}
 
 	if statsHandler != nil {
@@ -100,14 +103,15 @@ func newASTMapperware(
 }
 
 type astMapperware struct {
-	confs        ShardingConfigs
-	logger       log.Logger
-	limits       Limits
-	next         queryrangebase.Handler
-	statsHandler queryrangebase.Handler
-	ng           *logql.DownstreamEngine
-	metrics      *logql.MapperMetrics
-	maxShards    int
+	confs         ShardingConfigs
+	logger        log.Logger
+	limits        Limits
+	next          queryrangebase.Handler
+	statsHandler  queryrangebase.Handler
+	ng            *logql.DownstreamEngine
+	metrics       *logql.MapperMetrics
+	maxShards     int
+	probabilistic bool
 }
 
 func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard uint64, notShardable bool) error {
@@ -138,7 +142,8 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 	return nil
 }
 
-func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (ast *astMapperware) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	fmt.Println("ast mapper is doing probabilistic queries? ", probabilistic)
 	logger := spanlogger.FromContextWithFallback(
 		ctx,
 		util_log.WithContext(ctx, ast.logger),
@@ -147,14 +152,14 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	maxRVDuration, maxOffset, err := maxRangeVectorAndOffsetDuration(r.GetQuery())
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "failed to get range-vector and offset duration so skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
+		return ast.next.Do(ctx, probabilistic, r)
 	}
 
 	conf, err := ast.confs.GetConf(int64(model.Time(r.GetStart()).Add(-maxRVDuration).Add(-maxOffset)), int64(model.Time(r.GetEnd()).Add(-maxOffset)))
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(logger).Log("err", err.Error(), "msg", "skipped AST mapper for request")
-		return ast.next.Do(ctx, r)
+		return ast.next.Do(ctx, probabilistic, r)
 	}
 
 	tenants, err := tenant.TenantIDs(ctx)
@@ -181,10 +186,10 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		ast.limits,
 	)
 	if !ok {
-		return ast.next.Do(ctx, r)
+		return ast.next.Do(ctx, probabilistic, r)
 	}
 
-	mapper := logql.NewShardMapper(resolver, ast.metrics)
+	mapper := logql.NewShardMapper(resolver, probabilistic, ast.metrics)
 
 	noop, bytesPerShard, parsed, err := mapper.Parse(r.GetQuery())
 	if err != nil {
@@ -201,7 +206,7 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 	// If the ast can't be mapped to a sharded equivalent,
 	// we can bypass the sharding engine and forward the request downstream.
 	if noop {
-		return ast.next.Do(ctx, r)
+		return ast.next.Do(ctx, probabilistic, r)
 	}
 
 	params, err := paramsFromRequest(r)
@@ -291,22 +296,22 @@ type shardSplitter struct {
 	now          func() time.Time       // injectable time.Now
 }
 
-func (splitter *shardSplitter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (splitter *shardSplitter) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 	minShardingLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, splitter.limits.MinShardingLookback)
 	if minShardingLookback == 0 {
-		return splitter.shardingware.Do(ctx, r)
+		return splitter.shardingware.Do(ctx, probabilistic, r)
 	}
 	cutoff := splitter.now().Add(-minShardingLookback)
 	// Only attempt to shard queries which are older than the sharding lookback
 	// (the period for which ingesters are also queried) or when the lookback is disabled.
 	if minShardingLookback == 0 || util.TimeFromMillis(r.GetEnd()).Before(cutoff) {
-		return splitter.shardingware.Do(ctx, r)
+		return splitter.shardingware.Do(ctx, probabilistic, r)
 	}
-	return splitter.next.Do(ctx, r)
+	return splitter.next.Do(ctx, probabilistic, r)
 }
 
 func hasShards(confs ShardingConfigs) bool {
@@ -399,12 +404,12 @@ type seriesShardingHandler struct {
 	merger  queryrangebase.Merger
 }
 
-func (ss *seriesShardingHandler) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (ss *seriesShardingHandler) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 	conf, err := ss.confs.GetConf(r.GetStart(), r.GetEnd())
 	// cannot shard with this timerange
 	if err != nil {
 		level.Warn(ss.logger).Log("err", err.Error(), "msg", "skipped sharding for request")
-		return ss.next.Do(ctx, r)
+		return ss.next.Do(ctx, probabilistic, r)
 	}
 
 	req, ok := r.(*LokiSeriesRequest)

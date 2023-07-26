@@ -68,7 +68,7 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.E
 	return &query{
 		logger:    ng.logger,
 		params:    p,
-		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
+		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx, false)),
 		parse: func(_ context.Context, _ string) (syntax.Expr, error) {
 			return mapped, nil
 		},
@@ -232,7 +232,7 @@ func (c TopkMergeSampleExpr) Walk(f syntax.WalkFn) {
 }
 
 type Downstreamable interface {
-	Downstreamer(context.Context) Downstreamer
+	Downstreamer(ctx context.Context, probabilistic bool) Downstreamer
 }
 
 type DownstreamQuery struct {
@@ -244,18 +244,19 @@ type DownstreamQuery struct {
 // Downstreamer is an interface for deferring responsibility for query execution.
 // It is decoupled from but consumed by a downStreamEvaluator to dispatch ASTs.
 type Downstreamer interface {
-	Downstream(context.Context, []DownstreamQuery) ([]logqlmodel.Result, error)
+	Downstream(ctx context.Context, probabilistic bool, queries []DownstreamQuery) ([]logqlmodel.Result, error)
 }
 
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
 	defaultEvaluator Evaluator
+	probabilistic    bool
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
-func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
-	results, err := ev.Downstreamer.Downstream(ctx, queries)
+func (ev DownstreamEvaluator) Downstream(ctx context.Context, probabilistic bool, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
+	results, err := ev.Downstreamer.Downstream(ctx, probabilistic, queries)
 	if err != nil {
 		return nil, err
 	}
@@ -302,6 +303,7 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 // StepEvaluator returns a StepEvaluator for a given SampleExpr
 func (ev *DownstreamEvaluator) StepEvaluator(
 	ctx context.Context,
+	probabilistic bool,
 	nextEv SampleEvaluator,
 	expr syntax.SampleExpr,
 	params Params,
@@ -314,7 +316,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
-		results, err := ev.Downstream(ctx, []DownstreamQuery{{
+		results, err := ev.Downstream(ctx, probabilistic, []DownstreamQuery{{
 			Expr:   e.SampleExpr,
 			Params: params,
 			Shards: shards,
@@ -339,7 +341,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 			cur = cur.next
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		results, err := ev.Downstream(ctx, probabilistic, queries)
 		if err != nil {
 			return nil, err
 		}
@@ -376,7 +378,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		}
 
 		// TODO(karsten): use a different downstream method to avoid casting the DownstreamQuery.
-		results, err := ev.Downstream(ctx, queries)
+		results, err := ev.Downstream(ctx, probabilistic, queries)
 		if err != nil {
 			return nil, err
 		}
@@ -398,7 +400,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		return TopkMergeEvalator(xs)
 
 	default:
-		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
+		return ev.defaultEvaluator.StepEvaluator(ctx, probabilistic, nextEv, e, params)
 	}
 }
 
@@ -415,7 +417,7 @@ func (ev *DownstreamEvaluator) Iterator(
 		if e.shard != nil {
 			shards = append(shards, *e.shard)
 		}
-		results, err := ev.Downstream(ctx, []DownstreamQuery{{
+		results, err := ev.Downstream(ctx, ev.probabilistic, []DownstreamQuery{{
 			Expr:   e.LogSelectorExpr,
 			Params: params,
 			Shards: shards,
@@ -440,7 +442,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			cur = cur.next
 		}
 
-		results, err := ev.Downstream(ctx, queries)
+		results, err := ev.Downstream(ctx, false, queries)
 		if err != nil {
 			return nil, err
 		}

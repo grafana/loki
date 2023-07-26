@@ -214,8 +214,10 @@ type MockDownstreamer struct {
 
 func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return m }
 
-func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
+func (m MockDownstreamer) Downstream(ctx context.Context, probabilistic bool, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
+	var res logqlmodel.Result
+	var err error
 	for _, query := range queries {
 		params := NewLiteralParams(
 			query.Expr.String(),
@@ -227,7 +229,11 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 			query.Params.Limit(),
 			query.Shards.Encode(),
 		)
-		res, err := m.Query(params).Exec(ctx)
+		if probabilistic {
+			res, err = m.ProbabilisticQuery(params).Exec(ctx)
+		} else {
+			res, err = m.Query(params).Exec(ctx)
+		}
 		if err != nil {
 			return nil, err
 		}

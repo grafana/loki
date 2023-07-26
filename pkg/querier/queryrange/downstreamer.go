@@ -80,7 +80,7 @@ func ParamsToLokiRequest(probabilistic bool, params logql.Params, shards logql.S
 // to shard each leg, quickly dispatching an unreasonable number of goroutines.
 // In the future, it's probably better to replace this with a channel based API
 // so we don't have to do all this ugly edge case handling/accounting
-func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer {
+func (h DownstreamHandler) Downstreamer(ctx context.Context, probabilistic bool) logql.Downstreamer {
 	p := DefaultDownstreamConcurrency
 
 	// We may increase parallelism above the default,
@@ -96,20 +96,22 @@ func (h DownstreamHandler) Downstreamer(ctx context.Context) logql.Downstreamer 
 		locks <- struct{}{}
 	}
 	return &instance{
-		parallelism: p,
-		locks:       locks,
-		handler:     h.next,
+		parallelism:   p,
+		locks:         locks,
+		handler:       h.next,
+		probabilistic: probabilistic,
 	}
 }
 
 // instance is an intermediate struct for controlling concurrency across a single query
 type instance struct {
-	parallelism int
-	locks       chan struct{}
-	handler     queryrangebase.Handler
+	parallelism   int
+	locks         chan struct{}
+	handler       queryrangebase.Handler
+	probabilistic bool
 }
 
-func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
+func (in instance) Downstream(ctx context.Context, probabilistic bool, queries []logql.DownstreamQuery) ([]logqlmodel.Result, error) {
 	return in.For(ctx, queries, func(qry logql.DownstreamQuery) (logqlmodel.Result, error) {
 		probExpr, prob := qry.Expr.(logql.DownstreamTopkSampleExpr)
 		expr := qry.Expr
@@ -123,7 +125,7 @@ func (in instance) Downstream(ctx context.Context, queries []logql.DownstreamQue
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
 
-		res, err := in.handler.Do(ctx, req)
+		res, err := in.handler.Do(ctx, probabilistic, req)
 		if err != nil {
 			return logqlmodel.Result{}, err
 		}

@@ -44,7 +44,7 @@ func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, l
 	})
 }
 
-func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
+func (s *splitByRange) Do(ctx context.Context, probabilistic bool, request queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, s.logger)
 
 	tenants, err := tenant.TenantIDs(ctx)
@@ -55,7 +55,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
-		return s.next.Do(ctx, request)
+		return s.next.Do(ctx, probabilistic, request)
 	}
 
 	mapperStats := logql.NewMapperStats()
@@ -73,7 +73,7 @@ func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (
 
 	if noop {
 		// the query cannot be split, so continue
-		return s.next.Do(ctx, request)
+		return s.next.Do(ctx, probabilistic, request)
 	}
 
 	// Update middleware stats

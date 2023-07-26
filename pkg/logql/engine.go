@@ -370,8 +370,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if err != nil {
 		return nil, err
 	}
-
-	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, false, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}

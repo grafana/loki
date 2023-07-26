@@ -217,7 +217,7 @@ func NewResultsCacheMiddleware(
 	}), nil
 }
 
-func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
+func (s resultsCache) Do(ctx context.Context, probabilistic bool, r Request) (Response, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "resultsCache.Do")
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -226,7 +226,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	if s.shouldCache != nil && !s.shouldCache(ctx, r) {
-		return s.next.Do(ctx, r)
+		return s.next.Do(ctx, probabilistic, r)
 	}
 
 	if s.cacheGenNumberLoader != nil && s.retentionEnabled {
@@ -251,7 +251,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
-		return s.next.Do(ctx, r)
+		return s.next.Do(ctx, probabilistic, r)
 	}
 
 	cached, ok := s.get(ctx, key)
@@ -385,7 +385,8 @@ func getHeaderValuesWithName(r Response, headerName string) (headerValues []stri
 }
 
 func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
-	response, err := s.next.Do(ctx, r)
+	// results cache probably doesn't need to do anything probabilistically?
+	response, err := s.next.Do(ctx, false, r)
 	if err != nil {
 		return nil, nil, err
 	}

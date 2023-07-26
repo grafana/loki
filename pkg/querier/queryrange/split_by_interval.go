@@ -50,30 +50,32 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
-	configs  []config.PeriodConfig
-	next     queryrangebase.Handler
-	limits   Limits
-	merger   queryrangebase.Merger
-	metrics  *SplitByMetrics
-	splitter Splitter
+	configs       []config.PeriodConfig
+	next          queryrangebase.Handler
+	limits        Limits
+	merger        queryrangebase.Merger
+	metrics       *SplitByMetrics
+	splitter      Splitter
+	probabilistic bool
 }
 
 type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
+func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics, probabilistic bool) queryrangebase.Middleware {
 	if metrics == nil {
 		metrics = NewSplitByMetrics(nil)
 	}
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
-			configs:  configs,
-			next:     next,
-			limits:   limits,
-			merger:   merger,
-			metrics:  metrics,
-			splitter: splitter,
+			configs:       configs,
+			next:          next,
+			limits:        limits,
+			merger:        merger,
+			metrics:       metrics,
+			splitter:      splitter,
+			probabilistic: probabilistic,
 		}
 	})
 }
@@ -161,7 +163,8 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
 		data.req.LogToSpan(sp)
 
-		resp, err := next.Do(ctx, data.req)
+		// TODO: should this deal with probablistic queries?
+		resp, err := next.Do(ctx, h.probabilistic, data.req)
 		sp.Finish()
 
 		select {
@@ -172,7 +175,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 	}
 }
 
-func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (h *splitByInterval) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -181,7 +184,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	// skip split by if unset
 	if interval == 0 {
-		return h.next.Do(ctx, r)
+		return h.next.Do(ctx, probabilistic, r)
 	}
 
 	intervals, err := h.splitter(r, interval)
@@ -193,7 +196,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
-		return h.next.Do(ctx, r)
+		return h.next.Do(ctx, probabilistic, r)
 	}
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
@@ -201,7 +204,7 @@ func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (que
 	}
 
 	if len(intervals) == 1 {
-		return h.next.Do(ctx, intervals[0])
+		return h.next.Do(ctx, probabilistic, intervals[0])
 	}
 
 	var limit int64

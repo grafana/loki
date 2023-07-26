@@ -155,7 +155,7 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 	})
 }
 
-func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (l limitsMiddleware) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
 	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -203,7 +203,7 @@ func (l limitsMiddleware) Do(ctx context.Context, r queryrangebase.Request) (que
 		}
 	}
 
-	return l.next.Do(ctx, r)
+	return l.next.Do(ctx, probabilistic, r)
 }
 
 type querySizeLimiter struct {
@@ -346,7 +346,7 @@ func (q *querySizeLimiter) guessLimitName() string {
 	return "unknown"
 }
 
-func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (q *querySizeLimiter) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "query_size_limits")
 	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -356,10 +356,10 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 	schemaCfg, err := q.getSchemaCfg(r)
 	if err != nil {
 		level.Error(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
-		return q.next.Do(ctx, r)
+		return q.next.Do(ctx, probabilistic, r)
 	}
 	if schemaCfg.IndexType != config.TSDBType {
-		return q.next.Do(ctx, r)
+		return q.next.Do(ctx, probabilistic, r)
 	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -385,7 +385,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, r queryrangebase.Request) (qu
 		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
-	return q.next.Do(ctx, r)
+	return q.next.Do(ctx, probabilistic, r)
 }
 
 type seriesLimiter struct {
@@ -415,12 +415,12 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 	}
 }
 
-func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (sl *seriesLimiter) Do(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
 	// no need to fire a request if the limit is already reached.
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
-	res, err := sl.next.Do(ctx, req)
+	res, err := sl.next.Do(ctx, probabilistic, req)
 	if err != nil {
 		return res, err
 	}
@@ -510,7 +510,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	sem := semaphore.NewWeighted(int64(parallelism))
 
 	response, err := rt.middleware.Wrap(
-		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
 			// This inner handler is called multiple times by
 			// sharding outer middlewares such as the downstreamer.
 			// The number of concurrent calls to `next.RoundTrip` should
@@ -522,9 +522,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 				return nil, fmt.Errorf("could not acquire work: %w", err)
 			}
 			defer sem.Release(int64(1))
-
 			return rt.do(ctx, r)
-		})).Do(ctx, request)
+		})).Do(ctx, false, request)
 	if err != nil {
 		return nil, err
 	}

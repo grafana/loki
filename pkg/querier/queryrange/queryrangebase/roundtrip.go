@@ -54,6 +54,8 @@ type Config struct {
 
 	// Required format for querier responses
 	RequiredQueryResponseFormat string `yaml:"required_query_response_format"`
+	// Executing probabilistic query types requires protobuf query responses.
+	ExecuteProbabilisticQueries bool `yaml:"execute_probabilistic_queries"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -65,6 +67,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
 
 	f.StringVar(&cfg.RequiredQueryResponseFormat, "frontend.required-query-response-format", "json", "The downstream querier is required to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
+	f.BoolVar(&cfg.ExecuteProbabilisticQueries, "frontend.execute-probabilistic-queries", false, "Execute some queries in a probabilistic manner, which allows them to be parallelized. Current probabilistic query types; topk.")
 
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
@@ -79,20 +82,24 @@ func (cfg *Config) Validate() error {
 			return errors.Wrap(err, "invalid results_cache config")
 		}
 	}
+
+	if cfg.ExecuteProbabilisticQueries && cfg.RequiredQueryResponseFormat != "protobuf" {
+		return errors.New("in order to execute probabilistic query types you must use protobuf query response types via the required-query-response-format flag")
+	}
 	return nil
 }
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
-type HandlerFunc func(context.Context, Request) (Response, error)
+type HandlerFunc func(context.Context, bool, Request) (Response, error)
 
 // Do implements Handler.
-func (q HandlerFunc) Do(ctx context.Context, req Request) (Response, error) {
-	return q(ctx, req)
+func (q HandlerFunc) Do(ctx context.Context, probabilistic bool, req Request) (Response, error) {
+	return q(ctx, probabilistic, req)
 }
 
 // Handler is like http.Handle, but specifically for Prometheus query_range calls.
 type Handler interface {
-	Do(context.Context, Request) (Response, error)
+	Do(ctx context.Context, probabilistic bool, req Request) (Response, error)
 }
 
 // MiddlewareFunc is like http.HandlerFunc, but for Middleware.
@@ -161,7 +168,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		request.LogToSpan(span)
 	}
 
-	response, err := q.handler.Do(r.Context(), request)
+	response, err := q.handler.Do(r.Context(), false, request)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +191,7 @@ func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
 }
 
 // Do implements Handler.
-func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error) {
+func (q roundTripperHandler) Do(ctx context.Context, _ bool, r Request) (Response, error) {
 	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
