@@ -1369,7 +1369,7 @@ depends_on:
 - fluent-bit-arm64
 - fluent-bit-arm
 kind: pipeline
-name: manifest-operator
+name: fluent-bit-plugin-loki
 steps:
 - depends_on:
   - clone
