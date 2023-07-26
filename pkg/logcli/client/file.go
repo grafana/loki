@@ -138,14 +138,14 @@ func (f *FileClient) QueryRange(_ context.Context, queryStr string, limit int, s
 	}, nil
 }
 
-func (f *FileClient) ListLabelNames(ctx context.Context, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+func (f *FileClient) ListLabelNames(_ context.Context, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	return &loghttp.LabelResponse{
 		Status: loghttp.QueryStatusSuccess,
 		Data:   f.labels,
 	}, nil
 }
 
-func (f *FileClient) ListLabelValues(ctx context.Context, name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+func (f *FileClient) ListLabelValues(_ context.Context, name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	i := sort.SearchStrings(f.labels, name)
 	if i < 0 {
 		return &loghttp.LabelResponse{}, nil
@@ -157,7 +157,7 @@ func (f *FileClient) ListLabelValues(ctx context.Context, name string, _ bool, _
 	}, nil
 }
 
-func (f *FileClient) Series(ctx context.Context, _ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
+func (f *FileClient) Series(_ context.Context, _ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	m := len(f.labels)
 	if m > len(f.labelValues) {
 		m = len(f.labelValues)
@@ -174,7 +174,7 @@ func (f *FileClient) Series(ctx context.Context, _ []string, _, _ time.Time, _ b
 	}, nil
 }
 
-func (f *FileClient) LiveTailQueryConn(ctx context.Context, _ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
+func (f *FileClient) LiveTailQueryConn(_ context.Context, _ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	return nil, fmt.Errorf("LiveTailQuery: %w", ErrNotSupported)
 }
 

@@ -55,6 +55,7 @@ func TestQuerier_Read(t *testing.T) {
 		context.Background(),
 		volumeReq,
 	)
+	require.NoError(t, err)
 
 	request := logproto.QueryRequest{
 		Selector:  `{app="distributor"}`,

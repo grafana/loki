@@ -207,7 +207,7 @@ type mockLokiHTTPServer struct {
 	server *http.Server
 }
 
-func (s *mockLokiHTTPServer) Run(t *testing.T, from time.Time) {
+func (s *mockLokiHTTPServer) Run(_ *testing.T, from time.Time) {
 	var mux http.ServeMux
 	mux.HandleFunc("/loki/api/v1/query_range", func(w http.ResponseWriter, r *http.Request) {
 
