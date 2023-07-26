@@ -761,88 +761,38 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 	}
 }
 
-type sortedEntry struct {
-	labels     string
-	entry      logproto.Entry
-	streamHash uint64
-}
-
-func lessAscending(e1, e2 sortedEntry) bool {
-	if e1.entry.Timestamp.Equal(e2.entry.Timestamp) {
-		if e1.streamHash == 0 {
-			return e1.labels < e2.labels
-		}
-		return e1.streamHash < e2.streamHash
-	}
-	return e1.entry.Timestamp.Before(e2.entry.Timestamp)
-}
-
-func lessDescending(e1, e2 sortedEntry) bool {
-	if e1.entry.Timestamp.Equal(e2.entry.Timestamp) {
-		if e1.streamHash == 0 {
-			return e1.labels < e2.labels
-		}
-		return e1.streamHash < e2.streamHash
-	}
-	return e1.entry.Timestamp.After(e2.entry.Timestamp)
-}
-
-func treeLess(direction logproto.Direction) (maxVal sortedEntry, less func(a, b sortedEntry) bool) {
-	switch direction {
-	case logproto.BACKWARD:
-		maxVal = sortedEntry{entry: logproto.Entry{Timestamp: time.Time{}}}
-		less = lessDescending
-	case logproto.FORWARD:
-		maxVal = sortedEntry{entry: logproto.Entry{Timestamp: time.Unix(1<<63-62135596801, 999999999)}}
-		less = lessAscending
-	default:
-		panic("bad direction")
-	}
-	return
-}
-
-// mergeStreamIterator one for a stream, this should be not much
-type mergeStreamIterator struct {
-	cur    sortedEntry
-	stream *logproto.Stream
-}
-
-func (n *mergeStreamIterator) Next() bool {
-	if len(n.stream.Entries) > 0 {
-		n.cur = sortedEntry{
-			labels:     n.stream.Labels,
-			entry:      n.stream.Entries[0],
-			streamHash: n.stream.Hash,
-		}
-		n.stream.Entries = n.stream.Entries[1:]
-		return true
-	}
-	n.cur = sortedEntry{}
-	return false
-}
-
 func mergeOrderedStreams(resps []*LokiResponse, limit uint32, direction logproto.Direction) []logproto.Stream {
+	var total int
+	for _, resp := range resps {
+		for _, stream := range resp.Data.Result {
+			total += len(stream.Entries)
+		}
+	}
+
+	// shortcut
+	if total <= int(limit) {
+		return mergeOrderedStreamsUnlimited(resps, direction)
+	}
+
 	// initial tree
 	at := func(m *mergeStreamIterator) sortedEntry { return m.cur }
 	maxVal, less := treeLess(direction)
 	tree := loser.New(nil, maxVal, at, less, func(m *mergeStreamIterator) {})
-	var total int
 	for _, resp := range resps {
 		for _, stream := range resp.Data.Result {
 			s := stream
 			tree.Push(&mergeStreamIterator{
 				stream: &s,
 			})
-			total++
 		}
 	}
 
-	// get topN
 	groups := make(map[string]*logproto.Stream)
 	for i := 0; i < int(limit) && tree.Next(); i++ {
 		topN := tree.Winner().cur
-		var s *logproto.Stream
+
 		var ok bool
+		var s *logproto.Stream
 		if s, ok = groups[topN.labels]; !ok {
 			s = &logproto.Stream{
 				Labels: topN.labels,
@@ -854,7 +804,7 @@ func mergeOrderedStreams(resps []*LokiResponse, limit uint32, direction logproto
 	}
 
 	// merge by stream and return order by labels string
-	orderedKeys := make([]string, 0, total)
+	orderedKeys := make([]string, 0, len(groups))
 	for key := range groups {
 		orderedKeys = append(orderedKeys, key)
 	}
@@ -869,6 +819,45 @@ func mergeOrderedStreams(resps []*LokiResponse, limit uint32, direction logproto
 		streams = append(streams, *groups[key])
 	}
 
+	return streams
+}
+
+func mergeOrderedStreamsUnlimited(resps []*LokiResponse, direction logproto.Direction) []logproto.Stream {
+	g := make(map[string]*logproto.Stream)
+	merged := make(map[string]struct{})
+	for _, resp := range resps {
+		for _, stream := range resp.Data.Result {
+			if _, ok := g[stream.Labels]; !ok {
+				s1 := stream
+				g[stream.Labels] = &s1
+			} else {
+				g[stream.Labels].Entries = append(g[stream.Labels].Entries, stream.Entries...)
+				merged[stream.Labels] = struct{}{}
+			}
+		}
+	}
+	for key := range merged {
+		if direction == logproto.BACKWARD {
+			sort.Sort(sort.Reverse(entries(g[key].Entries)))
+		} else {
+			sort.Sort(entries(g[key].Entries))
+		}
+	}
+
+	orderedKeys := make([]string, 0, len(g))
+	for key := range g {
+		orderedKeys = append(orderedKeys, key)
+	}
+	if direction == logproto.BACKWARD {
+		sort.Sort(sort.Reverse(sort.StringSlice(orderedKeys)))
+	} else {
+		sort.Strings(orderedKeys)
+	}
+
+	streams := make([]logproto.Stream, 0, len(orderedKeys))
+	for _, key := range orderedKeys {
+		streams = append(streams, *g[key])
+	}
 	return streams
 }
 
