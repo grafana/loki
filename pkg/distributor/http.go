@@ -31,7 +31,7 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 	req, err := push.ParseRequest(logger, tenantID, r, d.tenantsRetention)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			// we shouldn't log EOF as a failure/error.
+			// we shouldn't treat EOF as a failure/error.
 			return
 		}
 
