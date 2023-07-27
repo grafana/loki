@@ -201,31 +201,35 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
 
-	// Fetch missing from L2 chunks cache
-	missingL1 := make([]string, 0, len(missing))
-	for _, m := range missing {
-		chunkKey := c.schema.ExternalKey(m.ChunkRef)
-		missingL1 = append(missingL1, chunkKey)
+	var fromCacheL2 []chunk.Chunk
+
+	if c.l2CacheHandoff > 0 {
+		// Fetch missing from L2 chunks cache
+		missingL1 := make([]string, 0, len(missing))
+		for _, m := range missing {
+			chunkKey := c.schema.ExternalKey(m.ChunkRef)
+			missingL1 = append(missingL1, chunkKey)
+		}
+
+		cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1)
+		if err != nil {
+			level.Warn(log).Log("msg", "error fetching from cache", "err", err)
+		}
+
+		for _, buf := range cacheBufsL2 {
+			chunkFetchedSize.WithLabelValues("cache_l2").Observe(float64(len(buf)))
+		}
+
+		fromCacheL2, missing, err = c.processCacheResponse(ctx, chunks, cacheHitsL2, cacheBufsL2)
+		if err != nil {
+			level.Warn(log).Log("msg", "error process response from cache", "err", err)
+		}
 	}
 
-	cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1)
-	if err != nil {
-		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
-	}
-
-	for _, buf := range cacheBufsL2 {
-		chunkFetchedSize.WithLabelValues("cache_l2").Observe(float64(len(buf)))
-	}
-
-	fromCacheL2, missingL2, err := c.processCacheResponse(ctx, chunks, cacheHitsL2, cacheBufsL2)
-	if err != nil {
-		level.Warn(log).Log("msg", "error process response from cache", "err", err)
-	}
-
-	// Fetch missing from L2 from storage
+	// Fetch missing from storage
 	var fromStorage []chunk.Chunk
-	if len(missingL2) > 0 {
-		fromStorage, err = c.storage.GetChunks(ctx, missingL2)
+	if len(missing) > 0 {
+		fromStorage, err = c.storage.GetChunks(ctx, missing)
 	}
 
 	// normally these stats would be collected by the cache.statsCollector wrapper, but chunks are written back
@@ -276,7 +280,7 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 			}
 		}
 		// Determine which cache we should write to
-		if chunks[i].From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
+		if c.l2CacheHandoff == 0 || chunks[i].From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
 			// Write to L1 cache
 			keys = append(keys, c.schema.ExternalKey(chunks[i].ChunkRef))
 			bufs = append(bufs, encoded)
@@ -291,9 +295,11 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 	if err != nil {
 		level.Warn(util_log.Logger).Log("msg", "writeBackCache cache store fail", "err", err)
 	}
-	err = c.cachel2.Store(ctx, keysL2, bufsL2)
-	if err != nil {
-		level.Warn(util_log.Logger).Log("msg", "writeBackCacheL2 cache store fail", "err", err)
+	if len(keysL2) > 0 {
+		err = c.cachel2.Store(ctx, keysL2, bufsL2)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "writeBackCacheL2 cache store fail", "err", err)
+		}
 	}
 
 	return nil
