@@ -1,6 +1,6 @@
 ## Main
 
-## 0.4.0 (2023-07-25)
+## 0.4.0 (2023-07-27)
 
 - [10019](https://github.com/grafana/loki/pull/10019) **periklis**: Update Loki operand to v2.8.3
 - [9972](https://github.com/grafana/loki/pull/9972) **JoaoBraveCoding**: Fix OIDC.IssuerCAPath by updating it to type CASpec
