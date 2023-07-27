@@ -13,10 +13,17 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.9.2
+
+- [ENHANCEMENT] Add custom labels value for loki ingress
+
+## 5.9.1
+
+- [BUGFIX] Fix loki helm chart helper function for loki.host to explicitly include gateway port
+
 ## 5.9.0
 
 - [CHANGE] Changed version of Loki to 2.8.3
-
 
 ## 5.8.11
 
