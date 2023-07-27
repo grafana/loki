@@ -23,7 +23,7 @@ import (
 )
 
 func VolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
-	return queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		request, err := codec.EncodeRequest(ctx, req)
 		if err != nil {
 			return nil, err
@@ -44,11 +44,11 @@ func VolumeDownstreamHandler(nextRT http.RoundTripper, codec queryrangebase.Code
 
 func NewVolumeMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			volReq, ok := req.(*logproto.VolumeRequest)
 
 			if !ok {
-				return next.Do(ctx, probabilistic, req)
+				return next.Do(ctx, req)
 			}
 
 			reqs := map[time.Time]queryrangebase.Request{}
@@ -81,7 +81,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 			for bucket, req := range reqs {
 				b, r := bucket, req
 				jobs = append(jobs, f(func(ctx context.Context) (time.Time, definitions.Response, error) {
-					resp, err := next.Do(ctx, probabilistic, r)
+					resp, err := next.Do(ctx, r)
 					if err != nil {
 						return b, nil, err
 					}

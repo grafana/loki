@@ -1406,7 +1406,7 @@ func TestStringTrimming(t *testing.T) {
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
 			// TODO: test with probabilistic true
-			m := NewShardMapper(ConstantShards(2), false, nilShardMetrics)
+			m := NewShardMapper(ConstantShards(tc.shards), false, nilShardMetrics)
 			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))

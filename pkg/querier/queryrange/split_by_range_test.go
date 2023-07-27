@@ -114,7 +114,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 		tc := tc
 		t.Run(tc.in.GetQuery(), func(t *testing.T) {
 			resp, err := srm.Wrap(queryrangebase.HandlerFunc(
-				func(ctx context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+				func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 					// Assert subquery request
 					for _, reqResp := range tc.subQueries {
 						if req.GetQuery() == reqResp.Request.GetQuery() {
@@ -125,7 +125,7 @@ func Test_RangeVectorSplit(t *testing.T) {
 					}
 
 					return nil, fmt.Errorf("subquery request '" + req.GetQuery() + "' not found")
-				})).Do(ctx, false, tc.in)
+				})).Do(ctx, tc.in)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, resp.(*LokiPromResponse).Response)
 		})

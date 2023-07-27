@@ -611,7 +611,7 @@ func Test_splitMetricQuery(t *testing.T) {
 
 func Test_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
@@ -778,7 +778,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := split.Do(ctx, false, tt.req)
+			res, err := split.Do(ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, res)
 		})
@@ -787,7 +787,7 @@ func Test_splitByInterval_Do(t *testing.T) {
 
 func Test_series_splitByInterval_Do(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
-	next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiSeriesResponse{
 			Status:  "success",
 			Version: uint32(loghttp.VersionV1),
@@ -846,7 +846,7 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			res, err := split.Do(ctx, false, tt.req)
+			res, err := split.Do(ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.want, res)
 		})
@@ -870,7 +870,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 
-		next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -891,7 +891,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			Limit:    2,
 		}
 
-		res, err := split.Do(ctx, false, req)
+		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
 		response := res.(*VolumeResponse)
@@ -908,7 +908,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	t.Run("volumes with limits", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
-		next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -931,7 +931,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			Limit:    1,
 		}
 
-		res, err := split.Do(ctx, false, req)
+		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
 		response := res.(*VolumeResponse)
@@ -950,7 +950,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	t.Run("volumes with a query split by of 0", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
-		next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			return &VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -971,7 +971,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			Limit:    2,
 		}
 
-		res, err := split.Do(ctx, false, req)
+		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 
 		response := res.(*VolumeResponse)
@@ -988,7 +988,7 @@ func Test_ExitEarly(t *testing.T) {
 	var callCt int
 	var mtx sync.Mutex
 
-	next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		time.Sleep(time.Millisecond) // artificial delay to minimize race condition exposure in test
 
 		mtx.Lock()
@@ -1067,7 +1067,7 @@ func Test_ExitEarly(t *testing.T) {
 		},
 	}
 
-	res, err := split.Do(ctx, false, req)
+	res, err := split.Do(ctx, req)
 
 	require.Equal(t, int(req.Limit), callCt)
 	require.NoError(t, err)
@@ -1077,7 +1077,7 @@ func Test_ExitEarly(t *testing.T) {
 func Test_DoesntDeadlock(t *testing.T) {
 	n := 10
 
-	next := queryrangebase.HandlerFunc(func(_ context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiResponse{
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: r.(*LokiRequest).Direction,
@@ -1127,7 +1127,7 @@ func Test_DoesntDeadlock(t *testing.T) {
 
 	// goroutines shouldn't blow up across 100 rounds
 	for i := 0; i < 100; i++ {
-		res, err := split.Do(ctx, false, req)
+		res, err := split.Do(ctx, req)
 		require.NoError(t, err)
 		require.Equal(t, 1, len(res.(*LokiResponse).Data.Result))
 		require.Equal(t, n/2, len(res.(*LokiResponse).Data.Result[0].Entries))

@@ -62,14 +62,14 @@ func TestIndexStatsCache(t *testing.T) {
 	rc := cacheMiddleware.Wrap(statsHandler)
 
 	ctx := user.InjectOrgID(context.Background(), "fake")
-	resp, err := rc.Do(ctx, false, statsReq)
+	resp, err := rc.Do(ctx, statsReq)
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls)
 	require.Equal(t, statsResp, resp)
 
 	// Doing same request again shouldn't change anything.
 	*calls = 0
-	resp, err = rc.Do(ctx, false, statsReq)
+	resp, err = rc.Do(ctx, statsReq)
 	require.NoError(t, err)
 	require.Equal(t, 0, *calls)
 	require.Equal(t, statsResp, resp)
@@ -87,7 +87,7 @@ func TestIndexStatsCache(t *testing.T) {
 			Entries: uint64(math.Floor(10*0.75) + 10),
 		},
 	}
-	resp, err = rc.Do(ctx, false, req)
+	resp, err = rc.Do(ctx, req)
 	require.NoError(t, err)
 	require.Equal(t, 1, *calls)
 	require.Equal(t, expectedStats, resp)
@@ -187,14 +187,14 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 			rc := cacheMiddleware.Wrap(statsHandler)
 
 			ctx := user.InjectOrgID(context.Background(), "fake")
-			resp, err := rc.Do(ctx, false, tc.req)
+			resp, err := rc.Do(ctx, tc.req)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedCallsBeforeCache, *calls)
 			require.Equal(t, tc.expectedResp, resp)
 
 			// Doing same request again
 			*calls = 0
-			resp, err = rc.Do(ctx, false, tc.req)
+			resp, err = rc.Do(ctx, tc.req)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedCallsAfterCache, *calls)
 			require.Equal(t, tc.expectedResp, resp)
@@ -204,7 +204,7 @@ func TestIndexStatsCache_RecentData(t *testing.T) {
 
 func indexStatsResultHandler(v *IndexStatsResponse) (*int, queryrangebase.Handler) {
 	calls := 0
-	return &calls, queryrangebase.HandlerFunc(func(_ context.Context, _ bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+	return &calls, queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		calls++
 		return v, nil
 	})

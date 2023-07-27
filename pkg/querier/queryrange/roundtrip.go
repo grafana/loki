@@ -827,7 +827,7 @@ func volumeRangeTripperware(codec queryrangebase.Codec, probabilistic bool, next
 				seriesVolumeMiddlewares...,
 			).Wrap(
 				VolumeDownstreamHandler(nextRT, codec),
-			).Do(r.Context(), probabilistic, request)
+			).Do(r.Context(), request)
 
 			if err != nil {
 				return nil, err

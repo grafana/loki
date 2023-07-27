@@ -41,12 +41,12 @@ func TestStepAlign(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			var result *PrometheusRequest
 			s := stepAlign{
-				next: HandlerFunc(func(_ context.Context, probabilistic bool, req Request) (Response, error) {
+				next: HandlerFunc(func(_ context.Context, req Request) (Response, error) {
 					result = req.(*PrometheusRequest)
 					return nil, nil
 				}),
 			}
-			_, err := s.Do(context.Background(), false, tc.input)
+			_, err := s.Do(context.Background(), tc.input)
 			require.NoError(t, err)
 			require.Equal(t, tc.expected, result)
 		})

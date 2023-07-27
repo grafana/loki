@@ -106,7 +106,7 @@ func statsHTTPMiddleware(recorder metricRecorder) middleware.Interface {
 // StatsCollectorMiddleware compute the stats summary based on the actual duration of the request and inject it in the request context.
 func StatsCollectorMiddleware() queryrangebase.Middleware {
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-		return queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+		return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			logger := spanlogger.FromContext(ctx)
 			start := time.Now()
 
@@ -114,7 +114,7 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 			middlewareStats, statsCtx := stats.NewContext(ctx)
 
 			// execute the request
-			resp, err := next.Do(statsCtx, probabilistic, req)
+			resp, err := next.Do(statsCtx, req)
 			if err != nil {
 				return resp, err
 			}

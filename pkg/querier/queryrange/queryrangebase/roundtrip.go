@@ -90,16 +90,16 @@ func (cfg *Config) Validate() error {
 }
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
-type HandlerFunc func(context.Context, bool, Request) (Response, error)
+type HandlerFunc func(context.Context, Request) (Response, error)
 
 // Do implements Handler.
-func (q HandlerFunc) Do(ctx context.Context, probabilistic bool, req Request) (Response, error) {
-	return q(ctx, probabilistic, req)
+func (q HandlerFunc) Do(ctx context.Context, req Request) (Response, error) {
+	return q(ctx, req)
 }
 
 // Handler is like http.Handle, but specifically for Prometheus query_range calls.
 type Handler interface {
-	Do(ctx context.Context, probabilistic bool, req Request) (Response, error)
+	Do(ctx context.Context, req Request) (Response, error)
 }
 
 // MiddlewareFunc is like http.HandlerFunc, but for Middleware.
@@ -168,7 +168,7 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		request.LogToSpan(span)
 	}
 
-	response, err := q.handler.Do(r.Context(), false, request)
+	response, err := q.handler.Do(r.Context(), request)
 	if err != nil {
 		return nil, err
 	}
@@ -191,8 +191,8 @@ func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
 }
 
 // Do implements Handler.
-func (q roundTripperHandler) Do(ctx context.Context, _ bool, r Request) (Response, error) {
-	request, err := q.codec.EncodeRequest(ctx, r)
+func (q roundTripperHandler) Do(ctx context.Context, req Request) (Response, error) {
+	request, err := q.codec.EncodeRequest(ctx, req)
 	if err != nil {
 		return nil, err
 	}
@@ -210,5 +210,5 @@ func (q roundTripperHandler) Do(ctx context.Context, _ bool, r Request) (Respons
 		response.Body.Close()
 	}()
 
-	return q.codec.DecodeResponse(ctx, response, r)
+	return q.codec.DecodeResponse(ctx, response, req)
 }

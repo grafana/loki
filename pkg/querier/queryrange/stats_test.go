@@ -24,9 +24,9 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		now  = time.Now()
 	)
 	ctx := context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
-	})).Do(ctx, false, &LokiRequest{
+	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
@@ -37,9 +37,9 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 
 	// no context.
 	data = &queryData{}
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, nil
-	})).Do(context.Background(), false, &LokiRequest{
+	})).Do(context.Background(), &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
@@ -48,7 +48,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	// stats
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return &LokiPromResponse{
 			Statistics: stats.Result{
 				Ingester: stats.Ingester{
@@ -56,7 +56,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 				},
 			},
 		}, nil
-	})).Do(ctx, false, &LokiRequest{
+	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
@@ -69,9 +69,9 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 	// Rationale being, in that case returned `response` will be nil and there won't be any `response.statistics` to collect.
 	data = &queryData{}
 	ctx = context.WithValue(context.Background(), ctxKey, data)
-	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	_, _ = StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		return nil, errors.New("request timedout")
-	})).Do(ctx, false, &LokiRequest{
+	})).Do(ctx, &LokiRequest{
 		Query:   "foo",
 		StartTs: now,
 	})
@@ -189,10 +189,10 @@ func Test_StatsHTTP(t *testing.T) {
 }
 
 func Test_StatsUpdateResult(t *testing.T) {
-	resp, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(c context.Context, _ bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+	resp, err := StatsCollectorMiddleware().Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 		time.Sleep(20 * time.Millisecond)
 		return &LokiResponse{}, nil
-	})).Do(context.Background(), false, &LokiRequest{
+	})).Do(context.Background(), &LokiRequest{
 		Query: "foo",
 		EndTs: time.Now(),
 	})

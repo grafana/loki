@@ -33,7 +33,7 @@ func DoRequests(ctx context.Context, downstream Handler, reqs []Request, paralle
 		go func() {
 			for req := range intermediate {
 				// todo: can this ever be probabilistic?
-				resp, err := downstream.Do(ctx, false, req)
+				resp, err := downstream.Do(ctx, req)
 				if err != nil {
 					errChan <- err
 				} else {

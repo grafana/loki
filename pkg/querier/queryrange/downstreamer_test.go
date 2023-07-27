@@ -351,11 +351,12 @@ func TestInstanceDownstream(t *testing.T) {
 	var got queryrangebase.Request
 	var want queryrangebase.Request
 	handler := queryrangebase.HandlerFunc(
-		func(_ context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(probabilistic, params, queries[0].Shards).WithQuery(expr.String())
+			// TODO does this still need to take the probabilistic param
+			want = ParamsToLokiRequest(false, params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},
@@ -436,11 +437,12 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 	var got queryrangebase.Request
 	var want queryrangebase.Request
 	handler := queryrangebase.HandlerFunc(
-		func(_ context.Context, probalistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+		func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 			// for some reason these seemingly can't be checked in their own goroutines,
 			// so we assign them to scoped variables for later comparison.
 			got = req
-			want = ParamsToLokiRequest(probalistic, params, queries[0].Shards).WithQuery(expr.String())
+			// todo does this still need to take probabilistic param
+			want = ParamsToLokiRequest(true, params, queries[0].Shards).WithQuery(expr.String())
 
 			return expectedResp(), nil
 		},

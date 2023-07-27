@@ -217,7 +217,7 @@ func NewResultsCacheMiddleware(
 	}), nil
 }
 
-func (s resultsCache) Do(ctx context.Context, probabilistic bool, r Request) (Response, error) {
+func (s resultsCache) Do(ctx context.Context, req Request) (Response, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "resultsCache.Do")
 	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -225,8 +225,8 @@ func (s resultsCache) Do(ctx context.Context, probabilistic bool, r Request) (Re
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if s.shouldCache != nil && !s.shouldCache(ctx, r) {
-		return s.next.Do(ctx, probabilistic, r)
+	if s.shouldCache != nil && !s.shouldCache(ctx, req) {
+		return s.next.Do(ctx, req)
 	}
 
 	if s.cacheGenNumberLoader != nil && s.retentionEnabled {
@@ -234,35 +234,35 @@ func (s resultsCache) Do(ctx context.Context, probabilistic bool, r Request) (Re
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
+		key      = s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), req)
 		extents  []Extent
 		response Response
 	)
 
 	sp.LogKV(
-		"query", r.GetQuery(),
-		"step", time.UnixMilli(r.GetStep()),
-		"start", time.UnixMilli(r.GetStart()),
-		"end", r.GetEnd(),
+		"query", req.GetQuery(),
+		"step", time.UnixMilli(req.GetStep()),
+		"start", time.UnixMilli(req.GetStart()),
+		"end", req.GetEnd(),
 		"key", key,
 	)
 
 	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
 	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
-	if r.GetStart() > maxCacheTime {
-		return s.next.Do(ctx, probabilistic, r)
+	if req.GetStart() > maxCacheTime {
+		return s.next.Do(ctx, req)
 	}
 
 	cached, ok := s.get(ctx, key)
 	if ok {
-		response, extents, err = s.handleHit(ctx, r, cached, maxCacheTime)
+		response, extents, err = s.handleHit(ctx, req, cached, maxCacheTime)
 	} else {
-		response, extents, err = s.handleMiss(ctx, r, maxCacheTime)
+		response, extents, err = s.handleMiss(ctx, req, maxCacheTime)
 	}
 
 	if err == nil && len(extents) > 0 {
-		extents, err := s.filterRecentExtents(r, maxCacheFreshness, extents)
+		extents, err := s.filterRecentExtents(req, maxCacheFreshness, extents)
 		if err != nil {
 			return nil, err
 		}
@@ -386,7 +386,7 @@ func getHeaderValuesWithName(r Response, headerName string) (headerValues []stri
 
 func (s resultsCache) handleMiss(ctx context.Context, r Request, maxCacheTime int64) (Response, []Extent, error) {
 	// results cache probably doesn't need to do anything probabilistically?
-	response, err := s.next.Do(ctx, false, r)
+	response, err := s.next.Do(ctx, r)
 	if err != nil {
 		return nil, nil, err
 	}

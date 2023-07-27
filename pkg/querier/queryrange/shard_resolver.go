@@ -96,7 +96,7 @@ func getStatsForMatchers(
 		adjustedThrough := end.Add(-matcherGroups[i].Offset)
 
 		// todo should this handle probabilistic?
-		resp, err := statsHandler.Do(ctx, false, &logproto.IndexStatsRequest{
+		resp, err := statsHandler.Do(ctx, &logproto.IndexStatsRequest{
 			From:     adjustedFrom,
 			Through:  adjustedThrough,
 			Matchers: matchers,

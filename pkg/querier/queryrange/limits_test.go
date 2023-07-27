@@ -165,13 +165,13 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	_, _ = NewLimitedRoundTripper(f, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-			return queryrangebase.HandlerFunc(func(c context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				var wg sync.WaitGroup
 				for i := 0; i < 10; i++ {
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
-						_, _ = next.Do(c, probabilistic, &LokiRequest{})
+						_, _ = next.Do(c, &LokiRequest{})
 					}()
 				}
 				wg.Wait()
@@ -200,10 +200,10 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	_, _ = NewLimitedRoundTripper(f, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-			return queryrangebase.HandlerFunc(func(c context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
-						_, _ = next.Do(c, probabilistic, &LokiRequest{})
+						_, _ = next.Do(c, &LokiRequest{})
 					}()
 				}
 				return nil, nil
@@ -229,10 +229,10 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	_, err = NewLimitedRoundTripper(f, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
-			return queryrangebase.HandlerFunc(func(c context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 				for i := 0; i < 10; i++ {
 					go func() {
-						_, _ = next.Do(c, probabilistic, &LokiRequest{})
+						_, _ = next.Do(c, &LokiRequest{})
 					}()
 				}
 				return nil, nil
@@ -626,7 +626,7 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 		maxQuerierBytesRead: 1 << 10,
 	}
 
-	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 		// This is the actual check that we're testing.
 		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
 
@@ -660,13 +660,13 @@ func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
 			}
 
 			handler := tc.middleware.Wrap(
-				queryrangebase.HandlerFunc(func(_ context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+				queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 					return &LokiResponse{}, nil
 				}),
 			)
 
 			ctx := user.InjectOrgID(context.Background(), "foo")
-			_, err := handler.Do(ctx, false, lokiReq)
+			_, err := handler.Do(ctx, lokiReq)
 			require.NoError(t, err)
 		})
 	}

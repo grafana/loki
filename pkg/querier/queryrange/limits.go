@@ -155,7 +155,7 @@ func NewLimitsMiddleware(l Limits) queryrangebase.Middleware {
 	})
 }
 
-func (l limitsMiddleware) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (l limitsMiddleware) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "limits")
 	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
@@ -171,39 +171,39 @@ func (l limitsMiddleware) Do(ctx context.Context, probabilistic bool, r queryran
 	if maxQueryLookback := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lookbackCapture); maxQueryLookback > 0 {
 		minStartTime := util.TimeToMillis(time.Now().Add(-maxQueryLookback))
 
-		if r.GetEnd() < minStartTime {
+		if req.GetEnd() < minStartTime {
 			// The request is fully outside the allowed range, so we can return an
 			// empty response.
 			level.Debug(log).Log(
 				"msg", "skipping the execution of the query because its time range is before the 'max query lookback' setting",
-				"reqStart", util.FormatTimeMillis(r.GetStart()),
-				"redEnd", util.FormatTimeMillis(r.GetEnd()),
+				"reqStart", util.FormatTimeMillis(req.GetStart()),
+				"redEnd", util.FormatTimeMillis(req.GetEnd()),
 				"maxQueryLookback", maxQueryLookback)
 
-			return NewEmptyResponse(r)
+			return NewEmptyResponse(req)
 		}
 
-		if r.GetStart() < minStartTime {
+		if req.GetStart() < minStartTime {
 			// Replace the start time in the request.
 			level.Debug(log).Log(
 				"msg", "the start time of the query has been manipulated because of the 'max query lookback' setting",
-				"original", util.FormatTimeMillis(r.GetStart()),
+				"original", util.FormatTimeMillis(req.GetStart()),
 				"updated", util.FormatTimeMillis(minStartTime))
 
-			r = r.WithStartEnd(minStartTime, r.GetEnd())
+			req = req.WithStartEnd(minStartTime, req.GetEnd())
 		}
 	}
 
 	// Enforce the max query length.
 	lengthCapture := func(id string) time.Duration { return l.MaxQueryLength(ctx, id) }
 	if maxQueryLength := validation.SmallestPositiveNonZeroDurationPerTenant(tenantIDs, lengthCapture); maxQueryLength > 0 {
-		queryLen := timestamp.Time(r.GetEnd()).Sub(timestamp.Time(r.GetStart()))
+		queryLen := timestamp.Time(req.GetEnd()).Sub(timestamp.Time(req.GetStart()))
 		if queryLen > maxQueryLength {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, model.Duration(maxQueryLength))
 		}
 	}
 
-	return l.next.Do(ctx, probabilistic, r)
+	return l.next.Do(ctx, req)
 }
 
 type querySizeLimiter struct {
@@ -346,20 +346,20 @@ func (q *querySizeLimiter) guessLimitName() string {
 	return "unknown"
 }
 
-func (q *querySizeLimiter) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (q *querySizeLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	span, ctx := opentracing.StartSpanFromContext(ctx, "query_size_limits")
 	defer span.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	// Only support TSDB
-	schemaCfg, err := q.getSchemaCfg(r)
+	schemaCfg, err := q.getSchemaCfg(req)
 	if err != nil {
 		level.Error(log).Log("msg", "failed to get schema config, not applying querySizeLimit", "err", err)
-		return q.next.Do(ctx, probabilistic, r)
+		return q.next.Do(ctx, req)
 	}
 	if schemaCfg.IndexType != config.TSDBType {
-		return q.next.Do(ctx, probabilistic, r)
+		return q.next.Do(ctx, req)
 	}
 
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -369,7 +369,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, probabilistic bool, r queryra
 
 	limitFuncCapture := func(id string) int { return q.limitFunc(ctx, id) }
 	if maxBytesRead := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, limitFuncCapture); maxBytesRead > 0 {
-		bytesRead, err := q.getBytesReadForRequest(ctx, r)
+		bytesRead, err := q.getBytesReadForRequest(ctx, req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "Failed to get bytes read stats for query: %s", err.Error())
 		}
@@ -385,7 +385,7 @@ func (q *querySizeLimiter) Do(ctx context.Context, probabilistic bool, r queryra
 		level.Debug(log).Log("msg", "Query is within limits", "status", "accepted", "limit_name", q.guessLimitName(), "limit_bytes", maxBytesReadStr, "resolved_bytes", statsBytesStr)
 	}
 
-	return q.next.Do(ctx, probabilistic, r)
+	return q.next.Do(ctx, req)
 }
 
 type seriesLimiter struct {
@@ -415,12 +415,12 @@ func (slm seriesLimiterMiddleware) Wrap(next queryrangebase.Handler) queryrangeb
 	}
 }
 
-func (sl *seriesLimiter) Do(ctx context.Context, probabilistic bool, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (sl *seriesLimiter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	// no need to fire a request if the limit is already reached.
 	if sl.isLimitReached() {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, limitErrTmpl, sl.maxSeries)
 	}
-	res, err := sl.next.Do(ctx, probabilistic, req)
+	res, err := sl.next.Do(ctx, req)
 	if err != nil {
 		return res, err
 	}
@@ -510,7 +510,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 	sem := semaphore.NewWeighted(int64(parallelism))
 
 	response, err := rt.middleware.Wrap(
-		queryrangebase.HandlerFunc(func(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			// This inner handler is called multiple times by
 			// sharding outer middlewares such as the downstreamer.
 			// The number of concurrent calls to `next.RoundTrip` should
@@ -523,7 +523,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 			}
 			defer sem.Release(int64(1))
 			return rt.do(ctx, r)
-		})).Do(ctx, false, request)
+		})).Do(ctx, request)
 	if err != nil {
 		return nil, err
 	}

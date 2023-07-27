@@ -164,7 +164,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		data.req.LogToSpan(sp)
 
 		// TODO: should this deal with probablistic queries?
-		resp, err := next.Do(ctx, h.probabilistic, data.req)
+		resp, err := next.Do(ctx, data.req)
 		sp.Finish()
 
 		select {
@@ -175,7 +175,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 	}
 }
 
-func (h *splitByInterval) Do(ctx context.Context, probabilistic bool, r queryrangebase.Request) (queryrangebase.Response, error) {
+func (h *splitByInterval) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -184,10 +184,10 @@ func (h *splitByInterval) Do(ctx context.Context, probabilistic bool, r queryran
 	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	// skip split by if unset
 	if interval == 0 {
-		return h.next.Do(ctx, probabilistic, r)
+		return h.next.Do(ctx, req)
 	}
 
-	intervals, err := h.splitter(r, interval)
+	intervals, err := h.splitter(req, interval)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +196,7 @@ func (h *splitByInterval) Do(ctx context.Context, probabilistic bool, r queryran
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
-		return h.next.Do(ctx, probabilistic, r)
+		return h.next.Do(ctx, req)
 	}
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
@@ -204,11 +204,11 @@ func (h *splitByInterval) Do(ctx context.Context, probabilistic bool, r queryran
 	}
 
 	if len(intervals) == 1 {
-		return h.next.Do(ctx, probabilistic, intervals[0])
+		return h.next.Do(ctx, intervals[0])
 	}
 
 	var limit int64
-	switch req := r.(type) {
+	switch req := req.(type) {
 	case *LokiRequest:
 		limit = int64(req.Limit)
 		if req.Direction == logproto.BACKWARD {
@@ -233,7 +233,7 @@ func (h *splitByInterval) Do(ctx context.Context, probabilistic bool, r queryran
 
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
+	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(req.GetStart()), model.Time(req.GetEnd()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err

@@ -125,7 +125,7 @@ func (in instance) Downstream(ctx context.Context, probabilistic bool, queries [
 		defer logger.Finish()
 		level.Debug(logger).Log("shards", fmt.Sprintf("%+v", qry.Shards), "query", req.GetQuery(), "step", req.GetStep(), "handler", reflect.TypeOf(in.handler))
 
-		res, err := in.handler.Do(ctx, probabilistic, req)
+		res, err := in.handler.Do(ctx, req)
 		if err != nil {
 			return logqlmodel.Result{}, err
 		}
