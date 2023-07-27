@@ -193,7 +193,7 @@ func TestDownstreamHandler(t *testing.T) {
 	// Pretty poor test, but this is just a passthrough struct, so ensure we create locks
 	// and can consume them
 	h := DownstreamHandler{limits: fakeLimits{}, next: nil}
-	in := h.Downstreamer(context.Background(), false).(*instance)
+	in := h.Downstreamer(context.Background()).(*instance)
 	require.Equal(t, DefaultDownstreamConcurrency, in.parallelism)
 	require.NotNil(t, in.locks)
 	ensureParallelism(t, in, in.parallelism)
@@ -221,7 +221,7 @@ func TestInstanceFor(t *testing.T) {
 		return DownstreamHandler{
 			limits: fakeLimits{},
 			next:   nil,
-		}.Downstreamer(context.Background(), false).(*instance)
+		}.Downstreamer(context.Background()).(*instance)
 	}
 	in := mkIn()
 	newParams := func() logql.Params {
@@ -368,7 +368,7 @@ func TestInstanceDownstream(t *testing.T) {
 	results, err := DownstreamHandler{
 		limits: fakeLimits{},
 		next:   handler,
-	}.Downstreamer(context.Background(), false).Downstream(context.Background(), false, queries)
+	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
 
 	require.Equal(t, want, got)
 
@@ -454,7 +454,7 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 	results, err := DownstreamHandler{
 		limits: fakeLimits{},
 		next:   handler,
-	}.Downstreamer(context.Background(), true).Downstream(context.Background(), true, queries)
+	}.Downstreamer(context.Background()).Downstream(context.Background(), queries)
 
 	require.Equal(t, want, got)
 
@@ -470,7 +470,7 @@ func TestCancelWhileWaitingResponse(t *testing.T) {
 		return DownstreamHandler{
 			limits: fakeLimits{},
 			next:   nil,
-		}.Downstreamer(context.Background(), false).(*instance)
+		}.Downstreamer(context.Background()).(*instance)
 	}
 	in := mkIn()
 
@@ -506,7 +506,7 @@ func TestDownstreamerUsesCorrectParallelism(t *testing.T) {
 	d := DownstreamHandler{
 		limits: l,
 		next:   nil,
-	}.Downstreamer(ctx, false)
+	}.Downstreamer(ctx)
 
 	i := d.(*instance)
 	close(i.locks)

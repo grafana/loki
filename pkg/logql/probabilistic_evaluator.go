@@ -164,7 +164,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if e.Operation != syntax.OpTypeTopK {
-			dEval, err := p.Evaluator.StepEvaluator(ctx, true, nextEv, expr, q)
+			dEval, err := p.Evaluator.StepEvaluator(ctx, nextEv, expr, q)
 			if err != nil {
 				return nil, err
 			}
@@ -172,7 +172,7 @@ func (p *ProbabilisticEvaluator) ProbabilisticStepEvaluator(
 		}
 		return p.newProbabilisticVectorAggEvaluator(ctx, nextEv, e, q)
 	default:
-		dEval, err := p.Evaluator.StepEvaluator(ctx, true, nextEv, expr, q)
+		dEval, err := p.Evaluator.StepEvaluator(ctx, nextEv, expr, q)
 		if err != nil {
 			return nil, err
 		}
@@ -394,7 +394,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := ev.StepEvaluator(ctx, true, ev, expr.Left, q)
+	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
