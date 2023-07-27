@@ -7,6 +7,7 @@ import (
 
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/rulefmt"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"gopkg.in/yaml.v3"
@@ -50,6 +51,27 @@ func TestInvalidRuleGroup(t *testing.T) {
 	}
 	require.Error(t, ValidateGroups(ruleGroupInValid)[0])
 	require.Error(t, ValidateGroups(ruleGroupInValid)[1])
+}
+
+// TestInvalidRuleExprParsing tests that a validation error is raised when rule expression is invalid
+func TestInvalidRuleExprParsing(t *testing.T) {
+	expectedAlertErrorMsg := "could not parse expression for alert 'alert-1-name' in group 'test': parse error"
+	alertRuleExprInvalid := &rulefmt.RuleNode{
+		Alert: yaml.Node{Value: "alert-1-name"},
+		Expr:  yaml.Node{Value: "bad_value"},
+	}
+
+	alertErr := validateRuleNode(alertRuleExprInvalid, "test")
+	assert.Containsf(t, alertErr.Error(), expectedAlertErrorMsg, "expected error containing '%s', got '%s'", expectedAlertErrorMsg, alertErr)
+
+	expectedRecordErrorMsg := "could not parse expression for record 'record-1-name' in group 'test': parse error"
+	recordRuleExprInvalid := &rulefmt.RuleNode{
+		Record: yaml.Node{Value: "record-1-name"},
+		Expr:   yaml.Node{Value: "bad_value"},
+	}
+
+	recordErr := validateRuleNode(recordRuleExprInvalid, "test")
+	assert.Containsf(t, recordErr.Error(), expectedRecordErrorMsg, "expected error containing '%s', got '%s'", expectedRecordErrorMsg, recordErr)
 }
 
 // TestInvalidRemoteWriteConfig tests that a validation error is raised when config is invalid
