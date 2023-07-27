@@ -32,7 +32,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 }
 
 func Test_forEntriesEarlyReturn(t *testing.T) {
-	hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
+	hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 10; i++ {
 		require.Nil(t, hb.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "i", Value: fmt.Sprint(i)}}))
 	}
@@ -45,7 +45,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, _ string, _ labels.Labels) error {
+		func(_ *stats.Context, ts int64, _ string, _ symbols) error {
 			forwardCt++
 			forwardStop = ts
 			if ts == 5 {
@@ -66,7 +66,7 @@ func Test_forEntriesEarlyReturn(t *testing.T) {
 		logproto.BACKWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, _ string, _ labels.Labels) error {
+		func(_ *stats.Context, ts int64, _ string, _ symbols) error {
 			backwardCt++
 			backwardStop = ts
 			if ts == 5 {
@@ -170,7 +170,7 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 				UnorderedWithNonIndexedLabelsHeadBlockFmt,
 			} {
 				t.Run(format.String(), func(t *testing.T) {
-					hb := newUnorderedHeadBlock(format)
+					hb := newUnorderedHeadBlock(format, newSymbolizer())
 					for _, e := range tc.input {
 						require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
 					}
@@ -247,7 +247,7 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 				UnorderedWithNonIndexedLabelsHeadBlockFmt,
 			} {
 				t.Run(format.String(), func(t *testing.T) {
-					hb := newUnorderedHeadBlock(format)
+					hb := newUnorderedHeadBlock(format, newSymbolizer())
 					for _, e := range tc.input {
 						require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
 					}
@@ -276,8 +276,8 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 }
 
 func TestHeadBlockInterop(t *testing.T) {
-	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt), &headBlock{}
-	unorderedWithNonIndexedLabels := newUnorderedHeadBlock(UnorderedWithNonIndexedLabelsHeadBlockFmt)
+	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil), &headBlock{}
+	unorderedWithNonIndexedLabels := newUnorderedHeadBlock(UnorderedWithNonIndexedLabelsHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 100; i++ {
 		metaLabels := labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}
 		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
@@ -294,17 +294,17 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Nil(t, err)
 
 	// Ensure we can recover ordered checkpoint into ordered headblock
-	recovered, err := HeadFromCheckpoint(orderedCheckpointBytes, OrderedHeadBlockFmt)
+	recovered, err := HeadFromCheckpoint(orderedCheckpointBytes, OrderedHeadBlockFmt, nil)
 	require.Nil(t, err)
 	require.Equal(t, ordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt)
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
 	// Ensure we can recover ordered checkpoint into unordered headblock with non-indexed labels
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt)
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, nil)
 	require.NoError(t, err)
 	require.Equal(t, &unorderedHeadBlock{
 		format: UnorderedWithNonIndexedLabelsHeadBlockFmt,
@@ -315,40 +315,28 @@ func TestHeadBlockInterop(t *testing.T) {
 		maxt:   unordered.maxt,
 	}, recovered)
 
-	// Ensure we can recover unordered checkpoint into ordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, OrderedHeadBlockFmt)
-	require.Nil(t, err)
-	require.Equal(t, ordered, recovered)
-
 	// Ensure we can recover unordered checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt)
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedHeadBlockFmt, nil)
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
-	// Ensure we can recover unordered checkpoint into unordered with non-indexed labels
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt)
+	// Ensure trying to recover unordered checkpoint into unordered with non-indexed labels keeps it in unordered format
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, nil)
 	require.NoError(t, err)
-	require.Equal(t, &unorderedHeadBlock{
-		format: UnorderedWithNonIndexedLabelsHeadBlockFmt,
-		rt:     unordered.rt,
-		lines:  unordered.lines,
-		size:   unordered.size,
-		mint:   unordered.mint,
-		maxt:   unordered.maxt,
-	}, recovered)
+	require.Equal(t, unordered, recovered)
 
-	// Ensure we can recover unordered with non-indexed labels checkpoint into ordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, OrderedHeadBlockFmt)
+	// Ensure trying to recover unordered with non-indexed labels checkpoint into ordered headblock keeps it in unordered with non-indexed labels format
+	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, OrderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
 	require.Nil(t, err)
-	require.Equal(t, ordered, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+	require.Equal(t, unorderedWithNonIndexedLabels, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
 
-	// Ensure we can recover unordered with non-indexed labels checkpoint into unordered headblock
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedHeadBlockFmt)
+	// Ensure trying to recover unordered with non-indexed labels checkpoint into unordered headblock keeps it in unordered with non-indexed labels format
+	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
 	require.Nil(t, err)
-	require.Equal(t, unordered, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+	require.Equal(t, unorderedWithNonIndexedLabels, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
 
-	// Ensure we can recover unordered with non-indexed labels checkpoint into unordered with non-indexed labels headblock
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt)
+	// Ensure we can recover unordered with non-indexed checkpoint into unordered with non-indexed headblock
+	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
 	require.Nil(t, err)
 	require.Equal(t, unorderedWithNonIndexedLabels, recovered)
 }
@@ -375,7 +363,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 	}
 
 	unorderedHeadBlockFn := func() func(int64, string, labels.Labels) {
-		hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt)
+		hb := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil)
 		return func(ts int64, line string, metaLabels labels.Labels) {
 			_ = hb.Append(ts, line, metaLabels)
 		}
@@ -723,8 +711,8 @@ func Test_HeadIteratorHash(t *testing.T) {
 	}
 
 	for name, b := range map[string]HeadBlock{
-		"unordered":                         newUnorderedHeadBlock(UnorderedHeadBlockFmt),
-		"unordered with non-indexed labels": newUnorderedHeadBlock(UnorderedWithNonIndexedLabelsHeadBlockFmt),
+		"unordered":                         newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
+		"unordered with non-indexed labels": newUnorderedHeadBlock(UnorderedWithNonIndexedLabelsHeadBlockFmt, newSymbolizer()),
 		"ordered":                           &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {

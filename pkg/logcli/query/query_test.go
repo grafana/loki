@@ -17,6 +17,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logcli/output"
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -474,11 +475,11 @@ func (t *testQueryClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.
 	panic("not implemented")
 }
 
-func (t *testQueryClient) GetVolume(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
-func (t *testQueryClient) GetVolumeRange(_ string, _, _ time.Time, _ time.Duration, _ int, _ bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
 	panic("not implemented")
 }
 
