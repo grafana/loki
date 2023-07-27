@@ -107,6 +107,8 @@ func NewLegacyRuleStore(cfg RuleStoreConfig, hedgeCfg hedging.Config, clientMetr
 		client, err = openstack.NewSwiftObjectClient(cfg.Swift, hedgeCfg)
 	case "cos":
 		client, err = ibmcloud.NewCOSObjectClient(cfg.COS, hedgeCfg)
+	case "alibabacloud":
+		client, err = alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaCloud)
 	case "local":
 		return local.NewLocalRulesClient(cfg.Local, loader)
 	default:
