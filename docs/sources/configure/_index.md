@@ -799,6 +799,11 @@ results_cache:
 # CLI flag: -frontend.required-query-response-format
 [required_query_response_format: <string> | default = "json"]
 
+# Execute some queries in a probabilistic manner, which allows them to be
+# parallelized. Current probabilistic query types; topk.
+# CLI flag: -frontend.execute-probabilistic-queries
+[execute_probabilistic_queries: <boolean> | default = false]
+
 # Cache index stats query results.
 # CLI flag: -querier.cache-index-stats-results
 [cache_index_stats_results: <boolean> | default = false]
