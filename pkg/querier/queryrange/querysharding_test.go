@@ -845,3 +845,45 @@ func Test_ASTMapper_MaxLookBackPeriod(t *testing.T) {
 	require.NoError(t, err)
 
 }
+
+func Benchmark_SeriesShardingHandler(b *testing.B) {
+	sharding := NewSeriesQueryShardMiddleware(log.NewNopLogger(), ShardingConfigs{
+		config.PeriodConfig{
+			RowShards: 64,
+		},
+	},
+		queryrangebase.NewInstrumentMiddlewareMetrics(nil),
+		nilShardingMetrics,
+		fakeLimits{
+			maxQueryParallelism: 16,
+		},
+		DefaultCodec,
+	)
+	ctx := user.InjectOrgID(context.Background(), "1")
+
+	series := generateSeries()
+	handler := sharding.Wrap(queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		_, ok := r.(*LokiSeriesRequest)
+		if !ok {
+			return nil, errors.New("not a series call")
+		}
+		return &LokiSeriesResponse{
+			Status:  "success",
+			Version: 1,
+			Data:    series,
+		}, nil
+	}))
+
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		_, err := handler.Do(ctx, &LokiSeriesRequest{
+			Match:   []string{"foo", "bar"},
+			StartTs: time.Unix(0, 1),
+			EndTs:   time.Unix(0, 10),
+			Path:    "foo",
+		})
+		require.NoError(b, err)
+	}
+}
