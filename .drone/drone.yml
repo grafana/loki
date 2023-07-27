@@ -840,8 +840,7 @@ steps:
 trigger:
   ref:
   - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
+  - refs/tags/operator/v*
   - refs/pull/*/head
 ---
 depends_on:
@@ -897,8 +896,7 @@ steps:
 trigger:
   ref:
   - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
+  - refs/tags/operator/v*
   - refs/pull/*/head
 ---
 depends_on:
@@ -954,8 +952,7 @@ steps:
 trigger:
   ref:
   - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
+  - refs/tags/operator/v*
   - refs/pull/*/head
 ---
 depends_on:
