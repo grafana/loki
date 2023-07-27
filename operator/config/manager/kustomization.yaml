@@ -6,4 +6,4 @@ kind: Kustomization
 images:
 - name: controller
   newName: quay.io/openshift-logging/loki-operator
-  newTag: 0.1.0
+  newTag: v0.1.0
