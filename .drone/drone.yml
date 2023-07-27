@@ -1014,6 +1014,58 @@ trigger:
 depends_on:
 - check
 kind: pipeline
+name: fluent-bit-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker:linux-arm
+  name: build-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker:linux-arm
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+depends_on:
+- check
+kind: pipeline
 name: fluentd-amd64
 platform:
   arch: amd64
@@ -1177,6 +1229,9 @@ depends_on:
 - promtail-amd64
 - promtail-arm64
 - promtail-arm
+- fluent-bit-amd64
+- fluent-bit-arm64
+- fluent-bit-arm
 kind: pipeline
 name: manifest
 steps:
@@ -1216,6 +1271,19 @@ steps:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
     target: loki-canary
+    username:
+      from_secret: docker_username
+- depends_on:
+  - clone
+  - manifest-loki-canary
+  image: plugins/manifest:1.4.0
+  name: manifest-fluent-bit
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: fluent-bit
     username:
       from_secret: docker_username
 trigger:
@@ -1794,6 +1862,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 06e7ff691dfc5cb9a9fec614d23c781f698f8871d406b2d25e06e7761fb345d8
+hmac: a1839eb5d43146ccc7793a2bb103396a4ca370582fed4736c24c4c9b7c4d55e3
 
 ...
