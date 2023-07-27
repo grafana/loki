@@ -381,6 +381,8 @@ func (i *TSDBIndex) Volume(
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
 
+	aggregateBySeries := seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == ""
+
 	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
 		var ls labels.Labels
 		var filterer chunk.Filterer
@@ -404,13 +406,21 @@ func (i *TSDBIndex) Volume(
 			}
 
 			if stats.Entries > 0 {
-				seriesLabels = seriesLabels[:0]
-				labelVolumes := make(map[string]uint64, len(ls))
+				var labelVolumes map[string]uint64
 
-				for _, l := range ls {
-					if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-						seriesLabels = append(seriesLabels, l)
-						labelVolumes[l.Name] += stats.KB << 10
+				if aggregateBySeries {
+					seriesLabels = seriesLabels[:0]
+					for _, l := range ls {
+						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
+							seriesLabels = append(seriesLabels, l)
+						}
+					}
+				} else {
+					labelVolumes = make(map[string]uint64, len(ls))
+					for _, l := range ls {
+						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
+							labelVolumes[l.Name] += stats.KB << 10
+						}
 					}
 				}
 
@@ -421,7 +431,7 @@ func (i *TSDBIndex) Volume(
 					seriesNames[hash] = seriesLabels.String()
 				}
 
-				if seriesvolume.AggregateBySeries(aggregateBy) || aggregateBy == "" {
+				if aggregateBySeries {
 					if err = acc.AddVolume(seriesNames[hash], stats.KB<<10); err != nil {
 						return err
 					}
