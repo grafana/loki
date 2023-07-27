@@ -27,11 +27,11 @@ type ChunkRef struct {
 type IndexCfg struct {
 	indexshipper.Config `yaml:",inline"`
 
-	CachePostings bool `yaml:"enable_cache_postings" category:"experimental"`
+	CachePostings bool `yaml:"enable_postings_cache" category:"experimental"`
 }
 
 func (cfg *IndexCfg) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.BoolVar(&cfg.CachePostings, prefix+"enable-cache-postings", false, "Experimental. Whether TSDB should cache postings or not. The index-read-cache will be used as the backend.")
+	f.BoolVar(&cfg.CachePostings, prefix+"enable-postings-cache", false, "Experimental. Whether TSDB should cache postings or not. The index-read-cache will be used as the backend.")
 
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }

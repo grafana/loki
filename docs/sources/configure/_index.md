@@ -2040,8 +2040,8 @@ tsdb_shipper:
 
   # Experimental. Whether TSDB should cache postings or not. The
   # index-read-cache will be used as the backend.
-  # CLI flag: -tsdb.enable-cache-postings
-  [enable_cache_postings: <boolean> | default = false]
+  # CLI flag: -tsdb.enable-postings-cache
+  [enable_postings_cache: <boolean> | default = false]
 ```
 
 ### chunk_store_config
