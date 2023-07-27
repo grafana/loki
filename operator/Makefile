@@ -38,7 +38,7 @@ ifeq ($(VARIANT), openshift)
 ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
     REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
 endif
-    VERSION = v0.1.0
+    VERSION = 0.1.0
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
@@ -71,7 +71,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 BUNDLE_IMG ?= $(REGISTRY_BASE)/loki-operator-bundle:$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
-BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 
 MANIFESTS_DIR = config/manifests/$(VARIANT)
 BUNDLE_DIR = ./bundle/$(VARIANT)
