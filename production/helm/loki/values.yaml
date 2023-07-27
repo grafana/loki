@@ -1130,6 +1130,8 @@ ingress:
   #    nginx.ingress.kubernetes.io/auth-secret-type: auth-map
   #    nginx.ingress.kubernetes.io/configuration-snippet: |
   #      proxy_set_header X-Scope-OrgID $remote_user;
+  labels: {}
+  #    blackbox.monitoring.exclude: "true"
   paths:
     write:
       - /api/prom/push
