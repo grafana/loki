@@ -802,12 +802,12 @@ func NewVolumeTripperware(
 	}
 
 	return volumeFeatureFlagRoundTripper(
-		volumeRangeTripperware(codec, cfg.ExecuteProbabilisticQueries, statsTw),
+		volumeRangeTripperware(codec, statsTw),
 		limits,
 	), nil
 }
 
-func volumeRangeTripperware(codec queryrangebase.Codec, probabilistic bool, nextTW queryrangebase.Tripperware) func(next http.RoundTripper) http.RoundTripper {
+func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tripperware) func(next http.RoundTripper) http.RoundTripper {
 	return func(next http.RoundTripper) http.RoundTripper {
 		nextRT := nextTW(next)
 
