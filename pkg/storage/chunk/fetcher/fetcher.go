@@ -205,13 +205,20 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 
 	if c.l2CacheHandoff > 0 {
 		// Fetch missing from L2 chunks cache
-		missingL1 := make([]string, 0, len(missing))
+		missingL1Keys := make([]string, 0, len(missing))
 		for _, m := range missing {
+			// A small optimization to prevent looking up a chunk in l2 cache that can't possibly be there
+			// Note, we don't need to keep track of the chunks that we are skipping here because
+			// processCacheResponse below takes in the initial list of chunks and returns the missing ones
+			// which will include the ones we are skipping here.
+			if m.From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
+				continue
+			}
 			chunkKey := c.schema.ExternalKey(m.ChunkRef)
-			missingL1 = append(missingL1, chunkKey)
+			missingL1Keys = append(missingL1Keys, chunkKey)
 		}
 
-		cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1)
+		cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1Keys)
 		if err != nil {
 			level.Warn(log).Log("msg", "error fetching from cache", "err", err)
 		}
