@@ -13,7 +13,6 @@ import (
 	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/prometheus/common/model"
@@ -181,7 +180,7 @@ type mockLokiHTTPServer struct {
 	server   *http.Server
 	tenantID string
 	now      time.Time
-	then      time.Time
+	then     time.Time
 }
 
 func NewMockLokiHTTPServer(t *testing.T, now, then time.Time) *mockLokiHTTPServer {
@@ -205,14 +204,15 @@ func (s *mockLokiHTTPServer) getTenantIDUnsafe() string {
 
 func (s *mockLokiHTTPServer) Run(t *testing.T) {
 	var mux http.ServeMux
-	mux.HandleFunc("/loki/api/v1/index/volume", func(w http.ResponseWriter, request *http.Request) {
-		labels := labels.Labels{
-			{
-				Name:  "foo",
-				Value: "bar",
-			},
-		}
+	labels := labels.Labels{
+		{
+			Name:  "foo",
+			Value: "bar",
+		},
+	}
+	codec := queryrange.Codec{}
 
+	mux.HandleFunc("/loki/api/v1/index/volume", func(w http.ResponseWriter, request *http.Request) {
 		volume := queryrange.LokiPromResponse{
 			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
@@ -231,10 +231,8 @@ func (s *mockLokiHTTPServer) Run(t *testing.T) {
 					},
 				},
 			},
-			Statistics: stats.Result{},
 		}
 
-		codec := queryrange.Codec{}
 		resp, err := codec.EncodeResponse(request.Context(), request, &volume)
 		require.NoError(t, err)
 		bytes, err := io.ReadAll(resp.Body)
@@ -245,13 +243,6 @@ func (s *mockLokiHTTPServer) Run(t *testing.T) {
 	})
 
 	mux.HandleFunc("/loki/api/v1/index/volume_range", func(w http.ResponseWriter, request *http.Request) {
-		labels := labels.Labels{
-			{
-				Name:  "foo",
-				Value: "bar",
-			},
-		}
-
 		volume := queryrange.LokiPromResponse{
 			Response: &queryrangebase.PrometheusResponse{
 				Status: loghttp.QueryStatusSuccess,
@@ -274,10 +265,8 @@ func (s *mockLokiHTTPServer) Run(t *testing.T) {
 					},
 				},
 			},
-			Statistics: stats.Result{},
 		}
 
-		codec := queryrange.Codec{}
 		resp, err := codec.EncodeResponse(request.Context(), request, &volume)
 		require.NoError(t, err)
 		bytes, err := io.ReadAll(resp.Body)
