@@ -79,29 +79,76 @@ func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error
 	})
 }
 
+var sep = string([]byte{'\xff'})
+
+func (v *SeriesIdentifierView) HashFast(b []byte, keyLabelPairs []string) (uint64, []string, error) {
+	keyLabelPairs = keyLabelPairs[:0]
+	err := molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, data molecule.Value) (bool, error) {
+		if fieldNum == 1 {
+			entry, err := data.AsStringUnsafe()
+			if err != nil {
+				return false, err
+			}
+
+			keyLabelPairs = append(keyLabelPairs, entry)
+
+			return true, err
+		}
+
+		return true, nil
+	})
+
+	if err != nil {
+		return 0, nil, err
+	}
+
+	sort.Strings(keyLabelPairs)
+
+	// Use xxhash.Sum64(b) for fast path as it's faster.
+	b = b[:0]
+	for i, pair := range keyLabelPairs {
+		if len(b)+len(pair) >= cap(b) {
+			// If labels entry is 1KB+ do not allocate whole entry.
+			h := xxhash.New()
+			_, _ = h.Write(b)
+			for _, pair := range keyLabelPairs[i:] {
+				_, _ = h.WriteString(pair)
+			}
+			return h.Sum64(), keyLabelPairs, nil
+		}
+
+		b = append(b, pair...)
+	}
+	return xxhash.Sum64(b), keyLabelPairs, nil
+}
+
 func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, []string, error) {
 	keyLabelPairs = keyLabelPairs[:0]
 	// TODO(karsten): use ForEachLabel if the speed is the same
 	err := molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, data molecule.Value) (bool, error) {
 		if fieldNum == 1 {
-			entry, err := data.AsBytesUnsafe()
+			//entry, err := data.AsBytesUnsafe()
+			entry, err := data.AsStringUnsafe()
 			if err != nil {
 				return false, err
 			}
 
-			pair := ""
-			err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
-				s, err := labelOrKey.AsStringUnsafe()
-				if err != nil {
-					return false, err
-				}
-				// TODO(karsten): we could avoid an allocation
-				// here
-				pair += s
-				pair += string([]byte{'\xff'})
-				return true, nil
-			})
-			keyLabelPairs = append(keyLabelPairs, pair)
+			/*
+				pair := ""
+				err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
+					s, err := labelOrKey.AsStringUnsafe()
+					if err != nil {
+						return false, err
+					}
+					// TODO(karsten): we could avoid an allocation
+					// here
+					pair += s
+					pair += sep
+					return true, nil
+				})
+			*/
+			//keyLabelPairs = append(keyLabelPairs, pair)
+			keyLabelPairs = append(keyLabelPairs, entry)
 
 			return true, err
 		}
@@ -145,7 +192,7 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 	var err error
 	for _, response := range v.responses {
 		err = response.ForEachSeries(func(series *SeriesIdentifierView) error {
-			key, keyBuffer, err = series.Hash(b, keyBuffer)
+			key, keyBuffer, err = series.HashFast(b, keyBuffer)
 			if err != nil {
 				return err
 			}
