@@ -56,8 +56,7 @@ type TCPTransportConfig struct {
 	TransportDebug bool `yaml:"-" category:"advanced"`
 
 	// Where to put custom metrics. nil = don't register.
-	MetricsRegisterer prometheus.Registerer `yaml:"-"`
-	MetricsNamespace  string                `yaml:"-"`
+	MetricsNamespace string `yaml:"-"`
 
 	TLSEnabled bool               `yaml:"tls_enabled" category:"advanced"`
 	TLS        dstls.ClientConfig `yaml:",inline"`
@@ -113,7 +112,7 @@ type TCPTransport struct {
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
 // success all the network listeners will be created and listening.
-func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTransport, error) {
+func NewTCPTransport(config TCPTransportConfig, logger log.Logger, registerer prometheus.Registerer) (*TCPTransport, error) {
 	if len(config.BindAddrs) == 0 {
 		config.BindAddrs = []string{zeroZeroZeroZero}
 	}
@@ -135,7 +134,7 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		}
 	}
 
-	t.registerMetrics(config.MetricsRegisterer)
+	t.registerMetrics(registerer)
 
 	// Clean up listeners if there's an error.
 	defer func() {
