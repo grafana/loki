@@ -5,26 +5,26 @@ import (
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/richardartoul/molecule"
-	"github.com/richardartoul/molecule/codec"
+	"github.com/richardartoul/molecule/src/codec"
 )
 
 type LokiSeriesResponseView struct {
-	buffer codec.Buffer
+	buffer *codec.Buffer
 }
 
-func (v *LokiSeriesResponseView) GetSeriesView() (*SeriesView, error) {
-	var view *SeriesView
+func (v *LokiSeriesResponseView) GetSeriesView() (*SeriesIdentifierView, error) {
+	var view *SeriesIdentifierView
 
 	return view, nil
 }
 
-func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesView) error) error {
+func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierView) error) error {
 	return molecule.MessageEach(v.buffer, func(fieldNum int32, value molecule.Value) (bool, error) {
-		if fieldNum == 1 {
+		if fieldNum == 2 {
 			data, err := value.AsBytesUnsafe()
 			if err != nil {
 				return false, err
-			}		
+			}
 
 			b := codec.NewBuffer(data)
 			err = molecule.PackedRepeatedEach(b, codec.FieldType_MESSAGE, func(v molecule.Value) (bool, error) {
@@ -32,7 +32,7 @@ func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesView) error) 
 				if err != nil {
 					return false, err
 				}
-				view := &SeriesView{buffer: codec.NewBuffer(series)}
+				view := &SeriesIdentifierView{buffer: codec.NewBuffer(series)}
 				err = fn(view)
 				if err != nil {
 					return false, err
@@ -42,7 +42,7 @@ func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesView) error) 
 
 			if err != nil {
 				return false, err
-			}		
+			}
 
 			return false, nil
 		}
@@ -50,50 +50,57 @@ func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesView) error) 
 	})
 }
 
-type SeriesView struct {
-	buffer codec.Buffer
+type SeriesIdentifierView struct {
+	buffer *codec.Buffer
 }
 
-func (v *SeriesView) Hash(b []byte, keysForLabels []string) (uint64, []string) {
-	keysForLabels = keysForLabels[:0]
-	molecule.MessageEach(v.buffer, func(fieldNum int32, value molecule.Value) (bool, error) { 
+func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, []string, error) {
+	keyLabelPairs = keyLabelPairs[:0]
+	err := molecule.MessageEach(v.buffer, func(fieldNum int32, data molecule.Value) (bool, error) {
 		if fieldNum == 1 {
-			labelEntries, err := value.AsBytesUnsafe()
+			entry, err := data.AsBytesUnsafe()
 			if err != nil {
 				return false, err
-			}		
-			return false, nil
+			}
+
+			pair := ""
+			err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
+				s, err := labelOrKey.AsStringUnsafe()
+				if err != nil {
+					return false, err
+				}
+				pair += s
+				pair += string([]byte{'\xff'})
+				return true, nil
+			})
+			keyLabelPairs = append(keyLabelPairs, pair)
+
+			return true, err
 		}
+
 		return true, nil
 	})
 
-	for k := range id.Labels {
-		keysForLabels = append(keysForLabels, k)
+	if err != nil {
+		return 0, nil, err
 	}
-	sort.Strings(keysForLabels)
+
+	sort.Strings(keyLabelPairs)
 
 	// Use xxhash.Sum64(b) for fast path as it's faster.
 	b = b[:0]
-	for i, name := range keysForLabels {
-		value := id.Labels[name]
-		if len(b)+len(name)+len(value)+2 >= cap(b) {
+	for i, pair := range keyLabelPairs {
+		if len(b)+len(pair) >= cap(b) {
 			// If labels entry is 1KB+ do not allocate whole entry.
 			h := xxhash.New()
 			_, _ = h.Write(b)
-			for _, name := range keysForLabels[i:] {
-				value := id.Labels[name]
-				_, _ = h.WriteString(name)
-				_, _ = h.Write(seps)
-				_, _ = h.WriteString(value)
-				_, _ = h.Write(seps)
+			for _, pair := range keyLabelPairs[i:] {
+				_, _ = h.WriteString(pair)
 			}
-			return h.Sum64(), keysForLabels
+			return h.Sum64(), keyLabelPairs, nil
 		}
 
-		b = append(b, name...)
-		b = append(b, seps[0])
-		b = append(b, value...)
-		b = append(b, seps[0])
+		b = append(b, pair...)
 	}
-	return xxhash.Sum64(b), keysForLabels
+	return xxhash.Sum64(b), keyLabelPairs, nil
 }
