@@ -197,6 +197,12 @@ func TestMappingStrings(t *testing.T) {
 			out: `count(rate({foo="bar"} | json | label_format foo=bar [5m]))`,
 		},
 		{
+			in: `sum without () (rate({job="foo"}[5m]))`,
+			out: `sumwithout()(
+				downstream<sumwithout()(rate({job="foo"}[5m])),shard=0_of_2>++downstream<sumwithout()(rate({job="foo"}[5m])),shard=1_of_2>
+			)`,
+		},
+		{
 			in: `{foo="bar"} |= "id=123"`,
 			out: `downstream<{foo="bar"}|="id=123", shard=0_of_2>
 					++ downstream<{foo="bar"}|="id=123", shard=1_of_2>`,

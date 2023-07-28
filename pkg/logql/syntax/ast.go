@@ -1237,7 +1237,7 @@ type Grouping struct {
 func (g Grouping) String() string {
 	var sb strings.Builder
 
-	if g.Groups == nil {
+	if len(g.Groups) == 0 && !g.Without {
 		return ""
 	}
 
