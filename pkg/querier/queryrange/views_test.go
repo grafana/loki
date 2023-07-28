@@ -208,17 +208,19 @@ func Benchmark_DecodeAndMergeSeriesResponses(b *testing.B) {
 	}
 }
 
-func Benchmark_CurrentCycle(b *testing.B) {
+func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
+	// Setup HTTP responses from querier with protobuf encoding.
 	u := &url.URL{Path: "/loki/api/v1/series"}
-	req := &http.Request{
+	httpReq := &http.Request{
 		Method:     "GET",
-		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		RequestURI: u.String(),
 		URL:        u,
 		Header: http.Header{
 			"Accept": []string{ProtobufType},
 		},
 	}
-	qreq, _ := DefaultCodec.DecodeRequest(context.Background(), req, []string{})
+	qreq, err := DefaultCodec.DecodeRequest(context.Background(), httpReq, []string{})
+	require.NoError(b, err)
 
 	responses := make([]*LokiSeriesResponse, 100)
 	for i := range responses {
@@ -230,26 +232,33 @@ func Benchmark_CurrentCycle(b *testing.B) {
 		}
 	}
 
-	resps := make([]*http.Response, 0)
+	httpResponses := make([]*http.Response, 0)
 	for _, r := range responses {
-		resp, _ := DefaultCodec.EncodeResponse(context.Background(), req, r)
-		resps = append(resps, resp)
+		resp, err := DefaultCodec.EncodeResponse(context.Background(), httpReq, r)
+		require.NoError(b, err)
+		httpResponses = append(httpResponses, resp)
 	}
 
-	qresps := make([]queryrangebase.Response, 0)
+	qresps := make([]queryrangebase.Response, 0, 100)
+
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
+		// Decode
 		qresps = qresps[:0]
-		for _, resp := range resps {
-			qresp, _ := DefaultCodec.DecodeResponse(context.Background(), resp, qreq)
+		for _, httpResp := range httpResponses {
+			qresp, err := DefaultCodec.DecodeResponse(context.Background(), httpResp, qreq)
+			require.NoError(b, err)
 			qresps = append(qresps, qresp)
 		}
+
+		// Merge
 		result, _ := DefaultCodec.MergeResponse(qresps...)
-		var builder strings.Builder
-		data := logproto.SeriesResponse{Series: result.(*LokiSeriesResponse).Data}
-		marshal.WriteSeriesResponseJSON(data, &builder)
+
+		// Encode
+		_, err = DefaultCodec.EncodeResponse(context.Background(), httpReq, result)
+		require.NoError(b, err)
 	}
 
 }
