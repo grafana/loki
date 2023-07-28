@@ -154,14 +154,14 @@ func getPostingsReader(reader IndexReader, postingsCache cache.Cache) PostingsRe
 }
 
 func NewPostingsReader(reader IndexReader) PostingsReader {
-	return &simplePostingsReader{reader: reader}
+	return &defaultPostingsReader{reader: reader}
 }
 
 type defaultPostingsReader struct {
 	reader IndexReader
 }
 
-func (s *simplePostingsReader) ForPostings(_ context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
+func (s *defaultPostingsReader) ForPostings(_ context.Context, matchers []*labels.Matcher, fn func(index.Postings) error) error {
 	p, err := PostingsForMatchers(s.reader, nil, matchers...)
 	if err != nil {
 		return err
