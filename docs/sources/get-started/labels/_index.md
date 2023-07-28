@@ -152,7 +152,7 @@ The two previous examples use statically defined labels with a single value; how
       __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{< relref "../../clients/promtail/pipelines" >}}) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (after processing, the temp data is discarded). More detail about this can be found in the [Promtail pipelines]({{< relref "../../clients/promtail/pipelines" >}}) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 
