@@ -20,61 +20,51 @@ index and in stored chunks.
 ## Chunk Format
 
 ```
-  -------------------------------------------------------------------
-  |                      |                   |                      |
-  |    MagicNumber(4b)   |    version(1b)    |     encoding (1b)    |
-  |                      |                   |                      |
-  -------------------------------------------------------------------
-  |         #symbols bytes        |     checksum(from #symbols)     |
-  -------------------------------------------------------------------
-  |         block-1 bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |         block-2 bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |         block-n bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |                        #blocks (uvarint)                        |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  |                      checksum(from #blocks)                     |
-  -------------------------------------------------------------------
-  |    #symbols len (uvarint)     |    #symbols offset (uvarint)    |
-  -------------------------------------------------------------------
-  |    #blocks len (uvarint)      |    #blocks offset (uvarint)     |
-  -------------------------------------------------------------------
+  -----------------------------------------------------------------------
+  |                       |                    |                        |
+  |     MagicNumber(4b)   |    version(1b)     |      encoding (1b)     |
+  |                       |                    |                        |
+  -----------------------------------------------------------------------
+  |                     #nonIndexedLabels (uvarint)                     |
+  -----------------------------------------------------------------------
+  |      len(label-1) (uvarint)     |          label-1 (bytes)          |
+  -----------------------------------------------------------------------
+  |      len(label-2) (uvarint)     |          label-2 (bytes)          |
+  -----------------------------------------------------------------------
+  |      len(label-n) (uvarint)     |          label-n (bytes)          |
+  -----------------------------------------------------------------------
+  |                     checksum(from #nonIndexedLabels)                |
+  -----------------------------------------------------------------------
+  |           block-1 bytes         |           checksum (4b)           |
+  -----------------------------------------------------------------------
+  |           block-2 bytes         |           checksum (4b)           |
+  -----------------------------------------------------------------------
+  |           block-n bytes         |           checksum (4b)           |
+  -----------------------------------------------------------------------
+  |                          #blocks (uvarint)                          |
+  -----------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint)     |
+  -----------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint)     |
+  -----------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint)     |
+  -----------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint) |  offset, len (uvarint)    |
+  -----------------------------------------------------------------------
+  |                        checksum(from #blocks)                       |
+  -----------------------------------------------------------------------
+  | #nonIndexedLabels len (uvarint) | #nonIndexedLabels offset (uvarint)|
+  -----------------------------------------------------------------------
+  |     #blocks len (uvarint)       |     #blocks offset (uvarint)      |
+  -----------------------------------------------------------------------
 ```
 
 `mint` and `maxt` describe the minimum and maximum Unix nanosecond timestamp,
 respectively.
 
-### Symbols format
-
-Symbols stores non-repeated strings. It is used to store label names and label values from
+The `nonIndexedLabels` section stores non-repeated strings. It is used to store label names and label values from
 [non-indexed labels]({{< relref "./labels/non-indexed-labels" >}}).
-
-Note that the bytes of the symbols section are stored compressed using Gzip. The following
-is their form when uncompressed:
-
-```
-  -------------------------------------------------------------------
-  |                   number of symbols (uvarint)                   |
-  -------------------------------------------------------------------
-  |     symbol 1 len (uvarint)    |          symbol 1 bytes         |
-  -------------------------------------------------------------------
-  |     symbol 2 len (uvarint)    |          symbol 2 bytes         |
-  -------------------------------------------------------------------
-  |     symbol 3 len (uvarint)    |          symbol 3 bytes         |
-  -------------------------------------------------------------------
-  |     symbol n len (uvarint)    |          symbol n bytes         |
-  -------------------------------------------------------------------
-```
+Note that the labels strings and lengths within the `nonIndexedLabels` section are stored compressed using Gzip.
 
 ### Block Format
 
@@ -85,19 +75,22 @@ Note that the bytes of a block are stored compressed using Gzip. The following
 is their form when uncompressed:
 
 ```
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-1 bytes      |
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-2 bytes      |
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-3 bytes      |
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-n bytes      |
-  -------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-1 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-2 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-3 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-n bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
 ```
 
 `ts` is the Unix nanosecond timestamp of the logs, while len is the length in
 bytes of the log entry.
+
+Symbols store references to the actual strings containing label names and values in the
+`nonIndexedLabels` section of the chunk.
 
 ## Storage
 
