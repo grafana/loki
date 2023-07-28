@@ -4,12 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"github.com/grafana/loki/pkg/logproto"
 	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
