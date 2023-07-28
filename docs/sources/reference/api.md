@@ -583,7 +583,7 @@ JSON post body can be sent in the following format:
       },
       "values": [
           [ "<unix epoch in nanoseconds>", "<log line>" ],
-          [ "<unix epoch in nanoseconds>", "<log line>", {"optiona_non_indexed_label": "label_value", "trace_ID": "1234"}]
+          [ "<unix epoch in nanoseconds>", "<log line>", {"optional_non_indexed_label": "label_value", "trace_ID": "1234"}]
       ]
     }
   ]
