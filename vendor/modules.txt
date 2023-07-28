@@ -251,7 +251,7 @@ github.com/armon/go-metrics/prometheus
 # github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 ## explicit; go 1.13
 github.com/asaskevich/govalidator
-# github.com/aws/aws-sdk-go v1.44.306
+# github.com/aws/aws-sdk-go v1.44.311
 ## explicit; go 1.11
 github.com/aws/aws-sdk-go/aws
 github.com/aws/aws-sdk-go/aws/arn
@@ -826,7 +826,7 @@ github.com/gorilla/websocket
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20230518162305-3c92c534827e
+# github.com/grafana/dskit v0.0.0-20230725162534-96da0816983e
 ## explicit; go 1.18
 github.com/grafana/dskit/backoff
 github.com/grafana/dskit/concurrency

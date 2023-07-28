@@ -279,9 +279,10 @@ func (hb *unorderedHeadBlock) Iterator(
 			}
 
 			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp:        time.Unix(0, ts),
-				Line:             newLine,
-				NonIndexedLabels: logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols)),
+				Timestamp: time.Unix(0, ts),
+				Line:      newLine,
+				// There is no need to send back the non-indexed labels, as they are already part of the labels results
+				// NonIndexedLabels: logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols)),
 			})
 			return nil
 		},
