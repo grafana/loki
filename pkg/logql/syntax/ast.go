@@ -669,7 +669,25 @@ func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 	}
 }
 
-func (e *LabelFmtExpr) Shardable() bool { return false }
+func (e *LabelFmtExpr) Shardable() bool {
+	// Technically, any parser that mutates labels could cause the query
+	// to be non-shardable _if_ the total (inherent+extracted) labels
+	// exist on two different shards, but this is incredibly unlikely
+	// for parsers which add new labels so I (owen-d) am preferring
+	// to continue sharding in those cases and only prevent sharding
+	// when using `drop` or `keep` which reduce labels to a smaller subset
+	// more likely to collide across shards.
+
+	// TODO(owen-d): renaming is shardable in many cases, but will
+	// likely require a `sum without ()` wrapper to combine the
+	// same extracted labelsets executed on different shards
+	for _, f := range e.Formats {
+		if f.Rename {
+			return false
+		}
+	}
+	return true
+}
 
 func (e *LabelFmtExpr) Walk(f WalkFn) { f(e) }
 
@@ -1345,28 +1363,40 @@ func (e *VectorAggregationExpr) String() string {
 
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
+	if !e.Left.Shardable() {
+		return false
+	}
+
 	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
-		if !e.Left.Shardable() {
-			return false
-		}
 		// count is shardable if labels are not mutated
-		// otherwise distinct values can be counted twice per shard
+		// otherwise distinct values can be present in multiple shards and
+		// counted twice.
+		// avg is similar since it's remapped to sum/count.
+		// TODO(owen-d): this is hard to figure out; we should refactor to
+		// make these relationships clearer, safer, and more extensible.
 		shardable := true
+
 		e.Left.Walk(func(e interface{}) {
 			switch e.(type) {
 			// LabelParserExpr is normally shardable, but not in this case.
 			// TODO(owen-d): I think LabelParserExpr is shardable
 			// for avg, but not for count. Let's refactor to make this
 			// cleaner. For now I'm disallowing sharding on both.
-			case *LabelParserExpr:
-				shardable = false
-			case *LogfmtParserExpr:
+
+			// Technically, any parser that mutates labels could cause the query
+			// to be non-shardable _if_ the total (inherent+extracted) labels
+			// exist on two different shards, but this is incredibly unlikely
+			// for parsers which add new labels so I (owen-d) am preferring
+			// to continue sharding in those cases and only prevent sharding
+			// when using `drop` or `keep` which reduce labels to a smaller subset
+			// more likely to collide across shards.
+			case *KeepLabelsExpr, *DropLabelsExpr:
 				shardable = false
 			}
 		})
 		return shardable
 	}
-	return shardableOps[e.Operation] && e.Left.Shardable()
+	return shardableOps[e.Operation]
 }
 
 func (e *VectorAggregationExpr) Walk(f WalkFn) {

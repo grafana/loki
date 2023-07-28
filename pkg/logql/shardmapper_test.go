@@ -168,17 +168,33 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in: `count(rate({foo="bar"} | json [5m]))`,
-			out: `count(
-				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2>
-				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
+			out: `sum(
+				downstream<count(rate({foo="bar"}|json[5m])),shard=0_of_2>++downstream<count(rate({foo="bar"}|json[5m])),shard=1_of_2>
 			)`,
 		},
 		{
 			in: `avg(rate({foo="bar"} | json [5m]))`,
-			out: `avg(
-				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2>
-				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
+			out: `(
+				sum(
+					downstream<sum(rate({foo="bar"}|json[5m])),shard=0_of_2>++downstream<sum(rate({foo="bar"}|json[5m])),shard=1_of_2>
+				)
+				/
+				sum(
+					downstream<count(rate({foo="bar"}|json[5m])),shard=0_of_2>++downstream<count(rate({foo="bar"}|json[5m])),shard=1_of_2>
+				)
 			)`,
+		},
+		{
+			// keep reduces the labelset and can't be used to shard count
+			in: `count(rate({foo="bar"} | json | keep foo [5m]))`,
+			out: `count(
+				downstream<rate({foo="bar"}|json|keepfoo[5m]),shard=0_of_2>++downstream<rate({foo="bar"}|json|keepfoo[5m]),shard=1_of_2>
+			)`,
+		},
+		{
+			// renaming reduces the labelset and can't be used to shard count
+			in:  `count(rate({foo="bar"} | json | label_format foo=bar [5m]))`,
+			out: `count(rate({foo="bar"} | json | label_format foo=bar [5m]))`,
 		},
 		{
 			in: `{foo="bar"} |= "id=123"`,
