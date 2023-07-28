@@ -147,24 +147,17 @@ func NewTSDBIndexFromFile(location string, opts IndexOpts) (Index, GetRawFileRea
 }
 
 func getPostingsReader(reader IndexReader, postingsCache cache.Cache) PostingsReader {
-	var pr PostingsReader
-
 	if postingsCache != nil {
-		pr = NewCachedPostingsReader(reader, util_log.Logger, postingsCache)
+		return NewCachedPostingsReader(reader, util_log.Logger, postingsCache)
 	}
-
-	if pr == nil {
-		pr = NewPostingsReader(reader)
-	}
-
-	return pr
+	return NewPostingsReader(reader)
 }
 
 func NewPostingsReader(reader IndexReader) PostingsReader {
 	return &simplePostingsReader{reader: reader}
 }
 
-type simplePostingsReader struct {
+type defaultPostingsReader struct {
 	reader IndexReader
 }
 
