@@ -48,11 +48,11 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("querier.frontend-client", f)
 }
 
-func (cfg *Config) Validate(log log.Logger) error {
+func (cfg *Config) Validate(_ log.Logger) error {
 	if cfg.FrontendAddress != "" && cfg.SchedulerAddress != "" {
 		return errors.New("frontend address and scheduler address are mutually exclusive, please use only one")
 	}
-	return cfg.GRPCClientConfig.Validate(log)
+	return cfg.GRPCClientConfig.Validate()
 }
 
 // Handler for HTTP requests wrapped in protobuf messages.

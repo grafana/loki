@@ -382,6 +382,25 @@ func TestNewLineSampleExtractorWithNonIndexedLabels(t *testing.T) {
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
 
+	// test duplicated non-indexed labels with stream labels
+	expectedLabelsResults = append(lbs, labels.Label{
+		Name: "foo_extracted", Value: "baz",
+	})
+	expectedLabelsResults = append(expectedLabelsResults, nonIndexedLabels...)
+	f, l, ok = sse.Process(0, []byte(`foo`), append(nonIndexedLabels, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
+	require.True(t, ok)
+	require.Equal(t, 1., f)
+	assertLabelResult(t, expectedLabelsResults, l)
+
+	f, l, ok = sse.ProcessString(0, `foo`, append(nonIndexedLabels, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
+	require.True(t, ok)
+	require.Equal(t, 1., f)
+	assertLabelResult(t, expectedLabelsResults, l)
+
 	se, err = NewLineSampleExtractor(BytesExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),

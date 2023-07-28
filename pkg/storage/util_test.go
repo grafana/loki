@@ -248,7 +248,7 @@ func (m *mockChunkStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Ti
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, false, m.schemas, m.client, 10, 100)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
 	if err != nil {
 		panic(err)
 	}

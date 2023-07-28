@@ -1591,9 +1591,10 @@ func (e *entryBufferedIterator) Next() bool {
 
 		e.stats.AddPostFilterLines(1)
 		e.currLabels = lbs
-		e.cur.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(e.currNonIndexedLabels)
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
+		// There is no need to send back the non-indexed labels, as they are already part of the labels results
+		// e.cur.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(e.currNonIndexedLabels)
 		return true
 	}
 	return false
