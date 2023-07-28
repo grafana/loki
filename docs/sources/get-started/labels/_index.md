@@ -19,9 +19,10 @@ Labels in Loki perform a very important task: They define a stream. More specifi
 
 If you are familiar with Prometheus, the term used there is series; however, Prometheus has an additional dimension: metric name. Loki simplifies this in that there are no metric names, just labels, and we decided to use streams instead of series.
 
-> **Note** This does not apply to non-indexed labels, these do not define a stream but are metadata attached to a log line.
-> See [Non-indexed labels]({{< relref "./non-indexed-labels" >}}) for more information.
-
+{{% admonition type="note" %}}
+Non-indexed labels do not define a stream, but are metadata attached to a log line.
+See [Non-indexed labels]({{< relref "./non-indexed-labels" >}}) for more information.
+{{% /admonition %}}
 ## Format
 
 Loki places the same restrictions on label naming as [Prometheus](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels):
