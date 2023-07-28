@@ -205,8 +205,11 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	}
 
 	switch expr.Operation {
-	case syntax.OpTypeSum:
+
+	case syntax.OpTypeSum, syntax.OpTypeMin, syntax.OpTypeMax:
 		// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
+		// max(x) -> max(max(x, shard=1) ++ max(x, shard=2)...)
+		// min(x) -> min(min(x, shard=1) ++ min(x, shard=2)...)
 		sharded, bytesPerShard, err := m.mapSampleExpr(expr, r)
 		if err != nil {
 			return nil, 0, err

@@ -1363,11 +1363,13 @@ func (e *VectorAggregationExpr) String() string {
 
 // impl SampleExpr
 func (e *VectorAggregationExpr) Shardable() bool {
-	if !e.Left.Shardable() {
+	if !shardableOps[e.Operation] || !e.Left.Shardable() {
 		return false
 	}
 
-	if e.Operation == OpTypeCount || e.Operation == OpTypeAvg {
+	switch e.Operation {
+
+	case OpTypeCount, OpTypeAvg:
 		// count is shardable if labels are not mutated
 		// otherwise distinct values can be present in multiple shards and
 		// counted twice.
@@ -1395,8 +1397,39 @@ func (e *VectorAggregationExpr) Shardable() bool {
 			}
 		})
 		return shardable
+
+	case OpTypeMax, OpTypeMin:
+		// max(<range_aggr>) can be sharded by pushing down the max|min aggregation,
+		// but max(<vector_aggr>) cannot. It needs to perform the
+		// aggregation on the total result set, and then pick the max|min.
+		// For instance, `max(max_over_time)` or `max(rate)` can turn into
+		// `max( max(rate(shard1)) ++ max(rate(shard2)) ... etc)`,
+		// but you can’t do
+		// `max( max(sum(rate(shard1))) ++ max(sum(rate(shard2))) ... etc)`
+		// because it’s only taking the maximum from each shard,
+		// but we actually need to sum all the shards then put the max on top
+		if _, ok := e.Left.(*RangeAggregationExpr); ok {
+			return true
+		}
+		return false
+
+	case OpTypeSum:
+		// sum can shard & merge vector & range aggregations, but only if
+		// the resulting computation is commutative and associative.
+		// This does not apply to min & max, because while `min(min(min))`
+		// satisfies the above, sum( sum(min(shard1) ++ sum(min(shard2)) )
+		// does not
+		if child, ok := e.Left.(*VectorAggregationExpr); ok {
+			switch child.Operation {
+			case OpTypeMin, OpTypeMax:
+				return false
+			}
+		}
+		return true
+
 	}
-	return shardableOps[e.Operation]
+
+	return true
 }
 
 func (e *VectorAggregationExpr) Walk(f WalkFn) {
@@ -1951,7 +1984,9 @@ func (e *LabelReplaceExpr) String() string {
 	return sb.String()
 }
 
-// shardableOps lists the operations which may be sharded.
+// shardableOps lists the operations which may be sharded, but are not
+// guaranteed to be. See the `Shardable()` implementations
+// on the respective expr types for more details.
 // topk, botk, max, & min all must be concatenated and then evaluated in order to avoid
 // potential data loss due to series distribution across shards.
 // For example, grouping by `cluster` for a `max` operation may yield
@@ -1974,6 +2009,8 @@ var shardableOps = map[string]bool{
 	// avg is only marked as shardable because we remap it into sum/count.
 	OpTypeAvg:   true,
 	OpTypeCount: true,
+	OpTypeMax:   true,
+	OpTypeMin:   true,
 
 	// range vector ops
 	OpRangeTypeCount:     true,
