@@ -181,10 +181,12 @@ func TestBlock(t *testing.T) {
 					e := it.Entry()
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
+					require.Empty(t, e.NonIndexedLabels)
 					if chunkFormat < chunkFormatV4 {
-						require.Empty(t, e.NonIndexedLabels)
+						require.Equal(t, labels.EmptyLabels().String(), it.Labels())
 					} else {
-						require.Equal(t, push.LabelsAdapter(cases[idx].lbs), e.NonIndexedLabels)
+						expectedLabels := logproto.FromLabelAdaptersToLabels(cases[idx].lbs).String()
+						require.Equal(t, expectedLabels, it.Labels())
 					}
 					idx++
 				}
@@ -434,10 +436,11 @@ func TestSerialization(t *testing.T) {
 						e := it.Entry()
 						require.Equal(t, int64(i), e.Timestamp.UnixNano())
 						require.Equal(t, strconv.Itoa(i), e.Line)
+						require.Nil(t, e.NonIndexedLabels)
 						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
-							require.Equal(t, push.LabelsAdapter{{Name: "foo", Value: strconv.Itoa(i)}}, e.NonIndexedLabels)
+							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), it.Labels())
 						} else {
-							require.Nil(t, e.NonIndexedLabels)
+							require.Equal(t, labels.EmptyLabels().String(), it.Labels())
 						}
 					}
 					require.NoError(t, it.Error())
@@ -458,9 +461,9 @@ func TestSerialization(t *testing.T) {
 						require.Equal(t, int64(i), s.Timestamp)
 						require.Equal(t, 1., s.Value)
 						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
-							require.Equal(t, fmt.Sprintf(`{foo="%d"}`, i), sampleIt.Labels())
+							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), sampleIt.Labels())
 						} else {
-							require.Equal(t, "{}", sampleIt.Labels())
+							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
 						}
 					}
 					require.NoError(t, sampleIt.Error())
