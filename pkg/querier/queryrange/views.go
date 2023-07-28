@@ -124,36 +124,10 @@ func (v *SeriesIdentifierView) HashFast(b []byte, keyLabelPairs []string) (uint6
 
 func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, []string, error) {
 	keyLabelPairs = keyLabelPairs[:0]
-	// TODO(karsten): use ForEachLabel if the speed is the same
-	err := molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, data molecule.Value) (bool, error) {
-		if fieldNum == 1 {
-			//entry, err := data.AsBytesUnsafe()
-			entry, err := data.AsStringUnsafe()
-			if err != nil {
-				return false, err
-			}
-
-			/*
-				pair := ""
-				err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
-					s, err := labelOrKey.AsStringUnsafe()
-					if err != nil {
-						return false, err
-					}
-					// TODO(karsten): we could avoid an allocation
-					// here
-					pair += s
-					pair += sep
-					return true, nil
-				})
-			*/
-			//keyLabelPairs = append(keyLabelPairs, pair)
-			keyLabelPairs = append(keyLabelPairs, entry)
-
-			return true, err
-		}
-
-		return true, nil
+	err := v.ForEachLabel(func(name, value string) error {
+		pair := name + sep + value + sep
+		keyLabelPairs = append(keyLabelPairs, pair)
+		return nil
 	})
 
 	if err != nil {
