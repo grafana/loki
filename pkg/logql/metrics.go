@@ -28,6 +28,7 @@ const (
 	QueryTypeLimited = "limited"
 	QueryTypeLabels  = "labels"
 	QueryTypeSeries  = "series"
+	QueryTypeVolume  = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -269,6 +270,52 @@ func RecordSeriesQueryMetrics(
 		"splits", stats.Summary.Splits,
 		"throughput", strings.Replace(humanize.Bytes(uint64(stats.Summary.BytesProcessedPerSecond)), " ", "", 1),
 		"total_bytes", strings.Replace(humanize.Bytes(uint64(stats.Summary.TotalBytesProcessed)), " ", "", 1),
+		"total_entries", stats.Summary.TotalEntriesReturned,
+	)
+
+	sharded := strconv.FormatBool(false)
+	if stats.Summary.Shards > 1 {
+		sharded = strconv.FormatBool(true)
+	}
+	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, sharded).
+		Observe(float64(stats.Summary.BytesProcessedPerSecond))
+	execLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.Summary.ExecTime)
+	chunkDownloadLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.ChunksDownloadTime().Seconds())
+	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
+	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
+		Add(float64(stats.TotalChunksDownloaded()))
+	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+}
+
+func RecordVolumeQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start, end time.Time,
+	status string,
+	stats logql_stats.Result,
+) {
+	var (
+		logger      = util_log.WithContext(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeVolume
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
