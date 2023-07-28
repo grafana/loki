@@ -90,6 +90,10 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 				}))
 			}
 
+			// Update middleware stats
+			queryStatsCtx := stats.FromContext(ctx)
+			queryStatsCtx.AddSplitQueries(int64(len(jobs)))
+
 			collector := make(chan *bucketedVolumeResponse, len(jobs))
 			err := concurrency.ForEachJob(
 				ctx,
