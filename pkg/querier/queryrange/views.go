@@ -21,30 +21,16 @@ func (v *LokiSeriesResponseView) GetSeriesView() (*SeriesIdentifierView, error) 
 func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierView) error) error {
 	return molecule.MessageEach(v.buffer, func(fieldNum int32, value molecule.Value) (bool, error) {
 		if fieldNum == 2 {
-			data, err := value.AsBytesUnsafe()
+			identifier, err := value.AsBytesUnsafe()
 			if err != nil {
 				return false, err
 			}
 
-			b := codec.NewBuffer(data)
-			err = molecule.PackedRepeatedEach(b, codec.FieldType_MESSAGE, func(v molecule.Value) (bool, error) {
-				series, err := v.AsBytesUnsafe()
-				if err != nil {
-					return false, err
-				}
-				view := &SeriesIdentifierView{buffer: codec.NewBuffer(series)}
-				err = fn(view)
-				if err != nil {
-					return false, err
-				}
-				return true, nil
-			})
-
+			view := &SeriesIdentifierView{buffer: codec.NewBuffer(identifier)}
+			err = fn(view)
 			if err != nil {
 				return false, err
 			}
-
-			return false, nil
 		}
 		return true, nil
 	})
