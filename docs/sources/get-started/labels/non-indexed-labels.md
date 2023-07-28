@@ -18,7 +18,7 @@ to extract at query time.
 
 ## Attaching non-indexed labels to log lines
 
-Non-indexed labels are optionally attached to log lines in the push payload along with each log line and the timestamp.
+You have the option to attach non-indexed labels to log lines in the push payload along with each log line and the timestamp.
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
 
 Alternatively, you can use Promtail or the Grafana Agent to extract and attach non-indexed labels to your log lines.
