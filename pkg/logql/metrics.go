@@ -319,20 +319,8 @@ func RecordVolumeQueryMetrics(
 		"total_entries", stats.Summary.TotalEntriesReturned,
 	)
 
-	sharded := strconv.FormatBool(false)
-	if stats.Summary.Shards > 1 {
-		sharded = strconv.FormatBool(true)
-	}
-	bytesPerSecond.WithLabelValues(status, queryType, "", latencyType, sharded).
-		Observe(float64(stats.Summary.BytesProcessedPerSecond))
 	execLatency.WithLabelValues(status, queryType, "").
 		Observe(stats.Summary.ExecTime)
-	chunkDownloadLatency.WithLabelValues(status, queryType, "").
-		Observe(stats.ChunksDownloadTime().Seconds())
-	duplicatesTotal.Add(float64(stats.TotalDuplicates()))
-	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
-		Add(float64(stats.TotalChunksDownloaded()))
-	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
 }
 
 func recordUsageStats(queryType string, stats logql_stats.Result) {
