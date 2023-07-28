@@ -1,6 +1,9 @@
 package queryrange
 
 import (
+	"context"
+	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -9,7 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 
-	//"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -195,8 +198,8 @@ func Benchmark_DecodeAndMergeSeriesResponses(b *testing.B) {
 	}
 	var builder strings.Builder
 
-	b.ResetTimer()
 	b.ReportAllocs()
+	b.ResetTimer()
 
 	for n := 0; n < b.N; n++ {
 		builder.Reset()
@@ -205,14 +208,48 @@ func Benchmark_DecodeAndMergeSeriesResponses(b *testing.B) {
 	}
 }
 
-/*
-func cycle() {
-	_, _ = reader.Seek(0, io.SeekStart)
-	response, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiSeriesRequest{
-		StartTs: start,
-		EndTs:   end,
-		Path:    u.String(),
-	})
-	result, err := DefaultCodec.MergeResponse(responses...)
+func Benchmark_CurrentCycle(b *testing.B) {
+	u := &url.URL{Path: "/loki/api/v1/series"}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
+		Header: http.Header{
+			"Accept": []string{ProtobufType},
+		},
+	}
+	qreq, _ := DefaultCodec.DecodeRequest(context.Background(), req, []string{})
+
+	responses := make([]*LokiSeriesResponse, 100)
+	for i := range responses {
+		responses[i] = &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		}
+	}
+
+	resps := make([]*http.Response, 0)
+	for _, r := range responses {
+		resp, _ := DefaultCodec.EncodeResponse(context.Background(), req, r)
+		resps = append(resps, resp)
+	}
+
+	qresps := make([]queryrangebase.Response, 0)
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	for n := 0; n < b.N; n++ {
+		qresps = qresps[:0]
+		for _, resp := range resps {
+			qresp, _ := DefaultCodec.DecodeResponse(context.Background(), resp, qreq)
+			qresps = append(qresps, qresp)
+		}
+		result, _ := DefaultCodec.MergeResponse(qresps...)
+		var builder strings.Builder
+		data := logproto.SeriesResponse{Series: result.(*LokiSeriesResponse).Data}
+		marshal.WriteSeriesResponseJSON(data, &builder)
+	}
+
 }
-*/
