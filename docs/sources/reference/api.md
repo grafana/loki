@@ -594,7 +594,7 @@ JSON post body can be sent in the following format:
 
 You can optionally attach [non-indexed labels]({{< relref "../get-started/labels/non-indexed-labels" >}}) to each log line by adding a JSON object to the end of the log line array.
 The JSON object must be a valid JSON object with string keys and string values.
-The JSON object must be the last element in the log line array. Here is an example of a log line with some non-indexed labels attached:
+The JSON object must be set immediately after the log line. Here is an example of a log entry with some non-indexed labels attached:
 
 ```
 "values": [
