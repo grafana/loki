@@ -219,6 +219,8 @@ func WriteSeriesResponseViewJSON(v *MergedSeriesResponseView, w io.Writer) error
 				firstLabelWrite = false
 			}
 
+			// TODO(karsten): this print is allocating some memory
+			// as well.
 			_, err = fmt.Fprintf(w, `"%s":"%s"`, name, value)
 			return err
 		})
