@@ -1765,6 +1765,10 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 								e := it.Entry()
 								lines = append(lines, e.Line)
 								streams = append(streams, it.Labels())
+
+								// We don't want to send back the non-indexed labels since
+								// they are already part of the returned labels.
+								require.Empty(t, e.NonIndexedLabels)
 							}
 							assert.ElementsMatch(t, tc.expectedLines, lines)
 							assert.ElementsMatch(t, tc.expectedStreams, streams)
