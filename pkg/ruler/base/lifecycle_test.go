@@ -107,7 +107,7 @@ func generateSortedTokens(numTokens int) ring.Tokens {
 		return tokens[i] < tokens[j]
 	})
 
-	return ring.Tokens(tokens)
+	return tokens
 }
 
 // numTokens determines the number of tokens owned by the specified
