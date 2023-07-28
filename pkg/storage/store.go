@@ -106,7 +106,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	}
 
 	chunkCacheCfgL2 := storeCfg.ChunkCacheConfigL2
-	chunkCacheCfgL2.Prefix = "chunks_l2"
+	chunkCacheCfgL2.Prefix = "chunksl2"
 	// TODO(E.Welch) would we want to disambiguate this cache in the stats? I think not but we'd need to change stats.ChunkCache to do so.
 	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache)
 	if err != nil {
