@@ -10,7 +10,7 @@ include docs.mk
 PODMAN := $(shell if command -v podman >/dev/null 2>&1; then echo podman; else echo docker; fi)
 BUILD_IN_CONTAINER ?= true
 
-sources/installation/helm/reference.md: ../production/helm/loki/reference.md.gotmpl
+sources/setup/install/helm/reference.md: ../production/helm/loki/reference.md.gotmpl ../production/helm/loki/values.yaml
 ifeq ($(BUILD_IN_CONTAINER),true)
 	$(PODMAN) run --rm --volume "$(realpath ..):/helm-docs" -u "$$(id -u)" "docker.io/jnorwood/helm-docs:v1.11.0" \
 		-c /helm-docs/production/helm/ \

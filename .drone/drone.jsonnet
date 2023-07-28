@@ -199,10 +199,10 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   depends_on: ['check'],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
+local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onPRs,
       settings+: {
@@ -212,7 +212,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     },
   ] + [
     // publish for tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onTagOrMain,
       settings+: {
@@ -417,6 +417,9 @@ local manifest(apps) = pipeline('manifest') {
   ] + [
     'promtail-%s' % arch
     for arch in archs
+  ] + [
+    'fluent-bit-%s' % arch
+    for arch in archs
   ],
 };
 
@@ -433,7 +436,7 @@ local manifest_operator(app) = pipeline('manifest-operator') {
       username: { from_secret: docker_username_secret.name },
       password: { from_secret: docker_password_secret.name },
     },
-    depends_on: ['clone']
+    depends_on: ['clone'],
   }],
   depends_on: [
     'lokioperator-%s' % arch
@@ -675,21 +678,31 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
-  lokioperator(arch)
+  lokioperator(arch) {
+    trigger+: {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+        'refs/pull/*/head',
+      ],
+    },
+  }
   for arch in archs
 ] + [
-  fluentbit(),
+  fluentbit(arch)
+  for arch in archs
+] + [
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'fluent-bit']) {
     trigger+: onTagOrMain,
   },
   manifest_operator('loki-operator') {
     trigger+: onTagOrMain {
       ref: [
         'refs/heads/main',
-        'refs/tags/operator/v*'
+        'refs/tags/operator/v*',
       ],
     },
   },
