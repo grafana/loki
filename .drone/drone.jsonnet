@@ -678,7 +678,15 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
-  lokioperator(arch)
+  lokioperator(arch) {
+    trigger+: {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+        'refs/pull/*/head',
+      ],
+    },
+  }
   for arch in archs
 ] + [
   fluentbit(arch)
