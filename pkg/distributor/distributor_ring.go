@@ -76,6 +76,7 @@ func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLif
 		TokensObservePeriod:             0,
 		NumTokens:                       1,
 		KeepInstanceInTheRingOnShutdown: false,
+		RingTokenGenerator:              ring.NewRandomTokenGenerator(),
 	}, nil
 }
 
