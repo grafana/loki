@@ -1978,6 +1978,9 @@ boltdb_shipper:
   # CLI flag: -boltdb.shipper.build-per-tenant-index
   [build_per_tenant_index: <boolean> | default = false]
 
+# Configures storing index in an Object Store
+# (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required
+# fields only required when TSDB is defined in config.
 tsdb_shipper:
   # Directory where ingesters would write index files which would then be
   # uploaded by shipper to configured storage
