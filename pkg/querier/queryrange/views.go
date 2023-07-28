@@ -90,3 +90,38 @@ func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, [
 	}
 	return xxhash.Sum64(b), keyLabelPairs, nil
 }
+
+type MergedSeriesResponseView struct {
+	responses []*LokiSeriesResponseView
+}
+
+func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifierView) error) error {
+	uniqueSeries := make(map[uint64]struct{})
+	b := make([]byte, 0, 1024)
+	keyBuffer := make([]string, 0, 32)
+	var key uint64
+	var err error
+	for _, response := range v.responses {
+		err = response.ForEachSeries(func(series *SeriesIdentifierView) error {
+			key, keyBuffer, err = series.Hash(b, keyBuffer)
+			if err != nil {
+				return err
+			}
+
+			if _, duplicate := uniqueSeries[key]; !duplicate {
+				err = fn(series)
+				if err != nil {
+					return err
+				}
+				uniqueSeries[key] = struct{}{}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
