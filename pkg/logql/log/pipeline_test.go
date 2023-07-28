@@ -39,6 +39,18 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
 	require.Equal(t, true, matches)
 
+	// test duplicated non-indexed labels with stream labels
+	expectedLabelsResults = append(lbs, labels.Label{
+		Name: "foo_extracted", Value: "baz",
+	})
+	expectedLabelsResults = append(expectedLabelsResults, nonIndexedLabels...)
+	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), append(nonIndexedLabels, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
+	require.Equal(t, []byte(""), l)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
+	require.Equal(t, true, matches)
+
 	pipeline.Reset()
 	require.Len(t, pipeline.cache, 0)
 }
@@ -96,6 +108,25 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line", nonIndexedLabels...)
+	require.Equal(t, "lbs bar bob", ls)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
+	require.Equal(t, true, matches)
+
+	// test duplicated non-indexed labels with stream labels
+	expectedLabelsResults = append(lbs, labels.Label{
+		Name: "foo_extracted", Value: "baz",
+	})
+	expectedLabelsResults = append(expectedLabelsResults, nonIndexedLabels...)
+	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"), append(nonIndexedLabels, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
+	require.Equal(t, []byte("lbs bar bob"), l)
+	require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
+	require.Equal(t, true, matches)
+
+	ls, lbr, matches = p.ForStream(lbs).ProcessString(0, "line", append(nonIndexedLabels, labels.Label{
+		Name: "foo", Value: "baz",
+	})...)
 	require.Equal(t, "lbs bar bob", ls)
 	require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
 	require.Equal(t, true, matches)

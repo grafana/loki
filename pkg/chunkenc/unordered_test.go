@@ -22,10 +22,10 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 	var i int
 	for got.Next() {
 		require.Equal(t, logproto.Entry{
-			Timestamp:        time.Unix(0, exp[i].t),
-			Line:             exp[i].s,
-			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(exp[i].nonIndexedLabels),
+			Timestamp: time.Unix(0, exp[i].t),
+			Line:      exp[i].s,
 		}, got.Entry())
+		require.Equal(t, exp[i].nonIndexedLabels.String(), got.Labels())
 		i++
 	}
 	require.Equal(t, i, len(exp))
