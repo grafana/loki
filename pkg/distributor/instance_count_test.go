@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-kit/kit/log"
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
