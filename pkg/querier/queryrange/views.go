@@ -11,7 +11,7 @@ import (
 )
 
 type LokiSeriesResponseView struct {
-	buffer *codec.Buffer
+	buffer []byte
 }
 
 func (v *LokiSeriesResponseView) GetSeriesView() (*SeriesIdentifierView, error) {
@@ -21,14 +21,14 @@ func (v *LokiSeriesResponseView) GetSeriesView() (*SeriesIdentifierView, error) 
 }
 
 func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierView) error) error {
-	return molecule.MessageEach(v.buffer, func(fieldNum int32, value molecule.Value) (bool, error) {
+	return molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, value molecule.Value) (bool, error) {
 		if fieldNum == 2 {
 			identifier, err := value.AsBytesUnsafe()
 			if err != nil {
 				return false, err
 			}
 
-			view := &SeriesIdentifierView{buffer: codec.NewBuffer(identifier)}
+			view := &SeriesIdentifierView{buffer: identifier}
 			err = fn(view)
 			if err != nil {
 				return false, err
@@ -39,12 +39,12 @@ func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierVie
 }
 
 type SeriesIdentifierView struct {
-	buffer *codec.Buffer
+	buffer []byte
 }
 
 func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error {
 	pair := make([]string, 0, 2)
-	return molecule.MessageEach(v.buffer, func(fieldNum int32, data molecule.Value) (bool, error) {
+	return molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, data molecule.Value) (bool, error) {
 		if fieldNum == 1 {
 			entry, err := data.AsBytesUnsafe()
 			if err != nil {
@@ -82,7 +82,7 @@ func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error
 func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, []string, error) {
 	keyLabelPairs = keyLabelPairs[:0]
 	// TODO(karsten): use ForEachLabel if the speed is the same
-	err := molecule.MessageEach(v.buffer, func(fieldNum int32, data molecule.Value) (bool, error) {
+	err := molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, data molecule.Value) (bool, error) {
 		if fieldNum == 1 {
 			entry, err := data.AsBytesUnsafe()
 			if err != nil {
@@ -169,7 +169,7 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 }
 
 func WriteSeriesResponseViewJSON(v *MergedSeriesResponseView, w io.Writer) error {
-	_, err := io.WriteString(w, `{ "Status": "Success", "Data": [`)
+	_, err := io.WriteString(w, `{ "status": "success", "data": [`)
 	if err != nil {
 		return err
 	}
