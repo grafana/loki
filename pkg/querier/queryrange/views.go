@@ -1,9 +1,10 @@
 package queryrange
 
 import (
-	"fmt"
 	"io"
 	"sort"
+
+	jsoniter "github.com/json-iterator/go"
 
 	"github.com/cespare/xxhash/v2"
 	"github.com/richardartoul/molecule"
@@ -190,51 +191,54 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 }
 
 func WriteSeriesResponseViewJSON(v *MergedSeriesResponseView, w io.Writer) error {
-	_, err := io.WriteString(w, `{ "status": "success", "data": [`)
-	if err != nil {
-		return err
-	}
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+
+	s.WriteObjectStart()
+	s.WriteObjectField("status")
+	s.WriteString("success")
+
+	s.WriteMore()
+	s.WriteObjectField("data")
+	s.WriteArrayStart()
 
 	firstSeriesWrite := true
 	firstLabelWrite := true
-	err = v.ForEachUniqueSeries(func(s *SeriesIdentifierView) error {
+	err := v.ForEachUniqueSeries(func(id *SeriesIdentifierView) error {
 		if firstSeriesWrite {
-			_, err = io.WriteString(w, `{`)
 			firstSeriesWrite = false
 		} else {
-			_, err = io.WriteString(w, `,{`)
+			s.WriteMore()
 		}
-		if err != nil {
-			return err
-		}
+		s.WriteObjectStart()
 
 		firstLabelWrite = true
-		err = s.ForEachLabel(func(name, value string) error {
-			if !firstLabelWrite {
-				_, err = io.WriteString(w, ",")
-				if err != nil {
-					return err
-				}
-			} else {
+		err := id.ForEachLabel(func(name, value string) error {
+			if firstLabelWrite {
 				firstLabelWrite = false
+			} else {
+				s.WriteMore()
 			}
 
-			// TODO(karsten): this print is allocating some memory
-			// as well.
-			_, err = fmt.Fprintf(w, `"%s":"%s"`, name, value)
-			return err
+			s.WriteObjectField(name)
+			s.WriteString(value)
+
+			return nil
 		})
 		if err != nil {
 			return err
 		}
 
-		_, err = io.WriteString(w, "}")
-		return err
+		s.WriteObjectEnd()
+		s.Flush()
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 
-	_, err = io.WriteString(w, "]}\n")
-	return err
+	s.WriteArrayEnd()
+	s.WriteObjectEnd()
+	s.WriteRaw("\n")
+	return s.Flush()
 }
