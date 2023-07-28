@@ -1,6 +1,8 @@
 package queryrange
 
 import (
+	"fmt"
+	"io"
 	"sort"
 
 	"github.com/cespare/xxhash/v2"
@@ -40,8 +42,46 @@ type SeriesIdentifierView struct {
 	buffer *codec.Buffer
 }
 
+func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error {
+	pair := make([]string, 0, 2)
+	return molecule.MessageEach(v.buffer, func(fieldNum int32, data molecule.Value) (bool, error) {
+		if fieldNum == 1 {
+			entry, err := data.AsBytesUnsafe()
+			if err != nil {
+				return false, err
+			}
+
+			err = molecule.MessageEach(codec.NewBuffer(entry), func(fieldNum int32, labelOrKey molecule.Value) (bool, error) {
+				s, err := labelOrKey.AsStringUnsafe()
+				if err != nil {
+					return false, err
+				}
+				pair = append(pair, s)
+				return true, nil
+			})
+			if err != nil {
+				return false, err
+			}
+
+			// TODO(karsten): check length of pair
+
+			err = fn(pair[0], pair[1])
+			if err != nil {
+				return false, err
+			}
+
+			pair = pair[:0]
+
+			return true, nil
+		}
+
+		return true, nil
+	})
+}
+
 func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, []string, error) {
 	keyLabelPairs = keyLabelPairs[:0]
+	// TODO(karsten): use ForEachLabel if the speed is the same
 	err := molecule.MessageEach(v.buffer, func(fieldNum int32, data molecule.Value) (bool, error) {
 		if fieldNum == 1 {
 			entry, err := data.AsBytesUnsafe()
@@ -55,6 +95,8 @@ func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, [
 				if err != nil {
 					return false, err
 				}
+				// TODO(karsten): we could avoid an allocation
+				// here
 				pair += s
 				pair += string([]byte{'\xff'})
 				return true, nil
@@ -124,4 +166,52 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 	}
 
 	return nil
+}
+
+func WriteSeriesResponseViewJSON(v *MergedSeriesResponseView, w io.Writer) error {
+	_, err := io.WriteString(w, `{ "Status": "Success", "Data": [`)
+	if err != nil {
+		return err
+	}
+
+	firstSeriesWrite := true
+	firstLabelWrite := true
+	err = v.ForEachUniqueSeries(func(s *SeriesIdentifierView) error {
+		if firstSeriesWrite {
+			_, err = io.WriteString(w, `{`)
+			firstSeriesWrite = false
+		} else {
+			_, err = io.WriteString(w, `,{`)
+		}
+		if err != nil {
+			return err
+		}
+
+		firstLabelWrite = true
+		err = s.ForEachLabel(func(name, value string) error {
+			if !firstLabelWrite {
+				_, err = io.WriteString(w, ",")
+				if err != nil {
+					return err
+				}
+			} else {
+				firstLabelWrite = false
+			}
+
+			_, err = fmt.Fprintf(w, `"%s":"%s"`, name, value)
+			return err
+		})
+		if err != nil {
+			return err
+		}
+
+		_, err = io.WriteString(w, "}")
+		return err
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = io.WriteString(w, "]}\n")
+	return err
 }
