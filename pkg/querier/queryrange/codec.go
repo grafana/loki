@@ -722,7 +722,10 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				return nil, err
 			}
 		}
-
+	case *MergedSeriesResponseView:	
+		if err := WriteSeriesResponseViewJSON(result, &buf); err != nil {
+			return nil, err
+		}
 	case *LokiSeriesResponse:
 		result := logproto.SeriesResponse{
 			Series: response.Data,
@@ -872,6 +875,12 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Data:       lokiSeriesData,
 			Statistics: mergedStats,
 		}, nil
+	case *LokiSeriesResponseView:
+		v := &MergedSeriesResponseView{}
+		for _, r := range responses {
+			v.responses = append(v.responses, r.(*LokiSeriesResponseView))
+		}
+		return v, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
 		uniqueNames := make(map[string]struct{})

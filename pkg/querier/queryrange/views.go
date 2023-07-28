@@ -4,22 +4,23 @@ import (
 	"io"
 	"sort"
 
-	jsoniter "github.com/json-iterator/go"
-
 	"github.com/cespare/xxhash/v2"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
+
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 type LokiSeriesResponseView struct {
-	buffer []byte
+	buffer  []byte
+	headers []*queryrangebase.PrometheusResponseHeader
 }
 
-func (v *LokiSeriesResponseView) GetSeriesView() (*SeriesIdentifierView, error) {
-	var view *SeriesIdentifierView
-
-	return view, nil
+func (v *LokiSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	return v.headers
 }
+
 
 func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierView) error) error {
 	return molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, value molecule.Value) (bool, error) {
@@ -157,6 +158,11 @@ func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, [
 
 type MergedSeriesResponseView struct {
 	responses []*LokiSeriesResponseView
+	headers []*queryrangebase.PrometheusResponseHeader
+}
+
+func (v *MergedSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	return v.headers
 }
 
 func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifierView) error) error {
