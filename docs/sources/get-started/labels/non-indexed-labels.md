@@ -10,7 +10,7 @@ However, the parsing of logs at query time comes with a cost which can be signif
 large json blobs or a poorly written query using complex regex patterns.
 
 In addition, the data extracted from logs at query time is usually high cardinality, which can’t be stored
-in the index without blowing the cardinality.
+in the index as it would increase the cardinality too much, and therefore reduce the performance of the index.
 
 Non-indexed labels are a way to attach metadata to logs without indexing them. Examples of useful metadata are
 trace IDs, user IDs, and any other label that is often used in queries but has high cardinality and is expensive
