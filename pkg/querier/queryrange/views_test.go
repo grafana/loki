@@ -16,6 +16,36 @@ import (
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
+func TestGetLokiSeriesResponse(t *testing.T) {
+	p := QueryResponse{
+		Response: &QueryResponse_Series{
+			Series: &LokiSeriesResponse{
+				Status: "success",
+				Data: []logproto.SeriesIdentifier{
+					{
+						Labels: map[string]string{
+							"foo": "bar",
+							"baz": "woof",
+						},
+					},
+				},
+			}},
+	}
+	buf, err := p.Marshal()
+	require.NoError(t, err)
+
+	view, err := GetLokiSeriesResponseView(buf)
+	require.NoError(t, err)
+	actual := make([]string, 0)
+	view.ForEachSeries(func(identifier *SeriesIdentifierView) error {
+		return identifier.ForEachLabel(func(name, value string) error {
+			actual = append(actual, name+value)
+			return nil
+		})
+	})
+	require.ElementsMatch(t, actual, []string{"foobar", "bazwoof"})
+}
+
 func TestSeriesIdentifierViewHash(t *testing.T) {
 	identifier := &logproto.SeriesIdentifier{
 		Labels: map[string]string{

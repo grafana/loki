@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"fmt"
 	"io"
 	"sort"
 
@@ -11,6 +12,26 @@ import (
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
+
+func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err error) {
+	b := codec.NewBuffer(data)
+	err = molecule.MessageEach(b, func(fieldNum int32, value molecule.Value) (bool, error) {
+		if fieldNum == 1 {
+			data = value.Bytes // TODO(karsten): verify that bytes is not GC'ed
+			if len(data) > 0 {
+				view = &LokiSeriesResponseView{buffer: data}
+			}
+
+		}
+		return true, nil
+	})
+
+	if err == nil && view == nil {
+		err = fmt.Errorf("loki series response message was empty")
+	}
+
+	return
+}
 
 type LokiSeriesResponseView struct {
 	buffer  []byte
