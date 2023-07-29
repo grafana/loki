@@ -722,8 +722,8 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				return nil, err
 			}
 		}
-	case *MergedSeriesResponseView:	
-		if err := WriteSeriesResponseViewJSON(result, &buf); err != nil {
+	case *MergedSeriesResponseView:
+		if err := WriteSeriesResponseViewJSON(response, &buf); err != nil {
 			return nil, err
 		}
 	case *LokiSeriesResponse:

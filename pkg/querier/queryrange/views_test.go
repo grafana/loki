@@ -130,7 +130,7 @@ func TestMergedViewDeduplication(t *testing.T) {
 		data, err := r.Marshal()
 		require.NoError(t, err)
 
-		view.responses = append(view.responses, &LokiSeriesResponseView{data})
+		view.responses = append(view.responses, &LokiSeriesResponseView{buffer: data, headers: nil})
 	}
 
 	count := 0
@@ -161,7 +161,7 @@ func TestMergedViewJSON(t *testing.T) {
 	view := &MergedSeriesResponseView{}
 	data, err := response.Marshal()
 	require.NoError(t, err)
-	view.responses = append(view.responses, &LokiSeriesResponseView{data})
+	view.responses = append(view.responses, &LokiSeriesResponseView{buffer: data, headers: nil})
 
 	err = WriteSeriesResponseViewJSON(view, &b)
 	require.NoError(t, err)

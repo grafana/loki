@@ -17,10 +17,16 @@ type LokiSeriesResponseView struct {
 	headers []*queryrangebase.PrometheusResponseHeader
 }
 
+var _ queryrangebase.Response = &LokiSeriesResponseView{}
+
 func (v *LokiSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	return v.headers
 }
 
+// Implement proto.Message
+func (v *LokiSeriesResponseView) Reset()         {}
+func (v *LokiSeriesResponseView) String() string { return "" }
+func (v *LokiSeriesResponseView) ProtoMessage()  {}
 
 func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierView) error) error {
 	return molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, value molecule.Value) (bool, error) {
@@ -158,12 +164,19 @@ func (v *SeriesIdentifierView) Hash(b []byte, keyLabelPairs []string) (uint64, [
 
 type MergedSeriesResponseView struct {
 	responses []*LokiSeriesResponseView
-	headers []*queryrangebase.PrometheusResponseHeader
+	headers   []*queryrangebase.PrometheusResponseHeader
 }
+
+var _ queryrangebase.Response = &MergedSeriesResponseView{}
 
 func (v *MergedSeriesResponseView) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	return v.headers
 }
+
+// Implement proto.Message
+func (v *MergedSeriesResponseView) Reset()         {}
+func (v *MergedSeriesResponseView) String() string { return "" }
+func (v *MergedSeriesResponseView) ProtoMessage()  {}
 
 func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifierView) error) error {
 	uniqueSeries := make(map[uint64]struct{})
