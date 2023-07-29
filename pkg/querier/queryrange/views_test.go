@@ -269,6 +269,11 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 		httpResponses = append(httpResponses, resp)
 	}
 
+	// Originally the responses were encoded using protobuf. Demand JSON
+	// now.
+	httpReq.Header.Del("Accept")
+	httpReq.Header.Add("Accept", JSONType)
+
 	qresps := make([]queryrangebase.Response, 0, 100)
 
 	b.ReportAllocs()
@@ -287,8 +292,9 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 		result, _ := DefaultCodec.MergeResponse(qresps...)
 
 		// Encode
-		_, err = DefaultCodec.EncodeResponse(context.Background(), httpReq, result)
+		httpRes, err := DefaultCodec.EncodeResponse(context.Background(), httpReq, result)
 		require.NoError(b, err)
+		require.Equal(b, "application/json; charset=UTF-8", httpRes.Header.Get("Content-Type"))
 	}
 
 }

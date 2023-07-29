@@ -230,6 +230,11 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 	return nil
 }
 
+func (v *MergedSeriesResponseView) Materialize() (*LokiSeriesResponse, error) {
+	// TODO(karsten): implement
+	return nil, nil
+}
+
 func WriteSeriesResponseViewJSON(v *MergedSeriesResponseView, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
