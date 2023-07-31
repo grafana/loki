@@ -58,7 +58,21 @@ func NewListSeries(lset labels.Labels, s []tsdbutil.Sample) *SeriesEntry {
 
 // NewListChunkSeriesFromSamples returns chunk series entry that allows to iterate over provided samples.
 // NOTE: It uses inefficient chunks encoding implementation, not caring about chunk size.
+// Use only for testing.
 func NewListChunkSeriesFromSamples(lset labels.Labels, samples ...[]tsdbutil.Sample) *ChunkSeriesEntry {
+	chksFromSamples := make([]chunks.Meta, 0, len(samples))
+	for _, s := range samples {
+		cfs, err := tsdbutil.ChunkFromSamples(s)
+		if err != nil {
+			return &ChunkSeriesEntry{
+				Lset: lset,
+				ChunkIteratorFn: func(it chunks.Iterator) chunks.Iterator {
+					return errChunksIterator{err: err}
+				},
+			}
+		}
+		chksFromSamples = append(chksFromSamples, cfs)
+	}
 	return &ChunkSeriesEntry{
 		Lset: lset,
 		ChunkIteratorFn: func(it chunks.Iterator) chunks.Iterator {
@@ -69,9 +83,7 @@ func NewListChunkSeriesFromSamples(lset labels.Labels, samples ...[]tsdbutil.Sam
 			} else {
 				chks = make([]chunks.Meta, 0, len(samples))
 			}
-			for _, s := range samples {
-				chks = append(chks, tsdbutil.ChunkFromSamples(s))
-			}
+			chks = append(chks, chksFromSamples...)
 			if existing {
 				lcsi.Reset(chks...)
 				return lcsi
@@ -280,9 +292,10 @@ func NewSeriesToChunkEncoder(series Series) ChunkSeries {
 
 func (s *seriesToChunkEncoder) Iterator(it chunks.Iterator) chunks.Iterator {
 	var (
-		chk chunkenc.Chunk
-		app chunkenc.Appender
-		err error
+		chk, newChk chunkenc.Chunk
+		app         chunkenc.Appender
+		err         error
+		recoded     bool
 	)
 	mint := int64(math.MaxInt64)
 	maxt := int64(math.MinInt64)
@@ -299,13 +312,7 @@ func (s *seriesToChunkEncoder) Iterator(it chunks.Iterator) chunks.Iterator {
 	for typ := seriesIter.Next(); typ != chunkenc.ValNone; typ = seriesIter.Next() {
 		if typ != lastType || i >= seriesToChunkEncoderSplit {
 			// Create a new chunk if the sample type changed or too many samples in the current one.
-			if chk != nil {
-				chks = append(chks, chunks.Meta{
-					MinTime: mint,
-					MaxTime: maxt,
-					Chunk:   chk,
-				})
-			}
+			chks = appendChunk(chks, mint, maxt, chk)
 			chk, err = chunkenc.NewEmptyChunk(typ.ChunkEncoding())
 			if err != nil {
 				return errChunksIterator{err: err}
@@ -332,10 +339,34 @@ func (s *seriesToChunkEncoder) Iterator(it chunks.Iterator) chunks.Iterator {
 			app.Append(t, v)
 		case chunkenc.ValHistogram:
 			t, h = seriesIter.AtHistogram()
-			app.AppendHistogram(t, h)
+			newChk, recoded, app, err = app.AppendHistogram(nil, t, h, false)
+			if err != nil {
+				return errChunksIterator{err: err}
+			}
+			if newChk != nil {
+				if !recoded {
+					chks = appendChunk(chks, mint, maxt, chk)
+					mint = int64(math.MaxInt64)
+					// maxt is immediately overwritten below which is why setting it here won't make a difference.
+					i = 0
+				}
+				chk = newChk
+			}
 		case chunkenc.ValFloatHistogram:
 			t, fh = seriesIter.AtFloatHistogram()
-			app.AppendFloatHistogram(t, fh)
+			newChk, recoded, app, err = app.AppendFloatHistogram(nil, t, fh, false)
+			if err != nil {
+				return errChunksIterator{err: err}
+			}
+			if newChk != nil {
+				if !recoded {
+					chks = appendChunk(chks, mint, maxt, chk)
+					mint = int64(math.MaxInt64)
+					// maxt is immediately overwritten below which is why setting it here won't make a difference.
+					i = 0
+				}
+				chk = newChk
+			}
 		default:
 			return errChunksIterator{err: fmt.Errorf("unknown sample type %s", typ.String())}
 		}
@@ -350,6 +381,16 @@ func (s *seriesToChunkEncoder) Iterator(it chunks.Iterator) chunks.Iterator {
 		return errChunksIterator{err: err}
 	}
 
+	chks = appendChunk(chks, mint, maxt, chk)
+
+	if existing {
+		lcsi.Reset(chks...)
+		return lcsi
+	}
+	return NewListChunkSeriesIterator(chks...)
+}
+
+func appendChunk(chks []chunks.Meta, mint, maxt int64, chk chunkenc.Chunk) []chunks.Meta {
 	if chk != nil {
 		chks = append(chks, chunks.Meta{
 			MinTime: mint,
@@ -357,12 +398,7 @@ func (s *seriesToChunkEncoder) Iterator(it chunks.Iterator) chunks.Iterator {
 			Chunk:   chk,
 		})
 	}
-
-	if existing {
-		lcsi.Reset(chks...)
-		return lcsi
-	}
-	return NewListChunkSeriesIterator(chks...)
+	return chks
 }
 
 type errChunksIterator struct {

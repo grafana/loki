@@ -6352,6 +6352,8 @@ func (m *FilterConfig) validate(all bool) error {
 
 	// no validation rules for IsOptional
 
+	// no validation rules for Disabled
+
 	if len(errors) > 0 {
 		return FilterConfigMultiError(errors)
 	}

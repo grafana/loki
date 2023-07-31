@@ -1,5 +1,12 @@
 # Change Log
 
+## [v1.99.0] - 2023-04-24
+
+- #616 - @bentranter - Bump CI version for Go 1.20
+- #615 - @bentranter - Remove beta support for tokens API
+- #604 - @dvigueras - Add support for "Validate a Container Registry Name"
+- #613 - @ibilalkayy - updated the README file by showing up the build status icon
+
 ## [v1.98.0] - 2023-03-09
 
 - #608 - @anitgandhi - client: don't process body upon 204 response

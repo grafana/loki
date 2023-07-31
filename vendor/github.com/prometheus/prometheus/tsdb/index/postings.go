@@ -107,11 +107,11 @@ func (p *MemPostings) SortedKeys() []labels.Label {
 	}
 	p.mtx.RUnlock()
 
-	sort.Slice(keys, func(i, j int) bool {
-		if keys[i].Name != keys[j].Name {
-			return keys[i].Name < keys[j].Name
+	slices.SortFunc(keys, func(a, b labels.Label) bool {
+		if a.Name != b.Name {
+			return a.Name < b.Name
 		}
-		return keys[i].Value < keys[j].Value
+		return a.Value < b.Value
 	})
 	return keys
 }
@@ -156,10 +156,8 @@ type PostingsStats struct {
 }
 
 // Stats calculates the cardinality statistics from postings.
-func (p *MemPostings) Stats(label string) *PostingsStats {
-	const maxNumOfRecords = 10
+func (p *MemPostings) Stats(label string, limit int) *PostingsStats {
 	var size uint64
-
 	p.mtx.RLock()
 
 	metrics := &maxHeap{}
@@ -168,10 +166,10 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 	labelValuePairs := &maxHeap{}
 	numLabelPairs := 0
 
-	metrics.init(maxNumOfRecords)
-	labels.init(maxNumOfRecords)
-	labelValueLength.init(maxNumOfRecords)
-	labelValuePairs.init(maxNumOfRecords)
+	metrics.init(limit)
+	labels.init(limit)
+	labelValueLength.init(limit)
+	labelValuePairs.init(limit)
 
 	for n, e := range p.m {
 		if n == "" {
@@ -184,8 +182,9 @@ func (p *MemPostings) Stats(label string) *PostingsStats {
 			if n == label {
 				metrics.push(Stat{Name: name, Count: uint64(len(values))})
 			}
-			labelValuePairs.push(Stat{Name: n + "=" + name, Count: uint64(len(values))})
-			size += uint64(len(name))
+			seriesCnt := uint64(len(values))
+			labelValuePairs.push(Stat{Name: n + "=" + name, Count: seriesCnt})
+			size += uint64(len(name)) * seriesCnt
 		}
 		labelValueLength.push(Stat{Name: n, Count: size})
 	}
@@ -702,7 +701,6 @@ func (rp *removedPostings) Next() bool {
 			rp.fok = rp.full.Next()
 			return true
 		}
-
 		switch fcur, rcur := rp.full.At(), rp.remove.At(); {
 		case fcur < rcur:
 			rp.cur = fcur

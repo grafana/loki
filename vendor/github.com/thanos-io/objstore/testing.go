@@ -308,3 +308,7 @@ func (d *delayingBucket) IsObjNotFoundErr(err error) bool {
 	// No delay for a local operation.
 	return d.bkt.IsObjNotFoundErr(err)
 }
+
+func (d *delayingBucket) IsCustomerManagedKeyError(err error) bool {
+	return d.bkt.IsCustomerManagedKeyError(err)
+}
