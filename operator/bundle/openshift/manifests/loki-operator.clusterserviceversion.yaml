@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-07-19T14:44:10Z"
+    createdAt: "2023-07-27T16:51:31Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -731,14 +731,28 @@ spec:
       - description: OIDC defines the spec for the OIDC tenant's authentication.
         displayName: OIDC Configuration
         path: tenants.authentication[0].oidc
+      - description: IssuerCA defines the spec for the issuer CA for tenant's authentication.
+        displayName: IssuerCA ConfigMap
+        path: tenants.authentication[0].oidc.issuerCA
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].oidc.issuerCA.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].oidc.issuerCA.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: IssuerURL defines the URL for issuer.
         displayName: Issuer URL
         path: tenants.authentication[0].oidc.issuerURL
       - description: RedirectURL defines the URL for redirect.
         displayName: Redirect URL
         path: tenants.authentication[0].oidc.redirectURL
-      - description: Secret defines the spec for the clientID, clientSecret and issuerCAPath
-          for tenant's authentication.
+      - description: Secret defines the spec for the clientID and clientSecret for
+          tenant's authentication.
         displayName: Tenant Secret
         path: tenants.authentication[0].oidc.secret
       - description: Name of a secret in the namespace configured for tenant secrets.
@@ -1620,12 +1634,12 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.8.0
+                  value: quay.io/openshift-logging/loki:v2.8.3
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: quay.io/openshift-logging/loki-operator:v0.1.0
+                image: quay.io/openshift-logging/loki-operator:0.1.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1743,7 +1757,7 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.8.0
+  - image: quay.io/openshift-logging/loki:v2.8.3
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway

@@ -493,7 +493,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "test-a-ca-bundle",
-											MountPath: "/var/run/tls/tenants/test-a",
+											MountPath: "/var/run/tenants-ca/test-a",
 										},
 									},
 								},
@@ -549,7 +549,134 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 									VolumeMounts: []corev1.VolumeMount{
 										{
 											Name:      "test-a-ca-bundle",
-											MountPath: "/var/run/tls/tenants/test-a",
+											MountPath: "/var/run/tenants-ca/test-a",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test-a-ca-bundle",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-ca",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc:      "static mode with OIDC IssuerCA configured",
+			stackName: "test",
+			stackNs:   "test-ns",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Static,
+				Authentication: []lokiv1.AuthenticationSpec{
+					{
+						TenantName: "test-a",
+						TenantID:   "a",
+						OIDC: &lokiv1.OIDCSpec{
+							IssuerCA: &lokiv1.CASpec{
+								CA:    "my-ca",
+								CAKey: "my-ca-key",
+							},
+						},
+					},
+				},
+			},
+			dpl: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{"--tls.client-auth-type=NoClientCert"},
+								},
+							},
+						},
+					},
+				},
+			},
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									Args: []string{"--tls.client-auth-type=NoClientCert"},
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test-a-ca-bundle",
+											MountPath: "/var/run/tenants-ca/test-a",
+										},
+									},
+								},
+							},
+							Volumes: []corev1.Volume{
+								{
+									Name: "test-a-ca-bundle",
+									VolumeSource: corev1.VolumeSource{
+										ConfigMap: &corev1.ConfigMapVolumeSource{
+											LocalObjectReference: corev1.LocalObjectReference{
+												Name: "my-ca",
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			desc:      "dynamic mode with mTLS tenant configured",
+			stackName: "test",
+			stackNs:   "test-ns",
+			tenants: &lokiv1.TenantsSpec{
+				Mode: lokiv1.Dynamic,
+				Authentication: []lokiv1.AuthenticationSpec{
+					{
+						TenantName: "test-a",
+						TenantID:   "a",
+						OIDC: &lokiv1.OIDCSpec{
+							IssuerCA: &lokiv1.CASpec{
+								CA:    "my-ca",
+								CAKey: "my-ca-key",
+							},
+						},
+					},
+				},
+			},
+			dpl: defaultGatewayDeployment(),
+			want: &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Namespace: "test-ns",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Template: corev1.PodTemplateSpec{
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name: gatewayContainerName,
+									VolumeMounts: []corev1.VolumeMount{
+										{
+											Name:      "test-a-ca-bundle",
+											MountPath: "/var/run/tenants-ca/test-a",
 										},
 									},
 								},

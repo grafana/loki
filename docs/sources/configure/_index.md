@@ -1442,7 +1442,9 @@ lifecycler:
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 32]
 
-# How often should the ingester see if there are any blocks to flush.
+# How often should the ingester see if there are any blocks to flush. The first
+# flush check is delayed by a random time up to 0.8x the flush check period.
+# Additionally, there is +/- 1% jitter added to the interval.
 # CLI flag: -ingester.flush-check-period
 [flush_check_period: <duration> | default = 30s]
 
@@ -3607,7 +3609,7 @@ The `grpc_client` block configures the gRPC client used to communicate between t
 # CLI flag: -<prefix>.grpc-client-rate-limit-burst
 [rate_limit_burst: <int> | default = 0]
 
-# Enable backoff and retry when we hit ratelimits.
+# Enable backoff and retry when we hit rate limits.
 # CLI flag: -<prefix>.backoff-on-ratelimits
 [backoff_on_ratelimits: <boolean> | default = false]
 
@@ -3624,7 +3626,19 @@ backoff_config:
   # CLI flag: -<prefix>.backoff-retries
   [max_retries: <int> | default = 10]
 
-# Enable TLS in the GRPC client. This flag needs to be enabled when any other
+# Initial stream window size. Values less than the default are not supported and
+# are ignored. Setting this to a value other than the default disables the BDP
+# estimator.
+# CLI flag: -<prefix>.initial-stream-window-size
+[initial_stream_window_size: <int> | default = 63KiB1023B]
+
+# Initial connection window size. Values less than the default are not supported
+# and are ignored. Setting this to a value other than the default disables the
+# BDP estimator.
+# CLI flag: -<prefix>.initial-connection-window-size
+[initial_connection_window_size: <int> | default = 63KiB1023B]
+
+# Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
 # CLI flag: -<prefix>.tls-enabled
@@ -3692,9 +3706,9 @@ backoff_config:
 [tls_min_version: <string> | default = ""]
 
 # The maximum amount of time to establish a connection. A value of 0 means
-# default gRPC connect timeout and backoff.
+# default gRPC client connect timeout and backoff.
 # CLI flag: -<prefix>.connect-timeout
-[connect_timeout: <duration> | default = 0s]
+[connect_timeout: <duration> | default = 5s]
 
 # Initial backoff delay after first connection failure. Only relevant if
 # ConnectTimeout > 0.

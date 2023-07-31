@@ -182,6 +182,7 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt
 	})
 
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)

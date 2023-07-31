@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"io"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -25,10 +28,22 @@ func parseKinesisEvent(ctx context.Context, b batchIf, ev *events.KinesisEvent) 
 
 		labels = applyExtraLabels(labels)
 
-		b.add(ctx, entry{labels, logproto.Entry{
-			Line:      string(record.Kinesis.Data),
-			Timestamp: timestamp,
-		}})
+		// Check if the data is gzipped by inspecting the 'data' field
+		if isGzipped(record.Kinesis.Data) {
+			uncompressedData, err := ungzipData(record.Kinesis.Data)
+			if err != nil {
+				return err
+			}
+			b.add(ctx, entry{labels, logproto.Entry{
+				Line:      string(uncompressedData),
+				Timestamp: timestamp,
+			}})
+		} else {
+			b.add(ctx, entry{labels, logproto.Entry{
+				Line:      string(record.Kinesis.Data),
+				Timestamp: timestamp,
+			}})
+		}
 	}
 
 	return nil
@@ -47,4 +62,20 @@ func processKinesisEvent(ctx context.Context, ev *events.KinesisEvent, pClient C
 		return err
 	}
 	return nil
+}
+
+// isGzipped checks if the input data is gzipped
+func isGzipped(data []byte) bool {
+	return len(data) >= 2 && data[0] == 0x1F && data[1] == 0x8B
+}
+
+// unzipData decompress the gzipped data
+func ungzipData(data []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewBuffer(data))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	return io.ReadAll(reader)
 }

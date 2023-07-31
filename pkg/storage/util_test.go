@@ -248,7 +248,7 @@ func (m *mockChunkStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Ti
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, false, m.schemas, m.client, 10, 100)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -259,7 +259,7 @@ func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ .
 	return nil, nil
 }
 
-func (m *mockChunkStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 
