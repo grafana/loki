@@ -64,15 +64,14 @@ respectively.
 
 The `nonIndexedLabels` section stores non-repeated strings. It is used to store label names and label values from
 [non-indexed labels]({{< relref "./labels/non-indexed-labels" >}}).
-Note that the labels strings and lengths within the `nonIndexedLabels` section are stored compressed using Gzip.
+Note that the labels strings and lengths within the `nonIndexedLabels` section are stored compressed.
 
 ### Block Format
 
 A block is comprised of a series of entries, each of which is an individual log
 line.
 
-Note that the bytes of a block are stored compressed using Gzip. The following
-is their form when uncompressed:
+Note that the bytes of a block are stored compressed. The following is their form when uncompressed:
 
 ```
 -----------------------------------------------------------------------------------------------------------------------------------------------

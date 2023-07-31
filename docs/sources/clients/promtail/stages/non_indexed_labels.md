@@ -41,4 +41,4 @@ Given the following log line:
 
 The first stage would extract `stream` with a value of `stderr` and `traceID` with a value of `0242ac120002` into the
 extracted map of labels. The labels stage would turn that `stream` and `stderr` key-value pair into a label.
-The `non_indexed_labels` stage would attach the `traceID` and `0242ac120002` key-value pair as a non-indexed label metadata to the log line.,
+The `non_indexed_labels` stage would attach the `traceID` and `0242ac120002` key-value pair as a non-indexed label metadata to the log line.
