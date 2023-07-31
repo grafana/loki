@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -173,6 +174,50 @@ func TestMergedViewDeduplication(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, 3, count)
+}
+
+func TestMergedViewMaterialize(t *testing.T) {
+	responses := []*LokiSeriesResponse{
+		{
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"i": "1", "baz": "woof"},
+				},
+				{
+					Labels: map[string]string{"i": "2", "foo": "bar"},
+				},
+			},
+		},
+		{
+			Data: []logproto.SeriesIdentifier{
+				{
+					Labels: map[string]string{"i": "3", "baz": "woof"},
+				},
+				{
+					Labels: map[string]string{"i": "2", "foo": "bar"},
+				},
+			},
+		},
+	}
+
+	view := &MergedSeriesResponseView{}
+	for _, r := range responses {
+		data, err := r.Marshal()
+		require.NoError(t, err)
+
+		view.responses = append(view.responses, &LokiSeriesResponseView{buffer: data, headers: nil})
+	}
+
+	mat, err := view.Materialize()
+	require.NoError(t, err)
+	require.Len(t, mat.Data, 3)
+	series := make([]string, 0)
+	for _, d := range mat.Data {
+		series = append(series, labels.FromMap(d.Labels).String())
+	}
+	expected := []string{`{baz="woof", i="1"}`, `{baz="woof", i="3"}`, `{foo="bar", i="2"}`}
+	require.ElementsMatch(t, series, expected)
+
 }
 
 func TestMergedViewJSON(t *testing.T) {

@@ -10,6 +10,7 @@ import (
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
@@ -262,8 +263,17 @@ func (v *MergedSeriesResponseView) ForEachUniqueSeries(fn func(*SeriesIdentifier
 // Materialize produces a LokiSeriesResponse instance that is a deserialized
 // probobuf message.
 func (v *MergedSeriesResponseView) Materialize() (*LokiSeriesResponse, error) {
-	// TODO(karsten): implement
-	return nil, nil
+	mat := &LokiSeriesResponse{}
+	err := v.ForEachUniqueSeries(func(series *SeriesIdentifierView) error {
+		identifier := logproto.SeriesIdentifier{Labels: make(map[string]string)}
+		series.ForEachLabel(func(name, value string) error {
+			identifier.Labels[name] = value
+			return nil
+		})
+		mat.Data = append(mat.Data, identifier)
+		return nil
+	})
+	return mat, err
 }
 
 // WriteSeriesResponseViewJSON writes a JSON response to the supplied write that
