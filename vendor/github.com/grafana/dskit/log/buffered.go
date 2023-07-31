@@ -113,31 +113,30 @@ func NewBufferedLogger(w io.Writer, cap uint32, opts ...BufferedLoggerOption) *B
 
 // threadsafeBuffer wraps the non-threadsafe bytes.Buffer.
 type threadsafeBuffer struct {
-	sync.RWMutex
-
+	mx  sync.Mutex
 	buf *bytes.Buffer
 }
 
 // Read reads up to len(p) bytes into p. It returns the number of bytes read (0 <= n <= len(p)) and any error encountered.
 func (t *threadsafeBuffer) Read(p []byte) (n int, err error) {
-	t.RLock()
-	defer t.RUnlock()
+	t.mx.Lock()
+	defer t.mx.Unlock()
 
 	return t.buf.Read(p)
 }
 
 // Write writes the given bytes to the underlying writer.
 func (t *threadsafeBuffer) Write(p []byte) (n int, err error) {
-	t.Lock()
-	defer t.Unlock()
+	t.mx.Lock()
+	defer t.mx.Unlock()
 
 	return t.buf.Write(p)
 }
 
 // WriteTo writes the buffered lines to the given writer.
 func (t *threadsafeBuffer) WriteTo(w io.Writer) (n int64, err error) {
-	t.Lock()
-	defer t.Unlock()
+	t.mx.Lock()
+	defer t.mx.Unlock()
 
 	return t.buf.WriteTo(w)
 }
@@ -146,8 +145,8 @@ func (t *threadsafeBuffer) WriteTo(w io.Writer) (n int64, err error) {
 // but it retains the underlying storage for use by future writes.
 // Reset is the same as Truncate(0).
 func (t *threadsafeBuffer) Reset() {
-	t.Lock()
-	defer t.Unlock()
+	t.mx.Lock()
+	defer t.mx.Unlock()
 
 	t.buf.Reset()
 }
