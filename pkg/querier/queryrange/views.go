@@ -15,8 +15,8 @@ import (
 )
 
 // GetLokiSeriesResponseView returns a view on the series response of a
-// QueryResponse. Returns and error if the message was empty. Note: the method
-// does not verify that the reply is a propberly encoded QueryResponse protobuf.
+// QueryResponse. Returns an error if the message was empty. Note: the method
+// does not verify that the reply is a properly encoded QueryResponse protobuf.
 func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err error) {
 	b := codec.NewBuffer(data)
 	err = molecule.MessageEach(b, func(fieldNum int32, value molecule.Value) (bool, error) {
@@ -26,7 +26,7 @@ func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err e
 				// copy here by using value.Bytes
 				data, err = value.AsBytesSafe()
 				if err != nil {
-					return false, err
+					return false, fmt.Errorf("could not allocate message bytes: %w", err)
 				}
 				view = &LokiSeriesResponseView{buffer: data}
 			}
@@ -110,7 +110,9 @@ func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error
 				return false, err
 			}
 
-			// TODO(karsten): check length of pair
+			if len(pair) != 2 {
+				return false, fmt.Errorf("unexpected label pair length, go (%d), want (2)", len(pair))
+			}
 
 			err = fn(pair[0], pair[1])
 			if err != nil {
@@ -266,10 +268,14 @@ func (v *MergedSeriesResponseView) Materialize() (*LokiSeriesResponse, error) {
 	mat := &LokiSeriesResponse{}
 	err := v.ForEachUniqueSeries(func(series *SeriesIdentifierView) error {
 		identifier := logproto.SeriesIdentifier{Labels: make(map[string]string)}
-		series.ForEachLabel(func(name, value string) error {
+		err := series.ForEachLabel(func(name, value string) error {
 			identifier.Labels[name] = value
 			return nil
 		})
+		if err != nil {
+			return err
+		}
+
 		mat.Data = append(mat.Data, identifier)
 		return nil
 	})
