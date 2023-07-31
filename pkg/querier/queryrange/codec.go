@@ -655,9 +655,11 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 	}
 
 	// Shortcut series responses without deserialization.
-	if _, ok := req.(*LokiSeriesRequest); ok {
-		return GetLokiSeriesResponseView(buf)
-	}
+	/*
+		if _, ok := req.(*LokiSeriesRequest); ok {
+			return GetLokiSeriesResponseView(buf)
+		}
+	*/
 
 	resp := &QueryResponse{}
 	err = resp.Unmarshal(buf)

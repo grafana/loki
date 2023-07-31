@@ -1,7 +1,9 @@
 package queryrange
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -263,9 +265,16 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 	}
 
 	httpResponses := make([]*http.Response, 0)
+	readers := make([]*bytes.Reader, 0)
 	for _, r := range responses {
 		resp, err := DefaultCodec.EncodeResponse(context.Background(), httpReq, r)
 		require.NoError(b, err)
+		buf, err := io.ReadAll(resp.Body)
+		require.Nil(b, err)
+		reader := bytes.NewReader(buf)
+		resp.Body = io.NopCloser(reader)
+		readers = append(readers, reader)
+
 		httpResponses = append(httpResponses, resp)
 	}
 
@@ -282,7 +291,8 @@ func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		// Decode
 		qresps = qresps[:0]
-		for _, httpResp := range httpResponses {
+		for i, httpResp := range httpResponses {
+			_, _ = readers[i].Seek(0, io.SeekStart)
 			qresp, err := DefaultCodec.DecodeResponse(context.Background(), httpResp, qreq)
 			require.NoError(b, err)
 			qresps = append(qresps, qresp)
