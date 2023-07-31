@@ -149,7 +149,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 			idx := &mockIndexWriter{}
 			client := &mockChunksClient{}
 
-			f, err := fetcher.New(cache, false, schemaConfig, client, 1, 1)
+			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 1, 1, 0)
 			require.NoError(t, err)
 
 			cw := NewChunkWriter(f, schemaConfig, idx, true)
