@@ -211,36 +211,6 @@ func TestMergedViewJSON(t *testing.T) {
 	require.JSONEq(t, expected, actual)
 }
 
-func Benchmark_DecodeAndMergeSeriesResponses(b *testing.B) {
-	var err error
-	data := make([][]byte, 100)
-	for i := range data {
-		r := &LokiSeriesResponse{
-			Status:     "200",
-			Version:    1,
-			Statistics: stats.Result{},
-			Data:       generateSeries(),
-		}
-		data[i], err = r.Marshal()
-		require.NoError(b, err)
-	}
-
-	view := &MergedSeriesResponseView{}
-	for _, d := range data {
-		view.responses = append(view.responses, &LokiSeriesResponseView{buffer: d})
-	}
-	var builder strings.Builder
-
-	b.ReportAllocs()
-	b.ResetTimer()
-
-	for n := 0; n < b.N; n++ {
-		builder.Reset()
-		err := WriteSeriesResponseViewJSON(view, &builder)
-		require.Nil(b, err)
-	}
-}
-
 func Benchmark_DecodeMergeEncodeCycle(b *testing.B) {
 	// Setup HTTP responses from querier with protobuf encoding.
 	u := &url.URL{Path: "/loki/api/v1/series"}
