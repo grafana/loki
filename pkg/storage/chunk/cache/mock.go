@@ -10,6 +10,7 @@ import (
 type MockCache interface {
 	Cache
 	NumKeyUpdates() int
+	GetInternal() map[string][]byte
 }
 
 type mockCache struct {
@@ -52,6 +53,10 @@ func (m *mockCache) GetCacheType() stats.CacheType {
 
 func (m *mockCache) NumKeyUpdates() int {
 	return m.numKeyUpdates
+}
+
+func (m *mockCache) GetInternal() map[string][]byte {
+	return m.cache
 }
 
 // NewMockCache makes a new MockCache.
