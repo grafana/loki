@@ -39,12 +39,13 @@ func TestGetLokiSeriesResponse(t *testing.T) {
 	view, err := GetLokiSeriesResponseView(buf)
 	require.NoError(t, err)
 	actual := make([]string, 0)
-	view.ForEachSeries(func(identifier *SeriesIdentifierView) error {
+	err = view.ForEachSeries(func(identifier *SeriesIdentifierView) error {
 		return identifier.ForEachLabel(func(name, value string) error {
 			actual = append(actual, name+value)
 			return nil
 		})
 	})
+	require.NoError(t, err)
 	require.ElementsMatch(t, actual, []string{"foobar", "bazwoof"})
 }
 

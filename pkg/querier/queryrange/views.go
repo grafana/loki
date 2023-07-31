@@ -17,8 +17,13 @@ func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err e
 	b := codec.NewBuffer(data)
 	err = molecule.MessageEach(b, func(fieldNum int32, value molecule.Value) (bool, error) {
 		if fieldNum == 1 {
-			data = value.Bytes // TODO(karsten): verify that bytes is not GC'ed
-			if len(data) > 0 {
+			if len(value.Bytes) > 0 {
+				// We might be able to avoid an allocation and
+				// copy here by using value.Bytes
+				data, err = value.AsBytesSafe()
+				if err != nil {
+					return false, err
+				}
 				view = &LokiSeriesResponseView{buffer: data}
 			}
 
