@@ -4,7 +4,7 @@ go 1.19
 
 require (
 	github.com/ViaQ/logerr/v2 v2.1.0
-	github.com/go-logr/logr v1.2.3
+	github.com/go-logr/logr v1.2.4
 	github.com/google/go-cmp v0.5.9
 	github.com/google/uuid v1.3.0
 	github.com/grafana/loki v1.6.2-0.20230403212622-90888a0cc737
