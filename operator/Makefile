@@ -24,7 +24,7 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 VERSION ?= 0.4.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
-SUPPORTED_OCP_VERSIONS="v4.10"
+SUPPORTED_OCP_VERSIONS="v4.12"
 
 # REGISTRY_BASE
 # defines the container registry and organization for the bundle and operator container images.
