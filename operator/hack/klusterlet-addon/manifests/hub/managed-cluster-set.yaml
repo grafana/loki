@@ -1,0 +1,7 @@
+apiVersion: cluster.open-cluster-management.io/v1beta2
+kind: ManagedClusterSet
+metadata:
+  name: hub-logging-clusters
+spec:
+  clusterSelector:
+    selectorType: ExclusiveClusterSetLabel
