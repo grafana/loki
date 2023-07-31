@@ -279,7 +279,6 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}))
 	}
 
-	//results := make([]labels.Labels, 0, len(chunksBySeries))
 	resultsChan := make(chan []labels.Labels, len(jobs))
 
 	// Picking an arbitrary bound of 20 numConcurrent jobs.
