@@ -15,13 +15,13 @@ toc: true
 
 This document describes how to recover the ingester pods in the event of a zone failure.
 
-_Disclaimer:_ This document describes a recovery procedure by manually recreating the failed pods in another zone. Right now, we are doing this by deleting PVCs of the impacted pods from the failed zone, so it can be recreated in a different zone. This will cause data loss of the data in the PVC. To avoid actual data loss we always set the replication factor in loki to be 1 or higher so data is always replicated.
+_Disclaimer:_ This document describes a recovery procedure by manually recreating the failed pods in another zone. Right now, we are doing this by deleting PVCs of the impacted pods from the failed zone, so they can be recreated in a different zone. This will cause data loss of the data in the PVC. To avoid actual data loss we always set the replication factor in loki to be 1 or higher so data is always replicated.
 
 ## Ingester recovery during a Zone Failure
 
 In a Kubernetes/Openshift cluster, a "zone failure" refers to a situation where nodes or resources in a specific availability zone become unavailable. An availability zone is a distinct location within a cloud provider's data center or region, designed to be isolated from failures in other zones to provide better redundancy and fault tolerance. When a zone failure occurs, it can lead to a loss of services or data if the cluster is not configured properly to handle such scenarios.
 
-This document outlines steps that can be taken to recover ingester pods when there is a zone failure. Ingester pods are deployed as a part of a Statefulset. The Ingester Statefulset also has PVCs associated with the pods. Each Ingester Pod and its associated PVCs are deployed in the same zone as the pod. This is done by using the storageclass.
+This document outlines steps that can be taken to recover ingester pods when there is a zone failure. Ingester pods are deployed as a part of a Statefulset. The Ingester Statefulset also has PVCs associated with the pods which are dynamically provisioned through the use of StorageClass. Each Ingester Pod and its associated PVCs are deployed in the same zone.
 
 When a zone failure occurs in a cluster, the StatefulSet controller will automatically attempt to recover the affected pods in the failed zone. This document outlines the additional manual intervention required to make sure that the ingester pods are succesfully recreated in a new zone.
 
@@ -29,7 +29,7 @@ When a zone failure occurs in a cluster, the StatefulSet controller will automat
 
 * Reschedule Pods: The Ingester StatefulSet controller will automatically attempt to reschedule the pods that were running in the failed zone to nodes in another zone.
   
-* Since the Statefulset has PVCs which are also in the failed zone, automatic reschedule of the Ingester pods will not work. Manual intervention is required at this point.
+* Since the Statefulset has PVCs which are also in the failed zone, automatic reschedule of the Ingester pods to a different zone will not work. See - [Storage access for zones](https://kubernetes.io/docs/setup/best-practices/multiple-zones/#storage-access-for-zones). Manual intervention is required at this point to delete the old pvcs in the failed zone to allow succesful recreation of the Ingester Pod & Pvc in the new zone.
 
     Example showing an ingester pod that is in a pending state, after the statefulset has unsuccesfully tried to reschedule it to a different zone.
     Ingester-1 is in Pending state because it cannot be scheduled in a new node in a different zone:
