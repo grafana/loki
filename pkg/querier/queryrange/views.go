@@ -273,7 +273,7 @@ func (v *MergedSeriesResponseView) Materialize() (*LokiSeriesResponse, error) {
 			return nil
 		})
 		if err != nil {
-			return err
+			return fmt.Errorf("error stepping through labels of series: %w", err)
 		}
 
 		mat.Data = append(mat.Data, identifier)
