@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/richardartoul/molecule"
 	"github.com/richardartoul/molecule/src/codec"
@@ -14,13 +15,28 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
+// Pull fiel numbers from protobuf message descriptions.
+var (
+	queryResponse               *QueryResponse
+	_, queryResponseDescription = descriptor.ForMessage(queryResponse)
+	seriesResponseFieldNumber   = queryResponseDescription.GetFieldDescriptor("series").GetNumber()
+
+	seriesResponse               *LokiSeriesResponse
+	_, seriesResponseDescription = descriptor.ForMessage(seriesResponse)
+	dataFieldNumber              = seriesResponseDescription.GetFieldDescriptor("Data").GetNumber()
+
+	seriesIdentifier               *logproto.SeriesIdentifier
+	_, seriesIdentifierDescription = descriptor.ForMessage(seriesIdentifier)
+	labelsFieldNumber              = seriesIdentifierDescription.GetFieldDescriptor("labels").GetNumber()
+)
+
 // GetLokiSeriesResponseView returns a view on the series response of a
 // QueryResponse. Returns an error if the message was empty. Note: the method
 // does not verify that the reply is a properly encoded QueryResponse protobuf.
 func GetLokiSeriesResponseView(data []byte) (view *LokiSeriesResponseView, err error) {
 	b := codec.NewBuffer(data)
 	err = molecule.MessageEach(b, func(fieldNum int32, value molecule.Value) (bool, error) {
-		if fieldNum == 1 {
+		if fieldNum == seriesResponseFieldNumber {
 			if len(value.Bytes) > 0 {
 				// We might be able to avoid an allocation and
 				// copy here by using value.Bytes
@@ -64,7 +80,7 @@ func (v *LokiSeriesResponseView) ProtoMessage()  {}
 // view on each identifier to the callback supplied.
 func (v *LokiSeriesResponseView) ForEachSeries(fn func(view *SeriesIdentifierView) error) error {
 	return molecule.MessageEach(codec.NewBuffer(v.buffer), func(fieldNum int32, value molecule.Value) (bool, error) {
-		if fieldNum == 2 {
+		if fieldNum == dataFieldNumber {
 			identifier, err := value.AsBytesUnsafe()
 			if err != nil {
 				return false, err
@@ -128,6 +144,7 @@ func (v *SeriesIdentifierView) ForEachLabel(fn func(string, string) error) error
 	})
 }
 
+// This is the separator define in the Prometheus Labels.Hash function.
 var sep = string([]byte{'\xff'})
 
 // HashFast is a faster version of the Hash method that uses an unsafe string of
