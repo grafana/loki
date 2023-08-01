@@ -2,20 +2,19 @@ package helloworld_agent
 
 import (
 	"context"
-	"os"
 	"reflect"
 	"time"
 
+	loggingv1client "github.com/grafana/loki/operator/hack/klusterlet-addon/agent/internal/client-go"
 	"github.com/grafana/loki/operator/hack/klusterlet-addon/agent/internal/manifests"
+	loggingv1 "github.com/openshift/cluster-logging-operator/apis/logging/v1"
 	"github.com/spf13/cobra"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
-	corev1informers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
-	corev1lister "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
@@ -25,7 +24,6 @@ import (
 	"open-cluster-management.io/addon-framework/pkg/lease"
 	"open-cluster-management.io/addon-framework/pkg/version"
 	addonv1alpha1client "open-cluster-management.io/api/client/addon/clientset/versioned"
-	loggingv1 "github.com/openshift/cluster-logging-operator/apis/logging/v1"
 )
 
 const (
@@ -52,7 +50,6 @@ type AgentOptions struct {
 	AddonName             string
 	AddonNamespace        string
 	LokiHubURL            string
-	CABundleFilePath      string
 }
 
 // NewAgentOptions returns the flags with default value set
@@ -71,7 +68,6 @@ func (o *AgentOptions) AddFlags(cmd *cobra.Command) {
 	flags.StringVar(&o.AddonNamespace, "addon-namespace", o.AddonNamespace, "Installation namespace of addon.")
 	flags.StringVar(&o.AddonName, "addon-name", o.AddonName, "name of the addon.")
 	flags.StringVar(&o.AddonName, "loki-hub-url", o.LokiHubURL, "Loki Hub URL where to forward logs to")
-	flags.StringVar(&o.AddonName, "ca-bundle-file-path", o.CABundleFilePath, "Location of the CA Bundle of the Loki Hub")
 }
 
 // RunAgent starts the controllers on agent to process work from hub.
@@ -81,14 +77,25 @@ func (o *AgentOptions) RunAgent(ctx context.Context, kubeconfig *rest.Config) er
 	if err != nil {
 		return err
 	}
+	managementLoggingClient, err := loggingv1client.NewClient(kubeconfig)
+	if err != nil {
+		return err
+	}
 
 	spokeKubeClient := managementKubeClient
+	spokeLoggingClient := managementLoggingClient
 	if len(o.ManagedKubeconfigFile) != 0 {
 		managedRestConfig, err := clientcmd.BuildConfigFromFlags("" /* leave masterurl as empty */, o.ManagedKubeconfigFile)
 		if err != nil {
 			return err
 		}
+
 		spokeKubeClient, err = kubernetes.NewForConfig(managedRestConfig)
+		if err != nil {
+			return err
+		}
+
+		spokeLoggingClient, err = loggingv1client.NewClient(managedRestConfig)
 		if err != nil {
 			return err
 		}
@@ -103,23 +110,28 @@ func (o *AgentOptions) RunAgent(ctx context.Context, kubeconfig *rest.Config) er
 	if err != nil {
 		return err
 	}
+
 	addonClient, err := addonv1alpha1client.NewForConfig(hubRestConfig)
 	if err != nil {
 		return err
 	}
-	hubKubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(hubKubeClient, 10*time.Minute, informers.WithNamespace(o.SpokeClusterName))
+
+	// Build informer to watch openshift-logging ns on Hub cluster for CABundle
+	hubKubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(hubKubeClient, 10*time.Minute, informers.WithNamespace(openshiftLoggingNamespace))
 
 	// create an agent controller
 	agent := newAgentController(
 		spokeKubeClient,
+		*spokeLoggingClient,
 		addonClient,
-		hubKubeInformerFactory.Core().V1().ConfigMaps(),
+		[]factory.Informer{
+			hubKubeInformerFactory.Core().V1().ConfigMaps().Informer(),
+		},
 		o.SpokeClusterName,
 		o.AddonName,
 		o.AddonNamespace,
 		hubKubeClient,
 		o.LokiHubURL,
-		o.CABundleFilePath,
 	)
 	// create a lease updater
 	leaseUpdater := lease.NewLeaseUpdater(
@@ -138,86 +150,54 @@ func (o *AgentOptions) RunAgent(ctx context.Context, kubeconfig *rest.Config) er
 
 type agentController struct {
 	spokeKubeClient    kubernetes.Interface
+	spokeLoggingClient loggingv1client.ClusterLogForwarderV1Client
 	addonClient        addonv1alpha1client.Interface
-	hubConfigMapLister corev1lister.ConfigMapLister
 	clusterName        string
 	addonName          string
 	addonNamespace     string
 	hubKubeClient      kubernetes.Interface
 	lokiHubURL         string
-	caBundleFilePath   string
 }
 
 func newAgentController(
 	spokeKubeClient kubernetes.Interface,
+	spokeLoggingClient loggingv1client.ClusterLogForwarderV1Client,
 	addonClient addonv1alpha1client.Interface,
-	configmapInformers corev1informers.ConfigMapInformer,
+	informers []factory.Informer,
 	clusterName string,
 	addonName string,
 	addonNamespace string,
 	hubKubeClient kubernetes.Interface,
 	lokiHubURL string,
-	caBundleFilePath string,
 ) factory.Controller {
 	c := &agentController{
 		spokeKubeClient:    spokeKubeClient,
+		spokeLoggingClient: spokeLoggingClient,
 		addonClient:        addonClient,
 		clusterName:        clusterName,
 		addonName:          addonName,
 		addonNamespace:     addonNamespace,
-		hubConfigMapLister: configmapInformers.Lister(),
 		hubKubeClient:      hubKubeClient,
 		lokiHubURL:         lokiHubURL,
-		caBundleFilePath:   caBundleFilePath,
 	}
 	return factory.New().WithInformersQueueKeysFunc(
 		func(obj runtime.Object) []string {
 			key, _ := cache.MetaNamespaceKeyFunc(obj)
 			return []string{key}
-		}, configmapInformers.Informer()).
-		WithSync(c.sync).ToController("helloworld-agent-controller")
+		}, informers...).
+		WithSync(c.sync).ToController("clusterlogforwarder-agent-controller")
 }
 
 func (c *agentController) sync(ctx context.Context, syncCtx factory.SyncContext, key string) error {
 	klog.V(4).Infof("Reconciling addon deploy %q", key)
 
-	secret := generateMTLSSecret()
-	clfSecret, err := generateCLFSecret(secret, c.caBundleFilePath)
-	if err != nil {
-		return err
-	}
-	if err := spokeEnsureSecret(ctx, c, openshiftLoggingNamespace, clfSecret); err != nil {
-		return err
-	}
-
-	caBundleConfigMap := generateCABundleConfigMap(secret)
-	if err := hubEnsureConfigMap(ctx, c, openshiftLoggingNamespace, caBundleConfigMap); err != nil {
-		return err
-	}
-
-	clf, err := manifests.BuildClusterLogForwarder(c.lokiHubURL, clfSecret.Name)
-	if err != nil {
-		return nil
-	}
-	// Move manifests to golang
-	// Build policies
-	// Deploy policies
-
-	clusterName, name, err := cache.SplitMetaNamespaceKey(key)
-	if err != nil {
+	namespace, name, err := cache.SplitMetaNamespaceKey(key)
+	if err != nil || namespace != "openshift-logging" {
 		// ignore addon whose key is not in format: namespace/name
 		return nil
 	}
 
-	cm, err := c.hubConfigMapLister.ConfigMaps(clusterName).Get(name)
-	switch {
-	case errors.IsNotFound(err):
-		return nil
-	case err != nil:
-		return err
-	}
-
-	addon, err := c.addonClient.AddonV1alpha1().ManagedClusterAddOns(clusterName).Get(ctx, c.addonName, metav1.GetOptions{})
+	addon, err := c.addonClient.AddonV1alpha1().ManagedClusterAddOns(c.clusterName).Get(ctx, c.addonName, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -225,43 +205,33 @@ func (c *agentController) sync(ctx context.Context, syncCtx factory.SyncContext,
 		return nil
 	}
 
-	configmap := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      cm.Name,
-			Namespace: c.addonNamespace,
-			Labels:    map[string]string{"synced-from-hub": ""},
-		},
-		Data: cm.Data,
+	// Generate mTLS secret to be used by Spoke cluster
+	hubCABundleConfigMap, err := c.hubKubeClient.CoreV1().ConfigMaps(openshiftLoggingNamespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return err
 	}
-
-	existing, err := c.spokeKubeClient.CoreV1().ConfigMaps(c.addonNamespace).Get(ctx, configmap.Name, metav1.GetOptions{})
-	switch {
-	case errors.IsNotFound(err):
-		_, createErr := c.spokeKubeClient.CoreV1().ConfigMaps(c.addonNamespace).Create(ctx, configmap, metav1.CreateOptions{})
-		return createErr
-	case err != nil:
+	secret := generateMTLSSecret()
+	clfSecret := generateCLFSecret(secret, *hubCABundleConfigMap)
+	if err := spokeEnsureSecret(ctx, c, openshiftLoggingNamespace, clfSecret); err != nil {
 		return err
 	}
 
-	if reflect.DeepEqual(existing.Data, configmap.Data) {
-		return nil
+	// Create CABundle in Hub cluster for Loki to validate mTLS cert
+	caBundleConfigMap := generateCABundleConfigMap(secret, c.clusterName)
+	if err := hubEnsureConfigMap(ctx, c, openshiftLoggingNamespace, caBundleConfigMap); err != nil {
+		return err
 	}
 
-	configmap.ResourceVersion = existing.ResourceVersion
-	_, err = c.spokeKubeClient.CoreV1().ConfigMaps(c.addonNamespace).Update(ctx, configmap, metav1.UpdateOptions{})
-	return err
+	// Configure ClusterLogForwarder
+	clf := manifests.BuildClusterLogForwarder(c.lokiHubURL, clfSecret.Name)
+	return spokeEnsureClusterLogForwarder(ctx, c, clf)
 }
 
 // generateCLFSecret returns a secret that will be used by the
 // ClusterLogForwarding resource to forward logs to the Loki Hub.
 // Follows the format described here
 // https://github.com/openshift/cluster-logging-operator/blob/master/apis/logging/v1/cluster_log_forwarder_types.go#L228-L234
-func generateCLFSecret(spokeSecret corev1.Secret, caBundleFilePath string) (*corev1.Secret, error) {
-	caBundle, err := os.ReadFile(caBundleFilePath)
-	if err != nil {
-		return nil, err
-	}
-
+func generateCLFSecret(spokeSecret corev1.Secret, caBundleConfigMap corev1.ConfigMap) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "mtls-spoke-hub",
@@ -269,8 +239,8 @@ func generateCLFSecret(spokeSecret corev1.Secret, caBundleFilePath string) (*cor
 		Data: map[string][]byte{
 			corev1.TLSCertKey:       spokeSecret.Data[corev1.TLSCertKey],
 			corev1.TLSPrivateKeyKey: spokeSecret.Data[corev1.TLSPrivateKeyKey],
-			"ca-bundle.crt":         caBundle,
-		}}, nil
+			"ca-bundle.crt":         []byte(caBundleConfigMap.Data["KEY"]), //TODO (JoaoBraveCoding) fix me key
+		}}
 }
 
 // generateMTLSSecret returns a fully configured secret that will be rotated by
@@ -280,10 +250,10 @@ func generateMTLSSecret() corev1.Secret {
 	return corev1.Secret{}
 }
 
-func generateCABundleConfigMap(s corev1.Secret) *corev1.ConfigMap {
+func generateCABundleConfigMap(s corev1.Secret, clusterName string) *corev1.ConfigMap {
 	return &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "tenantName", //TODO (JoaoBraveCoding) fix me
+			Name: clusterName,
 		},
 		Data: map[string]string{
 			"service-ca.crt": string(s.Data["service-ca.crt"]),
@@ -311,23 +281,23 @@ func spokeEnsureSecret(ctx context.Context, c *agentController, namespace string
 	return err
 }
 
-// spokeEnsureSecret on spoke cluster creates/updates secret on namespace
+// spokeEnsureSecret on spoke cluster creates/updates ClusterLogForwarder on namespace
 func spokeEnsureClusterLogForwarder(ctx context.Context, c *agentController, clf *loggingv1.ClusterLogForwarder) error {
-	existing, err := c.spokeKubeClient.CoreV1().Secrets(namespace).Get(ctx, clf.Name, metav1.GetOptions{})
+	existing, err := c.spokeLoggingClient.ClusterLogForwarders(openshiftLoggingNamespace).Get(ctx, clf.Name, metav1.GetOptions{})
 	switch {
 	case errors.IsNotFound(err):
-		_, createErr := c.spokeKubeClient.CoreV1().Secrets(namespace).Create(ctx, clf, metav1.CreateOptions{})
+		_, createErr := c.spokeLoggingClient.ClusterLogForwarders(openshiftLoggingNamespace).Create(ctx, clf, metav1.CreateOptions{})
 		return createErr
 	case err != nil:
 		return err
 	}
 
-	if reflect.DeepEqual(existing.Data, clf.Data) {
+	if reflect.DeepEqual(existing.Spec, clf.Spec) {
 		return nil
 	}
 
 	clf.ResourceVersion = existing.ResourceVersion
-	_, err = c.spokeKubeClient.CoreV1().Secrets(namespace).Update(ctx, clf, metav1.UpdateOptions{})
+	_, err = c.spokeLoggingClient.ClusterLogForwarders(openshiftLoggingNamespace).Update(ctx, clf, metav1.UpdateOptions{})
 	return err
 }
 

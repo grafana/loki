@@ -3,11 +3,10 @@ package manifests
 import (
 	loggingv1 "github.com/openshift/cluster-logging-operator/apis/logging/v1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func BuildClusterLogForwarder(lokiHubURL string, mTLSSecretName string) ([]client.Object, error) {
-	clf := &loggingv1.ClusterLogForwarder{
+func BuildClusterLogForwarder(lokiHubURL string, mTLSSecretName string) *loggingv1.ClusterLogForwarder {
+	return &loggingv1.ClusterLogForwarder{
 		ObjectMeta: v1.ObjectMeta{
 			Name:      "instance",
 			Namespace: "openshift-logging",
@@ -47,6 +46,4 @@ func BuildClusterLogForwarder(lokiHubURL string, mTLSSecretName string) ([]clien
 			},
 		},
 	}
-
-	return []client.Object{clf}, nil
 }

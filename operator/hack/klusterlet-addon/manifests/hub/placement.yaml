@@ -1,7 +1,0 @@
-apiVersion: cluster.open-cluster-management.io/v1beta1
-kind: Placement
-metadata:
-  name: placement-policy-hub-logging
-spec:
-  clusterSets:
-  - REPLACE_ME
