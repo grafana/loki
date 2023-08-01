@@ -42,6 +42,9 @@ type GCSConfig struct {
 	EnableOpenCensus bool           `yaml:"enable_opencensus"`
 	EnableHTTP2      bool           `yaml:"enable_http2"`
 
+	// TODO(dannyk): remove this and disable GCS client retries; move a layer higher instead.
+	EnableRetries bool `yaml:"enable_retries"`
+
 	Insecure bool `yaml:"-"`
 }
 
@@ -58,6 +61,7 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enable OpenCensus (OC) instrumentation for all requests.")
 	f.BoolVar(&cfg.EnableHTTP2, prefix+"gcs.enable-http2", true, "Enable HTTP2 connections.")
+	f.BoolVar(&cfg.EnableRetries, prefix+"gcs.enable-retries", true, "Enable automatic retries of failed idempotent requests.")
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
@@ -109,7 +113,13 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 		return nil, err
 	}
 
-	return client.Bucket(cfg.BucketName), nil
+	bucket := client.Bucket(cfg.BucketName)
+
+	if !cfg.EnableRetries {
+		bucket = bucket.Retryer(storage.WithPolicy(storage.RetryNever))
+	}
+
+	return bucket, nil
 }
 
 func (s *GCSObjectClient) Stop() {
