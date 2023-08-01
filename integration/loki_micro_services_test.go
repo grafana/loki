@@ -2,11 +2,15 @@ package integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
@@ -584,6 +588,7 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 			"index-gateway",
 			"-target=index-gateway",
 			"-tsdb.enable-postings-cache=true",
+			"-store.index-cache-read.cache.enable-fifocache=true",
 		)
 	)
 	require.NoError(t, clu.Run())
@@ -639,8 +644,18 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	cliIngester.Now = now
 	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
 	cliQueryFrontend.Now = now
+	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
+	cliIndexGateway.Now = now
 
-	// end of setup. Ingestion and querying below.
+	// initial cache state.
+	igwMetrics, err := cliIndexGateway.Metrics()
+	require.NoError(t, err)
+	assertCacheState(t, igwMetrics, &expectedCacheState{
+		cacheName: "store.index-cache-read.embedded-cache",
+		gets:      0,
+		misses:    0,
+		added:     0,
+	})
 
 	t.Run("ingest-logs", func(t *testing.T) {
 		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-72*time.Hour), map[string]string{"job": "fake"}))
@@ -666,6 +681,15 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 		assert.ElementsMatch(t, []string{"lineA", "lineB"}, lines)
 	})
 
+	igwMetrics, err = cliIndexGateway.Metrics()
+	require.NoError(t, err)
+	assertCacheState(t, igwMetrics, &expectedCacheState{
+		cacheName: "store.index-cache-read.embedded-cache",
+		gets:      50,
+		misses:    1,
+		added:     1,
+	})
+
 	// ingest logs with ts=now.
 	require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
 	require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
@@ -683,4 +707,49 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	}
 	// expect lines from both, ingesters memory and from the store.
 	assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
+
+}
+
+func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
+	for _, m := range mf.Metric {
+		if !assert.ObjectsAreEqualValues(lbs, m.GetLabel()) {
+			continue
+		}
+
+		return m.Counter.GetValue()
+	}
+
+	return 0
+}
+
+func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
+	var parser expfmt.TextParser
+	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	lbs := []*dto.LabelPair{
+		{
+			Name:  proto.String("cache"),
+			Value: proto.String(e.cacheName),
+		},
+	}
+
+	mf, found := mfs["querier_cache_added_new_total"]
+	require.True(t, found)
+	require.Equal(t, e.added, getValueFromMF(mf, lbs))
+
+	mf, found = mfs["querier_cache_gets_total"]
+	require.True(t, found)
+	require.Equal(t, e.gets, getValueFromMF(mf, lbs))
+
+	mf, found = mfs["querier_cache_misses_total"]
+	require.True(t, found)
+	require.Equal(t, e.misses, getValueFromMF(mf, lbs))
+}
+
+type expectedCacheState struct {
+	cacheName string
+	gets      float64
+	misses    float64
+	added     float64
 }
