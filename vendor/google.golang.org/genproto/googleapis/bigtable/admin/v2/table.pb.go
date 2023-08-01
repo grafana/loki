@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -1089,7 +1089,7 @@ type Backup struct {
 	// `projects/{project}/instances/{instance}/tables/{source_table}`.
 	SourceTable string `protobuf:"bytes,2,opt,name=source_table,json=sourceTable,proto3" json:"source_table,omitempty"`
 	// Required. The expiration time of the backup, with microseconds
-	// granularity that must be at least 6 hours and at most 30 days
+	// granularity that must be at least 6 hours and at most 90 days
 	// from the time the request is received. Once the `expire_time`
 	// has passed, Cloud Bigtable will delete the backup and free the
 	// resources used by the backup.
