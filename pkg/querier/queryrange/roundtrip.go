@@ -331,7 +331,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			"msg", "executing query",
 			"type", "volume",
 			"query", volumeQuery.Query,
-			"length", volumeQuery.Start.Sub(volumeQuery.End),
+			"length", volumeQuery.End.Sub(volumeQuery.Start),
 			"limit", volumeQuery.Limit,
 			"aggregate_by", volumeQuery.AggregateBy,
 		)

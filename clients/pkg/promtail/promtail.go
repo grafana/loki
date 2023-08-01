@@ -251,7 +251,6 @@ func (p *Promtail) ActiveTargets() map[string][]target.Target {
 
 func (p *Promtail) watchConfig() {
 	// Reload handler.
-	// Make sure that sighup handler is registered with a redirect to the channel before the potentially
 	if p.newConfig == nil {
 		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail newConfig func is Empty")
 		return

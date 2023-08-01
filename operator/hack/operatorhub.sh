@@ -18,7 +18,6 @@ fi
 
 SOURCE_DIR=$(pwd)
 VERSION=$(grep "VERSION ?= " Makefile | awk -F= '{print $2}' | xargs)
-INT_VERSION="${VERSION#v}"
 
 for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
     (
@@ -34,21 +33,21 @@ for dest in ${COMMUNITY_OPERATORS_REPOSITORY} ${UPSTREAM_REPOSITORY}; do
         git checkout -q main
         git rebase -q upstream/main
 
-        mkdir -p "operators/loki-operator/${INT_VERSION}"
+        mkdir -p "operators/loki-operator/${VERSION}"
         if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
-            cp -r "${SOURCE_DIR}/bundle/community-openshift"/* "operators/loki-operator/${INT_VERSION}/"
+            cp -r "${SOURCE_DIR}/bundle/community-openshift"/* "operators/loki-operator/${VERSION}/"
         else
-            cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${INT_VERSION}/"
+            cp -r "${SOURCE_DIR}/bundle/community"/* "operators/loki-operator/${VERSION}/"
         fi
-        rm "operators/loki-operator/${INT_VERSION}/bundle.Dockerfile"
+        rm "operators/loki-operator/${VERSION}/bundle.Dockerfile"
 
         if [[ "${dest}" = "${UPSTREAM_REPOSITORY}" ]]; then
             python3 - << END
 import os, yaml
-with open("./operators/loki-operator/${INT_VERSION}/metadata/annotations.yaml", 'r') as f:
+with open("./operators/loki-operator/${VERSION}/metadata/annotations.yaml", 'r') as f:
     y=yaml.safe_load(f) or {}
     y['annotations']['com.redhat.openshift.versions'] = os.getenv('SUPPORTED_OCP_VERSIONS')
-with open("./operators/loki-operator/${INT_VERSION}/metadata/annotations.yaml", 'w') as f:
+with open("./operators/loki-operator/${VERSION}/metadata/annotations.yaml", 'w') as f:
     yaml.dump(y, f)
 END
         fi

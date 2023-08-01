@@ -641,6 +641,8 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 
 	from, through := req.From.Time(), req.Through.Time()
 	volumes := make(map[string]uint64)
+	aggregateBySeries := seriesvolume.AggregateBySeries(req.AggregateBy) || req.AggregateBy == ""
+
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
@@ -660,12 +662,20 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 				}
 			}
 
-			seriesLabels = seriesLabels[:0]
-			labelVolumes := make(map[string]uint64, len(s.labels))
-			for _, l := range s.labels {
-				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
-					seriesLabels = append(seriesLabels, l)
-					labelVolumes[l.Name] += size
+			var labelVolumes map[string]uint64
+			if aggregateBySeries {
+				seriesLabels = seriesLabels[:0]
+				for _, l := range s.labels {
+					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+						seriesLabels = append(seriesLabels, l)
+					}
+				}
+			} else {
+				labelVolumes = make(map[string]uint64, len(s.labels))
+				for _, l := range s.labels {
+					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+						labelVolumes[l.Name] += size
+					}
 				}
 			}
 
@@ -676,7 +686,7 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 				seriesNames[hash] = seriesLabels.String()
 			}
 
-			if seriesvolume.AggregateBySeries(req.AggregateBy) || req.AggregateBy == "" {
+			if aggregateBySeries {
 				volumes[seriesNames[hash]] += size
 			} else {
 				for k, v := range labelVolumes {
@@ -905,6 +915,8 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	sp := opentracing.SpanFromContext(ctx)
+
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
@@ -927,8 +939,11 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 		}
 
 		stats.Reset()
-
+		if sp != nil {
+			sp.LogKV("event", "sent batch", "size", size)
+		}
 	}
+
 	return nil
 }
 

@@ -51,8 +51,7 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     local podDisruptionBudget = $.policy.v1.podDisruptionBudget;
     local pdbName = '%s-pdb' % deploymentName;
 
-    podDisruptionBudget.new() +
-    podDisruptionBudget.mixin.metadata.withName(pdbName) +
+    podDisruptionBudget.new(pdbName) +
     podDisruptionBudget.mixin.metadata.withLabels({ name: pdbName }) +
     podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: deploymentName }) +
     podDisruptionBudget.mixin.spec.withMaxUnavailable(maxUnavailable),
