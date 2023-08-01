@@ -55,6 +55,19 @@ var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogram
 	Buckets:   []float64{.025, .05, .1, .25, .5, 1, 2},
 }, []string{"operation", "status_code"}))
 
+// s3 rate limits are applied per prefix, we should have a way to see the QPS per prefix to know if we're hitting the max
+// rate limit for that prefix
+var s3RequestByPrefix = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "loki",
+	Name:      "s3_request_prefix_count",
+	Help:      "The number of S3 requests to a specific prefix.",
+}, []string{"operation", "prefix"})
+
+func prefixFromKey(key string) string {
+	idx := strings.LastIndex(key, "/")
+	return key[:idx]
+}
+
 // InjectRequestMiddleware gives users of this client the ability to make arbitrary
 // changes to outgoing requests.
 type InjectRequestMiddleware func(next http.RoundTripper) http.RoundTripper
@@ -342,6 +355,7 @@ func (a *S3ObjectClient) Stop() {}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
+	s3RequestByPrefix.WithLabelValues("DeleteObject", prefixFromKey(objectKey)).Inc()
 	return instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		deleteObjectInput := &s3.DeleteObjectInput{
 			Bucket: aws.String(a.bucketFromKey(objectKey)),
@@ -381,6 +395,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
 
+		s3RequestByPrefix.WithLabelValues("GetObject", prefixFromKey(objectKey)).Inc()
 		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
 			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
@@ -405,6 +420,7 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
+	s3RequestByPrefix.WithLabelValues("PutObject", prefixFromKey(objectKey)).Inc()
 	return loki_instrument.TimeRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
 			Body:         object,
@@ -430,6 +446,8 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	var commonPrefixes []client.StorageCommonPrefix
 
 	for i := range a.bucketNames {
+		// List should already only be a prefix so we don't need to pull out a prefix from a whole key path
+		s3RequestByPrefix.WithLabelValues("List", prefix).Inc()
 		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
 				Bucket:    aws.String(a.bucketNames[i]),

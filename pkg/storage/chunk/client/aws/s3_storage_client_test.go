@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -194,4 +195,40 @@ session_token: session token
 	require.Equal(t, underTest.SecretAccessKey.String(), "secret access key")
 	require.Equal(t, underTest.SessionToken.String(), "session token")
 
+}
+
+func TestPrefixMetric(t *testing.T) {
+	c, err := NewS3ObjectClient(S3Config{
+		AccessKeyID:     "foo",
+		SecretAccessKey: flagext.SecretWithValue("bar"),
+		BackoffConfig:   backoff.Config{MaxRetries: 1},
+		BucketNames:     "foo",
+		Inject: func(next http.RoundTripper) http.RoundTripper {
+			return RoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+				time.Sleep(200 * time.Millisecond)
+				return nil, errors.New("foo")
+			})
+		},
+	}, hedging.Config{})
+	require.NoError(t, err)
+
+	// ensure that metrics are correct for a single tenant
+	c.GetObject(context.Background(), "user1/stream1/chunk1")
+	require.Equal(t, float64(1), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("GetObject", "user1/stream1")))
+	c.GetObject(context.Background(), "user1/stream1/chunk2")
+	require.Equal(t, float64(2), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("GetObject", "user1/stream1")))
+	c.DeleteObject(context.Background(), "user1/stream1/chunk1")
+	require.Equal(t, float64(1), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("DeleteObject", "user1/stream1")))
+	c.PutObject(context.Background(), "user1/stream1/chunk1", nil)
+	require.Equal(t, float64(1), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("PutObject", "user1/stream1")))
+	c.List(context.Background(), "user1/stream1", ",")
+	require.Equal(t, float64(1), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("List", "user1/stream1")))
+	// ensure that a 2nd stream is separated by prefix
+	c.GetObject(context.Background(), "user1/stream2/chunk1")
+	require.Equal(t, float64(1), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("GetObject", "user1/stream2")))
+	require.Equal(t, float64(2), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("GetObject", "user1/stream1")))
+	// ensure that a 2nd user is separated by prefix
+	c.GetObject(context.Background(), "user2/stream1/chunk1")
+	require.Equal(t, float64(1), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("GetObject", "user2/stream1")))
+	require.Equal(t, float64(2), testutil.ToFloat64(s3RequestByPrefix.WithLabelValues("GetObject", "user1/stream1")))
 }
