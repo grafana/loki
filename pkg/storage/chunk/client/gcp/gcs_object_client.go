@@ -7,12 +7,14 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"syscall"
 	"time"
 
 	"cloud.google.com/go/storage"
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	google_http "google.golang.org/api/transport/http"
@@ -213,6 +215,86 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (s *GCSObjectClient) IsObjectNotFoundErr(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
+}
+
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled)
+}
+
+// TODO(dannyk): reference apimachinery from which this was copied, or just import it
+// Returns if the given err is "connection reset by peer" error.
+func IsConnectionReset(err error) bool {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.ECONNRESET
+	}
+	return false
+}
+
+// TODO(dannyk): reference apimachinery from which this was copied, or just import it
+// Returns if the given err is "connection refused" error
+func IsConnectionRefused(err error) bool {
+	var errno syscall.Errno
+	if errors.As(err, &errno) {
+		return errno == syscall.ECONNREFUSED
+	}
+	return false
+}
+
+// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
+	// TODO(dannyk): move these out to be generic
+	// context errors are all client-side
+	if isContextErr(err) {
+		return false
+	}
+
+	// connection misconfiguration, or writing on a closed connection
+	// do NOT retry; this is not a server-side issue
+	if errors.Is(err, net.ErrClosed) || IsConnectionRefused(err) {
+		return false
+	}
+
+	// this is a server-side timeout
+	if isTimeoutError(err) {
+		return true
+	}
+
+	// connection closed (closed before established) or reset (closed after established)
+	// this is a server-side issue
+	if errors.Is(err, io.EOF) || IsConnectionReset(err) {
+		return true
+	}
+
+	if gerr, ok := err.(*googleapi.Error); ok {
+		// https://cloud.google.com/storage/docs/retry-strategy
+		return gerr.Code == http.StatusRequestTimeout ||
+			gerr.Code == http.StatusGatewayTimeout
+	}
+
+	return false
+}
+
+// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
+	if gerr, ok := err.(*googleapi.Error); ok {
+		// https://cloud.google.com/storage/docs/retry-strategy
+		return gerr.Code == http.StatusTooManyRequests ||
+			(gerr.Code/100 == 5) // all 5xx errors are retryable
+	}
+
+	return false
+}
+
+// IsRetryableErr returns true if the request failed due to some retryable server-side scenario
+func (s *GCSObjectClient) IsRetryableErr(err error) bool {
+	return s.IsStorageThrottledErr(err) || s.IsStorageThrottledErr(err)
 }
 
 func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, serviceAccount flagext.Secret) (http.RoundTripper, error) {
