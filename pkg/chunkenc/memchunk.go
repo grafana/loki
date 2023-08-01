@@ -1348,29 +1348,28 @@ func readNumberFromBufIter[T any](si *bufferedIterator, reader func(buf []byte) 
 	var zeroValue, number T
 	var width, lastAttempt int
 
-	// Read until we have at least one byte.
-	for width == 0 {
-		number, width = reader(si.readBuf[si.readBufStart:si.readBufValid])
+	for {
+		if number, width = reader(si.readBuf[si.readBufStart:si.readBufValid]); width != 0 {
+			break
+		}
 
 		// If we could not parse a number, try reading more data.
-		if width == 0 {
-			n, err := si.reader.Read(si.readBuf[si.readBufValid:])
-			si.readBufValid += n
-			if err != nil {
-				if err != io.EOF {
-					si.err = err
-					return zeroValue, false
-				}
-				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
-					return zeroValue, false
-				}
-				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
-					si.err = fmt.Errorf("invalid data in chunk")
-					return zeroValue, false
-				}
+		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+		si.readBufValid += n
+		if err != nil {
+			if err != io.EOF {
+				si.err = err
+				return zeroValue, false
 			}
-			lastAttempt = si.readBufValid
+			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+				return zeroValue, false
+			}
+			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+				si.err = fmt.Errorf("invalid data in chunk")
+				return zeroValue, false
+			}
 		}
+		lastAttempt = si.readBufValid
 	}
 
 	si.readBufStart += width
@@ -1429,16 +1428,19 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	var decompressedNonIndexedLabelsBytes int64
 
 	// Read timestamp
-	ts, ok := si.readVarint()
+	// ts, ok := si.readVarint()
+	ts, ok := readNumberFromBufIter(si, binary.Varint)
 	if !ok {
 		return 0, nil, nil, false
 	}
 
 	// Read line length
-	lineSize, ok := si.readInt()
+	// lineSize, ok := si.readInt()
+	l, ok := readNumberFromBufIter(si, binary.Uvarint)
 	if !ok {
 		return 0, nil, nil, false
 	}
+	lineSize := int(l)
 
 	// Size of TS and line length
 	decompressedBytes += 2 * binary.MaxVarintLen64
@@ -1475,15 +1477,20 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	// Read offset of non-indexed labels symbols
 	// we currently ignore it
-	if _, ok := si.readUvarint(); !ok {
+	// if _, ok := si.readUvarint(); !ok {
+	// 	return 0, nil, nil, false
+	// }
+	if _, ok := readNumberFromBufIter(si, binary.Uvarint); !ok {
 		return 0, nil, nil, false
 	}
 
 	// Read number of non-indexed labels symbols
-	nSymbols, ok := si.readInt()
+	// nSymbols, ok := si.readInt()
+	ns, ok := readNumberFromBufIter(si, binary.Uvarint)
 	if !ok {
 		return 0, nil, nil, false
 	}
+	nSymbols := int(ns)
 
 	// Number of labels
 	decompressedNonIndexedLabelsBytes += binary.MaxVarintLen64
@@ -1531,17 +1538,17 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	// Read all the symbols, into the buffer.
 	for i := 0; i < nSymbols; i++ {
-		sName, ok := si.readUvarint()
+		sName, ok := readNumberFromBufIter(si, binary.Uvarint)
 		if !ok {
 			return 0, nil, nil, false
 		}
 
-		sValue, ok := si.readUvarint()
+		sValue, ok := readNumberFromBufIter(si, binary.Uvarint)
 		if !ok {
 			return 0, nil, nil, false
 		}
 
-		// si.shiftDownReadBuf()
+		si.shiftDownReadBuf()
 
 		si.symbolsBuf[i].Name = uint32(sName)
 		si.symbolsBuf[i].Value = uint32(sValue)
@@ -1551,6 +1558,188 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedNonIndexedLabelsBytes)
 	si.stats.AddDecompressedBytes(decompressedBytes + decompressedNonIndexedLabelsBytes)
 
+	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols]), true
+}
+
+// moveNext moves the buffer to the next entry
+func (si *bufferedIterator) moveNextOld() (int64, []byte, labels.Labels, bool) {
+	var decompressedBytes int64
+	var decompressedNonIndexedLabelsBytes int64
+	var ts int64
+	var tWidth, lWidth, lineSize, lastAttempt int
+	for lWidth == 0 { // Read until both varints have enough bytes.
+		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+		si.readBufValid += n
+		if err != nil {
+			if err != io.EOF {
+				si.err = err
+				return 0, nil, nil, false
+			}
+			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+				return 0, nil, nil, false
+			}
+			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+				si.err = fmt.Errorf("invalid data in chunk")
+				return 0, nil, nil, false
+			}
+		}
+		var l uint64
+		ts, tWidth = binary.Varint(si.readBuf[:si.readBufValid])
+		l, lWidth = binary.Uvarint(si.readBuf[tWidth:si.readBufValid])
+		lineSize = int(l)
+		lastAttempt = si.readBufValid
+	}
+
+	// TS and line length
+	decompressedBytes += 2 * binary.MaxVarintLen64
+
+	if lineSize >= maxLineLength {
+		si.err = fmt.Errorf("line too long %d, maximum %d", lineSize, maxLineLength)
+		return 0, nil, nil, false
+	}
+	// If the buffer is not yet initialize or too small, we get a new one.
+	if si.buf == nil || lineSize > cap(si.buf) {
+		// in case of a replacement we replace back the buffer in the pool
+		if si.buf != nil {
+			BytesBufferPool.Put(si.buf)
+		}
+		si.buf = BytesBufferPool.Get(lineSize).([]byte)
+		if lineSize > cap(si.buf) {
+			si.err = fmt.Errorf("could not get a line buffer of size %d, actual %d", lineSize, cap(si.buf))
+			return 0, nil, nil, false
+		}
+	}
+	si.buf = si.buf[:lineSize]
+	// Take however many bytes are left in the read buffer.
+	n := copy(si.buf, si.readBuf[tWidth+lWidth:si.readBufValid])
+	// Shift down what is still left in the fixed-size read buffer, if any.
+	si.readBufValid = copy(si.readBuf[:], si.readBuf[tWidth+lWidth+n:si.readBufValid])
+
+	// Then process reading the line.
+	for n < lineSize {
+		r, err := si.reader.Read(si.buf[n:lineSize])
+		n += r
+		if err != nil {
+			// We might get EOF after reading enough bytes to fill the buffer, which is OK.
+			// EOF and zero bytes read when the buffer isn't full is an error.
+			if err == io.EOF && r != 0 {
+				continue
+			}
+			si.err = err
+			return 0, nil, nil, false
+		}
+	}
+
+	decompressedBytes += int64(lineSize)
+	if si.format < chunkFormatV4 {
+		si.stats.AddDecompressedBytes(decompressedBytes)
+		si.stats.AddDecompressedLines(1)
+		return ts, si.buf[:lineSize], nil, true
+	}
+
+	lastAttempt = 0
+	var symbolsSectionLengthWidth, nSymbolsWidth, nSymbols int
+	for nSymbolsWidth == 0 { // Read until we have enough bytes for the labels.
+		n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+		si.readBufValid += n
+		if err != nil {
+			if err != io.EOF {
+				si.err = err
+				return 0, nil, nil, false
+			}
+			if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+				return 0, nil, nil, false
+			}
+			if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+				si.err = fmt.Errorf("invalid data in chunk")
+				return 0, nil, nil, false
+			}
+		}
+		var l uint64
+		_, symbolsSectionLengthWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
+		l, nSymbolsWidth = binary.Uvarint(si.readBuf[symbolsSectionLengthWidth:si.readBufValid])
+		nSymbols = int(l)
+		lastAttempt = si.readBufValid
+	}
+
+	// Number of labels
+	decompressedNonIndexedLabelsBytes += binary.MaxVarintLen64
+	// Label symbols
+	decompressedNonIndexedLabelsBytes += int64(nSymbols * 2 * binary.MaxVarintLen64)
+
+	// Shift down what is still left in the fixed-size read buffer, if any.
+	si.readBufValid = copy(si.readBuf[:], si.readBuf[symbolsSectionLengthWidth+nSymbolsWidth:si.readBufValid])
+
+	/*
+		Commented out tested code, which lets us skip reading the symbols section altogether.
+		Leaving it here if in case we need it in future.
+		symbolsSectionLength -= nSymbolsWidth
+		if symbolsSectionLength > 0 {
+			readBufValid := si.readBufValid
+			if symbolsSectionLength >= si.readBufValid {
+				si.readBufValid = 0
+			} else {
+				si.readBufValid = copy(si.readBuf[:], si.readBuf[symbolsSectionLength:si.readBufValid])
+			}
+			symbolsSectionLength -= readBufValid - si.readBufValid
+			if symbolsSectionLength > 0 {
+				_, err := si.reader.Read(make([]byte, symbolsSectionLength))
+				if err != nil {
+					si.err = err
+					return 0, nil, nil, false
+				}
+			}
+			nSymbols = 0
+		}
+	*/
+	// If not enough space for the symbols, create a new buffer slice and put the old one back in the pool.
+	if nSymbols > cap(si.symbolsBuf) {
+		if si.symbolsBuf != nil {
+			SymbolsPool.Put(si.symbolsBuf)
+		}
+		si.symbolsBuf = SymbolsPool.Get(nSymbols).([]symbol)
+		if nSymbols > cap(si.symbolsBuf) {
+			si.err = fmt.Errorf("could not get a symbols matrix of size %d, actual %d", nSymbols, cap(si.symbolsBuf))
+			return 0, nil, nil, false
+		}
+	}
+
+	si.symbolsBuf = si.symbolsBuf[:nSymbols]
+
+	// Read all the symbols, into the buffer.
+	for i := 0; i < nSymbols; i++ {
+		var sName, sValue uint64
+		var nWidth, vWidth, lastAttempt int
+		for vWidth == 0 { // Read until both varints have enough bytes.
+			n, err := si.reader.Read(si.readBuf[si.readBufValid:])
+			si.readBufValid += n
+			if err != nil {
+				if err != io.EOF {
+					si.err = err
+					return 0, nil, nil, false
+				}
+				if si.readBufValid == 0 { // Got EOF and no data in the buffer.
+					return 0, nil, nil, false
+				}
+				if si.readBufValid == lastAttempt { // Got EOF and could not parse same data last time.
+					si.err = fmt.Errorf("invalid data in chunk")
+					return 0, nil, nil, false
+				}
+			}
+			sName, nWidth = binary.Uvarint(si.readBuf[:si.readBufValid])
+			sValue, vWidth = binary.Uvarint(si.readBuf[nWidth:si.readBufValid])
+			lastAttempt = si.readBufValid
+		}
+
+		// Shift down what is still left in the fixed-size read buffer, if any.
+		si.readBufValid = copy(si.readBuf[:], si.readBuf[nWidth+vWidth:si.readBufValid])
+
+		si.symbolsBuf[i].Name = uint32(sName)
+		si.symbolsBuf[i].Value = uint32(sValue)
+	}
+	si.stats.AddDecompressedLines(1)
+	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedNonIndexedLabelsBytes)
+	si.stats.AddDecompressedBytes(decompressedBytes + decompressedNonIndexedLabelsBytes)
 	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols]), true
 }
 

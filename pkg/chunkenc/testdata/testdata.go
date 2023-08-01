@@ -1,6 +1,11 @@
 package testdata
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/grafana/loki/pkg/logproto"
+)
 
 // LogString returns a test log line. Returns the same line for the same index.
 func LogString(index int64) string {
@@ -10,12 +15,26 @@ func LogString(index int64) string {
 	return Logs[index]
 }
 
+const numNonIndexedLabels = 20
+
+var NonIndexedLables []logproto.LabelAdapter
+
 var LogsBytes [][]byte
 
 func init() {
 	LogsBytes = make([][]byte, len(Logs))
 	for i, l := range Logs {
 		LogsBytes[i] = []byte(l)
+	}
+
+	NonIndexedLables = make([]logproto.LabelAdapter, numNonIndexedLabels)
+	for i, _ := range NonIndexedLables {
+		labelsName := fmt.Sprintf("foo%d", i)
+		labelsValue := fmt.Sprintf("bar%d", i)
+		NonIndexedLables[i] = logproto.LabelAdapter{
+			Name:  labelsName,
+			Value: labelsValue,
+		}
 	}
 }
 

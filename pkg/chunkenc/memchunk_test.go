@@ -799,9 +799,7 @@ func BenchmarkWrite(b *testing.B) {
 							entry.Timestamp = time.Unix(0, i)
 							entry.Line = testdata.LogString(i)
 							if withNonIndexedLabels {
-								entry.NonIndexedLabels = []logproto.LabelAdapter{
-									{Name: "foo", Value: fmt.Sprint(i)},
-								}
+								entry.NonIndexedLabels = testdata.NonIndexedLables
 							}
 							i++
 						}
@@ -828,54 +826,65 @@ func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (s
 
 func BenchmarkRead(b *testing.B) {
 	for _, bs := range testBlockSizes {
-		for _, enc := range testEncoding {
-			name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
-			b.Run(name, func(b *testing.B) {
-				chunks, size := generateData(enc, 5, bs, testTargetSize)
-				_, ctx := stats.NewContext(context.Background())
-				b.ResetTimer()
-				for n := 0; n < b.N; n++ {
-					for _, c := range chunks {
-						// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-						iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
-						if err != nil {
-							panic(err)
-						}
-						for iterator.Next() {
-							_ = iterator.Entry()
-						}
-						if err := iterator.Close(); err != nil {
-							b.Fatal(err)
-						}
+		for _, f := range allPossibleFormats {
+			for _, enc := range testEncoding {
+				for _, withNonIndexedLabels := range []bool{false, true} {
+					name := fmt.Sprintf("v%d_%s_%s_%s", f.chunkFormat, f.headBlockFmt.String(), enc.String(), humanize.Bytes(uint64(bs)))
+					if withNonIndexedLabels {
+						name += "-withNonIndexedLabels"
 					}
+					b.Run(name, func(b *testing.B) {
+						chunks, size := generateData(f.chunkFormat, f.headBlockFmt, enc, 5, bs, testTargetSize, withNonIndexedLabels)
+						_, ctx := stats.NewContext(context.Background())
+						b.ResetTimer()
+						for n := 0; n < b.N; n++ {
+							for _, c := range chunks {
+								// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
+								iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
+								if err != nil {
+									panic(err)
+								}
+								for iterator.Next() {
+									_ = iterator.Entry()
+								}
+								if err := iterator.Close(); err != nil {
+									b.Fatal(err)
+								}
+							}
+						}
+						b.SetBytes(int64(size))
+					})
 				}
-				b.SetBytes(int64(size))
-			})
+			}
 		}
 	}
 
 	for _, bs := range testBlockSizes {
-		for _, enc := range testEncoding {
-			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
-			b.Run(name, func(b *testing.B) {
-				chunks, size := generateData(enc, 5, bs, testTargetSize)
-				_, ctx := stats.NewContext(context.Background())
-				b.ResetTimer()
-				bytesRead := uint64(0)
-				for n := 0; n < b.N; n++ {
-					for _, c := range chunks {
-						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
-						for iterator.Next() {
-							_ = iterator.Sample()
+		for _, f := range allPossibleFormats {
+			for _, enc := range testEncoding {
+				for _, withNonIndexedLabels := range []bool{false, true} {
+					name := fmt.Sprintf("sample_v%d_%s_%s_%s", f.chunkFormat, f.headBlockFmt.String(), enc.String(), humanize.Bytes(uint64(bs)))
+					b.Run(name, func(b *testing.B) {
+						chunks, size := generateData(f.chunkFormat, f.headBlockFmt, enc, 5, bs, testTargetSize, withNonIndexedLabels)
+						_, ctx := stats.NewContext(context.Background())
+						b.ResetTimer()
+						bytesRead := uint64(0)
+						for n := 0; n < b.N; n++ {
+							for _, c := range chunks {
+								iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
+								for iterator.Next() {
+									_ = iterator.Sample()
+								}
+								if err := iterator.Close(); err != nil {
+									b.Fatal(err)
+								}
+							}
+							bytesRead += size
 						}
-						if err := iterator.Close(); err != nil {
-							b.Fatal(err)
-						}
-					}
-					bytesRead += size
+						b.SetBytes(int64(bytesRead) / int64(b.N))
+					})
 				}
-				b.SetBytes(int64(bytesRead) / int64(b.N))
-			})
+			}
 		}
 	}
 }
@@ -906,7 +915,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 func TestGenerateDataSize(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
-			chunks, size := generateData(enc, 50, testBlockSize, testTargetSize)
+			chunks, size := generateData(DefaultChunkFormat, DefaultHeadBlockFmt, enc, 50, testBlockSize, testTargetSize, false)
 
 			bytesRead := uint64(0)
 			for _, c := range chunks {
