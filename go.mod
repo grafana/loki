@@ -123,6 +123,7 @@ require (
 	github.com/heroku/x v0.0.59
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
+	github.com/richardartoul/molecule v1.0.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/willf/bloom v2.0.3+incompatible
