@@ -66,6 +66,7 @@ func TestRuler_rules(t *testing.T) {
 						},
 					},
 					Interval: 60,
+					Limit:    10,
 				},
 			},
 		},
@@ -121,6 +122,7 @@ func TestRuler_rules_special_characters(t *testing.T) {
 						},
 					},
 					Interval: 60,
+					Limit:    10,
 				},
 			},
 		},
@@ -223,6 +225,26 @@ rules:
 `,
 			output: "name: test\ninterval: 15s\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
 		},
+		{
+			name:   "with a a valid rules file with limit parameter",
+			status: 202,
+			input: `
+name: test
+interval: 15s
+limit: 10
+rules:
+- record: up_rule
+  expr: up{}
+- alert: up_alert
+  expr: sum(up{}) > 1
+  for: 30s
+  annotations:
+    test: test
+  labels:
+    test: test
+`,
+			output: "name: test\ninterval: 15s\nlimit: 10\nrules:\n    - record: up_rule\n      expr: up{}\n    - alert: up_alert\n      expr: sum(up{}) > 1\n      for: 30s\n      labels:\n        test: test\n      annotations:\n        test: test\n",
+		},
 	}
 
 	for _, tt := range tc {
@@ -270,7 +292,7 @@ func TestRuler_DeleteNamespace(t *testing.T) {
 
 	router.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
-	require.Equal(t, "name: group1\ninterval: 1m\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
+	require.Equal(t, "name: group1\ninterval: 1m\nlimit: 10\nrules:\n    - record: UP_RULE\n      expr: up\n    - alert: UP_ALERT\n      expr: up < 1\n", w.Body.String())
 
 	// Delete namespace1
 	req = requestFor(t, http.MethodDelete, "https://localhost:8080/api/v1/rules/namespace1", nil, "user1")
