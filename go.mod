@@ -123,6 +123,7 @@ require (
 	github.com/heroku/x v0.0.59
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
+	github.com/sourcegraph/conc v0.3.0
 	github.com/thanos-io/objstore v0.0.0-20230201072718-11ffbc490204
 	github.com/willf/bloom v2.0.3+incompatible
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
@@ -299,7 +300,7 @@ require (
 	go.opentelemetry.io/otel v1.14.0 // indirect
 	go.opentelemetry.io/otel/metric v0.37.0 // indirect
 	go.opentelemetry.io/otel/trace v1.14.0 // indirect
-	go.uber.org/multierr v1.8.0 // indirect
+	go.uber.org/multierr v1.9.0 // indirect
 	go.uber.org/zap v1.21.0 // indirect
 	golang.org/x/mod v0.9.0 // indirect
 	golang.org/x/term v0.10.0 // indirect

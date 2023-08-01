@@ -1308,6 +1308,12 @@ github.com/soheilhy/cmux
 # github.com/sony/gobreaker v0.5.0
 ## explicit; go 1.12
 github.com/sony/gobreaker
+# github.com/sourcegraph/conc v0.3.0
+## explicit; go 1.19
+github.com/sourcegraph/conc
+github.com/sourcegraph/conc/internal/multierror
+github.com/sourcegraph/conc/panics
+github.com/sourcegraph/conc/pool
 # github.com/spaolacci/murmur3 v1.1.0
 ## explicit
 github.com/spaolacci/murmur3
@@ -1497,8 +1503,8 @@ go.uber.org/atomic
 ## explicit; go 1.18
 go.uber.org/goleak
 go.uber.org/goleak/internal/stack
-# go.uber.org/multierr v1.8.0
-## explicit; go 1.14
+# go.uber.org/multierr v1.9.0
+## explicit; go 1.19
 go.uber.org/multierr
 # go.uber.org/zap v1.21.0
 ## explicit; go 1.13

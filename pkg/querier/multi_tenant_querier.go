@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/sourcegraph/conc/pool"
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
@@ -53,17 +54,18 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
 	params.Selector = replaceMatchers(selector, filteredMatchers).String()
 
-	iters := make([]iter.EntryIterator, len(matchedTenants))
-	i := 0
+	p := pool.NewWithResults[iter.EntryIterator]().WithContext(ctx).WithCancelOnError()
 	for id := range matchedTenants {
-		singleContext := user.InjectOrgID(ctx, id)
-		iter, err := q.Querier.SelectLogs(singleContext, params)
-		if err != nil {
-			return nil, err
-		}
-
-		iters[i] = NewTenantEntryIterator(iter, id)
-		i++
+		id := id
+		p.Go(func(ctx context.Context) (iter.EntryIterator, error) {
+			singleContext := user.InjectOrgID(ctx, id)
+			iter, err := q.Querier.SelectLogs(singleContext, params)
+			return NewTenantEntryIterator(iter, id), err
+		})
+	}
+	iters, err := p.Wait()
+	if err != nil {
+		return nil, err
 	}
 	return iter.NewSortEntryIterator(iters, params.Direction), nil
 }
@@ -84,17 +86,18 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	}
 	params.Selector = updatedSelector.String()
 
-	iters := make([]iter.SampleIterator, len(matchedTenants))
-	i := 0
+	p := pool.NewWithResults[iter.SampleIterator]().WithContext(ctx).WithCancelOnError()
 	for id := range matchedTenants {
-		singleContext := user.InjectOrgID(ctx, id)
-		iter, err := q.Querier.SelectSamples(singleContext, params)
-		if err != nil {
-			return nil, err
-		}
-
-		iters[i] = NewTenantSampleIterator(iter, id)
-		i++
+		id := id
+		p.Go(func(ctx context.Context) (iter.SampleIterator, error) {
+			singleContext := user.InjectOrgID(ctx, id)
+			iter, err := q.Querier.SelectSamples(singleContext, params)
+			return NewTenantSampleIterator(iter, id), err
+		})
+	}
+	iters, err := p.Wait()
+	if err != nil {
+		return nil, err
 	}
 	return iter.NewSortSampleIterator(iters), nil
 }

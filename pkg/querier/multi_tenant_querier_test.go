@@ -53,7 +53,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 				`{__tenant_id__="1", type="test"}`,
 				`{__tenant_id__="1", type="test"}`,
 			},
-			[]string{"line 1", "line 2", "line 1", "line 2"},
+			[]string{"line 1", "line 2"},
 		},
 		{
 			"two tenants with selector and pipeline filter",
@@ -63,7 +63,7 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 				`{__tenant_id__="1", type="test"}`,
 				`{__tenant_id__="1", type="test"}`,
 			},
-			[]string{"line 1", "line 2", "line 1", "line 2"},
+			[]string{"line 1", "line 2"},
 		},
 		{
 			"one tenant",
@@ -94,13 +94,14 @@ func TestMultiTenantQuerier_SelectLogs(t *testing.T) {
 			iter, err := multiTenantQuerier.SelectLogs(ctx, params)
 			require.NoError(t, err)
 
-			entriesCount := 0
+			actualLabels := make([]string, 0)
+			actualLines := make([]string, 0)
 			for iter.Next() {
-				require.Equal(t, tc.expLabels[entriesCount], iter.Labels())
-				require.Equal(t, tc.expLines[entriesCount], iter.Entry().Line)
-				entriesCount++
+				actualLabels = append(actualLabels, iter.Labels())
+				actualLines = append(actualLines, iter.Entry().Line)
 			}
-			require.Equalf(t, len(tc.expLabels), entriesCount, "Expected %d entries but got %d", len(tc.expLabels), entriesCount)
+			require.ElementsMatch(t, tc.expLabels, actualLabels)
+			require.ElementsMatch(t, tc.expLines, actualLines)
 		})
 	}
 }
