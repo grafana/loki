@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/logging"
@@ -23,7 +24,7 @@ var (
 	// Prefer accepting a non-global logger as an argument.
 	Logger = log.NewNopLogger()
 
-	bufferedLogger *LineBufferedLogger
+	bufferedLogger *dslog.BufferedLogger
 
 	plogger *prometheusLogger
 )
@@ -147,10 +148,10 @@ func newPrometheusLogger(l logging.Level, format logging.Format, reg prometheus.
 	if buffered {
 		// retain a reference to this logger because it doesn't conform to the standard Logger interface,
 		// and we can't unwrap it to get the underlying logger when we flush on shutdown
-		bufferedLogger = NewLineBufferedLogger(os.Stderr, logEntries,
-			WithFlushPeriod(flushTimeout),
-			WithPrellocatedBuffer(logBufferSize),
-			WithFlushCallback(func(entries uint32) {
+		bufferedLogger = dslog.NewBufferedLogger(os.Stderr, logEntries,
+			dslog.WithFlushPeriod(flushTimeout),
+			dslog.WithPrellocatedBuffer(logBufferSize),
+			dslog.WithFlushCallback(func(entries uint32) {
 				logFlushes.Observe(float64(entries))
 			}),
 		)

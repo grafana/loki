@@ -40,7 +40,7 @@
       compactor+: {
         working_directory: '/data/compactor',
         // prefer tsdb index over boltdb
-        shared_store: if self.using_tsdb_shipper then self.tsdb_shipper_shared_store else self.boltdb_shipper_shared_store,
+        shared_store: if $._config.using_tsdb_shipper then $._config.tsdb_shipper_shared_store else $._config.boltdb_shipper_shared_store,
       },
     } else {},
   },
