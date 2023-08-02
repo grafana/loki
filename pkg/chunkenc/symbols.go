@@ -109,7 +109,7 @@ func (s *symbolizer) lookup(idx uint32) string {
 		defer s.mtx.RUnlock()
 	}
 
-	if idx > uint32(len(s.labels)-1) {
+	if idx >= uint32(len(s.labels)) {
 		return ""
 	}
 
