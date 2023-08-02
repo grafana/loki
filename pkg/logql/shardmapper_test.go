@@ -1219,7 +1219,6 @@ func TestMapping(t *testing.T) {
 
 func TestMapperProbabilistic(t *testing.T) {
 	m := NewShardMapper(ConstantShards(2), true, nilShardMetrics)
-	m.probabilisticQueries = true
 
 	for _, tc := range []struct {
 		in   string

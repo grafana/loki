@@ -190,12 +190,7 @@ func (m ShardMapper) mapTopKSampleExpr(expr syntax.TopkSampleExpr, r *downstream
 		return nil, 0, err
 	}
 	if shards == 0 {
-		return &TopkMergeSampleExpr{
-			DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
-				shard:          nil,
-				TopkSampleExpr: expr,
-			},
-		}, bytesPerShard, nil
+		return expr, bytesPerShard, nil
 	}
 	for i := shards - 1; i >= 0; i-- {
 		head = &TopkMergeSampleExpr{

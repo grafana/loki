@@ -68,9 +68,7 @@ func TestTopKMatrixProtoMerge(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, proto.Values, 1)
 	require.Len(t, proto.Values[0].Topk.Cms.Counters, 2048*5)
-	require.Len(t, proto.Values[0].Topk.Results[0].List, 100, "expected length of 100 but was actually %d", len(proto.Values[0].Topk.Results[0].List))
-
-	//require.Len(t, proto.Values[0].Topk.Results[0], 100)
+	require.Len(t, proto.Values[0].Topk.Results[0].List, 100)
 
 	deserialized, err := TopKMatrixFromProto(proto)
 	require.NoError(t, err)

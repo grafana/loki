@@ -486,10 +486,6 @@ type rangeVectorEvaluator struct {
 	err error
 }
 
-func (r *rangeVectorEvaluator) Type() T {
-	return VecType
-}
-
 func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
@@ -520,10 +516,6 @@ type absentRangeVectorEvaluator struct {
 	lbs  labels.Labels
 
 	err error
-}
-
-func (r *absentRangeVectorEvaluator) Type() T {
-	return VecType
 }
 
 func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
@@ -961,10 +953,6 @@ func newVectorIterator(val float64,
 		endMs:     endMs,
 		currentMs: startMs - stepMs,
 	}
-}
-
-func (r *vectorIterator) Type() T {
-	return VecType
 }
 
 func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
