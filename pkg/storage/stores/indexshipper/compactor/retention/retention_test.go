@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -517,15 +518,16 @@ func TestChunkRewriter(t *testing.T) {
 				require.Equal(t, expectedChunks[i][len(expectedChunks[i])-1].End, chunks[i].Through)
 
 				lokiChunk := chunks[i].Data.(*chunkenc.Facade).LokiChunk()
-				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepNonIndexedLabels())
 				require.NoError(t, err)
 
 				for _, interval := range expectedChunks[i] {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
 						require.True(t, newChunkItr.Next())
 						require.Equal(t, logproto.Entry{
-							Timestamp: curr.Time(),
-							Line:      curr.String(),
+							Timestamp:        curr.Time(),
+							Line:             curr.String(),
+							NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", curr.String())),
 						}, newChunkItr.Entry())
 						require.Equal(t, labels.FromStrings("foo", curr.String()).String(), newChunkItr.Labels())
 					}

@@ -19,6 +19,18 @@ type EntryIterator interface {
 	Entry() logproto.Entry
 }
 
+type EntryIteratorOptions struct {
+	KeepNonIndexedLabels bool
+}
+
+type EntryIteratorOption func(*EntryIteratorOptions)
+
+func WithKeepNonIndexedLabels() EntryIteratorOption {
+	return func(o *EntryIteratorOptions) {
+		o.KeepNonIndexedLabels = true
+	}
+}
+
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int
