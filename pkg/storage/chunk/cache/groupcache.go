@@ -84,7 +84,7 @@ func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg
 		pool:                 pool,
 		logger:               logger,
 		stopChan:             make(chan struct{}),
-		updateInterval:       5 * time.Minute,
+		updateInterval:       1 * time.Minute,
 		wg:                   sync.WaitGroup{},
 		startWaitingForClose: cancel,
 		reg:                  reg,
@@ -160,6 +160,7 @@ type group struct {
 
 func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 	// Return a known error on miss to track which keys need to be inserted
+	// TODO, setup a getter that does an http request and returns the result
 	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
 		return ErrGroupcacheMiss
 	})
@@ -191,6 +192,7 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 }
 
 func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
+	// TODO: This needs to change to support what I want to do with requests/results
 	var (
 		start  = time.Now()
 		values = make([][]byte, 0, len(keys))
