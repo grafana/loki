@@ -28,6 +28,7 @@ const (
 	QueryTypeLimited = "limited"
 	QueryTypeLabels  = "labels"
 	QueryTypeSeries  = "series"
+	QueryTypeVolume  = "volume"
 
 	latencyTypeSlow = "slow"
 	latencyTypeFast = "fast"
@@ -286,6 +287,40 @@ func RecordSeriesQueryMetrics(
 	chunkDownloadedTotal.WithLabelValues(status, queryType, "").
 		Add(float64(stats.TotalChunksDownloaded()))
 	ingesterLineTotal.Add(float64(stats.Ingester.TotalLinesSent))
+}
+
+func RecordVolumeQueryMetrics(
+	ctx context.Context,
+	log log.Logger,
+	start, end time.Time,
+	status string,
+	stats logql_stats.Result,
+) {
+	var (
+		logger      = util_log.WithContext(ctx, log)
+		latencyType = latencyTypeFast
+		queryType   = QueryTypeVolume
+	)
+
+	// Tag throughput metric by latency type based on a threshold.
+	// Latency below the threshold is fast, above is slow.
+	if stats.Summary.ExecTime > slowQueryThresholdSecond {
+		latencyType = latencyTypeSlow
+	}
+
+	// we also log queries, useful for troubleshooting slow queries.
+	level.Info(logger).Log(
+		"latency", latencyType,
+		"query_type", queryType,
+		"length", end.Sub(start),
+		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
+		"status", status,
+		"splits", stats.Summary.Splits,
+		"total_entries", stats.Summary.TotalEntriesReturned,
+	)
+
+	execLatency.WithLabelValues(status, queryType, "").
+		Observe(stats.Summary.ExecTime)
 }
 
 func recordUsageStats(queryType string, stats logql_stats.Result) {

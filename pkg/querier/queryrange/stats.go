@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -32,6 +34,7 @@ const (
 	queryTypeMetric = "metric"
 	queryTypeSeries = "series"
 	queryTypeLabel  = "label"
+	queryTypeVolume = "volume"
 )
 
 var (
@@ -53,6 +56,8 @@ func recordQueryMetrics(data *queryData) {
 		logql.RecordLabelQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.label, data.params.Query(), data.status, *data.statistics)
 	case queryTypeSeries:
 		logql.RecordSeriesQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.match, data.status, *data.statistics)
+	case queryTypeVolume:
+		logql.RecordVolumeQueryMetrics(data.ctx, logger, data.params.Start(), data.params.End(), data.status, *data.statistics)
 	default:
 		level.Error(logger).Log("msg", "failed to record query metrics", "err", fmt.Errorf("expected one of the *LokiRequest, *LokiInstantRequest, *LokiSeriesRequest, *LokiLabelNamesRequest, got %s", data.queryType))
 	}
@@ -136,7 +141,11 @@ func StatsCollectorMiddleware() queryrangebase.Middleware {
 					if r.Response != nil {
 						totalEntries = len(r.Response.Data.Result)
 					}
+
 					queryType = queryTypeMetric
+					if _, ok := req.(*logproto.VolumeRequest); ok {
+						queryType = queryTypeVolume
+					}
 				case *LokiSeriesResponse:
 					responseStats = &r.Statistics // TODO: this is always nil. See codec.DecodeResponse
 					totalEntries = len(r.Data)
