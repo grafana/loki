@@ -44,7 +44,7 @@ func NewSplitByRangeMiddleware(logger log.Logger, engineOpts logql.EngineOpts, l
 	})
 }
 
-func (s *splitByRange) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (s *splitByRange) Do(ctx context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	logger := util_log.WithContext(ctx, s.logger)
 
 	tenants, err := tenant.TenantIDs(ctx)
@@ -55,7 +55,7 @@ func (s *splitByRange) Do(ctx context.Context, req queryrangebase.Request) (quer
 	interval := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, s.limits.QuerySplitDuration)
 	// if no interval configured, continue to the next middleware
 	if interval == 0 {
-		return s.next.Do(ctx, req)
+		return s.next.Do(ctx, request)
 	}
 
 	mapperStats := logql.NewMapperStats()
@@ -64,28 +64,28 @@ func (s *splitByRange) Do(ctx context.Context, req queryrangebase.Request) (quer
 		return nil, err
 	}
 
-	noop, parsed, err := mapper.Parse(req.GetQuery())
+	noop, parsed, err := mapper.Parse(request.GetQuery())
 	if err != nil {
-		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", req.GetQuery())
+		level.Warn(logger).Log("msg", "failed mapping AST", "err", err.Error(), "query", request.GetQuery())
 		return nil, err
 	}
-	level.Debug(logger).Log("msg", "mapped instant query", "interval", interval.String(), "noop", noop, "original", req.GetQuery(), "mapped", parsed.String())
+	level.Debug(logger).Log("msg", "mapped instant query", "interval", interval.String(), "noop", noop, "original", request.GetQuery(), "mapped", parsed.String())
 
 	if noop {
 		// the query cannot be split, so continue
-		return s.next.Do(ctx, req)
+		return s.next.Do(ctx, request)
 	}
 
 	// Update middleware stats
 	queryStatsCtx := stats.FromContext(ctx)
 	queryStatsCtx.AddSplitQueries(int64(mapperStats.GetSplitQueries()))
 
-	params, err := paramsFromRequest(req)
+	params, err := paramsFromRequest(request)
 	if err != nil {
 		return nil, err
 	}
 
-	if _, ok := req.(*LokiInstantRequest); !ok {
+	if _, ok := request.(*LokiInstantRequest); !ok {
 		return nil, fmt.Errorf("expected *LokiInstantRequest")
 	}
 
