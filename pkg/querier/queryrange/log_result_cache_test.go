@@ -682,11 +682,11 @@ func newFakeResponse(responses []mockResponse) fakeResponse {
 	}
 }
 
-func (f fakeResponse) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (f fakeResponse) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
 		resp queryrangebase.Response
 		err  error
-		args = f.Mock.Called(ctx, req)
+		args = f.Mock.Called(ctx, r)
 	)
 	if args.Get(0) != nil {
 		resp = args.Get(0).(queryrangebase.Response)
