@@ -522,11 +522,17 @@ func TestChunkRewriter(t *testing.T) {
 
 				for _, interval := range expectedChunks[i] {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
+						// Test ready to pass/fail when we change the default chunk and head format.
+						var nonIndexedLabels []logproto.LabelAdapter
+						if chunkenc.DefaultChunkFormat == 4 && chunkenc.DefaultHeadBlockFmt == chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt {
+							nonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", curr.String()))
+						}
+
 						require.True(t, newChunkItr.Next())
 						require.Equal(t, logproto.Entry{
 							Timestamp:        curr.Time(),
 							Line:             curr.String(),
-							NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", curr.String())),
+							NonIndexedLabels: nonIndexedLabels,
 						}, newChunkItr.Entry())
 					}
 				}
