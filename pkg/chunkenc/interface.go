@@ -129,7 +129,7 @@ type Chunk interface {
 	Bounds() (time.Time, time.Time)
 	SpaceFor(*logproto.Entry) bool
 	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
+	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) (iter.EntryIterator, error)
 	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
 	// Returns the list of blocks in the chunks.
 	Blocks(mintT, maxtT time.Time) []Block
@@ -158,7 +158,7 @@ type Block interface {
 	// Entries is the amount of entries in the block.
 	Entries() int
 	// Iterator returns an entry iterator for the block.
-	Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator
+	Iterator(ctx context.Context, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
 	SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator
 }
