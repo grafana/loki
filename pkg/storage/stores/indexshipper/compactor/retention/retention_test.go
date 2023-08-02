@@ -215,12 +215,13 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{
-			Timestamp: ts.Time(),
-			Line:      ts.String(),
+			Timestamp:        ts.Time(),
+			Line:             ts.String(),
+			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
 		}))
 	}
 
@@ -526,6 +527,7 @@ func TestChunkRewriter(t *testing.T) {
 							Timestamp: curr.Time(),
 							Line:      curr.String(),
 						}, newChunkItr.Entry())
+						require.Equal(t, labels.FromStrings("foo", curr.String()).String(), newChunkItr.Labels())
 					}
 				}
 
