@@ -458,8 +458,7 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 
 	require.Equal(t, want, got)
 
-	_, ok := got.(*LokiProbabilisticRequest)
-	require.True(t, ok)
+	require.IsType(t, &LokiProbabilisticRequest{}, got)
 	require.Nil(t, err)
 	require.Equal(t, 1, len(results))
 	require.Equal(t, expected.Data, results[0].Data)

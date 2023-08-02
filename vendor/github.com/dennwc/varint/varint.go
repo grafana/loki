@@ -53,10 +53,9 @@ func UvarintSize(x uint64) int {
 // number of bytes read (> 0). If an error occurred, the value is 0
 // and the number of bytes n is <= 0 meaning:
 //
-// 	n == 0: buf too small
-// 	n  < 0: value larger than 64 bits (overflow)
-// 	        and -n is the number of bytes read
-//
+//	n == 0: buf too small
+//	n  < 0: value larger than 64 bits (overflow)
+//	        and -n is the number of bytes read
 func Uvarint(buf []byte) (uint64, int) {
 	// Fully unrolled implementation of binary.Uvarint.
 	//

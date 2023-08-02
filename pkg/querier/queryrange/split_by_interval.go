@@ -163,7 +163,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 		sp, ctx := opentracing.StartSpanFromContext(ctx, "interval")
 		data.req.LogToSpan(sp)
 
-		// TODO: should this deal with probablistic queries?
+		// TODO: should this deal with probabilistic queries?
 		resp, err := next.Do(ctx, data.req)
 		sp.Finish()
 

@@ -143,7 +143,6 @@ func (ast *astMapperware) checkQuerySizeLimit(ctx context.Context, bytesPerShard
 }
 
 func (ast *astMapperware) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	fmt.Println("ast mapper is doing probabilistic queries? ", ast.probabilistic)
 	logger := spanlogger.FromContextWithFallback(
 		ctx,
 		util_log.WithContext(ctx, ast.logger),
