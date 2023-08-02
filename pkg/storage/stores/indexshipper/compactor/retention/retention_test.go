@@ -14,7 +14,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -23,6 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	ingesterclient "github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
