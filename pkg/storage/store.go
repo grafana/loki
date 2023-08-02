@@ -67,6 +67,7 @@ type store struct {
 
 	indexReadCache   cache.Cache
 	chunksCache      cache.Cache
+	chunksCacheL2    cache.Cache
 	writeDedupeCache cache.Cache
 
 	limits StoreLimits
@@ -104,10 +105,19 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		return nil, err
 	}
 
+	chunkCacheCfgL2 := storeCfg.ChunkCacheConfigL2
+	chunkCacheCfgL2.Prefix = "chunksl2"
+	// TODO(E.Welch) would we want to disambiguate this cache in the stats? I think not but we'd need to change stats.ChunkCache to do so.
+	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache)
+	if err != nil {
+		return nil, err
+	}
+
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
 	indexReadCache = cache.StopOnce(indexReadCache)
 	chunksCache = cache.StopOnce(chunksCache)
+	chunksCacheL2 = cache.StopOnce(chunksCacheL2)
 	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
 	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
@@ -136,6 +146,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 		indexReadCache:   indexReadCache,
 		chunksCache:      chunksCache,
+		chunksCacheL2:    chunksCacheL2,
 		writeDedupeCache: writeDedupeCache,
 
 		logger: logger,
@@ -154,7 +165,7 @@ func (s *store) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(s.chunksCache, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
+		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize, s.storeCfg.L2ChunkCacheHandoff)
 		if err != nil {
 			return err
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	"github.com/go-kit/log/level"
 	"github.com/opentracing/opentracing-go"
@@ -59,7 +60,10 @@ type Fetcher struct {
 	schema     config.SchemaConfig
 	storage    client.Client
 	cache      cache.Cache
+	cachel2    cache.Cache
 	cacheStubs bool
+
+	l2CacheHandoff time.Duration
 
 	wait           sync.WaitGroup
 	decodeRequests chan decodeRequest
@@ -84,11 +88,13 @@ type decodeResponse struct {
 }
 
 // New makes a new ChunkFetcher.
-func New(cacher cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, maxAsyncConcurrency int, maxAsyncBufferSize int) (*Fetcher, error) {
+func New(cache cache.Cache, cachel2 cache.Cache, cacheStubs bool, schema config.SchemaConfig, storage client.Client, maxAsyncConcurrency int, maxAsyncBufferSize int, l2CacheHandoff time.Duration) (*Fetcher, error) {
 	c := &Fetcher{
 		schema:              schema,
 		storage:             storage,
-		cache:               cacher,
+		cache:               cache,
+		cachel2:             cachel2,
+		l2CacheHandoff:      l2CacheHandoff,
 		cacheStubs:          cacheStubs,
 		decodeRequests:      make(chan decodeRequest),
 		maxAsyncConcurrency: maxAsyncConcurrency,
@@ -180,7 +186,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
-	// Now fetch the actual chunk data from Memcache / S3
+	// Fetch from L1 chunk cache
 	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
 	if err != nil {
 		level.Warn(log).Log("msg", "error fetching from cache", "err", err)
@@ -195,6 +201,39 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
 
+	var fromCacheL2 []chunk.Chunk
+
+	if c.l2CacheHandoff > 0 {
+		// Fetch missing from L2 chunks cache
+		missingL1Keys := make([]string, 0, len(missing))
+		for _, m := range missing {
+			// A small optimization to prevent looking up a chunk in l2 cache that can't possibly be there
+			// Note, we don't need to keep track of the chunks that we are skipping here because
+			// processCacheResponse below takes in the initial list of chunks and returns the missing ones
+			// which will include the ones we are skipping here.
+			if m.From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
+				continue
+			}
+			chunkKey := c.schema.ExternalKey(m.ChunkRef)
+			missingL1Keys = append(missingL1Keys, chunkKey)
+		}
+
+		cacheHitsL2, cacheBufsL2, _, err := c.cachel2.Fetch(ctx, missingL1Keys)
+		if err != nil {
+			level.Warn(log).Log("msg", "error fetching from cache", "err", err)
+		}
+
+		for _, buf := range cacheBufsL2 {
+			chunkFetchedSize.WithLabelValues("cache_l2").Observe(float64(len(buf)))
+		}
+
+		fromCacheL2, missing, err = c.processCacheResponse(ctx, chunks, cacheHitsL2, cacheBufsL2)
+		if err != nil {
+			level.Warn(log).Log("msg", "error process response from cache", "err", err)
+		}
+	}
+
+	// Fetch missing from storage
 	var fromStorage []chunk.Chunk
 	if len(missing) > 0 {
 		fromStorage, err = c.storage.GetChunks(ctx, missing)
@@ -227,13 +266,16 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		return nil, promql.ErrStorage{Err: err}
 	}
 
-	allChunks := append(fromCache, fromStorage...)
+	allChunks := append(fromCache, fromCacheL2...)
+	allChunks = append(allChunks, fromStorage...)
 	return allChunks, nil
 }
 
 func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) error {
 	keys := make([]string, 0, len(chunks))
 	bufs := make([][]byte, 0, len(chunks))
+	keysL2 := make([]string, 0, len(chunks))
+	bufsL2 := make([][]byte, 0, len(chunks))
 	for i := range chunks {
 		var encoded []byte
 		var err error
@@ -244,15 +286,29 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 				return err
 			}
 		}
-
-		keys = append(keys, c.schema.ExternalKey(chunks[i].ChunkRef))
-		bufs = append(bufs, encoded)
+		// Determine which cache we should write to
+		if c.l2CacheHandoff == 0 || chunks[i].From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
+			// Write to L1 cache
+			keys = append(keys, c.schema.ExternalKey(chunks[i].ChunkRef))
+			bufs = append(bufs, encoded)
+		} else {
+			// Write to L2 cache
+			keysL2 = append(keysL2, c.schema.ExternalKey(chunks[i].ChunkRef))
+			bufsL2 = append(bufsL2, encoded)
+		}
 	}
 
 	err := c.cache.Store(ctx, keys, bufs)
 	if err != nil {
 		level.Warn(util_log.Logger).Log("msg", "writeBackCache cache store fail", "err", err)
 	}
+	if len(keysL2) > 0 {
+		err = c.cachel2.Store(ctx, keysL2, bufsL2)
+		if err != nil {
+			level.Warn(util_log.Logger).Log("msg", "writeBackCacheL2 cache store fail", "err", err)
+		}
+	}
+
 	return nil
 }
 

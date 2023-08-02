@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
+// This is the separator define in the Prometheus Labels.Hash function.
 var seps = []byte{'\xff'}
 
 // Hash returns hash of the labels according to Prometheus' Labels.Hash function.

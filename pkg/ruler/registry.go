@@ -202,7 +202,7 @@ func (r *walRegistry) getTenantConfig(tenant string) (instance.Config, error) {
 
 			// ensure that no variation of the X-Scope-OrgId header can be added, which might trick authentication
 			for k := range clt.Headers {
-				if strings.ToLower(user.OrgIDHeaderName) == strings.ToLower(strings.TrimSpace(k)) {
+				if strings.EqualFold(user.OrgIDHeaderName, strings.TrimSpace(k)) {
 					delete(clt.Headers, k)
 				}
 			}

@@ -565,7 +565,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 		return req.WithContext(ctx), nil
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
 }
 
@@ -748,6 +748,11 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		}
 	}
 
+	// Shortcut series responses without deserialization.
+	if _, ok := req.(*LokiSeriesRequest); ok {
+		return GetLokiSeriesResponseView(buf)
+	}
+
 	resp := &QueryResponse{}
 	err = resp.Unmarshal(buf)
 	if err != nil {
@@ -816,7 +821,10 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				return nil, err
 			}
 		}
-
+	case *MergedSeriesResponseView:
+		if err := WriteSeriesResponseViewJSON(response, &buf); err != nil {
+			return nil, err
+		}
 	case *LokiSeriesResponse:
 		result := logproto.SeriesResponse{
 			Series: response.Data,
@@ -843,7 +851,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 			return nil, err
 		}
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response formatt, got (%T)", res))
 	}
 
 	sp.LogFields(otlog.Int("bytes", buf.Len()))
@@ -871,6 +879,12 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 		p.Response = &QueryResponse_Streams{response}
 	case *LokiSeriesResponse:
 		p.Response = &QueryResponse_Series{response}
+	case *MergedSeriesResponseView:
+		mat, err := response.Materialize()
+		if err != nil {
+			return nil, err
+		}
+		p.Response = &QueryResponse_Series{mat}
 	case *LokiLabelNamesResponse:
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
@@ -878,7 +892,7 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
 
 	buf, err := p.Marshal()
@@ -966,6 +980,12 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Data:       lokiSeriesData,
 			Statistics: mergedStats,
 		}, nil
+	case *LokiSeriesResponseView:
+		v := &MergedSeriesResponseView{}
+		for _, r := range responses {
+			v.responses = append(v.responses, r.(*LokiSeriesResponseView))
+		}
+		return v, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
 		uniqueNames := make(map[string]struct{})

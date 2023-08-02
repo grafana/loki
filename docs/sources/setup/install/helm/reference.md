@@ -2,9 +2,9 @@
 title: Helm Chart Values
 menuTitle: Helm chart values
 description: Reference for Helm Chart values.
-weight: 500
 aliases:
   - ../../../installation/helm/reference/
+weight: 500
 keywords: []
 ---
 
@@ -1496,6 +1496,15 @@ false
 			<td></td>
 			<td><pre lang="json">
 ""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>ingress.labels</td>
+			<td>object</td>
+			<td></td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
