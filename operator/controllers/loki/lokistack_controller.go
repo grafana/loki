@@ -368,23 +368,17 @@ func (r *LokiStackReconciler) enqueueForNodeLabelChanges() handler.EventHandler 
 						return nil
 					}
 					if availabilityZone != pod.Annotations[corev1.LabelTopologyZone] {
-						err := kverrors.New("Topology key pod annotation does not match its node's labels")
-						r.Log.Error(err, "Topology key pod annotation does not match its node's labels")
-
-						if err = handlers.AnnotatePodWithAvailabilityZone(ctx, r.Log, r.Client, &pod); err != nil {
-							r.Log.Error(err, "Error annotating pod with availability zone", "pod", availabilityZone)
-						}
 						requests = append(requests, reconcile.Request{
 							NamespacedName: types.NamespacedName{
 								Namespace: stack.Namespace,
 								Name:      stack.Name,
 							},
 						})
+						r.Log.Info("Enqueued requests for LokiStack because of Node labels change", "LokiStack", stack.Name, "Node", obj.GetName())
 						return requests
 					}
 				}
 			}
-			r.Log.Info("Enqueued requests for LokiStack because of Node labels change", "LokiStack", stack.Name, "Node", obj.GetName())
 		}
 		return requests
 	})
