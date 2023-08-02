@@ -44,7 +44,7 @@ func init() {
 // HTTP/1, but unlikely to occur in practice and (2) Upgrading from HTTP/1 to
 // h2c - this works by using the HTTP/1 Upgrade header to request an upgrade to
 // h2c. When either of those situations occur we hijack the HTTP/1 connection,
-// convert it to a HTTP/2 connection and pass the net.Conn to http2.ServeConn.
+// convert it to an HTTP/2 connection and pass the net.Conn to http2.ServeConn.
 type h2cHandler struct {
 	Handler http.Handler
 	s       *http2.Server
@@ -70,6 +70,15 @@ func NewHandler(h http.Handler, s *http2.Server) http.Handler {
 	}
 }
 
+// extractServer extracts existing http.Server instance from http.Request or create an empty http.Server
+func extractServer(r *http.Request) *http.Server {
+	server, ok := r.Context().Value(http.ServerContextKey).(*http.Server)
+	if ok {
+		return server
+	}
+	return new(http.Server)
+}
+
 // ServeHTTP implement the h2c support that is enabled by h2c.GetH2CHandler.
 func (s h2cHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Handle h2c with prior knowledge (RFC 7540 Section 3.4)
@@ -87,6 +96,7 @@ func (s h2cHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defer conn.Close()
 		s.s.ServeConn(conn, &http2.ServeConnOpts{
 			Context:          r.Context(),
+			BaseConfig:       extractServer(r),
 			Handler:          s.Handler,
 			SawClientPreface: true,
 		})
@@ -99,11 +109,13 @@ func (s h2cHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if http2VerboseLogs {
 				log.Printf("h2c: error h2c upgrade: %v", err)
 			}
+			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 		defer conn.Close()
 		s.s.ServeConn(conn, &http2.ServeConnOpts{
 			Context:        r.Context(),
+			BaseConfig:     extractServer(r),
 			Handler:        s.Handler,
 			UpgradeRequest: r,
 			Settings:       settings,
@@ -156,7 +168,10 @@ func h2cUpgrade(w http.ResponseWriter, r *http.Request) (_ net.Conn, settings []
 		return nil, nil, errors.New("h2c: connection does not support Hijack")
 	}
 
-	body, _ := io.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, nil, err
+	}
 	r.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	conn, rw, err := hijacker.Hijack()

@@ -875,6 +875,9 @@ github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
+# github.com/grafana/groupcache_exporter v0.0.0-20220630102408-27e24c1f7765
+## explicit; go 1.17
+github.com/grafana/groupcache_exporter
 # github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765 => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
@@ -1394,13 +1397,8 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
-<<<<<<< HEAD
 # github.com/weaveworks/common v0.0.0-20230511094633-334485600903
 ## explicit; go 1.14
-=======
-# github.com/weaveworks/common v0.0.0-20211015155308-ebe5bdc2c89e
-## explicit; go 1.13
->>>>>>> 00127cd50 (use mailgun groupcache)
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/test
 # github.com/weaveworks/promrus v1.2.0
@@ -1562,6 +1560,7 @@ golang.org/x/net/context/ctxhttp
 golang.org/x/net/http/httpguts
 golang.org/x/net/http/httpproxy
 golang.org/x/net/http2
+golang.org/x/net/http2/h2c
 golang.org/x/net/http2/hpack
 golang.org/x/net/idna
 golang.org/x/net/internal/iana

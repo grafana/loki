@@ -166,9 +166,6 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
-		r.ChunkStoreConfig.ChunkCacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
-		r.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
-		r.StorageConfig.IndexQueriesCacheConfig.GroupCache.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
 		r.Common.GroupCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
