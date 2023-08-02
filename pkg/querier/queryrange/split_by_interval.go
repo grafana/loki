@@ -50,32 +50,30 @@ func NewSplitByMetrics(r prometheus.Registerer) *SplitByMetrics {
 }
 
 type splitByInterval struct {
-	configs       []config.PeriodConfig
-	next          queryrangebase.Handler
-	limits        Limits
-	merger        queryrangebase.Merger
-	metrics       *SplitByMetrics
-	splitter      Splitter
-	probabilistic bool
+	configs  []config.PeriodConfig
+	next     queryrangebase.Handler
+	limits   Limits
+	merger   queryrangebase.Merger
+	metrics  *SplitByMetrics
+	splitter Splitter
 }
 
 type Splitter func(req queryrangebase.Request, interval time.Duration) ([]queryrangebase.Request, error)
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics, probabilistic bool) queryrangebase.Middleware {
+func SplitByIntervalMiddleware(configs []config.PeriodConfig, limits Limits, merger queryrangebase.Merger, splitter Splitter, metrics *SplitByMetrics) queryrangebase.Middleware {
 	if metrics == nil {
 		metrics = NewSplitByMetrics(nil)
 	}
 
 	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		return &splitByInterval{
-			configs:       configs,
-			next:          next,
-			limits:        limits,
-			merger:        merger,
-			metrics:       metrics,
-			splitter:      splitter,
-			probabilistic: probabilistic,
+			configs:  configs,
+			next:     next,
+			limits:   limits,
+			merger:   merger,
+			metrics:  metrics,
+			splitter: splitter,
 		}
 	})
 }
@@ -175,7 +173,7 @@ func (h *splitByInterval) loop(ctx context.Context, ch <-chan *lokiResult, next 
 	}
 }
 
-func (h *splitByInterval) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+func (h *splitByInterval) Do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -184,10 +182,10 @@ func (h *splitByInterval) Do(ctx context.Context, req queryrangebase.Request) (q
 	interval := validation.MaxDurationOrZeroPerTenant(tenantIDs, h.limits.QuerySplitDuration)
 	// skip split by if unset
 	if interval == 0 {
-		return h.next.Do(ctx, req)
+		return h.next.Do(ctx, r)
 	}
 
-	intervals, err := h.splitter(req, interval)
+	intervals, err := h.splitter(r, interval)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +194,7 @@ func (h *splitByInterval) Do(ctx context.Context, req queryrangebase.Request) (q
 
 	// no interval should not be processed by the frontend.
 	if len(intervals) == 0 {
-		return h.next.Do(ctx, req)
+		return h.next.Do(ctx, r)
 	}
 
 	if sp := opentracing.SpanFromContext(ctx); sp != nil {
@@ -208,7 +206,7 @@ func (h *splitByInterval) Do(ctx context.Context, req queryrangebase.Request) (q
 	}
 
 	var limit int64
-	switch req := req.(type) {
+	switch req := r.(type) {
 	case *LokiRequest:
 		limit = int64(req.Limit)
 		if req.Direction == logproto.BACKWARD {
@@ -233,7 +231,7 @@ func (h *splitByInterval) Do(ctx context.Context, req queryrangebase.Request) (q
 
 	maxSeriesCapture := func(id string) int { return h.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(req.GetStart()), model.Time(req.GetEnd()))
+	maxParallelism := MinWeightedParallelism(ctx, tenantIDs, h.configs, h.limits, model.Time(r.GetStart()), model.Time(r.GetEnd()))
 	resps, err := h.Process(ctx, maxParallelism, limit, input, maxSeries)
 	if err != nil {
 		return nil, err

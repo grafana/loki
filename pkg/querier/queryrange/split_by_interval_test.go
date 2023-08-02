@@ -638,7 +638,6 @@ func Test_splitByInterval_Do(t *testing.T) {
 		DefaultCodec,
 		splitByTime,
 		nilMetrics,
-		false,
 	).Wrap(next)
 
 	tests := []struct {
@@ -812,7 +811,6 @@ func Test_series_splitByInterval_Do(t *testing.T) {
 		DefaultCodec,
 		splitByTime,
 		nilMetrics,
-		false,
 	).Wrap(next)
 
 	tests := []struct {
@@ -862,7 +860,6 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 			DefaultCodec,
 			splitByTime,
 			nilMetrics,
-			false,
 		).Wrap(next)
 	}
 
@@ -1024,7 +1021,6 @@ func Test_ExitEarly(t *testing.T) {
 		DefaultCodec,
 		splitByTime,
 		nilMetrics,
-		false,
 	).Wrap(next)
 
 	req := &LokiRequest{
@@ -1107,7 +1103,6 @@ func Test_DoesntDeadlock(t *testing.T) {
 		DefaultCodec,
 		splitByTime,
 		nilMetrics,
-		false,
 	).Wrap(next)
 
 	// split into n requests w/ n/2 limit, ensuring unused responses are cleaned up properly
