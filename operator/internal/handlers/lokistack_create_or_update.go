@@ -281,7 +281,7 @@ func CreateOrUpdateLokiStack(
 	}
 
 	if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
-		err = checkNodeLabelChange(ll, k, ctx, stack)
+		err = setDegradedConditionOnNodeLabelMismatch(ll, k, ctx, stack)
 		if err != nil {
 			return err
 		}
@@ -449,7 +449,7 @@ func isNamespaceScoped(obj client.Object) bool {
 	}
 }
 
-func checkNodeLabelChange(ll logr.Logger, k client.Client, ctx context.Context, stack lokiv1.LokiStack) error {
+func setDegradedConditionOnNodeLabelMismatch(ll logr.Logger, k client.Client, ctx context.Context, stack lokiv1.LokiStack) error {
 	podList := &corev1.PodList{}
 	if err := k.List(ctx, podList, &client.ListOptions{
 		Namespace: stack.Namespace,

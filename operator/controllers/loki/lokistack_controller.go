@@ -342,41 +342,41 @@ func (r *LokiStackReconciler) enqueueForNodeLabelChanges() handler.EventHandler 
 
 		var requests []reconcile.Request
 		for _, stack := range lokiStacks.Items {
-			if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
-				podList := &corev1.PodList{}
-				if err := r.Client.List(ctx, podList, &client.ListOptions{
-					Namespace: stack.Namespace,
-					LabelSelector: labels.SelectorFromSet(labels.Set{
-						"app.kubernetes.io/instance": stack.Name,
-					}),
-				}); err != nil {
-					r.Log.Error(err, "Error getting pod resources in event handler")
+			if stack.Spec.Replication == nil || len(stack.Spec.Replication.Zones) == 0 {
+				// Skip this LokiStack as no replication is enabled or none zones are provided
+				continue
+			}
+			podList := &corev1.PodList{}
+			if err := r.Client.List(ctx, podList, &client.ListOptions{
+				Namespace: stack.Namespace,
+				LabelSelector: labels.SelectorFromSet(labels.Set{
+					"app.kubernetes.io/instance": stack.Name,
+				}),
+			}); err != nil {
+				r.Log.Error(err, "Error getting pod resources in event handler")
+				return nil
+			}
+			for _, pod := range podList.Items {
+				assignedNode := &corev1.Node{}
+				key := client.ObjectKey{Name: pod.Spec.NodeName}
+				if err := r.Client.Get(ctx, key, assignedNode); err != nil {
+					r.Log.Error(err, "Error getting node resources in event handler")
 					return nil
 				}
-
-				for _, pod := range podList.Items {
-					assignedNode := &corev1.Node{}
-					key := client.ObjectKey{Name: pod.Spec.NodeName}
-					if err := r.Client.Get(ctx, key, assignedNode); err != nil {
-						r.Log.Error(err, "Error getting node resources in event handler")
-						return nil
-					}
-
-					availabilityZone, err := handlers.GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
-					if err != nil {
-						r.Log.Error(err, "failed to get pod availability zone from assigned node", "name", pod.Name)
-						return nil
-					}
-					if availabilityZone != pod.Annotations[corev1.LabelTopologyZone] {
-						requests = append(requests, reconcile.Request{
-							NamespacedName: types.NamespacedName{
-								Namespace: stack.Namespace,
-								Name:      stack.Name,
-							},
-						})
-						r.Log.Info("Enqueued requests for LokiStack because of Node labels change", "LokiStack", stack.Name, "Node", obj.GetName())
-						return requests
-					}
+				availabilityZone, err := handlers.GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
+				if err != nil {
+					r.Log.Error(err, "failed to get pod availability zone from assigned node", "name", pod.Name)
+					return nil
+				}
+				if availabilityZone != pod.Annotations[corev1.LabelTopologyZone] {
+					requests = append(requests, reconcile.Request{
+						NamespacedName: types.NamespacedName{
+							Namespace: stack.Namespace,
+							Name:      stack.Name,
+						},
+					})
+					r.Log.Info("Enqueued requests for LokiStack because of Node labels change", "LokiStack", stack.Name, "Node", obj.GetName())
+					return requests
 				}
 			}
 		}
