@@ -63,9 +63,9 @@ data:
 kind: ConfigMap
 metadata:
   labels:
-    app.kubernetes.io/instance: loki-operator-v0.0.1
+    app.kubernetes.io/instance: loki-operator-0.1.0
     app.kubernetes.io/managed-by: operator-lifecycle-manager
     app.kubernetes.io/name: loki-operator
     app.kubernetes.io/part-of: cluster-logging
-    app.kubernetes.io/version: 0.0.1
+    app.kubernetes.io/version: 0.1.0
   name: loki-operator-manager-config

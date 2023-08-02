@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -241,6 +242,19 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 	// Sometimes labels are set and later modified. Only record
 	// each label once
 	b.parserKeyHints.RecordExtracted(n)
+	return b
+}
+
+// Add the labels to the builder. If a label with the same name
+// already exists in the base labels, a suffix is added to the name.
+func (b *LabelsBuilder) Add(labels ...labels.Label) *LabelsBuilder {
+	for _, l := range labels {
+		name := l.Name
+		if b.BaseHas(name) {
+			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
+		}
+		b.Set(name, l.Value)
+	}
 	return b
 }
 

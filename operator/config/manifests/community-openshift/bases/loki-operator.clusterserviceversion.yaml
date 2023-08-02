@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
+    containerImage: docker.io/grafana/loki-operator:0.4.0
     createdAt: "2022-12-22T13:28:40+00:00"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
@@ -631,14 +631,28 @@ spec:
       - description: OIDC defines the spec for the OIDC tenant's authentication.
         displayName: OIDC Configuration
         path: tenants.authentication[0].oidc
+      - description: IssuerCA defines the spec for the issuer CA for tenant's authentication.
+        displayName: IssuerCA ConfigMap
+        path: tenants.authentication[0].oidc.issuerCA
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].oidc.issuerCA.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].oidc.issuerCA.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: IssuerURL defines the URL for issuer.
         displayName: Issuer URL
         path: tenants.authentication[0].oidc.issuerURL
       - description: RedirectURL defines the URL for redirect.
         displayName: Redirect URL
         path: tenants.authentication[0].oidc.redirectURL
-      - description: Secret defines the spec for the clientID, clientSecret and issuerCAPath
-          for tenant's authentication.
+      - description: Secret defines the spec for the clientID and clientSecret for
+          tenant's authentication.
         displayName: Tenant Secret
         path: tenants.authentication[0].oidc.secret
       - description: Name of a secret in the namespace configured for tenant secrets.
@@ -679,6 +693,15 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: Openshift defines the configuration specific to Openshift modes.
+        displayName: Openshift
+        path: tenants.openshift
+      - description: "AdminGroups defines a list of groups, whose members are considered
+          to have admin-privileges by the Loki Operator. Setting this to an empty
+          array disables admin groups. \n By default the following groups are considered
+          admin-groups: - system:cluster-admins - cluster-admin - dedicated-admin"
+        displayName: Admin Groups
+        path: tenants.openshift.adminGroups
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment
@@ -1184,6 +1207,9 @@ spec:
           alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
       - description: The name of the time series to output to. Must be a valid metric
           name.
         displayName: Metric Name
@@ -2185,5 +2211,5 @@ spec:
   minKubeVersion: 1.21.1
   provider:
     name: Grafana Loki SIG Operator
-  replaces: loki-operator.v0.2.0
+  replaces: loki-operator.v0.3.0
   version: 0.0.0

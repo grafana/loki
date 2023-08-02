@@ -47,7 +47,7 @@ func WriteResponseProtobuf(req *http.Request, params *logql.LiteralParams, v any
 	case *stats.Stats:
 		return WriteIndexStatsResponseProtobuf(result, w)
 	case *logproto.VolumeResponse:
-		return WriteSeriesVolumeResponseProtobuf(result, w)
+		return WriteVolumeResponseProtobuf(result, w)
 	}
 	return fmt.Errorf("unknown response type %T", v)
 }
@@ -128,7 +128,7 @@ func WriteIndexStatsResponseProtobuf(r *stats.Stats, w io.Writer) error {
 
 // WriteIndexStatsResponseProtobuf marshals a logproto.VolumeResponse to queryrange.QueryResponse
 // and then writes it to the provided io.Writer.
-func WriteSeriesVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) error {
+func WriteVolumeResponseProtobuf(r *logproto.VolumeResponse, w io.Writer) error {
 	p := QueryResponse{
 		Response: &QueryResponse_Volume{
 			Volume: &VolumeResponse{

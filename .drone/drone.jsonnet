@@ -199,10 +199,10 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   depends_on: ['check'],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
+local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onPRs,
       settings+: {
@@ -212,7 +212,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     },
   ] + [
     // publish for tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onTagOrMain,
       settings+: {
@@ -330,7 +330,9 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
-      when: onTagOrMain,
+      when: onTagOrMain {
+        ref: ['refs/heads/main', 'refs/tags/operator/v*'],
+      },
       settings+: {},
     },
   ],
@@ -415,8 +417,33 @@ local manifest(apps) = pipeline('manifest') {
   ] + [
     'promtail-%s' % arch
     for arch in archs
+  ] + [
+    'fluent-bit-%s' % arch
+    for arch in archs
   ],
 };
+
+local manifest_operator(app) = pipeline('manifest-operator') {
+  steps: [{
+    name: 'manifest-' + app,
+    image: 'plugins/manifest:1.4.0',
+    settings: {
+      // the target parameter is abused for the app's name,
+      // as it is unused in spec mode. See docker-manifest-operator.tmpl
+      target: app,
+      spec: '.drone/docker-manifest-operator.tmpl',
+      ignore_missing: false,
+      username: { from_secret: docker_username_secret.name },
+      password: { from_secret: docker_password_secret.name },
+    },
+    depends_on: ['clone'],
+  }],
+  depends_on: [
+    'lokioperator-%s' % arch
+    for arch in archs
+  ],
+};
+
 
 local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
@@ -472,7 +499,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.29.3',
+    local build_image_tag = '0.29.3-golangci.1.51.2',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -651,15 +678,33 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
-  lokioperator(arch)
+  lokioperator(arch) {
+    trigger+: {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+        'refs/pull/*/head',
+      ],
+    },
+  }
   for arch in archs
 ] + [
-  fluentbit(),
+  fluentbit(arch)
+  for arch in archs
+] + [
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'fluent-bit']) {
     trigger+: onTagOrMain,
+  },
+  manifest_operator('loki-operator') {
+    trigger+: onTagOrMain {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+      ],
+    },
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',

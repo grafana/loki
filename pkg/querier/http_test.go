@@ -32,8 +32,11 @@ var (
 					"compressedBytes": 1,
 					"decompressedBytes": 2,
 					"decompressedLines": 3,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
+					"headChunkNonIndexedLabelsBytes": 0,
+					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
@@ -51,8 +54,11 @@ var (
 					"compressedBytes": 11,
 					"decompressedBytes": 12,
 					"decompressedLines": 13,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
+					"headChunkNonIndexedLabelsBytes": 0,
+					"postFilterLines": 0,
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
@@ -108,7 +114,9 @@ var (
 			"subqueries": 0,
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
-			"totalLinesProcessed": 25
+			"totalLinesProcessed": 25,
+			"totalNonIndexedLabelsBytesProcessed": 0,
+			"totalPostFilterLines": 0
 		}
 	}`
 	statsResult = stats.Result{
@@ -374,7 +382,7 @@ func TestSeriesHandler(t *testing.T) {
 		require.JSONEq(t, expected, res.Body.String())
 	})
 }
-func TestSeriesVolumeHandler(t *testing.T) {
+func TestVolumeHandler(t *testing.T) {
 	ret := &logproto.VolumeResponse{
 		Volumes: []logproto.Volume{
 			{Name: `{foo="bar"}`, Volume: 38},
@@ -386,26 +394,27 @@ func TestSeriesVolumeHandler(t *testing.T) {
 			mode    string
 			handler func(api *QuerierAPI) http.HandlerFunc
 		}{
-			{mode: "instant", handler: func(api *QuerierAPI) http.HandlerFunc { return api.SeriesVolumeInstantHandler }},
-			{mode: "range", handler: func(api *QuerierAPI) http.HandlerFunc { return api.SeriesVolumeRangeHandler }},
+			{mode: "instant", handler: func(api *QuerierAPI) http.HandlerFunc { return api.VolumeInstantHandler }},
+			{mode: "range", handler: func(api *QuerierAPI) http.HandlerFunc { return api.VolumeRangeHandler }},
 		} {
 			t.Run(fmt.Sprintf("%s queries return label volumes from the querier", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
-				querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
+				querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
 				api := setupAPI(querier)
 
-				req := httptest.NewRequest(http.MethodGet, "/series_volume"+
+				req := httptest.NewRequest(http.MethodGet, "/volume"+
 					"?start=0"+
 					"&end=1"+
 					"&query=%7Bfoo%3D%22bar%22%7D", nil)
 
 				w := makeRequest(t, tc.handler(api), req)
 
-				calls := querier.GetMockedCallsByMethod("SeriesVolume")
+				calls := querier.GetMockedCallsByMethod("Volume")
 				require.Len(t, calls, 1)
 
 				request := calls[0].Arguments[1].(*logproto.VolumeRequest)
 				require.Equal(t, `{foo="bar"}`, request.Matchers)
+				require.Equal(t, "series", request.AggregateBy)
 
 				require.Equal(
 					t,
@@ -417,13 +426,13 @@ func TestSeriesVolumeHandler(t *testing.T) {
 
 			t.Run(fmt.Sprintf("%s queries return nothing when a store doesn't support label volumes", tc.mode), func(t *testing.T) {
 				querier := newQuerierMock()
-				querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, nil)
+				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, nil)
 				api := setupAPI(querier)
 
-				req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+				req := httptest.NewRequest(http.MethodGet, "/volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 				w := makeRequest(t, tc.handler(api), req)
 
-				calls := querier.GetMockedCallsByMethod("SeriesVolume")
+				calls := querier.GetMockedCallsByMethod("Volume")
 				require.Len(t, calls, 1)
 
 				require.Equal(t, strings.TrimSpace(w.Body.String()), `{"volumes":[]}`)
@@ -433,14 +442,14 @@ func TestSeriesVolumeHandler(t *testing.T) {
 			t.Run(fmt.Sprintf("%s queries return error when there's an error in the querier", tc.mode), func(t *testing.T) {
 				err := errors.New("something bad")
 				querier := newQuerierMock()
-				querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(nil, err)
+				querier.On("Volume", mock.Anything, mock.Anything).Return(nil, err)
 
 				api := setupAPI(querier)
 
-				req := httptest.NewRequest(http.MethodGet, "/series_volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
+				req := httptest.NewRequest(http.MethodGet, "/volume?start=0&end=1&query=%7Bfoo%3D%22bar%22%7D", nil)
 				w := makeRequest(t, tc.handler(api), req)
 
-				calls := querier.GetMockedCallsByMethod("SeriesVolume")
+				calls := querier.GetMockedCallsByMethod("Volume")
 				require.Len(t, calls, 1)
 
 				require.Equal(t, strings.TrimSpace(w.Body.String()), `something bad`)
@@ -451,17 +460,17 @@ func TestSeriesVolumeHandler(t *testing.T) {
 
 	t.Run("instant queries set a step of 0", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
+		querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(querier)
 
-		req := httptest.NewRequest(http.MethodGet, "/series_volume"+
+		req := httptest.NewRequest(http.MethodGet, "/volume"+
 			"?start=0"+
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.SeriesVolumeInstantHandler, req)
+		makeRequest(t, api.VolumeInstantHandler, req)
 
-		calls := querier.GetMockedCallsByMethod("SeriesVolume")
+		calls := querier.GetMockedCallsByMethod("Volume")
 		require.Len(t, calls, 1)
 
 		request := calls[0].Arguments[1].(*logproto.VolumeRequest)
@@ -470,17 +479,17 @@ func TestSeriesVolumeHandler(t *testing.T) {
 
 	t.Run("range queries parse step from request", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
+		querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(querier)
 
-		req := httptest.NewRequest(http.MethodGet, "/series_volume"+
+		req := httptest.NewRequest(http.MethodGet, "/volume"+
 			"?start=0"+
 			"&end=1"+
 			"&step=42"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.SeriesVolumeRangeHandler, req)
+		makeRequest(t, api.VolumeRangeHandler, req)
 
-		calls := querier.GetMockedCallsByMethod("SeriesVolume")
+		calls := querier.GetMockedCallsByMethod("Volume")
 		require.Len(t, calls, 1)
 
 		request := calls[0].Arguments[1].(*logproto.VolumeRequest)
@@ -489,16 +498,16 @@ func TestSeriesVolumeHandler(t *testing.T) {
 
 	t.Run("range queries provide default step when not provided", func(t *testing.T) {
 		querier := newQuerierMock()
-		querier.On("SeriesVolume", mock.Anything, mock.Anything).Return(ret, nil)
+		querier.On("Volume", mock.Anything, mock.Anything).Return(ret, nil)
 		api := setupAPI(querier)
 
-		req := httptest.NewRequest(http.MethodGet, "/series_volume"+
+		req := httptest.NewRequest(http.MethodGet, "/volume"+
 			"?start=0"+
 			"&end=1"+
 			"&query=%7Bfoo%3D%22bar%22%7D", nil)
-		makeRequest(t, api.SeriesVolumeRangeHandler, req)
+		makeRequest(t, api.VolumeRangeHandler, req)
 
-		calls := querier.GetMockedCallsByMethod("SeriesVolume")
+		calls := querier.GetMockedCallsByMethod("Volume")
 		require.Len(t, calls, 1)
 
 		request := calls[0].Arguments[1].(*logproto.VolumeRequest)

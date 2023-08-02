@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	strings "strings"
 	"testing"
 	"time"
@@ -106,7 +107,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
-		{"series_volume", func() (*http.Request, error) {
+		{"volume", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:         model.TimeFromUnixNano(start.UnixNano()),
 				Through:      model.TimeFromUnixNano(end.UnixNano()),
@@ -114,6 +115,7 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				Limit:        3,
 				Step:         0,
 				TargetLabels: []string{"job"},
+				AggregateBy:  "labels",
 			})
 		}, &logproto.VolumeRequest{
 			From:         model.TimeFromUnixNano(start.UnixNano()),
@@ -122,21 +124,23 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Limit:        3,
 			Step:         0,
 			TargetLabels: []string{"job"},
+			AggregateBy:  "labels",
 		}, false},
-		{"series_volume_default_limit", func() (*http.Request, error) {
+		{"volume_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    100,
-			Step:     0,
+			From:        model.TimeFromUnixNano(start.UnixNano()),
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:    `{job="foo"}`,
+			Limit:       100,
+			Step:        0,
+			AggregateBy: "series",
 		}, false},
-		{"series_volume_range", func() (*http.Request, error) {
+		{"volume_range", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:         model.TimeFromUnixNano(start.UnixNano()),
 				Through:      model.TimeFromUnixNano(end.UnixNano()),
@@ -152,8 +156,9 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 			Limit:        3,
 			Step:         30 * 1e3, // step is expected in ms
 			TargetLabels: []string{"fizz", "buzz"},
+			AggregateBy:  "series",
 		}, false},
-		{"series_volume_range_default_limit", func() (*http.Request, error) {
+		{"volume_range_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
@@ -161,11 +166,12 @@ func Test_codec_EncodeDecodeRequest(t *testing.T) {
 				Step:     30 * 1e3, // step is expected in ms
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    100,
-			Step:     30 * 1e3, // step is expected in ms; default is 0 or no step
+			From:        model.TimeFromUnixNano(start.UnixNano()),
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:    `{job="foo"}`,
+			Limit:       100,
+			Step:        30 * 1e3, // step is expected in ms; default is 0 or no step
+			AggregateBy: "series",
 		}, false},
 	}
 	for _, tt := range tests {
@@ -301,7 +307,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
+			"volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
 			&logproto.VolumeRequest{},
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
@@ -804,7 +810,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"series volume", "/loki/api/v1/index/series_volume",
+			"volume", "/loki/api/v1/index/volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -1325,8 +1331,11 @@ var (
 					"compressedBytes": 1,
 					"decompressedBytes": 2,
 					"decompressedLines": 3,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
+					"headChunkNonIndexedLabelsBytes": 0,
+					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
@@ -1344,8 +1353,11 @@ var (
 					"compressedBytes": 11,
 					"decompressedBytes": 12,
 					"decompressedLines": 13,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
+					"headChunkNonIndexedLabelsBytes": 0,
+                    "postFilterLines": 0,
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
@@ -1401,7 +1413,9 @@ var (
 			"subqueries": 0,
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
-			"totalLinesProcessed": 25
+			"totalLinesProcessed": 25,
+			"totalNonIndexedLabelsBytesProcessed": 0,
+            "totalPostFilterLines": 0
 		}
 	},`
 	matrixString = `{
@@ -1568,6 +1582,7 @@ var (
 			TotalBytesProcessed:     24,
 			TotalLinesProcessed:     25,
 			TotalEntriesReturned:    10,
+			TotalPostFilterLines:    0,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{
@@ -1577,6 +1592,7 @@ var (
 					DecompressedLines: 13,
 					HeadChunkBytes:    14,
 					HeadChunkLines:    15,
+					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
 				ChunksDownloadTime:    16,
@@ -1593,6 +1609,7 @@ var (
 					DecompressedLines: 3,
 					HeadChunkBytes:    4,
 					HeadChunkLines:    5,
+					PostFilterLines:   0,
 					TotalDuplicates:   8,
 				},
 			},
@@ -1767,6 +1784,76 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 			Direction: logproto.BACKWARD,
 			Path:      u.String(),
 		})
+		require.NoError(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func Benchmark_CodecDecodeSeries(b *testing.B) {
+	ctx := context.Background()
+	benchmarks := []struct {
+		accept string
+	}{
+		{accept: ProtobufType},
+		{accept: JSONType},
+	}
+
+	for _, bm := range benchmarks {
+		u := &url.URL{Path: "/loki/api/v1/series"}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Header: http.Header{
+				"Accept": []string{bm.accept},
+			},
+		}
+		resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		})
+		require.Nil(b, err)
+
+		buf, err := io.ReadAll(resp.Body)
+		require.Nil(b, err)
+		reader := bytes.NewReader(buf)
+		resp.Body = io.NopCloser(reader)
+		b.Run(bm.accept, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+				_, _ = reader.Seek(0, io.SeekStart)
+				result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiSeriesRequest{
+					StartTs: start,
+					EndTs:   end,
+					Path:    u.String(),
+				})
+				require.NoError(b, err)
+				require.NotNil(b, result)
+			}
+		})
+	}
+
+}
+
+func Benchmark_MergeResponses(b *testing.B) {
+	var responses []queryrangebase.Response = make([]queryrangebase.Response, 100)
+	for i := range responses {
+		responses[i] = &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		result, err := DefaultCodec.MergeResponse(responses...)
 		require.Nil(b, err)
 		require.NotNil(b, result)
 	}
@@ -1798,6 +1885,17 @@ func generateStream() (res []logproto.Stream) {
 			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("%d\nyolo", j)})
 		}
 		res = append(res, s)
+	}
+	return res
+}
+
+func generateSeries() (res []logproto.SeriesIdentifier) {
+	for i := 0; i < 1000; i++ {
+		labels := make(map[string]string)
+		for l := 0; l < 100; l++ {
+			labels[fmt.Sprintf("%d-%d", i, l)] = strconv.Itoa(l)
+		}
+		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
 	return res
 }
