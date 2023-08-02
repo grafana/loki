@@ -1,0 +1,45 @@
+package congestion
+
+import (
+	"io"
+	"net/http"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+)
+
+// Controller handles congestion by:
+// - determining if calls to object storage can be retried
+// - defining and enforcing a back-pressure mechanism
+// - centralising retries & hedging
+type Controller interface {
+	client.ObjectClient
+
+	// Wrap wraps a given object store client and handles congestion against its backend service
+	Wrap(client client.ObjectClient) client.ObjectClient
+
+	RetryStrategy() RetryStrategy
+	HedgeStrategy() HedgeStrategy
+}
+
+type DoRequestFunc func(attempt int) (io.ReadCloser, int64, error)
+type IsRetryableErrFunc func(err error) bool
+
+// RetryStrategy orchestrates requests & subsequent retries (if configured).
+// NOTE: this only supports ObjectClient.GetObject calls right now.
+type RetryStrategy interface {
+	// Do executes a given function which is expected to be a GetObject call, and its return signature matches that.
+	// Any failed requests will be retried.
+	//
+	// count is the current request count; any positive number indicates retries, 0 indicates first attempt.
+	Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error)
+}
+
+// HedgeStrategy orchestrates request "hedging", which is the process of sending a new request when the old request is
+// taking too long, and returning the response that is received first
+type HedgeStrategy interface {
+	// HTTPClient returns an HTTP client which is responsible for handling both the initial and all hedged requests.
+	// It is recommended that retries are not hedged.
+	// Bear in mind this function can be called several times, and should return the same client each time.
+	HTTPClient(cfg hedging.Config) (*http.Client, error)
+}

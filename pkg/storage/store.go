@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
@@ -197,7 +198,13 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	chunkClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "chunk-store-" + p.From.String()}, s.registerer)
 
-	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, s.clientMetrics, chunkClientReg)
+	// TODO(dannyk): drive with config
+	cc := congestion.NewAIMDStrategy(
+		congestion.NewLimitedRetryStrategy(3),
+		congestion.NoopHedgeStrategy{},
+	)
+
+	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}

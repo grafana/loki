@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -422,7 +423,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clientMetrics ClientMetrics, registerer prometheus.Registerer) (client.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics) (client.Client, error) {
 	var (
 		storeType = name
 	)
@@ -430,6 +431,11 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 	// lookup storeType for named stores
 	if nsType, ok := cfg.NamedStores.storeType[name]; ok {
 		storeType = nsType
+	}
+
+	// TODO(dannyk): handle this scenario; noop controller?
+	if cc == nil {
+		panic("no congestion controller defined")
 	}
 
 	switch storeType {
@@ -440,7 +446,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -455,19 +462,22 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeAlibabaCloud:
 		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig)
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeBOS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxChunkBatchSize, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxChunkBatchSize, schemaCfg), nil
 	case config.StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
@@ -477,13 +487,15 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeSwift:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case config.StorageTypeFileSystem:
@@ -491,7 +503,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.StorageTypeCOS:
@@ -499,7 +512,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		if err != nil {
 			return nil, err
 		}
-		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+
+		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc, config.StorageTypeCOS)
 	}
@@ -622,6 +636,9 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 
 			gcsCfg = (gcp.GCSConfig)(nsCfg)
 		}
+
+		// TODO(dannyk): drive with config; keep true if congestion control is disabled
+		gcsCfg.EnableRetries = false
 
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 	case config.StorageTypeAzure:
