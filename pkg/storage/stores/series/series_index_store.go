@@ -279,6 +279,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}))
 	}
 
+	// making this a slice of slices and flattening it out later avoids a concurrency issue
 	results := make([][]labels.Labels, len(jobs))
 
 	// Picking an arbitrary bound of 20 numConcurrent jobs.
