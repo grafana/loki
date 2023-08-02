@@ -558,3 +558,6 @@ func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (b *BlobStorage) IsRetryableErr(err error) bool { return false }

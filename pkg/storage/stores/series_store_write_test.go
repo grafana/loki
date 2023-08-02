@@ -71,6 +71,9 @@ func (m *mockChunksClient) DeleteChunk(_ context.Context, _, _ string) error {
 func (m *mockChunksClient) IsChunkNotFoundErr(_ error) bool {
 	panic("IsChunkNotFoundErr not implemented")
 }
+func (m *mockChunksClient) IsRetryableErr(_ error) bool {
+	panic("IsRetryableErr not implemented")
+}
 
 func TestChunkWriter_PutOne(t *testing.T) {
 	schemaConfig := config.SchemaConfig{
