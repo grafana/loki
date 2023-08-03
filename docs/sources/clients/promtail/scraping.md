@@ -64,6 +64,29 @@ There are different types of labels present in Promtail:
   uniqueness of the streams. It is set to the absolute path of the file the line
   was read from.
 
+### Exemple of File Discovery
+```
+scrape_configs:
+...
+ - job_name: apt-dpkg
+    file_sd_configs:
+      - files:
+          - /etc/promtail/dpkg-apt.yaml
+```
+
+In /etc/promtail/dpkg-apt.yaml
+
+```
+- targets: ["localhost"]
+  labels:
+    job: dpkg
+    __path__: /var/log/dpkg.log
+- targets: ["localhost"]
+  labels:
+    job: apt
+    __path__: /var/log/apt/*.log
+```
+
 ### Kubernetes Discovery
 
 While Promtail can use the Kubernetes API to discover pods as
