@@ -8,7 +8,7 @@ draft: false
 images: []
 menu:
   docs:
-    parent: "user-guides"
+    parent: "standard-operational-procedures"
 weight: 100
 toc: true
 ---

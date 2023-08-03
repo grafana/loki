@@ -23,8 +23,14 @@
   url = "/docs/user-guides/"
 
 [[docs]]
-  name = "Enhancements"
+  name = "Standard Operational Procedures"
   weight = 50
+  identifier = "standard-operational-procedures"
+  url = "/docs/standard-operational-procedures/"
+
+[[docs]]
+  name = "Enhancements"
+  weight = 60
   identifier = "enhancements"
   url = "/docs/enhancements/"
 
