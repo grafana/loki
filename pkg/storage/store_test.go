@@ -31,6 +31,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -1005,7 +1006,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 
 	cfg := Config{
 		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		TSDBShipperConfig: shipperConfig,
+		TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
 		NamedStores: NamedStores{
 			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1166,7 +1167,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 				BoltDBShipperConfig: shipper.Config{
 					Config: shipperConfig,
 				},
-				TSDBShipperConfig: shipperConfig,
+				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
 				NamedStores: NamedStores{
 					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1479,7 +1480,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	cfg := Config{
 		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		BoltDBShipperConfig: boltdbShipperConfig,
-		TSDBShipperConfig:   tsdbShipperConfig,
+		TSDBShipperConfig:   tsdb.IndexCfg{Config: tsdbShipperConfig},
 	}
 
 	schemaConfig := config.SchemaConfig{
