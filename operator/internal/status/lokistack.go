@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/go-logr/logr"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	corev1 "k8s.io/api/core/v1"
@@ -12,7 +13,9 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 const (
@@ -61,7 +64,10 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, m
 	return updateCondition(ctx, k, req, degraded)
 }
 
-func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
+func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k client.Client, log logr.Logger, req ctrl.Request, stack *lokiv1.LokiStack) metav1.Condition {
+	// func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
+	//ll := log.WithValues("lokistack", req.NamespacedName, "event", "createOrUpdate")
+
 	// Check for failed pods first
 	failed := len(cs.Compactor[corev1.PodFailed]) +
 		len(cs.Distributor[corev1.PodFailed]) +
@@ -87,6 +93,45 @@ func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
 		len(cs.Ruler[corev1.PodPending])
 
 	if pending != 0 {
+		// TODO if condition is pending then look at the nodes if the labels match the topologyKey
+		if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
+			podList := &corev1.PodList{}
+			if err := k.List(ctx, podList, &client.ListOptions{
+				Namespace: stack.Namespace,
+				LabelSelector: labels.SelectorFromSet(labels.Set{
+					"app.kubernetes.io/instance": stack.Name,
+				}),
+			}); err != nil {
+				log.Error(err, "Error getting pod resources")
+				return conditionPending
+			}
+
+			for _, pod := range podList.Items {
+				if pod.Status.Phase == corev1.PodPending {
+					nodeList := corev1.NodeList{}
+					if err := k.List(ctx, &nodeList, &client.ListOptions{
+						LabelSelector: labels.SelectorFromSet(labels.Set{
+							lokiv1.AnnotationAvailabilityZoneLabels: pod.Annotations[lokiv1.AnnotationAvailabilityZoneLabels],
+						}),
+					}); err != nil {
+						log.Error(err, "Error getting nodes")
+						return conditionPending
+					}
+
+					if len(nodeList.Items) == 0 {
+						degradedError := DegradedError{
+							Message: "Availability zone pod annotation does not match it's node's labels",
+							Reason:  lokiv1.ReasonAvailabilityZoneLabelsMismatch,
+							Requeue: false,
+						}
+						if err := SetDegradedCondition(ctx, k, req, degradedError.Message, degradedError.Reason); err != nil {
+							return conditionPending
+						}
+					}
+				}
+			}
+		}
+
 		return conditionPending
 	}
 

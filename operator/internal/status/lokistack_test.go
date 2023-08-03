@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/go-logr/logr"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
 	"github.com/stretchr/testify/require"
@@ -153,6 +154,24 @@ func TestSetDegradedCondition_WhenNoneExisting_AppendDegradedCondition(t *testin
 }
 
 func TestGenerateConditions(t *testing.T) {
+	var log logr.Logger
+
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "test-lokistack",
+			Namespace: "some-ns",
+		},
+	}
+	lokiStack := lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-lokistack",
+			Namespace: "test-ns",
+		},
+	}
 	tt := []struct {
 		desc            string
 		componentStatus *lokiv1.LokiStackComponentStatus
@@ -192,7 +211,7 @@ func TestGenerateConditions(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			condition := generateCondition(tc.componentStatus)
+			condition := generateCondition(context.TODO(), tc.componentStatus, k, log, r, &lokiStack)
 			require.Equal(t, tc.wantCondition, condition)
 		})
 	}

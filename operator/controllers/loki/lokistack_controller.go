@@ -16,7 +16,6 @@ import (
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -165,7 +164,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return handleDegradedError(ctx, r.Client, req, err)
 	}
 
-	err = status.Refresh(ctx, r.Client, req, time.Now())
+	err = status.Refresh(ctx, r.Client, r.Log, req, time.Now())
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -209,8 +208,7 @@ func (r *LokiStackReconciler) buildController(bld k8s.Builder) error {
 		Owns(&rbacv1.Role{}, updateOrDeleteOnlyPred).
 		Owns(&rbacv1.RoleBinding{}, updateOrDeleteOnlyPred).
 		Watches(&source.Kind{Type: &corev1.Service{}}, r.enqueueForAlertManagerServices(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred).
-		Watches(&source.Kind{Type: &corev1.Node{}}, r.enqueueForNodeLabelChanges(), createOrUpdatePodWithLabelPred)
+		Watches(&source.Kind{Type: &corev1.Secret{}}, r.enqueueForStorageSecret(), createUpdateOrDeletePred)
 
 	if r.FeatureGates.LokiStackAlerts {
 		bld = bld.Owns(&monitoringv1.PrometheusRule{}, updateOrDeleteOnlyPred)
@@ -327,59 +325,6 @@ func (r *LokiStackReconciler) enqueueForStorageSecret() handler.EventHandler {
 			}
 		}
 
-		return requests
-	})
-}
-
-func (r *LokiStackReconciler) enqueueForNodeLabelChanges() handler.EventHandler {
-	ctx := context.TODO()
-	return handler.EnqueueRequestsFromMapFunc(func(obj client.Object) []reconcile.Request {
-		lokiStacks := &lokiv1.LokiStackList{}
-		if err := r.Client.List(ctx, lokiStacks); err != nil {
-			r.Log.Error(err, "Error getting LokiStack resources in event handler")
-			return nil
-		}
-
-		var requests []reconcile.Request
-		for _, stack := range lokiStacks.Items {
-			if stack.Spec.Replication == nil || len(stack.Spec.Replication.Zones) == 0 {
-				// Skip this LokiStack as no replication is enabled or none zones are provided
-				continue
-			}
-			podList := &corev1.PodList{}
-			if err := r.Client.List(ctx, podList, &client.ListOptions{
-				Namespace: stack.Namespace,
-				LabelSelector: labels.SelectorFromSet(labels.Set{
-					"app.kubernetes.io/instance": stack.Name,
-				}),
-			}); err != nil {
-				r.Log.Error(err, "Error getting pod resources in event handler")
-				return nil
-			}
-			for _, pod := range podList.Items {
-				assignedNode := &corev1.Node{}
-				key := client.ObjectKey{Name: pod.Spec.NodeName}
-				if err := r.Client.Get(ctx, key, assignedNode); err != nil {
-					r.Log.Error(err, "Error getting node resources in event handler")
-					return nil
-				}
-				availabilityZone, err := handlers.GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
-				if err != nil {
-					r.Log.Error(err, "failed to get pod availability zone from assigned node", "name", pod.Name)
-					return nil
-				}
-				if availabilityZone != pod.Annotations[corev1.LabelTopologyZone] {
-					requests = append(requests, reconcile.Request{
-						NamespacedName: types.NamespacedName{
-							Namespace: stack.Namespace,
-							Name:      stack.Name,
-						},
-					})
-					r.Log.Info("Enqueued requests for LokiStack because of Node labels change", "LokiStack", stack.Name, "Node", obj.GetName())
-					return requests
-				}
-			}
-		}
 		return requests
 	})
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/go-logr/logr"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -17,7 +18,7 @@ import (
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
 // - It recreates the Status.Components pod status map per component.
 // - It sets the appropriate Status.Condition to true that matches the pod status maps.
-func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time) error {
+func Refresh(ctx context.Context, k k8s.Client, log logr.Logger, req ctrl.Request, now time.Time) error {
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
@@ -31,7 +32,8 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time)
 		return err
 	}
 
-	condition := generateCondition(cs)
+	condition := generateCondition(ctx, cs, k, log, req, &stack)
+	// condition := generateCondition(cs)
 
 	condition.LastTransitionTime = metav1.NewTime(now)
 	condition.Status = metav1.ConditionTrue
