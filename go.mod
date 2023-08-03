@@ -80,7 +80,7 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/oschwald/geoip2-golang v1.8.0
 	// github.com/pierrec/lz4 v2.0.5+incompatible
-	github.com/pierrec/lz4/v4 v4.1.17
+	github.com/pierrec/lz4/v4 v4.1.18
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/prometheus/client_model v0.4.0
