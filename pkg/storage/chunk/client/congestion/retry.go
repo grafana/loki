@@ -29,14 +29,19 @@ func (l LimitedRetryStrategy) Do(fn DoRequestFunc, isRetryable IsRetryableErrFun
 		rc, sz, err := fn(i)
 
 		if err != nil {
-			onError()
-
 			if !isRetryable(err) {
 				return rc, sz, err
 			}
-		} else {
-			onSuccess()
+
+			// TODO(dannyk): consider this more carefully
+			// only decrease rate-limit if error is retryable, otherwise all errors (context cancelled, dial errors, timeouts, etc)
+			// which may be mostly client-side would inappropriately reduce throughput
+			onError()
+			continue
 		}
+
+		onSuccess()
+		return rc, sz, err
 	}
 
 	return nil, 0, RetriesExceeded
