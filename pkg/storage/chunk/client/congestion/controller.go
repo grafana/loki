@@ -11,15 +11,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
-const (
-	// start from 100 requests per second, increment on each successful response
-	initialSize rate.Limit = 100
-	// halve the rate on each failure
-	backoffFactor = 0.5
-	// set an upper bound (we've observed up to 7000 RPS on individual queries in our largest cells)
-	upperBound = 500
-)
-
 // AIMDController implements the Additive-Increase/Multiplicative-Decrease algorithm which is used in TCP congestion avoidance.
 // https://en.wikipedia.org/wiki/Additive_increase/multiplicative_decrease
 type AIMDController struct {
@@ -35,8 +26,22 @@ type AIMDController struct {
 }
 
 func NewAIMDController(cfg Config) *AIMDController {
+	lowerBound := rate.Limit(cfg.Controller.AIMD.LowerBound)
+	upperBound := rate.Limit(cfg.Controller.AIMD.UpperBound)
+
+	if upperBound == 0 {
+		// set to infinity if not defined
+		upperBound = rate.Limit(math.Inf(1))
+	}
+
+	backoffFactor := cfg.Controller.AIMD.BackoffFactor
+	if backoffFactor == 0 {
+		// AIMD algorithm calls for halving rate
+		backoffFactor = 0.5
+	}
+
 	return &AIMDController{
-		limiter:       rate.NewLimiter(initialSize, int(initialSize)),
+		limiter:       rate.NewLimiter(lowerBound, int(lowerBound)),
 		backoffFactor: backoffFactor,
 		upperBound:    upperBound,
 	}
@@ -47,16 +52,21 @@ func (a *AIMDController) Wrap(client client.ObjectClient) client.ObjectClient {
 	return a
 }
 
-func (a *AIMDController) WithRetrier(r Retrier) {
+func (a *AIMDController) WithRetrier(r Retrier) Controller {
 	a.retry = r
+	return a
 }
 
-func (a *AIMDController) WithHedger(h Hedger) {
+func (a *AIMDController) WithHedger(h Hedger) Controller {
 	a.hedge = h
+	return a
 }
 
-func (a *AIMDController) WithMetrics(m *Metrics) {
+func (a *AIMDController) WithMetrics(m *Metrics) Controller {
 	a.metrics = m
+
+	a.updateLimitMetric()
+	return a
 }
 
 func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
@@ -133,7 +143,7 @@ func (a *AIMDController) additiveIncrease() {
 	a.limiter.SetLimit(newLimit)
 	a.limiter.SetBurst(int(newLimit))
 
-	a.metrics.currentLimit.Set(float64(newLimit))
+	a.updateLimitMetric()
 }
 
 // multiplicativeDecrease reduces the number of requests per second that can be sent exponentially.
@@ -144,7 +154,11 @@ func (a *AIMDController) multiplicativeDecrease() {
 	a.limiter.SetLimit(rate.Limit(newLimit))
 	a.limiter.SetBurst(int(newLimit))
 
-	a.metrics.currentLimit.Set(newLimit)
+	a.updateLimitMetric()
+}
+
+func (a *AIMDController) updateLimitMetric() {
+	a.metrics.currentLimit.Set(float64(a.limiter.Limit()))
 }
 
 type NoopController struct {
@@ -169,12 +183,15 @@ func (n *NoopController) IsObjectNotFoundErr(error) bool                 { retur
 func (n *NoopController) IsRetryableErr(error) bool                      { return false }
 func (n *NoopController) Stop()                                          {}
 func (n *NoopController) Wrap(c client.ObjectClient) client.ObjectClient { return c }
-func (n *NoopController) WithRetrier(r Retrier) {
+func (n *NoopController) WithRetrier(r Retrier) Controller {
 	n.retrier = r
+	return n
 }
-func (n *NoopController) WithHedger(h Hedger) {
+func (n *NoopController) WithHedger(h Hedger) Controller {
 	n.hedger = h
+	return n
 }
-func (n *NoopController) WithMetrics(m *Metrics) {
+func (n *NoopController) WithMetrics(m *Metrics) Controller {
 	n.metrics = m
+	return n
 }

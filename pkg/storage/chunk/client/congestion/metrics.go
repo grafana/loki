@@ -16,40 +16,33 @@ func (m Metrics) Unregister() {
 // It needs to accept a "name" because congestion control is used in object clients, and there can be many object clients
 // creates for the same store (multiple period configs, etc). It is the responsibility of the caller to ensure uniqueness,
 // otherwise a duplicate registration panic will occur.
-func NewMetrics(name string) *Metrics {
+func NewMetrics(name string, cfg Config) *Metrics {
+	labels := map[string]string{
+		"strategy": cfg.Controller.Strategy,
+		"name":     name,
+	}
+
 	m := Metrics{
 		currentLimit: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace: "loki",
-			Subsystem: "store",
-			Name:      "congestion_control_limit",
-			Help:      "Current per-second request limit to control congestion",
-			ConstLabels: map[string]string{
-				// TODO(dannyk): make strategy dynamic
-				"strategy": "aimd",
-				"name":     name,
-			},
+			Namespace:   "loki",
+			Subsystem:   "store",
+			Name:        "congestion_control_limit",
+			Help:        "Current per-second request limit to control congestion",
+			ConstLabels: labels,
 		}),
 		backoffTimeNs: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: "store",
-			Name:      "congestion_control_backoff_time_nano",
-			Help:      "How much time is spent backing off once throughput limit is encountered",
-			ConstLabels: map[string]string{
-				// TODO(dannyk): make strategy dynamic
-				"strategy": "aimd",
-				"name":     name,
-			},
+			Namespace:   "loki",
+			Subsystem:   "store",
+			Name:        "congestion_control_backoff_time_nano",
+			Help:        "How much time is spent backing off once throughput limit is encountered",
+			ConstLabels: labels,
 		}),
 		retries: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: "loki",
-			Subsystem: "store",
-			Name:      "congestion_control_backoff_time_nano",
-			Help:      "How much time is spent backing off once throughput limit is encountered",
-			ConstLabels: map[string]string{
-				// TODO(dannyk): make strategy dynamic
-				"strategy": "aimd",
-				"name":     name,
-			},
+			Namespace:   "loki",
+			Subsystem:   "store",
+			Name:        "congestion_control_backoff_time_nano",
+			Help:        "How much time is spent backing off once throughput limit is encountered",
+			ConstLabels: labels,
 		}),
 	}
 

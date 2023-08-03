@@ -10,6 +10,11 @@ type Config struct {
 
 type ControllerConfig struct {
 	Strategy string `yaml:"strategy"`
+	AIMD     struct {
+		LowerBound    uint    `yaml:"lower_bound"`
+		UpperBound    uint    `yaml:"upper_bound"`
+		BackoffFactor float64 `yaml:"backoff_factor"`
+	} `yaml:"aimd"`
 }
 
 type RetrierConfig struct {

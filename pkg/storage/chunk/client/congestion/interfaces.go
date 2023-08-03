@@ -18,9 +18,9 @@ type Controller interface {
 	// Wrap wraps a given object store client and handles congestion against its backend service
 	Wrap(client client.ObjectClient) client.ObjectClient
 
-	WithRetrier(Retrier)
-	WithHedger(Hedger)
-	WithMetrics(*Metrics)
+	WithRetrier(Retrier) Controller
+	WithHedger(Hedger) Controller
+	WithMetrics(*Metrics) Controller
 }
 
 type DoRequestFunc func(attempt int) (io.ReadCloser, int64, error)
@@ -34,9 +34,6 @@ type Retrier interface {
 	//
 	// count is the current request count; any positive number indicates retries, 0 indicates first attempt.
 	Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error)
-
-	// Limit returns the maximum retries that will be performed
-	Limit() int
 }
 
 // Hedger orchestrates request "hedging", which is the process of sending a new request when the old request is

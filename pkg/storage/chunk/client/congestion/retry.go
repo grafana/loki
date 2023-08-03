@@ -18,8 +18,6 @@ func (n NoopRetrier) Do(fn DoRequestFunc, _ IsRetryableErrFunc, _ func(), _ func
 	return fn(0)
 }
 
-func (n NoopRetrier) Limit() int { return 0 }
-
 // LimitedRetrier executes the initial request plus a configurable limit of subsequent retries.
 // limit=0 is equivalent to NoopRetrier
 type LimitedRetrier struct {
@@ -52,5 +50,3 @@ func (l LimitedRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onS
 
 	return nil, 0, RetriesExceeded
 }
-
-func (l LimitedRetrier) Limit() int { return l.limit }

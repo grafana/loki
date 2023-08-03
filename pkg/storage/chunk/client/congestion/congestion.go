@@ -1,16 +1,10 @@
 package congestion
 
 func NewController(cfg Config, metrics *Metrics) Controller {
-	ctrl := newController(cfg)
-	retry := newRetrier(cfg)
-	hedge := newHedger(cfg)
-
-	// TODO(dannyk): fluid interface?
-	ctrl.WithRetrier(retry)
-	ctrl.WithHedger(hedge)
-	ctrl.WithMetrics(metrics)
-
-	return ctrl
+	return newController(cfg).
+		WithRetrier(newRetrier(cfg)).
+		WithHedger(newHedger(cfg)).
+		WithMetrics(metrics)
 }
 
 func newController(cfg Config) Controller {

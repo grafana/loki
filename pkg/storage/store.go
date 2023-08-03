@@ -202,7 +202,7 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 		prometheus.Labels{"component": "chunk-store-" + p.From.String()}, s.registerer)
 
 	cc := s.congestionControllerFactory(
-		s.congestionCfg, congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String())),
+		s.congestionCfg, congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), s.congestionCfg),
 	)
 
 	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics)
