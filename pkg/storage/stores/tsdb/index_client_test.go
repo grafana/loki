@@ -39,57 +39,115 @@ func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ s
 }
 
 func BenchmarkIndexClient_Stats(b *testing.B) {
-	tempDir := b.TempDir()
-	tableRange := config.TableRange{
-		Start: 0,
-		End:   math.MaxInt64,
-		PeriodConfig: &config.PeriodConfig{
-			IndexTables: config.PeriodicTableConfig{
-				Period: config.ObjectStorageIndexRequiredPeriod,
+	happyMatcher := labels.MustNewMatcher(labels.MatchEqual, "kek", "foo")
+	sadMatcher := labels.MustNewMatcher(labels.MatchNotEqual, "kek", "")
+
+	b.Run("happy matcher, only a=b stuff", func(b *testing.B) {
+
+		tempDir := b.TempDir()
+		tableRange := config.TableRange{
+			Start: 0,
+			End:   math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				},
 			},
-		},
-	}
+		}
 
-	indexStartToday := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
-	indexStartYesterday := indexStartToday.Add(-config.ObjectStorageIndexRequiredPeriod)
+		indexStartToday := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+		indexStartYesterday := indexStartToday.Add(-config.ObjectStorageIndexRequiredPeriod)
 
-	tables := map[string][]*TSDBFile{
-		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
-			BuildIndex(b, tempDir, []LoadableSeries{
-				{
-					Labels: mustParseLabels(`{foo="bar"}`),
-					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
-				},
-			}),
-		},
+		tables := map[string][]*TSDBFile{
+			tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
+				BuildIndex(b, tempDir, []LoadableSeries{
+					{
+						Labels: mustParseLabels(`{foo="bar", kek="foo"}`),
+						Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
+					},
+				}),
+			},
 
-		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
-			BuildIndex(b, tempDir, []LoadableSeries{
-				{
-					Labels: mustParseLabels(`{foo="bar"}`),
-					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
-				},
-			}),
-		},
-	}
+			tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
+				BuildIndex(b, tempDir, []LoadableSeries{
+					{
+						Labels: mustParseLabels(`{foo="bar", kek="foo"}`),
+						Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
+					},
+				}),
+			},
+		}
 
-	idx := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, config.TableRange{
-		Start:        0,
-		End:          math.MaxInt64,
-		PeriodConfig: &config.PeriodConfig{},
+		idx := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, config.TableRange{
+			Start:        0,
+			End:          math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{},
+		})
+
+		indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"), happyMatcher)
+			require.NoError(b, err)
+			require.Equal(b, uint64(200), stats.Chunks)
+			require.Equal(b, uint64(200), stats.Entries)
+		}
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
+	b.Run("sad matcher, which contains foo!=''", func(b *testing.B) {
+		tempDir := b.TempDir()
+		tableRange := config.TableRange{
+			Start: 0,
+			End:   math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{
+					Period: config.ObjectStorageIndexRequiredPeriod,
+				},
+			},
+		}
 
-	b.ResetTimer()
-	b.ReportAllocs()
-	for i := 0; i < b.N; i++ {
-		stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-		require.NoError(b, err)
-		require.Equal(b, uint64(200), stats.Chunks)
-		require.Equal(b, uint64(200), stats.Entries)
-	}
+		indexStartToday := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+		indexStartYesterday := indexStartToday.Add(-config.ObjectStorageIndexRequiredPeriod)
 
+		tables := map[string][]*TSDBFile{
+			tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
+				BuildIndex(b, tempDir, []LoadableSeries{
+					{
+						Labels: mustParseLabels(`{foo="bar", kek="foo"}`),
+						Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
+					},
+				}),
+			},
+
+			tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
+				BuildIndex(b, tempDir, []LoadableSeries{
+					{
+						Labels: mustParseLabels(`{foo="bar", kek="foo"}`),
+						Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
+					},
+				}),
+			},
+		}
+
+		idx := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, config.TableRange{
+			Start:        0,
+			End:          math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{},
+		})
+
+		indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			stats, err := indexClient.Stats(context.Background(), "", indexStartYesterday-1000, model.Now()+1000, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"), sadMatcher)
+			require.NoError(b, err)
+			require.Equal(b, uint64(200), stats.Chunks)
+			require.Equal(b, uint64(200), stats.Entries)
+		}
+	})
 }
 
 func TestIndexClient_Stats(t *testing.T) {
