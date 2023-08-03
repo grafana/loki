@@ -120,7 +120,7 @@ func CanonicalLabelMatchersKey(ms []*labels.Matcher) string {
 	for i := range ms {
 		sorted[i] = labels.Matcher{Type: ms[i].Type, Name: ms[i].Name, Value: ms[i].Value}
 	}
-	sort.Sort(sortedLabelMatchers(sorted))
+	sort.Sort(sorteableLabelMatchers(sorted))
 
 	const (
 		typeLen = 2
@@ -141,9 +141,9 @@ func CanonicalLabelMatchersKey(ms []*labels.Matcher) string {
 	return sb.String()
 }
 
-type sortedLabelMatchers []labels.Matcher
+type sorteableLabelMatchers []labels.Matcher
 
-func (c sortedLabelMatchers) Less(i, j int) bool {
+func (c sorteableLabelMatchers) Less(i, j int) bool {
 	if c[i].Name != c[j].Name {
 		return c[i].Name < c[j].Name
 	}
@@ -153,5 +153,5 @@ func (c sortedLabelMatchers) Less(i, j int) bool {
 	return c[i].Value < c[j].Value
 }
 
-func (c sortedLabelMatchers) Len() int      { return len(c) }
-func (c sortedLabelMatchers) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
+func (c sorteableLabelMatchers) Len() int      { return len(c) }
+func (c sorteableLabelMatchers) Swap(i, j int) { c[i], c[j] = c[j], c[i] }
