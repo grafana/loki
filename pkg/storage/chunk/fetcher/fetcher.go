@@ -219,11 +219,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		chunkFetchedSize.WithLabelValues("cache").Observe(float64(len(buf)))
 	}
 
-	//fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
-	//if err != nil {
-	//	level.Warn(log).Log("msg", "error process response from cache", "err", err)
-	//}
-
 	if c.l2CacheHandoff > 0 {
 		// Fetch missing from L2 chunks cache
 		missingL1Keys := make([]string, 0, len(l2OnlyChunks))
@@ -247,11 +242,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 
 		cacheHits = append(cacheHits, cacheHitsL2...)
 		cacheBufs = append(cacheBufs, cacheBufsL2...)
-
-		//fromCacheL2, missing, err = c.processCacheResponse(ctx, chunks, cacheHitsL2, cacheBufsL2)
-		//if err != nil {
-		//	level.Warn(log).Log("msg", "error process response from cache", "err", err)
-		//}
 	}
 
 	// processCacheResponse expects all the keys to be sorted lexographically
