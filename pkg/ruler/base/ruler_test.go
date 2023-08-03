@@ -1892,8 +1892,8 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 		},
 	}
 
-	for _, ts := range testCases {
-		t.Run(ts.name, func(tc *testing.T) {
+	for _, tc := range testCases {
+		t.Run(tc.name, func(tt *testing.T) {
 
 			mockRuleGroupList := map[string]rulespb.RuleGroupList{
 				"user1": {
@@ -1902,8 +1902,8 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 						Namespace: "namespace1",
 						User:      "user1",
 						Interval:  interval,
-						Limit:     ts.limit,
-						Rules:     []*rulespb.RuleDesc{ts.rule},
+						Limit:     tc.limit,
+						Rules:     []*rulespb.RuleDesc{tc.rule},
 					},
 				},
 			}
@@ -1912,7 +1912,7 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 			m := loki_storage.NewClientMetrics()
 			defer m.Unregister()
 
-			r := buildRuler(t, rulerCfg, &fakeQuerier{
+			r := buildRuler(tt, rulerCfg, &fakeQuerier{
 				fn: func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 					return series.NewConcreteSeriesSet([]storage.Series{
 						series.NewConcreteSeries(
@@ -1943,21 +1943,21 @@ func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
 
 			// assert initial state of rule group
 			ruleGroup := r.manager.GetRules("user1")[0]
-			require.Equal(tc, time.Time{}, ruleGroup.GetLastEvaluation())
-			require.Equal(tc, "group1", ruleGroup.Name())
-			require.Equal(tc, 1, len(ruleGroup.Rules()))
+			require.Equal(tt, time.Time{}, ruleGroup.GetLastEvaluation())
+			require.Equal(tt, "group1", ruleGroup.Name())
+			require.Equal(tt, 1, len(ruleGroup.Rules()))
 
 			// assert initial state of rule within rule group
 			rule := ruleGroup.Rules()[0]
-			require.Equal(tc, time.Time{}, rule.GetEvaluationTimestamp())
-			require.Equal(tc, promRules.HealthUnknown, rule.Health())
+			require.Equal(tt, time.Time{}, rule.GetEvaluationTimestamp())
+			require.Equal(tt, promRules.HealthUnknown, rule.Health())
 
 			// evaluate the rule group the first time and assert
 			ctx := user.InjectOrgID(context.Background(), "user1")
 			ruleGroup.Eval(ctx, currentTime)
 
-			require.Equal(tc, ts.expectedRuleHealth, rule.Health())
-			require.Equal(tc, ts.expectedError, rule.LastError())
+			require.Equal(tt, tc.expectedRuleHealth, rule.Health())
+			require.Equal(tt, tc.expectedError, rule.LastError())
 		})
 
 	}
