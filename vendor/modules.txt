@@ -932,7 +932,7 @@ github.com/hashicorp/memberlist
 # github.com/hashicorp/serf v0.10.1
 ## explicit; go 1.12
 github.com/hashicorp/serf/coordinate
-# github.com/heroku/x v0.0.59
+# github.com/heroku/x v0.0.61
 ## explicit; go 1.17
 github.com/heroku/x/logplex/encoding
 # github.com/huandu/xstrings v1.3.3

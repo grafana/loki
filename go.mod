@@ -120,7 +120,7 @@ require (
 	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
-	github.com/heroku/x v0.0.59
+	github.com/heroku/x v0.0.61
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
