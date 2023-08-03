@@ -20,74 +20,132 @@ import (
 func Test(t *testing.T) {
 	now := time.Now()
 	tests := []struct {
-		name       string
-		handoff    time.Duration
-		storeStart []chunk.Chunk
-		l1Start    []chunk.Chunk
-		l2Start    []chunk.Chunk
-		fetch      []chunk.Chunk
-		l1End      []chunk.Chunk
-		l2End      []chunk.Chunk
+		name            string
+		handoff         time.Duration
+		storeStart      []chunk.Chunk
+		l1Start         []chunk.Chunk
+		l2Start         []chunk.Chunk
+		fetch           []chunk.Chunk
+		l1KeysRequested int
+		l1End           []chunk.Chunk
+		l2KeysRequested int
+		l2End           []chunk.Chunk
 	}{
 		{
-			name:       "all found in L1 cache",
-			handoff:    0,
-			storeStart: []chunk.Chunk{},
-			l1Start:    makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l2Start:    []chunk.Chunk{},
-			fetch:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l1End:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l2End:      []chunk.Chunk{},
+			name:            "all found in L1 cache",
+			handoff:         0,
+			storeStart:      []chunk.Chunk{},
+			l1Start:         makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2Start:         []chunk.Chunk{},
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l1KeysRequested: 3,
+			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2End:           []chunk.Chunk{},
 		},
 		{
-			name:       "all found in L2 cache",
-			handoff:    1, // Only needs to be greater than zero so that we check L2 cache
-			storeStart: []chunk.Chunk{},
-			l1Start:    []chunk.Chunk{},
-			l2Start:    makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			fetch:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l1End:      []chunk.Chunk{},
-			l2End:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			name:            "all found in L2 cache",
+			handoff:         1, // Only needs to be greater than zero so that we check L2 cache
+			storeStart:      []chunk.Chunk{},
+			l1Start:         []chunk.Chunk{},
+			l2Start:         makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l1End:           []chunk.Chunk{},
+			l2KeysRequested: 3,
+			l2End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
 		},
 		{
-			name:       "some in L1, some in L2",
-			handoff:    1, // Only needs to be greater than zero so that we check L2 cache
-			storeStart: []chunk.Chunk{},
-			l1Start:    []chunk.Chunk{},
-			l2Start:    makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			fetch:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l1End:      []chunk.Chunk{},
-			l2End:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			name:            "some in L1, some in L2",
+			handoff:         5 * time.Hour,
+			storeStart:      []chunk.Chunk{},
+			l1Start:         makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2Start:         makeChunks(now, c{7 * time.Hour, 8 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{7 * time.Hour, 8 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
+			l1KeysRequested: 3,
+			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2KeysRequested: 3,
+			l2End:           makeChunks(now, c{7 * time.Hour, 8 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
 		},
 		{
-			name:       "writeback l1",
-			handoff:    24 * time.Hour,
-			storeStart: makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l1Start:    []chunk.Chunk{},
-			l2Start:    []chunk.Chunk{},
-			fetch:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l1End:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l2End:      []chunk.Chunk{},
+			name:            "some in L1, some in L2, some in store",
+			handoff:         5 * time.Hour,
+			storeStart:      makeChunks(now, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
+			l1Start:         makeChunks(now, c{time.Hour, 2 * time.Hour}),
+			l2Start:         makeChunks(now, c{7 * time.Hour, 8 * time.Hour}),
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{7 * time.Hour, 8 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
+			l1KeysRequested: 3,
+			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2KeysRequested: 3,
+			l2End:           makeChunks(now, c{7 * time.Hour, 8 * time.Hour}, c{8 * time.Hour, 9 * time.Hour}, c{9 * time.Hour, 10 * time.Hour}),
 		},
 		{
-			name:       "writeback l2",
-			handoff:    24 * time.Hour,
-			storeStart: makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
-			l1Start:    []chunk.Chunk{},
-			l2Start:    []chunk.Chunk{},
-			fetch:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
-			l1End:      []chunk.Chunk{},
-			l2End:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			name:            "writeback l1",
+			handoff:         24 * time.Hour,
+			storeStart:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l1Start:         []chunk.Chunk{},
+			l2Start:         []chunk.Chunk{},
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l1KeysRequested: 3,
+			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2End:           []chunk.Chunk{},
 		},
 		{
-			name:       "writeback l1 and l2",
-			handoff:    24 * time.Hour,
-			storeStart: makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
-			l1Start:    []chunk.Chunk{},
-			l2Start:    []chunk.Chunk{},
-			fetch:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
-			l1End:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
-			l2End:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			name:            "writeback l2",
+			handoff:         24 * time.Hour,
+			storeStart:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1Start:         []chunk.Chunk{},
+			l2Start:         []chunk.Chunk{},
+			fetch:           makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1End:           []chunk.Chunk{},
+			l2KeysRequested: 3,
+			l2End:           makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+		},
+		{
+			name:            "writeback l1 and l2",
+			handoff:         24 * time.Hour,
+			storeStart:      makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1Start:         []chunk.Chunk{},
+			l2Start:         []chunk.Chunk{},
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1KeysRequested: 3,
+			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2KeysRequested: 3,
+			l2End:           makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+		},
+		{
+			name:            "verify l1 skip optimization",
+			handoff:         24 * time.Hour,
+			storeStart:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1Start:         []chunk.Chunk{},
+			l2Start:         []chunk.Chunk{},
+			fetch:           makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1KeysRequested: 0,
+			l1End:           []chunk.Chunk{},
+			l2KeysRequested: 3,
+			l2End:           makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+		},
+		{
+			name:            "verify l1 skip optimization plus extended",
+			handoff:         20 * time.Hour, // 20 hours, 10% extension should be 22 hours
+			storeStart:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1Start:         makeChunks(now, c{20 * time.Hour, 21 * time.Hour}, c{21 * time.Hour, 22 * time.Hour}, c{22 * time.Hour, 23 * time.Hour}),
+			l2Start:         makeChunks(now, c{21 * time.Hour, 22 * time.Hour}, c{22 * time.Hour, 23 * time.Hour}),
+			fetch:           makeChunks(now, c{20 * time.Hour, 21 * time.Hour}, c{21 * time.Hour, 22 * time.Hour}, c{22 * time.Hour, 23 * time.Hour}),
+			l1KeysRequested: 2,
+			l1End:           makeChunks(now, c{20 * time.Hour, 21 * time.Hour}, c{21 * time.Hour, 22 * time.Hour}, c{22 * time.Hour, 23 * time.Hour}),
+			l2KeysRequested: 1, // We won't look for the extended handoff key in L2, so only one lookup should go to L2
+			l2End:           makeChunks(now, c{21 * time.Hour, 22 * time.Hour}, c{22 * time.Hour, 23 * time.Hour}),
+		},
+		{
+			name:            "verify l2 skip optimization",
+			handoff:         24 * time.Hour,
+			storeStart:      makeChunks(now, c{31 * time.Hour, 32 * time.Hour}, c{32 * time.Hour, 33 * time.Hour}, c{33 * time.Hour, 34 * time.Hour}),
+			l1Start:         makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2Start:         []chunk.Chunk{},
+			fetch:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l1KeysRequested: 3,
+			l1End:           makeChunks(now, c{time.Hour, 2 * time.Hour}, c{2 * time.Hour, 3 * time.Hour}, c{3 * time.Hour, 4 * time.Hour}),
+			l2KeysRequested: 0,
+			l2End:           []chunk.Chunk{},
 		},
 	}
 	for _, test := range tests {
@@ -140,22 +198,17 @@ func Test(t *testing.T) {
 			f, err := New(c1, c2, true, sc, s, 1, 1, test.handoff)
 			assert.NoError(t, err)
 
-			// Generate keys from chunks
-			keys = make([]string, 0, len(test.fetch))
-			for _, f := range test.fetch {
-				k := sc.ExternalKey(f.ChunkRef)
-				keys = append(keys, k)
-			}
-
 			// Run the test
-			chks, err := f.FetchChunks(context.Background(), test.fetch, keys)
+			chks, err := f.FetchChunks(context.Background(), test.fetch)
 			assert.NoError(t, err)
 			assertChunks(t, test.fetch, chks)
 			l1actual, err := makeChunksFromMap(c1.GetInternal())
 			assert.NoError(t, err)
+			assert.Equal(t, test.l1KeysRequested, c1.KeysRequested())
 			assertChunks(t, test.l1End, l1actual)
 			l2actual, err := makeChunksFromMap(c2.GetInternal())
 			assert.NoError(t, err)
+			assert.Equal(t, test.l2KeysRequested, c2.KeysRequested())
 			assertChunks(t, test.l2End, l2actual)
 		})
 	}
