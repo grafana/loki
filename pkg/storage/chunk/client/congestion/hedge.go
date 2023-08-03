@@ -6,8 +6,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
 
-type NoopHedgeStrategy struct{}
+type NoopHedger struct{}
 
-func (n NoopHedgeStrategy) HTTPClient(hedging.Config) (*http.Client, error) {
+func NewNoopHedger(Config) *NoopHedger {
+	return &NoopHedger{}
+}
+
+func (n NoopHedger) HTTPClient(hedging.Config) (*http.Client, error) {
 	return http.DefaultClient, nil
 }

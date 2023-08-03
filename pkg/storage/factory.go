@@ -433,11 +433,6 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		storeType = nsType
 	}
 
-	// TODO(dannyk): handle this scenario; noop controller?
-	if cc == nil {
-		panic("no congestion controller defined")
-	}
-
 	switch storeType {
 	case config.StorageTypeInMemory:
 		return testutils.NewMockStorage(), nil

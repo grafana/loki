@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -64,7 +65,7 @@ func getStore(cm storage.ClientMetrics) (storage.Store, error) {
 		},
 	}
 
-	return storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	return storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, congestion.Config{}, cm, prometheus.DefaultRegisterer, util_log.Logger, &validation.Overrides{})
 }
 
 func fillStore(cm storage.ClientMetrics) error {

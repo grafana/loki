@@ -48,6 +48,7 @@ import (
 	"github.com/grafana/loki/pkg/scheduler"
 	internalserver "github.com/grafana/loki/pkg/server"
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
 	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
@@ -89,6 +90,7 @@ type Config struct {
 	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
+	CongestionControl   congestion.Config           `yaml:"congestion_control,omitempty"`
 	CompactorConfig     compactor.Config            `yaml:"compactor,omitempty"`
 	CompactorHTTPClient compactor_client.HTTPConfig `yaml:"compactor_client,omitempty" doc:"hidden"`
 	CompactorGRPCClient compactor_client.GRPCConfig `yaml:"compactor_grpc_client,omitempty" doc:"hidden"`
