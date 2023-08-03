@@ -331,9 +331,8 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 
 					chks := make([]chunk.Chunk, 0, len(chunks))
 
-					for _, chk := range chunks {
-						chks = append(chks, chk)
-					}
+					chks = append(chks, chunks...)
+
 					finalChks, err := f.FetchChunks(m.ctx, chks)
 					if err != nil {
 						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)

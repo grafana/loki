@@ -701,13 +701,11 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 	errChan := make(chan error)
 	for f, chunks := range chksByFetcher {
 		go func(fetcher *fetcher.Fetcher, chunks []*LazyChunk) {
-			keys := make([]string, 0, len(chunks))
 			chks := make([]chunk.Chunk, 0, len(chunks))
 			index := make(map[string]*LazyChunk, len(chunks))
 
 			for _, chk := range chunks {
 				key := s.ExternalKey(chk.Chunk.ChunkRef)
-				keys = append(keys, key)
 				chks = append(chks, chk.Chunk)
 				index[key] = chk
 			}
