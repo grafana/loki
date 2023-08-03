@@ -3,6 +3,7 @@ package fetcher
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -175,9 +176,8 @@ func (c *Fetcher) Client() client.Client {
 	return c.storage
 }
 
-// FetchChunks fetches a set of chunks from cache and store. Note that the keys passed in must be
-// lexicographically sorted, while the returned chunks are not in the same order as the passed in chunks.
-func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []string) ([]chunk.Chunk, error) {
+// FetchChunks fetches a set of chunks from cache and store. Note, returned chunks are not in the same order they are passed in
+func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	if ctx.Err() != nil {
 		return nil, ctx.Err()
 	}
@@ -185,6 +185,29 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
+
+	// processCacheResponse expects the chunks to be sorted lexographically by external key
+	sort.Slice(chunks, func(x, y int) bool {
+		return c.schema.ExternalKey(chunks[x].ChunkRef) < c.schema.ExternalKey(chunks[y].ChunkRef)
+	})
+
+	// Extend the extendedHandoff to be 10% larger to allow for some overlap becasue this is a sliding window
+	// and the l1 cache may be oversized enough to allow for some extra chunks
+	extendedHandoff := c.l2CacheHandoff + (c.l2CacheHandoff / 10)
+
+	keys := make([]string, 0, len(chunks))
+	l2OnlyChunks := make([]chunk.Chunk, 0, len(chunks))
+
+	for _, m := range chunks {
+		// Similar to below, this is an optimization to not bother looking in the l1 cache if there isn't a reasonable
+		// expectation to find it there.
+		if c.l2CacheHandoff > 0 && m.From.Time().Before(time.Now().UTC().Add(-extendedHandoff)) {
+			l2OnlyChunks = append(l2OnlyChunks, m)
+			continue
+		}
+		chunkKey := c.schema.ExternalKey(m.ChunkRef)
+		keys = append(keys, chunkKey)
+	}
 
 	// Fetch from L1 chunk cache
 	cacheHits, cacheBufs, _, err := c.cache.Fetch(ctx, keys)
@@ -196,21 +219,16 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		chunkFetchedSize.WithLabelValues("cache").Observe(float64(len(buf)))
 	}
 
-	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
-	if err != nil {
-		level.Warn(log).Log("msg", "error process response from cache", "err", err)
-	}
-
-	var fromCacheL2 []chunk.Chunk
+	//fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	//if err != nil {
+	//	level.Warn(log).Log("msg", "error process response from cache", "err", err)
+	//}
 
 	if c.l2CacheHandoff > 0 {
 		// Fetch missing from L2 chunks cache
-		missingL1Keys := make([]string, 0, len(missing))
-		for _, m := range missing {
+		missingL1Keys := make([]string, 0, len(l2OnlyChunks))
+		for _, m := range l2OnlyChunks {
 			// A small optimization to prevent looking up a chunk in l2 cache that can't possibly be there
-			// Note, we don't need to keep track of the chunks that we are skipping here because
-			// processCacheResponse below takes in the initial list of chunks and returns the missing ones
-			// which will include the ones we are skipping here.
 			if m.From.Time().After(time.Now().UTC().Add(-c.l2CacheHandoff)) {
 				continue
 			}
@@ -227,10 +245,24 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 			chunkFetchedSize.WithLabelValues("cache_l2").Observe(float64(len(buf)))
 		}
 
-		fromCacheL2, missing, err = c.processCacheResponse(ctx, chunks, cacheHitsL2, cacheBufsL2)
-		if err != nil {
-			level.Warn(log).Log("msg", "error process response from cache", "err", err)
-		}
+		cacheHits = append(cacheHits, cacheHitsL2...)
+		cacheBufs = append(cacheBufs, cacheBufsL2...)
+
+		//fromCacheL2, missing, err = c.processCacheResponse(ctx, chunks, cacheHitsL2, cacheBufsL2)
+		//if err != nil {
+		//	level.Warn(log).Log("msg", "error process response from cache", "err", err)
+		//}
+	}
+
+	// processCacheResponse expects all the keys to be sorted lexographically
+	crs := cacheResultSorter{cacheHits, cacheBufs}
+	sort.Sort(crs)
+
+	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
+	// missing chunks that we need to fetch from the storage layer
+	fromCache, missing, err := c.processCacheResponse(ctx, chunks, cacheHits, cacheBufs)
+	if err != nil {
+		level.Warn(log).Log("msg", "error process response from cache", "err", err)
 	}
 
 	// Fetch missing from storage
@@ -266,8 +298,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk, keys []
 		return nil, promql.ErrStorage{Err: err}
 	}
 
-	allChunks := append(fromCache, fromCacheL2...)
-	allChunks = append(allChunks, fromStorage...)
+	allChunks := append(fromCache, fromStorage...)
 	return allChunks, nil
 }
 
@@ -372,4 +403,23 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 
 func (c *Fetcher) IsChunkNotFoundErr(err error) bool {
 	return c.storage.IsChunkNotFoundErr(err)
+}
+
+// cacheResultSorter is a helper type to sort the results of a cache lookup.
+type cacheResultSorter struct {
+	keys  []string
+	buffs [][]byte
+}
+
+func (crs cacheResultSorter) Len() int {
+	return len(crs.keys)
+}
+
+func (crs cacheResultSorter) Swap(i, j int) {
+	crs.keys[i], crs.keys[j] = crs.keys[j], crs.keys[i]
+	crs.buffs[i], crs.buffs[j] = crs.buffs[j], crs.buffs[i]
+}
+
+func (crs cacheResultSorter) Less(i, j int) bool {
+	return crs.keys[i] < crs.keys[j]
 }

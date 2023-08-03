@@ -117,7 +117,7 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 	require.Equal(t, chunks, result)
 }
 
-func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk.Chunk) {
+func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
@@ -132,7 +132,7 @@ func testChunkFetcher(t *testing.T, c cache.Cache, keys []string, chunks []chunk
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
-	found, err := fetcher.FetchChunks(context.Background(), chunks, keys)
+	found, err := fetcher.FetchChunks(context.Background(), chunks)
 	require.NoError(t, err)
 	sort.Sort(byExternalKey{found, s})
 	sort.Sort(byExternalKey{chunks, s})
@@ -181,7 +181,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 		testCacheMiss(t, cache)
 	})
 	t.Run("Fetcher", func(t *testing.T) {
-		testChunkFetcher(t, cache, keys, chunks)
+		testChunkFetcher(t, cache, chunks)
 	})
 }
 
