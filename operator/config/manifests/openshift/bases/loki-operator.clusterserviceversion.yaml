@@ -6,7 +6,7 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
+    containerImage: quay.io/openshift-logging/loki-operator:0.1.0
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements

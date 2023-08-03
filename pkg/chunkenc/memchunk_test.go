@@ -1817,3 +1817,61 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 		})
 	}
 }
+
+func TestMemChunk_IteratorOptions(t *testing.T) {
+	chk := newMemChunkWithFormat(chunkFormatV4, EncNone, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(0, "0", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "0"),
+	))))
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "1", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "1"),
+	))))
+	require.NoError(t, chk.cut())
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(2, "2", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "2"),
+	))))
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(3, "3", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "3"),
+	))))
+
+	for _, tc := range []struct {
+		name                   string
+		options                []iter.EntryIteratorOption
+		expectNonIndexedLabels bool
+	}{
+		{
+			name:                   "No options",
+			expectNonIndexedLabels: false,
+		},
+		{
+			name: "WithKeepNonIndexedLabels",
+			options: []iter.EntryIteratorOption{
+				iter.WithKeepNonIndexedLabels(),
+			},
+
+			expectNonIndexedLabels: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline, tc.options...)
+			require.NoError(t, err)
+
+			var idx int64
+			for it.Next() {
+				expectedLabels := labels.FromStrings("a", fmt.Sprintf("%d", idx))
+				expectedEntry := logproto.Entry{
+					Timestamp: time.Unix(0, idx),
+					Line:      fmt.Sprintf("%d", idx),
+				}
+
+				if tc.expectNonIndexedLabels {
+					expectedEntry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(expectedLabels)
+				}
+
+				require.Equal(t, expectedEntry, it.Entry())
+				require.Equal(t, expectedLabels.String(), it.Labels())
+				idx++
+			}
+		})
+	}
+}
