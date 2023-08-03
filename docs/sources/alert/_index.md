@@ -106,6 +106,40 @@ This query (`expr`) will be executed every 1 minute (`interval`), the result of 
 name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
 just like any other metric.
 
+
+### Limiting Alerts AND Series
+
+Like Prometheus, A limit for alerts produced by alerting rules and series produced by recording rules can be configured per-group in Loki also. When the limit is exceeded, all series produced by the rule are discarded, and if it's an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared as well. Default value for limit is **0** i.e. no limit.
+
+#### Example
+
+
+```yaml
+groups:
+  - name: production_rules
+    limit: 10
+    interval: 1m
+    rules:
+      - alert: HighPercentageError
+        expr: |
+          sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            /
+          sum(rate({app="foo", env="production"}[5m])) by (job)
+            > 0.05
+        for: 10m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency
+      - record: nginx:requests:rate1m
+        expr: |
+          sum(
+            rate({container="nginx"}[1m])
+          )
+        labels:
+          cluster: "us-central1"
+```
+
 ### Remote-Write
 
 With recording rules, you can run these metric queries continually on an interval, and have the resulting metrics written
