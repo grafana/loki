@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/mailgun/groupcache/v2"
+
 	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
@@ -22,6 +24,11 @@ type Cache interface {
 	Stop()
 	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
 	GetCacheType() stats.CacheType
+}
+
+type SingleFlightCache interface {
+	Fetch(ctx context.Context, key string, dest groupcache.Sink) error
+	Stop()
 }
 
 // Config for building Caches.
@@ -41,7 +48,7 @@ type Config struct {
 	Prefix string `yaml:"prefix" doc:"hidden"`
 
 	// GroupCache is configured/initialized as part of modules and injected here
-	GroupCache Cache `yaml:"-"`
+	GroupCache *GroupCache `yaml:"-"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -178,10 +185,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		}
 		cache := NewRedisCache(cacheName, client, logger, cacheType)
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
-	}
-
-	if IsGroupCacheSet(cfg) {
-		caches = append(caches, CollectStats(cfg.GroupCache))
 	}
 
 	cache := NewTiered(caches)

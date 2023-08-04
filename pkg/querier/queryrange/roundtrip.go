@@ -134,6 +134,11 @@ func NewTripperware(
 		codec = &RequestProtobufCodec{}
 	}
 
+	singleFlight, err := NewSingleFlightTripperware(log, cfg, codec)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	indexStatsTripperware, err := NewIndexStatsTripperware(cfg, log, limits, schema, codec, statsCache,
 		cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
@@ -178,16 +183,17 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
+	// TODO: We could also just wrap this whole thing in a singleflight, but the metrics wouldn't be as awesome
 	return func(next http.RoundTripper) http.RoundTripper {
 		var (
-			metricRT       = metricsTripperware(next)
-			limitedRT      = limitedTripperware(next)
-			logFilterRT    = logFilterTripperware(next)
-			seriesRT       = seriesTripperware(next)
-			labelsRT       = labelsTripperware(next)
-			instantRT      = instantMetricTripperware(next)
-			statsRT        = indexStatsTripperware(next)
-			seriesVolumeRT = seriesVolumeTripperware(next)
+			metricRT       = singleFlight("metrics", metricsTripperware(next))
+			limitedRT      = singleFlight("limited", limitedTripperware(next))
+			logFilterRT    = singleFlight("logFilter", logFilterTripperware(next))
+			seriesRT       = singleFlight("series", seriesTripperware(next))
+			labelsRT       = singleFlight("labels", labelsTripperware(next))
+			instantRT      = singleFlight("instant", instantMetricTripperware(next))
+			statsRT        = singleFlight("stats", indexStatsTripperware(next))
+			seriesVolumeRT = singleFlight("volume", seriesVolumeTripperware(next))
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
@@ -774,6 +780,48 @@ func NewInstantMetricTripperware(
 		}
 		return next
 	}, nil
+}
+
+func NewSingleFlightTripperware(
+	log log.Logger,
+	cfg Config,
+	codec queryrangebase.Codec,
+) (func(name string, next http.RoundTripper) http.RoundTripper, error) {
+	gc := cfg.ResultsCacheConfig.CacheConfig.GroupCache
+
+	if gc == nil { // Noop
+		return func(_ string, next http.RoundTripper) http.RoundTripper {
+			return next
+		}, nil
+	}
+
+	return func(name string, next http.RoundTripper) http.RoundTripper {
+		handler := SingleFlightHandler(name, gc, log, next, codec)
+
+		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
+			request, err := codec.DecodeRequest(r.Context(), r, nil)
+			if err != nil {
+				return nil, err
+			}
+
+			request.WithStartEnd(
+				truncateToSecond(request.GetStart()),
+				truncateToSecond(request.GetEnd()),
+			)
+
+			response, err := handler.Do(r.Context(), request)
+			if err != nil {
+				return nil, err
+			}
+
+			return codec.EncodeResponse(r.Context(), r, response)
+		})
+	}, nil
+}
+
+func truncateToSecond(t int64) int64 {
+	// GetStart and GetEnd are milliseconds
+	return t / 1000
 }
 
 func NewVolumeTripperware(

@@ -11,15 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/weaveworks/common/instrument"
-
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/weaveworks/common/instrument"
 
 	"golang.org/x/net/http2"
 
 	"github.com/grafana/groupcache_exporter"
 	"github.com/mailgun/groupcache/v2"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 
@@ -27,12 +25,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	lokiutil "github.com/grafana/loki/pkg/util"
-)
-
-var (
-	ErrGroupcacheMiss = errors.New("cache miss")
 )
 
 type GroupCache struct {
@@ -153,18 +146,11 @@ type group struct {
 	cache         *groupcache.Group
 	logger        log.Logger
 	wg            *sync.WaitGroup
-	cacheType     stats.CacheType
 	fetchDuration prometheus.Observer
 	storeDuration prometheus.Observer
 }
 
-func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
-	// Return a known error on miss to track which keys need to be inserted
-	// TODO, setup a getter that does an http request and returns the result
-	missGetter := groupcache.GetterFunc(func(_ context.Context, _ string, _ groupcache.Sink) error {
-		return ErrGroupcacheMiss
-	})
-
+func (c *GroupCache) NewGroup(name string, getter groupcache.GetterFunc) SingleFlightCache {
 	c.wg.Add(1)
 	c.startWaitingForClose()
 
@@ -173,75 +159,31 @@ func (c *GroupCache) NewGroup(name string, ct stats.CacheType) Cache {
 		Name:        "groupcache_request_duration_seconds",
 		Help:        "Total time spent in seconds doing groupcache requests.",
 		Buckets:     instrument.DefBuckets,
-		ConstLabels: prometheus.Labels{"cache_type": string(ct)},
+		ConstLabels: prometheus.Labels{"name": name},
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, 1<<30, missGetter),
+		cache:         groupcache.NewGroup(name, 1<<30, getter),
 		logger:        c.logger,
 		wg:            &c.wg,
-		cacheType:     ct,
 		fetchDuration: requestDuration.WithLabelValues("fetch"),
-		storeDuration: requestDuration.WithLabelValues("store"),
 	}
 
-	exp := groupcache_exporter.NewExporter(map[string]string{"cache_type": string(ct)}, g)
+	exp := groupcache_exporter.NewExporter(map[string]string{"name": name}, g)
 	prometheus.WrapRegistererWithPrefix("loki_groupcache_", c.reg).MustRegister(exp)
 
 	return g
 }
 
-func (c *group) Fetch(ctx context.Context, keys []string) ([]string, [][]byte, []string, error) {
-	// TODO: This needs to change to support what I want to do with requests/results
-	var (
-		start  = time.Now()
-		values = make([][]byte, 0, len(keys))
-		missed = make([]string, 0, len(keys))
-		found  = make([]string, 0, len(keys))
-		data   = groupcache.ByteView{}
-		sink   = groupcache.ByteViewSink(&data)
-	)
-
-	for _, key := range keys {
-		if err := c.cache.Get(ctx, key, sink); err != nil {
-			if errors.Is(err, ErrGroupcacheMiss) {
-				missed = append(missed, key)
-				continue
-			}
-
-			level.Error(c.logger).Log("msg", "unable to fetch from groupcache", "err", err)
-			return found, values, missed, err
-		}
-
-		found = append(found, key)
-		values = append(values, data.ByteSlice())
-	}
-
-	c.fetchDuration.Observe(time.Since(start).Seconds())
-	return found, values, missed, nil
-}
-
-func (c *group) Store(ctx context.Context, keys []string, values [][]byte) error {
+func (c *group) Fetch(ctx context.Context, key string, dest groupcache.Sink) error {
 	start := time.Now()
+	defer c.fetchDuration.Observe(time.Since(start).Seconds())
 
-	var lastErr error
-	for i, key := range keys {
-		if err := c.cache.Set(ctx, key, values[i], time.Time{}, true); err != nil {
-			level.Warn(c.logger).Log("msg", "failed to put to groupcache", "err", err)
-			lastErr = err
-		}
-	}
-
-	c.storeDuration.Observe(time.Since(start).Seconds())
-	return lastErr
+	return c.cache.Get(ctx, key, dest)
 }
 
 func (c *group) Stop() {
 	c.wg.Done()
-}
-
-func (c *group) GetCacheType() stats.CacheType {
-	return c.cacheType
 }
 
 func http2Transport(_ context.Context) http.RoundTripper {
