@@ -2,6 +2,7 @@
 ## explicit; go 1.19
 cloud.google.com/go
 cloud.google.com/go/internal
+cloud.google.com/go/internal/detect
 cloud.google.com/go/internal/optional
 cloud.google.com/go/internal/pubsub
 cloud.google.com/go/internal/trace
@@ -18,16 +19,16 @@ cloud.google.com/go/compute/internal
 # cloud.google.com/go/compute/metadata v0.2.3
 ## explicit; go 1.19
 cloud.google.com/go/compute/metadata
-# cloud.google.com/go/iam v0.13.0
+# cloud.google.com/go/iam v1.1.0
 ## explicit; go 1.19
 cloud.google.com/go/iam
 cloud.google.com/go/iam/apiv1/iampb
-# cloud.google.com/go/longrunning v0.4.1
+# cloud.google.com/go/longrunning v0.4.2
 ## explicit; go 1.19
 cloud.google.com/go/longrunning
 cloud.google.com/go/longrunning/autogen
 cloud.google.com/go/longrunning/autogen/longrunningpb
-# cloud.google.com/go/pubsub v1.30.0
+# cloud.google.com/go/pubsub v1.33.0
 ## explicit; go 1.19
 cloud.google.com/go/pubsub
 cloud.google.com/go/pubsub/apiv1
