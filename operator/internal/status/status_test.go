@@ -169,6 +169,8 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		t.Fatalf("not a LokiStack: %T", updatedStack)
 	}
 
-	require.Contains(t, updatedStack.Status.Conditions[0].Reason, string(lokiv1.ReasonAvailabilityZoneLabelsMismatch))
-
+	require.Len(t, updatedStack.Status.Conditions, 1)
+	condition := updatedStack.Status.Conditions[0]
+	require.Equal(t, conditionDegradedNodeLabels.Reason, condition.Reason)
+	require.Equal(t, conditionDegradedNodeLabels.Type, condition.Type)
 }
