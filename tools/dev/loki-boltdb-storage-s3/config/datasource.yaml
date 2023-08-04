@@ -12,6 +12,14 @@ datasources:
       httpHeaderName1: 'X-Scope-OrgID'
     secureJsonData:
       httpHeaderValue1: '1'
+  - name: Loki-Cross-Tenant
+    type: loki
+    access: proxy
+    url: http://query-frontend:8007
+    jsonData:
+      httpHeaderName1: 'X-Scope-OrgID'
+    secureJsonData:
+      httpHeaderValue1: '1|2'
   - name: Loki-Limited
     type: loki
     access: proxy

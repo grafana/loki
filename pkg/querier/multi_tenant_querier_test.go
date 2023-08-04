@@ -166,6 +166,10 @@ func TestMultiTenantQuerier_SelectSamples(t *testing.T) {
 			iter, err := multiTenantQuerier.SelectSamples(ctx, params)
 			require.NoError(t, err)
 
+			// Subsequent calls succeed
+			_, err = multiTenantQuerier.SelectSamples(ctx, params)
+			require.NoError(t, err)
+
 			received := make([]string, 0, len(tc.expLabels))
 			for iter.Next() {
 				received = append(received, iter.Labels())

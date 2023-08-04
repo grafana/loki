@@ -57,8 +57,8 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	p := pool.NewWithResults[iter.EntryIterator]().WithContext(ctx).WithCancelOnError()
 	for id := range matchedTenants {
 		id := id
-		p.Go(func(ctx context.Context) (iter.EntryIterator, error) {
-			singleContext := user.InjectOrgID(ctx, id)
+		p.Go(func(c context.Context) (iter.EntryIterator, error) {
+			singleContext := user.InjectOrgID(c, id)
 			iter, err := q.Querier.SelectLogs(singleContext, params)
 			return NewTenantEntryIterator(iter, id), err
 		})
@@ -89,8 +89,8 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	p := pool.NewWithResults[iter.SampleIterator]().WithContext(ctx).WithCancelOnError()
 	for id := range matchedTenants {
 		id := id
-		p.Go(func(ctx context.Context) (iter.SampleIterator, error) {
-			singleContext := user.InjectOrgID(ctx, id)
+		p.Go(func(c context.Context) (iter.SampleIterator, error) {
+			singleContext := user.InjectOrgID(c, id)
 			iter, err := q.Querier.SelectSamples(singleContext, params)
 			return NewTenantSampleIterator(iter, id), err
 		})
