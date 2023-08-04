@@ -26,7 +26,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -280,13 +279,6 @@ func CreateOrUpdateLokiStack(
 		}
 	}
 
-	if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
-		err = setDegradedConditionOnNodeLabelMismatch(ll, k, ctx, stack)
-		if err != nil {
-			return err
-		}
-	}
-
 	// Here we will translate the lokiv1.LokiStack options into manifest options
 	opts := manifests.Options{
 		Name:                   req.Name,
@@ -447,41 +439,4 @@ func isNamespaceScoped(obj client.Object) bool {
 	default:
 		return true
 	}
-}
-
-func setDegradedConditionOnNodeLabelMismatch(ll logr.Logger, k client.Client, ctx context.Context, stack lokiv1.LokiStack) error {
-	podList := &corev1.PodList{}
-	if err := k.List(ctx, podList, &client.ListOptions{
-		Namespace: stack.Namespace,
-		LabelSelector: labels.SelectorFromSet(labels.Set{
-			"app.kubernetes.io/instance": stack.Name,
-		}),
-	}); err != nil {
-		ll.Error(err, "Error getting pod resources")
-		return nil
-	}
-
-	for _, pod := range podList.Items {
-		assignedNode := &corev1.Node{}
-		key := client.ObjectKey{Name: pod.Spec.NodeName}
-		if err := k.Get(ctx, key, assignedNode); err != nil {
-			ll.Error(err, "Error getting node resources in event handler")
-			return nil
-		}
-
-		availabilityZone, er := GetAvailabilityZone([]string{corev1.LabelTopologyZone}, assignedNode.Labels)
-		if er != nil {
-			ll.Error(er, "failed to get pod availability zone from assigned node", "name", pod.Name)
-			return nil
-		}
-
-		if availabilityZone != pod.Annotations[corev1.LabelTopologyZone] {
-			return &status.DegradedError{
-				Message: "Availability zone pod annotation does not match it's node's labels",
-				Reason:  lokiv1.ReasonAvailabilityZoneLabelsMismatch,
-				Requeue: false,
-			}
-		}
-	}
-	return nil
 }

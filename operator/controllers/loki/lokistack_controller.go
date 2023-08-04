@@ -164,7 +164,7 @@ func (r *LokiStackReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return handleDegradedError(ctx, r.Client, req, err)
 	}
 
-	err = status.Refresh(ctx, r.Client, r.Log, req, time.Now())
+	err = status.Refresh(ctx, r.Client, req, time.Now())
 	if err != nil {
 		return ctrl.Result{}, err
 	}

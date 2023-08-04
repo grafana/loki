@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-logr/logr"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
@@ -20,7 +19,6 @@ import (
 )
 
 func TestRefreshSuccess(t *testing.T) {
-	var log logr.Logger
 	now := time.Now()
 	stack := &lokiv1.LokiStack{
 		ObjectMeta: metav1.ObjectMeta{
@@ -72,7 +70,7 @@ func TestRefreshSuccess(t *testing.T) {
 
 	k, sw := setupListClient(t, stack, componentPods)
 
-	err := Refresh(context.Background(), k, log, req, now)
+	err := Refresh(context.Background(), k, req, now)
 
 	require.NoError(t, err)
 	require.Equal(t, 1, k.GetCallCount())
@@ -90,48 +88,18 @@ func TestRefreshSuccess(t *testing.T) {
 
 // TODO add unit test for the new function
 func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
-	var log logr.Logger
 	now := time.Now()
 	req := ctrl.Request{
 		NamespacedName: types.NamespacedName{
-			Name:      "test-lokistack",
-			Namespace: "some-ns",
+			Namespace: "test-ns",
 		},
 	}
-	testPod := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "some-ns",
-			Labels: map[string]string{
-				lokiv1.LabelZoneAwarePod: "enabled",
-			},
-			Annotations: map[string]string{
-				lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelHostname + "," + corev1.LabelTopologyZone,
-				corev1.LabelTopologyZone:                "us-east-2c",
-			},
-		},
-		Status: corev1.PodStatus{
-			Reason: v1.PodReasonUnschedulable,
-			Phase:  v1.PodPending,
-		},
-	}
-	testNode := corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-node",
-			Namespace: "some-ns",
-			Labels: map[string]string{
-				corev1.LabelHostname:       "test-node",
-				corev1.LabelTopologyZone:   "us-east-2b",
-				corev1.LabelTopologyRegion: "us-east-2",
-			},
-		},
-	}
-	lokiStack := lokiv1.LokiStack{
+	stack := lokiv1.LokiStack{
 		TypeMeta: metav1.TypeMeta{
 			Kind: "LokiStack",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-lokistack",
+			Name:      "test-stack",
 			Namespace: "test-ns",
 		},
 		Spec: lokiv1.LokiStackSpec{
@@ -142,6 +110,22 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 					},
 				},
 			},
+		},
+	}
+	testPod := corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-pod",
+			Namespace: "test-ns",
+			Labels: map[string]string{
+				lokiv1.LabelZoneAwarePod: "enabled",
+			},
+			Annotations: map[string]string{
+				lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelHostname + "," + corev1.LabelTopologyZone,
+				corev1.LabelTopologyZone:                "us-east-2c",
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: v1.PodPending,
 		},
 	}
 
@@ -155,19 +139,15 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		manifests.LabelRulerComponent:         createPodList(manifests.LabelRulerComponent, corev1.PodRunning),
 		manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, corev1.PodRunning),
 	}
-	k, sw := setupListClient(t, &lokiStack, componentPods)
+	k, sw := setupListClient(t, &stack, componentPods)
 
 	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == req.Name {
-			k.SetClientObject(object, &lokiStack)
+			k.SetClientObject(object, &stack)
 			return nil
 		}
 		if name.Name == testPod.Name {
 			k.SetClientObject(object, &testPod)
-			return nil
-		}
-		if name.Name == testNode.Name {
-			k.SetClientObject(object, &testNode)
 			return nil
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
@@ -184,19 +164,18 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		return nil
 	}
 
-	err := Refresh(context.Background(), k, log, req, now)
+	err := Refresh(context.Background(), k, req, now)
 
 	require.NoError(t, err)
-	require.Equal(t, 3, k.GetCallCount())
-	require.Equal(t, 10, k.ListCallCount())
-
-	require.Equal(t, 2, sw.UpdateCallCount())
-
-	expectedDegradedStatus := DegradedError{
-		Message: "Availability zone pod annotation does not match it's node's labels",
-		Reason:  lokiv1.ReasonAvailabilityZoneLabelsMismatch,
-		Requeue: false,
+	require.Equal(t, 1, k.GetCallCount())
+	require.Equal(t, 9, k.ListCallCount())
+	require.Equal(t, 1, sw.UpdateCallCount())
+	_, updated, _ := sw.UpdateArgsForCall(0)
+	updatedStack, ok := updated.(*lokiv1.LokiStack)
+	if !ok {
+		t.Fatalf("not a LokiStack: %T", updatedStack)
 	}
-	require.Contains(t, lokiStack.Status.Conditions, expectedDegradedStatus)
+
+	require.Contains(t, updatedStack.Status.Conditions[0].Reason, string(lokiv1.ReasonAvailabilityZoneLabelsMismatch))
 
 }
