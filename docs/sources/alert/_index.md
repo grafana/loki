@@ -107,9 +107,9 @@ name we have defined (`record`). This metric named `nginx:requests:rate1m` can n
 just like any other metric.
 
 
-### Limiting Alerts AND Series
+### Limiting Alerts and Recording Rule Samples
 
-Like Prometheus, A limit for alerts produced by alerting rules and series produced by recording rules can be configured per-group in Loki also. When the limit is exceeded, all series produced by the rule are discarded, and if it's an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared as well. Default value for limit is **0** i.e. no limit.
+Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), A limit for alerts produced by alerting rules and samples produced by recording rules can be configured per-group in Loki also. This limit can be used to prevent a large number of alerts or recording samples from being generated due to a faulty rule. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it's an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared as well. Default value for limit is **0** i.e. no limit.
 
 #### Example
 
