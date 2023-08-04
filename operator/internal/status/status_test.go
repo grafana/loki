@@ -86,7 +86,6 @@ func TestRefreshSuccess(t *testing.T) {
 	require.Equal(t, wantStatus, updatedStack.Status)
 }
 
-// TODO add unit test for the new function
 func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 	now := time.Now()
 	req := ctrl.Request{
@@ -129,17 +128,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 		},
 	}
 
-	componentPods := map[string]*corev1.PodList{
-		manifests.LabelCompactorComponent:     createPodList(manifests.LabelCompactorComponent, corev1.PodRunning),
-		manifests.LabelDistributorComponent:   createPodList(manifests.LabelDistributorComponent, corev1.PodRunning),
-		manifests.LabelIngesterComponent:      createPodList(manifests.LabelIngesterComponent, corev1.PodRunning),
-		manifests.LabelQuerierComponent:       createPodList(manifests.LabelQuerierComponent, corev1.PodRunning),
-		manifests.LabelQueryFrontendComponent: createPodList(manifests.LabelQueryFrontendComponent, corev1.PodRunning),
-		manifests.LabelIndexGatewayComponent:  createPodList(manifests.LabelIndexGatewayComponent, corev1.PodRunning),
-		manifests.LabelRulerComponent:         createPodList(manifests.LabelRulerComponent, corev1.PodRunning),
-		manifests.LabelGatewayComponent:       createPodList(manifests.LabelGatewayComponent, corev1.PodRunning),
-	}
-	k, sw := setupListClient(t, &stack, componentPods)
+	k, sw := setupFakesNoError(t, &stack)
 
 	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
 		if name.Name == req.Name {
@@ -159,6 +148,10 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 				Items: []corev1.Pod{
 					testPod,
 				},
+			})
+		case *corev1.NodeList:
+			k.SetClientObjectList(ol, &corev1.NodeList{
+				Items: []v1.Node{},
 			})
 		}
 		return nil
