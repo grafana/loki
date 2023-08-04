@@ -83,6 +83,7 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 			if attempt > 0 {
 				// TODO(dannyk): define SetHTTPClient on client.ObjectClient interface
 				// then use NoopHedger to avoid hedging retries
+				a.metrics.retries.Add(1)
 			}
 
 			// apply back-pressure while rate-limit has been exceeded
