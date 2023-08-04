@@ -10,9 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -90,13 +88,11 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 	now := time.Now()
 	req := ctrl.Request{
 		NamespacedName: types.NamespacedName{
+			Name:      "test-stack",
 			Namespace: "test-ns",
 		},
 	}
 	stack := lokiv1.LokiStack{
-		TypeMeta: metav1.TypeMeta{
-			Kind: "LokiStack",
-		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "test-stack",
 			Namespace: "test-ns",
@@ -105,42 +101,19 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 			Replication: &lokiv1.ReplicationSpec{
 				Zones: []lokiv1.ZoneSpec{
 					{
-						TopologyKey: corev1.LabelZoneFailureDomain,
+						TopologyKey: corev1.LabelTopologyZone,
 					},
 				},
 			},
 		},
 	}
 	testPod := corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "test-pod",
-			Namespace: "test-ns",
-			Labels: map[string]string{
-				lokiv1.LabelZoneAwarePod: "enabled",
-			},
-			Annotations: map[string]string{
-				lokiv1.AnnotationAvailabilityZoneLabels: corev1.LabelHostname + "," + corev1.LabelTopologyZone,
-				corev1.LabelTopologyZone:                "us-east-2c",
-			},
-		},
 		Status: corev1.PodStatus{
 			Phase: v1.PodPending,
 		},
 	}
 
 	k, sw := setupFakesNoError(t, &stack)
-
-	k.GetStub = func(ctx context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
-		if name.Name == req.Name {
-			k.SetClientObject(object, &stack)
-			return nil
-		}
-		if name.Name == testPod.Name {
-			k.SetClientObject(object, &testPod)
-			return nil
-		}
-		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
-	}
 	k.ListStub = func(ctx context.Context, ol client.ObjectList, _ ...client.ListOption) error {
 		switch ol.(type) {
 		case *corev1.PodList:
