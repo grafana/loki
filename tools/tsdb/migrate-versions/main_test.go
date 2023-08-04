@@ -60,7 +60,7 @@ func TestMigrateTables(t *testing.T) {
 
 	// setup some tables
 	for i := currTableNum - 5; i <= currTableNum; i++ {
-		b := tsdb.NewBuilder()
+		b := tsdb.NewBuilder(index.FormatV2)
 		b.AddSeries(labels.Labels{
 			{
 				Name:  "table_name",
@@ -76,7 +76,7 @@ func TestMigrateTables(t *testing.T) {
 			},
 		})
 
-		id, err := b.BuildWithVersion(context.Background(), index.FormatV2, tempDir, func(from, through model.Time, checksum uint32) tsdb.Identifier {
+		id, err := b.Build(context.Background(), tempDir, func(from, through model.Time, checksum uint32) tsdb.Identifier {
 			id := tsdb.SingleTenantTSDBIdentifier{
 				TS:       time.Now(),
 				From:     from,
@@ -88,7 +88,7 @@ func TestMigrateTables(t *testing.T) {
 		require.NoError(t, err)
 
 		tableName := fmt.Sprintf("%s%d", indexPrefix, i)
-		idx, err := tsdb.NewShippableTSDBFile(id)
+		idx, err := tsdb.NewShippableTSDBFile(id, tsdb.IndexOpts{})
 		require.NoError(t, err)
 
 		require.NoError(t, uploadFile(idx, indexStorageClient, tableName, userID))

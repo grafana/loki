@@ -3,8 +3,7 @@ title: Template functions
 menuTItle:  
 description: Describes functions that are supported by the text template.
 aliases: 
-- /docs/loki/latest/logql
-- /docs/loki/latest/query
+- ../logql/template_functions/
 weight: 30
 ---
 
@@ -232,6 +231,32 @@ Examples:
 ```template
 {{  .path | trimPrefix "/" }}
 {{ trimPrefix "-" "-hello" }} // output: hello
+```
+
+## alignLeft
+
+Use this function to format a string to a fixed with, aligning the content to the left.
+
+Signature: `alignLeft(count int, src string) string`
+
+Examples:
+
+```template
+`{{ alignLeft 5 "hello world"}}` // output: "hello"
+`{{ alignLeft 5 "hi"}}`          // output: "hi   "
+```
+
+## alignRight
+
+Use this function to format a string to a fixed with, aligning the content to the right.
+
+Signature: `alignRight(count int, src string) string`
+
+Examples:
+
+```template
+`{{ alignRight 5 "hello world"}}` // output: "world"
+`{{ alignRight 5 "hi"}}`          // output: "   hi"
 ```
 
 ## indent
@@ -662,6 +687,19 @@ Examples:
 {{ .foo | toDateInZone "2006-01-02T15:04:05.999999999Z" "UTC" | unixEpochNanos }}
 ```
 
+## unixToTime
+
+Converts the string epoch to the time value it represents. Epoch times in days, seconds, milliseconds, microseconds and nanoseconds are supported.
+
+Signature: `unixToTime(epoch string) time.Time`
+
+Examples:
+
+Consider the following log line `{"from": "1679577215","to":"1679587215","message":"some message"}`. To print the `from` field as human readable add the following at the end of the LogQL query:
+```logql
+... | json | line_format `from="{{date "2006-01-02" (unixToTime .from)}}"`
+```
+
 ## default
 
 Checks whether the string(`src`) is set, and returns default(`d`) if not set.
@@ -672,7 +710,7 @@ Examples:
 
 ```template
 {{ default "-" "" }} // output: -
-{{ default "-" "foo" }} // output: foo
+{{ default "" "foo" }} // output: foo
 ```
 
 Example of a query to print a `-` if the `http_request_headers_x_forwarded_for` label is empty:

@@ -24,7 +24,7 @@ func mustParseLabels(s string) labels.Labels {
 
 func TestQueryIndex(t *testing.T) {
 	dir := t.TempDir()
-	b := NewBuilder()
+	b := NewBuilder(index.LiveFormat)
 	cases := []struct {
 		labels labels.Labels
 		chunks []index.ChunkMeta

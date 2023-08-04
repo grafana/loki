@@ -6,6 +6,8 @@ import (
 	"sort"
 	"sync"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
@@ -52,15 +54,13 @@ type Gateway struct {
 
 	cfg Config
 	log log.Logger
-
-	shipper IndexQuerier
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
@@ -73,7 +73,7 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
 	})
 
-	g.Service = services.NewIdleService(nil, func(failureCase error) error {
+	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
 		for _, indexClient := range g.indexClients {
 			indexClient.Stop()
@@ -136,11 +136,7 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 				return server.Send(response)
 			})
 
-			if innerErr != nil {
-				return false
-			}
-
-			return true
+			return innerErr == nil
 		})
 
 		if innerErr != nil {
@@ -296,9 +292,23 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
 
+func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
+}
+
 type failingIndexClient struct{}
 
-func (f failingIndexClient) QueryPages(ctx context.Context, queries []seriesindex.Query, callback seriesindex.QueryPagesCallback) error {
+func (f failingIndexClient) QueryPages(_ context.Context, _ []seriesindex.Query, _ seriesindex.QueryPagesCallback) error {
 	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
 }
 

@@ -82,11 +82,10 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     else
       k.util.serviceFor($.ingester_statefulset, $._config.service_ignored_labels),
 
-  local podDisruptionBudget = k.policy.v1beta1.podDisruptionBudget,
+  local podDisruptionBudget = k.policy.v1.podDisruptionBudget,
 
   ingester_pdb:
-    podDisruptionBudget.new() +
-    podDisruptionBudget.mixin.metadata.withName('loki-ingester-pdb') +
+    podDisruptionBudget.new('loki-ingester-pdb') +
     podDisruptionBudget.mixin.metadata.withLabels({ name: 'loki-ingester-pdb' }) +
     podDisruptionBudget.mixin.spec.selector.withMatchLabels({ name: name }) +
     podDisruptionBudget.mixin.spec.withMaxUnavailable(1),

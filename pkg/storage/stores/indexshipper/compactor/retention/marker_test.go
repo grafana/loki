@@ -64,7 +64,7 @@ func Test_markerProcessor_StartRetryKey(t *testing.T) {
 	counts := map[string]int{}
 	l := sync.Mutex{}
 
-	p.Start(func(ctx context.Context, id []byte) error {
+	p.Start(func(_ context.Context, id []byte) error {
 		l.Lock()
 		defer l.Unlock()
 		counts[string(id)]++
@@ -93,7 +93,7 @@ func Test_markerProcessor_StartDeleteOnSuccess(t *testing.T) {
 	counts := map[string]int{}
 	l := sync.Mutex{}
 
-	p.Start(func(ctx context.Context, id []byte) error {
+	p.Start(func(_ context.Context, id []byte) error {
 		l.Lock()
 		defer l.Unlock()
 		counts[string(id)]++

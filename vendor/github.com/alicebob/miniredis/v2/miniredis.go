@@ -677,7 +677,7 @@ func (m *Miniredis) copy(
 	case "hash":
 		destDB.hashKeys[dst] = copyHashKey(srcDB.hashKeys[src])
 	case "list":
-		destDB.listKeys[dst] = srcDB.listKeys[src]
+		destDB.listKeys[dst] = copyListKey(srcDB.listKeys[src])
 	case "set":
 		destDB.setKeys[dst] = copySetKey(srcDB.setKeys[src])
 	case "zset":
@@ -702,6 +702,12 @@ func copyHashKey(orig hashKey) hashKey {
 	for k, v := range orig {
 		cpy[k] = v
 	}
+	return cpy
+}
+
+func copyListKey(orig listKey) listKey {
+	cpy := make(listKey, len(orig))
+	copy(cpy, orig)
 	return cpy
 }
 

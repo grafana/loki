@@ -38,11 +38,21 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
 	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -128,19 +138,13 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
 		podSpec.Tolerations = opts.Stack.Template.QueryFrontend.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name)
 	}
 
 	return &appsv1.Deployment{

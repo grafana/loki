@@ -22,8 +22,8 @@ labels:
     app.kubernetes.io/managed-by: operator-lifecycle-manager
   includeSelectors: true
 - pairs:
-    app.kubernetes.io/instance: loki-operator-v0.0.1
-    app.kubernetes.io/version: "0.0.1"
+    app.kubernetes.io/instance: loki-operator-0.1.0
+    app.kubernetes.io/version: "0.1.0"
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -38,10 +38,11 @@ patchesStrategicMerge:
 - manager_auth_proxy_patch.yaml
 - manager_related_image_patch.yaml
 - manager_run_flags_patch.yaml
+- manager_security_context_patch.yaml
 - manager_webhook_patch.yaml
 - prometheus_service_monitor_patch.yaml
 
 images:
 - name: controller
   newName: quay.io/openshift-logging/loki-operator
-  newTag: v0.0.1
+  newTag: 0.1.0

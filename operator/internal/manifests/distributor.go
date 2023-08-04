@@ -38,11 +38,21 @@ func BuildDistributor(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
 	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelDistributorComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -59,8 +69,7 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 	l := ComponentLabels(LabelDistributorComponent, opts.Name)
 	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity:                  configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
-		TopologySpreadConstraints: defaultTopologySpreadConstraints(LabelDistributorComponent, opts.Name),
+		Affinity: configureAffinity(LabelDistributorComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Distributor),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -117,19 +126,13 @@ func NewDistributorDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Distributor != nil {
 		podSpec.Tolerations = opts.Stack.Template.Distributor.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Distributor.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = append(podSpec.TopologySpreadConstraints, topologySpreadConstraints(*opts.Stack.Replication, LabelDistributorComponent, opts.Name)...)
 	}
 
 	return &appsv1.Deployment{

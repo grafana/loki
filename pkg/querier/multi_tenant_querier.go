@@ -3,6 +3,8 @@ package querier
 import (
 	"context"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/weaveworks/common/user"
@@ -28,7 +30,7 @@ type MultiTenantQuerier struct {
 }
 
 // NewMultiTenantQuerier returns a new querier able to query across different tenants.
-func NewMultiTenantQuerier(querier Querier, logger log.Logger) *MultiTenantQuerier {
+func NewMultiTenantQuerier(querier Querier, _ log.Logger) *MultiTenantQuerier {
 	return &MultiTenantQuerier{
 		Querier: querier,
 	}
@@ -184,6 +186,27 @@ func (q *MultiTenantQuerier) IndexStats(ctx context.Context, req *loghttp.RangeQ
 	merged := stats.MergeStats(responses...)
 
 	return &merged, nil
+}
+
+func (q *MultiTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	responses := make([]*logproto.VolumeResponse, len(tenantIDs))
+	for i, id := range tenantIDs {
+		singleContext := user.InjectOrgID(ctx, id)
+		resp, err := q.Querier.Volume(singleContext, req)
+		if err != nil {
+			return nil, err
+		}
+
+		responses[i] = resp
+	}
+
+	merged := seriesvolume.Merge(responses, req.Limit)
+	return merged, nil
 }
 
 // removeTenantSelector filters the given tenant IDs based on any tenant ID filter the in passed selector.

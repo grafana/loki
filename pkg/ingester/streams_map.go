@@ -83,7 +83,7 @@ func (m *streamsMap) WithRLock(fn func()) {
 func (m *streamsMap) ForEach(fn func(s *stream) (bool, error)) error {
 	var c bool
 	var err error
-	m.streams.Range(func(key, value interface{}) bool {
+	m.streams.Range(func(_, value interface{}) bool {
 		c, err = fn(value.(*stream))
 		return c
 	})

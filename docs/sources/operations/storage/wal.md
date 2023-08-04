@@ -83,7 +83,7 @@ When scaling down, we must ensure existing data on the leaving ingesters are flu
 
 Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-3` and then `ingester-2`.
 
-Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/flush_shutdown`]({{<relref "../../reference/api#post-ingesterflush_shutdown">}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
+Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/flush_shutdown`]({{< relref "../../reference/api#post-ingesterflush_shutdown" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
 
 After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters to 2.
 
@@ -91,7 +91,7 @@ After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters
 
 ### Kubernetes hacking
 
-Statefulsets are significantly more cumbersome to work with/upgrade/etc. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes statefulsets.
+Statefulsets are significantly more cumbersome to work with, upgrade, and so on. Much of this stems from immutable fields on the specification. For example, if one wants to start using the WAL with single store Loki and wants separate volume mounts for the WAL and the boltdb-shipper, you may see immutability errors when attempting updates the Kubernetes statefulsets.
 
 In this case, try `kubectl -n <namespace> delete sts ingester --cascade=false`. This will leave the pods alive but delete the statefulset. Then you may recreate the (updated) statefulset and one-by-one start deleting the `ingester-0` through `ingester-n` pods _in that order_, allowing the statefulset to spin up new pods to replace them.
 

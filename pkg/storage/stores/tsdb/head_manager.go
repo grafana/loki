@@ -730,7 +730,8 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 		return
 	}
 
-	idx = NewTSDBIndex(tenant.indexRange(int64(from), int64(through)))
+	reader := tenant.indexRange(int64(from), int64(through))
+	idx = NewTSDBIndex(reader, NewPostingsReader(reader))
 	if t.chunkFilter != nil {
 		idx.SetChunkFilterer(t.chunkFilter)
 	}
@@ -738,17 +739,17 @@ func (t *tenantHeads) tenantIndex(userID string, from, through model.Time) (idx 
 
 }
 
-func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (t *tenantHeads) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, _ []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
 	}
-	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
+	return idx.GetChunkRefs(ctx, userID, from, through, nil, shard, matchers...)
 
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
-func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (t *tenantHeads) Series(ctx context.Context, userID string, from, through model.Time, _ []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, ok := t.tenantIndex(userID, from, through)
 	if !ok {
 		return nil, nil
@@ -781,6 +782,14 @@ func (t *tenantHeads) Stats(ctx context.Context, userID string, from, through mo
 		return nil
 	}
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
+}
+
+func (t *tenantHeads) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+	idx, ok := t.tenantIndex(userID, from, through)
+	if !ok {
+		return nil
+	}
+	return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
 }
 
 // helper only used in building TSDBs

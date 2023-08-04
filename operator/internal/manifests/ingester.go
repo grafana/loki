@@ -44,11 +44,21 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&statefulSet.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
 
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIngesterComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -132,19 +142,13 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ingester.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
-	}
-
-	if opts.Stack.Replication != nil {
-		podSpec.TopologySpreadConstraints = topologySpreadConstraints(*opts.Stack.Replication, LabelIngesterComponent, opts.Name)
 	}
 
 	return &appsv1.StatefulSet{

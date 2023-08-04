@@ -7,4 +7,4 @@ metadata:
     {{- include "loki.labels" . | nindent 4 }}
 data:
   runtime-config.yaml: |
-    {{ tpl (toYaml .Values.loki.runtimeConfig) . | nindent 4 }}
+    {{- tpl (toYaml .Values.loki.runtimeConfig) . | nindent 4 }}

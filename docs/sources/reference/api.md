@@ -3,8 +3,7 @@ title: Grafana Loki HTTP API
 menuTitle: "HTTP API"
 description: Loki exposes REST endpoints for operating on a Loki cluster. This section details the REST endpoints.
 aliases:
-- /docs/loki/latest/api
-- /docs/loki/latest/reference
+- ../api/
 weight: 100
 ---
 
@@ -37,6 +36,8 @@ These endpoints are exposed by the querier and the query frontend:
 - [`GET /loki/api/v1/label/<name>/values`](#list-label-values-within-a-range-of-time)
 - [`GET /loki/api/v1/series`](#list-series)
 - [`GET /loki/api/v1/index/stats`](#index-stats)
+- [`GET /loki/api/v1/index/volume`](#volume)
+- [`GET /loki/api/v1/index/volume_range`](#volume)
 - [`GET /loki/api/v1/tail`](#stream-log-messages)
 - **Deprecated** [`GET /api/prom/tail`](#get-apipromtail)
 - **Deprecated** [`GET /api/prom/query`](#get-apipromquery)
@@ -117,7 +118,7 @@ GET /loki/api/v1/query
 `/loki/api/v1/query` allows for doing queries against a single point in time. The URL
 query parameters support the following values:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
@@ -226,7 +227,7 @@ gave this response:
 ```
 
 If your cluster has
-[Grafana Loki Multi-Tenancy]({{< relref "../operations/multi-tenancy/" >}}) enabled,
+[Grafana Loki Multi-Tenancy]({{< relref "../operations/multi-tenancy" >}}) enabled,
 set the `X-Scope-OrgID` header to identify the tenant you want to query.
 Here is the same example query for the single tenant called `Tenant1`:
 
@@ -269,7 +270,7 @@ GET /loki/api/v1/query_range
 `/loki/api/v1/query_range` is used to do a query over a range of time and
 accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream(log lines) response.
 - `start`: The start time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to one hour ago. Loki returns results with timestamp greater or equal to this value.
 - `end`: The end time for the query as a nanosecond Unix epoch or another [supported format](#timestamp-formats). Defaults to now. Loki returns results with timestamp lower than this value.
@@ -286,7 +287,7 @@ Use the `step` parameter when making metric queries to Loki, or queries which re
 
 Use the `interval` parameter when making log queries to Loki, or queries which return a stream response. It is evaluated by returning a log entry at `start`, then the next entry will be returned an entry with timestampe >= `start + interval`, and again at `start + interval + interval` and so on until `end` is reached. It does not fill missing entries.
 
-<span style="background-color:#f3f973;">Note about the experimental nature of the interval parameter:</span> This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time. [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval` please go add your use case and thoughts to that issue.
+<span style="background-color:#f3f973;">Note about the experimental nature of the interval parameter:</span> This flag may be removed in the future, if so it will likely be in favor of a LogQL expression to perform similar behavior, however that is uncertain at this time. [Issue 1779](https://github.com/grafana/loki/issues/1779) was created to track the discussion, if you are using `interval`, go add your use case and thoughts to that issue.
 
 Response:
 
@@ -524,7 +525,7 @@ GET /loki/api/v1/tail
 `/loki/api/v1/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return. It defaults to `100`.
@@ -699,7 +700,7 @@ GET /metrics
 ```
 
 `/metrics` returns exposed Prometheus metrics. See
-[Observing Loki]({{< relref "../operations/observability/" >}})
+[Observing Loki]({{< relref "../operations/observability" >}})
 for a list of exported metrics.
 
 In microservices mode, the `/metrics` endpoint is exposed by all components.
@@ -843,7 +844,7 @@ The `/loki/api/v1/index/stats` endpoint can be used to query the index for the n
 
 URL query parameters:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) matchers to check (i.e. `{job="foo", env!="dev"}`)
+- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (i.e. `{job="foo", env!="dev"}`)
 - `start=<nanosecond Unix epoch>`: Start timestamp.
 - `end=<nanosecond Unix epoch>`: End timestamp.
 
@@ -868,6 +869,28 @@ It is an approximation with the following caveats:
 
 These make it generally more helpful for larger queries.
 It can be used for better understanding the throughput requirements and data topology for a list of matchers over a period of time.
+
+## Volume
+
+The `/loki/api/v1/index/volume` and `/loki/api/v1/index/volume_range` endpoints can be used to query the index for volume information about label and label-value combinations. This is helpful in exploring the logs Loki has ingested to find high or low volume streams. The `volume` endpoint returns results for a single point in time, the time the query was processed. Each datapoint represents an aggregation of the matching label or series over the requested time period, returned in a Prometheus style vector response. The `volume_range` endoint returns a series of datapoints over a range of time, in Prometheus style matrix response, for each matching set of labels or series. The number of timestamps returned when querying `volume_range` will be determined by the provided `step` parameter and the requested time range.
+
+The `query` should be a valid LogQL stream selector, for example `{job="foo", env=~".+"}`. By default, these endpoints will aggregate into series consisting of all matches for labels included in the query. For example, assuming you have the streams `{job="foo", env="prod", team="alpha"}`, `{job="bar", env="prod", team="beta"}`, `{job="foo", env="dev", team="alpha"}`, and `{job="bar", env="dev", team="beta"}` in your system. The query `{job="foo", env=~".+"}` would return the two metric series `{job="foo", env="dev"}` and `{job="foo", env="prod"}`, each with datapoints representing the accumulate values of chunks for the streams matching that selector, which in this case would be the streams `{job="foo", env="dev", team="alpha"}` and `{job="foo", env="prod", team="alpha"}`, respectively.
+
+There are two parameters which can affect the aggregation strategy. First, a comma-seperated list of `targetLabels` can be provided, allowing volumes to be aggregated by the speficied `targetLabels` only. This is useful for negations. For example, if you said `{team="alpha", env!="dev"}`, the default behavior would include `env` in the aggregation set. However, maybe you're looking for all non-dev jobs for team alpha, and you don't care which env those are in (other than caring that they're not dev jobs). To achieve this, you could specify `targetLabels=team,job`, resulting in a single metric series (in this case) of `{team="alpha", job="foo}`.
+
+The other way to change aggregations is with the `aggregateBy` parameter. The default value for this is `series`, which aggregates into combinations of matching key-value pairs. Alternately this can be specified as `labels`, which will aggregate into labels only. In this case, the response will have a metric series with a label name matching each label, and a label value of `""`. This is useful for exploring logs at a high level. For example, if you wanted to know what percentage of your logs had a `team` label, you could query your logs with `aggregateBy=labels` and a query with either an exact or regex match on `team`, or by including `team` in the list of `targetLabels`.
+
+URL query parameters:
+
+- `query`: The [LogQL]({{< relref "../query" >}}) matchers to check (i.e. `{job="foo", env=~".+"}`). This parameter is required.
+- `start=<nanosecond Unix epoch>`: Start timestamp. This parameter is required.
+- `end=<nanosecond Unix epoch>`: End timestamp. This parameter is required.
+- `limit`: How many metric series to return. The parameter is optional, the default is 100.
+- `step`: Query resolution step width in `duration` format or float number of seconds. `duration` refers to Prometheus duration strings of the form `[0-9]+[smhdwy]`. For example, 5m refers to a duration of 5 minutes. Defaults to a dynamic value based on `start` and `end`. Only applies when querying the `volume_range` endpoint, which will always return a Prometheus style matrix response. This parameter is optional, and only applicable for `query_range`. The default step configured for range queries will be used when not provided.
+- `targetLabels`: A comma separated list of labels to aggregate into. This parameter is optional. When not provided, volumes will be aggregated into the matching labels or label-value pairs.
+- `aggregateBy`: Whether to aggregate into labels or label-value pairs. This parameter is optional, the default is label-value pairs.
+
+You can URL-encode these parameters directly in the request body by using the POST method and `Content-Type: application/x-www-form-urlencoded` header. This is useful when specifying a large or dynamic number of stream selectors that may breach server-side URL character limits.
 
 ## Statistics
 
@@ -1069,7 +1092,7 @@ GET /prometheus/api/v1/alerts
 
 Prometheus-compatible rules endpoint to list all active alerts.
 
-For more information, please check out the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation.
+For more information, refer to the Prometheus [alerts](https://prometheus.io/docs/prometheus/latest/querying/api/#alerts) documentation.
 
 ## Compactor
 
@@ -1089,7 +1112,7 @@ PUT /loki/api/v1/delete
 ```
 
 Create a new delete request for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion/" >}}) documentation has configuration details.
+The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1129,7 +1152,7 @@ GET /loki/api/v1/delete
 ```
 
 List the existing delete requests for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion/" >}}) documentation has configuration details.
+The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
 Log entry deletion is supported _only_ when the BoltDB Shipper is configured for the index store.
 
@@ -1166,7 +1189,7 @@ DELETE /loki/api/v1/delete
 ```
 
 Remove a delete request for the authenticated tenant.
-The [log entry deletion]({{< relref "../operations/storage/logs-deletion/" >}}) documentation has configuration details.
+The [log entry deletion]({{< relref "../operations/storage/logs-deletion" >}}) documentation has configuration details.
 
 Loki allows cancellation of delete requests until the requests are picked up for processing. It is controlled by the `delete_request_cancel_period` YAML configuration or the equivalent command line option when invoking Loki. To cancel a delete request that has been picked up for processing or is partially complete, pass the `force=true` query parameter to the API.
 
@@ -1213,7 +1236,7 @@ curl -u "Tenant1:$API_TOKEN" \
 `/api/prom/tail` is a WebSocket endpoint that will stream log messages based on
 a query. It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `delay_for`: The number of seconds to delay retrieving logs to let slow
   loggers catch up. Defaults to 0 and cannot be larger than 5.
 - `limit`: The max number of entries to return
@@ -1262,7 +1285,7 @@ will be sent over the WebSocket multiple times.
 `/api/prom/query` supports doing general queries. The URL query parameters
 support the following values:
 
-- `query`: The [LogQL]({{< relref "../query/" >}}) query to perform
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform
 - `limit`: The max number of entries to return
 - `start`: The start time for the query as a nanosecond Unix epoch. Defaults to one hour ago.
 - `end`: The end time for the query as a nanosecond Unix epoch. Defaults to now.

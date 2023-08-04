@@ -15,6 +15,7 @@ import (
 	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -37,7 +38,8 @@ func ensureIngesterData(ctx context.Context, t *testing.T, start, end time.Time,
 
 	ln := int(end.Sub(start) / time.Second)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	require.Len(t, result.resps[0].Streams, 2)
 	require.Len(t, result.resps[0].Streams[0].Entries, ln)
 	require.Len(t, result.resps[0].Streams[1].Entries, ln)
@@ -67,7 +69,7 @@ func TestIngesterWAL(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -110,7 +112,7 @@ func TestIngesterWAL(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -124,7 +126,7 @@ func TestIngesterWAL(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -147,7 +149,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -193,7 +195,7 @@ func TestIngesterWALIgnoresStreamLimits(t *testing.T) {
 	require.NoError(t, err)
 
 	// restart the ingester
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -250,7 +252,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -271,7 +273,7 @@ func TestIngesterWALBackpressureSegments(t *testing.T) {
 	expectCheckpoint(t, walDir, false, time.Second)
 
 	// restart the ingester, ensuring we replayed from WAL.
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -292,7 +294,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 		}
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -313,7 +315,7 @@ func TestIngesterWALBackpressureCheckpoint(t *testing.T) {
 	require.Nil(t, services.StopAndAwaitTerminated(context.Background(), i))
 
 	// restart the ingester, ensuring we can replay from the checkpoint as well.
-	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 	defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 	require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
@@ -449,7 +451,7 @@ func Test_SeriesIterator(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := 0; i < 3; i++ {
-		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, NewStreamRateCalculator())
+		inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("%d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, NewStreamRateCalculator(), nil)
 		require.Nil(t, err)
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream1}}))
 		require.NoError(t, inst.Push(context.Background(), &logproto.PushRequest{Streams: []logproto.Stream{stream2}}))
@@ -496,7 +498,7 @@ func Benchmark_SeriesIterator(b *testing.B) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	for i := range instances {
-		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, NewStreamRateCalculator())
+		inst, _ := newInstance(defaultConfig(), defaultPeriodConfigs, fmt.Sprintf("instance %d", i), limiter, runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, nil, nil, NewStreamRateCalculator(), nil)
 
 		require.NoError(b,
 			inst.Push(context.Background(), &logproto.PushRequest{
@@ -524,9 +526,9 @@ func Benchmark_SeriesIterator(b *testing.B) {
 
 type noOpWalLogger struct{}
 
-func (noOpWalLogger) Log(recs ...[]byte) error { return nil }
-func (noOpWalLogger) Close() error             { return nil }
-func (noOpWalLogger) Dir() string              { return "" }
+func (noOpWalLogger) Log(_ ...[]byte) error { return nil }
+func (noOpWalLogger) Close() error          { return nil }
+func (noOpWalLogger) Dir() string           { return "" }
 
 func Benchmark_CheckpointWrite(b *testing.B) {
 	writer := WALCheckpointWriter{
@@ -588,7 +590,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 				}
 			}
 
-			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+			i, err := New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 			require.NoError(t, err)
 			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
@@ -660,7 +662,7 @@ func TestIngesterWALReplaysUnorderedToOrdered(t *testing.T) {
 			require.NoError(t, err)
 
 			// restart the ingester
-			i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil)
+			i, err = New(ingesterConfig, client.Config{}, newStore(), limits, runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 			require.NoError(t, err)
 			defer services.StopAndAwaitTerminated(context.Background(), i) //nolint:errcheck
 			require.Nil(t, services.StartAndAwaitRunning(context.Background(), i))

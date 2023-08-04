@@ -2,9 +2,14 @@ package tsdb
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
+	"github.com/grafana/loki/pkg/logproto"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -22,7 +27,7 @@ func (m mockIndexShipperIndexIterator) ForEachConcurrent(ctx context.Context, ta
 	return m.ForEach(ctx, tableName, userID, callback)
 }
 
-func (m mockIndexShipperIndexIterator) ForEach(ctx context.Context, tableName, userID string, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ string, callback index_shipper.ForEachIndexCallback) error {
 	indexes := m.tables[tableName]
 	for _, idx := range indexes {
 		if err := callback(false, idx); err != nil {
@@ -55,7 +60,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99)),
 				},
-			}),
+			}, IndexOpts{}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -64,7 +69,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 					Labels: mustParseLabels(`{foo="bar"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99)),
 				},
-			}),
+			}, IndexOpts{}),
 		},
 	}
 
@@ -74,7 +79,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -113,7 +118,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{fizz="buzz"}`),
 					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
 				},
-			}),
+			}, IndexOpts{}),
 		},
 
 		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
@@ -130,7 +135,7 @@ func TestIndexClient_Stats(t *testing.T) {
 					Labels: mustParseLabels(`{ping="pong"}`),
 					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
 				},
-			}),
+			}, IndexOpts{}),
 		},
 	}
 
@@ -140,7 +145,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		PeriodConfig: &config.PeriodConfig{},
 	})
 
-	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true})
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
 	for _, tc := range []struct {
 		name               string
@@ -213,4 +218,104 @@ func TestIndexClient_Stats(t *testing.T) {
 			require.Equal(t, tc.expectedNumBytes, stats.Bytes)
 		})
 	}
+}
+
+func TestIndexClient_Volume(t *testing.T) {
+	tempDir := t.TempDir()
+	tableRange := config.TableRange{
+		Start: 0,
+		End:   math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{
+			IndexTables: config.PeriodicTableConfig{
+				Period: config.ObjectStorageIndexRequiredPeriod,
+			},
+		},
+	}
+
+	indexStartToday := model.TimeFromUnixNano(time.Now().Truncate(config.ObjectStorageIndexRequiredPeriod).UnixNano())
+	indexStartYesterday := indexStartToday.Add(-config.ObjectStorageIndexRequiredPeriod)
+
+	tables := map[string][]*TSDBFile{
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStartToday): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{fizz="buzz"}`),
+					Chunks: buildChunkMetas(int64(indexStartToday), int64(indexStartToday+99), 10),
+				},
+			}, IndexOpts{}),
+		},
+
+		tableRange.PeriodConfig.IndexTables.TableFor(indexStartYesterday): {
+			BuildIndex(t, tempDir, []LoadableSeries{
+				{
+					Labels: mustParseLabels(`{foo="bar"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{foo="bar", fizz="buzz"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+				{
+					Labels: mustParseLabels(`{ping="pong"}`),
+					Chunks: buildChunkMetas(int64(indexStartYesterday), int64(indexStartYesterday+99), 10),
+				},
+			}, IndexOpts{}),
+		},
+	}
+
+	idx := newIndexShipperQuerier(mockIndexShipperIndexIterator{tables: tables}, config.TableRange{
+		Start:        0,
+		End:          math.MaxInt64,
+		PeriodConfig: &config.PeriodConfig{},
+	})
+
+	limits := &fakeLimits{volumeMaxSeries: 5}
+	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits)
+	from := indexStartYesterday
+	through := indexStartToday + 1000
+
+	t.Run("it returns volumes from the whole index", func(t *testing.T) {
+		vol, err := indexClient.Volume(context.Background(), "", from, through, 10, nil, "", nil...)
+		require.NoError(t, err)
+
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 200 * 1024},
+				{Name: `{fizz="buzz", foo="bar"}`, Volume: 100 * 1024},
+				{Name: `{fizz="buzz"}`, Volume: 100 * 1024},
+				{Name: `{ping="pong"}`, Volume: 100 * 1024},
+			},
+			Limit: 10,
+		}, vol)
+	})
+
+	t.Run("it returns largest series from the index", func(t *testing.T) {
+		vol, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil...)
+		require.NoError(t, err)
+
+		require.Equal(t, &logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 200 * 1024},
+			},
+			Limit: 1,
+		}, vol)
+	})
+
+	t.Run("it returns an error when the number of selected series exceeds the limit", func(t *testing.T) {
+		limits.volumeMaxSeries = 0
+		_, err := indexClient.Volume(context.Background(), "", from, through, 1, nil, "", nil...)
+		require.EqualError(t, err, fmt.Sprintf(seriesvolume.ErrVolumeMaxSeriesHit, 0))
+	})
+}
+
+type fakeLimits struct {
+	volumeMaxSeries int
+}
+
+func (f *fakeLimits) VolumeMaxSeries(_ string) int {
+	return f.volumeMaxSeries
 }

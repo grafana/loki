@@ -4,9 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
+
+	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 func TestInstanceCountDelegateCounting(t *testing.T) {
@@ -98,6 +101,13 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	delegate = newHealthyInstanceDelegate(counter, time.Second, delegate)
 	delegate = &sentryDelegate{BasicLifecyclerDelegate: delegate, calls: sentry2} // sentry delegate AFTER newHealthyInstancesDelegate
 
+	ringCfg := &RingConfig{}
+	logger := log.With(util_log.Logger, "component", "lifecycler")
+	lifecyclerCfg, err := ringCfg.ToBasicLifecyclerConfig(logger)
+	require.NoError(t, err)
+	lifecycler, err := ring.NewBasicLifecycler(lifecyclerCfg, "test", "test", nil, delegate, logger, nil)
+	require.NoError(t, err)
+
 	ingesters := ring.NewDesc()
 	ingesters.AddIngester("ingester-0", "ingester-0:3100", "zone-a", []uint32{1}, ring.ACTIVE, time.Now())
 
@@ -111,19 +121,19 @@ func TestInstanceCountDelegate_CorrectlyInvokesOtherDelegates(t *testing.T) {
 	require.Equal(t, 0, sentry1["Tokens"])
 	require.Equal(t, 0, sentry2["Tokens"])
 
-	delegate.OnRingInstanceHeartbeat(nil, ingesters, nil)
+	delegate.OnRingInstanceHeartbeat(lifecycler, ingesters, nil)
 	require.Equal(t, 1, sentry1["Heartbeat"])
 	require.Equal(t, 1, sentry2["Heartbeat"])
 
-	delegate.OnRingInstanceRegister(nil, *ingesters, true, "ingester-0", ring.InstanceDesc{})
+	delegate.OnRingInstanceRegister(lifecycler, *ingesters, true, "ingester-0", ring.InstanceDesc{})
 	require.Equal(t, 1, sentry1["Register"])
 	require.Equal(t, 1, sentry2["Register"])
 
-	delegate.OnRingInstanceStopping(nil)
+	delegate.OnRingInstanceStopping(lifecycler)
 	require.Equal(t, 1, sentry1["Stopping"])
 	require.Equal(t, 1, sentry2["Stopping"])
 
-	delegate.OnRingInstanceTokens(nil, ring.Tokens{})
+	delegate.OnRingInstanceTokens(lifecycler, ring.Tokens{})
 	require.Equal(t, 1, sentry1["Stopping"])
 	require.Equal(t, 1, sentry2["Stopping"])
 }

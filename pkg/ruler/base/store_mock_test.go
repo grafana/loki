@@ -205,7 +205,7 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 	return result, nil
 }
 
-func (m *mockRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
+func (m *mockRuleStore) LoadRuleGroups(_ context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -254,7 +254,7 @@ func (m *mockRuleStore) GetRuleGroup(_ context.Context, userID string, namespace
 	return nil, rulestore.ErrGroupNotFound
 }
 
-func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespace string, group *rulespb.RuleGroupDesc) error {
+func (m *mockRuleStore) SetRuleGroup(_ context.Context, userID string, namespace string, group *rulespb.RuleGroupDesc) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -279,7 +279,7 @@ func (m *mockRuleStore) SetRuleGroup(ctx context.Context, userID string, namespa
 	return nil
 }
 
-func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, namespace string, group string) error {
+func (m *mockRuleStore) DeleteRuleGroup(_ context.Context, userID string, namespace string, group string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
@@ -303,7 +303,7 @@ func (m *mockRuleStore) DeleteRuleGroup(ctx context.Context, userID string, name
 	return nil
 }
 
-func (m *mockRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+func (m *mockRuleStore) DeleteNamespace(_ context.Context, userID, namespace string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
