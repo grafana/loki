@@ -1,5 +1,7 @@
 ## Main
 
+- [9942](https://github.com/grafana/loki/pull/9942) **btaani**: Change to custom degraded condition when lokistack topologyKeys do not match node labels
+
 ## 0.4.0 (2023-07-27)
 
 - [10019](https://github.com/grafana/loki/pull/10019) **periklis**: Update Loki operand to v2.8.3
