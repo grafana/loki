@@ -12,9 +12,10 @@ type Config struct {
 	Hedge      HedgerConfig     `yaml:"hedging"`
 }
 
-// TODO(dannyk): register flags
-func (c Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-
+func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	c.Controller.RegisterFlagsWithPrefix(prefix+"congestion-control.", f)
+	c.Retry.RegisterFlagsWithPrefix(prefix+"retry.", f)
+	c.Hedge.RegisterFlagsWithPrefix(prefix+"hedge.", f)
 }
 
 type ControllerConfig struct {
@@ -26,13 +27,42 @@ type ControllerConfig struct {
 	} `yaml:"aimd"`
 }
 
+func (c *ControllerConfig) RegisterFlags(f *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *ControllerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&c.Strategy, prefix+"strategy", "", "Congestion control strategy to use (default: none, options: 'aimd').")
+	f.UintVar(&c.AIMD.LowerBound, prefix+"strategy.aimd.lower-bound", 100, "AIMD starting throughput window size (default: 100).")
+	f.UintVar(&c.AIMD.UpperBound, prefix+"strategy.aimd.upper-bound", 1000, "AIMD maximum throughput window size (default: 1000).")
+	f.Float64Var(&c.AIMD.BackoffFactor, prefix+"strategy.aimd.backoff-factor", 0.5, "AIMD backoff factor when upstream service is throttled (default: 0.5).")
+}
+
 type RetrierConfig struct {
 	Strategy string `yaml:"strategy"`
 	Limit    int    `yaml:"limit"`
+}
+
+func (c *RetrierConfig) RegisterFlags(f *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *RetrierConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&c.Strategy, prefix+"strategy", "", "Congestion control retry strategy to use (default: none, options: 'limited').")
+	f.IntVar(&c.Limit, prefix+"strategy.limited.limit", 2, "Maximum number of retries allowed.")
 }
 
 type HedgerConfig struct {
 	hedging.Config
 
 	Strategy string `yaml:"strategy"`
+}
+
+func (c *HedgerConfig) RegisterFlags(f *flag.FlagSet) {
+	c.RegisterFlagsWithPrefix("", f)
+}
+
+func (c *HedgerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.StringVar(&c.Strategy, prefix+"strategy", "", "Congestion control hedge strategy to use (default: none, options: 'limited').")
+	// TODO hedge configs
 }
