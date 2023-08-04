@@ -1091,24 +1091,16 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 		return nil, err
 	}
 
-	// If the head format is not explicitly set, use the default.
-	// This will be the most common case for chunks read from storage since
-	// they have a dummy head block.
-	headFmt := c.headFmt
-	if headFmt < OrderedHeadBlockFmt {
-		headFmt = DefaultHeadBlockFmt
-	}
-
 	var newChunk *MemChunk
 	// as close as possible, respect the block/target sizes specified. However,
 	// if the blockSize is not set, use reasonable defaults.
 	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.Encoding(), headFmt, c.blockSize, c.targetSize)
+		newChunk = NewMemChunk(c.Encoding(), DefaultHeadBlockFmt, c.blockSize, c.targetSize)
 	} else {
 		// Using defaultBlockSize for target block size.
 		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
 		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.Encoding(), headFmt, defaultBlockSize, c.CompressedSize())
+		newChunk = NewMemChunk(c.Encoding(), DefaultHeadBlockFmt, defaultBlockSize, c.CompressedSize())
 	}
 
 	for itr.Next() {
