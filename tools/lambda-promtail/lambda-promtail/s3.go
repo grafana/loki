@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"regexp"
@@ -61,7 +62,7 @@ var (
 	// example: example-prefix/EMLARXS9EXAMPLE.2019-11-14-20.RT4KCN4SGK9.gz
 	defaultFilenameRegex     = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
 	defaultTimestampRegex    = regexp.MustCompile(`\w+ (?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+\.\d+Z)`)
-	cloudtrailFilenameRegex  = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
+	cloudtrailFilenameRegex  = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
 	cloudfrontFilenameRegex  = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
 	parsers                  = map[string]parserConfig{
@@ -196,20 +197,21 @@ func getLabels(record events.S3EventRecord) (map[string]string, error) {
 	labels["bucket"] = record.S3.Bucket.Name
 	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
 	labels["bucket_region"] = record.AWSRegion
-	var matchingType *string
 	for key, p := range parsers {
 		if p.filenameRegex.MatchString(labels["key"]) {
-			matchingType = aws.String(key)
+			if labels["type"] == "" {
+				labels["type"] = key
+			}
 			match := p.filenameRegex.FindStringSubmatch(labels["key"])
 			for i, name := range p.filenameRegex.SubexpNames() {
-				if i != 0 && name != "" {
+				if i != 0 && name != "" && match[i] != "" {
 					labels[name] = match[i]
 				}
 			}
 		}
 	}
 	if labels["type"] == "" {
-		labels["type"] = *matchingType
+		return labels, fmt.Errorf("type of S3 event could not be determined for object %q", record.S3.Object.Key)
 	}
 	return labels, nil
 }
@@ -250,4 +252,42 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 	}
 
 	return nil
+}
+
+func processSNSEvent(ctx context.Context, evt *events.SNSEvent, handler func(ctx context.Context, ev map[string]interface{}) error) error {
+	for _, record := range evt.Records {
+		event, err := stringToRawEvent(record.SNS.Message)
+		if err != nil {
+			return err
+		}
+		err = handler(ctx, event)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func processSQSEvent(ctx context.Context, evt *events.SQSEvent, handler func(ctx context.Context, ev map[string]interface{}) error) error {
+	for _, record := range evt.Records {
+		// retrieve nested
+		event, err := stringToRawEvent(record.Body)
+		if err != nil {
+			return err
+		}
+		err = handler(ctx, event)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func stringToRawEvent(body string) (map[string]interface{}, error) {
+	result := make(map[string]interface{})
+	err := json.Unmarshal([]byte(body), &result)
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
 }

@@ -465,8 +465,10 @@ fluent-bit-plugin: ## build the fluent-bit plugin
 
 fluent-bit-image: ## build the fluent-bit plugin docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
+fluent-bit-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
-fluent-bit-push: ## push the fluent-bit plugin docker image
+fluent-bit-push: fluent-bit-image-cross ## push the fluent-bit plugin docker image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
@@ -631,8 +633,8 @@ loki-operator-push: loki-operator-image-cross
 
 documentation-helm-reference-check:
 	@echo "Checking diff"
-	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	$(MAKE) -BC docs sources/setup/install/helm/reference.md
+	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
 
 ########
 # Misc #

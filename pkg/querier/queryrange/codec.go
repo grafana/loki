@@ -275,8 +275,8 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Through:  through,
 			Matchers: req.Query,
 		}, err
-	case SeriesVolumeOp:
-		req, err := loghttp.ParseSeriesVolumeInstantQuery(r)
+	case VolumeOp:
+		req, err := loghttp.ParseVolumeInstantQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -288,9 +288,10 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Limit:        int32(req.Limit),
 			Step:         0,
 			TargetLabels: req.TargetLabels,
+			AggregateBy:  req.AggregateBy,
 		}, err
-	case SeriesVolumeRangeOp:
-		req, err := loghttp.ParseSeriesVolumeRangeQuery(r)
+	case VolumeRangeOp:
+		req, err := loghttp.ParseVolumeRangeQuery(r)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
@@ -302,6 +303,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			Limit:        int32(req.Limit),
 			Step:         req.Step.Milliseconds(),
 			TargetLabels: req.TargetLabels,
+			AggregateBy:  req.AggregateBy,
 		}, err
 	default:
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, fmt.Sprintf("unknown request path: %s", r.URL.Path))
@@ -436,10 +438,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		return req.WithContext(ctx), nil
 	case *logproto.VolumeRequest:
 		params := url.Values{
-			"start": []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
-			"end":   []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
-			"query": []string{request.GetQuery()},
-			"limit": []string{fmt.Sprintf("%d", request.Limit)},
+			"start":       []string{fmt.Sprintf("%d", request.From.Time().UnixNano())},
+			"end":         []string{fmt.Sprintf("%d", request.Through.Time().UnixNano())},
+			"query":       []string{request.GetQuery()},
+			"limit":       []string{fmt.Sprintf("%d", request.Limit)},
+			"aggregateBy": []string{request.AggregateBy},
 		}
 
 		if len(request.TargetLabels) > 0 {
@@ -450,12 +453,12 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		if request.Step != 0 {
 			params["step"] = []string{fmt.Sprintf("%f", float64(request.Step)/float64(1e3))}
 			u = &url.URL{
-				Path:     "/loki/api/v1/index/series_volume_range",
+				Path:     "/loki/api/v1/index/volume_range",
 				RawQuery: params.Encode(),
 			}
 		} else {
 			u = &url.URL{
-				Path:     "/loki/api/v1/index/series_volume",
+				Path:     "/loki/api/v1/index/volume",
 				RawQuery: params.Encode(),
 			}
 		}
@@ -468,7 +471,7 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		}
 		return req.WithContext(ctx), nil
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
 	}
 }
 
@@ -651,6 +654,11 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		}
 	}
 
+	// Shortcut series responses without deserialization.
+	if _, ok := req.(*LokiSeriesRequest); ok {
+		return GetLokiSeriesResponseView(buf)
+	}
+
 	resp := &QueryResponse{}
 	err = resp.Unmarshal(buf)
 	if err != nil {
@@ -719,7 +727,10 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				return nil, err
 			}
 		}
-
+	case *MergedSeriesResponseView:
+		if err := WriteSeriesResponseViewJSON(response, &buf); err != nil {
+			return nil, err
+		}
 	case *LokiSeriesResponse:
 		result := logproto.SeriesResponse{
 			Series: response.Data,
@@ -742,11 +753,11 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 			return nil, err
 		}
 	case *VolumeResponse:
-		if err := marshal.WriteSeriesVolumeResponseJSON(response.Response, &buf); err != nil {
+		if err := marshal.WriteVolumeResponseJSON(response.Response, &buf); err != nil {
 			return nil, err
 		}
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response formatt, got (%T)", res))
 	}
 
 	sp.LogFields(otlog.Int("bytes", buf.Len()))
@@ -774,6 +785,12 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 		p.Response = &QueryResponse_Streams{response}
 	case *LokiSeriesResponse:
 		p.Response = &QueryResponse_Series{response}
+	case *MergedSeriesResponseView:
+		mat, err := response.Materialize()
+		if err != nil {
+			return nil, err
+		}
+		p.Response = &QueryResponse_Series{mat}
 	case *LokiLabelNamesResponse:
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
@@ -781,7 +798,7 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
 	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}
 
 	buf, err := p.Marshal()
@@ -828,16 +845,37 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 		lokiSeriesRes := responses[0].(*LokiSeriesResponse)
 
 		var lokiSeriesData []logproto.SeriesIdentifier
-		uniqueSeries := make(map[string]struct{})
+		uniqueSeries := make(map[uint64]struct{})
+
+		// The buffers are used by `series.Hash`. They are allocated
+		// outside of the method in order to reuse them for the next
+		// iteration. This saves a lot of allocations.
+		// 1KB is used for `b` after some experimentation. The
+		// benchmarks are ~10% faster in comparison to no buffer with
+		// little overhead. A run with 4MB should the same speedup but
+		// much much more overhead.
+		b := make([]byte, 0, 1024)
+		keyBuffer := make([]string, 0, 32)
+		var key uint64
 
 		// only unique series should be merged
 		for _, res := range responses {
 			lokiResult := res.(*LokiSeriesResponse)
 			mergedStats.MergeSplit(lokiResult.Statistics)
 			for _, series := range lokiResult.Data {
-				if _, ok := uniqueSeries[series.String()]; !ok {
+				// Use series hash as the key and reuse key
+				// buffer to avoid extra allocations.
+				key, keyBuffer = series.Hash(b, keyBuffer)
+
+				// TODO(karsten): There is a chance that the
+				// keys match but not the labels due to hash
+				// collision. Ideally there's an else block the
+				// compares the series labels. However, that's
+				// not trivial. Besides, instance.Series has the
+				// same issue in its deduping logic.
+				if _, ok := uniqueSeries[key]; !ok {
 					lokiSeriesData = append(lokiSeriesData, series)
-					uniqueSeries[series.String()] = struct{}{}
+					uniqueSeries[key] = struct{}{}
 				}
 			}
 		}
@@ -848,6 +886,12 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Data:       lokiSeriesData,
 			Statistics: mergedStats,
 		}, nil
+	case *LokiSeriesResponseView:
+		v := &MergedSeriesResponseView{}
+		for _, r := range responses {
+			v.responses = append(v.responses, r.(*LokiSeriesResponseView))
+		}
+		return v, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
 		uniqueNames := make(map[string]struct{})

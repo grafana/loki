@@ -80,7 +80,7 @@ func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, 
 	return p
 }
 
-func (p *Pool) iteration(ctx context.Context) error {
+func (p *Pool) iteration(_ context.Context) error {
 	p.removeStaleClients()
 	if p.cfg.HealthCheckEnabled {
 		p.cleanUnhealthy()
@@ -103,8 +103,11 @@ func (p *Pool) GetClientFor(addr string) (PoolClient, error) {
 		return client, nil
 	}
 
+	// No client in cache so create one
 	p.Lock()
 	defer p.Unlock()
+
+	// Check if a client has been created just after checking the cache and before acquiring the lock.
 	client, ok = p.clients[addr]
 	if ok {
 		return client, nil

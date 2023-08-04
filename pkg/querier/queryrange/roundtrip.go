@@ -173,7 +173,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	seriesVolumeTripperware, err := NewSeriesVolumeTripperware(cfg, log, limits, schema, codec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -322,31 +322,35 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
 
 		return r.indexStats.RoundTrip(req)
-	case SeriesVolumeOp:
-		volumeQuery, err := loghttp.ParseSeriesVolumeInstantQuery(req)
+	case VolumeOp:
+		volumeQuery, err := loghttp.ParseVolumeInstantQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		level.Info(logger).Log(
 			"msg", "executing query",
-			"type", "series_volume",
+			"type", "volume",
 			"query", volumeQuery.Query,
-			"length", volumeQuery.Start.Sub(volumeQuery.End),
-			"limit", volumeQuery.Limit)
+			"length", volumeQuery.End.Sub(volumeQuery.Start),
+			"limit", volumeQuery.Limit,
+			"aggregate_by", volumeQuery.AggregateBy,
+		)
 
 		return r.seriesVolume.RoundTrip(req)
-	case SeriesVolumeRangeOp:
-		volumeQuery, err := loghttp.ParseSeriesVolumeRangeQuery(req)
+	case VolumeRangeOp:
+		volumeQuery, err := loghttp.ParseVolumeRangeQuery(req)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 		level.Info(logger).Log(
 			"msg", "executing query",
-			"type", "series_volume_range",
+			"type", "volume_range",
 			"query", volumeQuery.Query,
 			"length", volumeQuery.End.Sub(volumeQuery.Start),
 			"step", volumeQuery.Step,
-			"limit", volumeQuery.Limit)
+			"limit", volumeQuery.Limit,
+			"aggregate_by", volumeQuery.AggregateBy,
+		)
 
 		return r.seriesVolume.RoundTrip(req)
 	default:
@@ -374,13 +378,13 @@ func transformRegexQuery(req *http.Request, expr syntax.LogSelectorExpr) (syntax
 }
 
 const (
-	InstantQueryOp      = "instant_query"
-	QueryRangeOp        = "query_range"
-	SeriesOp            = "series"
-	LabelNamesOp        = "labels"
-	IndexStatsOp        = "index_stats"
-	SeriesVolumeOp      = "series_volume"
-	SeriesVolumeRangeOp = "series_volume_range"
+	InstantQueryOp = "instant_query"
+	QueryRangeOp   = "query_range"
+	SeriesOp       = "series"
+	LabelNamesOp   = "labels"
+	IndexStatsOp   = "index_stats"
+	VolumeOp       = "volume"
+	VolumeRangeOp  = "volume_range"
 )
 
 func getOperation(path string) string {
@@ -395,10 +399,10 @@ func getOperation(path string) string {
 		return InstantQueryOp
 	case path == "/loki/api/v1/index/stats":
 		return IndexStatsOp
-	case path == "/loki/api/v1/index/series_volume":
-		return SeriesVolumeOp
-	case path == "/loki/api/v1/index/series_volume_range":
-		return SeriesVolumeRangeOp
+	case path == "/loki/api/v1/index/volume":
+		return VolumeOp
+	case path == "/loki/api/v1/index/volume_range":
+		return VolumeRangeOp
 	default:
 		return ""
 	}
@@ -772,7 +776,7 @@ func NewInstantMetricTripperware(
 	}, nil
 }
 
-func NewSeriesVolumeTripperware(
+func NewVolumeTripperware(
 	cfg Config,
 	log log.Logger,
 	limits Limits,
@@ -808,14 +812,14 @@ func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tr
 
 			seriesVolumeMiddlewares := []queryrangebase.Middleware{
 				StatsCollectorMiddleware(),
-				NewSeriesVolumeMiddleware(),
+				NewVolumeMiddleware(),
 			}
 
 			// wrap nextRT with our new middleware
 			response, err := queryrangebase.MergeMiddlewares(
 				seriesVolumeMiddlewares...,
 			).Wrap(
-				SeriesVolumeDownstreamHandler(nextRT, codec),
+				VolumeDownstreamHandler(nextRT, codec),
 			).Do(r.Context(), request)
 
 			if err != nil {

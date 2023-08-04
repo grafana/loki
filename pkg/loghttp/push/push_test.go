@@ -44,15 +44,16 @@ func deflateString(source string) string {
 }
 
 func TestParseRequest(t *testing.T) {
-	var previousBytesReceived, previousLinesReceived int
+	var previousBytesReceived, previousNonIndexedLabelsBytesReceived, previousLinesReceived int
 	for index, test := range []struct {
-		path            string
-		body            string
-		contentType     string
-		contentEncoding string
-		valid           bool
-		expectedBytes   int
-		expectedLines   int
+		path                          string
+		body                          string
+		contentType                   string
+		contentEncoding               string
+		valid                         bool
+		expectedNonIndexedLabelsBytes int
+		expectedBytes                 int
+		expectedLines                 int
 	}{
 		{
 			path:        `/loki/api/v1/push`,
@@ -176,16 +177,18 @@ func TestParseRequest(t *testing.T) {
 			valid:           false,
 		},
 		{
-			path:            `/loki/api/v1/push`,
-			body:            deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz", {"a": "a", "b": "b"} ] ] }]}`),
-			contentType:     `application/json; charset=utf-8`,
-			contentEncoding: `deflate`,
-			valid:           true,
-			expectedBytes:   len("fizzbuzz") + 2*len("a") + 2*len("b"),
-			expectedLines:   1,
+			path:                          `/loki/api/v1/push`,
+			body:                          deflateString(`{"streams": [{ "stream": { "foo": "bar2" }, "values": [ [ "1570818238000000000", "fizzbuzz", {"a": "a", "b": "b"} ] ] }]}`),
+			contentType:                   `application/json; charset=utf-8`,
+			contentEncoding:               `deflate`,
+			valid:                         true,
+			expectedNonIndexedLabelsBytes: 2*len("a") + 2*len("b"),
+			expectedBytes:                 len("fizzbuzz") + 2*len("a") + 2*len("b"),
+			expectedLines:                 1,
 		},
 	} {
 		t.Run(fmt.Sprintf("test %d", index), func(t *testing.T) {
+			nonIndexedLabelsBytesIngested.Reset()
 			bytesIngested.Reset()
 			linesIngested.Reset()
 
@@ -199,6 +202,8 @@ func TestParseRequest(t *testing.T) {
 
 			data, err := ParseRequest(util_log.Logger, "fake", request, nil)
 
+			nonIndexedLabelsBytesReceived := int(nonIndexedLabelsBytesReceivedStats.Value()["total"].(int64)) - previousNonIndexedLabelsBytesReceived
+			previousNonIndexedLabelsBytesReceived += nonIndexedLabelsBytesReceived
 			bytesReceived := int(bytesReceivedStats.Value()["total"].(int64)) - previousBytesReceived
 			previousBytesReceived += bytesReceived
 			linesReceived := int(linesReceivedStats.Value()["total"].(int64)) - previousLinesReceived
@@ -207,15 +212,19 @@ func TestParseRequest(t *testing.T) {
 			if test.valid {
 				assert.Nil(t, err, "Should not give error for %d", index)
 				assert.NotNil(t, data, "Should give data for %d", index)
+				require.Equal(t, test.expectedNonIndexedLabelsBytes, nonIndexedLabelsBytesReceived)
 				require.Equal(t, test.expectedBytes, bytesReceived)
 				require.Equal(t, test.expectedLines, linesReceived)
+				require.Equal(t, float64(test.expectedNonIndexedLabelsBytes), testutil.ToFloat64(nonIndexedLabelsBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedBytes), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(test.expectedLines), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
 			} else {
 				assert.NotNil(t, err, "Should give error for %d", index)
 				assert.Nil(t, data, "Should not give data for %d", index)
+				require.Equal(t, 0, nonIndexedLabelsBytesReceived)
 				require.Equal(t, 0, bytesReceived)
 				require.Equal(t, 0, linesReceived)
+				require.Equal(t, float64(0), testutil.ToFloat64(nonIndexedLabelsBytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(0), testutil.ToFloat64(bytesIngested.WithLabelValues("fake", "")))
 				require.Equal(t, float64(0), testutil.ToFloat64(linesIngested.WithLabelValues("fake")))
 			}

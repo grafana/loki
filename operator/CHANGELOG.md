@@ -1,5 +1,9 @@
 ## Main
 
+## 0.4.0 (2023-07-27)
+
+- [10019](https://github.com/grafana/loki/pull/10019) **periklis**: Update Loki operand to v2.8.3
+- [9972](https://github.com/grafana/loki/pull/9972) **JoaoBraveCoding**: Fix OIDC.IssuerCAPath by updating it to type CASpec
 - [9931](https://github.com/grafana/loki/pull/9931) **aminesnow**: Custom configuration for LokiStack admin groups
 - [9971](https://github.com/grafana/loki/pull/9971) **aminesnow**: Add namespace and tenantId labels to RecordingRules
 - [9906](https://github.com/grafana/loki/pull/9906) **JoaoBraveCoding**: Add mTLS authentication to tenants
@@ -35,7 +39,7 @@
 - [9188](https://github.com/grafana/loki/pull/9188) **aminesnow**: Add PodDisruptionBudgets to the query path
 - [9162](https://github.com/grafana/loki/pull/9162) **aminesnow**: Add a PodDisruptionBudget to lokistack-gateway
 
-# 0.3.0 (2023-04-20)
+## 0.3.0 (2023-04-20)
 
 - [9049](https://github.com/grafana/loki/pull/9049) **alanconway**: Revert 1x.extra-small changes, add 1x.demo
 - [8661](https://github.com/grafana/loki/pull/8661) **xuanyunhui**: Add a new Object Storage Type for AlibabaCloud OSS

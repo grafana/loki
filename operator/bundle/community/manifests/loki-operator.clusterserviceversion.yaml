@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: docker.io/grafana/loki-operator:main-ac1c1fd
-    createdAt: "2023-07-19T14:44:06Z"
+    containerImage: docker.io/grafana/loki-operator:0.4.0
+    createdAt: "2023-08-02T07:55:24Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -160,7 +160,7 @@ metadata:
   labels:
     operatorframework.io/arch.amd64: supported
     operatorframework.io/arch.arm64: supported
-  name: loki-operator.v0.3.0
+  name: loki-operator.v0.4.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -718,14 +718,28 @@ spec:
       - description: OIDC defines the spec for the OIDC tenant's authentication.
         displayName: OIDC Configuration
         path: tenants.authentication[0].oidc
+      - description: IssuerCA defines the spec for the issuer CA for tenant's authentication.
+        displayName: IssuerCA ConfigMap
+        path: tenants.authentication[0].oidc.issuerCA
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].oidc.issuerCA.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].oidc.issuerCA.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: IssuerURL defines the URL for issuer.
         displayName: Issuer URL
         path: tenants.authentication[0].oidc.issuerURL
       - description: RedirectURL defines the URL for redirect.
         displayName: Redirect URL
         path: tenants.authentication[0].oidc.redirectURL
-      - description: Secret defines the spec for the clientID, clientSecret and issuerCAPath
-          for tenant's authentication.
+      - description: Secret defines the spec for the clientID and clientSecret for
+          tenant's authentication.
         displayName: Tenant Secret
         path: tenants.authentication[0].oidc.secret
       - description: Name of a secret in the namespace configured for tenant secrets.
@@ -860,6 +874,9 @@ spec:
           alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
       - description: The name of the time series to output to. Must be a valid metric
           name.
         displayName: Metric Name
@@ -1586,11 +1603,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.3.0
+          app.kubernetes.io/instance: loki-operator-v0.4.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: loki-operator
-          app.kubernetes.io/version: 0.3.0
+          app.kubernetes.io/version: 0.4.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1619,12 +1636,12 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.8.2
+                  value: docker.io/grafana/loki:2.8.3
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: docker.io/grafana/loki-operator:main-ac1c1fd
+                image: docker.io/grafana/loki-operator:0.4.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1730,14 +1747,14 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.8.2
+  - image: docker.io/grafana/loki:2.8.3
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  replaces: loki-operator.v0.2.0
-  version: 0.3.0
+  replaces: loki-operator.v0.3.0
+  version: 0.4.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

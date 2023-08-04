@@ -33,7 +33,7 @@ type HeadBlock interface {
 	Bounds() (mint, maxt int64)
 	Entries() int
 	UncompressedSize() int
-	Convert(HeadBlockFmt) (HeadBlock, error)
+	Convert(HeadBlockFmt, *symbolizer) (HeadBlock, error)
 	Append(int64, string, labels.Labels) error
 	Iterator(
 		ctx context.Context,
@@ -41,6 +41,7 @@ type HeadBlock interface {
 		mint,
 		maxt int64,
 		pipeline log.StreamPipeline,
+		options ...iter.EntryIteratorOption,
 	) iter.EntryIterator
 	SampleIterator(
 		ctx context.Context,
@@ -58,15 +59,17 @@ type unorderedHeadBlock struct {
 	// Scans: (O(k+log(n))) where k=num_scanned_entries & n=total_entries
 	rt rangetree.RangeTree
 
+	symbolizer *symbolizer
 	lines      int   // number of entries
 	size       int   // size of uncompressed bytes.
 	mint, maxt int64 // upper and lower bounds
 }
 
-func newUnorderedHeadBlock(headBlockFmt HeadBlockFmt) *unorderedHeadBlock {
+func newUnorderedHeadBlock(headBlockFmt HeadBlockFmt, symbolizer *symbolizer) *unorderedHeadBlock {
 	return &unorderedHeadBlock{
-		format: headBlockFmt,
-		rt:     rangetree.New(1),
+		format:     headBlockFmt,
+		symbolizer: symbolizer,
+		rt:         rangetree.New(1),
 	}
 }
 
@@ -89,13 +92,13 @@ func (hb *unorderedHeadBlock) UncompressedSize() int {
 }
 
 func (hb *unorderedHeadBlock) Reset() {
-	x := newUnorderedHeadBlock(hb.format)
+	x := newUnorderedHeadBlock(hb.format, hb.symbolizer)
 	*hb = *x
 }
 
 type nsEntry struct {
-	line           string
-	metadataLabels labels.Labels
+	line                    string
+	nonIndexedLabelsSymbols symbols
 }
 
 // collection of entries belonging to the same nanosecond
@@ -108,10 +111,10 @@ func (e *nsEntries) ValueAtDimension(_ uint64) int64 {
 	return e.ts
 }
 
-func (hb *unorderedHeadBlock) Append(ts int64, line string, metaLabels labels.Labels) error {
-	if hb.format < UnorderedWithMetadataHeadBlockFmt {
-		// metaLabels must be ignored for the previous head block formats
-		metaLabels = nil
+func (hb *unorderedHeadBlock) Append(ts int64, line string, nonIndexedLabels labels.Labels) error {
+	if hb.format < UnorderedWithNonIndexedLabelsHeadBlockFmt {
+		// nonIndexedLabels must be ignored for the previous head block formats
+		nonIndexedLabels = nil
 	}
 	// This is an allocation hack. The rangetree lib does not
 	// support the ability to pass a "mutate" function during an insert
@@ -136,9 +139,9 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, metaLabels labels.La
 				return nil
 			}
 		}
-		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, metaLabels})
+		e.entries = append(displaced[0].(*nsEntries).entries, nsEntry{line, hb.symbolizer.Add(nonIndexedLabels)})
 	} else {
-		e.entries = []nsEntry{{line, metaLabels}}
+		e.entries = []nsEntry{{line, hb.symbolizer.Add(nonIndexedLabels)}}
 	}
 
 	// Update hb metdata
@@ -150,7 +153,8 @@ func (hb *unorderedHeadBlock) Append(ts int64, line string, metaLabels labels.La
 		hb.maxt = ts
 	}
 
-	hb.size += len(line) + metaLabelsLen(metaLabels)
+	hb.size += len(line)
+	hb.size += len(nonIndexedLabels) * 2 * 4 // 4 bytes per label and value pair as nonIndexedLabelsSymbols
 	hb.lines++
 
 	return nil
@@ -181,7 +185,7 @@ func (hb *unorderedHeadBlock) forEntries(
 	direction logproto.Direction,
 	mint,
 	maxt int64,
-	entryFn func(*stats.Context, int64, string, labels.Labels) error, // returning an error exits early
+	entryFn func(*stats.Context, int64, string, symbols) error, // returning an error exits early
 ) (err error) {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return
@@ -211,9 +215,12 @@ func (hb *unorderedHeadBlock) forEntries(
 
 		for ; i < len(es.entries) && i >= 0; next() {
 			line := es.entries[i].line
-			metadataLabels := es.entries[i].metadataLabels
-			chunkStats.AddHeadChunkBytes(int64(len(line)))
-			err = entryFn(chunkStats, es.ts, line, metadataLabels)
+			nonIndexedLabelsSymbols := es.entries[i].nonIndexedLabelsSymbols
+			nonIndexedLabelsBytes := int64(2 * len(nonIndexedLabelsSymbols) * 4) // 2 * num_symbols * 4 bytes(uint32)
+			chunkStats.AddHeadChunkNonIndexedLabelsBytes(nonIndexedLabelsBytes)
+			chunkStats.AddHeadChunkBytes(int64(len(line)) + nonIndexedLabelsBytes)
+
+			err = entryFn(chunkStats, es.ts, line, nonIndexedLabelsSymbols)
 
 		}
 	}
@@ -237,13 +244,12 @@ func (hb *unorderedHeadBlock) forEntries(
 	return nil
 }
 
-func (hb *unorderedHeadBlock) Iterator(
-	ctx context.Context,
-	direction logproto.Direction,
-	mint,
-	maxt int64,
-	pipeline log.StreamPipeline,
-) iter.EntryIterator {
+func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) iter.EntryIterator {
+	var iterOptions iter.EntryIteratorOptions
+	for _, option := range options {
+		option(&iterOptions)
+	}
+
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
@@ -255,8 +261,8 @@ func (hb *unorderedHeadBlock) Iterator(
 		direction,
 		mint,
 		maxt,
-		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabels labels.Labels) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line)
+		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
 			if !matches {
 				return nil
 			}
@@ -272,11 +278,18 @@ func (hb *unorderedHeadBlock) Iterator(
 				streams[labels] = stream
 			}
 
-			stream.Entries = append(stream.Entries, logproto.Entry{
-				Timestamp:        time.Unix(0, ts),
-				Line:             newLine,
-				NonIndexedLabels: logproto.FromLabelsToLabelAdapters(nonIndexedLabels),
-			})
+			entry := logproto.Entry{
+				Timestamp: time.Unix(0, ts),
+				Line:      newLine,
+			}
+
+			// Most of the time, there is no need to send back the non-indexed labels, as they are already part of the labels results.
+			// Still it might be needed for example when appending entries from one chunk into another one.
+			if iterOptions.KeepNonIndexedLabels {
+				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
+			}
+
+			stream.Entries = append(stream.Entries, entry)
 			return nil
 		},
 	)
@@ -305,8 +318,8 @@ func (hb *unorderedHeadBlock) SampleIterator(
 		logproto.FORWARD,
 		mint,
 		maxt,
-		func(statsCtx *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
-			value, parsedLabels, ok := extractor.ProcessString(ts, line)
+		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+			value, parsedLabels, ok := extractor.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
 			if !ok {
 				return nil
 			}
@@ -329,7 +342,6 @@ func (hb *unorderedHeadBlock) SampleIterator(
 				Timestamp: ts,
 				Value:     value,
 				Hash:      xxhash.Sum64(unsafeGetBytes(line)),
-				// TODO: add metadata labels to sample
 			})
 			return nil
 		},
@@ -358,6 +370,13 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 		inBuf.Reset()
 		serializeBytesBufferPool.Put(inBuf)
 	}()
+
+	symbolsSectionBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
+	defer func() {
+		symbolsSectionBuf.Reset()
+		serializeBytesBufferPool.Put(symbolsSectionBuf)
+	}()
+
 	outBuf := &bytes.Buffer{}
 
 	encBuf := make([]byte, binary.MaxVarintLen64)
@@ -369,7 +388,7 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
+		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
 			n := binary.PutVarint(encBuf, ts)
 			inBuf.Write(encBuf[:n])
 
@@ -378,19 +397,30 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 
 			inBuf.WriteString(line)
 
-			if hb.format >= UnorderedWithMetadataHeadBlockFmt {
-				// Serialize metadata labels
-				n = binary.PutUvarint(encBuf, uint64(len(metaLabels)))
-				inBuf.Write(encBuf[:n])
-				for _, l := range metaLabels {
-					n = binary.PutUvarint(encBuf, uint64(len(l.Name)))
-					inBuf.Write(encBuf[:n])
-					inBuf.WriteString(l.Name)
+			if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
+				symbolsSectionBuf.Reset()
+				// Serialize non-indexed labels symbols to symbolsSectionBuf so that we can find and write its length before
+				// writing symbols section to inbuf since we can't estimate its size beforehand due to variable length encoding.
 
-					n = binary.PutUvarint(encBuf, uint64(len(l.Value)))
-					inBuf.Write(encBuf[:n])
-					inBuf.WriteString(l.Value)
+				// write the number of symbol pairs
+				n = binary.PutUvarint(encBuf, uint64(len(nonIndexedLabelsSymbols)))
+				symbolsSectionBuf.Write(encBuf[:n])
+
+				// write the symbols
+				for _, l := range nonIndexedLabelsSymbols {
+					n = binary.PutUvarint(encBuf, uint64(l.Name))
+					symbolsSectionBuf.Write(encBuf[:n])
+
+					n = binary.PutUvarint(encBuf, uint64(l.Value))
+					symbolsSectionBuf.Write(encBuf[:n])
 				}
+
+				// write the length of symbols section first
+				n = binary.PutUvarint(encBuf, uint64(symbolsSectionBuf.Len()))
+				inBuf.Write(encBuf[:n])
+
+				// copy the symbols section
+				inBuf.Write(symbolsSectionBuf.Bytes())
 			}
 			return nil
 		},
@@ -406,19 +436,19 @@ func (hb *unorderedHeadBlock) Serialise(pool WriterPool) ([]byte, error) {
 	return outBuf.Bytes(), nil
 }
 
-func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt) (HeadBlock, error) {
+func (hb *unorderedHeadBlock) Convert(version HeadBlockFmt, symbolizer *symbolizer) (HeadBlock, error) {
 	if hb.format == version {
 		return hb, nil
 	}
-	out := version.NewBlock()
+	out := version.NewBlock(symbolizer)
 
 	err := hb.forEntries(
 		context.Background(),
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
-			return out.Append(ts, line, metaLabels)
+		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
+			return out.Append(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
 		},
 	)
 	return out, err
@@ -430,20 +460,9 @@ func (hb *unorderedHeadBlock) CheckpointSize() int {
 	size += binary.MaxVarintLen32 * 2                                  // total entries + total size
 	size += binary.MaxVarintLen64 * 2                                  // mint,maxt
 	size += (binary.MaxVarintLen64 + binary.MaxVarintLen32) * hb.lines // ts + len of log line.
-	if hb.format >= UnorderedWithMetadataHeadBlockFmt {
-		_ = hb.forEntries(
-			context.Background(),
-			logproto.FORWARD,
-			0,
-			math.MaxInt64,
-			func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
-				// len of meta labels
-				size += binary.MaxVarintLen32
-				// len of name and value of each meta label, the size of values is already included into hb.size
-				size += (binary.MaxVarintLen32 * 2) * len(metaLabels)
-				return nil
-			},
-		)
+	if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
+		// number of non-indexed labels stored for each log entry
+		size += binary.MaxVarintLen32 * hb.lines
 	}
 	size += hb.size // uncompressed bytes of lines
 	return size
@@ -485,7 +504,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 		logproto.FORWARD,
 		0,
 		math.MaxInt64,
-		func(_ *stats.Context, ts int64, line string, metaLabels labels.Labels) error {
+		func(_ *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
 			eb.putVarint64(ts)
 			eb.putUvarint(len(line))
 			_, err = w.Write(eb.get())
@@ -499,31 +518,22 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 				return errors.Wrap(err, "write headblock entry line")
 			}
 
-			if hb.format >= UnorderedWithMetadataHeadBlockFmt {
-				// metadata
-				eb.putUvarint(len(metaLabels))
+			if hb.format >= UnorderedWithNonIndexedLabelsHeadBlockFmt {
+				// non-indexed labels
+				eb.putUvarint(len(nonIndexedLabelsSymbols))
 				_, err = w.Write(eb.get())
 				if err != nil {
 					return errors.Wrap(err, "write headBlock entry meta labels length")
 				}
 				eb.reset()
-				for _, l := range metaLabels {
-					eb.putUvarint(len(l.Name))
-					eb.putUvarint(len(l.Value))
+				for _, l := range nonIndexedLabelsSymbols {
+					eb.putUvarint(int(l.Name))
+					eb.putUvarint(int(l.Value))
 					_, err = w.Write(eb.get())
 					if err != nil {
-						return errors.Wrap(err, "write headBlock entry meta label name and value length")
+						return errors.Wrap(err, "write headBlock entry nonIndexedLabelsSymbols")
 					}
 					eb.reset()
-
-					_, err = io.WriteString(w, l.Name)
-					if err != nil {
-						return errors.Wrap(err, "write headBlock entry meta label name")
-					}
-					_, err = io.WriteString(w, l.Value)
-					if err != nil {
-						return errors.Wrap(err, "write headBlock entry meta label value")
-					}
 				}
 			}
 
@@ -536,7 +546,7 @@ func (hb *unorderedHeadBlock) CheckpointTo(w io.Writer) error {
 
 func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 	// ensure it's empty
-	*hb = *newUnorderedHeadBlock(hb.format)
+	*hb = *newUnorderedHeadBlock(hb.format, hb.symbolizer)
 
 	if len(b) < 1 {
 		return nil
@@ -564,23 +574,21 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 		lineLn := db.uvarint()
 		line := string(db.bytes(lineLn))
 
-		var metaLabels labels.Labels
-		if version >= UnorderedWithMetadataHeadBlockFmt.Byte() {
+		var nonIndexedLabelsSymbols symbols
+		if version >= UnorderedWithNonIndexedLabelsHeadBlockFmt.Byte() {
 			metaLn := db.uvarint()
 			if metaLn > 0 {
-				metaLabels = make(labels.Labels, metaLn)
+				nonIndexedLabelsSymbols = make([]symbol, metaLn)
 				for j := 0; j < metaLn && db.err() == nil; j++ {
-					nameLn := db.uvarint()
-					valueLn := db.uvarint()
-					metaLabels[j] = labels.Label{
-						Name:  string(db.bytes(nameLn)),
-						Value: string(db.bytes(valueLn)),
+					nonIndexedLabelsSymbols[j] = symbol{
+						Name:  uint32(db.uvarint()),
+						Value: uint32(db.uvarint()),
 					}
 				}
 			}
 		}
 
-		if err := hb.Append(ts, line, metaLabels); err != nil {
+		if err := hb.Append(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)); err != nil {
 			return err
 		}
 	}
@@ -595,9 +603,9 @@ func (hb *unorderedHeadBlock) LoadBytes(b []byte) error {
 // HeadFromCheckpoint handles reading any head block format and returning the desired form.
 // This is particularly helpful replaying WALs from different configurations
 // such as after enabling unordered writes.
-func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
+func HeadFromCheckpoint(b []byte, desiredIfNotUnordered HeadBlockFmt, symbolizer *symbolizer) (HeadBlock, error) {
 	if len(b) == 0 {
-		return desired.NewBlock(), nil
+		return desiredIfNotUnordered.NewBlock(symbolizer), nil
 	}
 
 	db := decbuf{b: b}
@@ -607,17 +615,17 @@ func HeadFromCheckpoint(b []byte, desired HeadBlockFmt) (HeadBlock, error) {
 		return nil, errors.Wrap(db.err(), "verifying headblock header")
 	}
 	format := HeadBlockFmt(version)
-	if format > UnorderedWithMetadataHeadBlockFmt {
+	if format > UnorderedWithNonIndexedLabelsHeadBlockFmt {
 		return nil, fmt.Errorf("unexpected head block version: %v", format)
 	}
 
-	decodedBlock := format.NewBlock()
+	decodedBlock := format.NewBlock(symbolizer)
 	if err := decodedBlock.LoadBytes(b); err != nil {
 		return nil, err
 	}
 
-	if decodedBlock.Format() != desired {
-		return decodedBlock.Convert(desired)
+	if decodedBlock.Format() < UnorderedHeadBlockFmt && decodedBlock.Format() != desiredIfNotUnordered {
+		return decodedBlock.Convert(desiredIfNotUnordered, nil)
 	}
 	return decodedBlock, nil
 }
