@@ -304,7 +304,7 @@ func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
 
 // IsRetryableErr returns true if the request failed due to some retryable server-side scenario
 func (s *GCSObjectClient) IsRetryableErr(err error) bool {
-	return s.IsStorageThrottledErr(err) || s.IsStorageThrottledErr(err)
+	return s.IsStorageTimeoutErr(err) || s.IsStorageThrottledErr(err)
 }
 
 func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, serviceAccount flagext.Secret) (http.RoundTripper, error) {

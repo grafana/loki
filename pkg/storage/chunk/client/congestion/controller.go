@@ -6,6 +6,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -87,17 +88,17 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 			}
 
 			// apply back-pressure while rate-limit has been exceeded
-			backoffStart := time.Now()
 			for {
 				// using Reserve() is slower because it assumes a constant wait time as tokens are replenished, but in experimentation
 				// it's faster to sit in a hot loop and probe every so often if there are tokens available
 				if !a.limiter.Allow() {
-					time.Sleep(time.Millisecond * 10)
+					delay := time.Millisecond * 10
+					time.Sleep(delay)
+					a.metrics.backoffTimeSec.Add(delay.Seconds())
 					continue
 				}
 				break
 			}
-			a.metrics.backoffTimeSec.Add(time.Since(backoffStart).Seconds())
 
 			// It is vitally important that retries are DISABLED in the inner implementation.
 			// Some object storage clients implement retries internally, and this will interfere here.
@@ -107,6 +108,10 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 		a.additiveIncrease,
 		a.multiplicativeDecrease,
 	)
+
+	if errors.Is(err, RetriesExceeded) {
+		a.metrics.retriesExceeded.Add(1)
+	}
 
 	return rc, sz, err
 }
