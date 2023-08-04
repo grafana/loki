@@ -2,12 +2,15 @@ package integration
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -752,4 +755,238 @@ type expectedCacheState struct {
 	gets      float64
 	misses    float64
 	added     float64
+}
+
+func TestNonIndexedMetadata(t *testing.T) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB)
+	defer func() {
+		storage.ResetBoltDBIndexClientsWithShipper()
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	// initially, run only compactor and distributor.
+	var (
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+		)
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// then, run only ingester and query-scheduler.
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-ingester.flush-on-shutdown=true",
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-frontend.default-validity=0s",
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+		tQuerier = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+
+	entries := []struct {
+		line     string
+		ts       time.Time
+		metadata map[string]string
+		labels   map[string]string
+	}{
+		{"lineA", now.Add(-1 * time.Hour), map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}},
+		{"lineB", now.Add(-30 * time.Minute), map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}},
+		{"lineC", now, map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}},
+		{"lineD", now, map[string]string{"traceID": "123", "user": "d"}, map[string]string{"job": "fake"}},
+	}
+
+	for _, tc := range []struct {
+		name  string
+		query string
+
+		expectedLines   []string
+		expectedStreams []string
+	}{
+		{
+			name:          "no-filter",
+			query:         `{job="fake"}`,
+			expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+			expectedStreams: []string{
+				`{job="fake", traceID="123", user="a"}`,
+				`{job="fake", traceID="456", user="b"}`,
+				`{job="fake", traceID="789", user="c"}`,
+				`{job="fake", traceID="123", user="d"}`,
+			},
+		},
+		{
+			name:          "filter",
+			query:         `{job="fake"} | traceID="789"`,
+			expectedLines: []string{"lineC"},
+			expectedStreams: []string{
+				`{job="fake", traceID="789", user="c"}`,
+			},
+		},
+		{
+			name:          "filter-regex-or",
+			query:         `{job="fake"} | traceID=~"456|789"`,
+			expectedLines: []string{"lineB", "lineC"},
+			expectedStreams: []string{
+				`{job="fake", traceID="456", user="b"}`,
+				`{job="fake", traceID="789", user="c"}`,
+			},
+		},
+		{
+			name:          "filter-regex-contains",
+			query:         `{job="fake"} | traceID=~".*5.*"`,
+			expectedLines: []string{"lineB"},
+			expectedStreams: []string{
+				`{job="fake", traceID="456", user="b"}`,
+			},
+		},
+		{
+			name:          "filter-regex-complex",
+			query:         `{job="fake"} | traceID=~"^[0-9]2.*"`,
+			expectedLines: []string{"lineA", "lineD"},
+			expectedStreams: []string{
+				`{job="fake", traceID="123", user="a"}`,
+				`{job="fake", traceID="123", user="d"}`,
+			},
+		},
+		{
+			name:          "multiple-filters",
+			query:         `{job="fake"} | traceID="123" | user="d"`,
+			expectedLines: []string{"lineD"},
+			expectedStreams: []string{
+				`{job="fake", traceID="123", user="d"}`,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("ingest-logs", func(t *testing.T) {
+				for _, entry := range entries {
+					require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels(entry.line, entry.ts, entry.metadata, entry.labels))
+				}
+			})
+
+			// queries ingesters with the default lookback period (3h)
+			t.Run("query-ingesters", func(t *testing.T) {
+				t.Run("log", func(t *testing.T) {
+					resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query)
+					require.NoError(t, err)
+					assert.Equal(t, "streams", resp.Data.ResultType)
+
+					var lines []string
+					var streams []string
+					for _, stream := range resp.Data.Stream {
+						streams = append(streams, labels.FromMap(stream.Stream).String())
+						for _, val := range stream.Values {
+							lines = append(lines, val[1])
+						}
+					}
+					assert.ElementsMatch(t, tc.expectedLines, lines)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+				})
+				t.Run("metric", func(t *testing.T) {
+					query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+					resp, err := cliQueryFrontend.RunQuery(context.Background(), query)
+					require.NoError(t, err)
+					assert.Equal(t, "vector", resp.Data.ResultType)
+
+					var sumValues int
+					var streams []string
+					for _, stream := range resp.Data.Vector {
+						streams = append(streams, labels.FromMap(stream.Metric).String())
+						valueInt, err := strconv.Atoi(stream.Value)
+						require.NoError(t, err)
+						sumValues += valueInt
+					}
+					assert.Equal(t, len(tc.expectedLines), sumValues)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+				})
+			})
+
+			t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
+				// restart ingester which should flush the chunks and index
+				require.NoError(t, tIngester.Restart())
+
+				// restart querier and index shipper to sync the index
+				storage.ResetBoltDBIndexClientsWithShipper()
+				tQuerier.AddFlags("-querier.query-store-only=true")
+				require.NoError(t, tQuerier.Restart())
+			})
+
+			// Query lines
+			t.Run("query-storage", func(t *testing.T) {
+				t.Run("log", func(t *testing.T) {
+					resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query)
+					require.NoError(t, err)
+					assert.Equal(t, "streams", resp.Data.ResultType)
+
+					var lines []string
+					var streams []string
+					for _, stream := range resp.Data.Stream {
+						streams = append(streams, labels.FromMap(stream.Stream).String())
+						for _, val := range stream.Values {
+							lines = append(lines, val[1])
+						}
+					}
+
+					assert.ElementsMatch(t, tc.expectedLines, lines)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+				})
+				t.Run("metric", func(t *testing.T) {
+					query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+					resp, err := cliQueryFrontend.RunQuery(context.Background(), query)
+					require.NoError(t, err)
+					assert.Equal(t, "vector", resp.Data.ResultType)
+
+					var sumValues int
+					var streams []string
+					for _, stream := range resp.Data.Vector {
+						streams = append(streams, labels.FromMap(stream.Metric).String())
+						valueInt, err := strconv.Atoi(stream.Value)
+						require.NoError(t, err)
+						sumValues += valueInt
+					}
+					assert.Equal(t, len(tc.expectedLines), sumValues)
+					assert.ElementsMatch(t, tc.expectedStreams, streams)
+				})
+			})
+		})
+	}
 }
