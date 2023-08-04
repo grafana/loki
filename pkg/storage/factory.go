@@ -280,6 +280,7 @@ type Config struct {
 	NamedStores            NamedStores               `yaml:"named_stores"`
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
 	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
+	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`

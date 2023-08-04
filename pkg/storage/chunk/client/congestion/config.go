@@ -1,11 +1,20 @@
 package congestion
 
-import "github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+import (
+	"flag"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
+)
 
 type Config struct {
 	Controller ControllerConfig `yaml:"controller"`
 	Retry      RetrierConfig    `yaml:"retry"`
 	Hedge      HedgerConfig     `yaml:"hedging"`
+}
+
+// TODO(dannyk): register flags
+func (c Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+
 }
 
 type ControllerConfig struct {
@@ -27,5 +36,3 @@ type HedgerConfig struct {
 
 	Strategy string `yaml:"strategy"`
 }
-
-// TODO(dannyk): register flags

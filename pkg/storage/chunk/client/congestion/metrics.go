@@ -3,9 +3,9 @@ package congestion
 import "github.com/prometheus/client_golang/prometheus"
 
 type Metrics struct {
-	currentLimit  prometheus.Gauge
-	backoffTimeNs prometheus.Counter
-	retries       prometheus.Counter
+	currentLimit   prometheus.Gauge
+	backoffTimeSec prometheus.Counter
+	retries        prometheus.Counter
 }
 
 func (m Metrics) Unregister() {
@@ -30,10 +30,10 @@ func NewMetrics(name string, cfg Config) *Metrics {
 			Help:        "Current per-second request limit to control congestion",
 			ConstLabels: labels,
 		}),
-		backoffTimeNs: prometheus.NewCounter(prometheus.CounterOpts{
+		backoffTimeSec: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace:   "loki",
 			Subsystem:   "store",
-			Name:        "congestion_control_backoff_time_nano",
+			Name:        "congestion_control_backoff_time_seconds_total",
 			Help:        "How much time is spent backing off once throughput limit is encountered",
 			ConstLabels: labels,
 		}),
@@ -47,6 +47,6 @@ func NewMetrics(name string, cfg Config) *Metrics {
 	}
 
 	prometheus.MustRegister(m.currentLimit)
-	prometheus.MustRegister(m.backoffTimeNs)
+	prometheus.MustRegister(m.backoffTimeSec)
 	return &m
 }

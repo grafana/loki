@@ -94,10 +94,9 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 					time.Sleep(time.Millisecond * 10)
 					continue
 				}
-
-				a.metrics.backoffTimeNs.Add(float64(time.Since(backoffStart).Nanoseconds()))
 				break
 			}
+			a.metrics.backoffTimeSec.Add(time.Since(backoffStart).Seconds())
 
 			// It is vitally important that retries are DISABLED in the inner implementation.
 			// Some object storage clients implement retries internally, and this will interfere here.

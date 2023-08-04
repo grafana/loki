@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -237,7 +236,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		},
 	}
 
-	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, congestion.Config{}, clientMetrics, nil, util_log.Logger, limits)
+	store, err := storage.NewStore(cfg, config.ChunkStoreConfig{}, schemaCfg, limits, clientMetrics, nil, util_log.Logger)
 	require.NoError(t, err)
 	return &testStore{
 		indexDir:      indexDir,

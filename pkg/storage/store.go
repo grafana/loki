@@ -57,10 +57,9 @@ type store struct {
 	stores.Store
 	composite *stores.CompositeStore
 
-	cfg           Config
-	storeCfg      config.ChunkStoreConfig
-	schemaCfg     config.SchemaConfig
-	congestionCfg congestion.Config
+	cfg       Config
+	storeCfg  config.ChunkStoreConfig
+	schemaCfg config.SchemaConfig
 
 	chunkMetrics       *ChunkMetrics
 	chunkClientMetrics client.ChunkClientMetrics
@@ -80,7 +79,9 @@ type store struct {
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
-func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig, congestionCfg congestion.Config, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger, limits StoreLimits) (Store, error) {
+func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
+	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,
+) (Store, error) {
 	if len(schemaCfg.Configs) != 0 {
 		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
 			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
@@ -134,12 +135,11 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	stores := stores.NewCompositeStore(limits)
 
 	s := &store{
-		Store:         stores,
-		composite:     stores,
-		cfg:           cfg,
-		storeCfg:      storeCfg,
-		schemaCfg:     schemaCfg,
-		congestionCfg: congestionCfg,
+		Store:     stores,
+		composite: stores,
+		cfg:       cfg,
+		storeCfg:  storeCfg,
+		schemaCfg: schemaCfg,
 
 		congestionControllerFactory: congestion.NewController,
 
@@ -201,8 +201,9 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	chunkClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "chunk-store-" + p.From.String()}, s.registerer)
 
+	ccCfg := s.cfg.CongestionControl
 	cc := s.congestionControllerFactory(
-		s.congestionCfg, congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), s.congestionCfg),
+		ccCfg, congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), ccCfg),
 	)
 
 	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics)
