@@ -280,14 +280,14 @@ func (c *Config) Validate() error {
 // - If only the querier:engine:timeout was explicitly configured, warn the user and use it everywhere.
 func AdjustForTimeoutsMigration(c *Config) error {
 	engineTimeoutIsDefault := c.Querier.Engine.Timeout == logql.DefaultEngineTimeout
-	perTenantTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
-	if engineTimeoutIsDefault && perTenantTimeoutIsDefault {
+	globalTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
+	if engineTimeoutIsDefault && globalTimeoutIsDefault {
 		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
-			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+			return fmt.Errorf("couldn't set global query_timeout as the engine timeout value: %w", err)
 		}
 		level.Warn(util_log.Logger).Log("msg",
 			fmt.Sprintf(
-				"per-tenant timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default per-tenant timeout (%q).",
+				"global timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default global timeout (%q).",
 				c.Querier.Engine.Timeout.String(),
 				c.LimitsConfig.QueryTimeout.String(),
 			),
@@ -295,10 +295,10 @@ func AdjustForTimeoutsMigration(c *Config) error {
 		return nil
 	}
 
-	if !perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+	if !globalTimeoutIsDefault && !engineTimeoutIsDefault {
 		level.Warn(util_log.Logger).Log("msg",
 			fmt.Sprintf(
-				"using configured per-tenant timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
+				"using configured global timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
 				c.LimitsConfig.QueryTimeout.String(),
 				c.Querier.Engine.Timeout.String(),
 			),
@@ -306,9 +306,9 @@ func AdjustForTimeoutsMigration(c *Config) error {
 		return nil
 	}
 
-	if perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
+	if globalTimeoutIsDefault && !engineTimeoutIsDefault {
 		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
-			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
+			return fmt.Errorf("couldn't set global query_timeout as the engine timeout value: %w", err)
 		}
 		level.Warn(util_log.Logger).Log("msg",
 			fmt.Sprintf(
