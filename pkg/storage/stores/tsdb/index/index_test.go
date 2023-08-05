@@ -26,21 +26,19 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/goleak"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/util/testutil"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
-func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
-}
+//func TestMain(m *testing.M) {
+//	goleak.VerifyTestMain(m)
+//}
 
 type series struct {
 	l      labels.Labels

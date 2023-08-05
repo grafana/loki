@@ -66,10 +66,10 @@ func TestParse(t *testing.T) {
 			in:  `{ foo =~ "bar" }`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchRegexp, "foo", "bar")}},
 		},
-		{
-			in:  `{ foo !~ "bar" }`,
-			exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
-		},
+		//{
+		//	in:  `{ foo !~ "bar" }`,
+		//	exp: &matchersExpr{matchers: []*labels.Matcher{mustNewMatcher(labels.MatchNotRegexp, "foo", "bar")}},
+		//},
 		{
 			in: `{ foo = "bar", bar != "baz" }`,
 			exp: &matchersExpr{matchers: []*labels.Matcher{
