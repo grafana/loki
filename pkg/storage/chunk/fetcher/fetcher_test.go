@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
 
@@ -195,7 +196,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, s.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, true, sc, s, 1, 1, test.handoff)
+			f, err := New(c1, c2, false, sc, s, 1, 1, test.handoff)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -214,6 +215,101 @@ func Test(t *testing.T) {
 	}
 }
 
+func BenchmarkFetch(b *testing.B) {
+	now := time.Now()
+
+	numchunks := 100
+	l1Start := make([]chunk.Chunk, 0, numchunks/3)
+	for i := 0; i < numchunks/3; i++ {
+		l1Start = append(l1Start, makeChunks(now, c{time.Duration(i) * time.Hour, time.Duration(i+1) * time.Hour})...)
+	}
+	l2Start := make([]chunk.Chunk, 0, numchunks/3)
+	for i := numchunks/3 + 1000; i < (numchunks/3)+numchunks/3+1000; i++ {
+		l2Start = append(l2Start, makeChunks(now, c{time.Duration(i) * time.Hour, time.Duration(i+1) * time.Hour})...)
+	}
+	storeStart := make([]chunk.Chunk, 0, numchunks/3)
+	for i := numchunks/3 + 10000; i < (numchunks/3)+numchunks/3+10000; i++ {
+		storeStart = append(storeStart, makeChunks(now, c{time.Duration(i) * time.Hour, time.Duration(i+1) * time.Hour})...)
+	}
+	fetch := make([]chunk.Chunk, 0, numchunks)
+	fetch = append(fetch, l1Start...)
+	fetch = append(fetch, l2Start...)
+	fetch = append(fetch, storeStart...)
+
+	test := struct {
+		name            string
+		handoff         time.Duration
+		storeStart      []chunk.Chunk
+		l1Start         []chunk.Chunk
+		l2Start         []chunk.Chunk
+		fetch           []chunk.Chunk
+		l1KeysRequested int
+		l1End           []chunk.Chunk
+		l2KeysRequested int
+		l2End           []chunk.Chunk
+	}{
+		name:       "some in L1, some in L2",
+		handoff:    time.Duration(numchunks/3+100) * time.Hour,
+		storeStart: storeStart,
+		l1Start:    l1Start,
+		l2Start:    l2Start,
+		fetch:      fetch,
+	}
+
+	c1 := cache.NewMockCache()
+	c2 := cache.NewMockCache()
+	s := testutils.NewMockStorage()
+	// Note this is copied from the schema config used in the MockStorage
+	sc := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				From:      config.DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+
+	// Prepare l1 cache
+	keys := make([]string, 0, len(test.l1Start))
+	chunks := make([][]byte, 0, len(test.l1Start))
+	for _, c := range test.l1Start {
+		// Encode first to set the checksum
+		b, _ := c.Encoded()
+
+		k := sc.ExternalKey(c.ChunkRef)
+		keys = append(keys, k)
+		chunks = append(chunks, b)
+	}
+	_ = c1.Store(context.Background(), keys, chunks)
+
+	// Prepare l2 cache
+	keys = make([]string, 0, len(test.l2Start))
+	chunks = make([][]byte, 0, len(test.l2Start))
+	for _, c := range test.l2Start {
+		b, _ := c.Encoded()
+
+		k := sc.ExternalKey(c.ChunkRef)
+		keys = append(keys, k)
+		chunks = append(chunks, b)
+	}
+	_ = c2.Store(context.Background(), keys, chunks)
+
+	// Prepare store
+	_ = s.PutChunks(context.Background(), test.storeStart)
+
+	// Build fetcher
+	f, _ := New(c1, c2, false, sc, s, 1, 1, test.handoff)
+
+	for i := 0; i < b.N; i++ {
+		_, err := f.FetchChunks(context.Background(), test.fetch)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+}
+
 type c struct {
 	from, through time.Duration
 }
@@ -228,9 +324,18 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 				Through: model.TimeFromUnix(now.Add(-chk.through).UTC().Unix()),
 			},
 		}
-		c.Metric = labels.Labels{}
-		// This isn't even the write format for Loki but we dont' care for the sake of these tests
+		from := int(chk.from) / int(time.Hour)
+		// This is only here because it's helpful for debugging.
+		c.Metric = labels.Labels{labels.Label{"start", strconv.Itoa(from)}}
+		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
 		c.Data = chunk.New()
+		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
+		for i := 0; i < from; i++ {
+			c.Data.Add(model.SamplePair{
+				Timestamp: model.TimeFromUnix(int64(i)),
+				Value:     model.SampleValue(from),
+			})
+		}
 		// Encode to set the checksum
 		_ = c.Encode()
 		chks = append(chks, c)
@@ -259,11 +364,11 @@ func sortChunks(chks []chunk.Chunk) {
 }
 
 func assertChunks(t *testing.T, expected, actual []chunk.Chunk) {
-	sortChunks(expected)
-	sortChunks(actual)
 	assert.Eventually(t, func() bool {
 		return len(expected) == len(actual)
 	}, 2*time.Second, time.Millisecond*100, "expected %d chunks, got %d", len(expected), len(actual))
+	sortChunks(expected)
+	sortChunks(actual)
 	for i := range expected {
 		assert.Equal(t, expected[i].ChunkRef, actual[i].ChunkRef)
 	}
