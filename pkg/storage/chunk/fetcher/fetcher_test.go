@@ -326,12 +326,12 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 		}
 		from := int(chk.from) / int(time.Hour)
 		// This is only here because it's helpful for debugging.
-		c.Metric = labels.Labels{labels.Label{"start", strconv.Itoa(from)}}
+		c.Metric = labels.Labels{labels.Label{Name: "start", Value: strconv.Itoa(from)}}
 		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
 		c.Data = chunk.New()
 		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
 		for i := 0; i < from; i++ {
-			c.Data.Add(model.SamplePair{
+			_, _ = c.Data.Add(model.SamplePair{
 				Timestamp: model.TimeFromUnix(int64(i)),
 				Value:     model.SampleValue(from),
 			})
