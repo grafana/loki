@@ -3,7 +3,6 @@ package fetcher
 import (
 	"context"
 	"errors"
-	"sort"
 	"sync"
 	"time"
 
@@ -187,9 +186,9 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	defer log.Span.Finish()
 
 	// processCacheResponse expects the chunks to be sorted lexographically by external key
-	sort.Slice(chunks, func(x, y int) bool {
-		return c.schema.ExternalKey(chunks[x].ChunkRef) < c.schema.ExternalKey(chunks[y].ChunkRef)
-	})
+	//sort.Slice(chunks, func(x, y int) bool {
+	//	return c.schema.ExternalKey(chunks[x].ChunkRef) < c.schema.ExternalKey(chunks[y].ChunkRef)
+	//})
 
 	// Extend the extendedHandoff to be 10% larger to allow for some overlap becasue this is a sliding window
 	// and the l1 cache may be oversized enough to allow for some extra chunks
@@ -245,8 +244,8 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	}
 
 	// processCacheResponse expects all the keys to be sorted lexographically
-	crs := cacheResultSorter{cacheHits, cacheBufs}
-	sort.Sort(crs)
+	//crs := cacheResultSorter{cacheHits, cacheBufs}
+	//sort.Sort(crs)
 
 	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
 	// missing chunks that we need to fetch from the storage layer
@@ -343,29 +342,46 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		logger    = util_log.WithContext(ctx, util_log.Logger)
 	)
 
-	i, j := 0, 0
-	for i < len(chunks) && j < len(keys) {
-		chunkKey := c.schema.ExternalKey(chunks[i].ChunkRef)
+	cm := make(map[string][]byte, len(chunks))
+	for i, k := range keys {
+		cm[k] = bufs[i]
+	}
 
-		if chunkKey < keys[j] {
-			missing = append(missing, chunks[i])
-			i++
-		} else if chunkKey > keys[j] {
-			level.Warn(logger).Log("msg", "got chunk from cache we didn't ask for")
-			j++
-		} else {
+	for i, ck := range chunks {
+		if b, ok := cm[c.schema.ExternalKey(ck.ChunkRef)]; ok {
 			requests = append(requests, decodeRequest{
 				chunk:     chunks[i],
-				buf:       bufs[j],
+				buf:       b,
 				responses: responses,
 			})
-			i++
-			j++
+		} else {
+			missing = append(missing, chunks[i])
 		}
 	}
-	for ; i < len(chunks); i++ {
-		missing = append(missing, chunks[i])
-	}
+
+	//i, j := 0, 0
+	//for i < len(chunks) && j < len(keys) {
+	//	chunkKey := c.schema.ExternalKey(chunks[i].ChunkRef)
+	//
+	//	if chunkKey < keys[j] {
+	//		missing = append(missing, chunks[i])
+	//		i++
+	//	} else if chunkKey > keys[j] {
+	//		level.Warn(logger).Log("msg", "got chunk from cache we didn't ask for")
+	//		j++
+	//	} else {
+	//		requests = append(requests, decodeRequest{
+	//			chunk:     chunks[i],
+	//			buf:       bufs[j],
+	//			responses: responses,
+	//		})
+	//		i++
+	//		j++
+	//	}
+	//}
+	//for ; i < len(chunks); i++ {
+	//	missing = append(missing, chunks[i])
+	//}
 	level.Debug(logger).Log("chunks", len(chunks), "decodeRequests", len(requests), "missing", len(missing))
 
 	go func() {
@@ -374,10 +390,8 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		}
 	}()
 
-	var (
-		err   error
-		found []chunk.Chunk
-	)
+	var err error
+	found := make([]chunk.Chunk, 0, len(requests))
 	for i := 0; i < len(requests); i++ {
 		response := <-responses
 
