@@ -185,11 +185,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
-	// processCacheResponse expects the chunks to be sorted lexographically by external key
-	//sort.Slice(chunks, func(x, y int) bool {
-	//	return c.schema.ExternalKey(chunks[x].ChunkRef) < c.schema.ExternalKey(chunks[y].ChunkRef)
-	//})
-
 	// Extend the extendedHandoff to be 10% larger to allow for some overlap becasue this is a sliding window
 	// and the l1 cache may be oversized enough to allow for some extra chunks
 	extendedHandoff := c.l2CacheHandoff + (c.l2CacheHandoff / 10)
@@ -242,10 +237,6 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 		cacheHits = append(cacheHits, cacheHitsL2...)
 		cacheBufs = append(cacheBufs, cacheBufsL2...)
 	}
-
-	// processCacheResponse expects all the keys to be sorted lexographically
-	//crs := cacheResultSorter{cacheHits, cacheBufs}
-	//sort.Sort(crs)
 
 	// processCacheResponse will decode all the fetched chunks and also provide us with a list of
 	// missing chunks that we need to fetch from the storage layer
@@ -359,29 +350,6 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		}
 	}
 
-	//i, j := 0, 0
-	//for i < len(chunks) && j < len(keys) {
-	//	chunkKey := c.schema.ExternalKey(chunks[i].ChunkRef)
-	//
-	//	if chunkKey < keys[j] {
-	//		missing = append(missing, chunks[i])
-	//		i++
-	//	} else if chunkKey > keys[j] {
-	//		level.Warn(logger).Log("msg", "got chunk from cache we didn't ask for")
-	//		j++
-	//	} else {
-	//		requests = append(requests, decodeRequest{
-	//			chunk:     chunks[i],
-	//			buf:       bufs[j],
-	//			responses: responses,
-	//		})
-	//		i++
-	//		j++
-	//	}
-	//}
-	//for ; i < len(chunks); i++ {
-	//	missing = append(missing, chunks[i])
-	//}
 	level.Debug(logger).Log("chunks", len(chunks), "decodeRequests", len(requests), "missing", len(missing))
 
 	go func() {
@@ -407,23 +375,4 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 
 func (c *Fetcher) IsChunkNotFoundErr(err error) bool {
 	return c.storage.IsChunkNotFoundErr(err)
-}
-
-// cacheResultSorter is a helper type to sort the results of a cache lookup.
-type cacheResultSorter struct {
-	keys  []string
-	buffs [][]byte
-}
-
-func (crs cacheResultSorter) Len() int {
-	return len(crs.keys)
-}
-
-func (crs cacheResultSorter) Swap(i, j int) {
-	crs.keys[i], crs.keys[j] = crs.keys[j], crs.keys[i]
-	crs.buffs[i], crs.buffs[j] = crs.buffs[j], crs.buffs[i]
-}
-
-func (crs cacheResultSorter) Less(i, j int) bool {
-	return crs.keys[i] < crs.keys[j]
 }
