@@ -20,12 +20,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/instrument"
 	ot "github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/storage/chunk"

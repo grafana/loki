@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/dskit/kv/etcd"
 	"github.com/grafana/dskit/kv/memberlist"
 	"github.com/grafana/dskit/runtimeconfig"
-	"github.com/weaveworks/common/server"
+	"github.com/grafana/dskit/server"
 
 	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"

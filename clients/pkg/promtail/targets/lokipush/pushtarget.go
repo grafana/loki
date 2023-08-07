@@ -11,12 +11,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/dskit/tenant"
 

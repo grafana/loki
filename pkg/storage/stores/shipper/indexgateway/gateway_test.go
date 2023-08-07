@@ -6,10 +6,10 @@ import (
 	"math"
 	"testing"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
-	"github.com/weaveworks/common/user"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
