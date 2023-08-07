@@ -198,29 +198,5 @@ given log entry.
 
 ## Stages
 
-Parsing stages:
-
-  - [docker]({{< relref "./stages/docker" >}}): Extract data by parsing the log line using the standard Docker format.
-  - [cri]({{< relref "./stages/cri" >}}): Extract data by parsing the log line using the standard CRI format.
-  - [regex]({{< relref "./stages/regex" >}}): Extract data using a regular expression.
-  - [json]({{< relref "./stages/json" >}}): Extract data by parsing the log line as JSON.
-  - [eventlogmessage]({{< relref "./stages/eventlogmessage" >}}): Extract data by parsing the Message field from the Windows Event Log.
-
-Transform stages:
-
-  - [multiline]({{< relref "./stages/multiline" >}}): Merges multiple lines, e.g. stack traces, into multiline blocks.
-  - [template]({{< relref "./stages/template" >}}): Use Go templates to modify extracted data.
-
-Action stages:
-
-  - [timestamp]({{< relref "./stages/timestamp" >}}): Set the timestamp value for the log entry.
-  - [output]({{< relref "./stages/output" >}}): Set the log line text.
-  - [labels]({{< relref "./stages/labels" >}}): Update the label set for the log entry.
-  - [metrics]({{< relref "./stages/metrics" >}}): Calculate metrics based on extracted data.
-  - [tenant]({{< relref "./stages/tenant" >}}): Set the tenant ID value to use for the log entry.
-
-Filtering stages:
-
-  - [match]({{< relref "./stages/match" >}}): Conditionally run stages based on the label set.
-  - [drop]({{< relref "./stages/drop" >}}): Conditionally drop log lines based on several options.
-  - [limit]({{< relref "./stages/limit" >}}): Conditionally rate limit log lines based on several options.
+Refer to the [Promtail Stages Configuration Reference]({{< relref "./stages/_index.md#Stages" >}}) for the
+schema on the various supported stages supported.
