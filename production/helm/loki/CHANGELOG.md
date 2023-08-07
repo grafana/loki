@@ -19,6 +19,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Use tpl function in ingress.yaml for hosts
 - [ENHANCEMENT] Use tpl function in ingress and gateway-ingres for hosts
+- [ENHANCEMENT] Use tpl function in ingress and gateway-ingress for hosts
 
 ## 5.10.0
 
