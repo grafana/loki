@@ -1,8 +1,12 @@
 ---
-title: Configuration
-description: Configuring the Docker Driver 
+title: Docker driver client configuration
+menuTitle:  Configuration
+description: Configuring the Docker driver client
+aliases: 
+- ../../clients/docker-driver/configuration/
+weight:  410
 ---
-# Configuration
+# Docker driver client configuration
 
 The Docker daemon on each machine has a default logging driver and
 each container will use the default driver unless configured otherwise.
@@ -207,8 +211,8 @@ To specify additional logging driver options, you can use the --log-opt NAME=VAL
 | `loki-min-backoff`              |    No     |          `500ms`           | The minimum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                             |
 | `loki-max-backoff`              |    No     |            `5m`            | The maximum amount of time to wait before retrying a batch. Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".                                                                                                                                                             |
 | `loki-retries`                  |    No     |            `10`            | The maximum amount of retries for a log batch. Setting it to `0` will retry indefinitely.                                                                                                                                                                                               |
-| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/main/clients/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation]({{< relref "../promtail/stages" >}}). |
-| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation]({{< relref "../promtail/stages" >}}).                                                                                                              |
+| `loki-pipeline-stage-file`      |    No     |                            | The location of a pipeline stage configuration file ([example](https://github.com/grafana/loki/blob/main/clients/cmd/docker-driver/pipeline-example.yaml)). Pipeline stages allows to parse log lines to extract more labels, [see associated documentation]({{< relref "../../clients/promtail/stages" >}}). |
+| `loki-pipeline-stages`          |    No     |                            | The pipeline stage configuration provided as a string [see pipeline stages](#pipeline-stages) and [associated documentation]({{< relref "../../clients/promtail/stages" >}}).                                                                                                              |
 | `loki-relabel-config`           |    No     |                            | A [Prometheus relabeling configuration](https://prometheus.io/docs/prometheus/latest/configuration/configuration/#relabel_config) allowing you to rename labels [see relabeling](#relabeling).                                                                                          |
 | `loki-tenant-id`                |    No     |                            | Set the tenant id (http header`X-Scope-OrgID`) when sending logs to Loki. It can be overridden by a pipeline stage.                                                                                                                                                                     |
 | `loki-tls-ca-file`              |    No     |                            | Set the path to a custom certificate authority.                                                                                                                                                                                                                                         |

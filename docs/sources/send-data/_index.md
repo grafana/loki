@@ -1,22 +1,27 @@
 ---
-title: Clients
+menuTitle: Send data
+title: Send log data to Loki
 description: Grafana Loki clients
 weight: 600
 ---
-# Clients
+# Send log data to Loki
 
-Grafana Loki works with the following clients for sending logs:
+You can use the following clients to send logs to Grafana Loki:
 
-- [Promtail]({{< relref "./promtail" >}})
-- [Docker driver]({{< relref "../send-data/docker-driver" >}}).
-- [Fluentd]({{< relref "../send-data/fluentd" >}})
-- [Fluent Bit]({{< relref "../send-data/fluentbit" >}})
-- [Logstash]({{< relref "../send-data/logstash" >}})
-- [Lambda Promtail]({{< relref "../send-data/lambda-promtail" >}})
+- [Grafana Agent]({{< relref "/docs/agent" >}}) 
+- [Promtail]({{< relref "../clients/promtail" >}})
+-- [Promtail on AWS EC2]({{< relref "./aws/ec2" >}})
+-- [Promtail on AWS ECS]({{< relref "./aws/ecs" >}})
+-- [Promtail on AWS EKS]({{< relref "./aws/eks" >}})
+- [Docker Driver]({{< relref "./docker-driver" >}})
+- [Fluentd]({{< relref "./fluentd" >}})
+- [Fluent Bit]({{< relref "./fluentbit" >}})
+- [Logstash]({{< relref "./logstash" >}})
+- [Lambda Promtail]({{< relref "./lambda-promtail" >}})
 
-There are also a number of third-party clients, see [Unofficial clients](#unofficial-clients).
+There are also a number of third-party clients, for a list see [Unofficial clients](#unofficial-clients).
 
-The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki]({{< relref "../send-data/k6" >}}).
+The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki]({{< relref "./k6" >}}).
 
 ## Picking a client
 
@@ -59,7 +64,7 @@ By adding our output plugin you can quickly try Loki without doing big configura
 
 ### Lambda Promtail
 
-This is a workflow combining the Promtail push-api [scrape config]({{< relref "./promtail/configuration#loki_push_api" >}}) and the [lambda-promtail]({{< relref "../send-data/lambda-promtail" >}}) AWS Lambda function which pipes logs from Cloudwatch to Loki.
+This is a workflow combining the Promtail push-api [scrape config]({{< relref "../clients/promtail/configuration#loki_push_api" >}}) and the [lambda-promtail]({{< relref "./lambda-promtail" >}}) AWS Lambda function which pipes logs from Cloudwatch to Loki.
 
 This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki.
 

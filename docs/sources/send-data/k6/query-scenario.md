@@ -1,9 +1,12 @@
 ---
-title: Query testing
-description: Query testing with K6
-weight: 30
+title: Use k6 to load test log queries
+menuTitle:  Query testing
+description: Using K6 to load test the read path (queries).
+aliases: 
+- ../../clients/k6/query-scenario/
+weight: 930
 ---
-# Query testing
+# Use k6 to load test log queries
 
 When designing a test scenario for load testing the read path of a Loki
 installation, it is important to know what types of queries you expect.
