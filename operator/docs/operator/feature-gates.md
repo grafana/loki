@@ -231,14 +231,14 @@ More details: <a href="https://grafana.com/docs/loki/latest/release-notes/v2-5/#
 </tr>
 <tr>
 <td>
-<code>runtimeSeccompProfile</code><br/>
+<code>restrictedPodSecurityStandard</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
-<p>RuntimeSeccompProfile enables the restricted seccomp profile on all
-Lokistack components.</p>
+<p>RestrictedPodSecurityStandard enables compliance with the restrictive pod security standard.
+More details: <a href="https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted">https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted</a></p>
 </td>
 </tr>
 <tr>
