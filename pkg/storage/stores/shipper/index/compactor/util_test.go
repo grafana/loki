@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"

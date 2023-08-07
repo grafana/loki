@@ -5,10 +5,10 @@ import (
 	"os"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -17,7 +17,7 @@ import (
 
 type Config struct {
 	ServerMetricsPort int
-	LogLevel          logging.Level
+	LogLevel          log.Level
 	ProxyConfig       querytee.ProxyConfig
 }
 

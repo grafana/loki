@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/go-kit/log/level"
-	"github.com/weaveworks/common/httpgrpc"
+	"github.com/grafana/dskit/httpgrpc"
 
 	"github.com/grafana/loki/pkg/util"
 

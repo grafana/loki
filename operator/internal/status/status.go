@@ -31,7 +31,10 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time)
 		return err
 	}
 
-	condition := generateCondition(cs)
+	condition, err := generateCondition(ctx, cs, k, req, &stack)
+	if err != nil {
+		return err
+	}
 
 	condition.LastTransitionTime = metav1.NewTime(now)
 	condition.Status = metav1.ConditionTrue

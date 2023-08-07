@@ -1,5 +1,7 @@
 ## Main
 
+- [9942](https://github.com/grafana/loki/pull/9942) **btaani**: Use a condition to warn when there are no nodes with matching labels for zone-awareness
+
 ## 0.4.0 (2023-07-27)
 
 - [10019](https://github.com/grafana/loki/pull/10019) **periklis**: Update Loki operand to v2.8.3
