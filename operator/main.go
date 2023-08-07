@@ -111,7 +111,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	if ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
+	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
 		if err = (&lokictrl.DashboardsReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
