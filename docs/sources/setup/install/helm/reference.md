@@ -1094,7 +1094,7 @@ false
 		<tr>
 			<td>gateway.ingress.hosts</td>
 			<td>list</td>
-			<td>ref: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function</td>
+			<td>Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1130,7 +1130,7 @@ false
 		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
-			<td>ref: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function</td>
+			<td>TLS configuration for the gateway ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1482,11 +1482,13 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>ingress.hosts[0]</td>
-			<td>string</td>
-			<td></td>
+			<td>ingress.hosts</td>
+			<td>list</td>
+			<td>Hosts configuration for the ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"loki.example.com"
+[
+  "loki.example.com"
+]
 </pre>
 </td>
 		</tr>
@@ -1673,7 +1675,7 @@ false
 		<tr>
 			<td>ingress.tls</td>
 			<td>list</td>
-			<td></td>
+			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
 </pre>
