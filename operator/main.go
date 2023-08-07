@@ -112,7 +112,7 @@ func main() {
 	}
 
 	if ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
-		if err = (&lokictrl.LokiStackDasboardsReconciler{
+		if err = (&lokictrl.DashboardsReconciler{
 			Client: mgr.GetClient(),
 			Scheme: mgr.GetScheme(),
 			Log:    logger.WithName("controllers").WithName("lokistack-dashboards"),

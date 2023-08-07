@@ -340,16 +340,16 @@ check-operatorhub-pr-template:
 	git diff -s --exit-code hack/.operatorhub-pr-template.md || (echo "Build failed: the PR template for OperatorHub has changed. Sync it and try again." && exit 1)
 
 
-XARGS ?= $(shell which gxargs 2>/dev/null || which xargs)
 JSONNET_SRC = $(shell find . -type f -not -path './jsonnet/vendor/*' \( -name '*.libsonnet' -o -name '*.jsonnet' \))
 JSONNET_VENDOR_DIR = jsonnet/vendor
 
 $(JSONNET_VENDOR_DIR): $(JB) jsonnet/jsonnetfile.json jsonnet/jsonnetfile.lock.json
-	@$(JB) install --jsonnetpkg-home="$(JSONNET_VENDOR_DIR)"
+	@cd jsonnet/ && $(JB) install
 
-jsonnet-format: $(JSONNET_SRC) $(JSONNETFMT)
-	$(JSONNETFMT) -n 2 --max-blank-lines 2 --string-style s --comment-style s -i $(JSONNET_SRC)
+jsonnet-format: $(JSONNETFMT) $(JSONNET_SRC)
 
-generate-dashboards: jsonnet-format jsonnet/main.jsonnet $(JSONNET) $(GOJSONTOYAML) $(JSONNETFMT)
-	rm -f internal/manifests/openshift/internal/dashboards/static/*.json
-	$(JSONNET) -J "$(JSONNET_VENDOR_DIR)" -m internal/manifests/openshift/internal/dashboards/static jsonnet/main.jsonnet
+	@$(JSONNETFMT) -n 2 --max-blank-lines 2 --string-style s --comment-style s -i $(JSONNET_SRC)
+generate-dashboards: $(JSONNET) jsonnet-format $(JSONNET_VENDOR_DIR)
+
+	@rm -f internal/manifests/openshift/internal/dashboards/static/*.json
+	@$(JSONNET) -J "$(JSONNET_VENDOR_DIR)" -m internal/manifests/openshift/internal/dashboards/static jsonnet/main.jsonnet

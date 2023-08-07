@@ -24,9 +24,9 @@ var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 	GenericFunc: func(e event.GenericEvent) bool { return true },
 })
 
-// LokiStackDasboardsReconciler cleans up all remaining
+// DashboardsReconciler cleans up all remaining
 // dashboards when all LokiStack objects are removed.
-type LokiStackDasboardsReconciler struct {
+type DashboardsReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	Log    logr.Logger
@@ -34,7 +34,7 @@ type LokiStackDasboardsReconciler struct {
 
 // Reconcile creates all LokiStack dashboard ConfigMap and PrometheusRule objects on OpenShift clusters when
 // the at least one LokiStack custom resource exists or removes all when none.
-func (r *LokiStackDasboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var stacks lokiv1.LokiStackList
 	if err := r.List(ctx, &stacks, client.MatchingLabelsSelector{Selector: labels.Everything()}); err != nil {
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to list any lokistack instances", "req")
@@ -60,7 +60,7 @@ func (r *LokiStackDasboardsReconciler) Reconcile(ctx context.Context, req ctrl.R
 }
 
 // SetupWithManager sets up the controller with the Manager to only call this controller on create/delete/generic events.
-func (r *LokiStackDasboardsReconciler) SetupWithManager(mgr manager.Manager) error {
+func (r *DashboardsReconciler) SetupWithManager(mgr manager.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&lokiv1.LokiStack{}, createOrDeletesPred).
 		Complete(r)
