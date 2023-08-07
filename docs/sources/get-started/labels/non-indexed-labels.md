@@ -46,5 +46,5 @@ an error like `maximum of series (50000) reached for a single query`. You can us
 For example:
 
 ```logql
-count_over_time({job="example"} | keep trace_id | trace_id="0242ac120002" [5m])
+count_over_time({job="example"} | trace_id="0242ac120002" | keep job  [5m])
 ```
