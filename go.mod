@@ -119,10 +119,10 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
 	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
 	github.com/fsnotify/fsnotify v1.6.0
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da
 	github.com/grafana/groupcache_exporter v0.0.0-20220630102408-27e24c1f7765
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.59
-	github.com/mailgun/groupcache/v2 v2.3.2
 	github.com/prometheus/alertmanager v0.25.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
@@ -218,7 +218,6 @@ require (
 	github.com/gofrs/flock v0.8.1 // indirect
 	github.com/gogo/googleapis v1.4.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
-	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/btree v1.1.2 // indirect
 	github.com/google/gnostic v0.6.9 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect

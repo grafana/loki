@@ -12,6 +12,8 @@ common:
       chunks_directory: /tmp/loki/chunks
       rules_directory: /tmp/loki/rules
   replication_factor: 1
+  groupcache:
+    enabled: true
   ring:
     kvstore:
       store: inmemory

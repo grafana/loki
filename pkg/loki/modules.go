@@ -164,10 +164,6 @@ func (t *Loki) initServer() (services.Service, error) {
 
 	t.Server.HTTPServer.Handler = middleware.Merge(serverutil.RecoveryHTTPMiddleware).Wrap(h)
 
-	// Allow us to receive http/2 cleartext in addition to http/1.1. This needs to be
-	// the outermost handler so it can upgrade requests if necessary
-	t.Server.HTTPServer.Handler = http2CleartextHandler(t.Server.HTTPServer.Handler)
-
 	if t.Cfg.Server.HTTPListenPort == 0 {
 		t.Cfg.Server.HTTPListenPort = portFromAddr(t.Server.HTTPListenAddr().String())
 	}

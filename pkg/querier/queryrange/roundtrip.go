@@ -183,7 +183,9 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
+	// TODO: add groupcache to the stopper wrapper
 	// TODO: We could also just wrap this whole thing in a singleflight, but the metrics wouldn't be as awesome
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		var (
 			metricRT       = singleFlight("metrics", metricsTripperware(next))

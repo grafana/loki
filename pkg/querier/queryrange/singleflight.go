@@ -2,19 +2,22 @@ package queryrange
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
-	"time"
+
+	"github.com/weaveworks/common/httpgrpc"
+	"github.com/weaveworks/common/user"
+
+	"github.com/go-kit/log/level"
 
 	"github.com/go-kit/log"
+	"github.com/golang/groupcache"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/mailgun/groupcache/v2"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 // TODO: Cache Gen Key
@@ -32,7 +35,10 @@ func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next
 			return nil, nil
 		}
 
-		if err := singleFlight.Fetch(ctx, r.RequestURI, groupcache.ProtoSink(resp)); err != nil {
+		level.Info(log).Log("msg", "request", "key", r.RequestURI)
+		key := base64.StdEncoding.EncodeToString([]byte(r.RequestURI))
+
+		if err := singleFlight.Fetch(ctx, key, groupcache.ProtoSink(resp)); err != nil {
 			return nil, err
 		}
 
@@ -42,16 +48,13 @@ func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next
 
 func makeRequest(next http.RoundTripper, codec queryrangebase.Codec, log log.Logger) groupcache.GetterFunc {
 	return func(ctx context.Context, key string, dest groupcache.Sink) error {
+		level.Info(log).Log("msg", "singleflight request", "key", key)
+
 		r, err := http.NewRequestWithContext(ctx, http.MethodGet, key, nil)
 		if err != nil {
 			return err
 		}
 		r.RequestURI = key // If this isn't copied, logs response decoding breaks
-
-		request, err := codec.DecodeRequest(ctx, r, nil)
-		if err != nil {
-			return err
-		}
 
 		if err := user.InjectOrgIDIntoHTTPRequest(ctx, r); err != nil {
 			return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -62,12 +65,17 @@ func makeRequest(next http.RoundTripper, codec queryrangebase.Codec, log log.Log
 			return err
 		}
 
+		request, err := codec.DecodeRequest(ctx, r, nil)
+		if err != nil {
+			return err
+		}
+
 		lokiResp, err := codec.DecodeResponse(ctx, resp, request)
 		if err != nil {
 			return err
 		}
 
-		return dest.SetProto(lokiResp, time.Now().Add(time.Second))
+		return dest.SetProto(lokiResp)
 	}
 }
 

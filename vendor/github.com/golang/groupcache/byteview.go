@@ -21,7 +21,6 @@ import (
 	"errors"
 	"io"
 	"strings"
-	"time"
 )
 
 // A ByteView holds an immutable view of bytes.
@@ -34,12 +33,6 @@ type ByteView struct {
 	// If b is non-nil, b is used, else s is used.
 	b []byte
 	s string
-	e time.Time
-}
-
-// Returns the expire time associated with this view
-func (v ByteView) Expire() time.Time {
-	return v.e
 }
 
 // Len returns the view's length.

@@ -1,6 +1,6 @@
 package cache
 
-import "github.com/mailgun/groupcache/v2"
+import "github.com/golang/groupcache"
 
 func (c *group) Name() string {
 	return c.cache.Name()
@@ -15,7 +15,8 @@ func (c *group) CacheHits() int64 {
 }
 
 func (c *group) GetFromPeersLatencyLower() int64 {
-	return c.cache.Stats.GetFromPeersLatencyLower.Get()
+	// Not implemted in original groupcache
+	return 0
 }
 
 func (c *group) PeerLoads() int64 {

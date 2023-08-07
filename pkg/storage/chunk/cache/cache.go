@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/mailgun/groupcache/v2"
+	"github.com/golang/groupcache"
 
 	"github.com/pkg/errors"
 

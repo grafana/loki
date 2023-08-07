@@ -2,11 +2,8 @@ package cache
 
 import (
 	"context"
-	"crypto/tls"
 	"flag"
 	"fmt"
-	"net"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -14,10 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
 
-	"golang.org/x/net/http2"
-
+	"github.com/golang/groupcache"
 	"github.com/grafana/groupcache_exporter"
-	"github.com/mailgun/groupcache/v2"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/weaveworks/common/server"
 
@@ -68,7 +63,7 @@ func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
-	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{Transport: http2Transport})
+	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{})
 	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
 
 	startCtx, cancel := context.WithCancel(context.Background())
@@ -163,7 +158,7 @@ func (c *GroupCache) NewGroup(name string, getter groupcache.GetterFunc) SingleF
 	}, []string{"operation"})
 
 	g := &group{
-		cache:         groupcache.NewGroup(name, 1<<30, getter),
+		cache:         groupcache.NewGroup(name, 0, getter), // 0 Cache size means this is just a singleflight
 		logger:        c.logger,
 		wg:            &c.wg,
 		fetchDuration: requestDuration.WithLabelValues("fetch"),
@@ -184,13 +179,4 @@ func (c *group) Fetch(ctx context.Context, key string, dest groupcache.Sink) err
 
 func (c *group) Stop() {
 	c.wg.Done()
-}
-
-func http2Transport(_ context.Context) http.RoundTripper {
-	return &http2.Transport{
-		DialTLS: func(network, addr string, cfg *tls.Config) (net.Conn, error) {
-			return net.Dial(network, addr)
-		},
-		AllowHTTP: true,
-	}
 }

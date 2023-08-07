@@ -21,16 +21,14 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/golang/groupcache/consistenthash"
+	pb "github.com/golang/groupcache/groupcachepb"
 	"github.com/golang/protobuf/proto"
-	"github.com/mailgun/groupcache/v2/consistenthash"
-	pb "github.com/mailgun/groupcache/v2/groupcachepb"
 )
 
 const defaultBasePath = "/_groupcache/"
@@ -39,6 +37,16 @@ const defaultReplicas = 50
 
 // HTTPPool implements PeerPicker for a pool of HTTP peers.
 type HTTPPool struct {
+	// Context optionally specifies a context for the server to use when it
+	// receives a request.
+	// If nil, the server uses the request's context
+	Context func(*http.Request) context.Context
+
+	// Transport optionally specifies an http.RoundTripper for the client
+	// to use when it makes a request.
+	// If nil, the client uses http.DefaultTransport.
+	Transport func(context.Context) http.RoundTripper
+
 	// this peer's base URL, e.g. "https://example.net:8000"
 	self string
 
@@ -63,16 +71,6 @@ type HTTPPoolOptions struct {
 	// HashFn specifies the hash function of the consistent hash.
 	// If blank, it defaults to crc32.ChecksumIEEE.
 	HashFn consistenthash.Hash
-
-	// Transport optionally specifies an http.RoundTripper for the client
-	// to use when it makes a request.
-	// If nil, the client uses http.DefaultTransport.
-	Transport func(context.Context) http.RoundTripper
-
-	// Context optionally specifies a context for the server to use when it
-	// receives a request.
-	// If nil, uses the http.Request.Context()
-	Context func(*http.Request) context.Context
 }
 
 // NewHTTPPool initializes an HTTP pool of peers, and registers itself as a PeerPicker.
@@ -125,25 +123,8 @@ func (p *HTTPPool) Set(peers ...string) {
 	p.peers.Add(peers...)
 	p.httpGetters = make(map[string]*httpGetter, len(peers))
 	for _, peer := range peers {
-		p.httpGetters[peer] = &httpGetter{
-			getTransport: p.opts.Transport,
-			baseURL:      peer + p.opts.BasePath,
-		}
+		p.httpGetters[peer] = &httpGetter{transport: p.Transport, baseURL: peer + p.opts.BasePath}
 	}
-}
-
-// GetAll returns all the peers in the pool
-func (p *HTTPPool) GetAll() []ProtoGetter {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	var i int
-	res := make([]ProtoGetter, len(p.httpGetters))
-	for _, v := range p.httpGetters {
-		res[i] = v
-		i++
-	}
-	return res
 }
 
 func (p *HTTPPool) PickPeer(key string) (ProtoGetter, bool) {
@@ -178,69 +159,22 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var ctx context.Context
-	if p.opts.Context != nil {
-		ctx = p.opts.Context(r)
+	if p.Context != nil {
+		ctx = p.Context(r)
 	} else {
 		ctx = r.Context()
 	}
 
 	group.Stats.ServerRequests.Add(1)
-
-	// Delete the key and return 200
-	if r.Method == http.MethodDelete {
-		group.localRemove(key)
-		return
-	}
-
-	// The read the body and set the key value
-	if r.Method == http.MethodPut {
-		defer r.Body.Close()
-		b := bufferPool.Get().(*bytes.Buffer)
-		b.Reset()
-		defer bufferPool.Put(b)
-		_, err := io.Copy(b, r.Body)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		var out pb.SetRequest
-		err = proto.Unmarshal(b.Bytes(), &out)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-
-		var expire time.Time
-		if out.Expire != nil && *out.Expire != 0 {
-			expire = time.Unix(*out.Expire/int64(time.Second), *out.Expire%int64(time.Second))
-		}
-
-		group.localSet(*out.Key, out.Value, expire, &group.mainCache)
-		return
-	}
-
-	var b []byte
-
-	value := AllocatingByteSliceSink(&b)
-	err := group.Get(ctx, key, value)
+	var value []byte
+	err := group.Get(ctx, key, AllocatingByteSliceSink(&value))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	view, err := value.view()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	var expireNano int64
-	if !view.e.IsZero() {
-		expireNano = view.Expire().UnixNano()
 	}
 
 	// Write the value to the response body as a proto message.
-	body, err := proto.Marshal(&pb.GetResponse{Value: b, Expire: &expireNano})
+	body, err := proto.Marshal(&pb.GetResponse{Value: value})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -250,51 +184,32 @@ func (p *HTTPPool) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type httpGetter struct {
-	getTransport func(context.Context) http.RoundTripper
-	baseURL      string
-}
-
-func (p *httpGetter) GetURL() string {
-	return p.baseURL
+	transport func(context.Context) http.RoundTripper
+	baseURL   string
 }
 
 var bufferPool = sync.Pool{
 	New: func() interface{} { return new(bytes.Buffer) },
 }
 
-type request interface {
-	GetGroup() string
-	GetKey() string
-}
-
-func (h *httpGetter) makeRequest(ctx context.Context, m string, in request, b io.Reader, out *http.Response) error {
+func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
 	u := fmt.Sprintf(
 		"%v%v/%v",
 		h.baseURL,
 		url.QueryEscape(in.GetGroup()),
 		url.QueryEscape(in.GetKey()),
 	)
-	req, err := http.NewRequestWithContext(ctx, m, u, b)
+	req, err := http.NewRequest("GET", u, nil)
 	if err != nil {
 		return err
 	}
-
+	req = req.WithContext(ctx)
 	tr := http.DefaultTransport
-	if h.getTransport != nil {
-		tr = h.getTransport(ctx)
+	if h.transport != nil {
+		tr = h.transport(ctx)
 	}
-
 	res, err := tr.RoundTrip(req)
 	if err != nil {
-		return err
-	}
-	*out = *res
-	return nil
-}
-
-func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResponse) error {
-	var res http.Response
-	if err := h.makeRequest(ctx, http.MethodGet, in, nil, &res); err != nil {
 		return err
 	}
 	defer res.Body.Close()
@@ -304,51 +219,13 @@ func (h *httpGetter) Get(ctx context.Context, in *pb.GetRequest, out *pb.GetResp
 	b := bufferPool.Get().(*bytes.Buffer)
 	b.Reset()
 	defer bufferPool.Put(b)
-	_, err := io.Copy(b, res.Body)
+	_, err = io.Copy(b, res.Body)
 	if err != nil {
 		return fmt.Errorf("reading response body: %v", err)
 	}
 	err = proto.Unmarshal(b.Bytes(), out)
 	if err != nil {
 		return fmt.Errorf("decoding response body: %v", err)
-	}
-	return nil
-}
-
-func (h *httpGetter) Set(ctx context.Context, in *pb.SetRequest) error {
-	body, err := proto.Marshal(in)
-	if err != nil {
-		return fmt.Errorf("while marshaling SetRequest body: %w", err)
-	}
-	var res http.Response
-	if err := h.makeRequest(ctx, http.MethodPut, in, bytes.NewReader(body), &res); err != nil {
-		return err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			return fmt.Errorf("while reading body response: %v", res.Status)
-		}
-		return fmt.Errorf("server returned status %d: %s", res.StatusCode, body)
-	}
-	return nil
-}
-
-func (h *httpGetter) Remove(ctx context.Context, in *pb.GetRequest) error {
-	var res http.Response
-	if err := h.makeRequest(ctx, http.MethodDelete, in, nil, &res); err != nil {
-		return err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != http.StatusOK {
-		body, err := ioutil.ReadAll(res.Body)
-		if err != nil {
-			return fmt.Errorf("while reading body response: %v", res.Status)
-		}
-		return fmt.Errorf("server returned status %d: %s", res.StatusCode, body)
 	}
 	return nil
 }
