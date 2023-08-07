@@ -1288,6 +1288,7 @@ gateway:
     # -- Labels for the gateway ingress
     labels: {}
     # -- Hosts configuration for the gateway ingress. Host property will be passed through `tpl`.
+    # -- ref: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
     hosts:
       - host: gateway.loki.example.com
         paths:
@@ -1295,6 +1296,7 @@ gateway:
             # -- pathType (e.g. ImplementationSpecific, Prefix, .. etc.) might also be required by some Ingress Controllers
             # pathType: Prefix
     # -- TLS configuration for the gateway ingress. Hosts property will be passed through `tpl`.
+    # -- ref: https://helm.sh/docs/howto/charts_tips_and_tricks/#using-the-tpl-function
     tls:
       - secretName: loki-gateway-tls
         hosts:
