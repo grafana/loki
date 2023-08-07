@@ -18,6 +18,7 @@ Entries should include a reference to the pull request that introduced the chang
 - [CHANGE] Changed version of Loki to 2.8.4
 
 - [ENHANCEMENT] Use tpl function in ingress.yaml for hosts
+- [ENHANCEMENT] Use tpl function in ingress and gateway-ingres for hosts
 
 ## 5.10.0
 
