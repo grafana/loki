@@ -17,7 +17,7 @@ import (
 
 	"github.com/grafana/loki/pkg/util"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 )
 
 func TestAddDeleteRequestHandler(t *testing.T) {

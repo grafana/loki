@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/mtime"
 	"github.com/pkg/errors"
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/mtime"
 
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
