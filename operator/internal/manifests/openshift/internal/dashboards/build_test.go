@@ -6,29 +6,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestReadDashboards(t *testing.T) {
-	m, err := ReadDashboards()
-	require.NoError(t, err)
+const (
+	lokiStackChunkDashboardFile     = "grafana-dashboard-lokistack-chunks.json"
+	lokiStackReadsDashboardFile     = "grafana-dashboard-lokistack-reads.json"
+	lokiStackWritesDashboardFile    = "grafana-dashboard-lokistack-writes.json"
+	lokiStackRetentionDashboardFile = "grafana-dashboard-lokistack-retention.json"
+)
+
+func TestReadFiles(t *testing.T) {
+	m, r := ReadFiles()
 	require.Len(t, m, 4)
+	require.Equal(t, dashboardMap, m)
+	require.Equal(t, dashboardRules, r)
 
-	// Chunks Dashboard
 	require.Contains(t, m, lokiStackChunkDashboardFile)
-	require.NotEmpty(t, m[lokiStackChunkDashboardFile])
-	// Reads Dasboard
 	require.Contains(t, m, lokiStackReadsDashboardFile)
-	require.NotEmpty(t, m[lokiStackReadsDashboardFile])
-	// Writes  Dashboard
 	require.Contains(t, m, lokiStackWritesDashboardFile)
-	require.NotEmpty(t, m[lokiStackWritesDashboardFile])
-	// Retention Dashboard
 	require.Contains(t, m, lokiStackRetentionDashboardFile)
-	require.NotEmpty(t, m[lokiStackRetentionDashboardFile])
-
 	require.NotContains(t, m, lokiStackDashboardRulesFile)
-}
-
-func TestReadDashboardRules(t *testing.T) {
-	b, err := ReadDashboardRules()
-	require.NoError(t, err)
-	require.NotEmpty(t, b)
 }

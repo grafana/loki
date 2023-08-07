@@ -17,7 +17,7 @@ import (
 	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// CreateOrUpdateLokiStackDashboards handles the LokiStack dashboards create events.
+// CreateDashboards handles the LokiStack dashboards create events.
 func CreateDashboards(ctx context.Context, log logr.Logger, req ctrl.Request, k k8s.Client, s *runtime.Scheme) error {
 	var stack lokiv1.LokiStack
 	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {

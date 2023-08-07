@@ -347,9 +347,8 @@ $(JSONNET_VENDOR_DIR): $(JB) jsonnet/jsonnetfile.json jsonnet/jsonnetfile.lock.j
 	@cd jsonnet/ && $(JB) install
 
 jsonnet-format: $(JSONNETFMT) $(JSONNET_SRC)
-
 	@$(JSONNETFMT) -n 2 --max-blank-lines 2 --string-style s --comment-style s -i $(JSONNET_SRC)
-generate-dashboards: $(JSONNET) jsonnet-format $(JSONNET_VENDOR_DIR)
 
+generate-dashboards: $(JSONNET) jsonnet-format $(JSONNET_VENDOR_DIR)
 	@rm -f internal/manifests/openshift/internal/dashboards/static/*.json
 	@$(JSONNET) -J "$(JSONNET_VENDOR_DIR)" -m internal/manifests/openshift/internal/dashboards/static jsonnet/main.jsonnet

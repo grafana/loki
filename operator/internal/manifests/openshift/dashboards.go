@@ -20,19 +20,11 @@ const (
 )
 
 func BuildDashboards(opt Options) ([]client.Object, error) {
-	ds, err := dashboards.ReadDashboards()
-	if err != nil {
-		return nil, err
-	}
+	ds, rules := dashboards.ReadFiles()
 
 	var objs []client.Object
 	for name, content := range ds {
 		objs = append(objs, newDashboardConfigMap(name, content))
-	}
-
-	rules, err := dashboards.ReadDashboardRules()
-	if err != nil {
-		return nil, err
 	}
 
 	promRule, err := newDashboardPrometheusRule(opt, rules)
