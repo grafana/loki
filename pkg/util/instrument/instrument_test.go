@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/instrument"
 )
 
 func TestNewHistogramCollector(t *testing.T) {

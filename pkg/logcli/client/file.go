@@ -21,8 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 )
 
 const (

@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 const day = 24 * time.Hour

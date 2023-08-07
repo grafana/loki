@@ -11,12 +11,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"

@@ -17,11 +17,11 @@ import (
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	serverww "github.com/grafana/dskit/server"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
-	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/server/ui"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"

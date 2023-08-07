@@ -12,6 +12,18 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
+var pipelineStagesNonIndexedLabelsUsingMatch = `
+pipeline_stages:
+- match:
+    selector: '{source="test"}'
+    stages:
+      - logfmt:
+          mapping:
+            app:
+      - non_indexed_labels:
+          app:
+`
+
 var pipelineStagesNonIndexedLabelsFromLogfmt = `
 pipeline_stages:
 - logfmt:
@@ -66,6 +78,7 @@ func Test_NonIndexedLabelsStage(t *testing.T) {
 	tests := map[string]struct {
 		pipelineStagesYaml       string
 		logLine                  string
+		streamLabels             model.LabelSet
 		expectedNonIndexedLabels push.LabelsAdapter
 		expectedLabels           model.LabelSet
 	}{
@@ -95,13 +108,19 @@ func Test_NonIndexedLabelsStage(t *testing.T) {
 			expectedNonIndexedLabels: push.LabelsAdapter{push.LabelAdapter{Name: "app", Value: "loki"}},
 			expectedLabels:           model.LabelSet{model.LabelName("component"): model.LabelValue("ingester")},
 		},
+		"expected non-indexed to be extracted using match stage": {
+			pipelineStagesYaml:       pipelineStagesNonIndexedLabelsUsingMatch,
+			logLine:                  `app=loki component=ingester`,
+			expectedNonIndexedLabels: push.LabelsAdapter{push.LabelAdapter{Name: "app", Value: "loki"}},
+			expectedLabels:           model.LabelSet{model.LabelName("source"): model.LabelValue("test")},
+			streamLabels:             model.LabelSet{model.LabelName("source"): model.LabelValue("test")},
+		},
 	}
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			pl, err := NewPipeline(util_log.Logger, loadConfig(test.pipelineStagesYaml), nil, prometheus.DefaultRegisterer)
 			require.NoError(t, err)
-
-			result := processEntries(pl, newEntry(nil, nil, test.logLine, time.Now()))[0]
+			result := processEntries(pl, newEntry(nil, test.streamLabels, test.logLine, time.Now()))[0]
 			require.Equal(t, test.expectedNonIndexedLabels, result.NonIndexedLabels)
 			if test.expectedLabels != nil {
 				require.Equal(t, test.expectedLabels, result.Labels)

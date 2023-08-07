@@ -6,13 +6,13 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/middleware"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/util/httpreq"
