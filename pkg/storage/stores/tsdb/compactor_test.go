@@ -115,9 +115,9 @@ func (m *mockIndexSet) SetCompactedIndex(compactedIndex compactor.CompactedIndex
 	return nil
 }
 
-func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDir string, ts time.Time) string {
+func setupMultiTenantIndex(t *testing.T, indexFormat int, userStreams map[string][]stream, destDir string, ts time.Time) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
-	b := NewBuilder(index.LiveFormat)
+	b := NewBuilder(indexFormat)
 	for userID, streams := range userStreams {
 		for _, stream := range streams {
 			lb := labels.NewBuilder(stream.labels)
@@ -153,9 +153,9 @@ func setupMultiTenantIndex(t *testing.T, userStreams map[string][]stream, destDi
 	return dst.Path()
 }
 
-func setupPerTenantIndex(t *testing.T, streams []stream, destDir string, ts time.Time) string {
+func setupPerTenantIndex(t *testing.T, indexFormat int, streams []stream, destDir string, ts time.Time) string {
 	require.NoError(t, util.EnsureDirectory(destDir))
-	b := NewBuilder(index.LiveFormat)
+	b := NewBuilder(indexFormat)
 	for _, stream := range streams {
 		b.AddSeries(
 			stream.labels,
@@ -496,8 +496,8 @@ func TestCompactor_Compact(t *testing.T) {
 				t.Run(name, func(t *testing.T) {
 					tempDir := t.TempDir()
 					objectStoragePath := filepath.Join(tempDir, objectsStorageDirName)
-					tablePathInStorage := filepath.Join(objectStoragePath, tableName)
-					tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName)
+					tablePathInStorage := filepath.Join(objectStoragePath, tableName.prefix)
+					tableWorkingDirectory := filepath.Join(tempDir, workingDirName, tableName.prefix)
 
 					require.NoError(t, util.EnsureDirectory(objectStoragePath))
 					require.NoError(t, util.EnsureDirectory(tablePathInStorage))
@@ -520,7 +520,9 @@ func TestCompactor_Compact(t *testing.T) {
 								userStreams[userID] = append(userStreams[userID], stream)
 							}
 						}
-						setupMultiTenantIndex(t, userStreams, tablePathInStorage, multiTenantIndexConfig.createdAt)
+						indexFormat, err := periodConfig.TSDBVersion()
+						require.NoError(t, err)
+						setupMultiTenantIndex(t, indexFormat, userStreams, tablePathInStorage, multiTenantIndexConfig.createdAt)
 					}
 
 					// setup per-tenant indexes i.e compacted ones
@@ -538,7 +540,9 @@ func TestCompactor_Compact(t *testing.T) {
 								stream = buildStream(streamConfig.labels, streamConfig.chunkMetas, "")
 								streams = append(streams, stream)
 							}
-							setupPerTenantIndex(t, streams, filepath.Join(tablePathInStorage, userID), perTenantIndexConfig.createdAt)
+							indexFormat, err := periodConfig.TSDBVersion()
+							require.NoError(t, err)
+							setupPerTenantIndex(t, indexFormat, streams, filepath.Join(tablePathInStorage, userID), perTenantIndexConfig.createdAt)
 						}
 					}
 
@@ -546,7 +550,7 @@ func TestCompactor_Compact(t *testing.T) {
 					objectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: objectStoragePath})
 					require.NoError(t, err)
 
-					_, commonPrefixes, err := objectClient.List(context.Background(), tableName, "/")
+					_, commonPrefixes, err := objectClient.List(context.Background(), tableName.prefix, "/")
 					require.NoError(t, err)
 
 					initializedIndexSets := map[string]compactor.IndexSet{}
@@ -554,19 +558,19 @@ func TestCompactor_Compact(t *testing.T) {
 					existingUserIndexSets := make(map[string]compactor.IndexSet, len(commonPrefixes))
 					for _, commonPrefix := range commonPrefixes {
 						userID := path.Base(string(commonPrefix))
-						idxSet, err := newMockIndexSet(userID, tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
+						idxSet, err := newMockIndexSet(userID, tableName.prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
 						require.NoError(t, err)
 
 						existingUserIndexSets[userID] = idxSet
 						initializedIndexSets[userID] = idxSet
 					}
 
-					commonIndexSet, err := newMockIndexSet("", tableName, tableWorkingDirectory, objectClient)
+					commonIndexSet, err := newMockIndexSet("", tableName.prefix, tableWorkingDirectory, objectClient)
 					require.NoError(t, err)
 
 					// build TableCompactor and compact the index
 					tCompactor := newTableCompactor(context.Background(), commonIndexSet, existingUserIndexSets, func(userID string) (compactor.IndexSet, error) {
-						idxSet, err := newMockIndexSet(userID, tableName, filepath.Join(tableWorkingDirectory, userID), objectClient)
+						idxSet, err := newMockIndexSet(userID, tableName.prefix, filepath.Join(tableWorkingDirectory, userID), objectClient)
 						require.NoError(t, err)
 
 						initializedIndexSetsMtx.Lock()
@@ -869,7 +873,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	}
 	indexBuckets := indexBuckets(now, now, []config.TableRange{periodConfig.GetIndexTableNumberRange(config.DayTime{Time: now})})
 	tableName := indexBuckets[0]
-	tableInterval := retention.ExtractIntervalFromTableName(tableName)
+	tableInterval := retention.ExtractIntervalFromTableName(tableName.prefix)
 	// shiftTableStart shift tableInterval.Start by the given amount of milliseconds.
 	// It is used for building chunkmetas relative to start time of the table.
 	shiftTableStart := func(ms int64) int64 {
@@ -881,7 +885,9 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	userID := buildUserID(0)
 
 	buildCompactedIndex := func() *compactedIndex {
-		builder := NewBuilder(index.LiveFormat)
+		indexFormat, err := periodConfig.TSDBVersion()
+		require.NoError(t, err)
+		builder := NewBuilder(indexFormat)
 		stream := buildStream(lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10)), "")
 		builder.AddSeries(stream.labels, stream.fp, stream.chunks)
 

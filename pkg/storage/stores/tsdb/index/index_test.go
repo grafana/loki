@@ -129,7 +129,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	fn := filepath.Join(dir, IndexFilename)
 
 	// An empty index must still result in a readable file.
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 	require.NoError(t, iw.Close())
 

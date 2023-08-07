@@ -151,18 +151,26 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
+type chunkInfo struct {
+	chunkMetas index.ChunkMetas
+	tsdbFormat int
+}
+
 func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
-		pds := make(map[string]index.ChunkMetas)
+		pds := make(map[string]chunkInfo)
 		for _, chk := range chks {
 			idxBuckets := indexBuckets(chk.From(), chk.Through(), tableRanges)
 
 			for _, bucket := range idxBuckets {
-				pds[bucket] = append(pds[bucket], chk)
+				chkinfo := pds[bucket.prefix]
+				chkinfo.chunkMetas = append(chkinfo.chunkMetas, chk)
+				chkinfo.tsdbFormat = bucket.tsdbFormat
+				pds[bucket.prefix] = chkinfo
 			}
 		}
 
@@ -172,10 +180,11 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 		withTenant := lb.Labels()
 
 		// Add the chunks to all relevant builders
-		for pd, matchingChks := range pds {
+		for pd, chkinfo := range pds {
+			matchingChks := chkinfo.chunkMetas
 			b, ok := periods[pd]
 			if !ok {
-				b = NewBuilder(index.LiveFormat)
+				b = NewBuilder(chkinfo.tsdbFormat)
 				periods[pd] = b
 			}
 
@@ -290,13 +299,20 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	return nil
 }
 
-func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
+type indexInfo struct {
+	prefix     string
+	tsdbFormat int
+}
+
+func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []indexInfo) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
+		// NOTE(kavi): Hack. Ignore errorchecking for now
+		tsdbFormat, _ := cfg.TSDBVersion()
 		if cfg != nil {
-			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
+			res = append(res, indexInfo{prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), tsdbFormat: tsdbFormat})
 		}
 	}
 	if len(res) == 0 {

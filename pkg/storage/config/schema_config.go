@@ -17,7 +17,9 @@ import (
 	"github.com/prometheus/common/model"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -369,6 +371,28 @@ func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
 	}
+}
+
+// NOTE(kavi): Hack
+func (cfg *PeriodConfig) ChunkVersion() (byte, error) {
+	return chunkenc.ChunkFormatV3, nil
+}
+
+// NOTE(kavi): Hack
+func (cfg *PeriodConfig) TSDBVersion() (int, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, err
+	}
+
+	switch {
+	case sver <= 12:
+		return index.FormatV2, nil
+	case sver == 13:
+		return index.FormatV3, nil
+	}
+
+	return 0, errors.New("invalid tsdb version for schema")
 }
 
 // Validate the period config.

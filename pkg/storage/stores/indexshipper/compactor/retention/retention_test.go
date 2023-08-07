@@ -277,7 +277,7 @@ func labelsString(ls labels.Labels) string {
 func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()
-	schema := allSchemas[3]
+	schema := allSchemas[3] // v12
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 	type tableResp struct {
 		mustDeleteLines  bool
@@ -524,7 +524,10 @@ func TestChunkRewriter(t *testing.T) {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
 						// Test ready to pass/fail when we change the default chunk and head format.
 						var nonIndexedLabels []logproto.LabelAdapter
-						if chunkenc.DefaultChunkFormat == 4 && chunkenc.DefaultHeadBlockFmt == chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt {
+						chunkVer, err := schema.config.ChunkVersion()
+						require.NoError(t, err)
+
+						if chunkVer == 4 && chunkenc.DefaultHeadBlockFmt == chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt {
 							nonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", curr.String()))
 						}
 
