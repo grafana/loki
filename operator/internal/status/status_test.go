@@ -9,7 +9,6 @@ import (
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -109,7 +108,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 	}
 	testPod := corev1.Pod{
 		Status: corev1.PodStatus{
-			Phase: v1.PodPending,
+			Phase: corev1.PodPending,
 		},
 	}
 
@@ -124,7 +123,7 @@ func TestRefreshSuccess_ZoneAwarePendingPod(t *testing.T) {
 			})
 		case *corev1.NodeList:
 			k.SetClientObjectList(ol, &corev1.NodeList{
-				Items: []v1.Node{},
+				Items: []corev1.Node{},
 			})
 		}
 		return nil
