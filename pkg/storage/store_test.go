@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/cespare/xxhash/v2"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/flagext"
 

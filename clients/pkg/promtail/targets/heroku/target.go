@@ -8,12 +8,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/server"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
@@ -80,7 +80,7 @@ func (h *Target) run() error {
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
+	h.config.Server.Log = dslog.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {

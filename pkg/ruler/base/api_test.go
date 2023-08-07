@@ -13,8 +13,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )

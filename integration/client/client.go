@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 )
 
 const requestTimeout = 30 * time.Second

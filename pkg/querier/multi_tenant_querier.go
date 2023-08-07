@@ -6,8 +6,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 

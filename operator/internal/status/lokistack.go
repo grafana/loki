@@ -10,15 +10,17 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 const (
-	messageReady   = "All components ready"
-	messageFailed  = "Some LokiStack components failed"
-	messagePending = "Some LokiStack components pending on dependencies"
+	messageReady              = "All components ready"
+	messageFailed             = "Some LokiStack components failed"
+	messagePending            = "Some LokiStack components pending on dependencies"
+	messageDegradedNodeLabels = "Cluster contains no nodes matching the labels used for zone-awareness"
 )
 
 var (
@@ -36,6 +38,11 @@ var (
 		Type:    string(lokiv1.ConditionReady),
 		Message: messageReady,
 		Reason:  string(lokiv1.ReasonReadyComponents),
+	}
+	conditionDegradedNodeLabels = metav1.Condition{
+		Type:    string(lokiv1.ConditionDegraded),
+		Message: messageDegradedNodeLabels,
+		Reason:  string(lokiv1.ReasonNoZoneAwareNodes),
 	}
 )
 
@@ -61,7 +68,7 @@ func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, m
 	return updateCondition(ctx, k, req, degraded)
 }
 
-func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
+func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k client.Client, req ctrl.Request, stack *lokiv1.LokiStack) (metav1.Condition, error) {
 	// Check for failed pods first
 	failed := len(cs.Compactor[corev1.PodFailed]) +
 		len(cs.Distributor[corev1.PodFailed]) +
@@ -73,7 +80,7 @@ func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
 		len(cs.Ruler[corev1.PodFailed])
 
 	if failed != 0 {
-		return conditionFailed
+		return conditionFailed, nil
 	}
 
 	// Check for pending pods
@@ -87,10 +94,37 @@ func generateCondition(cs *lokiv1.LokiStackComponentStatus) metav1.Condition {
 		len(cs.Ruler[corev1.PodPending])
 
 	if pending != 0 {
-		return conditionPending
+		if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
+			// When there are pending pods and zone-awareness is enabled check if there are any nodes
+			// that can satisfy the constraints and emit a condition if not.
+			nodesOk, err := checkForZoneawareNodes(ctx, k, stack.Spec.Replication.Zones)
+			if err != nil {
+				return metav1.Condition{}, err
+			}
+
+			if !nodesOk {
+				return conditionDegradedNodeLabels, nil
+			}
+		}
+
+		return conditionPending, nil
 	}
 
-	return conditionReady
+	return conditionReady, nil
+}
+
+func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1.ZoneSpec) (bool, error) {
+	nodeLabels := client.HasLabels{}
+	for _, z := range zones {
+		nodeLabels = append(nodeLabels, z.TopologyKey)
+	}
+
+	nodeList := &corev1.NodeList{}
+	if err := k.List(ctx, nodeList, nodeLabels); err != nil {
+		return false, err
+	}
+
+	return len(nodeList.Items) > 0, nil
 }
 
 func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {
