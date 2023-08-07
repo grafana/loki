@@ -1094,7 +1094,7 @@ false
 		<tr>
 			<td>gateway.ingress.hosts</td>
 			<td>list</td>
-			<td>Hosts configuration for the gateway ingress</td>
+			<td>Hosts configuration for the gateway ingress. Host property will be passed through `tpl`.</td>
 			<td><pre lang="json">
 [
   {
@@ -1130,7 +1130,7 @@ false
 		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
-			<td>TLS configuration for the gateway ingress</td>
+			<td>TLS configuration for the gateway ingress. Hosts property will be passed through `tpl`.</td>
 			<td><pre lang="json">
 [
   {
