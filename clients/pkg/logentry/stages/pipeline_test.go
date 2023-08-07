@@ -349,7 +349,7 @@ pipeline_stages:
     selector: "{match=~\".*\"}"
     stages:
     - multiline:
-        firstline: '^{'
+        firstline: ^{
         max_wait_time: 3s
         max_lines: 2
     - json:
