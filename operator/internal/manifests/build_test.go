@@ -938,67 +938,6 @@ func TestBuildAll_WithFeatureGates_LokiStackAlerts(t *testing.T) {
 	}
 }
 
-func TestBuildAll_WithFeatureGates_OpenShiftDashboards(t *testing.T) {
-	type test struct {
-		desc         string
-		BuildOptions Options
-	}
-	table := []test{
-		{
-			desc: "no dashboards created",
-			BuildOptions: Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1.LokiStackSpec{
-					Size: lokiv1.SizeOneXSmall,
-				},
-				Gates: configv1.FeatureGates{},
-			},
-		},
-		{
-			desc: "dashboards created",
-			BuildOptions: Options{
-				Name:      "test",
-				Namespace: "test",
-				Stack: lokiv1.LokiStackSpec{
-					Size: lokiv1.SizeOneXSmall,
-				},
-				Gates: configv1.FeatureGates{
-					OpenShift: configv1.OpenShiftFeatureGates{
-						Enabled:    true,
-						Dashboards: true,
-					},
-				},
-			},
-		},
-	}
-	for _, tst := range table {
-		tst := tst
-		t.Run(tst.desc, func(t *testing.T) {
-			t.Parallel()
-			err := ApplyDefaultSettings(&tst.BuildOptions)
-			require.NoError(t, err)
-			objects, buildErr := BuildAll(tst.BuildOptions)
-			require.NoError(t, buildErr)
-
-			var found int
-			for _, obj := range objects {
-				if obj.GetObjectKind().GroupVersionKind().Kind == "ConfigMap" &&
-					obj.GetNamespace() == "openshift-config-managed" {
-					found++
-				}
-			}
-
-			switch {
-			case !tst.BuildOptions.Gates.OpenShift.Enabled || !tst.BuildOptions.Gates.OpenShift.Dashboards:
-				require.Equal(t, 0, found)
-			default:
-				require.Equal(t, 4, found)
-			}
-		})
-	}
-}
-
 func serviceMonitorCount(objects []client.Object) int {
 	monitors := 0
 	for _, obj := range objects {

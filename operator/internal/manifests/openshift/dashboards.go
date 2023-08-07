@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
-	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +47,7 @@ func BuildDashboards(opt Options) ([]client.Object, error) {
 func newDashboardConfigMap(filename string, content []byte) *corev1.ConfigMap {
 	cmName := strings.Split(filename, ".")[0]
 
-	return &v1.ConfigMap{
+	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "ConfigMap",
 			APIVersion: corev1.SchemeGroupVersion.String(),

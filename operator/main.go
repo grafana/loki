@@ -114,6 +114,7 @@ func main() {
 	if ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
 		if err = (&lokictrl.LokiStackDasboardsReconciler{
 			Client: mgr.GetClient(),
+			Scheme: mgr.GetScheme(),
 			Log:    logger.WithName("controllers").WithName("lokistack-dashboards"),
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")

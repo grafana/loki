@@ -3,7 +3,6 @@ package manifests
 import (
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/imdario/mergo"
@@ -99,14 +98,6 @@ func BuildAll(opts Options) ([]client.Object, error) {
 			return nil, err
 		}
 		res = append(res, prometheusRuleObjs...)
-	}
-
-	if opts.Gates.OpenShift.Dashboards {
-		dashboards, err := openshift.BuildDashboards(opts.OpenShiftOptions)
-		if err != nil {
-			return nil, err
-		}
-		res = append(res, dashboards...)
 	}
 
 	return res, nil
