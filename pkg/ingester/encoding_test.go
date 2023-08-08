@@ -38,88 +38,79 @@ func dummyConf() *Config {
 }
 
 func Test_EncodingChunks(t *testing.T) {
-	for _, f := range chunkenc.HeadBlockFmts {
-		for _, close := range []bool{true, false} {
-			for _, tc := range []struct {
-				desc string
-				conf Config
-			}{
-				{
-					// mostly for historical parity
-					desc: "dummyConf",
-					conf: *dummyConf(),
-				},
-				{
-					desc: "default",
-					conf: defaultIngesterTestConfig(t),
-				},
-			} {
+	for _, close := range []bool{true, false} {
+		for _, tc := range []struct {
+			desc string
+			conf Config
+		}{
+			{
+				// mostly for historical parity
+				desc: "dummyConf",
+				conf: *dummyConf(),
+			},
+			{
+				desc: "default",
+				conf: defaultIngesterTestConfig(t),
+			},
+		} {
 
-				t.Run(fmt.Sprintf("%v-%v-%s", f, close, tc.desc), func(t *testing.T) {
-					conf := tc.conf
-					c := chunkenc.NewMemChunk(chunkenc.EncGZIP, f, conf.BlockSize, conf.TargetChunkSize)
-					fillChunk(t, c)
+			t.Run(fmt.Sprintf("%v-%s", close, tc.desc), func(t *testing.T) {
+				conf := tc.conf
+				c := chunkenc.NewMemChunk(chunkenc.EncGZIP, f, conf.BlockSize, conf.TargetChunkSize)
+				fillChunk(t, c)
+				if close {
+					require.Nil(t, c.Close())
+				}
+
+				from := []chunkDesc{
+					{
+						chunk: c,
+					},
+					// test non zero values
+					{
+						chunk:       c,
+						closed:      true,
+						synced:      true,
+						flushed:     time.Unix(1, 0),
+						lastUpdated: time.Unix(0, 1),
+					},
+				}
+				there, err := toWireChunks(from, nil)
+				require.Nil(t, err)
+				chunks := make([]Chunk, 0, len(there))
+				for _, c := range there {
+					chunks = append(chunks, c.Chunk)
+
+					// Ensure closed head chunks only contain the head metadata but no entries
 					if close {
-						require.Nil(t, c.Close())
+						const unorderedHeadSize = 2
+						require.Equal(t, unorderedHeadSize, len(c.Head))
+					} else {
+						require.Greater(t, len(c.Head), 0)
 					}
+				}
 
-					from := []chunkDesc{
-						{
-							chunk: c,
-						},
-						// test non zero values
-						{
-							chunk:       c,
-							closed:      true,
-							synced:      true,
-							flushed:     time.Unix(1, 0),
-							lastUpdated: time.Unix(0, 1),
-						},
-					}
-					there, err := toWireChunks(from, nil)
+				backAgain, err := fromWireChunks(&conf, chunks)
+				require.Nil(t, err)
+
+				for i, to := range backAgain {
+					// test the encoding directly as the substructure may change.
+					// for instance the uncompressed size for each block is not included in the encoded version.
+					enc, err := to.chunk.Bytes()
 					require.Nil(t, err)
-					chunks := make([]Chunk, 0, len(there))
-					for _, c := range there {
-						chunks = append(chunks, c.Chunk)
+					to.chunk = nil
 
-						// Ensure closed head chunks only contain the head metadata but no entries
-						if close {
-							if f < chunkenc.UnorderedHeadBlockFmt {
-								// format + #entries + size + mint + maxt
-								const orderedHeadSize = 5
-								require.Equal(t, orderedHeadSize, len(c.Head))
-							} else {
-								// format + #lines
-								const unorderedHeadSize = 2
-								require.Equal(t, unorderedHeadSize, len(c.Head))
-							}
-						} else {
-							require.Greater(t, len(c.Head), 0)
-						}
-					}
-
-					backAgain, err := fromWireChunks(&conf, chunks)
+					matched := from[i]
+					exp, err := matched.chunk.Bytes()
 					require.Nil(t, err)
+					matched.chunk = nil
 
-					for i, to := range backAgain {
-						// test the encoding directly as the substructure may change.
-						// for instance the uncompressed size for each block is not included in the encoded version.
-						enc, err := to.chunk.Bytes()
-						require.Nil(t, err)
-						to.chunk = nil
+					require.Equal(t, exp, enc)
+					require.Equal(t, matched, to)
 
-						matched := from[i]
-						exp, err := matched.chunk.Bytes()
-						require.Nil(t, err)
-						matched.chunk = nil
+				}
 
-						require.Equal(t, exp, enc)
-						require.Equal(t, matched, to)
-
-					}
-
-				})
-			}
+			})
 		}
 	}
 }
