@@ -9,6 +9,8 @@ const (
 	annotationGatewayRouteTimeout = "haproxy.router.openshift.io/timeout"
 
 	gatewayRouteTimeoutExtension = 15 * time.Second
+
+	dashboardPrometheusRulesName = "lokistack-dashboard-rules"
 )
 
 var (
@@ -26,8 +28,6 @@ var (
 	allowedRunes       = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 
 	defaultConfigMapMode = int32(420)
-
-	dashboardPrometheusRulesName = "lokistack-dashboard-rules"
 
 	// ServingCertKey is the annotation key for services used the
 	// cert-signing service to create a new key/cert pair signed

@@ -21,7 +21,7 @@ var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 	UpdateFunc:  func(e event.UpdateEvent) bool { return false },
 	CreateFunc:  func(e event.CreateEvent) bool { return true },
 	DeleteFunc:  func(e event.DeleteEvent) bool { return true },
-	GenericFunc: func(e event.GenericEvent) bool { return true },
+	GenericFunc: func(e event.GenericEvent) bool { return false },
 })
 
 // DashboardsReconciler deploys and removes the cluster-global resources needed
@@ -38,25 +38,23 @@ type DashboardsReconciler struct {
 func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var stacks lokiv1.LokiStackList
 	if err := r.List(ctx, &stacks, client.MatchingLabelsSelector{Selector: labels.Everything()}); err != nil {
-		return ctrl.Result{}, kverrors.Wrap(err, "failed to list any lokistack instances", "req")
+		return ctrl.Result{}, kverrors.Wrap(err, "failed to list any lokistack instances")
 	}
 
-	if len(stacks.Items) > 0 {
-		// Creates all LokiStack dashboard resources on OpenShift clusters when
-		// the first LokiStack custom resource is created.
-		if err := handlers.CreateDashboards(ctx, r.Log, r.OperatorNs, r.Client, r.Scheme); err != nil {
-			return ctrl.Result{}, kverrors.Wrap(err, "failed to create dashboard resources", "req", req)
+	if len(stacks.Items) == 0 {
+		// Removes all LokiStack dashboard resources on OpenShift clusters when
+		// the last LokiStack custom resource is deleted.
+		if err := handlers.DeleteDashboards(ctx, r.Client, r.OperatorNs); err != nil {
+			return ctrl.Result{}, kverrors.Wrap(err, "failed to delete dashboard resources")
 		}
-
 		return ctrl.Result{}, nil
 	}
 
-	// Removes all LokiStack dashboard resources on OpenShift clusters when
-	// the last LokiStack custom resource is deleted.
-	if err := handlers.DeleteDashboards(ctx, r.Client, r.OperatorNs); err != nil {
-		return ctrl.Result{}, kverrors.Wrap(err, "failed to delete dashboard resources")
+	// Creates all LokiStack dashboard resources on OpenShift clusters when
+	// the first LokiStack custom resource is created.
+	if err := handlers.CreateDashboards(ctx, r.Log, r.OperatorNs, r.Client, r.Scheme); err != nil {
+		return ctrl.Result{}, kverrors.Wrap(err, "failed to create dashboard resources", "req", req)
 	}
-
 	return ctrl.Result{}, nil
 }
 

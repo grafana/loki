@@ -1,7 +1,6 @@
 package openshift
 
 import (
-	"encoding/json"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -20,7 +19,7 @@ const (
 )
 
 func BuildDashboards(operatorNs string) ([]client.Object, error) {
-	ds, rules := dashboards.ReadFiles()
+	ds, rules := dashboards.Content()
 
 	var objs []client.Object
 	for name, content := range ds {
@@ -57,14 +56,7 @@ func newDashboardConfigMap(filename string, content []byte) *corev1.ConfigMap {
 	}
 }
 
-func newDashboardPrometheusRule(namespace string, content []byte) (*monitoringv1.PrometheusRule, error) {
-	spec := &monitoringv1.PrometheusRuleSpec{}
-
-	err := json.Unmarshal(content, spec)
-	if err != nil {
-		return nil, err
-	}
-
+func newDashboardPrometheusRule(namespace string, spec *monitoringv1.PrometheusRuleSpec) (*monitoringv1.PrometheusRule, error) {
 	return &monitoringv1.PrometheusRule{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PrometheusRule",

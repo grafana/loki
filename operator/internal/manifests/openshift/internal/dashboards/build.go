@@ -2,8 +2,10 @@ package dashboards
 
 import (
 	"embed"
+	"encoding/json"
 	"io/fs"
-	"path"
+
+	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
 )
 
 const (
@@ -15,7 +17,7 @@ var (
 	//go:embed static/*.json
 	lokiStackDashboards embed.FS
 	dashboardMap        map[string][]byte
-	dashboardRules      []byte
+	dashboardRules      *monitoringv1.PrometheusRuleSpec
 )
 
 func init() {
@@ -32,27 +34,27 @@ func init() {
 
 	dashboardMap = map[string][]byte{}
 	for _, file := range jsonFiles {
-		if file == lokiStackDashboardRulesFile {
-			continue
-		}
-
 		var content []byte
 		content, err = fs.ReadFile(subDir, file)
 		if err != nil {
 			panic(err)
 		}
 
-		dashboardMap[file] = content
-	}
+		switch file {
+		case lokiStackDashboardRulesFile:
+			err := json.Unmarshal(content, &dashboardRules)
+			if err != nil {
+				panic(err)
+			}
 
-	dashboardRules, err = lokiStackDashboards.ReadFile(path.Join(staticDir, lokiStackDashboardRulesFile))
-	if err != nil {
-		panic(err)
+		default:
+			dashboardMap[file] = content
+		}
 	}
 }
 
-// ReadFiles returns the byte slices one for each LokiStack dashboard
+// Content returns the byte slices one for each LokiStack dashboard
 // and a separate byte slice for the recording rules from the embedded filesystem.
-func ReadFiles() (map[string][]byte, []byte) {
+func Content() (map[string][]byte, *monitoringv1.PrometheusRuleSpec) {
 	return dashboardMap, dashboardRules
 }

@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func TestCreateLokiStackDashboards_SetsNamespaceOnManagedObjectsOnly(t *testing.T) {
+func TestCreateDashboards_ReturnsResourcesInManagedNamespaces(t *testing.T) {
 	sw := &k8sfakes.FakeStatusWriter{}
 	k := &k8sfakes.FakeClient{}
 	r := ctrl.Request{
@@ -47,11 +47,7 @@ func TestCreateLokiStackDashboards_SetsNamespaceOnManagedObjectsOnly(t *testing.
 	}
 
 	k.CreateStub = func(_ context.Context, o client.Object, _ ...client.CreateOption) error {
-		if isManagedResource(o, r.Namespace) {
-			assert.Equal(t, r.Namespace, o.GetNamespace())
-		} else {
-			assert.NotEqual(t, r.Namespace, o.GetNamespace())
-		}
+		assert.NotEqual(t, r.Namespace, o.GetNamespace())
 		return nil
 	}
 

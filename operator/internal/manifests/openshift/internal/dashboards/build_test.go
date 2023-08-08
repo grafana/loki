@@ -13,8 +13,8 @@ const (
 	lokiStackRetentionDashboardFile = "grafana-dashboard-lokistack-retention.json"
 )
 
-func TestReadFiles(t *testing.T) {
-	m, r := ReadFiles()
+func TestContent(t *testing.T) {
+	m, r := Content()
 	require.Len(t, m, 4)
 	require.Equal(t, dashboardMap, m)
 	require.Equal(t, dashboardRules, r)

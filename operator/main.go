@@ -9,6 +9,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
 
+	"github.com/grafana/loki/operator/internal/cluster"
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/grafana/loki/operator/internal/validation/openshift"
@@ -114,17 +115,18 @@ func main() {
 	}
 
 	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
-		var b []byte
-		b, err = os.ReadFile(inClusterNamespaceFile)
+		var ns string
+		ns, err = cluster.GetNamespace()
 		if err != nil {
 			logger.Error(err, "unable to read in cluster namespace", "file", inClusterNamespaceFile)
+			os.Exit(1)
 		}
 
 		if err = (&lokictrl.DashboardsReconciler{
 			Client:     mgr.GetClient(),
 			Scheme:     mgr.GetScheme(),
 			Log:        logger.WithName("controllers").WithName("lokistack-dashboards"),
-			OperatorNs: string(b),
+			OperatorNs: ns,
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
 			os.Exit(1)
