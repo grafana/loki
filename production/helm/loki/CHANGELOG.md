@@ -13,6 +13,10 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.23.0
+
+- [ENHANCEMENT] Add loki.storage.azure.connectionString to support Azure connection string
+
 ## 5.22.2
 
 - [BUGFIX] Fix sidecar configuration for Backend
@@ -25,11 +29,9 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [CHANGE] Changed version of Loki to 2.9.1
 
-
 ## 5.21.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.1
-
 
 ## 5.20.0
 
@@ -38,7 +40,7 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.19.0
 
 - [FEATURE] Add optional sidecard to load rules from ConfigMaps and Secrets.
-  
+
 ## 5.18.1
 
 - [ENHANCEMENT] #8627 Add service labels and annotations for all services.
@@ -47,7 +49,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.18.0
 
 - [CHANGE] Changed version of Loki to 2.9.0
-
 
 ## 5.17.0
 
