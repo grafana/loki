@@ -108,6 +108,9 @@ type instance struct {
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
+
+	// NOTE(kavi): Hack
+	schemaconfig *config.SchemaConfig
 }
 
 func newInstance(
@@ -127,6 +130,8 @@ func newInstance(
 	if err != nil {
 		return nil, err
 	}
+
+	c := config.SchemaConfig{Configs: periodConfigs}
 	i := &instance{
 		cfg:        cfg,
 		streams:    newStreamsMap(),
@@ -150,6 +155,7 @@ func newInstance(
 		streamRateCalculator: streamRateCalculator,
 
 		writeFailures: writeFailures,
+		schemaconfig:  &c,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
 	return i, err

@@ -179,7 +179,12 @@ func (t *tableCompactor) CompactTable() error {
 			continue
 		}
 
-		builder, err := setupBuilder(t.ctx, userID, srcIdxSet, []Index{})
+		indexType, err := t.periodConfig.TSDBVersion()
+		if err != nil {
+			return err
+		}
+
+		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{})
 		if err != nil {
 			return err
 		}
