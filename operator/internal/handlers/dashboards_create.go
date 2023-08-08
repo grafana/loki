@@ -19,7 +19,7 @@ import (
 func CreateDashboards(ctx context.Context, log logr.Logger, operatorNs string, k k8s.Client, s *runtime.Scheme) error {
 	objs, err := openshift.BuildDashboards(operatorNs)
 	if err != nil {
-		return kverrors.Wrap(err, "failed to build dashboards manifests")
+		return kverrors.Wrap(err, "failed to build dashboard manifests")
 	}
 
 	var errCount int32

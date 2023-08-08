@@ -24,8 +24,8 @@ var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 	GenericFunc: func(e event.GenericEvent) bool { return true },
 })
 
-// DashboardsReconciler cleans up all remaining
-// dashboards when all LokiStack objects are removed.
+// DashboardsReconciler deploys and removes the cluster-global resources needed
+// for the metrics dashboards depending on whether any LokiStacks exist.
 type DashboardsReconciler struct {
 	client.Client
 	Scheme     *runtime.Scheme

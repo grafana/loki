@@ -339,7 +339,6 @@ check-operatorhub-pr-template:
 	curl https://raw.githubusercontent.com/operator-framework/community-operators/master/docs/pull_request_template.md -o hack/.operatorhub-pr-template.md -s > /dev/null 2>&1
 	git diff -s --exit-code hack/.operatorhub-pr-template.md || (echo "Build failed: the PR template for OperatorHub has changed. Sync it and try again." && exit 1)
 
-
 JSONNET_SRC = $(shell find . -type f -not -path './jsonnet/vendor/*' \( -name '*.libsonnet' -o -name '*.jsonnet' \))
 JSONNET_VENDOR_DIR = jsonnet/vendor
 
