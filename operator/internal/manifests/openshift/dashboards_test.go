@@ -8,14 +8,7 @@ import (
 )
 
 func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
-	opts := Options{
-		BuildOpts: BuildOptions{
-			LokiStackName:      "test",
-			LokiStackNamespace: "test-ns",
-		},
-	}
-
-	objs, err := BuildDashboards(opts)
+	objs, err := BuildDashboards("test")
 	require.NoError(t, err)
 
 	for _, d := range objs {
@@ -28,17 +21,10 @@ func TestBuildDashboards_ReturnsDashboardConfigMaps(t *testing.T) {
 }
 
 func TestBuildDashboards_ReturnsPrometheusRules(t *testing.T) {
-	opts := Options{
-		BuildOpts: BuildOptions{
-			LokiStackName:      "test",
-			LokiStackNamespace: "test-ns",
-		},
-	}
-
-	objs, err := BuildDashboards(opts)
+	objs, err := BuildDashboards("test")
 	require.NoError(t, err)
 
 	rules := objs[len(objs)-1]
-	require.Equal(t, rules.GetName(), dashboardPrometheusRulesName(opts))
-	require.Equal(t, rules.GetNamespace(), opts.BuildOpts.LokiStackNamespace)
+	require.Equal(t, rules.GetName(), dashboardPrometheusRulesName)
+	require.Equal(t, rules.GetNamespace(), "test")
 }

@@ -57,7 +57,7 @@ func TestCreateLokiStackDashboards_SetsNamespaceOnManagedObjectsOnly(t *testing.
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := CreateDashboards(context.TODO(), logger, r, k, scheme)
+	err := CreateDashboards(context.TODO(), logger, "test", k, scheme)
 	require.NoError(t, err)
 
 	// make sure create was called

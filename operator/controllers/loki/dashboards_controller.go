@@ -28,8 +28,9 @@ var createOrDeletesPred = builder.WithPredicates(predicate.Funcs{
 // dashboards when all LokiStack objects are removed.
 type DashboardsReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
-	Log    logr.Logger
+	Scheme     *runtime.Scheme
+	Log        logr.Logger
+	OperatorNs string
 }
 
 // Reconcile creates all LokiStack dashboard ConfigMap and PrometheusRule objects on OpenShift clusters when
@@ -43,7 +44,7 @@ func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if len(stacks.Items) > 0 {
 		// Creates all LokiStack dashboard resources on OpenShift clusters when
 		// the first LokiStack custom resource is created.
-		if err := handlers.CreateDashboards(ctx, r.Log, req, r.Client, r.Scheme); err != nil {
+		if err := handlers.CreateDashboards(ctx, r.Log, r.OperatorNs, r.Client, r.Scheme); err != nil {
 			return ctrl.Result{}, kverrors.Wrap(err, "failed to create dashboard resources", "req", req)
 		}
 
@@ -52,7 +53,7 @@ func (r *DashboardsReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// Removes all LokiStack dashboard resources on OpenShift clusters when
 	// the last LokiStack custom resource is deleted.
-	if err := handlers.DeleteDashboards(ctx, r.Client, req); err != nil {
+	if err := handlers.DeleteDashboards(ctx, r.Client, r.OperatorNs); err != nil {
 		return ctrl.Result{}, kverrors.Wrap(err, "failed to delete dashboard resources")
 	}
 

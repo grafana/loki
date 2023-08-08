@@ -35,6 +35,8 @@ import (
 	// +kubebuilder:scaffold:imports
 )
 
+const inClusterNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+
 var scheme = runtime.NewScheme()
 
 func init() {
@@ -112,10 +114,17 @@ func main() {
 	}
 
 	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
+		var b []byte
+		b, err = os.ReadFile(inClusterNamespaceFile)
+		if err != nil {
+			logger.Error(err, "unable to read in cluster namespace", "file", inClusterNamespaceFile)
+		}
+
 		if err = (&lokictrl.DashboardsReconciler{
-			Client: mgr.GetClient(),
-			Scheme: mgr.GetScheme(),
-			Log:    logger.WithName("controllers").WithName("lokistack-dashboards"),
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Log:        logger.WithName("controllers").WithName("lokistack-dashboards"),
+			OperatorNs: string(b),
 		}).SetupWithManager(mgr); err != nil {
 			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
 			os.Exit(1)

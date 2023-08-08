@@ -27,6 +27,8 @@ var (
 
 	defaultConfigMapMode = int32(420)
 
+	dashboardPrometheusRulesName = "lokistack-dashboard-rules"
+
 	// ServingCertKey is the annotation key for services used the
 	// cert-signing service to create a new key/cert pair signed
 	// by the service CA stored in a secret with the same name
@@ -74,10 +76,6 @@ func rulerServiceAccountName(opts Options) string {
 
 func serviceCABundleName(opts Options) string {
 	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.GatewayName)
-}
-
-func dashboardPrometheusRulesName(opts Options) string {
-	return fmt.Sprintf("%s-dashboard-rules", opts.BuildOpts.LokiStackName)
 }
 
 func alertmanagerCABundleName(opts Options) string {
