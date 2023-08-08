@@ -695,14 +695,12 @@ func (c *MemChunk) SerializeForCheckpointTo(chk, head io.Writer) error {
 	// * When a write request is received with some new non-indexed labels, we update symbolizer first and then append log entry to head.
 	// * Labels stored in symbolizer are serialized with MemChunk.
 	// This means if we serialize the MemChunk before the head, we might miss writing some newly added non-indexed labels which are referenced by head.
-	if !c.head.IsEmpty() {
-		err := c.head.CheckpointTo(head)
-		if err != nil {
-			return err
-		}
+	err := c.head.CheckpointTo(head)
+	if err != nil {
+		return err
 	}
 
-	_, err := c.writeTo(chk, true)
+	_, err = c.writeTo(chk, true)
 	return err
 }
 
