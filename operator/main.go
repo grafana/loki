@@ -9,7 +9,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
 
-	"github.com/grafana/loki/operator/internal/cluster"
+	"github.com/grafana/loki/operator/internal/operator"
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/grafana/loki/operator/internal/validation/openshift"
@@ -35,8 +35,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	// +kubebuilder:scaffold:imports
 )
-
-const inClusterNamespaceFile = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
 
 var scheme = runtime.NewScheme()
 
@@ -116,9 +114,9 @@ func main() {
 
 	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
 		var ns string
-		ns, err = cluster.GetNamespace()
+		ns, err = operator.GetNamespace()
 		if err != nil {
-			logger.Error(err, "unable to read in cluster namespace", "file", inClusterNamespaceFile)
+			logger.Error(err, "unable to read in operator namespace")
 			os.Exit(1)
 		}
 
