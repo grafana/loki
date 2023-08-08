@@ -29,6 +29,10 @@ pipeline_stages:
     older_than: 24h
     longer_than: 8kb
 - drop:
+    source: ["level","msg"]
+    separator: "#"
+    expression:  "(error|ERROR)#.*\/loki\/api\/push.*"
+- drop:
     expression: ".*app1.*"
 - drop:
     sources:
