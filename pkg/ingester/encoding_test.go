@@ -82,9 +82,17 @@ func Test_EncodingChunks(t *testing.T) {
 					for _, c := range there {
 						chunks = append(chunks, c.Chunk)
 
-						// Ensure closed head chunks are empty
+						// Ensure closed head chunks only contain the head metadata but no entries
 						if close {
-							require.Equal(t, 0, len(c.Head))
+							if f < chunkenc.UnorderedHeadBlockFmt {
+								// format + #entries + size + mint + maxt
+								const orderedHeadSize = 5
+								require.Equal(t, orderedHeadSize, len(c.Head))
+							} else {
+								// format + #lines
+								const unorderedHeadSize = 2
+								require.Equal(t, unorderedHeadSize, len(c.Head))
+							}
 						} else {
 							require.Greater(t, len(c.Head), 0)
 						}
