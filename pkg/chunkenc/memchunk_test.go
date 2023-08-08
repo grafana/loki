@@ -1110,6 +1110,28 @@ func TestCheckpointEncoding(t *testing.T) {
 			// cut it
 			require.Nil(t, c.cut())
 
+			// ensure we have cut a block and head block is empty
+			require.Equal(t, 1, len(c.blocks))
+			require.True(t, c.head.IsEmpty())
+
+			// check entries with empty head
+			var chk, head bytes.Buffer
+			var err error
+			var cpy *MemChunk
+			err = c.SerializeForCheckpointTo(&chk, &head)
+			require.Nil(t, err)
+
+			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
+			require.Nil(t, err)
+
+			if f.chunkFormat <= chunkFormatV2 {
+				for i := range c.blocks {
+					c.blocks[i].uncompressedSize = 0
+				}
+			}
+
+			require.Equal(t, c, cpy)
+
 			// add a few more to head
 			for i := 5; i < 10; i++ {
 				entry := &logproto.Entry{
@@ -1123,11 +1145,12 @@ func TestCheckpointEncoding(t *testing.T) {
 			// ensure new blocks are not cut
 			require.Equal(t, 1, len(c.blocks))
 
-			var chk, head bytes.Buffer
-			err := c.SerializeForCheckpointTo(&chk, &head)
+			chk.Reset()
+			head.Reset()
+			err = c.SerializeForCheckpointTo(&chk, &head)
 			require.Nil(t, err)
 
-			cpy, err := MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
+			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
 
 			if f.chunkFormat <= chunkFormatV2 {
