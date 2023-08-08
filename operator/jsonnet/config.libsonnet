@@ -76,7 +76,28 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         if item.name != 'cluster'
       ],
 
+    local dropRules = function(rules, dropList)
+      [
+        r
+        for r in rules
+        if !std.member(dropList, r.record)
+      ],
+
     prometheusRules+: {
+      local dropList = [
+        'cluster_job:loki_request_duration_seconds:99quantile',
+        'cluster_job:loki_request_duration_seconds:50quantile',
+        'cluster_job:loki_request_duration_seconds:avg',
+        'cluster_job:loki_request_duration_seconds_bucket:sum_rate',
+        'cluster_job:loki_request_duration_seconds_sum:sum_rate',
+        'cluster_job:loki_request_duration_seconds_count:sum_rate',
+        'cluster_job_route:loki_request_duration_seconds:99quantile',
+        'cluster_job_route:loki_request_duration_seconds:50quantile',
+        'cluster_job_route:loki_request_duration_seconds:avg',
+        'cluster_namespace_job_route:loki_request_duration_seconds:99quantile',
+        'cluster_namespace_job_route:loki_request_duration_seconds:50quantile',
+        'cluster_namespace_job_route:loki_request_duration_seconds:avg',
+      ],
       groups: [
         g {
           rules: [
@@ -84,7 +105,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
               expr: std.strReplace(r.expr, 'cluster, ', ''),
               record: std.strReplace(r.record, 'cluster_', ''),
             }
-            for r in g.rules
+            for r in dropRules(g.rules, dropList)
           ],
         }
         for g in super.groups
