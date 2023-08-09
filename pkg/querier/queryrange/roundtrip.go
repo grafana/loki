@@ -811,12 +811,13 @@ func NewSingleFlightTripperware(
 				truncateToSecond(request.GetEnd()),
 			)
 
-			response, err := handler.Do(r.Context(), request)
+			ctx := context.WithValue(r.Context(), "headers", r.Header)
+			response, err := handler.Do(ctx, request)
 			if err != nil {
 				return nil, err
 			}
 
-			return codec.EncodeResponse(r.Context(), r, response)
+			return codec.EncodeResponse(ctx, r, response)
 		})
 	}, nil
 }

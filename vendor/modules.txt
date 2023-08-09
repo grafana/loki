@@ -1396,7 +1396,18 @@ github.com/ugorji/go/codec
 # github.com/weaveworks/common v0.0.0-20230511094633-334485600903
 ## explicit; go 1.14
 github.com/weaveworks/common/aws
+github.com/weaveworks/common/errors
+github.com/weaveworks/common/grpc
+github.com/weaveworks/common/httpgrpc
+github.com/weaveworks/common/httpgrpc/server
+github.com/weaveworks/common/instrument
+github.com/weaveworks/common/logging
+github.com/weaveworks/common/middleware
+github.com/weaveworks/common/server
+github.com/weaveworks/common/signals
 github.com/weaveworks/common/test
+github.com/weaveworks/common/tracing
+github.com/weaveworks/common/user
 # github.com/weaveworks/promrus v1.2.0
 ## explicit
 github.com/weaveworks/promrus

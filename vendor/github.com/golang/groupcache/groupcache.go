@@ -31,7 +31,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"log"
 
 	pb "github.com/golang/groupcache/groupcachepb"
 	"github.com/golang/groupcache/lru"
@@ -273,7 +272,6 @@ func (g *Group) load(ctx context.Context, key string, dest Sink) (value ByteView
 				return value, nil
 			}
 			g.Stats.PeerErrors.Add(1)
-			log.Println(err)
 			// TODO(bradfitz): log the peer's error? keep
 			// log of the past few for /groupcachez?  It's
 			// probably boring (normal task movement), so not

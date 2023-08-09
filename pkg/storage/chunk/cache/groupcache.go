@@ -4,9 +4,15 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/grafana/dskit/middleware"
+
+	"github.com/grafana/dskit/tenant"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
@@ -14,13 +20,18 @@ import (
 	"github.com/golang/groupcache"
 	"github.com/grafana/groupcache_exporter"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/server"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/ring"
 
+	"github.com/grafana/dskit/server"
 	lokiutil "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
+)
+
+const (
+	orgHeaderKey = "X-Scope-OrgID"
 )
 
 type GroupCache struct {
@@ -59,17 +70,19 @@ type ringManager interface {
 	Ring() ring.ReadRing
 }
 
-func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
+func NewGroupCache(rm ringManager, server *server.Server, HTTPAuthMiddleware middleware.Interface, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
 	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
 
 	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{})
-	server.HTTP.PathPrefix("/_groupcache/").Handler(pool)
+	pool.Transport = orgIDTransport
+
+	server.HTTP.PathPrefix("/_groupcache/").Handler(HTTPAuthMiddleware.Wrap(pool))
 
 	startCtx, cancel := context.WithCancel(context.Background())
 	cache := &GroupCache{
-		peerRing:             rm.Ring(),
 		pool:                 pool,
+		peerRing:             rm.Ring(),
 		logger:               logger,
 		stopChan:             make(chan struct{}),
 		updateInterval:       1 * time.Minute,
@@ -89,6 +102,50 @@ func NewGroupCache(rm ringManager, server *server.Server, logger log.Logger, reg
 	}()
 
 	return cache, nil
+}
+
+func orgIDTransport(ctx context.Context) http.RoundTripper {
+	return &orgIDRoundTripper{
+		ctx: ctx,
+	}
+}
+
+type orgIDRoundTripper struct {
+	ctx context.Context
+}
+
+func (r orgIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	orgID, err := tenant.TenantID(r.ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	headers, ok := r.ctx.Value("headers").(http.Header)
+	if !ok {
+		err = fmt.Errorf("expected http.Header got %T", r.ctx.Value("headers"))
+		level.Error(util_log.Logger).Log("msg", "error propagating headers", "err", err)
+		return nil, err
+	}
+
+	for k, h := range headers {
+		for _, v := range h {
+			req.Header.Set(k, v)
+		}
+	}
+
+	req.Header.Set(orgHeaderKey, orgID)
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "peer load failed", "err", err)
+		return nil, err
+	}
+
+	if resp.StatusCode/100 != 2 {
+		body, _ := io.ReadAll(resp.Body) // no consequence if this fails
+		level.Error(util_log.Logger).Log("msg", "unexpected peer load response", "resp_code", resp.StatusCode, "body", string(body))
+	}
+
+	return resp, err
 }
 
 func (c *GroupCache) updatePeers() {

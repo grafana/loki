@@ -5,9 +5,6 @@ import (
 	"encoding/base64"
 	"net/http"
 
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
-
 	"github.com/go-kit/log/level"
 
 	"github.com/go-kit/log"
@@ -35,9 +32,9 @@ func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next
 			return nil, nil
 		}
 
-		level.Info(log).Log("msg", "request", "key", r.RequestURI)
 		key := base64.StdEncoding.EncodeToString([]byte(r.RequestURI))
 
+		level.Info(log).Log("msg", "request", "key", key)
 		if err := singleFlight.Fetch(ctx, key, groupcache.ProtoSink(resp)); err != nil {
 			return nil, err
 		}
@@ -47,8 +44,12 @@ func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next
 }
 
 func makeRequest(next http.RoundTripper, codec queryrangebase.Codec, log log.Logger) groupcache.GetterFunc {
-	return func(ctx context.Context, key string, dest groupcache.Sink) error {
-		level.Info(log).Log("msg", "singleflight request", "key", key)
+	return func(ctx context.Context, encKey string, dest groupcache.Sink) error {
+		level.Info(log).Log("msg", "singleflight request", "key", encKey)
+		key, err := decodeKey(encKey)
+		if err != nil {
+			return err
+		}
 
 		r, err := http.NewRequestWithContext(ctx, http.MethodGet, key, nil)
 		if err != nil {
@@ -56,15 +57,12 @@ func makeRequest(next http.RoundTripper, codec queryrangebase.Codec, log log.Log
 		}
 		r.RequestURI = key // If this isn't copied, logs response decoding breaks
 
-		if err := user.InjectOrgIDIntoHTTPRequest(ctx, r); err != nil {
-			return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
 		resp, err := next.RoundTrip(r)
 		if err != nil {
 			return err
 		}
 
+		// Decode the request so it can be used to convert the response
 		request, err := codec.DecodeRequest(ctx, r, nil)
 		if err != nil {
 			return err
@@ -77,6 +75,14 @@ func makeRequest(next http.RoundTripper, codec queryrangebase.Codec, log log.Log
 
 		return dest.SetProto(lokiResp)
 	}
+}
+
+func decodeKey(s string) (string, error) {
+	k, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		return "", err
+	}
+	return string(k), nil
 }
 
 func makeResponse(req queryrangebase.Request) (queryrangebase.Response, error) {

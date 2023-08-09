@@ -347,7 +347,6 @@ type Loki struct {
 	Server                    *server.Server
 	InternalServer            *server.Server
 	ring                      *ring.Ring
-	groupcache                *cache.GroupCache
 	Overrides                 limiter.CombinedLimits
 	tenantConfigs             *runtime.TenantConfigs
 	TenantLimits              validation.TenantLimits
