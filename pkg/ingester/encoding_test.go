@@ -56,7 +56,7 @@ func Test_EncodingChunks(t *testing.T) {
 
 			t.Run(fmt.Sprintf("%v-%s", close, tc.desc), func(t *testing.T) {
 				conf := tc.conf
-				c := chunkenc.NewMemChunk(chunkenc.EncGZIP, f, conf.BlockSize, conf.TargetChunkSize)
+				c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.DefaultHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
 				fillChunk(t, c)
 				if close {
 					require.Nil(t, c.Close())
