@@ -109,8 +109,9 @@ just like any other metric.
 
 ### Limiting Alerts and Recording Rule Samples
 
-Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), A limit for alerts produced by alerting rules and samples produced by recording rules can be configured per-group in Loki also. This limit can be used to prevent a large number of alerts or recording samples from being generated due to a faulty rule. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it's an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared as well. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. Default value for limit is **0** i.e. no limit.
+Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
 
+Here is an example of a rule group along with its limit configured.
 #### Example
 
 
