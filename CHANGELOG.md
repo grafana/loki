@@ -2,6 +2,10 @@
 
 ### All Changes
 
+##### Security
+
+* [10188](https://github.com/grafana/loki/pull/10188) **shantanualsi**: Bump alpine version from 3.16.5 -> 3.16.7
+
 #### Loki
 
 ##### Enhancements
