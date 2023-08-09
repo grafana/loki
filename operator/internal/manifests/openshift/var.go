@@ -9,6 +9,8 @@ const (
 	annotationGatewayRouteTimeout = "haproxy.router.openshift.io/timeout"
 
 	gatewayRouteTimeoutExtension = 15 * time.Second
+
+	dashboardPrometheusRulesName = "lokistack-dashboard-rules"
 )
 
 var (

@@ -366,7 +366,7 @@ func CreateOrUpdateLokiStack(
 			"object_kind", obj.GetObjectKind(),
 		)
 
-		if isNamespaceScoped(obj) {
+		if isNamespacedResource(obj) {
 			obj.SetNamespace(req.Namespace)
 
 			if err := ctrl.SetControllerReference(&stack, obj, s); err != nil {
@@ -432,7 +432,8 @@ func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) 
 	}, nil
 }
 
-func isNamespaceScoped(obj client.Object) bool {
+// isNamespacedResource determines if an object should be managed or not by a LokiStack
+func isNamespacedResource(obj client.Object) bool {
 	switch obj.(type) {
 	case *rbacv1.ClusterRole, *rbacv1.ClusterRoleBinding:
 		return false

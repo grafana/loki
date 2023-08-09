@@ -9,6 +9,7 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
 
+	"github.com/grafana/loki/operator/internal/operator"
 	"github.com/grafana/loki/operator/internal/validation"
 
 	"github.com/grafana/loki/operator/internal/validation/openshift"
@@ -110,6 +111,26 @@ func main() {
 		logger.Error(err, "unable to create controller", "controller", "lokistack")
 		os.Exit(1)
 	}
+
+	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
+		var ns string
+		ns, err = operator.GetNamespace()
+		if err != nil {
+			logger.Error(err, "unable to read in operator namespace")
+			os.Exit(1)
+		}
+
+		if err = (&lokictrl.DashboardsReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Log:        logger.WithName("controllers").WithName("lokistack-dashboards"),
+			OperatorNs: ns,
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
+			os.Exit(1)
+		}
+	}
+
 	if ctrlCfg.Gates.LokiStackWebhook {
 		v := &validation.LokiStackValidator{}
 		if err = v.SetupWebhookWithManager(mgr); err != nil {
