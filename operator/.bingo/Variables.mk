@@ -53,6 +53,24 @@ $(HUGO): $(BINGO_DIR)/hugo.mod
 	@echo "(re)installing $(GOBIN)/hugo-v0.80.0"
 	@cd $(BINGO_DIR) && GOWORK=off CGO_ENABLED=1 $(GO) build -tags=extended -mod=mod -modfile=hugo.mod -o=$(GOBIN)/hugo-v0.80.0 "github.com/gohugoio/hugo"
 
+JB := $(GOBIN)/jb-v0.5.1
+$(JB): $(BINGO_DIR)/jb.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/jb-v0.5.1"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=jb.mod -o=$(GOBIN)/jb-v0.5.1 "github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb"
+
+JSONNET := $(GOBIN)/jsonnet-v0.20.0
+$(JSONNET): $(BINGO_DIR)/jsonnet.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/jsonnet-v0.20.0"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=jsonnet.mod -o=$(GOBIN)/jsonnet-v0.20.0 "github.com/google/go-jsonnet/cmd/jsonnet"
+
+JSONNETFMT := $(GOBIN)/jsonnetfmt-v0.20.0
+$(JSONNETFMT): $(BINGO_DIR)/jsonnetfmt.mod
+	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
+	@echo "(re)installing $(GOBIN)/jsonnetfmt-v0.20.0"
+	@cd $(BINGO_DIR) && GOWORK=off $(GO) build -mod=mod -modfile=jsonnetfmt.mod -o=$(GOBIN)/jsonnetfmt-v0.20.0 "github.com/google/go-jsonnet/cmd/jsonnetfmt"
+
 KIND := $(GOBIN)/kind-v0.17.0
 $(KIND): $(BINGO_DIR)/kind.mod
 	@# Install binary/ries using Go 1.14+ build command. This is using bwplotka/bingo-controlled, separate go module with pinned dependencies.
