@@ -942,7 +942,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Headers:  headers,
 		}, nil
 	default:
-		return nil, errors.New("unknown response in merging responses")
+		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
 }
 
