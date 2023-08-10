@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 var _ admission.CustomValidator = &RulerConfigValidator{}

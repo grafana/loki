@@ -4,10 +4,11 @@ import (
 	"context"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/external/k8s"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 // DeleteDashboards removes all cluster-scoped dashboard resources.
