@@ -1,12 +1,12 @@
 ---
-title: Running the Promtail client on AWS EKS
+title: Run the Promtail client on AWS EKS
 menuTitle:  Promtail on EKS
 description: Tutorial for running Promtail client on AWS EKS
 aliases: 
 - ../../clients/aws/eks/
 weight: 100
 ---
-# Running the Promtail client on AWS EKS
+# Run the Promtail client on AWS EKS
 
 In this tutorial we'll see how to set up Promtail on [EKS][eks]. Amazon Elastic Kubernetes Service (Amazon [EKS][eks]) is a fully managed Kubernetes service, using Promtail we'll get full visibility into our cluster logs. We'll start by forwarding pods logs then nodes services and finally Kubernetes events.
 

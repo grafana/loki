@@ -1,12 +1,12 @@
 ---
-title: Running the Promtail client on AWS EC2
+title: Run the Promtail client on AWS EC2
 menuTitle:  Promtail on EC2
 description: Tutorial for running Promtail client on AWS EC2
 aliases: 
 - ../../clients/aws/ec2/
 weight: 100
 ---
-# Running the Promtail client on AWS EC2
+# Run the Promtail client on AWS EC2
 
 In this tutorial we're going to setup [Promtail]({{< relref "../../../clients/promtail" >}}) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
 

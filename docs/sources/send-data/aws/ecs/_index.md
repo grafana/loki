@@ -1,12 +1,12 @@
 ---
-title: Running the Promtail client on AWS ECS
+title: Run the Promtail client on AWS ECS
 menuTitle:  Promtail on ECS
 description: Tutorial for running Promtail client on AWS Elastic Container Service (ECS)
 aliases: 
 - ../../clients/aws/ecs/
 weight: 100
 ---
-# Running the Promtail client on AWS ECS
+# Run the Promtail client on AWS ECS
 
 [ECS][ECS] is the fully managed container orchestration service by Amazon. Combined with [Fargate][Fargate] you can run your container workload without the need to provision your own compute resources. In this tutorial we will see how you can leverage [Firelens][Firelens] an AWS log router to forward all your logs and your workload metadata to a Grafana Loki instance.
 
