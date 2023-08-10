@@ -1223,36 +1223,28 @@ type Grouping struct {
 func (g Grouping) String() string {
 	var sb strings.Builder
 
-	if len(g.Groups) == 0 && !g.Without {
-		return ""
-	}
-
 	if g.Without {
 		sb.WriteString(" without ")
 	} else {
 		sb.WriteString(" by ")
 	}
 
-	if len(g.Groups) > 0 {
-		sb.WriteString("(")
-		sb.WriteString(strings.Join(g.Groups, ","))
-		sb.WriteString(")")
-	}
-	if len(g.Groups) == 0 {
-		sb.WriteString("()")
-	}
+	sb.WriteString("(")
+	sb.WriteString(strings.Join(g.Groups, ","))
+	sb.WriteString(")")
 
 	return sb.String()
-}
-
-// whether grouping is approximately the zero value
-func (g Grouping) IsZero() bool {
-	return len(g.Groups) == 0 && !g.Without
 }
 
 // whether grouping doesn't change the result
 func (g Grouping) Noop() bool {
 	return len(g.Groups) == 0 && g.Without
+}
+
+// whether grouping reduces the result to a single value
+// with no labels
+func (g Grouping) Singleton() bool {
+	return len(g.Groups) == 0 && !g.Without
 }
 
 // VectorAggregationExpr all vector aggregation expressions support grouping by/without label(s),
@@ -1354,7 +1346,7 @@ func (e *VectorAggregationExpr) String() string {
 			params = []string{e.Left.String()}
 		}
 	}
-	return formatOperation(e.Operation, e.Grouping, params...)
+	return formatVectorOperation(e.Operation, e.Grouping, params...)
 }
 
 // impl SampleExpr
@@ -1864,7 +1856,7 @@ func (e *LiteralExpr) Value() (float64, error) {
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer
-func formatOperation(op string, grouping *Grouping, params ...string) string {
+func formatVectorOperation(op string, grouping *Grouping, params ...string) string {
 	nonEmptyParams := make([]string, 0, len(params))
 	for _, p := range params {
 		if p != "" {
@@ -1874,7 +1866,7 @@ func formatOperation(op string, grouping *Grouping, params ...string) string {
 
 	var sb strings.Builder
 	sb.WriteString(op)
-	if grouping != nil {
+	if grouping != nil && !grouping.Singleton() {
 		sb.WriteString(grouping.String())
 	}
 	sb.WriteString("(")

@@ -354,7 +354,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		// so we explicitly set the wrapping vector aggregation to this
 		// for parity when it's not explicitly set
 		grouping := expr.Grouping
-		if grouping == nil || grouping.IsZero() {
+		if grouping == nil {
 			grouping = &syntax.Grouping{Without: true}
 		}
 

@@ -320,6 +320,14 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
+			in: `max_over_time({foo="ugh"} | unwrap baz [1m]) by ()`,
+			out: `max(
+				downstream<max_over_time({foo="ugh"}|unwrapbaz[1m])by(),shard=0_of_2>
+				++
+				downstream<max_over_time({foo="ugh"}|unwrapbaz[1m])by(),shard=1_of_2>
+			)`,
+		},
+		{
 			in:  `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
 			out: `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
 		},
