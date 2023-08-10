@@ -304,9 +304,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>backend.serviceLabels</td>
+			<td>backend.service.annotations</td>
 			<td>object</td>
-			<td>Labels for ingester service</td>
+			<td>Annotations for backend Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2130,6 +2139,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.serviceAnnotations</td>
+			<td>object</td>
+			<td>Common annotations for all services</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.serviceLabels</td>
+			<td>object</td>
+			<td>Common labels for all services</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.storage</td>
 			<td>object</td>
 			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
@@ -2493,6 +2520,24 @@ null
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for loki-canary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for loki-canary Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3304,9 +3349,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>read.serviceLabels</td>
+			<td>read.service.annotations</td>
 			<td>object</td>
-			<td>Labels for read service</td>
+			<td>Annotations for read Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for read Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3664,6 +3718,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for single binary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for single binary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
@@ -3880,9 +3952,18 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>tableManager.serviceLabels</td>
+			<td>tableManager.service.annotations</td>
 			<td>object</td>
-			<td>Labels for table-manager service</td>
+			<td>Annotations for table-manager Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for table-manager Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4359,9 +4440,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>write.serviceLabels</td>
+			<td>write.service.annotations</td>
 			<td>object</td>
-			<td>Labels for ingester service</td>
+			<td>Annotations for write Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
 </pre>
