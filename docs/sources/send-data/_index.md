@@ -8,7 +8,7 @@ weight: 600
 
 You can use the following clients to send logs to Grafana Loki:
 
-- [Grafana Agent]({{< relref "/docs/agent" >}}) 
+- [Grafana Agent](/docs/agent/latest/) 
 - [Promtail]({{< relref "../clients/promtail" >}})
 -- [Promtail on AWS EC2]({{< relref "./aws/ec2" >}})
 -- [Promtail on AWS ECS]({{< relref "./aws/ecs" >}})
@@ -31,7 +31,7 @@ client is initially picked to send logs depends on your use case.
 ### Promtail
 
 Promtail is the client of choice when you're running Kubernetes, as you can
-configure it to automatically scrape logs from pods running on the same node
+configure it to automatically scrape logs from Pods running on the same node
 that Promtail runs on. Promtail and Prometheus running together in Kubernetes
 enables powerful debugging: if Prometheus and Promtail use the same labels,
 users can use tools like Grafana to switch between metrics and logs based on the
@@ -39,7 +39,7 @@ label set.
 
 Promtail is also the client of choice on bare-metal since it can be configured
 to tail logs from all files given a host path. It is the easiest way to send
-logs to Loki from plain-text files (e.g., things that log to `/var/log/*.log`).
+logs to Loki from plain-text files (for example, things that log to `/var/log/*.log`).
 
 Lastly, Promtail works well if you want to extract metrics from logs such as
 counting the occurrences of a particular message.
