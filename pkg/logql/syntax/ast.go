@@ -670,22 +670,8 @@ func newLabelFmtExpr(fmts []log.LabelFmt) *LabelFmtExpr {
 }
 
 func (e *LabelFmtExpr) Shardable() bool {
-	// Technically, any parser that mutates labels could cause the query
-	// to be non-shardable _if_ the total (inherent+extracted) labels
-	// exist on two different shards, but this is incredibly unlikely
-	// for parsers which add new labels so I (owen-d) am preferring
-	// to continue sharding in those cases and only prevent sharding
-	// when using `drop` or `keep` which reduce labels to a smaller subset
-	// more likely to collide across shards.
-
-	// TODO(owen-d): renaming is shardable in many cases, but will
-	// likely require a `sum without ()` wrapper to combine the
-	// same extracted labelsets executed on different shards
-	for _, f := range e.Formats {
-		if f.Rename {
-			return false
-		}
-	}
+	// While LabelFmt is shardable in certain cases, it is not always,
+	// but this is left to the shardmapper to determine
 	return true
 }
 
@@ -1259,6 +1245,16 @@ func (g Grouping) String() string {
 	return sb.String()
 }
 
+// whether grouping is approximately the zero value
+func (g Grouping) IsZero() bool {
+	return len(g.Groups) == 0 && !g.Without
+}
+
+// whether grouping doesn't change the result
+func (g Grouping) Noop() bool {
+	return len(g.Groups) == 0 && g.Without
+}
+
 // VectorAggregationExpr all vector aggregation expressions support grouping by/without label(s),
 // therefore the Grouping struct can never be nil.
 type VectorAggregationExpr struct {
@@ -1376,26 +1372,8 @@ func (e *VectorAggregationExpr) Shardable() bool {
 		// avg is similar since it's remapped to sum/count.
 		// TODO(owen-d): this is hard to figure out; we should refactor to
 		// make these relationships clearer, safer, and more extensible.
-		shardable := true
+		shardable := !ReducesLabels(e.Left)
 
-		e.Left.Walk(func(e interface{}) {
-			switch e.(type) {
-			// LabelParserExpr is normally shardable, but not in this case.
-			// TODO(owen-d): I think LabelParserExpr is shardable
-			// for avg, but not for count. Let's refactor to make this
-			// cleaner. For now I'm disallowing sharding on both.
-
-			// Technically, any parser that mutates labels could cause the query
-			// to be non-shardable _if_ the total (inherent+extracted) labels
-			// exist on two different shards, but this is incredibly unlikely
-			// for parsers which add new labels so I (owen-d) am preferring
-			// to continue sharding in those cases and only prevent sharding
-			// when using `drop` or `keep` which reduce labels to a smaller subset
-			// more likely to collide across shards.
-			case *KeepLabelsExpr, *DropLabelsExpr:
-				shardable = false
-			}
-		})
 		return shardable
 
 	case OpTypeMax, OpTypeMin:
@@ -2094,3 +2072,30 @@ func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNo
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
 func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
 func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
+
+func ReducesLabels(e Expr) (conflict bool) {
+	e.Walk(func(e interface{}) {
+		switch expr := e.(type) {
+		// Technically, any parser that mutates labels could cause the query
+		// to be non-shardable _if_ the total (inherent+extracted) labels
+		// exist on two different shards, but this is incredibly unlikely
+		// for parsers which add new labels so I (owen-d) am preferring
+		// to continue sharding in those cases and only prevent sharding
+		// when using `drop` or `keep` which reduce labels to a smaller subset
+		// more likely to collide across shards.
+		case *KeepLabelsExpr, *DropLabelsExpr:
+			conflict = true
+		case *LabelFmtExpr:
+			// TODO(owen-d): renaming is shardable in many cases, but will
+			// likely require a `sum without ()` wrapper to combine the
+			// same extracted labelsets executed on different shards
+			for _, f := range expr.Formats {
+				if f.Rename {
+					conflict = true
+					break
+				}
+			}
+		}
+	})
+	return
+}
