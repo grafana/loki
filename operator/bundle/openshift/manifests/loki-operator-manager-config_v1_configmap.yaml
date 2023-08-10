@@ -59,6 +59,7 @@ data:
         ruleExtendedValidation: true
         clusterTLSPolicy: true
         clusterProxy: true
+        dashboards: true
 kind: ConfigMap
 metadata:
   labels:

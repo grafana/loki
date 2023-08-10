@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -405,29 +406,29 @@ func TestGetRules(t *testing.T) {
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 	}
@@ -1749,6 +1750,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -1831,4 +1833,141 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, firedAtTime, currentTime)
 
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+}
+
+func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
+
+	currentTime := time.Now().UTC()
+	seriesStartTime := currentTime.Add(time.Minute * -10)
+	sampleTimeDiff := 5 * time.Minute
+
+	testCases := []struct {
+		name               string
+		rule               *rulespb.RuleDesc
+		limit              int64
+		expectedRuleHealth promRules.RuleHealth
+		expectedError      error
+	}{
+		{
+			name:               "AlertingRule alerts within limit",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              2,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "AlertingRule alerts with limit 0",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              0,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "AlertingRule alerts exceeding limit",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              1,
+			expectedRuleHealth: promRules.HealthBad,
+			expectedError:      errors.New("exceeded limit of 1 with 2 alerts"),
+		},
+		{
+			name:               "RecordingRule series within limit",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              2,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "RecordingRule series with limit 0",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              0,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "RecordingRule series exceeding limit",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              1,
+			expectedRuleHealth: promRules.HealthBad,
+			expectedError:      errors.New("exceeded limit of 1 with 2 series"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(tt *testing.T) {
+
+			mockRuleGroupList := map[string]rulespb.RuleGroupList{
+				"user1": {
+					&rulespb.RuleGroupDesc{
+						Name:      "group1",
+						Namespace: "namespace1",
+						User:      "user1",
+						Interval:  interval,
+						Limit:     tc.limit,
+						Rules:     []*rulespb.RuleDesc{tc.rule},
+					},
+				},
+			}
+
+			rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRuleGroupList))
+			m := loki_storage.NewClientMetrics()
+			defer m.Unregister()
+
+			r := buildRuler(tt, rulerCfg, &fakeQuerier{
+				fn: func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+					return series.NewConcreteSeriesSet([]storage.Series{
+						series.NewConcreteSeries(
+							labels.Labels{
+								{Name: labels.MetricName, Value: "http_requests"},
+								{Name: labels.InstanceName, Value: "server1"},
+							},
+							[]model.SamplePair{
+								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
+								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
+							},
+						),
+						series.NewConcreteSeries(
+							labels.Labels{
+								{Name: labels.MetricName, Value: "http_requests"},
+								{Name: labels.InstanceName, Value: "server2"},
+							},
+							[]model.SamplePair{
+								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
+								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
+							},
+						),
+					})
+				},
+			}, m, nil)
+
+			r.syncRules(context.Background(), rulerSyncReasonInitial)
+
+			// assert initial state of rule group
+			ruleGroup := r.manager.GetRules("user1")[0]
+			require.Equal(tt, time.Time{}, ruleGroup.GetLastEvaluation())
+			require.Equal(tt, "group1", ruleGroup.Name())
+			require.Equal(tt, 1, len(ruleGroup.Rules()))
+
+			// assert initial state of rule within rule group
+			rule := ruleGroup.Rules()[0]
+			require.Equal(tt, time.Time{}, rule.GetEvaluationTimestamp())
+			require.Equal(tt, promRules.HealthUnknown, rule.Health())
+
+			// evaluate the rule group the first time and assert
+			ctx := user.InjectOrgID(context.Background(), "user1")
+			ruleGroup.Eval(ctx, currentTime)
+
+			require.Equal(tt, tc.expectedRuleHealth, rule.Health())
+			require.Equal(tt, tc.expectedError, rule.LastError())
+		})
+
+	}
+}
+
+func getMockRule(alert, expr, record string, forDuration time.Duration) *rulespb.RuleDesc {
+	return &rulespb.RuleDesc{
+		Alert:  alert,
+		Expr:   expr,
+		For:    forDuration,
+		Record: record,
+	}
 }
