@@ -285,7 +285,14 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	fp := i.getHashForLabels(labels)
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+
+	// NOTE(kavi): Hack
+	chunkFormat, err := i.LiveChunkFormat()
+	if err != nil {
+		return nil, err
+	}
+
+	s := newStream(chunkFormat, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -317,7 +324,8 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	ck, _ := i.LiveChunkFormat()
+	s := newStream(ck, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -325,6 +333,22 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 	i.addTailersToNewStream(s)
 
 	return s
+}
+
+func (i *instance) LiveChunkFormat() (byte, error) {
+	// NOTE(kavi): Hack
+	periodConfig, err := i.schemaconfig.SchemaForTime(model.Now())
+	if err != nil {
+		return 0, err
+	}
+
+	chunkFormat, err := periodConfig.ChunkVersion()
+	if err != nil {
+		return 0, err
+	}
+
+	return chunkFormat, nil
+
 }
 
 // getOrCreateStream returns the stream or creates it.
