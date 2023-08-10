@@ -29,8 +29,7 @@ jobs:
     - name: Check generated docs
       working-directory: ./operator
       run: |
-        make docs/operator/api.md
-        make docs/operator/feature-gates.md
+        make docs/operator/api.md docs/operator/feature-gates.md
         git diff --exit-code
 
   lint:
