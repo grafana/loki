@@ -401,6 +401,17 @@ bool
 More details: <a href="https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy">https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy</a></p>
 </td>
 </tr>
+<tr>
+<td>
+<code>dashboards</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
+</td>
+</tr>
 </tbody>
 </table>
 
