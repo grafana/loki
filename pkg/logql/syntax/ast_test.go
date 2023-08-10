@@ -705,13 +705,13 @@ func TestGroupingString(t *testing.T) {
 		Groups:  []string{},
 		Without: false,
 	}
-	require.Equal(t, "", g.String())
+	require.Equal(t, " by ()", g.String())
 
 	g = Grouping{
 		Groups:  nil,
 		Without: false,
 	}
-	require.Equal(t, "", g.String())
+	require.Equal(t, " by ()", g.String())
 
 	g = Grouping{
 		Groups:  []string{"a", "b"},
