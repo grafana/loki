@@ -892,6 +892,12 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			v.responses = append(v.responses, r.(*LokiSeriesResponseView))
 		}
 		return v, nil
+	case *MergedSeriesResponseView:
+		v := &MergedSeriesResponseView{}
+		for _, r := range responses {
+			v.responses = append(v.responses, r.(*MergedSeriesResponseView).responses...)
+		}
+		return v, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
 		uniqueNames := make(map[string]struct{})
