@@ -5,7 +5,7 @@ description: Learn how the rule evaluates queries for alerting.
 aliases:
   - ./rules/
   - ./alerting/
-weight: 850
+weight: 800
 keywords:
   - loki
   - alert
