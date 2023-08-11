@@ -4,6 +4,10 @@
 
 ## 2.8.0 (2023-03-??)
 
+* [10188](https://github.com/grafana/loki/pull/10188) **shantanualsi**: Bump alpine version from 3.16.5 -> 3.16.7
+
+## 2.8.3 (2023-07-21)
+
 #### Loki
 
 ##### Enhancements
