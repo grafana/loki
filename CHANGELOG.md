@@ -46,6 +46,14 @@
 
 #### Jsonnet
 
+## 2.8.3
+
+#### Loki
+
+##### Security
+
+* [10217](https://github.com/grafana/loki/pull/10217) *ashwanthgoli*: Fix CVE-2023-1255, CVE-2023-2650, CVE-2023-2975, CVE-2023-3446, CVE-2023-3817, and bump alpine image 3.18.2
+
 ## 2.8.2
 
 #### Loki
