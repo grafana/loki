@@ -36,6 +36,13 @@
 
 ### Dependencies
 
+## 2.7.7 (yyyy-mm-dd)
+
+##### Fixes
+
+* [10228](https://github.com/grafana/loki/pull/10228) *ashwanthgoli*: Fix CVE-2023-1255, CVE-2023-2650, CVE-2023-2975, CVE-2023-3446, CVE-2023-3817
+* [10232](https://github.com/grafana/loki/pull/10232) *trevorwhitney*: Fix CVE-2022-41721
+
 ## 2.7.6 (yyyy-mm-dd)
 
 ##### Enhancements
