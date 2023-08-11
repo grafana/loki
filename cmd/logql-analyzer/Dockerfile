@@ -4,7 +4,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && CGO_ENABLED=0 go build ./cmd/logql-analyzer/
 
-FROM alpine:3.16.4
+FROM alpine:3.16.7
 
 RUN apk add --no-cache ca-certificates
 

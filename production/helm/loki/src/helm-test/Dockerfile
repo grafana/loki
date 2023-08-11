@@ -7,7 +7,7 @@ COPY . /src/loki
 WORKDIR /src/loki
 RUN make clean && make BUILD_IN_CONTAINER=false helm-test
 
-FROM alpine:3.16.4
-RUN apk add --update --no-cache ca-certificates=20220614-r0
+FROM alpine:3.16.7
+RUN apk add --update --no-cache ca-certificates=20230506-r0
 COPY --from=build /src/loki/production/helm/loki/src/helm-test/helm-test /usr/bin/helm-test
 ENTRYPOINT [ "/usr/bin/helm-test" ]
