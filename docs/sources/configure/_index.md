@@ -265,6 +265,12 @@ Configures the `server` of the launched module(s).
 [tls_min_version: <string> | default = ""]
 
 http_tls_config:
+  [cert: <string> | default = ""]
+
+  [key: <string> | default = ""]
+
+  [client_ca: <string> | default = ""]
+
   # HTTP server cert path.
   # CLI flag: -server.http-tls-cert-path
   [cert_file: <string> | default = ""]
@@ -282,6 +288,12 @@ http_tls_config:
   [client_ca_file: <string> | default = ""]
 
 grpc_tls_config:
+  [cert: <string> | default = ""]
+
+  [key: <string> | default = ""]
+
+  [client_ca: <string> | default = ""]
+
   # GRPC TLS server cert path.
   # CLI flag: -server.grpc-tls-cert-path
   [cert_file: <string> | default = ""]
