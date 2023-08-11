@@ -820,7 +820,22 @@ OIDCSpec
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>OIDC defines the spec for the OIDC tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>mTLS</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-MTLSSpec">
+MTLSSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLSConfig defines the spec for the mTLS tenant&rsquo;s authentication.</p>
 </td>
 </tr>
 </tbody>
@@ -882,6 +897,49 @@ OPASpec
 <td>
 <em>(Optional)</em>
 <p>RoleBindings defines configuration to bind a set of roles to a set of subjects.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## CASpec { #loki-grafana-com-v1-CASpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-MTLSSpec">MTLSSpec</a>, <a href="#loki-grafana-com-v1-OIDCSpec">OIDCSpec</a>, <a href="#loki-grafana-com-v1-ObjectStorageTLSSpec">ObjectStorageTLSSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>caKey</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Key is the data key of a ConfigMap containing a CA certificate.
+It needs to be in the same namespace as the LokiStack custom resource.
+If empty, it defaults to &ldquo;service-ca.crt&rdquo;.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>caName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CA is the name of a ConfigMap containing a CA certificate.
+It needs to be in the same namespace as the LokiStack custom resource.</p>
 </td>
 </tr>
 </tbody>
@@ -1548,6 +1606,9 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
+</tr><tr><td><p>&#34;InvalidGatewayTenantConfigMap&#34;</p></td>
+<td><p>ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.</p>
 </td>
@@ -1570,8 +1631,15 @@ with the select cluster size.</p>
 </tr><tr><td><p>&#34;InvalidTenantsConfiguration&#34;</p></td>
 <td><p>ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;MissingGatewayTenantAuthenticationConfig&#34;</p></td>
+<td><p>ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config</p>
+</td>
 </tr><tr><td><p>&#34;MissingGatewayOpenShiftBaseDomain&#34;</p></td>
 <td><p>ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.</p>
+</td>
+</tr><tr><td><p>&#34;MissingGatewayTenantConfigMap&#34;</p></td>
+<td><p>ReasonMissingGatewayTenantConfigMap when the required tenant configmap
+for authentication is missing.</p>
 </td>
 </tr><tr><td><p>&#34;MissingGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonMissingGatewayTenantSecret when the required tenant secret
@@ -1588,6 +1656,9 @@ storage is missing.</p>
 </tr><tr><td><p>&#34;MissingRulerSecret&#34;</p></td>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>
+</td>
+</tr><tr><td><p>&#34;ReasonNoZoneAwareNodes&#34;</p></td>
+<td><p>ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
 </td>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
@@ -2083,6 +2154,37 @@ LokiComponentSpec
 </tbody>
 </table>
 
+## MTLSSpec { #loki-grafana-com-v1-MTLSSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthenticationSpec">AuthenticationSpec</a>)
+</p>
+<div>
+<p>MTLSSpec specifies mTLS configuration parameters.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CASpec">
+CASpec
+</a>
+</em>
+</td>
+<td>
+<p>CA defines the spec for the custom CA for tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## ManagementStateType { #loki-grafana-com-v1-ManagementStateType }
 (<code>string</code> alias)
 <p>
@@ -2200,7 +2302,21 @@ TenantSecretSpec
 </em>
 </td>
 <td>
-<p>Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant&rsquo;s authentication.</p>
+<p>Secret defines the spec for the clientID and clientSecret for tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>issuerCA</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CASpec">
+CASpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IssuerCA defines the spec for the issuer CA for tenant&rsquo;s authentication.</p>
 </td>
 </tr>
 <tr>
@@ -2534,6 +2650,41 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tbody>
 </table>
 
+## OpenshiftTenantSpec { #loki-grafana-com-v1-OpenshiftTenantSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>OpenshiftTenantSpec defines the configuration specific to Openshift modes.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>adminGroups</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+Setting this to an empty array disables admin groups.</p>
+<p>By default the following groups are considered admin-groups:
+- system:cluster-admins
+- cluster-admin
+- dedicated-admin</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## PermissionType { #loki-grafana-com-v1-PermissionType }
 (<code>string</code> alias)
 <p>
@@ -2816,6 +2967,18 @@ string
 <p>The LogQL expression to evaluate. Every evaluation cycle this is
 evaluated at the current time, and all resultant time series become
 pending/firing alerts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>labels</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Labels to add to each recording rule.</p>
 </td>
 </tr>
 </tbody>
@@ -4017,6 +4180,20 @@ AuthorizationSpec
 <td>
 <em>(Optional)</em>
 <p>Authorization defines the lokistack-gateway component authorization configuration spec per tenant.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>openshift</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OpenshiftTenantSpec">
+OpenshiftTenantSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Openshift defines the configuration specific to Openshift modes.</p>
 </td>
 </tr>
 </tbody>
