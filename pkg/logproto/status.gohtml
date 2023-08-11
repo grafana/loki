@@ -1,0 +1,28 @@
+{{- /*gotype: github.com/grafana/mimir/pkg/mimir.statusPageContents */ -}}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Services' status</title>
+</head>
+<body>
+<h1>Services' status</h1>
+<p>Current time: {{ .Now }}</p>
+<table border="1">
+    <thead>
+    <tr>
+        <th>Service</th>
+        <th>Status</th>
+    </tr>
+    </thead>
+    <tbody>
+    {{ range .Services }}
+        <tr>
+            <td>{{ .Name }}</td>
+            <td>{{ .Status }}</td>
+        </tr>
+    {{ end }}
+    </tbody>
+</table>
+</body>
+</html>
