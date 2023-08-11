@@ -1,8 +1,10 @@
 ---
 title: Docker driver client
 menuTItle:  Docker driver
-description: Instructions to install, upgrade, and remove the Docker driver client. 
-weight: 40
+description: Instructions to install, upgrade, and remove the Docker driver client to send logs to Loki.
+aliases: 
+- ../clients/docker-driver/
+weight:  400
 ---
 # Docker driver client
 
@@ -71,4 +73,4 @@ The driver keeps all logs in memory and will drop log entries if Loki is not rea
 
 The wait time can be lowered by setting `loki-retries=2`, `loki-max-backoff_800ms`, `loki-timeout=1s` and `keep-file=true`. This way the daemon will be locked only for a short time and the logs will be persisted locally when the Loki client is unable to re-connect.
 
-To avoid this issue, use the Promtail [Docker target]({{< relref "../promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../promtail/configuration#docker_sd_config" >}}).
+To avoid this issue, use the Promtail [Docker target]({{< relref "../../clients/promtail/configuration#docker" >}}) or [Docker service discovery]({{< relref "../../clients/promtail/configuration#docker_sd_config" >}}).

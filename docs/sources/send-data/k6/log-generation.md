@@ -1,9 +1,14 @@
 ---
-title: Log generation
-description: Log generation with K6
-weight: 10
+title: Generating log data for testing
+menuTitle: Log generation
+description: Using K6 to generate log data for load testing.
+aliases: 
+- ../../clients/k6/log-generation/
+weight: 910
 ---
-# Log generation
+# Generating log data for testing
+
+You can use k6 to generate log data for load testing.
 
 ## Using `pushParameterized`
 

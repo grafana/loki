@@ -1,10 +1,13 @@
 ---
-title: k6 load testing
-description: k6 Loki extension load testing 
-weight: 90
+title: Using k6 for load testing
+menuTitle:  k6 load testing 
+description: Using the k6 Loki extension for load testing.
+aliases: 
+- ../clients/k6/
+weight:  900
 ---
 
-# k6 load testing
+# Using k6 for load testing
 
 Grafana [k6](https://k6.io) is a modern load-testing tool.
 Its clean and approachable scripting [API](https://k6.io/docs/javascript-api/)

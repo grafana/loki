@@ -1,9 +1,12 @@
 ---
-title: Logstash
-description: Logstash
-weight: 70
+title: Logstash plugin
+menuTitle:   
+description: Instructions to install, configure, and use the Logstash plugin to send logs to Loki.
+aliases: 
+- ../clients/logstash/
+weight:  800
 ---
-# Logstash
+# Logstash plugin
 
 Grafana Loki has a [Logstash](https://www.elastic.co/logstash) output plugin called
 `logstash-output-loki` that enables shipping logs to a Loki
@@ -13,7 +16,7 @@ instance or [Grafana Cloud](/products/cloud/).
 
 ### Local
 
-If you need to install the Loki output plugin manually you can do simply so by using the command below:
+If you need to install the Logstash output plugin manually you can do simply so by using the command below:
 
 ```bash
 $ bin/logstash-plugin install logstash-output-loki

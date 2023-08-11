@@ -1,22 +1,16 @@
 ---
-title: ECS
-description: ending Logs From AWS Elastic Container Service (ECS)
+title: Run the Promtail client on AWS ECS
+menuTitle:  Promtail on ECS
+description: Tutorial for running Promtail client on AWS Elastic Container Service (ECS)
+aliases: 
+- ../../clients/aws/ecs/
+weight: 100
 ---
-# ECS
+# Run the Promtail client on AWS ECS
 
 [ECS][ECS] is the fully managed container orchestration service by Amazon. Combined with [Fargate][Fargate] you can run your container workload without the need to provision your own compute resources. In this tutorial we will see how you can leverage [Firelens][Firelens] an AWS log router to forward all your logs and your workload metadata to a Grafana Loki instance.
 
 After this tutorial you will able to query all your logs in one place using Grafana.
-
-<!-- TOC -->
-
-- [ECS](#ecs)
-  - [Requirements](#requirements)
-  - [Setting up the ECS cluster](#setting-up-the-ecs-cluster)
-  - [Creating your task definition](#creating-your-task-definition)
-  - [Running your service](#running-your-service)
-
-<!-- /TOC -->
 
 ## Requirements
 
@@ -223,7 +217,7 @@ That's it ! Make sure to checkout LogQL to learn more about Loki powerful query 
 [ECS]: https://aws.amazon.com/ecs/
 [Fargate]: https://aws.amazon.com/fargate/
 [Firelens]: https://docs.aws.amazon.com/AmazonECS/latest/developerguide/using_firelens.html
-[GrafanaCloud]: https://grafana.com/signup/
+[GrafanaCloud]: https://grafana.com/auth/sign-up/create-user
 [security group]: https://docs.aws.amazon.com/vpc/latest/userguide/VPC_SecurityGroups.html
 [aws cli]: https://aws.amazon.com/cli/
 [managing sg]: https://docs.aws.amazon.com/cli/latest/userguide/cli-services-ec2-sg.html
