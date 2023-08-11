@@ -14,8 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
 
 	"github.com/NYTimes/gziphandler"
 	"github.com/go-kit/log"
@@ -82,7 +81,7 @@ const maxChunkAgeForTableManager = 12 * time.Hour
 // The various modules that make up Loki.
 const (
 	Ring                     string = "ring"
-	GroupCache               string = "groupcache"
+	SingleFlight             string = "singleflight"
 	RuntimeConfig            string = "runtime-config"
 	Overrides                string = "overrides"
 	OverridesExporter        string = "overrides-exporter"
@@ -211,11 +210,6 @@ func (t *Loki) initInternalServer() (services.Service, error) {
 	return s, nil
 }
 
-func http2CleartextHandler(h http.Handler) http.Handler {
-	h2s := &http2.Server{}
-	return h2c.NewHandler(h, h2s)
-}
-
 func (t *Loki) initRing() (_ services.Service, err error) {
 	t.ring, err = ring.New(t.Cfg.Ingester.LifecyclerConfig.RingConfig, "ingester", ingester.RingKey, util_log.Logger, prometheus.WrapRegistererWithPrefix("cortex_", prometheus.DefaultRegisterer))
 	if err != nil {
@@ -229,27 +223,29 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 	return t.ring, nil
 }
 
-func (t *Loki) initGroupcache() (_ services.Service, err error) {
-	if !t.Cfg.Common.GroupCacheConfig.Enabled {
+func (t *Loki) initSingleFlight() (_ services.Service, err error) {
+	if !t.Cfg.Common.SingleFlightConfig.Enabled {
 		return nil, nil
 	}
 
-	t.Cfg.Common.GroupCacheConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
-	rm, err := cache.NewgGroupcacheRingManager(t.Cfg.Common.GroupCacheConfig, util_log.Logger, prometheus.DefaultRegisterer)
+	t.Cfg.Common.SingleFlightConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	rm, err := singleflight.NewRingManager(t.Cfg.Common.SingleFlightConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
 	}
 
-	t.groupcacheRingManager = rm
-	t.Server.HTTP.Path("/groupcache/ring").Methods("GET", "POST").Handler(t.groupcacheRingManager)
+	t.singleflightRingManager = rm
+	t.Server.HTTP.Path("/singleflight/ring").Methods("GET", "POST").Handler(t.singleflightRingManager)
 
-	gc, err := cache.NewGroupCache(rm, t.Server, t.HTTPAuthMiddleware, util_log.Logger, prometheus.DefaultRegisterer)
+	sf, err := singleflight.NewSingleFlight(rm, t.Server, t.HTTPAuthMiddleware, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
 
-	t.Cfg.QueryRange.ResultsCacheConfig.CacheConfig.GroupCache = gc
-	return t.groupcacheRingManager, nil
+	t.Cfg.QueryRange.SingleFlight = sf
+	t.singleflightRingManager.SingleFlight = sf
+
+	return t.singleflightRingManager, nil
 }
 
 func (t *Loki) initRuntimeConfig() (services.Service, error) {
@@ -1113,7 +1109,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.QueryScheduler.SchedulerRing.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 	t.Cfg.Ruler.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
-	t.Cfg.Common.GroupCacheConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
+	t.Cfg.Common.SingleFlightConfig.Ring.KVStore.MemberlistKV = t.MemberlistKV.GetMemberlistKV
 
 	t.Server.HTTP.Handle("/memberlist", t.MemberlistKV)
 

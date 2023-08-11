@@ -1,4 +1,4 @@
-package cache
+package singleflight
 
 import (
 	"context"
@@ -10,9 +10,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/grafana/dskit/middleware"
-
 	"github.com/grafana/dskit/tenant"
+	util_log "github.com/grafana/loki/pkg/util/log"
+
+	"github.com/grafana/dskit/middleware"
 
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/weaveworks/common/instrument"
@@ -27,14 +28,15 @@ import (
 
 	"github.com/grafana/dskit/server"
 	lokiutil "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 const (
 	orgHeaderKey = "X-Scope-OrgID"
 )
 
-type GroupCache struct {
+// SingleFlight is a thin wrapper around GroupCache. It's caches have a size of
+// 0 so it doesn't interfere with any other caching in Loki
+type SingleFlight struct {
 	peerRing             ring.ReadRing
 	cache                *groupcache.Group
 	pool                 *groupcache.HTTPPool
@@ -44,6 +46,7 @@ type GroupCache struct {
 	wg                   sync.WaitGroup
 	reg                  prometheus.Registerer
 	startWaitingForClose context.CancelFunc
+	groups               []*Group
 }
 
 // RingCfg is a wrapper for the Groupcache ring configuration plus the replication factor.
@@ -51,18 +54,16 @@ type RingCfg struct {
 	lokiutil.RingConfig `yaml:",inline"`
 }
 
-type GroupCacheConfig struct {
+type Config struct {
 	Enabled bool    `yaml:"enabled,omitempty"`
 	Ring    RingCfg `yaml:"ring,omitempty"`
-
-	Cache Cache `yaml:"-"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-func (cfg *GroupCacheConfig) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
+func (cfg *Config) RegisterFlagsWithPrefix(prefix, _ string, f *flag.FlagSet) {
 	cfg.Ring.RegisterFlagsWithPrefix(prefix, "", f)
 
-	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not groupcache is enabled")
+	f.BoolVar(&cfg.Enabled, prefix+".enabled", false, "Whether or not singleflight requests are")
 }
 
 type ringManager interface {
@@ -70,17 +71,19 @@ type ringManager interface {
 	Ring() ring.ReadRing
 }
 
-func NewGroupCache(rm ringManager, server *server.Server, HTTPAuthMiddleware middleware.Interface, logger log.Logger, reg prometheus.Registerer) (*GroupCache, error) {
+func NewSingleFlight(rm ringManager, server *server.Server, HTTPAuthMiddleware middleware.Interface, logger log.Logger, reg prometheus.Registerer) (*SingleFlight, error) {
 	addr := fmt.Sprintf("http://%s", rm.Addr())
-	level.Info(logger).Log("msg", "groupcache local address set to", "addr", addr)
+	level.Info(logger).Log("msg", "singleflight local address set to", "addr", addr)
 
-	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{})
+	pool := groupcache.NewHTTPPoolOpts(addr, &groupcache.HTTPPoolOptions{
+		BasePath: "_singleflight",
+	})
 	pool.Transport = orgIDTransport
 
-	server.HTTP.PathPrefix("/_groupcache/").Handler(HTTPAuthMiddleware.Wrap(pool))
+	server.HTTP.PathPrefix("/_singleflight/").Handler(HTTPAuthMiddleware.Wrap(pool))
 
 	startCtx, cancel := context.WithCancel(context.Background())
-	cache := &GroupCache{
+	sf := &SingleFlight{
 		pool:                 pool,
 		peerRing:             rm.Ring(),
 		logger:               logger,
@@ -95,13 +98,103 @@ func NewGroupCache(rm ringManager, server *server.Server, HTTPAuthMiddleware mid
 		// Avoid starting the cache and peer discovery until
 		// a cache is being used
 		<-startCtx.Done()
-		go cache.updatePeers()
+		go sf.updatePeers()
 
-		cache.wg.Wait()
-		close(cache.stopChan)
+		sf.wg.Wait()
+		close(sf.stopChan)
 	}()
 
-	return cache, nil
+	return sf, nil
+}
+
+func (s *SingleFlight) Stop() error {
+	for i := 0; i < len(s.groups); i++ {
+		s.groups[i].Stop()
+	}
+
+	return nil
+}
+
+func (c *SingleFlight) updatePeers() {
+	c.update()
+
+	t := time.NewTicker(c.updateInterval)
+	for {
+		select {
+		case <-t.C:
+			c.update()
+		case <-c.stopChan:
+			return
+		}
+	}
+}
+
+func (c *SingleFlight) update() {
+	urls, err := c.peerUrls()
+	if err != nil {
+		level.Warn(c.logger).Log("msg", "unable to get singleflight peer urls", "err", err)
+		return
+	}
+
+	level.Info(c.logger).Log("msg", "got singleflight peers", "peers", strings.Join(urls, ","))
+	c.pool.Set(urls...)
+}
+
+func (c *SingleFlight) peerUrls() ([]string, error) {
+	replicationSet, err := c.peerRing.GetAllHealthy(ring.WriteNoExtend)
+	if err != nil {
+		return nil, err
+	}
+
+	var addrs []string
+	for _, i := range replicationSet.Instances {
+		addrs = append(addrs, fmt.Sprintf("http://%s", i.Addr))
+	}
+	return addrs, nil
+}
+
+type Group struct {
+	cache         *groupcache.Group
+	logger        log.Logger
+	wg            *sync.WaitGroup
+	fetchDuration prometheus.Observer
+	storeDuration prometheus.Observer
+}
+
+func (c *SingleFlight) NewGroup(name string, getter groupcache.GetterFunc) *Group {
+	c.wg.Add(1)
+	c.startWaitingForClose()
+
+	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
+		Namespace:   "loki",
+		Name:        "singleflight_request_duration_seconds",
+		Help:        "Total time spent in seconds doing singleflight requests.",
+		Buckets:     instrument.DefBuckets,
+		ConstLabels: prometheus.Labels{"name": name},
+	}, []string{"operation"})
+
+	g := &Group{
+		cache:         groupcache.NewGroup(name, 0, getter), // 0 Cache size means this is just a singleflight
+		logger:        c.logger,
+		wg:            &c.wg,
+		fetchDuration: requestDuration.WithLabelValues("fetch"),
+	}
+
+	exp := groupcache_exporter.NewExporter(map[string]string{"name": name}, g)
+	prometheus.WrapRegistererWithPrefix("loki_singleflight_", c.reg).MustRegister(exp)
+
+	return g
+}
+
+func (c *Group) Fetch(ctx context.Context, key string, dest groupcache.Sink) error {
+	start := time.Now()
+	defer c.fetchDuration.Observe(time.Since(start).Seconds())
+
+	return c.cache.Get(ctx, key, dest)
+}
+
+func (c *Group) Stop() {
+	c.wg.Done()
 }
 
 func orgIDTransport(ctx context.Context) http.RoundTripper {
@@ -146,94 +239,4 @@ func (r orgIDRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) 
 	}
 
 	return resp, err
-}
-
-func (c *GroupCache) updatePeers() {
-	c.update()
-
-	t := time.NewTicker(c.updateInterval)
-	for {
-		select {
-		case <-t.C:
-			c.update()
-		case <-c.stopChan:
-			return
-		}
-	}
-}
-
-func (c *GroupCache) update() {
-	urls, err := c.peerUrls()
-	if err != nil {
-		level.Warn(c.logger).Log("msg", "unable to get groupcache peer urls", "err", err)
-		return
-	}
-
-	level.Info(c.logger).Log("msg", "got groupcache peers", "peers", strings.Join(urls, ","))
-	c.pool.Set(urls...)
-}
-
-func (c *GroupCache) peerUrls() ([]string, error) {
-	replicationSet, err := c.peerRing.GetAllHealthy(ring.WriteNoExtend)
-	if err != nil {
-		return nil, err
-	}
-
-	var addrs []string
-	for _, i := range replicationSet.Instances {
-		addrs = append(addrs, fmt.Sprintf("http://%s", i.Addr))
-	}
-	return addrs, nil
-}
-
-func (c *GroupCache) Stats() *groupcache.Stats {
-	if c.cache == nil {
-		return nil
-	}
-
-	return &c.cache.Stats
-}
-
-type group struct {
-	cache         *groupcache.Group
-	logger        log.Logger
-	wg            *sync.WaitGroup
-	fetchDuration prometheus.Observer
-	storeDuration prometheus.Observer
-}
-
-func (c *GroupCache) NewGroup(name string, getter groupcache.GetterFunc) SingleFlightCache {
-	c.wg.Add(1)
-	c.startWaitingForClose()
-
-	requestDuration := promauto.With(c.reg).NewHistogramVec(prometheus.HistogramOpts{
-		Namespace:   "loki",
-		Name:        "groupcache_request_duration_seconds",
-		Help:        "Total time spent in seconds doing groupcache requests.",
-		Buckets:     instrument.DefBuckets,
-		ConstLabels: prometheus.Labels{"name": name},
-	}, []string{"operation"})
-
-	g := &group{
-		cache:         groupcache.NewGroup(name, 0, getter), // 0 Cache size means this is just a singleflight
-		logger:        c.logger,
-		wg:            &c.wg,
-		fetchDuration: requestDuration.WithLabelValues("fetch"),
-	}
-
-	exp := groupcache_exporter.NewExporter(map[string]string{"name": name}, g)
-	prometheus.WrapRegistererWithPrefix("loki_groupcache_", c.reg).MustRegister(exp)
-
-	return g
-}
-
-func (c *group) Fetch(ctx context.Context, key string, dest groupcache.Sink) error {
-	start := time.Now()
-	defer c.fetchDuration.Observe(time.Since(start).Seconds())
-
-	return c.cache.Get(ctx, key, dest)
-}
-
-func (c *group) Stop() {
-	c.wg.Done()
 }

@@ -12,7 +12,7 @@ common:
       chunks_directory: /tmp/loki/chunks
       rules_directory: /tmp/loki/rules
   replication_factor: 1
-  groupcache:
+  singleflight:
     enabled: true
   ring:
     kvstore:

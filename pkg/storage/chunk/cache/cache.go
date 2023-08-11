@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/golang/groupcache"
-
 	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
@@ -26,11 +24,6 @@ type Cache interface {
 	GetCacheType() stats.CacheType
 }
 
-type SingleFlightCache interface {
-	Fetch(ctx context.Context, key string, dest groupcache.Sink) error
-	Stop()
-}
-
 // Config for building Caches.
 type Config struct {
 	EnableFifoCache bool `yaml:"enable_fifocache"`
@@ -46,9 +39,6 @@ type Config struct {
 
 	// This is to name the cache metrics properly.
 	Prefix string `yaml:"prefix" doc:"hidden"`
-
-	// GroupCache is configured/initialized as part of modules and injected here
-	GroupCache *GroupCache `yaml:"-"`
 
 	// For tests to inject specific implementations.
 	Cache Cache `yaml:"-"`
@@ -91,10 +81,6 @@ func IsMemcacheSet(cfg Config) bool {
 // Internally, this function is used to set Redis as the cache storage to be used.
 func IsRedisSet(cfg Config) bool {
 	return cfg.Redis.Endpoint != ""
-}
-
-func IsGroupCacheSet(cfg Config) bool {
-	return cfg.GroupCache != nil
 }
 
 func IsEmbeddedCacheSet(cfg Config) bool {

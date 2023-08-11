@@ -5,20 +5,18 @@ import (
 	"encoding/base64"
 	"net/http"
 
-	"github.com/go-kit/log/level"
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
 
 	"github.com/go-kit/log"
 	"github.com/golang/groupcache"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
-// TODO: Cache Gen Key
-func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
+func SingleFlightHandler(name string, gc *singleflight.SingleFlight, log log.Logger, next http.RoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
 	singleFlight := gc.NewGroup(name, makeRequest(next, codec, log))
 
 	return queryrangebase.HandlerFunc(func(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
@@ -33,8 +31,6 @@ func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next
 		}
 
 		key := base64.StdEncoding.EncodeToString([]byte(r.RequestURI))
-
-		level.Info(log).Log("msg", "request", "key", key)
 		if err := singleFlight.Fetch(ctx, key, groupcache.ProtoSink(resp)); err != nil {
 			return nil, err
 		}
@@ -45,7 +41,6 @@ func SingleFlightHandler(name string, gc *cache.GroupCache, log log.Logger, next
 
 func makeRequest(next http.RoundTripper, codec queryrangebase.Codec, log log.Logger) groupcache.GetterFunc {
 	return func(ctx context.Context, encKey string, dest groupcache.Sink) error {
-		level.Info(log).Log("msg", "singleflight request", "key", encKey)
 		key, err := decodeKey(encKey)
 		if err != nil {
 			return err

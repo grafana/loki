@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/singleflight"
+
 	"github.com/grafana/dskit/user"
 
 	"github.com/go-kit/log"
@@ -33,6 +35,9 @@ type Config struct {
 	Transformer            UserIDTransformer     `yaml:"-"`
 	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
 	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
+
+	// SingleFlight is configured/initialized as part of modules and injected here
+	SingleFlight *singleflight.SingleFlight `yaml:"-"`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -182,9 +187,6 @@ func NewTripperware(
 	if err != nil {
 		return nil, nil, err
 	}
-
-	// TODO: add groupcache to the stopper wrapper
-	// TODO: We could also just wrap this whole thing in a singleflight, but the metrics wouldn't be as awesome
 
 	return func(next http.RoundTripper) http.RoundTripper {
 		var (
@@ -789,16 +791,14 @@ func NewSingleFlightTripperware(
 	cfg Config,
 	codec queryrangebase.Codec,
 ) (func(name string, next http.RoundTripper) http.RoundTripper, error) {
-	gc := cfg.ResultsCacheConfig.CacheConfig.GroupCache
-
-	if gc == nil { // Noop
+	if cfg.SingleFlight == nil { // Noop
 		return func(_ string, next http.RoundTripper) http.RoundTripper {
 			return next
 		}, nil
 	}
 
 	return func(name string, next http.RoundTripper) http.RoundTripper {
-		handler := SingleFlightHandler(name, gc, log, next, codec)
+		handler := SingleFlightHandler(name, cfg.SingleFlight, log, next, codec)
 
 		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
 			request, err := codec.DecodeRequest(r.Context(), r, nil)

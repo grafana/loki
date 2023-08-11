@@ -167,7 +167,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		r.Frontend.FrontendV2.Addr = r.Common.InstanceAddr
 		r.IndexGateway.Ring.InstanceAddr = r.Common.InstanceAddr
 		r.MemberlistKV.AdvertiseAddr = r.Common.InstanceAddr
-		r.Common.GroupCacheConfig.Ring.InstanceAddr = r.Common.InstanceAddr
+		r.Common.SingleFlightConfig.Ring.InstanceAddr = r.Common.InstanceAddr
 	}
 
 	if !reflect.DeepEqual(r.Common.InstanceInterfaceNames, defaults.Common.InstanceInterfaceNames) {
@@ -176,7 +176,7 @@ func applyInstanceConfigs(r, defaults *ConfigWrapper) {
 		}
 		r.Frontend.FrontendV2.InfNames = r.Common.InstanceInterfaceNames
 		r.IndexGateway.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
-		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
+		r.Common.SingleFlightConfig.Ring.InstanceInterfaceNames = r.Common.InstanceInterfaceNames
 	}
 }
 
@@ -305,17 +305,17 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
 
-	// GroupCacheRing
-	if mergeWithExisting || reflect.DeepEqual(r.Common.GroupCacheConfig.Ring, defaults.Common.GroupCacheConfig.Ring) {
-		r.Common.GroupCacheConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
-		r.Common.GroupCacheConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
-		r.Common.GroupCacheConfig.Ring.InstancePort = rc.InstancePort
-		r.Common.GroupCacheConfig.Ring.InstanceAddr = rc.InstanceAddr
-		r.Common.GroupCacheConfig.Ring.InstanceID = rc.InstanceID
-		r.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
-		r.Common.GroupCacheConfig.Ring.InstanceZone = rc.InstanceZone
-		r.Common.GroupCacheConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
-		r.Common.GroupCacheConfig.Ring.KVStore = rc.KVStore
+	// SingleFlightRing
+	if mergeWithExisting || reflect.DeepEqual(r.Common.SingleFlightConfig.Ring, defaults.Common.SingleFlightConfig.Ring) {
+		r.Common.SingleFlightConfig.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.Common.SingleFlightConfig.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.Common.SingleFlightConfig.Ring.InstancePort = rc.InstancePort
+		r.Common.SingleFlightConfig.Ring.InstanceAddr = rc.InstanceAddr
+		r.Common.SingleFlightConfig.Ring.InstanceID = rc.InstanceID
+		r.Common.SingleFlightConfig.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.Common.SingleFlightConfig.Ring.InstanceZone = rc.InstanceZone
+		r.Common.SingleFlightConfig.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.Common.SingleFlightConfig.Ring.KVStore = rc.KVStore
 	}
 }
 
@@ -347,11 +347,11 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
 
-	f, err = tokensFile(cfg, "groupcache.tokens")
+	f, err = tokensFile(cfg, "singleflight.tokens")
 	if err != nil {
 		return err
 	}
-	cfg.Common.GroupCacheConfig.Ring.TokensFilePath = f
+	cfg.Common.SingleFlightConfig.Ring.TokensFilePath = f
 	return nil
 }
 
@@ -430,8 +430,8 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 
-	if reflect.DeepEqual(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, defaults.Common.GroupCacheConfig.Ring.InstanceInterfaceNames) {
-		cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames = append(cfg.Common.GroupCacheConfig.Ring.InstanceInterfaceNames, loopbackIface)
+	if reflect.DeepEqual(cfg.Common.SingleFlightConfig.Ring.InstanceInterfaceNames, defaults.Common.SingleFlightConfig.Ring.InstanceInterfaceNames) {
+		cfg.Common.SingleFlightConfig.Ring.InstanceInterfaceNames = append(cfg.Common.SingleFlightConfig.Ring.InstanceInterfaceNames, loopbackIface)
 	}
 }
 
@@ -446,7 +446,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
-	r.Common.GroupCacheConfig.Ring.KVStore.Store = memberlistStr
+	r.Common.SingleFlightConfig.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")
