@@ -4,5 +4,8 @@
 # Documentation.
 /docs/ @grafana/docs-logs @grafana/loki-team
 
+# Loki operator
+/operator/ @grafana/loki-team @periklis @xperimental
+
 # No owners - allows sub-maintainers to merge changes.
 CHANGELOG.md
