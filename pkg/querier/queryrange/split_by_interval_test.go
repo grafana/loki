@@ -11,8 +11,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/loghttp"

@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/mtime"
 
 	"github.com/grafana/loki/pkg/storage/config"
 )

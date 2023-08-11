@@ -53,3 +53,4 @@ featureGates:
     ruleExtendedValidation: true
     clusterTLSPolicy: true
     clusterProxy: true
+    dashboards: true

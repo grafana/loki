@@ -20,9 +20,9 @@ import (
 	"context"
 	"io"
 
+	errs "github.com/grafana/dskit/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	errs "github.com/weaveworks/common/errors"
 
 	"github.com/grafana/loki/pkg/util/filter"
 )

@@ -9,8 +9,8 @@ import (
 	"github.com/docker/go-plugins-helpers/sdk"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
@@ -19,7 +19,7 @@ import (
 
 const socketAddress = "/run/docker/plugins/loki.sock"
 
-var logLevel logging.Level
+var logLevel dslog.Level
 
 func main() {
 	levelVal := os.Getenv("LOG_LEVEL")
@@ -51,7 +51,7 @@ func main() {
 	}
 }
 
-func newLogger(lvl logging.Level) log.Logger {
+func newLogger(lvl dslog.Level) log.Logger {
 	// plugin logs must be stdout to appear.
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
 	logger = level.NewFilter(logger, util.LogFilter(lvl.String()))
