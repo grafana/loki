@@ -481,7 +481,6 @@ func TestBuildLegacyWALs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger(), nil)
 			require.Nil(t, err)
-
 			refs, err := store.GetChunkRefs(
 				context.Background(),
 				c.User,
