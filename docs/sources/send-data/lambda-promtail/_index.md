@@ -1,11 +1,15 @@
 ---
-title: Lambda Promtail
-description: Lambda Promtail
-weight: 20
+title: Lambda Promtail client 
+menuTitle:  Lambda Promtail
+description: How to configure the Lambda Promtail client workflow.
+aliases: 
+- ../clients/lambda-promtail/
+weight:  700
 ---
-# Lambda Promtail
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../promtail/configuration#loki_push_api" >}}).
+# Lambda Promtail client 
+
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../../clients/promtail/configuration#loki_push_api" >}}).
 
 ## Deployment
 
@@ -114,15 +118,15 @@ Cloudfront logs can be either batched or streamed in real time to Loki:
 + Logging can be activated on a Cloudfront distribution with an S3 bucket as the destination. In this case, the workflow is the same as for other services (VPC Flow logs, Loadbalancer logs, Cloudtrail logs).
 + Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
 
-### Triggering Lambda-Promtail via SNS or SQS
-For AWS services supporting sending messages to SNS or SQS (for example, S3 with an S3 Notification to SQS), events can be processed through an [SQS queue](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) or [SNS topic](https://docs.aws.amazon.com/lambda/latest/dg/with-sns.html) using a Lambda trigger instead of directly configuring the source service to trigger Lambda. Lambda Promtail will retrieve the nested events from the SQS/SNS messages' body and process them as if them came directly from the source service.
+### Triggering Lambda-Promtail via SQS
+For AWS services supporting sending messages to SQS (for example, S3 with an S3 Notification to SQS), events can be processed through an [SQS queue using a lambda trigger](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) instead of directly configuring the source service to trigger lambda. Lambda-promtail will retrieve the nested events from the SQS messages' body and process them as if them came directly from the source service.
 
 ### On-Failure log recovery using SQS
 Triggering lambda-promtail through SQS allows handling on-failure recovery of the logs using a secondary SQS queue as a dead-letter-queue (DLQ). You can configure lambda so that unsuccessfully processed messages will be sent to the DLQ. After fixing the issue, operators will be able to reprocess the messages by sending back messages from the DLQ to the source queue using the [SQS DLQ redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) feature.
 
 ## Propagated Labels
 
-Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../promtail/pipelines" >}}):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../../clients/promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../../clients/promtail/pipelines" >}}):
 
 - `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.

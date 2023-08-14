@@ -1,9 +1,12 @@
 ---
-title: Fluentd
-description: Fluentd Loki Output Plugin 
-weight: 60
+title: Fluentd client
+menuTitle:  Fluentd
+description: Instructions to install, configure, and use the Fluentd client to send logs to Loki.
+aliases: 
+- ../clients/fluentd/
+weight:  600
 ---
-# Fluentd
+# Fluentd client
 
 The [Fluentd output plugin](https://www.fluentd.org/) for Grafana Loki is called
 `fluent-plugin-grafana-loki` that enables shipping logs to a private Loki

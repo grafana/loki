@@ -1,9 +1,13 @@
 ---
-title: Write path testing
-description: Write path testing with K6
-weight: 20
+title: Use k6 to load test the write path
+menuTitle:  Write path testing
+description: Using K6 to load test the write path (ingest).
+aliases: 
+- ../../clients/k6/write-scenario/
+weight: 920
 ---
-# Write path testing
+
+# Use k6 to load test the write path
 
 There are multiple considerations when
 load testing a Loki cluster's write path.

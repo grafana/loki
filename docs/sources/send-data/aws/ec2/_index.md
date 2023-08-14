@@ -1,25 +1,18 @@
 ---
-title: EC2
-description: Running Promtail on AWS EC2
+title: Run the Promtail client on AWS EC2
+menuTitle:  Promtail on EC2
+description: Tutorial for running Promtail client on AWS EC2
+aliases: 
+- ../../clients/aws/ec2/
+weight: 100
 ---
-# EC2
+# Run the Promtail client on AWS EC2
 
-In this tutorial we're going to setup [Promtail]({{< relref "../../promtail" >}}) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
-
-<!-- TOC -->
-
-- [EC2](#ec2)
-  - [Requirements](#requirements)
-  - [Creating an EC2 instance](#creating-an-ec2-instance)
-  - [Setting up Promtail](#setting-up-promtail)
-  - [Configuring Promtail as a service](#configuring-promtail-as-a-service)
-  - [Sending systemd logs](#sending-systemd-logs)
-
-<!-- /TOC -->
+In this tutorial we're going to setup [Promtail]({{< relref "../../../clients/promtail" >}}) on an AWS EC2 instance and configure it to sends all its logs to a Grafana Loki instance.
 
 ## Requirements
 
-Before we start you'll need:
+Before you start you'll need:
 
 - An AWS account (with the `AWS_ACCESS_KEY` and `AWS_SECRET_KEY`)
 - A VPC that is routable from the internet. (Follow those [instructions][create an vpc] if you need to create one)
@@ -48,7 +41,7 @@ aws ec2 create-security-group --group-name promtail-ec2  --description "promtail
 }
 ```
 
-Now let's authorize inbound access for SSH and [Promtail]({{< relref "../../promtail" >}}) server:
+Now let's authorize inbound access for SSH and [Promtail]({{< relref "../../../clients/promtail" >}}) server:
 
 ```bash
 aws ec2 authorize-security-group-ingress --group-id sg-02c489bbdeffdca1d --protocol tcp --port 22 --cidr 0.0.0.0/0
@@ -88,7 +81,7 @@ ssh ec2-user@ec2-13-59-62-37.us-east-2.compute.amazonaws.com
 ## Setting up Promtail
 
 First let's make sure we're running as root by using `sudo -s`.
-Next we'll download, install and give executable right to [Promtail]({{< relref "../../promtail" >}}).
+Next we'll download, install and give executable right to [Promtail]({{< relref "../../../clients/promtail" >}}).
 
 ```bash
 mkdir /opt/promtail && cd /opt/promtail
@@ -97,7 +90,7 @@ unzip "promtail-linux-amd64.zip"
 chmod a+x "promtail-linux-amd64"
 ```
 
-Now we're going to download the [Promtail configuration]({{< relref "../../promtail" >}}) file below and edit it, don't worry we will explain what those means.
+Now we're going to download the [Promtail configuration]({{< relref "../../../clients/promtail" >}}) file below and edit it, don't worry we will explain what those means.
 The file is also available as a gist at [cyriltovena/promtail-ec2.yaml][config gist].
 
 ```bash
@@ -140,11 +133,11 @@ scrape_configs:
         target_label: __host__
 ```
 
-The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting]({{< relref "../../promtail/troubleshooting" >}}) service discovery and targets.
+The **server** section indicates Promtail to bind his http server to 3100. Promtail serves HTTP pages for [troubleshooting]({{< relref "../../../clients/promtail/troubleshooting" >}}) service discovery and targets.
 
 The **clients** section allow you to target your loki instance, if you're using GrafanaCloud simply replace `<user id>` and `<api secret>` with your credentials. Otherwise just replace the whole URL with your custom Loki instance.(e.g `http://my-loki-instance.my-org.com/loki/api/v1/push`)
 
-[Promtail]({{< relref "../../promtail" >}}) uses the same [Prometheus **scrape_configs**][prometheus scrape config]. This means if you already own a Prometheus instance the config will be very similar and easy to grasp.
+[Promtail]({{< relref "../../../clients/promtail" >}}) uses the same [Prometheus **scrape_configs**][prometheus scrape config]. This means if you already own a Prometheus instance the config will be very similar and easy to grasp.
 
 Since we're running on AWS EC2 we want to uses EC2 service discovery, this will allows us to scrape metadata about the current instance (and even your custom tags) and attach those to our logs. This way managing and querying on logs will be much easier.
 
