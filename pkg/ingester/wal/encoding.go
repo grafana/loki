@@ -32,7 +32,7 @@ const (
 // The current type of Entries that this distribution writes.
 // Loki can read in a backwards compatible manner, but will write the newest variant.
 // TODO: Change to WALRecordEntriesV3?
-const CurrentEntriesRec = WALRecordEntriesV2
+const CurrentEntriesRec = WALRecordEntriesV3
 
 // Record is a struct combining the series and samples record.
 type Record struct {
