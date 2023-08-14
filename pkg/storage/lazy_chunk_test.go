@@ -14,17 +14,27 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/util"
 )
 
 func TestLazyChunkIterator(t *testing.T) {
+	periodConfig := config.PeriodConfig{
+		From:      config.DayTime{Time: 0},
+		Schema:    "v11",
+		RowShards: 16,
+	}
+
+	chunkFormat, err := periodConfig.ChunkVersion()
+	require.NoError(t, err)
+
 	for i, tc := range []struct {
 		chunk    *LazyChunk
 		expected []logproto.Stream
 	}{
 		// TODO: Add tests for metadata labels.
 		{
-			newLazyChunk(logproto.Stream{
+			newLazyChunk(chunkFormat, logproto.Stream{
 				Labels: fooLabelsWithName.String(),
 				Hash:   fooLabelsWithName.Hash(),
 				Entries: []logproto.Entry{

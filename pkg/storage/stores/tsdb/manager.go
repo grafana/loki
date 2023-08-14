@@ -309,9 +309,9 @@ func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
-		// NOTE(kavi): Hack. Ignore errorchecking for now
-		tsdbFormat, _ := cfg.TSDBVersion()
 		if cfg != nil {
+			// NOTE(kavi): Hack. Ignore errorchecking for now
+			tsdbFormat, _ := cfg.TSDBVersion()
 			res = append(res, indexInfo{prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), tsdbFormat: tsdbFormat})
 		}
 	}

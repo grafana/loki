@@ -77,18 +77,24 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	now := time.Now()
 	var chunks []chunk.Chunk
 
+	periodConfig := config.PeriodConfig{
+
+		From:      config.DayTime{Time: 0},
+		Schema:    "v11",
+		RowShards: 16,
+	}
+
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
+			periodConfig,
 		},
 	}
 
+	chunkFormat, err := periodConfig.ChunkVersion()
+	require.NoError(t, err)
+
 	for i := 0; i < num; i++ {
-		chk := newChunk(buildTestStreams(fooLabelsWithName, timeRange{
+		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))

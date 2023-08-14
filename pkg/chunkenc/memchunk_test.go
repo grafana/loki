@@ -1124,7 +1124,7 @@ func TestCheckpointEncoding(t *testing.T) {
 			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
 
-			if f.chunkFormat <= chunkFormatV2 {
+			if f.chunkFormat <= ChunkFormatV2 {
 				for i := range c.blocks {
 					c.blocks[i].uncompressedSize = 0
 				}

@@ -17,6 +17,7 @@ func TestStreamsMap(t *testing.T) {
 
 	ss := []*stream{
 		newStream(
+			defaultChunkFormat(),
 			defaultConfig(),
 			limiter,
 			"fake",
@@ -30,6 +31,7 @@ func TestStreamsMap(t *testing.T) {
 			nil,
 		),
 		newStream(
+			defaultChunkFormat(),
 			defaultConfig(),
 			limiter,
 			"fake",
