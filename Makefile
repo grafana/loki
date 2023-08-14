@@ -177,7 +177,7 @@ cmd/loki-canary/loki-canary:
 loki-canary-boringcrypto: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto ## build loki-canary (BoringCrypto) executable
 
 cmd/loki-canary-boringcrypto/loki-canary-boringcrypto:
-	CGO_ENABLED=1 go build $(GO_FLAGS) -o $@ ./$(@D)/../loki-canary
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(GOARCH) GOEXPERIMENT=boringcrypto go build $(GO_FLAGS) -o $@ ./$(@D)/../loki-canary
 ###############
 # Helm #
 ###############
