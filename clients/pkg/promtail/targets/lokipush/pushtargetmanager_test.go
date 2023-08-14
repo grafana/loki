@@ -3,7 +3,7 @@ package lokipush
 import (
 	"testing"
 
-	"github.com/weaveworks/common/server"
+	"github.com/grafana/dskit/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 )

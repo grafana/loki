@@ -6,9 +6,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/sourcegraph/conc/pool"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -54,11 +54,11 @@ func (q *MultiTenantQuerier) SelectLogs(ctx context.Context, params logql.Select
 	matchedTenants, filteredMatchers := filterValuesByMatchers(defaultTenantLabel, tenantIDs, selector.Matchers()...)
 	params.Selector = replaceMatchers(selector, filteredMatchers).String()
 
-	p := pool.NewWithResults[iter.EntryIterator]().WithContext(ctx).WithCancelOnError()
+	p := pool.NewWithResults[iter.EntryIterator]().WithErrors() //.WithContext(ctx).WithCancelOnError()
 	for id := range matchedTenants {
 		id := id
-		p.Go(func(c context.Context) (iter.EntryIterator, error) {
-			singleContext := user.InjectOrgID(c, id)
+		p.Go(func() (iter.EntryIterator, error) {
+			singleContext := user.InjectOrgID(ctx, id)
 			iter, err := q.Querier.SelectLogs(singleContext, params)
 			return NewTenantEntryIterator(iter, id), err
 		})
@@ -86,11 +86,11 @@ func (q *MultiTenantQuerier) SelectSamples(ctx context.Context, params logql.Sel
 	}
 	params.Selector = updatedSelector.String()
 
-	p := pool.NewWithResults[iter.SampleIterator]().WithContext(ctx).WithCancelOnError()
+	p := pool.NewWithResults[iter.SampleIterator]().WithErrors() //.WithContext(ctx).WithCancelOnError()
 	for id := range matchedTenants {
 		id := id
-		p.Go(func(c context.Context) (iter.SampleIterator, error) {
-			singleContext := user.InjectOrgID(c, id)
+		p.Go(func() (iter.SampleIterator, error) {
+			singleContext := user.InjectOrgID(ctx, id)
 			iter, err := q.Querier.SelectSamples(singleContext, params)
 			return NewTenantSampleIterator(iter, id), err
 		})
