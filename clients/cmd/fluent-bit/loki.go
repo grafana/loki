@@ -146,9 +146,6 @@ func autoLabels(records map[string]interface{}, kuberneteslbs model.LabelSet) er
 			for m, n := range v.(map[string]interface{}) {
 				kuberneteslbs[model.LabelName(keyReplacer.Replace(m))] = model.LabelValue(fmt.Sprintf("%v", n))
 			}
-		case "docker_id", "pod_id", "annotations":
-			// do nothing
-			continue
 		default:
 			kuberneteslbs[model.LabelName(k)] = model.LabelValue(fmt.Sprintf("%v", v))
 		}
