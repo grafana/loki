@@ -409,8 +409,8 @@ func (i *TSDBIndex) Volume(
 						}
 					}
 				} else {
-          // when aggregating by labels, capture sizes for target labels if provided,
-          // otherwise for all intersecting labels
+					// when aggregating by labels, capture sizes for target labels if provided,
+					// otherwise for all intersecting labels
 					labelVolumes = make(map[string]uint64, len(ls))
 					for _, l := range ls {
 						if len(targetLabels) > 0 {

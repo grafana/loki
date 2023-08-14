@@ -1026,7 +1026,7 @@ func TestInstance_Volume(t *testing.T) {
 				{Name: `foo`, Volume: 18},
 			}, volumes.Volumes)
 
-      require.NotContains(t, volumes.Volumes, logproto.Volume{Name: `fizz`, Volume: 11})
+			require.NotContains(t, volumes.Volumes, logproto.Volume{Name: `fizz`, Volume: 11})
 		})
 
 		t.Run("excludes streams outside of time bounds", func(t *testing.T) {
