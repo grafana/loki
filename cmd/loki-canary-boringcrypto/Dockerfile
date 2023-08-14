@@ -6,5 +6,5 @@ RUN make clean && make BUILD_IN_CONTAINER=true GOEXPERIMENT=boringcrypto loki-ca
 
 FROM alpine:3.16.7
 RUN apk add --update --no-cache ca-certificates
-COPY --from=build /src/loki/cmd/loki-canary/loki-canary-boringcrypto /usr/bin/loki-canary
+COPY --from=build /src/loki/cmd/loki-canary-boringcrypto/loki-canary-boringcrypto /usr/bin/loki-canary
 ENTRYPOINT [ "/usr/bin/loki-canary" ]
