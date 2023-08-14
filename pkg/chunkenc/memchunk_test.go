@@ -74,7 +74,7 @@ var (
 	}
 )
 
-const DefaultTestHeadBlockFmt = OrderedHeadBlockFmt
+const DefaultTestHeadBlockFmt = DefaultHeadBlockFmt
 
 func TestBlocksInclusive(t *testing.T) {
 	chk := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
@@ -637,11 +637,11 @@ func TestChunkSize(t *testing.T) {
 	}
 	var result []res
 	for _, bs := range testBlockSizes {
-		for _, f := range HeadBlockFmts {
+		for _, f := range allPossibleFormats {
 			for _, enc := range testEncoding {
 				name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 				t.Run(name, func(t *testing.T) {
-					c := NewMemChunk(enc, f, bs, testTargetSize)
+					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, bs, testTargetSize)
 					inserted := fillChunk(c)
 					b, err := c.Bytes()
 					if err != nil {
@@ -685,7 +685,8 @@ func TestChunkStats(t *testing.T) {
 		inserted++
 		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
 	}
-	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
+	// For each entry: timestamp <varint>, line size <varint>, line <bytes>, num of non-indexed labels <varint>
+	expectedSize := inserted * (len(entry.Line) + 3*binary.MaxVarintLen64)
 	statsCtx, ctx := stats.NewContext(context.Background())
 
 	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
@@ -734,7 +735,7 @@ func TestChunkStats(t *testing.T) {
 }
 
 func TestIteratorClose(t *testing.T) {
-	for _, f := range HeadBlockFmts {
+	for _, f := range allPossibleFormats {
 		for _, enc := range testEncoding {
 			t.Run(enc.String(), func(t *testing.T) {
 				for _, test := range []func(iter iter.EntryIterator, t *testing.T){
@@ -762,7 +763,7 @@ func TestIteratorClose(t *testing.T) {
 						}
 					},
 				} {
-					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
+					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, testBlockSize, testTargetSize)
 					inserted := fillChunk(c)
 					iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, noopStreamPipeline)
 					if err != nil {
@@ -1110,6 +1111,28 @@ func TestCheckpointEncoding(t *testing.T) {
 			// cut it
 			require.Nil(t, c.cut())
 
+			// ensure we have cut a block and head block is empty
+			require.Equal(t, 1, len(c.blocks))
+			require.True(t, c.head.IsEmpty())
+
+			// check entries with empty head
+			var chk, head bytes.Buffer
+			var err error
+			var cpy *MemChunk
+			err = c.SerializeForCheckpointTo(&chk, &head)
+			require.Nil(t, err)
+
+			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
+			require.Nil(t, err)
+
+			if f.chunkFormat <= chunkFormatV2 {
+				for i := range c.blocks {
+					c.blocks[i].uncompressedSize = 0
+				}
+			}
+
+			require.Equal(t, c, cpy)
+
 			// add a few more to head
 			for i := 5; i < 10; i++ {
 				entry := &logproto.Entry{
@@ -1123,11 +1146,12 @@ func TestCheckpointEncoding(t *testing.T) {
 			// ensure new blocks are not cut
 			require.Equal(t, 1, len(c.blocks))
 
-			var chk, head bytes.Buffer
-			err := c.SerializeForCheckpointTo(&chk, &head)
+			chk.Reset()
+			head.Reset()
+			err = c.SerializeForCheckpointTo(&chk, &head)
 			require.Nil(t, err)
 
-			cpy, err := MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
+			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
 
 			if f.chunkFormat <= chunkFormatV2 {

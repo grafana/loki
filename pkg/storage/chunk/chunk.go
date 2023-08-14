@@ -11,11 +11,11 @@ import (
 	"unsafe"
 
 	"github.com/golang/snappy"
+	errs "github.com/grafana/dskit/errors"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	errs "github.com/weaveworks/common/errors"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
