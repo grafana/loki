@@ -5,11 +5,11 @@ import (
 	"flag"
 
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/instrument"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/instrument"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 
 	deletion_grpc "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"

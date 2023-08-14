@@ -265,6 +265,12 @@ Configures the `server` of the launched module(s).
 [tls_min_version: <string> | default = ""]
 
 http_tls_config:
+  [cert: <string> | default = ""]
+
+  [key: <string> | default = ""]
+
+  [client_ca: <string> | default = ""]
+
   # HTTP server cert path.
   # CLI flag: -server.http-tls-cert-path
   [cert_file: <string> | default = ""]
@@ -282,6 +288,12 @@ http_tls_config:
   [client_ca_file: <string> | default = ""]
 
 grpc_tls_config:
+  [cert: <string> | default = ""]
+
+  [key: <string> | default = ""]
+
+  [client_ca: <string> | default = ""]
+
   # GRPC TLS server cert path.
   # CLI flag: -server.grpc-tls-cert-path
   [cert_file: <string> | default = ""]
@@ -1978,6 +1990,9 @@ boltdb_shipper:
   # CLI flag: -boltdb.shipper.build-per-tenant-index
   [build_per_tenant_index: <boolean> | default = false]
 
+# Configures storing index in an Object Store
+# (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required
+# fields only required when TSDB is defined in config.
 tsdb_shipper:
   # Directory where ingesters would write index files which would then be
   # uploaded by shipper to configured storage
@@ -2037,6 +2052,11 @@ tsdb_shipper:
   [mode: <string> | default = ""]
 
   [ingesterdbretainperiod: <duration>]
+
+  # Experimental. Whether TSDB should cache postings or not. The
+  # index-read-cache will be used as the backend.
+  # CLI flag: -tsdb.enable-postings-cache
+  [enable_postings_cache: <boolean> | default = false]
 ```
 
 ### chunk_store_config
@@ -2446,8 +2466,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [query_ready_index_num_days: <int> | default = 0]
 
 # Timeout when querying backends (ingesters or storage) during the execution of
-# a query request. If a specific per-tenant timeout is used, this timeout is
-# ignored.
+# a query request. When a specific per-tenant timeout is used, the global
+# timeout is ignored.
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 

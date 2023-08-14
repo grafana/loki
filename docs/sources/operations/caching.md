@@ -101,7 +101,7 @@ To enable and configure Memcached:
                  batch_size: 100
                  parallelism: 100
                memcached_client:
-                 host: <memcached host>,
+                 host: <memcached host>
                  service: <port name of memcached service>
                  consistent_hash: true
            ```
