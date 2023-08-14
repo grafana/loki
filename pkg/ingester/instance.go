@@ -633,7 +633,8 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(req.TargetLabels, matchers)
+	targetLabels := req.TargetLabels
+	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(targetLabels, matchers)
 	matchAny = matchAny || len(matchers) == 0
 
 	seriesNames := make(map[uint64]string)
@@ -673,7 +674,11 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 			} else {
 				labelVolumes = make(map[string]uint64, len(s.labels))
 				for _, l := range s.labels {
-					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					if len(targetLabels) > 0 {
+						if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+							labelVolumes[l.Name] += size
+						}
+					} else {
 						labelVolumes[l.Name] += size
 					}
 				}
