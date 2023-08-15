@@ -9,7 +9,7 @@ weight:
 
 # geoip
 
-The `geoip` stage is a parsing stage that reads an ip address and populates the labelset with geoip fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
+The `geoip` stage is a parsing stage that reads an ip address and populates the labelset and extracted map with geoip fields. [Maxmind's GeoIP2 database](https://www.maxmind.com/en/home) is used for the lookup.
 
 Populated fields for City db:
 
