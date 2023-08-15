@@ -13,7 +13,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/sourcegraph/conc/pool"
+
+	"github.com/grafana/dskit/concurrency"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/astmapper"
@@ -243,12 +244,12 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}
 	}
 
-	type f func(context.Context) ([]labels.Labels, error)
+	type f func() ([]labels.Labels, error)
 	jobs := make([]f, 0, len(groups))
 
 	for _, g := range groups {
 		group := g
-		jobs = append(jobs, f(func(ctx context.Context) ([]labels.Labels, error) {
+		jobs = append(jobs, f(func() ([]labels.Labels, error) {
 			sort.Sort(group)
 			chunks, err := c.fetcher.FetchChunks(ctx, group.chunks)
 			if err != nil {
@@ -278,24 +279,27 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}))
 	}
 
+	results := make([]labels.Labels, 0, len(chunksBySeries))
+
 	// Picking an arbitrary bound of 20 numConcurrent jobs.
-	p := pool.NewWithResults[[]labels.Labels]().
-		WithContext(ctx).
-		WithMaxGoroutines(20).
-		WithCancelOnError()
-	for _, job := range jobs {
-		p.Go(func(ctx context.Context) ([]labels.Labels, error) {
-			return job(ctx)
-		})
+	numConcurrent := len(jobs)
+	if numConcurrent > 20 {
+		numConcurrent = 20
 	}
 
-	lbls, err := p.Wait()
-	if err != nil {
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		numConcurrent,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			if res != nil {
+				results = append(results, res...)
+			}
+			return err
+		},
+	); err != nil {
 		return nil, err
-	}
-	results := make([]labels.Labels, 0, len(chunksBySeries))
-	for _, l := range lbls {
-		results = append(results, l...)
 	}
 
 	sort.Slice(results, func(i, j int) bool {
