@@ -129,7 +129,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 	}
 
 	r := sketch.TopKVector{
-		TS:   uint64(ts),
+		TS:   ts,
 		Topk: topkAggregation,
 	}
 

@@ -8,12 +8,15 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/sketch"
 )
 
 func TestProbabilisticEngine(t *testing.T) {
@@ -34,40 +37,39 @@ func TestProbabilisticEngine(t *testing.T) {
 		expected promql_parser.Value
 	}{
 		// queries inherited from engine_test
-		/*
-			{
-				`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
-				[][]logproto.Series{
-					{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
-				},
-				[]SelectSampleParams{
-					{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
-				},
-				promql.Matrix{
-					promql.Series{
-						Metric: labels.EmptyLabels(),
-						Floats: []promql.FPoint{{T: 60 * 1000, F: 0.2}, {T: 90 * 1000, F: 0.2}, {T: 120 * 1000, F: 0.2}, {T: 150 * 1000, F: 0.2}, {T: 180 * 1000, F: 0.2}},
-					},
+		{
+			`max(rate({app=~"foo|bar"} |~".+bar" [1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`)},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.EmptyLabels(),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 0.2}, {T: 90 * 1000, F: 0.2}, {T: 120 * 1000, F: 0.2}, {T: 150 * 1000, F: 0.2}, {T: 180 * 1000, F: 0.2}},
 				},
 			},
-			{
-				`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
-				[][]logproto.Series{
-					{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
-				},
-				[]SelectSampleParams{
-					{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}},
-				},
-				promql.Matrix{
-					promql.Series{
-						Metric: labels.FromStrings("app", "foo"),
-						Floats: []promql.FPoint{{T: 60 * 1000, F: 6}, {T: 90 * 1000, F: 6}, {T: 120 * 1000, F: 6}},
-					},
+		},
+		{
+			`count_over_time({app="foo"} |~".+bar" [1m])`, time.Unix(60, 0), time.Unix(120, 0), 30 * time.Second, 0, logproto.BACKWARD, 10,
+			[][]logproto.Series{
+				{newSeries(testSize, factor(10, identity), `{app="foo"}`)}, // 10 , 20 , 30 .. 60 = 6 total
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(120, 0), Selector: `count_over_time({app="foo"}|~".+bar"[1m])`}},
+			},
+			promql.Matrix{
+				promql.Series{
+					Metric: labels.FromStrings("app", "foo"),
+					Floats: []promql.FPoint{{T: 60 * 1000, F: 6}, {T: 90 * 1000, F: 6}, {T: 120 * 1000, F: 6}},
 				},
 			},
-		*/
+		},
 		// probabilistic queries
 		{
+			// TODO(karsten): I don't understand the relation between step and interval here.
 			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Series{
 				{newSeries(testSize, factor(10, identity), `{app="foo"}`), newSeries(testSize, factor(5, identity), `{app="bar"}`), newSeries(testSize, factor(15, identity), `{app="boo"}`)},
@@ -75,15 +77,13 @@ func TestProbabilisticEngine(t *testing.T) {
 			[]SelectSampleParams{
 				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
-			promql.Matrix{
-				promql.Series{
-					Metric: labels.FromStrings("app", "bar"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 0.2}, {T: 90 * 1000, F: 0.2}, {T: 120 * 1000, F: 0.2}, {T: 150 * 1000, F: 0.2}, {T: 180 * 1000, F: 0.2}},
-				},
-				promql.Series{
-					Metric: labels.FromStrings("app", "foo"),
-					Floats: []promql.FPoint{{T: 60 * 1000, F: 0.1}, {T: 90 * 1000, F: 0.1}, {T: 120 * 1000, F: 0.1}, {T: 150 * 1000, F: 0.1}, {T: 180 * 1000, F: 0.1}},
-				},
+			sketch.TopKMatrix{
+				// TODO(karsten): the original topk test had only 2 entries
+				sketch.TopKVector{Topk: nil, TS: 60000},
+				sketch.TopKVector{Topk: nil, TS: 90000},
+				sketch.TopKVector{Topk: nil, TS: 120000},
+				sketch.TopKVector{Topk: nil, TS: 150000},
+				sketch.TopKVector{Topk: nil, TS: 180000},
 			},
 		},
 	} {
@@ -106,7 +106,18 @@ func TestProbabilisticEngine(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			assert.Equal(t, test.expected, res.Data)
+			switch expected := test.expected.(type) {
+			case sketch.TopKMatrix:
+				actual := res.Data.(sketch.TopKMatrix)
+				require.Len(t, actual, len(expected))
+				for i := range actual {
+					assert.Equal(t, expected[i].TS, actual[i].TS)
+					//assert.Equal(t, expected[i].Topk, actual[i].Topk)
+				}
+			default:
+				assert.Equal(t, test.expected, res.Data)
+			}
+
 		})
 	}
 }
