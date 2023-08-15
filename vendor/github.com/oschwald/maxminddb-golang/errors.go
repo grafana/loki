@@ -15,7 +15,7 @@ func newOffsetError() InvalidDatabaseError {
 	return InvalidDatabaseError{"unexpected end of database"}
 }
 
-func newInvalidDatabaseError(format string, args ...interface{}) InvalidDatabaseError {
+func newInvalidDatabaseError(format string, args ...any) InvalidDatabaseError {
 	return InvalidDatabaseError{fmt.Sprintf(format, args...)}
 }
 
@@ -26,11 +26,11 @@ func (e InvalidDatabaseError) Error() string {
 // UnmarshalTypeError is returned when the value in the database cannot be
 // assigned to the specified data type.
 type UnmarshalTypeError struct {
-	Value string       // stringified copy of the database value that caused the error
-	Type  reflect.Type // type of the value that could not be assign to
+	Type  reflect.Type
+	Value string
 }
 
-func newUnmarshalTypeError(value interface{}, rType reflect.Type) UnmarshalTypeError {
+func newUnmarshalTypeError(value any, rType reflect.Type) UnmarshalTypeError {
 	return UnmarshalTypeError{
 		Value: fmt.Sprintf("%v", value),
 		Type:  rType,
