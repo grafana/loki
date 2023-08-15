@@ -118,7 +118,7 @@ can be written with the syslog protocol to the configured port.
 
 ## AWS
 
-If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial]({{< relref "../aws/ec2" >}}).
+If you need to run Promtail on Amazon Web Services EC2 instances, you can use our [detailed tutorial]({{< relref "../../send-data/aws/ec2" >}}).
 
 ## Labeling and parsing
 

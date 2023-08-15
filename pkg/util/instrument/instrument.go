@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/weaveworks/common/instrument"
+	"github.com/grafana/dskit/instrument"
 )
 
 // TimeRequest reports how much time was spent on the given function  `f`.

@@ -71,7 +71,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases)
+				return BuildIndex(t, t.TempDir(), cases, IndexOpts{})
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestSingleIdx(t *testing.T) {
 					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
 				}
 				reader := head.Index()
-				return NewTSDBIndex(reader)
+				return NewTSDBIndex(reader, NewPostingsReader(reader))
 			},
 		},
 	} {
@@ -214,7 +214,6 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 	queryFrom, queryThrough := now.Add(3*time.Hour).Add(time.Millisecond), now.Add(5*time.Hour).Add(-time.Millisecond)
 	queryBounds := newBounds(queryFrom, queryThrough)
 	numChunksToMatch := 0
-
 	var chunkMetas []index.ChunkMeta
 	// build a chunk for every second with randomized chunk length
 	for from, through := now, now.Add(24*time.Hour); from <= through; from = from.Add(time.Second) {
@@ -249,14 +248,14 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	})
+	}, IndexOpts{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-		require.NoError(b, err)
-		require.Len(b, chkRefs, numChunksToMatch*2)
+		chkRefs := ChunkRefsPool.Get()
+		chkRefs, _ = tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, chkRefs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		ChunkRefsPool.Put(chkRefs)
 	}
 }
 
@@ -304,7 +303,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 
 	// Create the test cases
 	testCases := []struct {
@@ -438,7 +437,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 
 	from := model.TimeFromUnixNano(t1.UnixNano())
 	through := model.TimeFromUnixNano(t2.UnixNano())

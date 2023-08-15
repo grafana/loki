@@ -3,9 +3,10 @@ package manifests
 import (
 	"strings"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/imdario/mergo"
 	corev1 "k8s.io/api/core/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 const (

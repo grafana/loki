@@ -9,11 +9,10 @@ import (
 	"time"
 
 	"github.com/axiomhq/hyperloglog"
-
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/logproto"
