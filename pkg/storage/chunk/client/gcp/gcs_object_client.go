@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"syscall"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -18,6 +17,7 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	google_http "google.golang.org/api/transport/http"
+	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -237,26 +237,6 @@ func isContextErr(err error) bool {
 		errors.Is(err, context.Canceled)
 }
 
-// TODO(dannyk): reference apimachinery from which this was copied, or just import it
-// Returns if the given err is "connection reset by peer" error.
-func IsConnectionReset(err error) bool {
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		return errno == syscall.ECONNRESET
-	}
-	return false
-}
-
-// TODO(dannyk): reference apimachinery from which this was copied, or just import it
-// Returns if the given err is "connection refused" error
-func IsConnectionRefused(err error) bool {
-	var errno syscall.Errno
-	if errors.As(err, &errno) {
-		return errno == syscall.ECONNREFUSED
-	}
-	return false
-}
-
 // IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
 func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 	// TODO(dannyk): move these out to be generic
@@ -267,7 +247,7 @@ func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 
 	// connection misconfiguration, or writing on a closed connection
 	// do NOT retry; this is not a server-side issue
-	if errors.Is(err, net.ErrClosed) || IsConnectionRefused(err) {
+	if errors.Is(err, net.ErrClosed) || amnet.IsConnectionRefused(err) {
 		return false
 	}
 
@@ -278,7 +258,7 @@ func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
 
 	// connection closed (closed before established) or reset (closed after established)
 	// this is a server-side issue
-	if errors.Is(err, io.EOF) || IsConnectionReset(err) {
+	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
 		return true
 	}
 
