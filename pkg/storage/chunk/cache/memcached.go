@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	instr "github.com/grafana/dskit/instrument"
 	"github.com/grafana/gomemcache/memcache"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	instr "github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/util/math"

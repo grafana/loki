@@ -5,13 +5,13 @@ import (
 	"time"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
-
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	ctrl "sigs.k8s.io/controller-runtime"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
 )
 
 // Refresh executes an aggregate update of the LokiStack Status struct, i.e.
@@ -31,7 +31,10 @@ func Refresh(ctx context.Context, k k8s.Client, req ctrl.Request, now time.Time)
 		return err
 	}
 
-	condition := generateCondition(cs)
+	condition, err := generateCondition(ctx, cs, k, req, &stack)
+	if err != nil {
+		return err
+	}
 
 	condition.LastTransitionTime = metav1.NewTime(now)
 	condition.Status = metav1.ConditionTrue
