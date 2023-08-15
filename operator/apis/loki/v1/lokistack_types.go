@@ -990,6 +990,8 @@ const (
 	ReasonFailedCertificateRotation LokiStackConditionReason = "FailedCertificateRotation"
 	// ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.
 	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
+	// ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.
+	ReasonNoZoneAwareNodes LokiStackConditionReason = "ReasonNoZoneAwareNodes"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

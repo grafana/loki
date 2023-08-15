@@ -9,8 +9,8 @@ import (
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/log"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
 
@@ -210,8 +210,8 @@ func mustParseURL(u string) flagext.URLValue {
 	return flagext.URLValue{URL: parsed}
 }
 
-func mustParseLogLevel(l string) logging.Level {
-	level := logging.Level{}
+func mustParseLogLevel(l string) log.Level {
+	level := log.Level{}
 	err := level.Set(l)
 	if err != nil {
 		panic(err)

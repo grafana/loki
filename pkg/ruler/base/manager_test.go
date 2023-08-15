@@ -32,6 +32,7 @@ func TestSyncRuleGroups(t *testing.T) {
 				Namespace: "ns",
 				Interval:  1 * time.Minute,
 				User:      user,
+				Limit:     10,
 			},
 		},
 	}
