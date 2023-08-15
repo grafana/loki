@@ -5,18 +5,18 @@ weight: 600
 ---
 # Clients
 
-Grafana Loki supports the following official clients for sending logs:
+Grafana Loki works with the following clients for sending logs:
 
 - [Promtail]({{< relref "./promtail" >}})
-- [Docker Driver]({{< relref "./docker-driver" >}})
-- [Fluentd]({{< relref "./fluentd" >}})
-- [Fluent Bit]({{< relref "./fluentbit" >}})
-- [Logstash]({{< relref "./logstash" >}})
-- [Lambda Promtail]({{< relref "./lambda-promtail" >}})
+- [Docker driver]({{< relref "../send-data/docker-driver" >}}).
+- [Fluentd]({{< relref "../send-data/fluentd" >}})
+- [Fluent Bit]({{< relref "../send-data/fluentbit" >}})
+- [Logstash]({{< relref "../send-data/logstash" >}})
+- [Lambda Promtail]({{< relref "../send-data/lambda-promtail" >}})
 
 There are also a number of third-party clients, see [Unofficial clients](#unofficial-clients).
 
-The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki]({{< relref "./k6" >}}).
+The [xk6-loki extension](https://github.com/grafana/xk6-loki) permits [load testing Loki]({{< relref "../send-data/k6" >}}).
 
 ## Picking a client
 
@@ -59,7 +59,7 @@ By adding our output plugin you can quickly try Loki without doing big configura
 
 ### Lambda Promtail
 
-This is a workflow combining the Promtail push-api [scrape config]({{< relref "./promtail/configuration#loki_push_api" >}}) and the [lambda-promtail]({{< relref "./lambda-promtail" >}}) AWS Lambda function which pipes logs from Cloudwatch to Loki.
+This is a workflow combining the Promtail push-api [scrape config]({{< relref "./promtail/configuration#loki_push_api" >}}) and the [lambda-promtail]({{< relref "../send-data/lambda-promtail" >}}) AWS Lambda function which pipes logs from Cloudwatch to Loki.
 
 This is a good choice if you're looking to try out Loki in a low-footprint way or if you wish to monitor AWS lambda logs in Loki.
 

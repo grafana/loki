@@ -19,6 +19,7 @@ type mockRuleStore struct {
 var (
 	delim               = "/"
 	interval, _         = time.ParseDuration("1m")
+	limit               = int64(10)
 	mockRulesNamespaces = map[string]rulespb.RuleGroupList{
 		"user1": {
 			&rulespb.RuleGroupDesc{
@@ -36,6 +37,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 			&rulespb.RuleGroupDesc{
 				Name:      "fail",
@@ -52,6 +54,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -72,6 +75,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 		"user2": {
@@ -86,6 +90,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -107,6 +112,7 @@ var (
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -141,6 +147,7 @@ func (m *mockRuleStore) ListAllRuleGroups(_ context.Context) (map[string]rulespb
 				Name:      r.Name,
 				User:      k,
 				Interval:  r.Interval,
+				Limit:     r.Limit,
 				Rules:     r.Rules,
 			})
 		}
@@ -164,6 +171,7 @@ func (m *mockRuleStore) ListRuleGroupsForUserAndNamespace(_ context.Context, use
 			Name:      r.Name,
 			User:      userID,
 			Interval:  r.Interval,
+			Limit:     r.Limit,
 			Rules:     r.Rules,
 		})
 	}

@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/canary/reader"
 )

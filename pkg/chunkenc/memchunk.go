@@ -33,7 +33,7 @@ const (
 	chunkFormatV3
 	chunkFormatV4
 
-	DefaultChunkFormat = chunkFormatV3 // the currently used chunk format
+	DefaultChunkFormat = chunkFormatV4 // the currently used chunk format
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
@@ -85,7 +85,7 @@ const (
 	UnorderedHeadBlockFmt
 	UnorderedWithNonIndexedLabelsHeadBlockFmt
 
-	DefaultHeadBlockFmt = UnorderedHeadBlockFmt
+	DefaultHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -348,8 +348,19 @@ func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *Me
 	return newMemChunkWithFormat(DefaultChunkFormat, enc, head, blockSize, targetSize)
 }
 
+func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
+	if chunkFmt == chunkFormatV2 && head != OrderedHeadBlockFmt {
+		panic("only OrderedHeadBlockFmt is supported for V2 chunks")
+	}
+	if chunkFmt == chunkFormatV4 && head != UnorderedWithNonIndexedLabelsHeadBlockFmt {
+		panic("only UnorderedWithNonIndexedLabelsHeadBlockFmt is supported for V4 chunks")
+	}
+}
+
 // NewMemChunk returns a new in-mem chunk.
 func newMemChunkWithFormat(format byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	panicIfInvalidFormat(format, head)
+
 	symbolizer := newSymbolizer()
 	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
@@ -695,14 +706,12 @@ func (c *MemChunk) SerializeForCheckpointTo(chk, head io.Writer) error {
 	// * When a write request is received with some new non-indexed labels, we update symbolizer first and then append log entry to head.
 	// * Labels stored in symbolizer are serialized with MemChunk.
 	// This means if we serialize the MemChunk before the head, we might miss writing some newly added non-indexed labels which are referenced by head.
-	if !c.head.IsEmpty() {
-		err := c.head.CheckpointTo(head)
-		if err != nil {
-			return err
-		}
+	err := c.head.CheckpointTo(head)
+	if err != nil {
+		return err
 	}
 
-	_, err := c.writeTo(chk, true)
+	_, err = c.writeTo(chk, true)
 	return err
 }
 
@@ -1082,24 +1091,16 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 		return nil, err
 	}
 
-	// If the head format is not explicitly set, use the default.
-	// This will be the most common case for chunks read from storage since
-	// they have a dummy head block.
-	headFmt := c.headFmt
-	if headFmt < OrderedHeadBlockFmt {
-		headFmt = DefaultHeadBlockFmt
-	}
-
 	var newChunk *MemChunk
 	// as close as possible, respect the block/target sizes specified. However,
 	// if the blockSize is not set, use reasonable defaults.
 	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.Encoding(), headFmt, c.blockSize, c.targetSize)
+		newChunk = NewMemChunk(c.Encoding(), DefaultHeadBlockFmt, c.blockSize, c.targetSize)
 	} else {
 		// Using defaultBlockSize for target block size.
 		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
 		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.Encoding(), headFmt, defaultBlockSize, c.CompressedSize())
+		newChunk = NewMemChunk(c.Encoding(), DefaultHeadBlockFmt, defaultBlockSize, c.CompressedSize())
 	}
 
 	for itr.Next() {

@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 )
 
 var (
