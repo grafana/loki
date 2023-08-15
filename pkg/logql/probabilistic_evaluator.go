@@ -442,7 +442,7 @@ func (s *TopkMatrixStepper) Next() (ok bool, ts int64, r StepResult) {
 	if s.i < len(s.m) {
 		v := s.m[s.i]
 		s.i++
-		return true, int64(v.TS), TopKVector(v)
+		return true, v.TS, TopKVector(v)
 	}
 
 	return false, 0, nil

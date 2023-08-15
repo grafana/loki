@@ -44,7 +44,7 @@ func TestTopKMatrixProto(t *testing.T) {
 	fmt.Println("dcardinality: ", dCardinality)
 
 	require.Equal(t, oCardinality, dCardinality)
-	require.Equal(t, uint64(100), deserialized[0].TS)
+	require.Equal(t, int64(100), deserialized[0].TS)
 }
 
 func TestTopKMatrixProtoMerge(t *testing.T) {
@@ -79,5 +79,5 @@ func TestTopKMatrixProtoMerge(t *testing.T) {
 	oCardinality, _ := original.Cardinality()
 	dCardinality, _ := deserialized[0].Topk.Cardinality()
 	require.Equal(t, oCardinality, dCardinality)
-	require.Equal(t, uint64(100), deserialized[0].TS)
+	require.Equal(t, int64(100), deserialized[0].TS)
 }
