@@ -8,15 +8,14 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
@@ -330,28 +329,19 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					chunks := schemaGroups[i][j:k]
 					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
-					keys := make([]string, 0, len(chunks))
 					chks := make([]chunk.Chunk, 0, len(chunks))
 
-					// FetchChunks requires chunks to be ordered by external key.
-					sort.Slice(chunks, func(x, y int) bool {
-						return m.schema.ExternalKey(chunks[x].ChunkRef) < m.schema.ExternalKey(chunks[y].ChunkRef)
-					})
-					for _, chk := range chunks {
-						key := m.schema.ExternalKey(chk.ChunkRef)
-						keys = append(keys, key)
-						chks = append(chks, chk)
-					}
-					finalChks, err := f.FetchChunks(m.ctx, chks, keys)
+					chks = append(chks, chunks...)
+
+					finalChks, err := f.FetchChunks(m.ctx, chks)
 					if err != nil {
 						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)
 						finalChks = make([]chunk.Chunk, 0, len(chunks))
 						for i := range chks {
 							onechunk := []chunk.Chunk{chunks[i]}
-							onekey := []string{keys[i]}
 							var retry int
 							for retry = 4; retry >= 0; retry-- {
-								onechunk, err = f.FetchChunks(m.ctx, onechunk, onekey)
+								onechunk, err = f.FetchChunks(m.ctx, onechunk)
 								if err != nil {
 									if retry == 0 {
 										log.Println(threadID, "Final error retrieving chunks, giving up:", err)

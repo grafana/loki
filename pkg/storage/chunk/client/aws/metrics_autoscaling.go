@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/mtime"
 	"github.com/pkg/errors"
 	promApi "github.com/prometheus/client_golang/api"
 	promV1 "github.com/prometheus/client_golang/api/prometheus/v1"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/mtime"
 
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"

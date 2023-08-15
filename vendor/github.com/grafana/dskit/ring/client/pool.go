@@ -10,12 +10,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/internal/slices"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 )
 
 // PoolClient is the interface that should be implemented by a

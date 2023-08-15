@@ -3,10 +3,10 @@ package index
 import (
 	"context"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"

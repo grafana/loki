@@ -19,9 +19,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 )
 
 var (

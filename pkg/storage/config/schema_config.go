@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logproto"

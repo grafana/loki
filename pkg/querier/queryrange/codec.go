@@ -15,11 +15,11 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
+	"github.com/grafana/dskit/httpgrpc"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/prometheus/model/timestamp"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -892,6 +892,12 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			v.responses = append(v.responses, r.(*LokiSeriesResponseView))
 		}
 		return v, nil
+	case *MergedSeriesResponseView:
+		v := &MergedSeriesResponseView{}
+		for _, r := range responses {
+			v.responses = append(v.responses, r.(*MergedSeriesResponseView).responses...)
+		}
+		return v, nil
 	case *LokiLabelNamesResponse:
 		labelNameRes := responses[0].(*LokiLabelNamesResponse)
 		uniqueNames := make(map[string]struct{})
@@ -942,7 +948,7 @@ func (Codec) MergeResponse(responses ...queryrangebase.Response) (queryrangebase
 			Headers:  headers,
 		}, nil
 	default:
-		return nil, errors.New("unknown response in merging responses")
+		return nil, fmt.Errorf("unknown response type (%T) in merging responses", responses[0])
 	}
 }
 

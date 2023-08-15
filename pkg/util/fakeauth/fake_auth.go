@@ -6,9 +6,9 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/user"
 	"google.golang.org/grpc"
 )
 
