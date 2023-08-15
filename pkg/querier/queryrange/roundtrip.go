@@ -146,7 +146,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware, cfg.ExecuteProbabilisticQueries)
+	limitedTripperware, err := NewLimitedTripperware(cfg, engineOpts, log, limits, schema, codec, metrics, indexStatsTripperware)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -499,7 +499,6 @@ func NewLimitedTripperware(
 	codec queryrangebase.Codec,
 	metrics *Metrics,
 	indexStatsTripperware queryrangebase.Tripperware,
-	probabilistic bool,
 ) (queryrangebase.Tripperware, error) {
 	return func(next http.RoundTripper) http.RoundTripper {
 		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)

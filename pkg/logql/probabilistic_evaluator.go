@@ -426,19 +426,19 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	}, nil
 }
 
-type topkMatrixStepper struct {
+type TopkMatrixStepper struct {
 	m sketch.TopKMatrix
 	i int
 }
 
-func NewTopKMatrixStepper(m sketch.TopKMatrix) *topkMatrixStepper {
-	return &topkMatrixStepper{
+func NewTopKMatrixStepper(m sketch.TopKMatrix) *TopkMatrixStepper {
+	return &TopkMatrixStepper{
 		m: m,
 		i: 0,
 	}
 }
 
-func (s *topkMatrixStepper) Next() (ok bool, ts int64, r StepResult) {
+func (s *TopkMatrixStepper) Next() (ok bool, ts int64, r StepResult) {
 	if s.i < len(s.m) {
 		v := s.m[s.i]
 		s.i++
@@ -448,10 +448,10 @@ func (s *topkMatrixStepper) Next() (ok bool, ts int64, r StepResult) {
 	return false, 0, nil
 }
 
-func (*topkMatrixStepper) Close() error { return nil }
+func (*TopkMatrixStepper) Close() error { return nil }
 
-func (*topkMatrixStepper) Error() error { return nil }
+func (*TopkMatrixStepper) Error() error { return nil }
 
-func (*topkMatrixStepper) Type() T {
+func (*TopkMatrixStepper) Type() T {
 	return TopKVecType
 }
