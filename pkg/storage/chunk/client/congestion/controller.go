@@ -17,8 +17,8 @@ import (
 type AIMDController struct {
 	inner client.ObjectClient
 
-	retry   Retrier
-	hedge   Hedger
+	retrier Retrier
+	hedger  Hedger
 	metrics *Metrics
 
 	limiter       *rate.Limiter
@@ -27,16 +27,20 @@ type AIMDController struct {
 }
 
 func NewAIMDController(cfg Config) *AIMDController {
-	lowerBound := rate.Limit(cfg.Controller.AIMD.LowerBound)
+	lowerBound := rate.Limit(cfg.Controller.AIMD.Start)
 	upperBound := rate.Limit(cfg.Controller.AIMD.UpperBound)
 
-	if upperBound == 0 {
+	if lowerBound <= 0 {
+		lowerBound = 1
+	}
+
+	if upperBound <= 0 {
 		// set to infinity if not defined
 		upperBound = rate.Limit(math.Inf(1))
 	}
 
 	backoffFactor := cfg.Controller.AIMD.BackoffFactor
-	if backoffFactor == 0 {
+	if backoffFactor <= 0 {
 		// AIMD algorithm calls for halving rate
 		backoffFactor = 0.5
 	}
@@ -53,17 +57,17 @@ func (a *AIMDController) Wrap(client client.ObjectClient) client.ObjectClient {
 	return a
 }
 
-func (a *AIMDController) WithRetrier(r Retrier) Controller {
-	a.retry = r
+func (a *AIMDController) withRetrier(r Retrier) Controller {
+	a.retrier = r
 	return a
 }
 
-func (a *AIMDController) WithHedger(h Hedger) Controller {
-	a.hedge = h
+func (a *AIMDController) withHedger(h Hedger) Controller {
+	a.hedger = h
 	return a
 }
 
-func (a *AIMDController) WithMetrics(m *Metrics) Controller {
+func (a *AIMDController) withMetrics(m *Metrics) Controller {
 	a.metrics = m
 
 	a.updateLimitMetric()
@@ -80,7 +84,7 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 
 	// TODO(dannyk): use hedging client to handle requests, do NOT hedge retries
 
-	rc, sz, err := a.retry.Do(
+	rc, sz, err := a.retrier.Do(
 		func(attempt int) (io.ReadCloser, int64, error) {
 			// in retry
 			if attempt > 0 {
@@ -165,6 +169,9 @@ func (a *AIMDController) multiplicativeDecrease() {
 func (a *AIMDController) updateLimitMetric() {
 	a.metrics.currentLimit.Set(float64(a.limiter.Limit()))
 }
+func (a *AIMDController) getRetrier() Retrier  { return a.retrier }
+func (a *AIMDController) getHedger() Hedger    { return a.hedger }
+func (a *AIMDController) getMetrics() *Metrics { return a.metrics }
 
 type NoopController struct {
 	retrier Retrier
@@ -188,15 +195,18 @@ func (n *NoopController) IsObjectNotFoundErr(error) bool                 { retur
 func (n *NoopController) IsRetryableErr(error) bool                      { return false }
 func (n *NoopController) Stop()                                          {}
 func (n *NoopController) Wrap(c client.ObjectClient) client.ObjectClient { return c }
-func (n *NoopController) WithRetrier(r Retrier) Controller {
+func (n *NoopController) withRetrier(r Retrier) Controller {
 	n.retrier = r
 	return n
 }
-func (n *NoopController) WithHedger(h Hedger) Controller {
+func (n *NoopController) withHedger(h Hedger) Controller {
 	n.hedger = h
 	return n
 }
-func (n *NoopController) WithMetrics(m *Metrics) Controller {
+func (n *NoopController) withMetrics(m *Metrics) Controller {
 	n.metrics = m
 	return n
 }
+func (n *NoopController) getRetrier() Retrier  { return n.retrier }
+func (n *NoopController) getHedger() Hedger    { return n.hedger }
+func (n *NoopController) getMetrics() *Metrics { return n.metrics }

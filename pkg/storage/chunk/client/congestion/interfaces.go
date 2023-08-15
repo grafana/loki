@@ -18,9 +18,13 @@ type Controller interface {
 	// Wrap wraps a given object store client and handles congestion against its backend service
 	Wrap(client client.ObjectClient) client.ObjectClient
 
-	WithRetrier(Retrier) Controller
-	WithHedger(Hedger) Controller
-	WithMetrics(*Metrics) Controller
+	withRetrier(Retrier) Controller
+	withHedger(Hedger) Controller
+	withMetrics(*Metrics) Controller
+
+	getRetrier() Retrier
+	getHedger() Hedger
+	getMetrics() *Metrics
 }
 
 type DoRequestFunc func(attempt int) (io.ReadCloser, int64, error)

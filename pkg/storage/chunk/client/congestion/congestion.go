@@ -13,9 +13,9 @@ func NewController(cfg Config, metrics *Metrics) Controller {
 	logger := log.With(util_log.Logger, "component", "congestion_control")
 
 	return newController(cfg, logger).
-		WithRetrier(newRetrier(cfg, logger)).
-		WithHedger(newHedger(cfg, logger)).
-		WithMetrics(metrics)
+		withRetrier(newRetrier(cfg, logger)).
+		withHedger(newHedger(cfg, logger)).
+		withMetrics(metrics)
 }
 
 func newController(cfg Config, logger log.Logger) Controller {
