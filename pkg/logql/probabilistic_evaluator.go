@@ -68,13 +68,13 @@ func (v TopKVector) TopkVector() sketch.TopKVector {
 
 // ProbabilisticStepEvaluator evaluate a single step of a probabilistic query type.
 type ProbabilisticStepEvaluator interface {
-	// while Next returns a promql.Value, the only acceptable types are Scalar and Vector.
+	// while Next returns a StepResult.
 	Next() (ok bool, ts int64, r StepResult)
 	// Close all resources used.
 	Close() error
 	// Reports any error
 	Error() error
-
+	// the type of a step result
 	Type() T
 }
 
