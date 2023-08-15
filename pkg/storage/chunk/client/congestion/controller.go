@@ -76,14 +76,14 @@ func (a *AIMDController) PutObject(ctx context.Context, objectKey string, object
 
 func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	// Only GetObject implements congestion avoidance; the other methods are either non-idempotent which means they
-	// cannot be retried, or are too low volume to care
+	// cannot be retried, or are too low volume to care about
+
+	// TODO(dannyk): use hedging client to handle requests, do NOT hedge retries
 
 	rc, sz, err := a.retry.Do(
 		func(attempt int) (io.ReadCloser, int64, error) {
 			// in retry
 			if attempt > 0 {
-				// TODO(dannyk): define SetHTTPClient on client.ObjectClient interface
-				// then use NoopHedger to avoid hedging retries
 				a.metrics.retries.Add(1)
 			}
 
