@@ -595,22 +595,16 @@ func ProbabilisticResultStepEvaluator(res logqlmodel.Result, params Params) (Pro
 	switch data := res.Data.(type) {
 	case promql.Vector:
 		var exhausted bool
-		return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
+		ev, err := NewStepEvaluator(func() (bool, int64, promql.Vector) {
 			if !exhausted {
 				exhausted = true
-				return true, start.UnixNano() / int64(time.Millisecond), SampleVector(data)
+				return true, start.UnixNano() / int64(time.Millisecond), data
 			}
 			return false, 0, nil
 		}, nil, nil)
+		return stepEvaluatorAdapter{ev}, err
 	case sketch.TopKMatrix:
-		i := 0
-		return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
-			if len(data) > i {
-				i++
-				return true, int64(data[i].TS), TopKVector(data[i])
-			}
-			return false, 0, nil
-		}, nil, nil)
+		return NewTopKMatrixStepper(data), nil
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}

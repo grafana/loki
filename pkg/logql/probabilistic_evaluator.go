@@ -83,47 +83,65 @@ type ProbabilisticEvaluator struct {
 	logger    log.Logger
 }
 
-type pStepEvaluator struct {
-	fn    func() (bool, int64, StepResult)
-	close func() error
-	err   func() error
-	t     T
+type pTopkStepEvaluator struct {
+	expr   *syntax.VectorAggregationExpr
+	next   StepEvaluator
+	logger log.Logger
 }
 
-func (e *pStepEvaluator) Type() T {
-	return e.t
+func (e *pTopkStepEvaluator) Type() T {
+	return TopKVecType
 }
 
-func (e *pStepEvaluator) Next() (bool, int64, StepResult) {
-	return e.fn()
-}
+func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
+	next, ts, vec := e.next.Next()
 
-func (e *pStepEvaluator) Close() error {
-	return e.close()
-}
-
-func (e *pStepEvaluator) Error() error {
-	return e.err()
-}
-
-// this function is just copy paste from the regular step eval, maybe we don't need it?
-func NewProbabilisticStepEvaluator(fn func() (bool, int64, StepResult), closeFn func() error, err func() error) (ProbabilisticStepEvaluator, error) {
-	if fn == nil {
-		return nil, errors.New("nil step evaluator fn")
+	if !next {
+		return false, 0, nil
+	}
+	if e.expr.Params < 1 {
+		return next, ts, nil
 	}
 
-	if closeFn == nil {
-		closeFn = func() error { return nil }
+	// We only use one aggregation. The topk sketch compresses all
+	// information and thus we don't need to take care of grouping
+	// here.
+	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, 10, 100000)
+	if err != nil {
+		// TODO(karsten): capture error
+		return false, ts, nil
 	}
 
-	if err == nil {
-		err = func() error { return nil }
+	buf := make([]byte, 0, 1024)
+	sort.Strings(e.expr.Grouping.Groups)
+
+	for _, s := range vec {
+		metric := s.Metric
+		var groupingKey uint64
+		if e.expr.Grouping.Without {
+			groupingKey, buf = metric.HashWithoutLabels(buf, e.expr.Grouping.Groups...)
+		} else {
+			groupingKey, buf = metric.HashForLabels(buf, e.expr.Grouping.Groups...)
+		}
+
+		// TODO(karsten): support floats.
+		topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), uint32(s.F))
 	}
-	return &pStepEvaluator{
-		fn:    fn,
-		close: closeFn,
-		err:   err,
-	}, nil
+
+	r := sketch.TopKVector{
+		TS:   uint64(ts),
+		Topk: topkAggregation,
+	}
+
+	return next, ts, TopKVector(r)
+}
+
+func (e *pTopkStepEvaluator) Close() error {
+	return e.next.Close()
+}
+
+func (e *pTopkStepEvaluator) Error() error {
+	return e.next.Error()
 }
 
 // NewDefaultEvaluator constructs a DefaultEvaluator
@@ -342,7 +360,9 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
-		vec = r.SampleVector()
+		if r != nil {
+			vec = r.SampleVector()
+		}
 	}
 
 	series := make([]promql.Series, 0, len(seriesIndex))
@@ -399,46 +419,39 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 		return nil, err
 	}
 	sort.Strings(expr.Grouping.Groups)
-	return NewProbabilisticStepEvaluator(func() (bool, int64, StepResult) {
-		next, ts, vec := nextEvaluator.Next()
+	return &pTopkStepEvaluator{
+		expr:   expr,
+		next:   nextEvaluator,
+		logger: p.logger,
+	}, nil
+}
 
-		if !next {
-			return false, 0, nil
-		}
-		if expr.Params < 1 {
-			return next, ts, nil
-		}
+type topkMatrixStepper struct {
+	m sketch.TopKMatrix
+	i int
+}
 
-		// We only use one aggregation. The topk sketch compresses all
-		// information and thus we don't need to take care of grouping
-		// here.
-		topkAggregation, err := sketch.NewCMSTopkForCardinality(p.logger, 10, 100000)
-		if err != nil {
-			// TODO(karsten): capture error
-			return false, ts, nil
-		}
+func NewTopKMatrixStepper(m sketch.TopKMatrix) *topkMatrixStepper {
+	return &topkMatrixStepper{
+		m: m,
+		i: 0,
+	}
+}
 
-		buf := make([]byte, 0, 1024)
-		sort.Strings(expr.Grouping.Groups)
+func (s *topkMatrixStepper) Next() (ok bool, ts int64, r StepResult) {
+	if s.i < len(s.m) {
+		v := s.m[s.i]
+		s.i++
+		return true, int64(v.TS), TopKVector(v)
+	}
 
-		for _, s := range vec {
-			metric := s.Metric
-			var groupingKey uint64
-			if expr.Grouping.Without {
-				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
-			} else {
-				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
-			}
+	return false, 0, nil
+}
 
-			// TODO(karsten): support floats.
-			topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), uint32(s.F))
-		}
+func (*topkMatrixStepper) Close() error { return nil }
 
-		r := sketch.TopKVector{
-			TS:   uint64(ts),
-			Topk: topkAggregation,
-		}
+func (*topkMatrixStepper) Error() error { return nil }
 
-		return next, ts, TopKVector(r)
-	}, nextEvaluator.Close, nextEvaluator.Error)
+func (*topkMatrixStepper) Type() T {
+	return TopKVecType
 }
