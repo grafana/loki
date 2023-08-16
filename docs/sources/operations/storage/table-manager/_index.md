@@ -23,7 +23,7 @@ time range exceeds the retention period.
 The Table Manager supports the following backends:
 
 - **Index store**
-  - [Single Store (boltdb-shipper)]({{<relref "../boltdb-shipper">}})
+  - [Single Store (boltdb-shipper)]({{< relref "../boltdb-shipper" >}})
   - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
   - [Google Bigtable](https://cloud.google.com/bigtable)
   - [Apache Cassandra](https://cassandra.apache.org)
