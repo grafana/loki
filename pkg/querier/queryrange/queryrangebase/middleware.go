@@ -3,8 +3,8 @@ package queryrangebase
 import (
 	"net/http"
 
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/tenant"
-	"github.com/weaveworks/common/middleware"
 )
 
 const (

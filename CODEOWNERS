@@ -4,10 +4,9 @@
 # Documentation.
 /docs/ @grafana/docs-logs @grafana/loki-team
 
+# Loki operator
+/operator/ @grafana/loki-team @periklis @xperimental
+/.github/workflows/operator* @grafana/loki-team @periklis @xperimental
+
 # No owners - allows sub-maintainers to merge changes.
 CHANGELOG.md
-
-# Make dependabot as codeowners for specific files to auto-merge dependencies PRs
-go.mod @dependabot @grafana/loki-team
-go.sum @dependabot @grafana/loki-team
-/vendor @dependabot @grafana/loki-team

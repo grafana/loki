@@ -1,4 +1,4 @@
-package handlers_test
+package handlers
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 	"github.com/ViaQ/logerr/v2/kverrors"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -42,7 +41,7 @@ func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsAnErrorOtherThanNotFound_
 		return badRequestErr
 	}
 
-	err := handlers.AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &defaultPod)
+	err := AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &defaultPod)
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
 
 	// make sure patch was NOT called because the Get failed
@@ -96,7 +95,7 @@ func TestAnnotatePodWithAvailabilityZone_WhenGetReturnsNode_DoesNotError(t *test
 		},
 	})
 
-	err := handlers.AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &testPod)
+	err := AnnotatePodWithAvailabilityZone(context.TODO(), logger, k, &testPod)
 	require.NoError(t, err)
 
 	// make sure patch was called because the Get succeeded

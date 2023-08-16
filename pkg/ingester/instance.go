@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
-	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
@@ -633,7 +633,8 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(req.TargetLabels, matchers)
+	targetLabels := req.TargetLabels
+	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(targetLabels, matchers)
 	matchAny = matchAny || len(matchers) == 0
 
 	seriesNames := make(map[uint64]string)
@@ -673,7 +674,11 @@ func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 			} else {
 				labelVolumes = make(map[string]uint64, len(s.labels))
 				for _, l := range s.labels {
-					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+					if len(targetLabels) > 0 {
+						if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+							labelVolumes[l.Name] += size
+						}
+					} else {
 						labelVolumes[l.Name] += size
 					}
 				}

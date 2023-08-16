@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/logcli/client"

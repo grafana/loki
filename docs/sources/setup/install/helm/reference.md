@@ -809,7 +809,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.7.2"
+"v1.7.3"
 </pre>
 </td>
 		</tr>
@@ -926,7 +926,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -1094,7 +1094,7 @@ false
 		<tr>
 			<td>gateway.ingress.hosts</td>
 			<td>list</td>
-			<td>Hosts configuration for the gateway ingress</td>
+			<td>Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1130,7 +1130,7 @@ false
 		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
-			<td>TLS configuration for the gateway ingress</td>
+			<td>TLS configuration for the gateway ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1482,11 +1482,13 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>ingress.hosts[0]</td>
-			<td>string</td>
-			<td></td>
+			<td>ingress.hosts</td>
+			<td>list</td>
+			<td>Hosts configuration for the ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"loki.example.com"
+[
+  "loki.example.com"
+]
 </pre>
 </td>
 		</tr>
@@ -1673,7 +1675,7 @@ false
 		<tr>
 			<td>ingress.tls</td>
 			<td>list</td>
-			<td></td>
+			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
 </pre>
