@@ -312,7 +312,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 func (l *Limits) Validate() error {
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
-			matchers, err := syntax.ParseMatchers(rule.Selector)
+			matchers, err := syntax.ParseMatchers(rule.Selector, true)
 			if err != nil {
 				return fmt.Errorf("invalid labels matchers: %w", err)
 			}
