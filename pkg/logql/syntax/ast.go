@@ -1049,6 +1049,7 @@ const (
 	OpKeepEmpty = "--keep-empty"
 
 	// internal only
+	// TODO(karsten): I'm not sure we need this.
 	OpTypeTopKMerge = "merge_topk"
 )
 

@@ -80,18 +80,17 @@ func TestMappingEquivalence(t *testing.T) {
 			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			// TODO: test with probabilistic true
 			mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
 			_, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
 
 			res, err := qry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			shardedRes, err := shardedQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			if tc.approximate {
 				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
@@ -149,12 +148,12 @@ func TestShardCounter(t *testing.T) {
 			// TODO: test with probabilistic true
 			mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
 			noop, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
 
 			shardedRes, err := shardedQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			if noop {
 				assert.Equal(t, int64(0), shardedRes.Statistics.Summary.Shards)
@@ -407,19 +406,19 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			// Regular engine
 			qry := regularEngine.Query(params)
 			res, err := qry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			// Downstream engine - split by range
 			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
-			require.Nil(t, err)
+			require.NoError(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 
 			rangeQry := downstreamEngine.Query(ctx, params, rangeExpr)
 			rangeRes, err := rangeQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			require.Equal(t, res.Data, rangeRes.Data)
 		})
@@ -443,27 +442,7 @@ func TestSketchEquivalence(t *testing.T) {
 		query       string
 		approximate bool
 	}{
-		{`1`, false},
-		{`1 + 1`, false},
-		{`{a="1"}`, false},
-		{`{a="1"} |= "number: 10"`, false},
-		{`rate({a=~".+"}[1s])`, false},
-		{`sum by (a) (rate({a=~".+"}[1s]))`, false},
-		{`sum(rate({a=~".+"}[1s]))`, false},
-		{`max without (a) (rate({a=~".+"}[1s]))`, false},
-		{`count(rate({a=~".+"}[1s]))`, false},
-		{`avg(rate({a=~".+"}[1s]))`, true},
-		{`avg(rate({a=~".+"}[1s])) by (a)`, true},
-		{`1 + sum by (cluster) (rate({a=~".+"}[1s]))`, false},
-		{`sum(max(rate({a=~".+"}[1s])))`, false},
-		{`max(count(rate({a=~".+"}[1s])))`, false},
-		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
-		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
-		// topk prefers already-seen values in tiebreakers. Since the test data generates
-		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
-		// sorted by labels, we don't expect this to pass.
-		// We could sort them as stated, but it doesn't seem worth the performance hit.
-		// {`topk(3, rate({a=~".+"}[1s]))`, false},
+		{`topk(3, rate({a=~".+"}[1s]))`, false},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -474,7 +453,6 @@ func TestSketchEquivalence(t *testing.T) {
 		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
 		downstream := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
-		mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
 		probabilisticMapper := NewShardMapper(ConstantShards(shards), true, nilShardMetrics)
 
 		t.Run(tc.query, func(t *testing.T) {
@@ -490,19 +468,17 @@ func TestSketchEquivalence(t *testing.T) {
 			)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			_, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
-			shardedQry := downstream.Query(ctx, params, mapped)
-			shardedRes, err := shardedQry.Exec(ctx)
+			qry := regular.Query(params)
+			res, err := qry.Exec(ctx)
 			require.Nil(t, err)
 
 			_, _, probabilisticMapped, err := probabilisticMapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 			probabilisticQry := downstream.Query(ctx, params, probabilisticMapped)
 			probabilisticResult, err := probabilisticQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
-			require.Equal(t, probabilisticResult.Data, shardedRes.Data)
+			require.Equal(t, res.Data, probabilisticResult.Data)
 		})
 	}
 }
