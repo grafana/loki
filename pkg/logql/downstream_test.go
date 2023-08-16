@@ -426,6 +426,87 @@ func TestRangeMappingEquivalence(t *testing.T) {
 	}
 }
 
+func TestSketchEquivalence(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 60
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		start    = time.Unix(0, 0)
+		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
+		step     = time.Second
+		interval = time.Duration(0)
+		limit    = 100
+	)
+
+	for _, tc := range []struct {
+		query       string
+		approximate bool
+	}{
+		{`1`, false},
+		{`1 + 1`, false},
+		{`{a="1"}`, false},
+		{`{a="1"} |= "number: 10"`, false},
+		{`rate({a=~".+"}[1s])`, false},
+		{`sum by (a) (rate({a=~".+"}[1s]))`, false},
+		{`sum(rate({a=~".+"}[1s]))`, false},
+		{`max without (a) (rate({a=~".+"}[1s]))`, false},
+		{`count(rate({a=~".+"}[1s]))`, false},
+		{`avg(rate({a=~".+"}[1s]))`, true},
+		{`avg(rate({a=~".+"}[1s])) by (a)`, true},
+		{`1 + sum by (cluster) (rate({a=~".+"}[1s]))`, false},
+		{`sum(max(rate({a=~".+"}[1s])))`, false},
+		{`max(count(rate({a=~".+"}[1s])))`, false},
+		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
+		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
+		// topk prefers already-seen values in tiebreakers. Since the test data generates
+		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
+		// sorted by labels, we don't expect this to pass.
+		// We could sort them as stated, but it doesn't seem worth the performance hit.
+		// {`topk(3, rate({a=~".+"}[1s]))`, false},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		downstream := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
+		probabilisticMapper := NewShardMapper(ConstantShards(shards), true, nilShardMetrics)
+
+		t.Run(tc.query, func(t *testing.T) {
+			params := NewLiteralParams(
+				tc.query,
+				start,
+				end,
+				step,
+				interval,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			_, _, mapped, err := mapper.Parse(tc.query)
+			require.Nil(t, err)
+			shardedQry := downstream.Query(ctx, params, mapped)
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.Nil(t, err)
+
+			_, _, probabilisticMapped, err := probabilisticMapper.Parse(tc.query)
+			require.Nil(t, err)
+			probabilisticQry := downstream.Query(ctx, params, probabilisticMapped)
+			probabilisticResult, err := probabilisticQry.Exec(ctx)
+			require.Nil(t, err)
+
+			require.Equal(t, probabilisticResult.Data, shardedRes.Data)
+		})
+	}
+}
+
 // approximatelyEquals ensures two responses are approximately equal,
 // up to 6 decimals precision per sample
 func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {

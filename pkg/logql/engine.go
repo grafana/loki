@@ -180,7 +180,7 @@ func (ng *Engine) Query(params Params) Query {
 	}
 }
 
-// PrbabilistcQuery creates a new LogQL query. Instant/Range type is derived from the parameters.
+// ProbabilistcQuery creates a new LogQL query. Instant/Range type is derived from the parameters.
 func (ng *Engine) ProbabilisticQuery(params Params) Query {
 	return &probabilisticQuery{
 		evaluator: ProbabilisticEvaluator{

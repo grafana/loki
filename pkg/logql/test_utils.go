@@ -217,8 +217,14 @@ func (m MockDownstreamer) Downstreamer(_ context.Context) Downstreamer { return 
 func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQuery) ([]logqlmodel.Result, error) {
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
+		expr := query.Expr
+		probExpr, probabilistic := query.Expr.(DownstreamTopkSampleExpr)
+		if probabilistic {
+			expr = probExpr.TopkSampleExpr
+		}
+
 		params := NewLiteralParams(
-			query.Expr.String(),
+			expr.String(),
 			query.Params.Start(),
 			query.Params.End(),
 			query.Params.Step(),
@@ -227,7 +233,16 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 			query.Params.Limit(),
 			query.Shards.Encode(),
 		)
-		res, err := m.Query(params).Exec(ctx)
+
+		var res logqlmodel.Result
+		var err error
+
+		if probabilistic {
+			res, err = m.ProbabilisticQuery(params).Exec(ctx)
+		} else {
+			res, err = m.Query(params).Exec(ctx)
+		}
+
 		if err != nil {
 			return nil, err
 		}
