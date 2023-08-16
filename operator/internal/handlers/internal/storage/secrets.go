@@ -2,10 +2,10 @@ package storage
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
+	corev1 "k8s.io/api/core/v1"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-
-	corev1 "k8s.io/api/core/v1"
 )
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.

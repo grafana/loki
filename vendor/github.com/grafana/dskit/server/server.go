@@ -21,6 +21,7 @@ import (
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/prometheus/common/config"
 	"github.com/prometheus/exporter-toolkit/web"
 	"github.com/soheilhy/cmux"
 	"golang.org/x/net/netutil"
@@ -56,10 +57,13 @@ type SignalHandler interface {
 
 // TLSConfig contains TLS parameters for Config.
 type TLSConfig struct {
-	TLSCertPath string `yaml:"cert_file"`
-	TLSKeyPath  string `yaml:"key_file"`
-	ClientAuth  string `yaml:"client_auth_type"`
-	ClientCAs   string `yaml:"client_ca_file"`
+	TLSCert       string        `yaml:"cert" doc:"description=Server TLS certificate. This configuration parameter is YAML only."`
+	TLSKey        config.Secret `yaml:"key" doc:"description=Server TLS key. This configuration parameter is YAML only."`
+	ClientCAsText string        `yaml:"client_ca" doc:"description=Root certificate authority used to verify client certificates. This configuration parameter is YAML only."`
+	TLSCertPath   string        `yaml:"cert_file"`
+	TLSKeyPath    string        `yaml:"key_file"`
+	ClientAuth    string        `yaml:"client_auth_type"`
+	ClientCAs     string        `yaml:"client_ca_file"`
 }
 
 // Config for a Server
@@ -259,7 +263,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 	if cfg.RouteHTTPToGRPC {
 		grpchttpmux = cmux.New(httpListener)
 
-		httpListener = grpchttpmux.Match(cmux.HTTP1Fast())
+		httpListener = grpchttpmux.Match(cmux.HTTP1Fast("PATCH"))
 		grpcOnHTTPListener = grpchttpmux.Match(cmux.HTTP2())
 	}
 
@@ -289,30 +293,38 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 
 	// Setup TLS
 	var httpTLSConfig *tls.Config
-	if len(cfg.HTTPTLSConfig.TLSCertPath) > 0 && len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 {
+	if (len(cfg.HTTPTLSConfig.TLSCertPath) > 0 || len(cfg.HTTPTLSConfig.TLSCert) > 0) &&
+		(len(cfg.HTTPTLSConfig.TLSKeyPath) > 0 || len(cfg.HTTPTLSConfig.TLSKey) > 0) {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		httpTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
-			TLSCertPath:  cfg.HTTPTLSConfig.TLSCertPath,
-			TLSKeyPath:   cfg.HTTPTLSConfig.TLSKeyPath,
-			ClientAuth:   cfg.HTTPTLSConfig.ClientAuth,
-			ClientCAs:    cfg.HTTPTLSConfig.ClientCAs,
-			CipherSuites: cipherSuites,
-			MinVersion:   minVersion,
+			TLSCert:       cfg.HTTPTLSConfig.TLSCert,
+			TLSKey:        config.Secret(cfg.HTTPTLSConfig.TLSKey),
+			ClientCAsText: cfg.HTTPTLSConfig.ClientCAsText,
+			TLSCertPath:   cfg.HTTPTLSConfig.TLSCertPath,
+			TLSKeyPath:    cfg.HTTPTLSConfig.TLSKeyPath,
+			ClientAuth:    cfg.HTTPTLSConfig.ClientAuth,
+			ClientCAs:     cfg.HTTPTLSConfig.ClientCAs,
+			CipherSuites:  cipherSuites,
+			MinVersion:    minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating http tls config: %v", err)
 		}
 	}
 	var grpcTLSConfig *tls.Config
-	if len(cfg.GRPCTLSConfig.TLSCertPath) > 0 && len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 {
+	if (len(cfg.GRPCTLSConfig.TLSCertPath) > 0 || len(cfg.GRPCTLSConfig.TLSCert) > 0) &&
+		(len(cfg.GRPCTLSConfig.TLSKeyPath) > 0 || len(cfg.GRPCTLSConfig.TLSKey) > 0) {
 		// Note: ConfigToTLSConfig from prometheus/exporter-toolkit is awaiting security review.
 		grpcTLSConfig, err = web.ConfigToTLSConfig(&web.TLSConfig{
-			TLSCertPath:  cfg.GRPCTLSConfig.TLSCertPath,
-			TLSKeyPath:   cfg.GRPCTLSConfig.TLSKeyPath,
-			ClientAuth:   cfg.GRPCTLSConfig.ClientAuth,
-			ClientCAs:    cfg.GRPCTLSConfig.ClientCAs,
-			CipherSuites: cipherSuites,
-			MinVersion:   minVersion,
+			TLSCert:       cfg.GRPCTLSConfig.TLSCert,
+			TLSKey:        config.Secret(cfg.GRPCTLSConfig.TLSKey),
+			ClientCAsText: cfg.GRPCTLSConfig.ClientCAsText,
+			TLSCertPath:   cfg.GRPCTLSConfig.TLSCertPath,
+			TLSKeyPath:    cfg.GRPCTLSConfig.TLSKeyPath,
+			ClientAuth:    cfg.GRPCTLSConfig.ClientAuth,
+			ClientCAs:     cfg.GRPCTLSConfig.ClientCAs,
+			CipherSuites:  cipherSuites,
+			MinVersion:    minVersion,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("error generating grpc tls config: %v", err)
