@@ -30,8 +30,8 @@ For more information:
 
 The following are supported for the index:
 
-- [TSDB]({{<relref "./tsdb">}}) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
-- [Single Store (boltdb-shipper)]({{<relref "./boltdb-shipper">}}) index store which stores boltdb index files in the object store. 
+- [TSDB]({{<relref "./tsdb" >}}) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
+- [Single Store (boltdb-shipper)]({{<relref "./boltdb-shipper" >}}) index store which stores boltdb index files in the object store. 
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
 - [Google Bigtable](https://cloud.google.com/bigtable)
 - [Apache Cassandra](https://cassandra.apache.org)
@@ -53,7 +53,7 @@ The following are supported and recommended for the chunks:
 
 The following are supported for the chunks, but not typically recommended for production use:
 
-- [Filesystem]({{<relref "./filesystem">}}) (please read more about the filesystem to understand the pros/cons before using with production data)
+- [Filesystem]({{<relref "./filesystem"> }}) (please read more about the filesystem to understand the pros/cons before using with production data)
 
 The following are deprecated for the chunks and will be removed in a future release:
 
