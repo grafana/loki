@@ -182,8 +182,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{
-							"3939591336247135291": {{Event: `{app="fuzz"}`}},
-							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"3939591336247135291":  {{Event: `{app="fuzz"}`}},
+							"9576730571217736695":  {{Event: `{app="foo"}`}},
 							"12597166300821646905": {{Event: `{app="buzz"}`}},
 						},
 					},
@@ -192,8 +192,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{
-							"3939591336247135291": {{Event: `{app="fuzz"}`}},
-							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"3939591336247135291":  {{Event: `{app="fuzz"}`}},
+							"9576730571217736695":  {{Event: `{app="foo"}`}},
 							"12597166300821646905": {{Event: `{app="buzz"}`}},
 						},
 					},
@@ -202,8 +202,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{
-							"3939591336247135291": {{Event: `{app="fuzz"}`}},
-							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"3939591336247135291":  {{Event: `{app="fuzz"}`}},
+							"9576730571217736695":  {{Event: `{app="foo"}`}},
 							"12597166300821646905": {{Event: `{app="buzz"}`}},
 						},
 					},
@@ -212,8 +212,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{
-							"3939591336247135291": {{Event: `{app="fuzz"}`}},
-							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"3939591336247135291":  {{Event: `{app="fuzz"}`}},
+							"9576730571217736695":  {{Event: `{app="foo"}`}},
 							"12597166300821646905": {{Event: `{app="buzz"}`}},
 						},
 					},
@@ -222,8 +222,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{
-							"3939591336247135291": {{Event: `{app="fuzz"}`}},
-							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"3939591336247135291":  {{Event: `{app="fuzz"}`}},
+							"9576730571217736695":  {{Event: `{app="foo"}`}},
 							"12597166300821646905": {{Event: `{app="buzz"}`}},
 						},
 					},
