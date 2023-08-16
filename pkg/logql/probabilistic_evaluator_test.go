@@ -167,6 +167,70 @@ func TestProbabilisticEngine(t *testing.T) {
 				},
 			},
 		},
+		{
+			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m])) by (app)`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
+			[][]logproto.Series{
+				{
+					newSeries(testSize, factor(10, identity), `{app="foo"}`),
+					newSeries(testSize, factor(5, identity), `{app="fuzz"}`), newSeries(testSize, identity, `{app="buzz"}`),
+				},
+			},
+			[]SelectSampleParams{
+				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
+			},
+			sketch.TopKMatrix{
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{
+							"3939591336247135291": {{Event: `{app="fuzz"}`}},
+							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"12597166300821646905": {{Event: `{app="buzz"}`}},
+						},
+					},
+					TS: 60_000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{
+							"3939591336247135291": {{Event: `{app="fuzz"}`}},
+							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"12597166300821646905": {{Event: `{app="buzz"}`}},
+						},
+					},
+					TS: 90_000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{
+							"3939591336247135291": {{Event: `{app="fuzz"}`}},
+							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"12597166300821646905": {{Event: `{app="buzz"}`}},
+						},
+					},
+					TS: 12_0000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{
+							"3939591336247135291": {{Event: `{app="fuzz"}`}},
+							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"12597166300821646905": {{Event: `{app="buzz"}`}},
+						},
+					},
+					TS: 15_0000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{
+							"3939591336247135291": {{Event: `{app="fuzz"}`}},
+							"9576730571217736695": {{Event: `{app="foo"}`}},
+							"12597166300821646905": {{Event: `{app="buzz"}`}},
+						},
+					},
+					TS: 18_0000,
+				},
+			},
+		},
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
@@ -199,9 +263,9 @@ func TestProbabilisticEngine(t *testing.T) {
 					assert.Equal(t, expected[i].TS, actual[i].TS)
 
 					// Only the labels are tested here.
-					require.ElementsMatch(t, actual[i].Topk.GroupingKeys(), expected[i].Topk.GroupingKeys())
+					require.ElementsMatchf(t, actual[i].Topk.GroupingKeys(), expected[i].Topk.GroupingKeys(), "at TS:%d", actual[i].TS)
 					for _, key := range actual[i].Topk.GroupingKeys() {
-						require.ElementsMatch(t, actual[i].Topk.DistinctEventsForGroupingKey(key), expected[i].Topk.DistinctEventsForGroupingKey(key))
+						require.ElementsMatchf(t, actual[i].Topk.DistinctEventsForGroupingKey(key), expected[i].Topk.DistinctEventsForGroupingKey(key), "at TS:%d for key:%s", actual[i].TS, key)
 					}
 				}
 
