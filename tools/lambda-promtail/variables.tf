@@ -119,3 +119,9 @@ variable "sqs_enabled" {
   description = "Enables sending S3 logs to an SQS queue which will trigger lambda-promtail, unsuccessfully processed message are sent to a dead-letter-queue"
   default     = false
 }
+
+variable "sqs_queue_name_prefix" {
+  type        = string
+  description = "Name prefix for SQS queues"
+  default     = "s3-to-lambda-promtail"
+}

@@ -24,21 +24,23 @@
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_shipper_store then 24 else super.index_period_hours,
     loki+: if self.using_shipper_store then {
-      storage_config+: {
+      storage_config+: if $._config.using_boltdb_shipper then {
         boltdb_shipper+: {
           shared_store: $._config.boltdb_shipper_shared_store,
           active_index_directory: '/data/index',
           cache_location: '/data/boltdb-cache',
         },
+      } else {} + if $._config.using_tsdb_shipper then {
         tsdb_shipper+: {
           shared_store: $._config.tsdb_shipper_shared_store,
           active_index_directory: '/data/tsdb-index',
           cache_location: '/data/tsdb-cache',
         },
-      },
+      } else {},
       compactor+: {
         working_directory: '/data/compactor',
-        shared_store: if self.using_boltdb_shipper then self.boltdb_shipper_shared_store else self.tsdb_shipper_shared_store,
+        // prefer tsdb index over boltdb
+        shared_store: if $._config.using_tsdb_shipper then $._config.tsdb_shipper_shared_store else $._config.boltdb_shipper_shared_store,
       },
     } else {},
   },

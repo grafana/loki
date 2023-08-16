@@ -10,13 +10,13 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/middleware"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -47,12 +47,16 @@ type QueryResponse struct {
 	Result     parser.Value     `json:"result"`
 }
 
+type Engine interface {
+	Query(logql.Params) logql.Query
+}
+
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
 type QuerierAPI struct {
 	querier Querier
 	cfg     Config
 	limits  Limits
-	engine  *logql.Engine
+	engine  Engine
 }
 
 // NewQuerierAPI returns an instance of the QuerierAPI.
@@ -430,50 +434,52 @@ func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
 
 //TODO(trevorwhitney): add test for the handler split
 
-// SeriesVolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
+// VolumeRangeHandler queries the index label volumes related to the passed matchers and given time range.
 // Returns N values where N is the time range / step.
-func (q *QuerierAPI) SeriesVolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseSeriesVolumeRangeQuery(r)
-
+func (q *QuerierAPI) VolumeRangeHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseVolumeRangeQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	req := &logproto.VolumeRequest{
-		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers: rawReq.Query,
-		Step:     rawReq.Step.Milliseconds(),
-		Limit:    int32(rawReq.Limit),
+		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers:     rawReq.Query,
+		Step:         rawReq.Step.Milliseconds(),
+		Limit:        int32(rawReq.Limit),
+		TargetLabels: rawReq.TargetLabels,
+		AggregateBy:  rawReq.AggregateBy,
 	}
 
 	q.seriesVolumeHandler(r.Context(), r, req, w)
 }
 
-// SeriesVolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
+// VolumeInstantHandler queries the index label volumes related to the passed matchers and given time range.
 // Returns a single value for the time range.
-func (q *QuerierAPI) SeriesVolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
-	rawReq, err := loghttp.ParseSeriesVolumeInstantQuery(r)
-
+func (q *QuerierAPI) VolumeInstantHandler(w http.ResponseWriter, r *http.Request) {
+	rawReq, err := loghttp.ParseVolumeInstantQuery(r)
 	if err != nil {
 		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
 		return
 	}
 
 	req := &logproto.VolumeRequest{
-		From:     model.TimeFromUnixNano(rawReq.Start.UnixNano()),
-		Through:  model.TimeFromUnixNano(rawReq.End.UnixNano()),
-		Matchers: rawReq.Query,
-		Step:     0,
-		Limit:    int32(rawReq.Limit),
+		From:         model.TimeFromUnixNano(rawReq.Start.UnixNano()),
+		Through:      model.TimeFromUnixNano(rawReq.End.UnixNano()),
+		Matchers:     rawReq.Query,
+		Step:         0,
+		Limit:        int32(rawReq.Limit),
+		TargetLabels: rawReq.TargetLabels,
+		AggregateBy:  rawReq.AggregateBy,
 	}
 
 	q.seriesVolumeHandler(r.Context(), r, req, w)
 }
 
 func (q *QuerierAPI) seriesVolumeHandler(ctx context.Context, r *http.Request, req *logproto.VolumeRequest, w http.ResponseWriter) {
-	resp, err := q.querier.SeriesVolume(ctx, req)
+	resp, err := q.querier.Volume(ctx, req)
 	if err != nil {
 		serverutil.WriteError(err, w)
 		return

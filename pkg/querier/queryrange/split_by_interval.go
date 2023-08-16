@@ -5,12 +5,12 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/util/math"
 
@@ -295,10 +295,12 @@ func splitByTime(req queryrangebase.Request, interval time.Duration) ([]queryran
 		endTS := model.Time(r.GetEnd()).Time()
 		util.ForInterval(interval, startTS, endTS, true, func(start, end time.Time) {
 			reqs = append(reqs, &logproto.VolumeRequest{
-				From:     model.TimeFromUnix(start.Unix()),
-				Through:  model.TimeFromUnix(end.Unix()),
-				Matchers: r.GetMatchers(),
-				Limit:    r.Limit,
+				From:         model.TimeFromUnix(start.Unix()),
+				Through:      model.TimeFromUnix(end.Unix()),
+				Matchers:     r.GetMatchers(),
+				Limit:        r.Limit,
+				TargetLabels: r.TargetLabels,
+				AggregateBy:  r.AggregateBy,
 			})
 		})
 	default:

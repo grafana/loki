@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.29.0
+BUILD_IMAGE_VERSION := 0.29.3
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -85,8 +85,8 @@ PROMTAIL_UI_FILES := $(shell find ./clients/pkg/promtail/server/ui -type f -name
 DOC_SOURCES_PATH := docs/sources
 
 # Configuration flags documentation
-DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configuration/index.template
-DOC_FLAGS := $(DOC_SOURCES_PATH)/configuration/_index.md
+DOC_FLAGS_TEMPLATE := $(DOC_SOURCES_PATH)/configure/index.template
+DOC_FLAGS := $(DOC_SOURCES_PATH)/configure/_index.md
 
 ##########
 # Docker #
@@ -465,8 +465,10 @@ fluent-bit-plugin: ## build the fluent-bit plugin
 
 fluent-bit-image: ## build the fluent-bit plugin docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
+fluent-bit-image-cross:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG) --build-arg LDFLAGS="-s -w $(GO_LDFLAGS)" -f clients/cmd/fluent-bit/Dockerfile .
 
-fluent-bit-push: ## push the fluent-bit plugin docker image
+fluent-bit-push: fluent-bit-image-cross ## push the fluent-bit plugin docker image
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/fluent-bit-plugin-loki:$(IMAGE_TAG)
 
 fluent-bit-test: LOKI_URL ?= http://localhost:3100/loki/api/
@@ -631,8 +633,8 @@ loki-operator-push: loki-operator-image-cross
 
 documentation-helm-reference-check:
 	@echo "Checking diff"
-	$(MAKE) -BC docs sources/installation/helm/reference.md
-	@git diff --exit-code -- docs/sources/installation/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/installation/helm/reference.md'" && false)
+	$(MAKE) -BC docs sources/setup/install/helm/reference.md
+	@git diff --exit-code -- docs/sources/setup/install/helm/reference.md || (echo "Please generate Helm Chart reference by running 'make -C docs sources/setup/install/helm/reference.md'" && false)
 
 ########
 # Misc #
@@ -772,14 +774,14 @@ check-doc: doc
 # Example Configs #
 ###################
 
-# Validate the example configurations that we provide in ./docs/sources/configuration/examples
+# Validate the example configurations that we provide in ./docs/sources/configure/examples
 validate-example-configs: loki
-	for f in ./docs/sources/configuration/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in ./docs/sources/configure/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
-# Dynamically generate ./docs/sources/configuration/examples.md using the example configs that we provide.
+# Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configuration)
+	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configure)
 	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
 	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
 	# Title and Heading
@@ -794,7 +796,7 @@ generate-example-config-doc:
 
 # Fail our CI build if changes are made to example configurations but our doc is not updated
 check-example-config-doc: generate-example-config-doc
-	@if ! (git diff --exit-code ./docs/sources/configuration/examples.md); then \
+	@if ! (git diff --exit-code ./docs/sources/configure/examples.md); then \
 		echo -e "\nChanges found in generated example configuration doc"; \
 		echo "Run 'make generate-example-config-doc' and commit the changes to fix this error."; \
 		echo "If you are actively developing these files you can ignore this error"; \

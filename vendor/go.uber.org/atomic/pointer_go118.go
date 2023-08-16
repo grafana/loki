@@ -18,43 +18,14 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-//go:build go1.18 && !go1.19
-// +build go1.18,!go1.19
+//go:build go1.18
+// +build go1.18
 
 package atomic
 
-import "unsafe"
+import "fmt"
 
-type Pointer[T any] struct {
-	_ nocmp // disallow non-atomic comparison
-	p UnsafePointer
-}
-
-// NewPointer creates a new Pointer.
-func NewPointer[T any](v *T) *Pointer[T] {
-	var p Pointer[T]
-	if v != nil {
-		p.p.Store(unsafe.Pointer(v))
-	}
-	return &p
-}
-
-// Load atomically loads the wrapped value.
-func (p *Pointer[T]) Load() *T {
-	return (*T)(p.p.Load())
-}
-
-// Store atomically stores the passed value.
-func (p *Pointer[T]) Store(val *T) {
-	p.p.Store(unsafe.Pointer(val))
-}
-
-// Swap atomically swaps the wrapped pointer and returns the old value.
-func (p *Pointer[T]) Swap(val *T) (old *T) {
-	return (*T)(p.p.Swap(unsafe.Pointer(val)))
-}
-
-// CompareAndSwap is an atomic compare-and-swap.
-func (p *Pointer[T]) CompareAndSwap(old, new *T) (swapped bool) {
-	return p.p.CompareAndSwap(unsafe.Pointer(old), unsafe.Pointer(new))
+// String returns a human readable representation of a Pointer's underlying value.
+func (p *Pointer[T]) String() string {
+	return fmt.Sprint(p.Load())
 }

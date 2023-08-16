@@ -2,11 +2,15 @@ package integration
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
+	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
@@ -396,13 +400,13 @@ func TestMicroServicesIngestQueryOverMultipleBucketSingleProvider(t *testing.T) 
 			cliQueryFrontend.Now = now
 
 			t.Run("ingest-logs", func(t *testing.T) {
-				// ingest logs to the previous period
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-36*time.Hour), map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels("lineA", time.Now().Add(-48*time.Hour), map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels("lineB", time.Now().Add(-36*time.Hour), map[string]string{"traceID": "456"}, map[string]string{"job": "fake"}))
 
 				// ingest logs to the current period
-				require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
-				require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineC", map[string]string{"traceID": "789"}, map[string]string{"job": "fake"}))
+				require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineD", map[string]string{"traceID": "123"}, map[string]string{"job": "fake"}))
+
 			})
 
 			t.Run("query-lookback-default", func(t *testing.T) {
@@ -566,4 +570,186 @@ func TestSchedulerRing(t *testing.T) {
 		}
 		assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
 	})
+}
+
+func TestQueryTSDB_WithCachedPostings(t *testing.T) {
+	clu := cluster.New(nil, cluster.SchemaWithTSDB)
+
+	defer func() {
+		assert.NoError(t, clu.Cleanup())
+	}()
+
+	var (
+		tDistributor = clu.AddComponent(
+			"distributor",
+			"-target=distributor",
+		)
+		tIndexGateway = clu.AddComponent(
+			"index-gateway",
+			"-target=index-gateway",
+			"-tsdb.enable-postings-cache=true",
+			"-store.index-cache-read.cache.enable-fifocache=true",
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	var (
+		tIngester = clu.AddComponent(
+			"ingester",
+			"-target=ingester",
+			"-ingester.flush-on-shutdown=true",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tQueryScheduler = clu.AddComponent(
+			"query-scheduler",
+			"-target=query-scheduler",
+			"-query-scheduler.use-scheduler-ring=false",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		tCompactor = clu.AddComponent(
+			"compactor",
+			"-target=compactor",
+			"-boltdb.shipper.compactor.compaction-interval=1s",
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	// finally, run the query-frontend and querier.
+	var (
+		tQueryFrontend = clu.AddComponent(
+			"query-frontend",
+			"-target=query-frontend",
+			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-frontend.default-validity=0s",
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+		_ = clu.AddComponent(
+			"querier",
+			"-target=querier",
+			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+			"-common.compactor-address="+tCompactor.HTTPURL(),
+			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+		)
+	)
+	require.NoError(t, clu.Run())
+
+	tenantID := randStringRunes()
+
+	now := time.Now()
+	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+	cliDistributor.Now = now
+	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+	cliIngester.Now = now
+	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+	cliQueryFrontend.Now = now
+	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
+	cliIndexGateway.Now = now
+
+	// initial cache state.
+	igwMetrics, err := cliIndexGateway.Metrics()
+	require.NoError(t, err)
+	assertCacheState(t, igwMetrics, &expectedCacheState{
+		cacheName: "store.index-cache-read.embedded-cache",
+		gets:      0,
+		misses:    0,
+		added:     0,
+	})
+
+	t.Run("ingest-logs", func(t *testing.T) {
+		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", time.Now().Add(-72*time.Hour), map[string]string{"job": "fake"}))
+		require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineB", time.Now().Add(-48*time.Hour), map[string]string{"job": "fake"}))
+	})
+
+	// restart ingester which should flush the chunks and index
+	require.NoError(t, tIngester.Restart())
+
+	// Query lines
+	t.Run("query to verify logs being served from storage", func(t *testing.T) {
+		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
+		require.NoError(t, err)
+		assert.Equal(t, "streams", resp.Data.ResultType)
+
+		var lines []string
+		for _, stream := range resp.Data.Stream {
+			for _, val := range stream.Values {
+				lines = append(lines, val[1])
+			}
+		}
+
+		assert.ElementsMatch(t, []string{"lineA", "lineB"}, lines)
+	})
+
+	igwMetrics, err = cliIndexGateway.Metrics()
+	require.NoError(t, err)
+	assertCacheState(t, igwMetrics, &expectedCacheState{
+		cacheName: "store.index-cache-read.embedded-cache",
+		gets:      50,
+		misses:    1,
+		added:     1,
+	})
+
+	// ingest logs with ts=now.
+	require.NoError(t, cliDistributor.PushLogLine("lineC", map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLine("lineD", map[string]string{"job": "fake"}))
+
+	// default length is 7 days.
+	resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
+	require.NoError(t, err)
+	assert.Equal(t, "streams", resp.Data.ResultType)
+
+	var lines []string
+	for _, stream := range resp.Data.Stream {
+		for _, val := range stream.Values {
+			lines = append(lines, val[1])
+		}
+	}
+	// expect lines from both, ingesters memory and from the store.
+	assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC", "lineD"}, lines)
+
+}
+
+func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
+	for _, m := range mf.Metric {
+		if !assert.ObjectsAreEqualValues(lbs, m.GetLabel()) {
+			continue
+		}
+
+		return m.Counter.GetValue()
+	}
+
+	return 0
+}
+
+func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
+	var parser expfmt.TextParser
+	mfs, err := parser.TextToMetricFamilies(strings.NewReader(metrics))
+	require.NoError(t, err)
+
+	lbs := []*dto.LabelPair{
+		{
+			Name:  proto.String("cache"),
+			Value: proto.String(e.cacheName),
+		},
+	}
+
+	mf, found := mfs["querier_cache_added_new_total"]
+	require.True(t, found)
+	require.Equal(t, e.added, getValueFromMF(mf, lbs))
+
+	mf, found = mfs["querier_cache_gets_total"]
+	require.True(t, found)
+	require.Equal(t, e.gets, getValueFromMF(mf, lbs))
+
+	mf, found = mfs["querier_cache_misses_total"]
+	require.True(t, found)
+	require.Equal(t, e.misses, getValueFromMF(mf, lbs))
+}
+
+type expectedCacheState struct {
+	cacheName string
+	gets      float64
+	misses    float64
+	added     float64
 }

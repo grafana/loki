@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/services"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/middleware"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 )

@@ -10,7 +10,7 @@ steps:
     dry_run: true
     repo: grafana/loki-build-image
     tags:
-    - 0.28.3
+    - 0.29.3-golangci.1.51.2
   when:
     event:
     - pull_request
@@ -26,7 +26,7 @@ steps:
       from_secret: docker_password
     repo: grafana/loki-build-image
     tags:
-    - 0.28.3
+    - 0.29.3-golangci.1.51.2
     username:
       from_secret: docker_username
   when:
@@ -93,14 +93,14 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: check-drone-drift
 - commands:
   - make BUILD_IN_CONTAINER=false check-generated-files
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: check-generated-files
 - commands:
   - cd ..
@@ -110,7 +110,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: clone-target-branch
   when:
     event:
@@ -121,14 +121,14 @@ steps:
   - clone-target-branch
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: test
 - commands:
   - cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test
   depends_on:
   - clone-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: test-target-branch
   when:
     event:
@@ -141,7 +141,7 @@ steps:
   - test
   - test-target-branch
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: compare-coverage
   when:
     event:
@@ -159,7 +159,7 @@ steps:
     TOKEN:
       from_secret: github_token
     USER: grafanabot
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: report-coverage
   when:
     event:
@@ -169,7 +169,7 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: lint
 - commands:
   - make BUILD_IN_CONTAINER=false check-mod
@@ -177,7 +177,7 @@ steps:
   - test
   - lint
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: check-mod
 - commands:
   - apk add make bash && make lint-scripts
@@ -188,21 +188,21 @@ steps:
   depends_on:
   - check-generated-files
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: loki
 - commands:
   - make BUILD_IN_CONTAINER=false check-doc
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: check-doc
 - commands:
   - make BUILD_IN_CONTAINER=false check-format GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: check-format
   when:
     event:
@@ -212,14 +212,14 @@ steps:
   depends_on:
   - loki
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: validate-example-configs
 - commands:
   - make BUILD_IN_CONTAINER=false check-example-config-doc
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: check-example-config-doc
 - commands:
   - mkdir -p /hugo/content/docs/loki/latest
@@ -252,7 +252,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: loki-mixin-check
   when:
     event:
@@ -277,7 +277,7 @@ steps:
   depends_on:
   - clone
   environment: {}
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: documentation-helm-reference-check
 trigger:
   ref:
@@ -834,11 +834,13 @@ steps:
     event:
     - push
     - tag
+    ref:
+    - refs/heads/main
+    - refs/tags/operator/v*
 trigger:
   ref:
   - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
+  - refs/tags/operator/v*
   - refs/pull/*/head
 ---
 depends_on:
@@ -888,11 +890,13 @@ steps:
     event:
     - push
     - tag
+    ref:
+    - refs/heads/main
+    - refs/tags/operator/v*
 trigger:
   ref:
   - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
+  - refs/tags/operator/v*
   - refs/pull/*/head
 ---
 depends_on:
@@ -942,11 +946,13 @@ steps:
     event:
     - push
     - tag
+    ref:
+    - refs/heads/main
+    - refs/tags/operator/v*
 trigger:
   ref:
   - refs/heads/main
-  - refs/heads/k???
-  - refs/tags/v*
+  - refs/tags/operator/v*
   - refs/pull/*/head
 ---
 depends_on:
@@ -961,7 +967,6 @@ steps:
   - apk add --no-cache bash git
   - git fetch origin --tags
   - echo $(./tools/image-tag)-amd64 > .tags
-  - echo ",main" >> .tags
   image: alpine
   name: image-tag
 - depends_on:
@@ -982,6 +987,110 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+depends_on:
+- check
+kind: pipeline
+name: fluent-bit-arm64
+platform:
+  arch: arm64
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm64 > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: build-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+trigger:
+  ref:
+  - refs/heads/main
+  - refs/heads/k???
+  - refs/tags/v*
+  - refs/pull/*/head
+---
+depends_on:
+- check
+kind: pipeline
+name: fluent-bit-arm
+platform:
+  arch: arm
+  os: linux
+steps:
+- commands:
+  - apk add --no-cache bash git
+  - git fetch origin --tags
+  - echo $(./tools/image-tag)-arm > .tags
+  image: alpine
+  name: image-tag
+- depends_on:
+  - image-tag
+  image: plugins/docker:linux-arm
+  name: build-fluent-bit-image
+  settings:
+    dockerfile: clients/cmd/fluent-bit/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/fluent-bit-plugin-loki
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker:linux-arm
   name: publish-fluent-bit-image
   settings:
     dockerfile: clients/cmd/fluent-bit/Dockerfile
@@ -1168,6 +1277,9 @@ depends_on:
 - promtail-amd64
 - promtail-arm64
 - promtail-arm
+- fluent-bit-amd64
+- fluent-bit-arm64
+- fluent-bit-arm
 kind: pipeline
 name: manifest
 steps:
@@ -1213,13 +1325,13 @@ steps:
   - clone
   - manifest-loki-canary
   image: plugins/manifest:1.4.0
-  name: manifest-loki-operator
+  name: manifest-fluent-bit
   settings:
     ignore_missing: false
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
-    target: loki-operator
+    target: fluent-bit
     username:
       from_secret: docker_username
 trigger:
@@ -1231,6 +1343,33 @@ trigger:
   - refs/heads/k???
   - refs/tags/v*
   - refs/pull/*/head
+---
+depends_on:
+- lokioperator-amd64
+- lokioperator-arm64
+- lokioperator-arm
+kind: pipeline
+name: manifest-operator
+steps:
+- depends_on:
+  - clone
+  image: plugins/manifest:1.4.0
+  name: manifest-loki-operator
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest-operator.tmpl
+    target: loki-operator
+    username:
+      from_secret: docker_username
+trigger:
+  event:
+  - push
+  - tag
+  ref:
+  - refs/heads/main
+  - refs/tags/operator/v*
 ---
 depends_on:
 - manifest
@@ -1438,7 +1577,7 @@ steps:
     NFPM_SIGNING_KEY:
       from_secret: gpg_private_key
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: write-key
 - commands:
   - make BUILD_IN_CONTAINER=false packages
@@ -1446,7 +1585,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: test packaging
 - commands:
   - ./tools/packaging/verify-deb-install.sh
@@ -1472,7 +1611,7 @@ steps:
     NFPM_PASSPHRASE:
       from_secret: gpg_passphrase
     NFPM_SIGNING_KEY_FILE: /drone/src/private-key.key
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: publish
   when:
     event:
@@ -1506,7 +1645,7 @@ steps:
       from_secret: docker_password
     DOCKER_USERNAME:
       from_secret: docker_username
-  image: grafana/loki-build-image:0.29.0
+  image: grafana/loki-build-image:0.29.3
   name: build and push
   privileged: true
   volumes:
@@ -1771,6 +1910,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: d9c0f096978f15bd7c2c213e6afa2971ebe0d9e0b28cadf51cb47c0c34e697c4
+hmac: d87780f1737fccb4d0409e34fc97ee07e1bd3c45c9b25fae517e7dbd21fc7a5f
 
 ...

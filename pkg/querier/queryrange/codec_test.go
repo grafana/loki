@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	strings "strings"
 	"testing"
 	"time"
@@ -36,7 +37,7 @@ var (
 	end   = start.Add(1 * time.Hour)
 )
 
-func Test_codec_DecodeRequest(t *testing.T) {
+func Test_codec_EncodeDecodeRequest(t *testing.T) {
 	tests := []struct {
 		name       string
 		reqBuilder func() (*http.Request, error)
@@ -106,50 +107,58 @@ func Test_codec_DecodeRequest(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Matchers: `{job="foo"}`,
 		}, false},
-		{"series_volume", func() (*http.Request, error) {
+		{"volume", func() (*http.Request, error) {
+			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
+				From:         model.TimeFromUnixNano(start.UnixNano()),
+				Through:      model.TimeFromUnixNano(end.UnixNano()),
+				Matchers:     `{job="foo"}`,
+				Limit:        3,
+				Step:         0,
+				TargetLabels: []string{"job"},
+				AggregateBy:  "labels",
+			})
+		}, &logproto.VolumeRequest{
+			From:         model.TimeFromUnixNano(start.UnixNano()),
+			Through:      model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:     `{job="foo"}`,
+			Limit:        3,
+			Step:         0,
+			TargetLabels: []string{"job"},
+			AggregateBy:  "labels",
+		}, false},
+		{"volume_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
 				Matchers: `{job="foo"}`,
-				Limit:    3,
-				Step:     0,
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    3,
-			Step:     0,
+			From:        model.TimeFromUnixNano(start.UnixNano()),
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:    `{job="foo"}`,
+			Limit:       100,
+			Step:        0,
+			AggregateBy: "series",
 		}, false},
-		{"series_volume_default_limit", func() (*http.Request, error) {
+		{"volume_range", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
-				From:     model.TimeFromUnixNano(start.UnixNano()),
-				Through:  model.TimeFromUnixNano(end.UnixNano()),
-				Matchers: `{job="foo"}`,
+				From:         model.TimeFromUnixNano(start.UnixNano()),
+				Through:      model.TimeFromUnixNano(end.UnixNano()),
+				Matchers:     `{job="foo"}`,
+				Limit:        3,
+				Step:         30 * 1e3,
+				TargetLabels: []string{"fizz", "buzz"},
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    100,
-			Step:     0,
+			From:         model.TimeFromUnixNano(start.UnixNano()),
+			Through:      model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:     `{job="foo"}`,
+			Limit:        3,
+			Step:         30 * 1e3, // step is expected in ms
+			TargetLabels: []string{"fizz", "buzz"},
+			AggregateBy:  "series",
 		}, false},
-		{"series_volume_range", func() (*http.Request, error) {
-			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
-				From:     model.TimeFromUnixNano(start.UnixNano()),
-				Through:  model.TimeFromUnixNano(end.UnixNano()),
-				Matchers: `{job="foo"}`,
-				Limit:    3,
-				Step:     30 * 1e3,
-			})
-		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    3,
-			Step:     30 * 1e3, // step is expected in ms
-		}, false},
-		{"series_volume_range_default_limit", func() (*http.Request, error) {
+		{"volume_range_default_limit", func() (*http.Request, error) {
 			return DefaultCodec.EncodeRequest(context.Background(), &logproto.VolumeRequest{
 				From:     model.TimeFromUnixNano(start.UnixNano()),
 				Through:  model.TimeFromUnixNano(end.UnixNano()),
@@ -157,11 +166,12 @@ func Test_codec_DecodeRequest(t *testing.T) {
 				Step:     30 * 1e3, // step is expected in ms
 			})
 		}, &logproto.VolumeRequest{
-			From:     model.TimeFromUnixNano(start.UnixNano()),
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Matchers: `{job="foo"}`,
-			Limit:    100,
-			Step:     30 * 1e3, // step is expected in ms; default is 0 or no step
+			From:        model.TimeFromUnixNano(start.UnixNano()),
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Matchers:    `{job="foo"}`,
+			Limit:       100,
+			Step:        30 * 1e3, // step is expected in ms; default is 0 or no step
+			AggregateBy: "series",
 		}, false},
 	}
 	for _, tt := range tests {
@@ -175,7 +185,7 @@ func Test_codec_DecodeRequest(t *testing.T) {
 				t.Errorf("codec.DecodeRequest() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			require.Equal(t, got, tt.want)
+			require.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -297,7 +307,7 @@ func Test_codec_DecodeResponse(t *testing.T) {
 			}, false,
 		},
 		{
-			"label volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
+			"volume", &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(seriesVolumeString))},
 			&logproto.VolumeRequest{},
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
@@ -698,11 +708,12 @@ func Test_codec_index_stats_EncodeRequest(t *testing.T) {
 func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	from, through := util.RoundToMilliseconds(start, end)
 	toEncode := &logproto.VolumeRequest{
-		From:     from,
-		Through:  through,
-		Matchers: `{job="foo"}`,
-		Limit:    20,
-		Step:     30 * 1e6,
+		From:         from,
+		Through:      through,
+		Matchers:     `{job="foo"}`,
+		Limit:        20,
+		Step:         30 * 1e6,
+		TargetLabels: []string{"foo", "bar"},
 	}
 	got, err := DefaultCodec.EncodeRequest(context.Background(), toEncode)
 	require.Nil(t, err)
@@ -711,6 +722,7 @@ func Test_codec_seriesVolume_EncodeRequest(t *testing.T) {
 	require.Equal(t, `{job="foo"}`, got.URL.Query().Get("query"))
 	require.Equal(t, "20", got.URL.Query().Get("limit"))
 	require.Equal(t, fmt.Sprintf("%f", float64(toEncode.Step/1e3)), got.URL.Query().Get("step"))
+	require.Equal(t, `foo,bar`, got.URL.Query().Get("targetLabels"))
 }
 
 func Test_codec_EncodeResponse(t *testing.T) {
@@ -798,7 +810,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			}, indexStatsString, false,
 		},
 		{
-			"series volume", "/loki/api/v1/index/series_volume",
+			"volume", "/loki/api/v1/index/volume",
 			&VolumeResponse{
 				Response: &logproto.VolumeResponse{
 					Volumes: []logproto.Volume{
@@ -835,13 +847,23 @@ func Test_codec_EncodeResponse(t *testing.T) {
 
 func Test_codec_MergeResponse(t *testing.T) {
 	tests := []struct {
-		name      string
-		responses []queryrangebase.Response
-		want      queryrangebase.Response
-		wantErr   bool
+		name         string
+		responses    []queryrangebase.Response
+		want         queryrangebase.Response
+		errorMessage string
 	}{
-		{"empty", []queryrangebase.Response{}, nil, true},
-		{"unknown response", []queryrangebase.Response{&badResponse{}}, nil, true},
+		{
+			"empty",
+			[]queryrangebase.Response{},
+			nil,
+			"merging responses requires at least one response",
+		},
+		{
+			"unknown response",
+			[]queryrangebase.Response{&badResponse{}},
+			nil,
+			"unknown response type (*queryrange.badResponse) in merging responses",
+		},
 		{
 			"prom",
 			[]queryrangebase.Response{
@@ -865,7 +887,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki backward",
@@ -953,7 +975,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki backward limited",
@@ -1038,7 +1060,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki forward",
@@ -1126,7 +1148,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki forward limited",
@@ -1210,7 +1232,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki series",
@@ -1256,7 +1278,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki labels",
@@ -1283,15 +1305,14 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Version:    1,
 				Data:       []string{"foo", "bar", "buzz", "blip", "blop"},
 			},
-			false,
+			"",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := DefaultCodec.MergeResponse(tt.responses...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("codec.MergeResponse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.errorMessage != "" {
+				require.ErrorContains(t, err, tt.errorMessage)
 			}
 			require.Equal(t, tt.want, got)
 		})
@@ -1319,8 +1340,11 @@ var (
 					"compressedBytes": 1,
 					"decompressedBytes": 2,
 					"decompressedLines": 3,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
+					"headChunkNonIndexedLabelsBytes": 0,
+					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
@@ -1338,8 +1362,11 @@ var (
 					"compressedBytes": 11,
 					"decompressedBytes": 12,
 					"decompressedLines": 13,
+					"decompressedNonIndexedLabelsBytes": 0,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
+					"headChunkNonIndexedLabelsBytes": 0,
+                    "postFilterLines": 0,
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
@@ -1395,7 +1422,9 @@ var (
 			"subqueries": 0,
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
-			"totalLinesProcessed": 25
+			"totalLinesProcessed": 25,
+			"totalNonIndexedLabelsBytesProcessed": 0,
+            "totalPostFilterLines": 0
 		}
 	},`
 	matrixString = `{
@@ -1473,7 +1502,7 @@ var (
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line" ]
+						[ "123456789012345", "super line"]
 					]
 				},
 				{
@@ -1481,7 +1510,7 @@ var (
 						"test": "test2"
 					},
 					"values":[
-						[ "123456789012346", "super line2" ]
+						[ "123456789012346", "super line2"]
 					]
 				}
 			]
@@ -1562,6 +1591,7 @@ var (
 			TotalBytesProcessed:     24,
 			TotalLinesProcessed:     25,
 			TotalEntriesReturned:    10,
+			TotalPostFilterLines:    0,
 		},
 		Querier: stats.Querier{
 			Store: stats.Store{
@@ -1571,6 +1601,7 @@ var (
 					DecompressedLines: 13,
 					HeadChunkBytes:    14,
 					HeadChunkLines:    15,
+					PostFilterLines:   0,
 					TotalDuplicates:   19,
 				},
 				ChunksDownloadTime:    16,
@@ -1587,6 +1618,7 @@ var (
 					DecompressedLines: 3,
 					HeadChunkBytes:    4,
 					HeadChunkLines:    5,
+					PostFilterLines:   0,
 					TotalDuplicates:   8,
 				},
 			},
@@ -1761,6 +1793,76 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 			Direction: logproto.BACKWARD,
 			Path:      u.String(),
 		})
+		require.NoError(b, err)
+		require.NotNil(b, result)
+	}
+}
+
+func Benchmark_CodecDecodeSeries(b *testing.B) {
+	ctx := context.Background()
+	benchmarks := []struct {
+		accept string
+	}{
+		{accept: ProtobufType},
+		{accept: JSONType},
+	}
+
+	for _, bm := range benchmarks {
+		u := &url.URL{Path: "/loki/api/v1/series"}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Header: http.Header{
+				"Accept": []string{bm.accept},
+			},
+		}
+		resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		})
+		require.Nil(b, err)
+
+		buf, err := io.ReadAll(resp.Body)
+		require.Nil(b, err)
+		reader := bytes.NewReader(buf)
+		resp.Body = io.NopCloser(reader)
+		b.Run(bm.accept, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+				_, _ = reader.Seek(0, io.SeekStart)
+				result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiSeriesRequest{
+					StartTs: start,
+					EndTs:   end,
+					Path:    u.String(),
+				})
+				require.NoError(b, err)
+				require.NotNil(b, result)
+			}
+		})
+	}
+
+}
+
+func Benchmark_MergeResponses(b *testing.B) {
+	var responses []queryrangebase.Response = make([]queryrangebase.Response, 100)
+	for i := range responses {
+		responses[i] = &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		}
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for n := 0; n < b.N; n++ {
+		result, err := DefaultCodec.MergeResponse(responses...)
 		require.Nil(b, err)
 		require.NotNil(b, result)
 	}
@@ -1792,6 +1894,17 @@ func generateStream() (res []logproto.Stream) {
 			s.Entries = append(s.Entries, logproto.Entry{Timestamp: time.Now(), Line: fmt.Sprintf("%d\nyolo", j)})
 		}
 		res = append(res, s)
+	}
+	return res
+}
+
+func generateSeries() (res []logproto.SeriesIdentifier) {
+	for i := 0; i < 1000; i++ {
+		labels := make(map[string]string)
+		for l := 0; l < 100; l++ {
+			labels[fmt.Sprintf("%d-%d", i, l)] = strconv.Itoa(l)
+		}
+		res = append(res, logproto.SeriesIdentifier{Labels: labels})
 	}
 	return res
 }

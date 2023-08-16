@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -17,7 +18,6 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_record "github.com/prometheus/prometheus/tsdb/record"
-	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
@@ -544,6 +544,10 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 				if shouldConsiderStream(stream, req.Start, req.End) {
 					// exit early when this stream was added by an earlier group
 					key := stream.labelHash
+
+					// TODO(karsten): Due to key collision this check is not
+					// enough. Ideally there is a comparison between the
+					// potentail duplicated series.
 					if _, found := dedupedSeries[key]; found {
 						return nil
 					}
@@ -623,28 +627,23 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	return res, nil
 }
 
-func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
 	matchers, err := syntax.ParseMatchers(req.Matchers)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
 
-	matchAny := len(matchers) == 0
-	labelsToMatch := make(map[string]struct{})
-	for _, m := range matchers {
-		if m.Name == "" {
-			matchAny = true
-			continue
-		}
-
-		labelsToMatch[m.Name] = struct{}{}
-	}
+	targetLabels := req.TargetLabels
+	labelsToMatch, matchers, matchAny := util.PrepareLabelsAndMatchers(targetLabels, matchers)
+	matchAny = matchAny || len(matchers) == 0
 
 	seriesNames := make(map[uint64]string)
 	seriesLabels := labels.Labels(make([]labels.Label, 0, len(labelsToMatch)))
 
 	from, through := req.From.Time(), req.Through.Time()
 	volumes := make(map[string]uint64)
+	aggregateBySeries := seriesvolume.AggregateBySeries(req.AggregateBy) || req.AggregateBy == ""
+
 	if err = i.forMatchingStreams(ctx, from, matchers, nil, func(s *stream) error {
 		// Consider streams which overlap our time range
 		if shouldConsiderStream(s, from, through) {
@@ -664,10 +663,24 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 				}
 			}
 
-			seriesLabels = seriesLabels[:0]
-			for _, l := range s.labels {
-				if _, ok := labelsToMatch[l.Name]; matchAny || ok {
-					seriesLabels = append(seriesLabels, l)
+			var labelVolumes map[string]uint64
+			if aggregateBySeries {
+				seriesLabels = seriesLabels[:0]
+				for _, l := range s.labels {
+					if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+						seriesLabels = append(seriesLabels, l)
+					}
+				}
+			} else {
+				labelVolumes = make(map[string]uint64, len(s.labels))
+				for _, l := range s.labels {
+					if len(targetLabels) > 0 {
+						if _, ok := labelsToMatch[l.Name]; matchAny || ok {
+							labelVolumes[l.Name] += size
+						}
+					} else {
+						labelVolumes[l.Name] += size
+					}
 				}
 			}
 
@@ -678,7 +691,13 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 				seriesNames[hash] = seriesLabels.String()
 			}
 
-			volumes[seriesNames[hash]] += size
+			if aggregateBySeries {
+				volumes[seriesNames[hash]] += size
+			} else {
+				for k, v := range labelVolumes {
+					volumes[k] += v
+				}
+			}
 			s.chunkMtx.RUnlock()
 		}
 		return nil
@@ -686,7 +705,7 @@ func (i *instance) GetSeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 		return nil, err
 	}
 
-	res := seriesvolume.MapToSeriesVolumeResponse(volumes, int(req.Limit))
+	res := seriesvolume.MapToVolumeResponse(volumes, int(req.Limit))
 	return res, nil
 }
 
@@ -880,10 +899,6 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 			limit -= int32(batchSize)
 		}
 
-		if len(batch.Streams) == 0 {
-			return nil
-		}
-
 		stats.AddIngesterBatch(int64(batchSize))
 		batch.Stats = stats.Ingester()
 
@@ -893,20 +908,25 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 		if err := queryServer.Send(batch); err != nil && err != context.Canceled {
 			return err
 		}
+
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Streams) == 0 {
+			return nil
+		}
+
 		stats.Reset()
 	}
 	return nil
 }
 
 func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer logproto.Querier_QuerySampleServer) error {
+	sp := opentracing.SpanFromContext(ctx)
+
 	stats := stats.FromContext(ctx)
 	for !isDone(ctx) {
 		batch, size, err := iter.ReadSampleBatch(it, queryBatchSampleSize)
 		if err != nil {
 			return err
-		}
-		if len(batch.Series) == 0 {
-			return nil
 		}
 
 		stats.AddIngesterBatch(int64(size))
@@ -918,9 +938,17 @@ func sendSampleBatches(ctx context.Context, it iter.SampleIterator, queryServer 
 			return err
 		}
 
-		stats.Reset()
+		// We check this after sending an empty batch to make sure stats are sent
+		if len(batch.Series) == 0 {
+			return nil
+		}
 
+		stats.Reset()
+		if sp != nil {
+			sp.LogKV("event", "sent batch", "size", size)
+		}
 	}
+
 	return nil
 }
 

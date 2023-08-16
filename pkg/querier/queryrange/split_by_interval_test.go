@@ -11,8 +11,8 @@ import (
 
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -863,7 +863,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		).Wrap(next)
 	}
 
-	t.Run("series volumes", func(t *testing.T) {
+	t.Run("volumes", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 
@@ -902,7 +902,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 		})
 	})
 
-	t.Run("series volumes with limits", func(t *testing.T) {
+	t.Run("volumes with limits", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -944,7 +944,7 @@ func Test_seriesvolume_splitByInterval_Do(t *testing.T) {
 	// This will never happen because we hardcode 24h spit by for this code path
 	// in the middleware. However, that split by is not validated here, so we either
 	// need to support this case or error.
-	t.Run("series volumes with a query split by of 0", func(t *testing.T) {
+	t.Run("volumes with a query split by of 0", func(t *testing.T) {
 		from := model.TimeFromUnixNano(start.UnixNano())
 		through := model.TimeFromUnixNano(end.UnixNano())
 		next := queryrangebase.HandlerFunc(func(_ context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {

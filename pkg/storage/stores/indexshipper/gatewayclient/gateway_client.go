@@ -11,12 +11,12 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/instrument"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
@@ -259,19 +259,19 @@ func (s *GatewayClient) GetStats(ctx context.Context, in *logproto.IndexStatsReq
 	return s.grpcClient.GetStats(ctx, in, opts...)
 }
 
-func (s *GatewayClient) GetSeriesVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
+func (s *GatewayClient) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	if s.cfg.Mode == indexgateway.RingMode {
 		var (
 			resp *logproto.VolumeResponse
 			err  error
 		)
 		err = s.ringModeDo(ctx, func(client logproto.IndexGatewayClient) error {
-			resp, err = client.GetSeriesVolume(ctx, in, opts...)
+			resp, err = client.GetVolume(ctx, in, opts...)
 			return err
 		})
 		return resp, err
 	}
-	return s.grpcClient.GetSeriesVolume(ctx, in, opts...)
+	return s.grpcClient.GetVolume(ctx, in, opts...)
 }
 
 func (s *GatewayClient) doQueries(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {

@@ -34,12 +34,12 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		}
 
 		return marshal_legacy.WriteLabelResponseJSON(*result, w)
-	case logproto.SeriesResponse:
-		return WriteSeriesResponseJSON(result, w)
+	case *logproto.SeriesResponse:
+		return WriteSeriesResponseJSON(*result, w)
 	case *stats.Stats:
 		return WriteIndexStatsResponseJSON(result, w)
 	case *logproto.VolumeResponse:
-		return WriteSeriesVolumeResponseJSON(result, w)
+		return WriteVolumeResponseJSON(result, w)
 	}
 	return fmt.Errorf("unknown response type %T", v)
 }
@@ -127,9 +127,9 @@ func WriteIndexStatsResponseJSON(r *stats.Stats, w io.Writer) error {
 	return s.Flush()
 }
 
-// WriteSeriesVolumeResponseJSON marshals a logproto.VolumeResponse to JSON and then
+// WriteVolumeResponseJSON marshals a logproto.VolumeResponse to JSON and then
 // writes it to the provided io.Writer.
-func WriteSeriesVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
+func WriteVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
 	s.WriteVal(r)

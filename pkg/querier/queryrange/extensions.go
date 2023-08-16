@@ -97,3 +97,16 @@ func (m *VolumeResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader
 	m.Headers = h
 	return m
 }
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *TopKSketchesResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *TopKSketchesResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}

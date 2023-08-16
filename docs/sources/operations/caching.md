@@ -39,7 +39,7 @@ To enable and configure Memcached:
 1. Configure Loki to use the cache.
     1. If the Helm chart is used
 
-       Set `memcached.chunk_cache.host` to the Memecache address for the chunk cache, `memcached.results_cache.host` to the Memecache address for the query result cache, `memcached.chunk_cache.enabled=true` and `memcached.results_cache.enabled=true`. 
+       Set `memcached.chunk_cache.host` to the Memcached address for the chunk cache, `memcached.results_cache.host` to the Memcached address for the query result cache, `memcached.chunk_cache.enabled=true` and `memcached.results_cache.enabled=true`. 
        
        Ensure that the connection limit of Memcached is at least `number_of_clients * max_idle_conns`.
        
@@ -101,7 +101,7 @@ To enable and configure Memcached:
                  batch_size: 100
                  parallelism: 100
                memcached_client:
-                 host: <memcached host>,
+                 host: <memcached host>
                  service: <port name of memcached service>
                  consistent_hash: true
            ```

@@ -12,7 +12,7 @@ existing streams. When properly tuned, this should eliminate issues where log pr
 per-stream rate limit.
 
 **To enable automatic stream sharding:**
-1. Edit the global [limits_config]({{< relref "../configuration#limits_config" >}}) of the Loki configuration file:
+1. Edit the global [limits_config]({{< relref "../configure#limits_config" >}}) of the Loki configuration file:
    ```yaml
    limits_config:
      shard_streams:

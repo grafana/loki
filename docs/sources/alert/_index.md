@@ -2,12 +2,9 @@
 title: Alerting and recording rules
 menuTitle: Alert
 description: Learn how the rule evaluates queries for alerting.
-
 aliases:
-  - /docs/loki/latest/rules/
-  - docs/loki/latest/alert/
-  - docs/loki/latest/alerting/
-
+  - ./rules/
+  - ./alerting/
 weight: 850
 keywords:
   - loki
@@ -109,6 +106,43 @@ This query (`expr`) will be executed every 1 minute (`interval`), the result of 
 name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
 just like any other metric.
 
+
+### Limiting Alerts and Recording Rule Samples
+
+Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
+
+#### Example
+
+Here is an example of a rule group along with its limit configured.
+
+
+
+```yaml
+groups:
+  - name: production_rules
+    limit: 10
+    interval: 1m
+    rules:
+      - alert: HighPercentageError
+        expr: |
+          sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            /
+          sum(rate({app="foo", env="production"}[5m])) by (job)
+            > 0.05
+        for: 10m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency
+      - record: nginx:requests:rate1m
+        expr: |
+          sum(
+            rate({container="nginx"}[1m])
+          )
+        labels:
+          cluster: "us-central1"
+```
+
 ### Remote-Write
 
 With recording rules, you can run these metric queries continually on an interval, and have the resulting metrics written
@@ -133,7 +167,7 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler]({{< relref "../configuration#ruler" >}}).
+Further configuration options can be found under [ruler]({{< relref "../configure#ruler" >}}).
 
 ### Operations
 
@@ -241,7 +275,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation]({{< relref "../configuration" >}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires its own ring to be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation]({{< relref "../configure" >}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires its own ring to be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 

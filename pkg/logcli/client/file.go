@@ -12,6 +12,7 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
@@ -20,8 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/util/validation"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 )
 
 const (
@@ -180,6 +181,21 @@ func (f *FileClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.
 
 func (f *FileClient) GetOrgID() string {
 	return f.orgID
+}
+
+func (f *FileClient) GetStats(_ string, _, _ time.Time, _ bool) (*logproto.IndexStatsResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) GetVolume(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
+}
+
+func (f *FileClient) GetVolumeRange(_ *volume.Query) (*loghttp.QueryResponse, error) {
+	// TODO(trevorwhitney): could we teach logcli to read from an actual index file?
+	return nil, ErrNotSupported
 }
 
 type limiter struct {

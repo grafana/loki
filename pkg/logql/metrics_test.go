@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -160,12 +160,14 @@ func Test_testToKeyValues(t *testing.T) {
 		},
 		{
 			name: "canonical-form-multiple-values",
-			in:   "Source=logvolhist,Feature=beta",
+			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
 			exp: []interface{}{
 				"source",
 				"logvolhist",
 				"feature",
 				"beta",
+				"user",
+				"Jinx@grafana.com",
 			},
 		},
 		{

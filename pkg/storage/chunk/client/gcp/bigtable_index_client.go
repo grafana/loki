@@ -57,8 +57,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.GRPCClientConfig.RegisterFlagsWithPrefix("bigtable", f)
 }
 
-func (cfg *Config) Validate(log log.Logger) error {
-	return cfg.GRPCClientConfig.Validate(log)
+func (cfg *Config) Validate(_ log.Logger) error {
+	return cfg.GRPCClientConfig.Validate()
 }
 
 // storageClientColumnKey implements chunk.storageClient for GCP.

@@ -4,8 +4,7 @@ title: Loki deployment modes
 description: Describes the different ways to deploy Loki.
 weight: 400
 aliases:
-    - /docs/loki/latest/fundamentals/architecture/deployment-modes
-    - /docs/loki/latest/get-started/deployment-modes/
+    - ../fundamentals/architecture/deployment-modes
 ---
 # Loki deployment modes
 
@@ -33,14 +32,14 @@ This is monolithic mode;
 it runs all of Loki’s microservice components inside a single process
 as a single binary or Docker image.
 
-![monolithic mode diagram](./monolithic-mode.png)
+![monolithic mode diagram](../monolithic-mode.png  "Monolithic mode")
 
 Monolithic mode is useful for getting started quickly to experiment with Loki,
 as well as for small read/write volumes of up to approximately 100GB per day.
 
 Horizontally scale up a monolithic mode deployment to more instances
 by using a shared object store, and by configuring the
-[`ring` section]({{< relref "../configuration#common" >}})
+[`ring` section]({{< relref "../configure#common" >}})
 to share state between all instances.
 
 High availability can be configured by running two Loki instances
@@ -59,7 +58,7 @@ Loki provides the simple scalable deployment mode.
 This deployment mode can scale to several TBs of logs per day and more.
 Consider the microservices mode approach for very large Loki installations.
 
-![simple scalable deployment mode diagram](./simple-scalable.png)
+![Simple scalable deployment mode diagram](../simple-scalable.png "Simple scalable deployment mode")
 
 In this mode the component microservices of Loki are bundled into two targets:
 `-target=read` and `-target=write`.
@@ -94,7 +93,7 @@ Each process is invoked specifying its `target`:
 * ruler
 * compactor
 
-![microservices mode diagram](./microservices-mode.png)
+![Microservices mode diagram](../microservices-mode.png "Microservices mode")
 
 Running components as individual microservices allows scaling up
 by increasing the quantity of microservices.

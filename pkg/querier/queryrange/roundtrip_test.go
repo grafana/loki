@@ -15,15 +15,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/middleware"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -551,7 +551,7 @@ func TestIndexStatsTripperware(t *testing.T) {
 	require.Equal(t, response.Entries*2, res.Response.Entries)
 }
 
-func TestSeriesVolumeTripperware(t *testing.T) {
+func TestVolumeTripperware(t *testing.T) {
 	t.Run("instant queries hardcode step to 0 and return a prometheus style vector response", func(t *testing.T) {
 		tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 		if stopper != nil {
@@ -579,7 +579,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 		err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 		require.NoError(t, err)
 
-		req.URL.Path = "/loki/api/v1/index/series_volume"
+		req.URL.Path = "/loki/api/v1/index/volume"
 
 		count, h := seriesVolumeResult(seriesVolume)
 		rt.setHandler(h)
@@ -653,7 +653,7 @@ func TestSeriesVolumeTripperware(t *testing.T) {
 		err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 		require.NoError(t, err)
 
-		req.URL.Path = "/loki/api/v1/index/series_volume_range"
+		req.URL.Path = "/loki/api/v1/index/volume_range"
 
 		count, h := seriesVolumeResult(seriesVolume)
 		rt.setHandler(h)
@@ -1524,7 +1524,7 @@ func seriesVolumeResult(v logproto.VolumeResponse) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteSeriesVolumeResponseJSON(&v, w); err != nil {
+		if err := marshal.WriteVolumeResponseJSON(&v, w); err != nil {
 			panic(err)
 		}
 		count++

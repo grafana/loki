@@ -23,11 +23,13 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 // querierClientMock is a mockable version of QuerierClient, used in querier
@@ -105,7 +107,7 @@ func (c *querierClientMock) GetChunkIDs(ctx context.Context, in *logproto.GetChu
 	return res.(*logproto.GetChunkIDsResponse), args.Error(1)
 }
 
-func (c *querierClientMock) GetSeriesVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
+func (c *querierClientMock) GetVolume(ctx context.Context, in *logproto.VolumeRequest, opts ...grpc.CallOption) (*logproto.VolumeResponse, error) {
 	args := c.Called(ctx, in, opts)
 	res := args.Get(0)
 	if res == nil {
@@ -365,8 +367,8 @@ func (s *storeMock) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	return nil, nil
 }
 
-func (s *storeMock) SeriesVolume(ctx context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
-	args := s.Called(ctx, userID, from, through, matchers)
+func (s *storeMock) Volume(ctx context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	args := s.Called(ctx, userID, from, through, targetLabels, matchers)
 	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }
 
@@ -536,8 +538,8 @@ func (q *querierMock) IndexStats(_ context.Context, _ *loghttp.RangeQuery) (*sta
 	return nil, nil
 }
 
-func (q *querierMock) SeriesVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	args := q.MethodCalled("SeriesVolume", ctx, req)
+func (q *querierMock) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	args := q.MethodCalled("Volume", ctx, req)
 
 	resp := args.Get(0)
 	err := args.Error(1)
@@ -546,4 +548,40 @@ func (q *querierMock) SeriesVolume(ctx context.Context, req *logproto.VolumeRequ
 	}
 
 	return resp.(*logproto.VolumeResponse), err
+}
+
+type engineMock struct {
+	util.ExtendedMock
+}
+
+func newEngineMock() *engineMock {
+	return &engineMock{}
+}
+
+func (e *engineMock) Query(p logql.Params) logql.Query {
+	args := e.Called(p)
+	return args.Get(0).(logql.Query)
+}
+
+type queryMock struct {
+	result logqlmodel.Result
+}
+
+func (q queryMock) Exec(_ context.Context) (logqlmodel.Result, error) {
+	return q.result, nil
+}
+
+type mockTenantLimits map[string]*validation.Limits
+
+func (tl mockTenantLimits) TenantLimits(userID string) *validation.Limits {
+	limits, ok := tl[userID]
+	if !ok {
+		return &validation.Limits{}
+	}
+
+	return limits
+}
+
+func (tl mockTenantLimits) AllByUserID() map[string]*validation.Limits {
+	return tl
 }

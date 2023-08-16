@@ -57,14 +57,23 @@ type BasicLifecyclerConfig struct {
 	// If true lifecycler doesn't unregister instance from the ring when it's stopping. Default value is false,
 	// which means unregistering.
 	KeepInstanceInTheRingOnShutdown bool
+
+	// If set, specifies the TokenGenerator implementation that will be used for generating tokens.
+	// Default value is nil, which means that RandomTokenGenerator is used.
+	RingTokenGenerator TokenGenerator
 }
 
-// BasicLifecycler is a basic ring lifecycler which allows to hook custom
-// logic at different stages of the lifecycle. This lifecycler should be
-// used to build higher level lifecyclers.
-//
-// This lifecycler never change the instance state. It's the delegate
-// responsibility to ChangeState().
+/*
+BasicLifecycler is a Service that is responsible for publishing changes to a ring for a single instance.
+It accepts a delegate that can handle lifecycle events, and should be used to build higher level lifecyclers.
+Unlike [Lifecycler], BasicLifecycler does not change instance state internally.
+Rather, it's the delegate's responsibility to call [BasicLifecycler.ChangeState].
+
+  - When a BasicLifecycler first starts, it will call [ring.BasicLifecyclerDelegate.OnRingInstanceRegister] for the delegate, and will add the instance to the ring.
+  - The lifecycler will then periodically, based on the [ring.BasicLifecyclerConfig.TokensObservePeriod], attempt to verify that its tokens have been added to the ring, after which it will call [ring.BasicLifecyclerDelegate.OnRingInstanceTokens].
+  - The lifecycler will update they key/value store with heartbeats and state changes based on the [ring.BasicLifecyclerConfig.HeartbeatPeriod], calling [ring.BasicLifecyclerDelegate.OnRingInstanceHeartbeat] each time.
+  - When the BasicLifecycler is stopped, it will call [ring.BasicLifecyclerDelegate.OnRingInstanceStopping].
+*/
 type BasicLifecycler struct {
 	*services.BasicService
 
@@ -87,10 +96,17 @@ type BasicLifecycler struct {
 
 	// Whether to keep the instance in the ring or to unregister it on shutdown
 	keepInstanceInTheRingOnShutdown *atomic.Bool
+
+	tokenGenerator TokenGenerator
 }
 
 // NewBasicLifecycler makes a new BasicLifecycler.
 func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, store kv.Client, delegate BasicLifecyclerDelegate, logger log.Logger, reg prometheus.Registerer) (*BasicLifecycler, error) {
+	tokenGenerator := cfg.RingTokenGenerator
+	if tokenGenerator == nil {
+		tokenGenerator = NewRandomTokenGenerator()
+	}
+
 	l := &BasicLifecycler{
 		cfg:                             cfg,
 		ringName:                        ringName,
@@ -101,6 +117,7 @@ func NewBasicLifecycler(cfg BasicLifecyclerConfig, ringName, ringKey string, sto
 		metrics:                         NewBasicLifecyclerMetrics(ringName, reg),
 		actorChan:                       make(chan func()),
 		keepInstanceInTheRingOnShutdown: atomic.NewBool(cfg.KeepInstanceInTheRingOnShutdown),
+		tokenGenerator:                  tokenGenerator,
 	}
 
 	l.metrics.tokensToOwn.Set(float64(cfg.NumTokens))
@@ -141,6 +158,10 @@ func (l *BasicLifecycler) GetTokens() Tokens {
 	}
 
 	return l.currInstanceDesc.GetTokens()
+}
+
+func (l *BasicLifecycler) GetTokenGenerator() TokenGenerator {
+	return l.tokenGenerator
 }
 
 // GetRegisteredAt returns the timestamp when the instance has been registered to the ring
@@ -365,7 +386,7 @@ func (l *BasicLifecycler) verifyTokens(ctx context.Context) bool {
 		needTokens := l.cfg.NumTokens - len(actualTokens)
 
 		level.Info(l.logger).Log("msg", "generating new tokens", "count", needTokens, "ring", l.ringName)
-		newTokens := GenerateTokens(needTokens, takenTokens)
+		newTokens := l.tokenGenerator.GenerateTokens(needTokens, takenTokens)
 
 		actualTokens = append(actualTokens, newTokens...)
 		sort.Sort(actualTokens)

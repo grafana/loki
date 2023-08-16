@@ -67,6 +67,7 @@ type store struct {
 
 	indexReadCache   cache.Cache
 	chunksCache      cache.Cache
+	chunksCacheL2    cache.Cache
 	writeDedupeCache cache.Cache
 
 	limits StoreLimits
@@ -104,10 +105,19 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		return nil, err
 	}
 
+	chunkCacheCfgL2 := storeCfg.ChunkCacheConfigL2
+	chunkCacheCfgL2.Prefix = "chunksl2"
+	// TODO(E.Welch) would we want to disambiguate this cache in the stats? I think not but we'd need to change stats.ChunkCache to do so.
+	chunksCacheL2, err := cache.New(chunkCacheCfgL2, registerer, logger, stats.ChunkCache)
+	if err != nil {
+		return nil, err
+	}
+
 	// Cache is shared by multiple stores, which means they will try and Stop
 	// it more than once.  Wrap in a StopOnce to prevent this.
 	indexReadCache = cache.StopOnce(indexReadCache)
 	chunksCache = cache.StopOnce(chunksCache)
+	chunksCacheL2 = cache.StopOnce(chunksCacheL2)
 	writeDedupeCache = cache.StopOnce(writeDedupeCache)
 
 	// Lets wrap all caches except chunksCache with CacheGenMiddleware to facilitate cache invalidation using cache generation numbers.
@@ -136,6 +146,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 		indexReadCache:   indexReadCache,
 		chunksCache:      chunksCache,
+		chunksCacheL2:    chunksCacheL2,
 		writeDedupeCache: writeDedupeCache,
 
 		logger: logger,
@@ -154,7 +165,7 @@ func (s *store) init() error {
 		if err != nil {
 			return err
 		}
-		f, err := fetcher.New(s.chunksCache, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize)
+		f, err := fetcher.New(s.chunksCache, s.chunksCacheL2, s.storeCfg.ChunkCacheStubs(), s.schemaCfg, chunkClient, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackConcurrency, s.storeCfg.ChunkCacheConfig.AsyncCacheWriteBackBufferSize, s.storeCfg.L2ChunkCacheHandoff)
 		if err != nil {
 			return err
 		}
@@ -220,13 +231,13 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	indexClientLogger := log.With(s.logger, "index-store", fmt.Sprintf("%s-%s", p.IndexType, p.From.String()))
 
 	if p.IndexType == config.TSDBType {
-		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig) {
+		if shouldUseIndexGatewayClient(s.cfg.TSDBShipperConfig.Config) {
 			// inject the index-gateway client into the index store
 			gw, err := gatewayclient.NewGatewayClient(s.cfg.TSDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.limits, indexClientLogger)
 			if err != nil {
 				return nil, nil, nil, err
 			}
-			idx := series.NewIndexGatewayClientStore(gw, nil)
+			idx := series.NewIndexGatewayClientStore(gw, indexClientLogger)
 
 			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 				f.Stop()
@@ -261,7 +272,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 		}
 
 		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(fmt.Sprintf("%s_%s", p.ObjectType, p.From.String()), s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits,
-			tableRange, backupIndexWriter, indexClientReg, indexClientLogger)
+			tableRange, backupIndexWriter, indexClientReg, indexClientLogger, s.indexReadCache)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -295,16 +306,6 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
 	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
 	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
-
-	// (Sandeep): Disable IndexGatewayClientStore for stores other than tsdb until we are ready to enable it again
-	/*if s.cfg.BoltDBShipperConfig != nil && shouldUseIndexGatewayClient(s.cfg.BoltDBShipperConfig) {
-		// inject the index-gateway client into the index store
-		gw, err := shipper.NewGatewayClient(s.cfg.BoltDBShipperConfig.IndexGatewayClientConfig, indexClientReg, s.logger)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		indexReaderWriter = series.NewIndexGatewayClientStore(gw, indexReaderWriter)
-	}*/
 
 	return chunkWriter,
 		indexReaderWriter,

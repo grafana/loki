@@ -6,10 +6,10 @@ import (
 	"math"
 	"testing"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
-	"github.com/weaveworks/common/user"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
@@ -245,9 +245,9 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 	require.Len(t, expectedQueries, 0)
 }
 
-func TestSeriesVolume(t *testing.T) {
+func TestVolume(t *testing.T) {
 	indexQuerier := newIngesterQuerierMock()
-	indexQuerier.On("SeriesVolume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{Volumes: []logproto.Volume{
+	indexQuerier.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{Volumes: []logproto.Volume{
 		{Name: "bar", Volume: 38},
 	}}, nil)
 
@@ -255,7 +255,7 @@ func TestSeriesVolume(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := user.InjectOrgID(context.Background(), "test")
-	vol, err := gateway.GetSeriesVolume(ctx, &logproto.VolumeRequest{Matchers: "{}"})
+	vol, err := gateway.GetVolume(ctx, &logproto.VolumeRequest{Matchers: "{}"})
 	require.NoError(t, err)
 
 	require.Equal(t, &logproto.VolumeResponse{Volumes: []logproto.Volume{
@@ -272,7 +272,7 @@ func newIngesterQuerierMock() *indexQuerierMock {
 	return &indexQuerierMock{}
 }
 
-func (i *indexQuerierMock) SeriesVolume(_ context.Context, userID string, from, through model.Time, _ int32, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (i *indexQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, _ []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	args := i.Called(userID, from, through, matchers)
 
 	if args.Get(0) == nil {

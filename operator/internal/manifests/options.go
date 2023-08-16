@@ -4,11 +4,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -65,12 +64,21 @@ type Tenants struct {
 	Configs map[string]TenantConfig
 }
 
-// TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.
+// TenantSecrets for tenant's authentication.
 type TenantSecrets struct {
-	TenantName   string
+	TenantName string
+	OIDCSecret *OIDCSecret
+	MTLSSecret *MTLSSecret
+}
+
+type OIDCSecret struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
+}
+
+type MTLSSecret struct {
+	CAPath string
 }
 
 // TenantConfig for tenant authorizationconfig

@@ -24,6 +24,7 @@ import (
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -838,67 +839,283 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
-func TestInstance_SeriesVolume(t *testing.T) {
-	t.Run("no matchers", func(t *testing.T) {
+func TestInstance_Volume(t *testing.T) {
+	prepareInstance := func(t *testing.T) *instance {
 		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
-			From:     0,
-			Through:  1.1 * 1e3, //milliseconds
-			Matchers: "{}",
-			Limit:    2,
+		err := instance.Push(context.TODO(), &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{fizz="buzz", host="other"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1e6), Line: `msg="other"`},
+					},
+				},
+				{
+					Labels: `{foo="bar", host="other", log_stream="worker"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1e6), Line: `msg="other worker"`},
+					},
+				},
+			},
 		})
 		require.NoError(t, err)
+		return instance
+	}
 
-		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
-			{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 70},
-		}, volumes.Volumes)
+	t.Run("aggregate by series", func(t *testing.T) {
+		t.Run("no matchers", func(t *testing.T) {
+			instance := prepareInstance(t)
+
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 70},
+				{Name: `{foo="bar", host="other", log_stream="worker"}`, Volume: 18},
+				{Name: `{fizz="buzz", host="other"}`, Volume: 11},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with matchers", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    `{log_stream="dispatcher"}`,
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{log_stream="dispatcher"}`, Volume: 90},
+			}, volumes.Volumes)
+		})
+
+		t.Run("excludes streams outside of time bounds", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        5,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 45},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 26},
+			}, volumes.Volumes)
+		})
+
+		t.Run("enforces the limit", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     11000,
+				Matchers:    "{}",
+				Limit:       1,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with targetLabels", func(t *testing.T) {
+			t.Run("all targetLabels are added to matchers", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{}`,
+					Limit:        5,
+					TargetLabels: []string{"log_stream"},
+					AggregateBy:  seriesvolume.Series,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `{log_stream="dispatcher"}`, Volume: 90},
+					{Name: `{log_stream="worker"}`, Volume: 88},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific equals matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream="dispatcher"}`,
+					Limit:        5,
+					TargetLabels: []string{"host"},
+					AggregateBy:  seriesvolume.Series,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `{host="agent"}`, Volume: 90},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific regexp matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream=~".+"}`,
+					Limit:        5,
+					TargetLabels: []string{"host", "job"},
+					AggregateBy:  seriesvolume.Series,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `{host="agent", job="3"}`, Volume: 160},
+				}, volumes.Volumes)
+			})
+		})
 	})
 
-	t.Run("with matchers", func(t *testing.T) {
-		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
-			From:     0,
-			Through:  1.1 * 1e3, //milliseconds
-			Matchers: `{log_stream="dispatcher"}`,
-			Limit:    2,
+	t.Run("aggregate by labels", func(t *testing.T) {
+		t.Run("no matchers", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 189},
+				{Name: `log_stream`, Volume: 178},
+				{Name: `job`, Volume: 160},
+				{Name: `foo`, Volume: 18},
+				{Name: `fizz`, Volume: 11},
+			}, volumes.Volumes)
 		})
-		require.NoError(t, err)
 
-		require.Equal(t, []logproto.Volume{
-			{Name: `{log_stream="dispatcher"}`, Volume: 90},
-		}, volumes.Volumes)
-	})
+		t.Run("with matchers it returns intersecting labels", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    `{log_stream="worker"}`,
+				Limit:       5,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
 
-	t.Run("excludes streams outside of time bounds", func(t *testing.T) {
-		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
-			From:     5,
-			Through:  1.1 * 1e3, //milliseconds
-			Matchers: "{}",
-			Limit:    3,
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 88},
+				{Name: `log_stream`, Volume: 88},
+				{Name: `job`, Volume: 70},
+				{Name: `foo`, Volume: 18},
+			}, volumes.Volumes)
+
+			require.NotContains(t, volumes.Volumes, logproto.Volume{Name: `fizz`, Volume: 11})
 		})
-		require.NoError(t, err)
 
-		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 45},
-			{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 26},
-		}, volumes.Volumes)
-	})
+		t.Run("excludes streams outside of time bounds", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        5,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
 
-	t.Run("enforces the limit", func(t *testing.T) {
-		instance := defaultInstance(t)
-		volumes, err := instance.GetSeriesVolume(context.Background(), &logproto.VolumeRequest{
-			From:     0,
-			Through:  11000,
-			Matchers: "{}",
-			Limit:    1,
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 71},
+				{Name: `job`, Volume: 71},
+				{Name: `log_stream`, Volume: 71},
+			}, volumes.Volumes)
 		})
-		require.NoError(t, err)
 
-		require.Equal(t, []logproto.Volume{
-			{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
-		}, volumes.Volumes)
+		t.Run("enforces the limit", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     11000,
+				Matchers:    "{}",
+				Limit:       1,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 189},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with targetLabels", func(t *testing.T) {
+			t.Run("all targetLabels are added to matchers", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{}`,
+					Limit:        5,
+					TargetLabels: []string{"host"},
+					AggregateBy:  seriesvolume.Labels,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `host`, Volume: 189},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific equals matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream="dispatcher"}`,
+					Limit:        5,
+					TargetLabels: []string{"host"},
+					AggregateBy:  seriesvolume.Labels,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `host`, Volume: 90},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific regexp matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream=~".+"}`,
+					Limit:        5,
+					TargetLabels: []string{"host", "job"},
+					AggregateBy:  seriesvolume.Labels,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `host`, Volume: 160},
+					{Name: `job`, Volume: 160},
+				}, volumes.Volumes)
+			})
+		})
 	})
 }
 

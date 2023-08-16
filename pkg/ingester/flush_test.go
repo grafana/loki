@@ -14,10 +14,10 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/dskit/tenant"
@@ -124,7 +124,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 	for i := range res {
 		res[i] = &chunkDesc{
 			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+			chunk:  chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.DefaultHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
 		fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())
@@ -243,6 +243,21 @@ func TestFlushMaxAge(t *testing.T) {
 	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
 }
 
+func TestFlushLoopCanExitDuringInitialWait(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	// This gives us an initial delay of max 48s
+	// 60s * 0.8 = 48s
+	cfg.FlushCheckPeriod = time.Minute
+
+	start := time.Now()
+	store, ing := newTestStore(t, cfg, nil)
+	defer store.Stop()
+	// immediately stop
+	require.NoError(t, services.StopAndAwaitTerminated(context.Background(), ing))
+	duration := time.Since(start)
+	require.True(t, duration < 5*time.Second, "ingester could not shut down while waiting for initial delay")
+}
+
 type testStore struct {
 	mtx sync.Mutex
 	// Chunks keyed by userID.
@@ -352,7 +367,7 @@ func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*la
 	return &stats.Stats{}, nil
 }
 
-func (s *testStore) SeriesVolume(_ context.Context, _ string, _, _ model.Time, _ int32, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+func (s *testStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return &logproto.VolumeResponse{}, nil
 }
 

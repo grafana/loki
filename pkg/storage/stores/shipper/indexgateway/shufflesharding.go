@@ -101,7 +101,7 @@ func (s *NoopStrategy) FilterTenants(tenantIDs []string) ([]string, error) {
 	return tenantIDs, nil
 }
 
-// GetShardingStrategy returns the correct ShardingStrategy implementaion based
+// GetShardingStrategy returns the correct ShardingStrategy implementation based
 // on provided configuration.
 func GetShardingStrategy(cfg Config, indexGatewayRingManager *RingManager, o Limits) ShardingStrategy {
 	if cfg.Mode != RingMode || indexGatewayRingManager.Mode == ClientMode {
