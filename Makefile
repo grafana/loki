@@ -307,7 +307,7 @@ lint: ## run linters
 
 test: all ## run the unit tests
 	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
-
+	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee lambda_promtail_test_results.txt
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
