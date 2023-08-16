@@ -1,8 +1,9 @@
 ---
-title: Configuration
+title: Docker-driver configuration
+menuTitle: Configuration
 description: Configuring the Docker Driver 
 ---
-# Configuration
+# Docker-driver configuration
 
 The Docker daemon on each machine has a default logging driver and
 each container will use the default driver unless configured otherwise.

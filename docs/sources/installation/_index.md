@@ -1,10 +1,11 @@
 ---
-title: Installation
+title: Install Loki
+menuTitle: Installation
 description: Installation
 weight: 200
 ---
 
-# Installation
+# Install Loki
 
 There are several methods of installing Loki and Promtail:
 
