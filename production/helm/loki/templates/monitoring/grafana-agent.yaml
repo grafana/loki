@@ -16,6 +16,12 @@ metadata:
 spec:
   serviceAccountName: {{ include "loki.fullname" $ }}-grafana-agent
   enableConfigReadAPI: {{ .enableConfigReadAPI }}
+  {{- if .Values.loki.grafanaAgentImage }}
+  image: {{ .Values.loki.grafanaAgentImage }}
+  {{- end -}}
+  {{- if .Values.loki.grafanaAgentConfigReloaderImage  }}
+  configReloaderImage: {{ .Values.loki.grafanaAgentConfigReloaderImage }}
+  {{- end -}}
   {{- include "grafana-agent.priorityClassName" $ | nindent 2 }}
   logs:
     instanceSelector:
