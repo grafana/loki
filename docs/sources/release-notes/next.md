@@ -12,3 +12,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Features and enhancements
 
+
+-  **Loki: Introduce new `limited_log_push_errors`.**: :warning: ADD DESCRIPTION HERE :warning:. [PR #9568](https://github.com/grafana/loki/pull/9568)]
