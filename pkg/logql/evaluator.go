@@ -208,7 +208,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				}
 				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
-		}
+		} 
 		return newVectorAggEvaluator(ctx, nextEv, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
@@ -260,12 +260,18 @@ func newVectorAggEvaluator(
 		if !next {
 			return false, 0, promql.Vector{}
 		}
-		result := map[uint64]*groupedAggregation{}
 		if expr.Operation == syntax.OpTypeTopK || expr.Operation == syntax.OpTypeBottomK {
 			if expr.Params < 1 {
 				return next, ts, promql.Vector{}
 			}
 		}
+
+		// The merge in downstream by TopkMergeEvalator already evaluates the sketches. We just pass on the vector.
+		if expr.Operation == syntax.OpTypeTopKMerge {
+			return next, ts, vec
+		}
+
+		result := map[uint64]*groupedAggregation{}
 		for _, s := range vec {
 			metric := s.Metric
 

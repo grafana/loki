@@ -511,12 +511,19 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 			var acc *sketch.Topk
 			for _, eval := range evaluators {
 				ok, ts, cur = eval.Next()
+				if !ok {
+					continue
+				}
 				if acc == nil {
 					acc = cur.TopkVector().Topk
 				} else {
 					// TODO(karsten): handle error
 					acc.Merge(cur.TopkVector().Topk) //nolint:all
 				}
+			}
+
+			if acc == nil {
+				return false, 0, promql.Vector{}
 			}
 
 			for _, r := range acc.Topk() {

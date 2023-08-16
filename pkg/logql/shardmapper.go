@@ -288,14 +288,6 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 		}, bytesPerShard, nil
 
 	case syntax.OpTypeTopK:
-		var g *syntax.Grouping
-		// this smells, not sure why we need to do this but somehow
-		// if a query doesn't have a grouping the expr.Grouping field
-		// contains an empty string rather than a nil pointer
-		if expr.Grouping != nil && expr.Grouping.String() != "" {
-			g = expr.Grouping
-		}
-		expr.Grouping = g
 		// each step of a sharded topk is a set of topk sketch structs whose count-min sketches can be merged
 		sharded, bytesPerShard, err := m.mapTopKSampleExpr(expr, r)
 		if err != nil {
@@ -304,7 +296,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 
 		return &syntax.VectorAggregationExpr{
 			Left:      sharded,
-			Grouping:  g,
+			Grouping:  expr.Grouping,
 			Operation: syntax.OpTypeTopKMerge,
 		}, bytesPerShard, nil
 	default:
