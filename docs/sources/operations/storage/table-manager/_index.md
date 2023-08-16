@@ -29,10 +29,14 @@ The Table Manager supports the following backends:
   - [Apache Cassandra](https://cassandra.apache.org)
   - [BoltDB](https://github.com/boltdb/bolt) (primarily used for local environments)
 - **Chunk store**
-  - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-  - [Google Bigtable](https://cloud.google.com/bigtable)
-  - [Apache Cassandra](https://cassandra.apache.org)
   - Filesystem (primarily used for local environments)
+
+
+Loki does support the following backends for both index and chunk storage, but they are deprecated and will be removed in a future release:
+
+- [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+- [Google Bigtable](https://cloud.google.com/bigtable)
+- [Apache Cassandra](https://cassandra.apache.org)
 
 The object storages - like Amazon S3 and Google Cloud Storage - supported by Loki
 to store chunks, are not managed by the Table Manager, and a custom bucket policy

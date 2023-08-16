@@ -209,7 +209,7 @@ func Test_astMapper_QuerySizeLimits(t *testing.T) {
 		},
 		{
 			desc:                     "Non shardable query too big",
-			query:                    `sum_over_time({app="foo"} |= "foo" | unwrap foo [1h])`,
+			query:                    `avg_over_time({job="foo"} | json busy="utilization" | unwrap busy [5m])`,
 			maxQuerierBytesSize:      10,
 			err:                      fmt.Sprintf(limErrQuerierTooManyBytesUnshardableTmpl, "100 B", "10 B"),
 			expectedStatsHandlerHits: 1,
