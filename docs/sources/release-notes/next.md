@@ -13,4 +13,4 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 ## Features and enhancements
 
 
--  **Configuration: Allow customization of default runtime values**: :warning: ADD DESCRIPTION HERE :warning:. [PR #10193](https://github.com/grafana/loki/pull/10193)]
+-  **Configuration: Allow customization of default runtime values**: Loki has a set of runtime configurations such as `log_push_requests` that default to false. Users can now customize what the default of those configurations can be. [PR #10193](https://github.com/grafana/loki/pull/10193)]
