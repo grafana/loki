@@ -58,6 +58,10 @@ loki:
   podLabels: {}
   # -- The number of old ReplicaSets to retain to allow rollback
   revisionHistoryLimit: 10
+  # -- Override the image of the GrafanaAgent
+  grafanaAgentImage: {}
+  # -- Override the configReloader image of the GrafanaAgent
+  grafanaAgentConfigReloaderImage: {}
   # -- The SecurityContext for Loki pods
   podSecurityContext:
     fsGroup: 10001
