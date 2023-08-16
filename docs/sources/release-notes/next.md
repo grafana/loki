@@ -12,3 +12,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Features and enhancements
 
+
+-  **Remove redundant spans**: :warning: ADD DESCRIPTION HERE :warning:. [PR #10055](https://github.com/grafana/loki/pull/10055)]
