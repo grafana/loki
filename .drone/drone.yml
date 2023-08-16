@@ -336,6 +336,21 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
+  name: build-loki-canary-boringcrypto-image
+  settings:
+    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-boringcrypto
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
   name: build-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -374,6 +389,22 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-canary-boringcrypto-image
+  settings:
+    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-boringcrypto
     username:
       from_secret: docker_username
   when:
@@ -450,6 +481,21 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker
+  name: build-loki-canary-boringcrypto-image
+  settings:
+    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-boringcrypto
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker
   name: build-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -488,6 +534,22 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+- depends_on:
+  - image-tag
+  image: plugins/docker
+  name: publish-loki-canary-boringcrypto-image
+  settings:
+    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-boringcrypto
     username:
       from_secret: docker_username
   when:
@@ -564,6 +626,21 @@ steps:
 - depends_on:
   - image-tag
   image: plugins/docker:linux-arm
+  name: build-loki-canary-boringcrypto-image
+  settings:
+    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
+    dry_run: true
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-boringcrypto
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - pull_request
+- depends_on:
+  - image-tag
+  image: plugins/docker:linux-arm
   name: build-logcli-image
   settings:
     dockerfile: cmd/logcli/Dockerfile
@@ -602,6 +679,22 @@ steps:
     password:
       from_secret: docker_password
     repo: grafana/loki-canary
+    username:
+      from_secret: docker_username
+  when:
+    event:
+    - push
+    - tag
+- depends_on:
+  - image-tag
+  image: plugins/docker:linux-arm
+  name: publish-loki-canary-boringcrypto-image
+  settings:
+    dockerfile: cmd/loki-canary-boringcrypto/Dockerfile
+    dry_run: false
+    password:
+      from_secret: docker_password
+    repo: grafana/loki-canary-boringcrypto
     username:
       from_secret: docker_username
   when:
@@ -1910,6 +2003,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: d87780f1737fccb4d0409e34fc97ee07e1bd3c45c9b25fae517e7dbd21fc7a5f
+hmac: 004dc2f49a59704c815e9ccd2f9b635b2114dec907477da099ffc5952695f5d1
 
 ...
