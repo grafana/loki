@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+
 	"strconv"
 	"time"
 
@@ -117,6 +118,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 
 	for _, s := range vec {
 		metric := s.Metric
+		
 		var groupingKey uint64
 		if e.expr.Grouping.Without {
 			groupingKey, buf = metric.HashWithoutLabels(buf, e.expr.Grouping.Groups...)

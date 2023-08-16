@@ -4,15 +4,15 @@ import (
 	"container/heap"
 )
 
-type node struct {
-	event string
+type Node struct {
+	Event string
 	count uint32
 	// used for the container heap Fix function
 	index           uint16
 	sketchPositions []uint32
 }
 
-type MinHeap []*node
+type MinHeap []*Node
 
 func (h MinHeap) Len() int {
 	return len(h)
@@ -30,7 +30,7 @@ func (h MinHeap) Swap(i, j int) {
 
 func (h *MinHeap) Push(x interface{}) {
 	n := len(*h)
-	item := x.(*node)
+	item := x.(*Node)
 	item.index = uint16(n)
 	*h = append(*h, item)
 }
@@ -53,7 +53,7 @@ func (h *MinHeap) Peek() interface{} {
 func (h *MinHeap) update(event string, count uint32) {
 	updateNode := -1
 	for i, k := range *h {
-		if k.event == event {
+		if k.Event == event {
 			k.count = count
 			updateNode = i
 			break
@@ -64,7 +64,7 @@ func (h *MinHeap) update(event string, count uint32) {
 
 func (h *MinHeap) Find(e string) (int, bool) {
 	for i := 0; i < len(*h); i++ {
-		if (*h)[i].event == e {
+		if (*h)[i].Event == e {
 			return i, true
 		}
 	}

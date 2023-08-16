@@ -36,7 +36,7 @@ func (t TopKResult) Swap(i, j int)      { t.Result[i], t.Result[j] = t.Result[j]
 type Topk struct {
 	max int
 	// the heap field is a map to allow for doing topk queries by groupingKey, like topk(10, query) by (endpoint)
-	heaps               map[string]*MinHeap
+	Heaps               map[string]*MinHeap
 	sketch              *CountMinSketch
 	bf                  [][]bool
 	hll                 *hyperloglog.Sketch
@@ -104,7 +104,7 @@ func newCMSTopK(k int, w, d uint32) (*Topk, error) {
 	}
 	return &Topk{
 		max:    k,
-		heaps:  make(map[string]*MinHeap),
+		Heaps:  make(map[string]*MinHeap),
 		sketch: s,
 		hll:    hyperloglog.New16(),
 		bf:     makeBF(w, d),
@@ -132,8 +132,8 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 	for _, res := range t.Results {
 		h := &MinHeap{}
 		for _, e := range res.List {
-			node := &node{
-				event: e.Event,
+			node := &Node{
+				Event: e.Event,
 				count: e.Count,
 			}
 			heap.Push(h, node)
@@ -146,7 +146,7 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 	topk := &Topk{
 		sketch: cms,
 		hll:    hll,
-		heaps:  heaps,
+		Heaps:  heaps,
 	}
 	return topk, nil
 }
@@ -166,12 +166,12 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 		return nil, err
 	}
 
-	list := make([]*logproto.TopK_Result, 0, len(t.heaps))
-	for key := range t.heaps {
-		res := make([]*logproto.TopK_Pair, 0, len(*t.heaps[key]))
-		for _, node := range *t.heaps[key] {
+	list := make([]*logproto.TopK_Result, 0, len(t.Heaps))
+	for key := range t.Heaps {
+		res := make([]*logproto.TopK_Pair, 0, len(*t.Heaps[key]))
+		for _, node := range *t.Heaps[key] {
 			pair := &logproto.TopK_Pair{
-				Event: node.event,
+				Event: node.Event,
 				Count: node.count,
 			}
 			res = append(res, pair)
@@ -195,16 +195,16 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 		pos = t.sketch.getPos(h1, h2, uint32(i))
 		t.bf[i][pos] = true
 	}
-	heap.Push(h, &node{event: event, count: estimate})
+	heap.Push(h, &Node{Event: event, count: estimate})
 }
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
 // as well as replacing the min heap element with the new event and it's count
 func (t *Topk) heapMinReplace(event, groupingKey string, estimate uint32, removed string) {
 	t.updateBF(removed, event)
-	(*t.heaps[groupingKey])[0].event = event
-	(*t.heaps[groupingKey])[0].count = estimate
-	heap.Fix(t.heaps[groupingKey], 0)
+	(*t.Heaps[groupingKey])[0].Event = event
+	(*t.Heaps[groupingKey])[0].count = estimate
+	heap.Fix(t.Heaps[groupingKey], 0)
 }
 
 // updates the BF to ensure that the removed event won't be mistakenly thought
@@ -253,29 +253,29 @@ func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count uint32) {
 	estimate, h1, h2 := t.sketch.ConservativeAdd(event, count)
 	t.hll.Insert(unsafeGetBytes(event))
 
-	if t.heaps[groupingKey] == nil {
-		t.heaps[groupingKey] = &MinHeap{}
+	if t.Heaps[groupingKey] == nil {
+		t.Heaps[groupingKey] = &MinHeap{}
 	}
 
 	if t.InTopk(h1, h2) {
 		return
 	}
 
-	if len(*t.heaps[groupingKey]) < t.max {
-		t.heapPush(t.heaps[groupingKey], event, estimate, h1, h2)
+	if len(*t.Heaps[groupingKey]) < t.max {
+		t.heapPush(t.Heaps[groupingKey], event, estimate, h1, h2)
 		return
 	}
 
-	if estimate > t.heaps[groupingKey].Peek().(*node).count {
+	if estimate > t.Heaps[groupingKey].Peek().(*Node).count {
 		var h1, h2 uint32
 		var pos uint32
-		for i := range *t.heaps[groupingKey] {
-			(*t.heaps[groupingKey])[i].count = t.sketch.Count((*t.heaps[groupingKey])[i].event)
-			if i <= len(*t.heaps[groupingKey])/2 {
-				heap.Fix(t.heaps[groupingKey], i)
+		for i := range *t.Heaps[groupingKey] {
+			(*t.Heaps[groupingKey])[i].count = t.sketch.Count((*t.Heaps[groupingKey])[i].Event)
+			if i <= len(*t.Heaps[groupingKey])/2 {
+				heap.Fix(t.Heaps[groupingKey], i)
 			}
 			// ensure all the bf buckets are truthy for the event
-			h1, h2 = hashn((*t.heaps[groupingKey])[i].event)
+			h1, h2 = hashn((*t.Heaps[groupingKey])[i].Event)
 			for j := range t.bf {
 				pos = t.sketch.getPos(h1, h2, uint32(j))
 				t.bf[j][pos] = true
@@ -290,14 +290,14 @@ func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count uint32) {
 
 	// after we've updated the heap, if the estimate is still > the min heap element
 	// we should replace the min heap element with the current event and rebalance the heap
-	if estimate > t.heaps[groupingKey].Peek().(*node).count {
-		if len(*t.heaps[groupingKey]) == t.max {
-			e := t.heaps[groupingKey].Peek().(*node).event
+	if estimate > t.Heaps[groupingKey].Peek().(*Node).count {
+		if len(*t.Heaps[groupingKey]) == t.max {
+			e := t.Heaps[groupingKey].Peek().(*Node).Event
 			//r1, r2 := hashn(e)
 			t.heapMinReplace(event, groupingKey, estimate, e)
 			return
 		}
-		t.heapPush(t.heaps[groupingKey], event, estimate, h1, h2)
+		t.heapPush(t.Heaps[groupingKey], event, estimate, h1, h2)
 	}
 }
 
@@ -334,19 +334,19 @@ func (t *Topk) Merge(from *Topk) error {
 
 	var all TopKResult
 	processed := make(map[string]struct{})
-	for key := range t.heaps {
+	for key := range t.Heaps {
 		processed[key] = struct{}{}
-		if _, ok := from.heaps[key]; !ok {
+		if _, ok := from.Heaps[key]; !ok {
 			continue
 		}
 		all.Result = all.Result[:0]
 		all.groupingKey = key
-		for _, e := range *t.heaps[key] {
-			all.Result = append(all.Result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		for _, e := range *t.Heaps[key] {
+			all.Result = append(all.Result, element{Event: e.Event, Count: int64(t.sketch.Count(e.Event))})
 		}
 
-		for _, e := range *from.heaps[key] {
-			all.Result = append(all.Result, element{Event: e.event, Count: int64(t.sketch.Count(e.event))})
+		for _, e := range *from.Heaps[key] {
+			all.Result = append(all.Result, element{Event: e.Event, Count: int64(t.sketch.Count(e.Event))})
 		}
 
 		all = removeDuplicates(all)
@@ -358,14 +358,14 @@ func (t *Topk) Merge(from *Topk) error {
 			h1, h2 = hashn(e.Event)
 			t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
 		}
-		t.heaps[key] = temp
+		t.Heaps[key] = temp
 	}
 
-	for key := range from.heaps {
+	for key := range from.Heaps {
 		if _, ok := processed[key]; ok {
 			continue
 		}
-		t.heaps[key] = from.heaps[key]
+		t.Heaps[key] = from.Heaps[key]
 	}
 
 	return nil
@@ -385,22 +385,22 @@ func (t *Topk) InTopk(h1, h2 uint32) bool {
 }
 
 func (t *Topk) Topk() []TopKResult {
-	res := make([]TopKResult, 0, len(t.heaps))
+	res := make([]TopKResult, 0, len(t.Heaps))
 	//i := 0
-	for key := range t.heaps {
+	for key := range t.Heaps {
 		n := t.max
 
 		keyRes := TopKResult{
 			groupingKey: key,
-			Result:      make([]element, 0, len(*t.heaps[key])),
+			Result:      make([]element, 0, len(*t.Heaps[key])),
 		}
-		if len(*t.heaps[key]) < t.max {
-			n = len(*t.heaps[key])
+		if len(*t.Heaps[key]) < t.max {
+			n = len(*t.Heaps[key])
 		}
-		for _, e := range *t.heaps[key] {
+		for _, e := range *t.Heaps[key] {
 			keyRes.Result = append(keyRes.Result, element{
-				Event: e.event,
-				Count: int64(t.sketch.Count(e.event)),
+				Event: e.Event,
+				Count: int64(t.sketch.Count(e.Event)),
 			})
 		}
 		sort.Sort(keyRes)
@@ -413,23 +413,46 @@ func (t *Topk) Topk() []TopKResult {
 
 func (t *Topk) TopkForGroupingKey(groupingKey string) TopKResult {
 	n := t.max
-	if len(*t.heaps[groupingKey]) < t.max {
-		n = len(*t.heaps[groupingKey])
+	if len(*t.Heaps[groupingKey]) < t.max {
+		n = len(*t.Heaps[groupingKey])
 	}
 	res := TopKResult{
 		groupingKey: "",
-		Result:      make([]element, 0, len(*t.heaps[groupingKey])),
+		Result:      make([]element, 0, len(*t.Heaps[groupingKey])),
 	}
 
-	for _, e := range *t.heaps[groupingKey] {
+	for _, e := range *t.Heaps[groupingKey] {
 		res.Result = append(res.Result, element{
-			Event: e.event,
-			Count: int64(t.sketch.Count(e.event)),
+			Event: e.Event,
+			Count: int64(t.sketch.Count(e.Event)),
 		})
 	}
 	sort.Sort(res)
 	res.Result = res.Result[:n]
 	return res
+}
+
+func (t *Topk) GroupingKeys() []string {
+	keys := make([]string, 0, len(t.Heaps))
+	for key := range t.Heaps {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+// DistinctEventsForGroupingKey returns a list of distinct events observed.
+// Returns nil if group was not found.
+func (t *Topk) DistinctEventsForGroupingKey(groupingKey string) []string {
+	group, ok := t.Heaps[groupingKey]
+	if !ok {
+		return nil
+	}
+
+	events := make([]string, 0, len(*group))
+	for _, node := range *group {
+		events = append(events, node.Event)
+	}
+	return events
 }
 
 // Cardinality returns the estimated cardinality of the input plus whether the size of t's

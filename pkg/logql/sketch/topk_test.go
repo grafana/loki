@@ -164,12 +164,12 @@ func TestRealTopK(t *testing.T) {
 			continue
 		}
 		if len(h) < 100 {
-			heap.Push(&h, &node{event: s, count: m[s]})
+			heap.Push(&h, &Node{event: s, count: m[s]})
 			continue
 		}
-		if m[s] > (h.Peek().(*node).count) {
+		if m[s] > (h.Peek().(*Node).count) {
 			heap.Pop(&h)
-			heap.Push(&h, &node{event: s, count: m[s]})
+			heap.Push(&h, &Node{event: s, count: m[s]})
 		}
 	}
 
@@ -178,7 +178,7 @@ func TestRealTopK(t *testing.T) {
 		Result:      make([]element, 0, len(h)),
 	}
 	for i := 0; i < len(h); i++ {
-		res.Result = append(res.Result, element{h[i].event, int64(h[i].count)})
+		res.Result = append(res.Result, element{h[i].Event, int64(h[i].count)})
 	}
 	sort.Sort(res)
 
@@ -249,12 +249,12 @@ func TestRealTop_Merge(t *testing.T) {
 			continue
 		}
 		if len(h) < k {
-			heap.Push(&h, &node{event: s, count: m[s]})
+			heap.Push(&h, &Node{event: s, count: m[s]})
 			continue
 		}
-		if m[s] > (h.Peek().(*node).count) {
+		if m[s] > (h.Peek().(*Node).count) {
 			heap.Pop(&h)
-			heap.Push(&h, &node{event: s, count: m[s]})
+			heap.Push(&h, &Node{event: s, count: m[s]})
 		}
 	}
 
@@ -263,7 +263,7 @@ func TestRealTop_Merge(t *testing.T) {
 		Result:      make([]element, 0, len(h)),
 	}
 	for i := 0; i < len(h); i++ {
-		res.Result = append(res.Result, element{h[i].event, int64(h[i].count)})
+		res.Result = append(res.Result, element{h[i].Event, int64(h[i].count)})
 	}
 	sort.Sort(res)
 

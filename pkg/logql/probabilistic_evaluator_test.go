@@ -115,11 +115,56 @@ func TestProbabilisticEngine(t *testing.T) {
 				{&logproto.SampleQueryRequest{Start: time.Unix(0, 0), End: time.Unix(180, 0), Selector: `rate({app=~"foo|bar"}|~".+bar"[1m])`}},
 			},
 			sketch.TopKMatrix{
-				sketch.TopKVector{Topk: nil, TS: 60_000},
-				sketch.TopKVector{Topk: nil, TS: 90_000},
-				sketch.TopKVector{Topk: nil, TS: 12_0000},
-				sketch.TopKVector{Topk: nil, TS: 15_0000},
-				sketch.TopKVector{Topk: nil, TS: 18_0000},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
+							{Event: `{app="foo"}`},
+							{Event: `{app="bar"}`},
+							{Event: `{app="boo"}`},
+						}},
+					},
+					TS: 60_000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
+							{Event: `{app="foo"}`},
+							{Event: `{app="bar"}`},
+							{Event: `{app="boo"}`},
+						}},
+					},
+					TS: 90_000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
+							{Event: `{app="foo"}`},
+							{Event: `{app="bar"}`},
+							{Event: `{app="boo"}`},
+						}},
+					},
+					TS: 12_0000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
+							{Event: `{app="foo"}`},
+							{Event: `{app="bar"}`},
+							{Event: `{app="boo"}`},
+						}},
+					},
+					TS: 15_0000,
+				},
+				sketch.TopKVector{
+					Topk: &sketch.Topk{
+						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
+							{Event: `{app="foo"}`},
+							{Event: `{app="bar"}`},
+							{Event: `{app="boo"}`},
+						}},
+					},
+					TS: 18_0000,
+				},
 			},
 		},
 	} {
@@ -146,11 +191,21 @@ func TestProbabilisticEngine(t *testing.T) {
 			case sketch.TopKMatrix:
 				actual := res.Data.(sketch.TopKMatrix)
 				require.Len(t, actual, len(expected))
+
+				actualLabels := make([]string, 0)
+				expectedLabels := make([]string, 0)
+
 				for i := range actual {
 					assert.Equal(t, expected[i].TS, actual[i].TS)
-					// TODO: compare labels.
-					//assert.Equal(t, expected[i].Topk, actual[i].Topk)
+
+					// Only the labels are tested here.
+					require.ElementsMatch(t, actual[i].Topk.GroupingKeys(), expected[i].Topk.GroupingKeys())
+					for _, key := range actual[i].Topk.GroupingKeys() {
+						require.ElementsMatch(t, actual[i].Topk.DistinctEventsForGroupingKey(key), expected[i].Topk.DistinctEventsForGroupingKey(key))
+					}
 				}
+
+				require.ElementsMatch(t, actualLabels, expectedLabels)
 			default:
 				assert.Equal(t, test.expected, res.Data)
 			}

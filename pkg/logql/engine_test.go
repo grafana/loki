@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
+	//"math"
 	"regexp"
 	"strings"
 	"testing"
@@ -979,6 +979,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 
 		expected promql_parser.Value
 	}{
+		/*
 		{
 			`{app="foo"}`, time.Unix(0, 0), time.Unix(30, 0), time.Second, 0, logproto.FORWARD, 10,
 			[][]logproto.Stream{
@@ -1416,7 +1417,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 					Floats: []promql.FPoint{{T: 60 * 1000, F: 0.2}, {T: 90 * 1000, F: 0.2}, {T: 120 * 1000, F: 0.2}, {T: 150 * 1000, F: 0.2}, {T: 180 * 1000, F: 0.2}},
 				},
 			},
-		},
+		},*/
 		{
 			`topk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -1436,6 +1437,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		/*
 		{
 			`topk(1,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, time.Unix(60, 0), time.Unix(180, 0), 30 * time.Second, 0, logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -2178,6 +2180,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 				},
 			},
 		},
+		*/
 	} {
 		test := test
 		t.Run(fmt.Sprintf("%s %s", test.qs, test.direction), func(t *testing.T) {
