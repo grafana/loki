@@ -7,12 +7,15 @@ import (
 )
 
 type Config struct {
+	Enabled    bool             `yaml:"enabled"`
 	Controller ControllerConfig `yaml:"controller"`
 	Retry      RetrierConfig    `yaml:"retry"`
 	Hedge      HedgerConfig     `yaml:"hedging"`
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&c.Enabled, prefix+"enabled", false, "Use storage congestion control (default: disabled).")
+
 	c.Controller.RegisterFlagsWithPrefix(prefix+"congestion-control.", f)
 	c.Retry.RegisterFlagsWithPrefix(prefix+"retry.", f)
 	c.Hedge.RegisterFlagsWithPrefix(prefix+"hedge.", f)
@@ -35,9 +38,9 @@ func (c *ControllerConfig) RegisterFlags(f *flag.FlagSet) {
 
 func (c *ControllerConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&c.Strategy, prefix+"strategy", "", "Congestion control strategy to use (default: none, options: 'aimd').")
-	f.UintVar(&c.AIMD.Start, prefix+"strategy.aimd.start", 100, "AIMD starting throughput window size (default: 100).")
-	f.UintVar(&c.AIMD.UpperBound, prefix+"strategy.aimd.upper-bound", 1000, "AIMD maximum throughput window size (default: 1000).")
-	f.Float64Var(&c.AIMD.BackoffFactor, prefix+"strategy.aimd.backoff-factor", 0.5, "AIMD backoff factor when upstream service is throttled (default: 0.5).")
+	f.UintVar(&c.AIMD.Start, prefix+"strategy.aimd.start", 2000, "AIMD starting throughput window size: how many requests can be sent per second (default: 2000).")
+	f.UintVar(&c.AIMD.UpperBound, prefix+"strategy.aimd.upper-bound", 10000, "AIMD maximum throughput window size: upper limit of requests sent per second (default: 10000).")
+	f.Float64Var(&c.AIMD.BackoffFactor, prefix+"strategy.aimd.backoff-factor", 0.5, "AIMD backoff factor when upstream service is throttled to decrease number of requests sent per second (default: 0.5).")
 }
 
 type RetrierConfig struct {

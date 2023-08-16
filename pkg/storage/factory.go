@@ -443,8 +443,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeAWSDynamo:
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -459,22 +458,19 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeAlibabaCloud:
 		c, err := alibaba.NewOssObjectClient(context.Background(), cfg.AlibabaStorageConfig)
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeBOS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxChunkBatchSize, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxChunkBatchSize, schemaCfg), nil
 	case config.StorageTypeGCP:
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
@@ -485,14 +481,19 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			return nil, err
 		}
 
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		// TODO(dannyk): expand congestion control to all other object clients
+		// this switch statement can be simplified; all the branches like this one are alike
+		if cfg.CongestionControl.Enabled {
+			c = cc.Wrap(c)
+		}
+
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeSwift:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeCassandra:
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case config.StorageTypeFileSystem:
@@ -500,8 +501,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeGrpc:
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.StorageTypeCOS:
@@ -509,8 +509,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		if err != nil {
 			return nil, err
 		}
-
-		return client.NewClientWithMaxParallel(cc.Wrap(c), nil, cfg.MaxParallelGetChunk, schemaCfg), nil
+		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	default:
 		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc, config.StorageTypeCOS)
 	}
