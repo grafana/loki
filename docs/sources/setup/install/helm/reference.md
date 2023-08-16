@@ -1994,6 +1994,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.grafanaAgentImage</td>
+			<td>string</td>
+			<td>Override image for GrafanaAgent</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.grafanaAgentConfigReloaderImage</td>
+			<td>string</td>
+			<td>Override the config reloader image for GrafanaAgent</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.podSecurityContext</td>
 			<td>object</td>
 			<td>The SecurityContext for Loki pods</td>
