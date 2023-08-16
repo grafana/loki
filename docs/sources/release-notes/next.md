@@ -12,3 +12,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Features and enhancements
 
+
+-  **Loki: Bump `dskit` to inherit new backoff configs**: :warning: ADD DESCRIPTION HERE :warning:. [PR #9484](https://github.com/grafana/loki/pull/9484)]
