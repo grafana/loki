@@ -106,7 +106,8 @@ func main() {
 		fmt.Println("Invalid log level")
 		exit(1)
 	}
-	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer, true, false)
+	serverCfg := &config.Config.ServerConfig.Config
+	serverCfg.Log = util_log.InitLogger(serverCfg.LogFormat, serverCfg.LogLevel, prometheus.DefaultRegisterer, true, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)

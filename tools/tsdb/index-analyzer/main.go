@@ -90,7 +90,7 @@ func setup() (loki.Config, string, error) {
 	}
 
 	c.Config.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
-	util_log.InitLogger(&c.Server, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
+	c.Server.Log = util_log.InitLogger(c.Server.LogFormat, c.Server.LogLevel, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
 
 	c.Config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = filepath.Join(dir, "tsdb-active")
 	c.Config.StorageConfig.TSDBShipperConfig.CacheLocation = filepath.Join(dir, "tsdb-cache")

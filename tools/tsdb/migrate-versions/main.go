@@ -298,7 +298,7 @@ func setup() loki.Config {
 		os.Exit(1)
 	}
 
-	util_log.InitLogger(&c.Server, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
+	c.Server.Log = util_log.InitLogger(c.Server.LogFormat, c.Server.LogLevel, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
 
 	if err := c.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())

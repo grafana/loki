@@ -660,6 +660,7 @@ func Test_DryRun(t *testing.T) {
 			GRPCListenNetwork: serverww.DefaultNetwork,
 		},
 	}
+	require.NoError(t, serverCfg.LogLevel.Set("debug"))
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
 
@@ -692,10 +693,13 @@ func Test_Reload(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
+	serverCfg := server.Config{
+		Reload: true,
+	}
+	require.NoError(t, serverCfg.LogLevel.Set("debug"))
+
 	cfg := config.Config{
-		ServerConfig: server.Config{
-			Reload: true,
-		},
+		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
 			PositionsFile: f.Name(),
@@ -706,9 +710,7 @@ func Test_Reload(t *testing.T) {
 	expectCfgStr := cfg.String()
 
 	expectedConfig := &config.Config{
-		ServerConfig: server.Config{
-			Reload: true,
-		},
+		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
 		PositionsConfig: positions.Config{
 			PositionsFile: f.Name(),
@@ -761,10 +763,13 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
+	serverCfg := server.Config{
+		Reload: true,
+	}
+	require.NoError(t, serverCfg.LogLevel.Set("info"))
+
 	cfg := config.Config{
-		ServerConfig: server.Config{
-			Reload: true,
-		},
+		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
 			PositionsFile: f.Name(),
@@ -773,9 +778,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	}
 
 	expectedConfig := &config.Config{
-		ServerConfig: server.Config{
-			Reload: true,
-		},
+		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
 		PositionsConfig: positions.Config{
 			PositionsFile: f.Name(),

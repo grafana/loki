@@ -105,7 +105,7 @@ func Test_packStage_Run(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil, true, false)
+	util_log.InitLogger(cfg.LogFormat, cfg.LogLevel, nil, true, false)
 	Debug = true
 
 	tests := []struct {

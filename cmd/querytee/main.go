@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/log"
-	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 
@@ -29,9 +28,7 @@ func main() {
 	cfg.ProxyConfig.RegisterFlags(flag.CommandLine)
 	flag.Parse()
 
-	util_log.InitLogger(&server.Config{
-		LogLevel: cfg.LogLevel,
-	}, prometheus.DefaultRegisterer, true, false)
+	util_log.InitLogger(log.LogfmtFormat, cfg.LogLevel, prometheus.DefaultRegisterer, true, false)
 
 	// Run the instrumentation server.
 	registry := prometheus.NewRegistry()

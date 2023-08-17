@@ -79,7 +79,8 @@ func (t *PushTarget) run() error {
 
 	// The logger registers a metric which will cause a duplicate registry panic unless we provide an empty registry
 	// The metric created is for counting log lines and isn't likely to be missed.
-	util_log.InitLogger(&t.config.Server, prometheus.NewRegistry(), true, false)
+	serverCfg := &t.config.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg.LogFormat, serverCfg.LogLevel, prometheus.NewRegistry(), true, false)
 
 	srv, err := server.New(t.config.Server)
 	if err != nil {

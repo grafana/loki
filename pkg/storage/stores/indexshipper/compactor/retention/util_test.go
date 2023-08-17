@@ -315,7 +315,7 @@ func newTestStore(t testing.TB) *testStore {
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
-	util_log.InitLogger(servercfg, nil, true, false)
+	util_log.InitLogger(servercfg.LogFormat, servercfg.LogLevel, nil, true, false)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")
