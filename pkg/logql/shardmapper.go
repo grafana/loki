@@ -295,16 +295,7 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			}, bytesPerShard, nil
 		case syntax.OpTypeTopK:
 			// each step of a sharded topk is a set of topk sketch structs whose count-min sketches can be merged
-			sharded, bytesPerShard, err := m.mapTopKSampleExpr(expr, r)
-			if err != nil {
-				return nil, 0, err
-			}
-
-			return &syntax.VectorAggregationExpr{
-				Left:      sharded,
-				Grouping:  expr.Grouping,
-				Operation: syntax.OpTypeTopKMerge,
-			}, bytesPerShard, nil
+			return m.mapTopKSampleExpr(expr, r)
 		default:
 			// this should not be reachable. If an operation is shardable it should
 			// have an optimization listed. Nonetheless, we log this as a warning
@@ -374,7 +365,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// These functions require a different merge strategy than the default
-		// concatentation.
+		// concatenation.
 		// This is because the same label sets may exist on multiple shards when label-reducing parsing is applied or when
 		// grouping by some subset of the labels. In this case, the resulting vector may have multiple values for the same
 		// series and we need to combine them appropriately given a particular operation.

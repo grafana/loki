@@ -7,12 +7,9 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	var skip bool
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
 	expr.Walk(func(e interface{}) {
-		switch actual := e.(type) {
+		switch e.(type) {
 		case *ConcatSampleExpr, *DownstreamSampleExpr, *TopkMergeSampleExpr, *DownstreamTopkSampleExpr:
 			skip = true
-			return
-		case *syntax.VectorAggregationExpr:
-			skip = actual.Operation == syntax.OpTypeTopKMerge
 			return
 		}
 	})
