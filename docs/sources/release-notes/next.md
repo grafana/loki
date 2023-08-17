@@ -14,3 +14,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 -  **Track effectiveness of hedged requests** [PR #10281](https://github.com/grafana/loki/pull/10281)]
 
+
+-  **Optimize .+ regex line filter**: :warning: ADD DESCRIPTION HERE :warning:. [PR #8646](https://github.com/grafana/loki/pull/8646)]
