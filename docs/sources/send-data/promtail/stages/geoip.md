@@ -168,7 +168,7 @@ The output will be a JSON message containing all the fields. All packed labels w
   "geoip_subdivision_code": "MO",
   "geoip_subdivision_name": "Missouri",
   "geoip_timezone": "America/Chicago",
-  "_entry": "34.120.177.193 - "POST /loki/api/push/ HTTP/1.1" 200 932 "-" "Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6"
+  "_entry": "34.120.177.193 - \"POST /loki/api/push/ HTTP/1.1\" 200 932 \"-\" \"Mozilla/5.0 (Windows; U; Windows NT 5.1; de; rv:1.9.1.7) Gecko/20091221 Firefox/3.5.7 GTB6\""
 }
 ```
 
