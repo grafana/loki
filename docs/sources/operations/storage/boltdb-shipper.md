@@ -4,6 +4,8 @@ description: Single Store (boltdb-shipper)
 ---
 # Single Store (boltdb-shipper)
 
+Note that single store (boltdb-shipper) is a legacy storage option and is not recommended for new deployments. It is recommended to use the [TSDB]({{< relref "./tsdb" >}}) index instead.
+
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.

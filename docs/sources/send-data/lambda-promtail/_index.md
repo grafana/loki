@@ -107,7 +107,7 @@ One thing to be aware of with this is that the default flow log format doesn't h
 
 ### Loadbalancer logs
 
-This workflow allows ingesting AWS loadbalancer logs stored on S3 to Loki.
+This workflow allows ingesting AWS Application/Network Load Balancer logs stored on S3 to Loki.
 
 ### Cloudtrail logs
 

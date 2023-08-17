@@ -6,8 +6,7 @@ package user
 
 import (
 	"context"
-
-	"github.com/grafana/dskit/errors"
+	"errors"
 )
 
 type contextKey int
@@ -19,14 +18,13 @@ const (
 )
 
 // Errors that we return
-const (
-	ErrNoOrgID               = errors.Error("no org id")
-	ErrDifferentOrgIDPresent = errors.Error("different org ID already present")
-	ErrTooManyOrgIDs         = errors.Error("multiple org IDs present")
+var (
+	ErrNoOrgID               = errors.New("no org id")
+	ErrDifferentOrgIDPresent = errors.New("different org ID already present")
+	ErrTooManyOrgIDs         = errors.New("multiple org IDs present")
 
-	ErrNoUserID               = errors.Error("no user id")
-	ErrDifferentUserIDPresent = errors.Error("different user ID already present")
-	ErrTooManyUserIDs         = errors.Error("multiple user IDs present")
+	ErrNoUserID               = errors.New("no user id")
+	ErrDifferentUserIDPresent = errors.New("different user ID already present")
 )
 
 // ExtractOrgID gets the org ID from the context.
