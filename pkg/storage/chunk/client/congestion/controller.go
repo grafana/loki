@@ -86,6 +86,8 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 
 	rc, sz, err := a.retrier.Do(
 		func(attempt int) (io.ReadCloser, int64, error) {
+			a.metrics.requests.Add(1)
+
 			// in retry
 			if attempt > 0 {
 				a.metrics.retries.Add(1)
@@ -98,7 +100,7 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 				if !a.limiter.Allow() {
 					delay := time.Millisecond * 10
 					time.Sleep(delay)
-					a.metrics.backoffTimeSec.Add(delay.Seconds())
+					a.metrics.backoffSec.Add(delay.Seconds())
 					continue
 				}
 				break

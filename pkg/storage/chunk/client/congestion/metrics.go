@@ -4,7 +4,8 @@ import "github.com/prometheus/client_golang/prometheus"
 
 type Metrics struct {
 	currentLimit    prometheus.Gauge
-	backoffTimeSec  prometheus.Counter
+	backoffSec      prometheus.Counter
+	requests        prometheus.Counter
 	retries         prometheus.Counter
 	retriesExceeded prometheus.Counter
 }
@@ -23,39 +24,49 @@ func NewMetrics(name string, cfg Config) *Metrics {
 		"name":     name,
 	}
 
+	const namespace = "loki"
+	const subsystem = "store_congestion_control"
 	m := Metrics{
 		currentLimit: prometheus.NewGauge(prometheus.GaugeOpts{
-			Namespace:   "loki",
-			Subsystem:   "store",
-			Name:        "congestion_control_limit",
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Name:        "limit",
 			Help:        "Current per-second request limit to control congestion",
 			ConstLabels: labels,
 		}),
-		backoffTimeSec: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
-			Subsystem:   "store",
-			Name:        "congestion_control_backoff_time_seconds_total",
+		backoffSec: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Name:        "backoff_seconds_total",
 			Help:        "How much time is spent backing off once throughput limit is encountered",
 			ConstLabels: labels,
 		}),
+		requests: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Name:        "requests_total",
+			Help:        "How many requests were issued to the store",
+			ConstLabels: labels,
+		}),
 		retries: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
-			Subsystem:   "store",
-			Name:        "congestion_control_retries_total",
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Name:        "retries_total",
 			Help:        "How many retries occurred",
 			ConstLabels: labels,
 		}),
 		retriesExceeded: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace:   "loki",
-			Subsystem:   "store",
-			Name:        "congestion_control_retries_exceeded_total",
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Name:        "retries_exceeded_total",
 			Help:        "How many times the number of retries exceeded the configured limit.",
 			ConstLabels: labels,
 		}),
 	}
 
 	prometheus.MustRegister(m.currentLimit)
-	prometheus.MustRegister(m.backoffTimeSec)
+	prometheus.MustRegister(m.backoffSec)
+	prometheus.MustRegister(m.requests)
 	prometheus.MustRegister(m.retries)
 	prometheus.MustRegister(m.retriesExceeded)
 	return &m

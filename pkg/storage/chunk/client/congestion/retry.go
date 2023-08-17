@@ -28,7 +28,9 @@ func NewLimitedRetrier(cfg Config) *LimitedRetrier {
 	return &LimitedRetrier{limit: cfg.Retry.Limit}
 }
 
-func (l LimitedRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error) {
+func (l *LimitedRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error) {
+	// i = 0 is initial request
+	// i > 0 is retry
 	for i := 0; i <= l.limit; i++ {
 		rc, sz, err := fn(i)
 
