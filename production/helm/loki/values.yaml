@@ -165,7 +165,7 @@ loki:
     {{- end }}
 
     {{ include "loki.rulerConfig" . }}
-    
+
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
       retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
