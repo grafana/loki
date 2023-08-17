@@ -9,7 +9,7 @@ weight:  700
 
 # Lambda Promtail client 
 
-Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../../clients/promtail/configuration#loki_push_api" >}}).
+Grafana Loki includes [Terraform](https://www.terraform.io/) and [CloudFormation](https://aws.amazon.com/cloudformation/) for shipping Cloudwatch, Cloudtrail, VPC Flow Logs and loadbalancer logs to Loki via a [lambda function](https://aws.amazon.com/lambda/). This is done via [lambda-promtail](https://github.com/grafana/loki/blob/main/tools/lambda-promtail) which processes cloudwatch events and propagates them to Loki (or a Promtail instance) via the push-api [scrape config]({{< relref "../../send-data/promtail/configuration#loki_push_api" >}}).
 
 ## Deployment
 
@@ -60,7 +60,7 @@ To add tenant id add `-var "tenant_id=value"`.
 
 Note that the creation of a subscription filter on Cloudwatch in the provided Terraform file only accepts an array of log group names.
 It does **not** accept strings for regex filtering on the logs contents via the subscription filters. We suggest extending the Terraform file to do so.
-Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/latest/clients/promtail/stages/drop/).
+Or, have lambda-promtail write to Promtail and use [pipeline stages](/docs/loki/latest/send-data/promtail/stages/drop/).
 
 CloudFormation:
 ```
@@ -126,7 +126,7 @@ Triggering lambda-promtail through SQS allows handling on-failure recovery of th
 
 ## Propagated Labels
 
-Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../../clients/promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../../clients/promtail/pipelines" >}}):
+Incoming logs can have seven special labels assigned to them which can be used in [relabeling]({{< relref "../../send-data/promtail/configuration#relabel_configs" >}}) or later stages in a Promtail [pipeline]({{< relref "../../send-data/promtail/pipelines" >}}):
 
 - `__aws_log_type`: Where this log came from (Cloudwatch, Kinesis or S3).
 - `__aws_cloudwatch_log_group`: The associated Cloudwatch Log Group for this log.
