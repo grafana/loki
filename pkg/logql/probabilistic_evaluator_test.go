@@ -118,9 +118,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
-							{Event: `{app="foo"}`},
 							{Event: `{app="bar"}`},
-							{Event: `{app="boo"}`},
+							{Event: `{app="foo"}`},
 						}},
 					},
 					TS: 60_000,
@@ -128,9 +127,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
-							{Event: `{app="foo"}`},
 							{Event: `{app="bar"}`},
-							{Event: `{app="boo"}`},
+							{Event: `{app="foo"}`},
 						}},
 					},
 					TS: 90_000,
@@ -138,9 +136,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
-							{Event: `{app="foo"}`},
 							{Event: `{app="bar"}`},
-							{Event: `{app="boo"}`},
+							{Event: `{app="foo"}`},
 						}},
 					},
 					TS: 12_0000,
@@ -148,9 +145,8 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
-							{Event: `{app="foo"}`},
 							{Event: `{app="bar"}`},
-							{Event: `{app="boo"}`},
+							{Event: `{app="foo"}`},
 						}},
 					},
 					TS: 15_0000,
@@ -158,7 +154,6 @@ func TestProbabilisticEngine(t *testing.T) {
 				sketch.TopKVector{
 					Topk: &sketch.Topk{
 						Heaps: map[string]*sketch.MinHeap{"17241709254077376921": {
-							{Event: `{app="foo"}`},
 							{Event: `{app="bar"}`},
 							{Event: `{app="boo"}`},
 						}},
