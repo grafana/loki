@@ -105,7 +105,7 @@ type DownstreamTopkSampleExpr struct {
 }
 
 func (d DownstreamTopkSampleExpr) String() string {
-	return fmt.Sprintf("downstream<%s, shard=%s>", d.TopkSampleExpr.String(), d.shard)
+	return fmt.Sprintf("downstream_topk<%s, shard=%s>", d.TopkSampleExpr.String(), d.shard)
 }
 
 func (d DownstreamTopkSampleExpr) Walk(f syntax.WalkFn) { f(d) }
@@ -211,7 +211,7 @@ func (c TopkMergeSampleExpr) String() string {
 		return c.DownstreamTopkSampleExpr.String()
 	}
 
-	return fmt.Sprintf("%s, %s", c.DownstreamTopkSampleExpr.String(), c.next.string(defaultMaxDepth-1))
+	return fmt.Sprintf("merge_topk(%s, %s)", c.DownstreamTopkSampleExpr.String(), c.next.string(defaultMaxDepth-1))
 }
 
 // in order to not display huge queries with thousands of shards,

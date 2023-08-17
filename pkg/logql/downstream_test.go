@@ -442,8 +442,8 @@ func TestSketchEquivalence(t *testing.T) {
 		query       string
 		approximate bool
 	}{
-		// TODO(karsten): iterate over differnt k values
-		{`topk(10, rate({a=~".+"}[1s]))`, false},
+		// TODO(karsten): iterate over different k values
+		{`topk(5, rate({a=~".+"}[1s]))`, false},
 	} {
 		q := NewMockQuerier(
 			shards,
