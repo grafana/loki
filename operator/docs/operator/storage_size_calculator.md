@@ -15,7 +15,7 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
 
 ## Installation
 
-* Deploy the [Loki Operator](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift) to the cluster.
+* Deploy the [Loki Operator](https://github.com/grafana/loki/blob/main/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift) to the cluster.
 
 * Create the `openshift-logging` namespace in the cluster:
 
@@ -69,7 +69,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
 
 * Update the code to fix a bug or add a new feature.
 
-* To test the changes made, build the image and push it to quay. Replace [here](https://github.com/grafana/loki/blob/master/operator/config/overlays/openshift/size-calculator/storage_size_calculator.yaml#L18) with your quay image to test the changes.
+* To test the changes made, build the image and push it to quay. Replace [here](https://github.com/grafana/loki/blob/main/operator/config/overlays/openshift/size-calculator/storage_size_calculator.yaml#L18) with your quay image to test the changes.
 
   Build the image using:
 
@@ -77,7 +77,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
   make oci-build-calculator
   ```
 
-  This will build the storage size calculator image using [dockerfile](https://github.com/grafana/loki/blob/master/operator/calculator.Dockerfile)
+  This will build the storage size calculator image using [dockerfile](https://github.com/grafana/loki/blob/main/operator/calculator.Dockerfile)
 
   Push the image to quay using:
 
@@ -99,7 +99,7 @@ If you want to contribute to the storage size calculator, you can follow this lo
 
 ### Permission denied on deploying prometheus secret
 
-If you get `permission denied` error while running `make deploy-size-calculator` then make [this](https://github.com/grafana/loki/blob/master/operator/hack/deploy-prometheus-secret.sh) file executable by running:
+If you get `permission denied` error while running `make deploy-size-calculator` then make [this](https://github.com/grafana/loki/blob/main/operator/hack/deploy-prometheus-secret.sh) file executable by running:
 
 ```console
 chmod +x hack/deploy-prometheus-secret.sh

@@ -94,7 +94,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
 
   This saves time by not deploying the operator again and again.
 
-* When everything works fine, for the final testing deploy everything to the cluster using this [document](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-using-kind).
+* When everything works fine, for the final testing deploy everything to the cluster using this [document](https://github.com/grafana/loki/blob/main/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-using-kind).
 
 ### Cleanup
 
@@ -205,7 +205,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
   kubectl -n openshift-logging apply -f hack/lokistack_gateway_dev.yaml
   ```
 
-* Edit the [main file](https://github.com/grafana/loki/blob/master/operator/main.go) to set the flag values to `true` and rerun the operator using:
+* Edit the [main file](https://github.com/grafana/loki/blob/main/operator/main.go) to set the flag values to `true` and rerun the operator using:
 
   ```console
   make run
@@ -221,7 +221,7 @@ _Note:_ This is helpful when you don't want to deploy the Loki Operator image ev
 
   This saves time by not deploying the operator again and again.
 
-* When everything works fine, for the final testing deploy everything to the cluster using this [document](https://github.com/grafana/loki/blob/master/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
+* When everything works fine, for the final testing deploy everything to the cluster using this [document](https://github.com/grafana/loki/blob/main/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift).
 
 ### Cleanup
 
