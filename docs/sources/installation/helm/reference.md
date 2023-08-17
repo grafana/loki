@@ -2347,7 +2347,7 @@ null
 		<tr>
 			<td>monitoring.selfMonitoring.podLogs.relabelings</td>
 			<td>list</td>
-			<td>PodLogs relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig</td>
+			<td>PodLogs relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#relabelconfig</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -2481,7 +2481,7 @@ null
 		<tr>
 			<td>monitoring.serviceMonitor.relabelings</td>
 			<td>list</td>
-			<td>ServiceMonitor relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/master/Documentation/api.md#relabelconfig</td>
+			<td>ServiceMonitor relabel configs to apply to samples before scraping https://github.com/prometheus-operator/prometheus-operator/blob/main/Documentation/api.md#relabelconfig</td>
 			<td><pre lang="json">
 []
 </pre>

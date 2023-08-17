@@ -15,7 +15,7 @@ Storage Size Calculator is used to have an idea on how to properly size a Loki c
 
 ## Installation
 
-* Deploy the [Loki Operator](https://github.com/grafana/loki/blob/main/operator/docs/hack_loki_operator.md#hacking-on-loki-operator-on-openshift) to the cluster.
+* Deploy the [Loki Operator](https://github.com/grafana/loki/blob/main/operator/docs/operator/hack_loki_operator.md#hacking-on-loki-operator-on-openshift) to the cluster.
 
 * Create the `openshift-logging` namespace in the cluster:
 
@@ -63,9 +63,9 @@ This will cleanup the resources related to storage size calculator. However, the
 
 If you want to contribute to the storage size calculator, you can follow this local development and testing process.
 
-* Fork and clone the [Loki Operator](https://github.com/grafana/loki/blobs/master/operator) repo.
+* Fork and clone the [Loki Operator](https://github.com/grafana/loki/tree/main/operator) repo.
 
-* All the files related to storage size calculator exists at [`config/overlays/openshift/size-calculator`](https://github.com/grafana/loki/tree/master/operator/config/overlays/openshift/size-calculator) and the main file is at [`cmd/size-calculator`](https://github.com/grafana/loki/tree/master/operator/cmd/size-calculator).
+* All the files related to storage size calculator exists at [`config/overlays/openshift/size-calculator`](https://github.com/grafana/loki/tree/main/operator/config/overlays/openshift/size-calculator) and the main file is at [`cmd/size-calculator`](https://github.com/grafana/loki/tree/main/operator/cmd/size-calculator).
 
 * Update the code to fix a bug or add a new feature.
 
