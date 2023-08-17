@@ -12,3 +12,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Features and enhancements
 
+
+-  **Track effectiveness of hedged requests**: :warning: ADD DESCRIPTION HERE :warning:. [PR #10281](https://github.com/grafana/loki/pull/10281)]
