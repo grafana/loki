@@ -1229,9 +1229,6 @@ func TestMapperProbabilistic(t *testing.T) {
 								},
 								Interval: 5 * time.Minute,
 							},
-							Grouping: &syntax.Grouping{
-								Without: false,
-							},
 						},
 						Grouping: &syntax.Grouping{
 							Without: false,
@@ -1255,9 +1252,9 @@ func TestMapperProbabilistic(t *testing.T) {
 									},
 									Interval: 5 * time.Minute,
 								},
-								Grouping: &syntax.Grouping{
-									Without: false,
-								},
+							},
+							Grouping: &syntax.Grouping{
+								Without: false,
 							},
 						},
 					},
@@ -1282,9 +1279,6 @@ func TestMapperProbabilistic(t *testing.T) {
 								},
 								Interval: 5 * time.Minute,
 							},
-							Grouping: &syntax.Grouping{
-								Without: false,
-							},
 						},
 						Grouping: &syntax.Grouping{
 							Without: false,
@@ -1308,9 +1302,9 @@ func TestMapperProbabilistic(t *testing.T) {
 									},
 									Interval: 5 * time.Minute,
 								},
-								Grouping: &syntax.Grouping{
-									Without: false,
-								},
+							},
+							Grouping: &syntax.Grouping{
+								Without: false,
 							},
 						},
 					},
