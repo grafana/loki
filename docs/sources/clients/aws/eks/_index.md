@@ -10,13 +10,13 @@ After this tutorial you will able to query all your logs in one place using Graf
 
 <!-- TOC -->
 
-- [Sending logs from EKS with Promtail](#eks)
-    - [Requirements](#requirements)
-    - [Setting up the cluster](#setting-up-the-cluster)
-    - [Adding Promtail DaemonSet](#adding-promtail-daemonset)
-    - [Fetching kubelet logs with systemd](#fetching-kubelet-logs-with-systemd)
-    - [Adding Kubernetes events](#adding-kubernetes-events)
-    - [Conclusion](#conclusion)
+- [EKS](#eks)
+  - [Requirements](#requirements)
+  - [Setting up the cluster](#setting-up-the-cluster)
+  - [Adding Promtail DaemonSet](#adding-promtail-daemonset)
+  - [Fetching kubelet logs with systemd](#fetching-kubelet-logs-with-systemd)
+  - [Adding Kubernetes events](#adding-kubernetes-events)
+  - [Conclusion](#conclusion)
 
 <!-- /TOC -->
 
@@ -216,7 +216,7 @@ helm upgrade  promtail loki/promtail -n monitoring -f values.yaml
 And deploy the `eventrouter` using:
 
 ```bash
- kubectl create -f https://raw.githubusercontent.com/grafana/loki/master/docs/sources/clients/aws/eks/eventrouter.yaml
+ kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/eks/eventrouter.yaml
 
 serviceaccount/eventrouter created
 clusterrole.rbac.authorization.k8s.io/eventrouter created
