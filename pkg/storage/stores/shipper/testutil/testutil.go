@@ -11,9 +11,9 @@ import (
 	"testing"
 
 	"github.com/grafana/dskit/tenant"
+	"github.com/grafana/dskit/user"
 	"github.com/klauspost/compress/gzip"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"

@@ -41,6 +41,7 @@ type HeadBlock interface {
 		mint,
 		maxt int64,
 		pipeline log.StreamPipeline,
+		options ...iter.EntryIteratorOption,
 	) iter.EntryIterator
 	SampleIterator(
 		ctx context.Context,
@@ -243,13 +244,12 @@ func (hb *unorderedHeadBlock) forEntries(
 	return nil
 }
 
-func (hb *unorderedHeadBlock) Iterator(
-	ctx context.Context,
-	direction logproto.Direction,
-	mint,
-	maxt int64,
-	pipeline log.StreamPipeline,
-) iter.EntryIterator {
+func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) iter.EntryIterator {
+	var iterOptions iter.EntryIteratorOptions
+	for _, option := range options {
+		option(&iterOptions)
+	}
+
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
@@ -278,12 +278,18 @@ func (hb *unorderedHeadBlock) Iterator(
 				streams[labels] = stream
 			}
 
-			stream.Entries = append(stream.Entries, logproto.Entry{
+			entry := logproto.Entry{
 				Timestamp: time.Unix(0, ts),
 				Line:      newLine,
-				// There is no need to send back the non-indexed labels, as they are already part of the labels results
-				// NonIndexedLabels: logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols)),
-			})
+			}
+
+			// Most of the time, there is no need to send back the non-indexed labels, as they are already part of the labels results.
+			// Still it might be needed for example when appending entries from one chunk into another one.
+			if iterOptions.KeepNonIndexedLabels {
+				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
+			}
+
+			stream.Entries = append(stream.Entries, entry)
 			return nil
 		},
 	)

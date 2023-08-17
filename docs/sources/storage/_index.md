@@ -1,7 +1,7 @@
 ---
 title: Storage
 description: Storage
-weight: 1010
+weight: 475
 ---
 # Storage
 

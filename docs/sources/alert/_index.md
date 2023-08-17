@@ -5,7 +5,7 @@ description: Learn how the rule evaluates queries for alerting.
 aliases:
   - ./rules/
   - ./alerting/
-weight: 850
+weight: 800
 keywords:
   - loki
   - alert
@@ -105,6 +105,43 @@ rules:
 This query (`expr`) will be executed every 1 minute (`interval`), the result of which will be stored in the metric
 name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
 just like any other metric.
+
+
+### Limiting Alerts and Recording Rule Samples
+
+Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
+
+#### Example
+
+Here is an example of a rule group along with its limit configured.
+
+
+
+```yaml
+groups:
+  - name: production_rules
+    limit: 10
+    interval: 1m
+    rules:
+      - alert: HighPercentageError
+        expr: |
+          sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            /
+          sum(rate({app="foo", env="production"}[5m])) by (job)
+            > 0.05
+        for: 10m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency
+      - record: nginx:requests:rate1m
+        expr: |
+          sum(
+            rate({container="nginx"}[1m])
+          )
+        labels:
+          cluster: "us-central1"
+```
 
 ### Remote-Write
 

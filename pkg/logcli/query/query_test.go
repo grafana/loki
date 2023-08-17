@@ -12,9 +12,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logcli/output"
 	"github.com/grafana/loki/pkg/logcli/volume"

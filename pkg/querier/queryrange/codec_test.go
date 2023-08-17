@@ -847,13 +847,23 @@ func Test_codec_EncodeResponse(t *testing.T) {
 
 func Test_codec_MergeResponse(t *testing.T) {
 	tests := []struct {
-		name      string
-		responses []queryrangebase.Response
-		want      queryrangebase.Response
-		wantErr   bool
+		name         string
+		responses    []queryrangebase.Response
+		want         queryrangebase.Response
+		errorMessage string
 	}{
-		{"empty", []queryrangebase.Response{}, nil, true},
-		{"unknown response", []queryrangebase.Response{&badResponse{}}, nil, true},
+		{
+			"empty",
+			[]queryrangebase.Response{},
+			nil,
+			"merging responses requires at least one response",
+		},
+		{
+			"unknown response",
+			[]queryrangebase.Response{&badResponse{}},
+			nil,
+			"unknown response type (*queryrange.badResponse) in merging responses",
+		},
 		{
 			"prom",
 			[]queryrangebase.Response{
@@ -877,7 +887,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki backward",
@@ -965,7 +975,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki backward limited",
@@ -1050,7 +1060,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki forward",
@@ -1138,7 +1148,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki forward limited",
@@ -1222,7 +1232,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki series",
@@ -1268,7 +1278,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki labels",
@@ -1295,15 +1305,14 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Version:    1,
 				Data:       []string{"foo", "bar", "buzz", "blip", "blop"},
 			},
-			false,
+			"",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := DefaultCodec.MergeResponse(tt.responses...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("codec.MergeResponse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.errorMessage != "" {
+				require.ErrorContains(t, err, tt.errorMessage)
 			}
 			require.Equal(t, tt.want, got)
 		})
@@ -1784,9 +1793,58 @@ func Benchmark_CodecDecodeSamples(b *testing.B) {
 			Direction: logproto.BACKWARD,
 			Path:      u.String(),
 		})
-		require.Nil(b, err)
+		require.NoError(b, err)
 		require.NotNil(b, result)
 	}
+}
+
+func Benchmark_CodecDecodeSeries(b *testing.B) {
+	ctx := context.Background()
+	benchmarks := []struct {
+		accept string
+	}{
+		{accept: ProtobufType},
+		{accept: JSONType},
+	}
+
+	for _, bm := range benchmarks {
+		u := &url.URL{Path: "/loki/api/v1/series"}
+		req := &http.Request{
+			Method:     "GET",
+			RequestURI: u.String(), // This is what the httpgrpc code looks at.
+			URL:        u,
+			Header: http.Header{
+				"Accept": []string{bm.accept},
+			},
+		}
+		resp, err := DefaultCodec.EncodeResponse(ctx, req, &LokiSeriesResponse{
+			Status:     "200",
+			Version:    1,
+			Statistics: stats.Result{},
+			Data:       generateSeries(),
+		})
+		require.Nil(b, err)
+
+		buf, err := io.ReadAll(resp.Body)
+		require.Nil(b, err)
+		reader := bytes.NewReader(buf)
+		resp.Body = io.NopCloser(reader)
+		b.Run(bm.accept, func(b *testing.B) {
+			b.ResetTimer()
+			b.ReportAllocs()
+			for n := 0; n < b.N; n++ {
+				_, _ = reader.Seek(0, io.SeekStart)
+				result, err := DefaultCodec.DecodeResponse(ctx, resp, &LokiSeriesRequest{
+					StartTs: start,
+					EndTs:   end,
+					Path:    u.String(),
+				})
+				require.NoError(b, err)
+				require.NotNil(b, result)
+			}
+		})
+	}
+
 }
 
 func Benchmark_MergeResponses(b *testing.B) {
