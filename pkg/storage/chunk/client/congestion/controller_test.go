@@ -60,7 +60,7 @@ func TestRequestZeroLimitedRetry(t *testing.T) {
 	metrics := NewMetrics(t.Name(), cfg)
 	ctrl := NewController(cfg, metrics)
 
-	// allow 1 request through, fail the rest
+	// fail all requests
 	cli := newMockObjectClient(maxFailer{max: 0})
 	ctrl.Wrap(cli)
 
