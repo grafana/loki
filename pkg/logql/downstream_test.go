@@ -480,7 +480,28 @@ func TestSketchEquivalence(t *testing.T) {
 
 			require.Equal(t, res.Data.Type(), probabilisticResult.Data.Type())
 
-			// TODO(karsten): compare labels and values...
+			expected := NewMatrixStepper(start, end, step, res.Data.(promql.Matrix))
+			actual := NewMatrixStepper(start, end, step, probabilisticResult.Data.(promql.Matrix))
+
+			ok, ts, expectedVec := expected.Next()
+			for ok {
+				actualOk, actualTs, actualVec := actual.Next()
+				require.Truef(t, actualOk, "actual series ended before expected series.")
+
+				require.Equal(t, ts, actualTs)
+
+				expectedLabels := make([]string, len(expectedVec))
+				for i, sample := range expectedVec {
+					expectedLabels[i] = sample.Metric.String()
+				}
+				actualLabels := make([]string, len(actualVec))
+				for i, sample := range actualVec {
+					actualLabels[i] = sample.Metric.String()
+				}
+				require.Len(t, actualLabels, len(expectedLabels), "labels lengths differ at TS:%d", ts)
+				// TODO(karsten): use a percentage here.
+				require.ElementsMatchf(t, expectedLabels, actualLabels, "labels differ at TS:%d", ts)
+			}
 		})
 	}
 }
