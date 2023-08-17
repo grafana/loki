@@ -58,9 +58,9 @@ loki:
   podLabels: {}
   # -- The number of old ReplicaSets to retain to allow rollback
   revisionHistoryLimit: 10
-  # -- Override the image of the GrafanaAgent
+  # -- Lets you specify an override for the default Grafana Agent image. For example, if security settings don't allow pulls from the public Docker registry, and you want to use your own.
   grafanaAgentImage: {}
-  # -- Override the configReloader image of the GrafanaAgent
+  # -- Lets you specify an override for the default Grafana Agent image. For example, if security settings don't allow pulls from the public Docker registry, and you want to use your own.
   grafanaAgentConfigReloaderImage: {}
   # -- The SecurityContext for Loki pods
   podSecurityContext:
