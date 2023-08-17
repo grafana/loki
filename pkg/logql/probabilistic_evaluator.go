@@ -87,6 +87,7 @@ type ProbabilisticEvaluator struct {
 type pTopkStepEvaluator struct {
 	expr   *syntax.VectorAggregationExpr
 	next   StepEvaluator
+	k      int
 	logger log.Logger
 }
 
@@ -107,7 +108,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 	// We only use one aggregation. The topk sketch compresses all
 	// information and thus we don't need to take care of grouping
 	// here.
-	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, 10, 100000)
+	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, e.k, 100000)
 	if err != nil {
 		// TODO(karsten): capture error
 		return false, ts, nil
@@ -424,6 +425,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	return &pTopkStepEvaluator{
 		expr:   expr,
 		next:   nextEvaluator,
+		k:      expr.Params,
 		logger: p.logger,
 	}, nil
 }

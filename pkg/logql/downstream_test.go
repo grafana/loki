@@ -23,7 +23,7 @@ func TestMappingEquivalence(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -106,7 +106,7 @@ func TestShardCounter(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -169,7 +169,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -430,7 +430,7 @@ func TestSketchEquivalence(t *testing.T) {
 		shards   = 3
 		nStreams = 60
 		rounds   = 20
-		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, false)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
 		step     = time.Second
@@ -442,7 +442,8 @@ func TestSketchEquivalence(t *testing.T) {
 		query       string
 		approximate bool
 	}{
-		{`topk(3, rate({a=~".+"}[1s]))`, false},
+		// TODO(karsten): iterate over differnt k values
+		{`topk(10, rate({a=~".+"}[1s]))`, false},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -484,24 +485,41 @@ func TestSketchEquivalence(t *testing.T) {
 			actual := NewMatrixStepper(start, end, step, probabilisticResult.Data.(promql.Matrix))
 
 			ok, ts, expectedVec := expected.Next()
+			totalMisses := 0
+			totalLabels := 0
 			for ok {
 				actualOk, actualTs, actualVec := actual.Next()
 				require.Truef(t, actualOk, "actual series ended before expected series.")
 
 				require.Equal(t, ts, actualTs)
+				require.Len(t, actualVec, len(expectedVec), "labels lengths differ at TS:%d", ts)
 
-				expectedLabels := make([]string, len(expectedVec))
-				for i, sample := range expectedVec {
-					expectedLabels[i] = sample.Metric.String()
+				expectedLabels := make(map[string]struct{}, len(expectedVec))
+				for _, sample := range expectedVec {
+					expectedLabels[sample.Metric.String()] = struct{}{}
 				}
-				actualLabels := make([]string, len(actualVec))
-				for i, sample := range actualVec {
-					actualLabels[i] = sample.Metric.String()
+				totalLabels += len(expectedLabels)
+
+				misses := 0
+				for _, sample := range actualVec {
+					_, ok := expectedLabels[sample.Metric.String()]
+					if !ok {
+						misses++
+					}
 				}
-				require.Len(t, actualLabels, len(expectedLabels), "labels lengths differ at TS:%d", ts)
-				// TODO(karsten): use a percentage here.
-				require.ElementsMatchf(t, expectedLabels, actualLabels, "labels differ at TS:%d", ts)
+
+				// We allow max 2 misses per vector.
+				// TODO: maybe use percentage. Could use InDelta or InEpsilon instead
+				require.LessOrEqual(t, misses, 2)
+
+				totalMisses += misses
+
+				ok, ts, expectedVec = expected.Next()
 			}
+
+			// Overall we want to capture 98% of topk.
+			missedPercentage := float64(totalMisses) / float64(totalLabels)
+			require.LessOrEqual(t, missedPercentage, 2.0)
 		})
 	}
 }

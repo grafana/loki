@@ -254,11 +254,14 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 
 // create nStreams of nEntries with labelNames each where each label value
 // with the exception of the "index" label is modulo'd into a shard
-func randomStreams(nStreams, nEntries, nShards int, labelNames []string) (streams []logproto.Stream) {
+func randomStreams(nStreams, nEntries, nShards int, labelNames []string, indexLabel bool) (streams []logproto.Stream) {
 	for i := 0; i < nStreams; i++ {
 		// labels
 		stream := logproto.Stream{}
-		ls := labels.Labels{{Name: "index", Value: fmt.Sprintf("%d", i)}}
+		ls := labels.Labels{}
+		if indexLabel {
+			ls = append(ls, labels.Label{Name: "index", Value: fmt.Sprintf("%d", i)})
+		}
 
 		for _, lName := range labelNames {
 			// I needed a way to hash something to uint64
