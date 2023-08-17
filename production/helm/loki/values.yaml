@@ -1156,8 +1156,10 @@ ingress:
       - /loki/api/v1/rules
       - /prometheus/api/v1/rules
       - /prometheus/api/v1/alerts
+  # -- Hosts configuration for the ingress, passed through the `tpl` function to allow templating
   hosts:
     - loki.example.com
+  # -- TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating
   tls: []
 #    - hosts:
 #       - loki.example.com
@@ -1291,14 +1293,14 @@ gateway:
     annotations: {}
     # -- Labels for the gateway ingress
     labels: {}
-    # -- Hosts configuration for the gateway ingress
+    # -- Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating
     hosts:
       - host: gateway.loki.example.com
         paths:
           - path: /
             # -- pathType (e.g. ImplementationSpecific, Prefix, .. etc.) might also be required by some Ingress Controllers
             # pathType: Prefix
-    # -- TLS configuration for the gateway ingress
+    # -- TLS configuration for the gateway ingress. Hosts passed through the `tpl` function to allow templating
     tls:
       - secretName: loki-gateway-tls
         hosts:
