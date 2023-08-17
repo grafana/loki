@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-07-27T16:51:31Z"
+    containerImage: quay.io/openshift-logging/loki-operator:0.1.0
+    createdAt: "2023-08-02T07:55:28Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -1601,11 +1601,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.0.1
+          app.kubernetes.io/instance: loki-operator-0.1.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: cluster-logging
-          app.kubernetes.io/version: 0.0.1
+          app.kubernetes.io/version: 0.1.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:

@@ -105,7 +105,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.DefaultHeadBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
 		_ = chk.Append(&e)
 	}
@@ -248,7 +248,7 @@ func (m *mockChunkStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Ti
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, false, m.schemas, m.client, 10, 100)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
 	if err != nil {
 		panic(err)
 	}

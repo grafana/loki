@@ -265,6 +265,16 @@ Configures the `server` of the launched module(s).
 [tls_min_version: <string> | default = ""]
 
 http_tls_config:
+  # Server TLS certificate. This configuration parameter is YAML only.
+  [cert: <string> | default = ""]
+
+  # Server TLS key. This configuration parameter is YAML only.
+  [key: <string> | default = ""]
+
+  # Root certificate authority used to verify client certificates. This
+  # configuration parameter is YAML only.
+  [client_ca: <string> | default = ""]
+
   # HTTP server cert path.
   # CLI flag: -server.http-tls-cert-path
   [cert_file: <string> | default = ""]
@@ -282,6 +292,16 @@ http_tls_config:
   [client_ca_file: <string> | default = ""]
 
 grpc_tls_config:
+  # Server TLS certificate. This configuration parameter is YAML only.
+  [cert: <string> | default = ""]
+
+  # Server TLS key. This configuration parameter is YAML only.
+  [key: <string> | default = ""]
+
+  # Root certificate authority used to verify client certificates. This
+  # configuration parameter is YAML only.
+  [client_ca: <string> | default = ""]
+
   # GRPC TLS server cert path.
   # CLI flag: -server.grpc-tls-cert-path
   [cert_file: <string> | default = ""]
@@ -1978,6 +1998,9 @@ boltdb_shipper:
   # CLI flag: -boltdb.shipper.build-per-tenant-index
   [build_per_tenant_index: <boolean> | default = false]
 
+# Configures storing index in an Object Store
+# (GCS/S3/Azure/Swift/COS/Filesystem) in a prometheus TSDB-like format. Required
+# fields only required when TSDB is defined in config.
 tsdb_shipper:
   # Directory where ingesters would write index files which would then be
   # uploaded by shipper to configured storage
@@ -2037,6 +2060,11 @@ tsdb_shipper:
   [mode: <string> | default = ""]
 
   [ingesterdbretainperiod: <duration>]
+
+  # Experimental. Whether TSDB should cache postings or not. The
+  # index-read-cache will be used as the backend.
+  # CLI flag: -tsdb.enable-postings-cache
+  [enable_postings_cache: <boolean> | default = false]
 ```
 
 ### chunk_store_config
@@ -2446,8 +2474,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 [query_ready_index_num_days: <int> | default = 0]
 
 # Timeout when querying backends (ingesters or storage) during the execution of
-# a query request. If a specific per-tenant timeout is used, this timeout is
-# ignored.
+# a query request. When a specific per-tenant timeout is used, the global
+# timeout is ignored.
 # CLI flag: -querier.query-timeout
 [query_timeout: <duration> | default = 1m]
 
@@ -3609,7 +3637,7 @@ The `grpc_client` block configures the gRPC client used to communicate between t
 # CLI flag: -<prefix>.grpc-client-rate-limit-burst
 [rate_limit_burst: <int> | default = 0]
 
-# Enable backoff and retry when we hit ratelimits.
+# Enable backoff and retry when we hit rate limits.
 # CLI flag: -<prefix>.backoff-on-ratelimits
 [backoff_on_ratelimits: <boolean> | default = false]
 
@@ -3626,7 +3654,19 @@ backoff_config:
   # CLI flag: -<prefix>.backoff-retries
   [max_retries: <int> | default = 10]
 
-# Enable TLS in the GRPC client. This flag needs to be enabled when any other
+# Initial stream window size. Values less than the default are not supported and
+# are ignored. Setting this to a value other than the default disables the BDP
+# estimator.
+# CLI flag: -<prefix>.initial-stream-window-size
+[initial_stream_window_size: <int> | default = 63KiB1023B]
+
+# Initial connection window size. Values less than the default are not supported
+# and are ignored. Setting this to a value other than the default disables the
+# BDP estimator.
+# CLI flag: -<prefix>.initial-connection-window-size
+[initial_connection_window_size: <int> | default = 63KiB1023B]
+
+# Enable TLS in the gRPC client. This flag needs to be enabled when any other
 # TLS flag is set. If set to false, insecure connection to gRPC server will be
 # used.
 # CLI flag: -<prefix>.tls-enabled
@@ -3694,9 +3734,9 @@ backoff_config:
 [tls_min_version: <string> | default = ""]
 
 # The maximum amount of time to establish a connection. A value of 0 means
-# default gRPC connect timeout and backoff.
+# default gRPC client connect timeout and backoff.
 # CLI flag: -<prefix>.connect-timeout
-[connect_timeout: <duration> | default = 0s]
+[connect_timeout: <duration> | default = 5s]
 
 # Initial backoff delay after first connection failure. Only relevant if
 # ConnectTimeout > 0.

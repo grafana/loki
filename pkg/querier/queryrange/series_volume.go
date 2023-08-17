@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -89,6 +89,10 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 					return b, resp, nil
 				}))
 			}
+
+			// Update middleware stats
+			queryStatsCtx := stats.FromContext(ctx)
+			queryStatsCtx.AddSplitQueries(int64(len(jobs)))
 
 			collector := make(chan *bucketedVolumeResponse, len(jobs))
 			err := concurrency.ForEachJob(

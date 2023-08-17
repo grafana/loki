@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
@@ -331,7 +331,7 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			"msg", "executing query",
 			"type", "volume",
 			"query", volumeQuery.Query,
-			"length", volumeQuery.Start.Sub(volumeQuery.End),
+			"length", volumeQuery.End.Sub(volumeQuery.Start),
 			"limit", volumeQuery.Limit,
 			"aggregate_by", volumeQuery.AggregateBy,
 		)

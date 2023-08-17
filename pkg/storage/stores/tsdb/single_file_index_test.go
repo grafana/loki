@@ -71,7 +71,7 @@ func TestSingleIdx(t *testing.T) {
 		{
 			desc: "file",
 			fn: func() Index {
-				return BuildIndex(t, t.TempDir(), cases)
+				return BuildIndex(t, t.TempDir(), cases, IndexOpts{})
 			},
 		},
 		{
@@ -82,7 +82,7 @@ func TestSingleIdx(t *testing.T) {
 					_, _ = head.Append(x.Labels, x.Labels.Hash(), x.Chunks)
 				}
 				reader := head.Index()
-				return NewTSDBIndex(reader)
+				return NewTSDBIndex(reader, NewPostingsReader(reader))
 			},
 		},
 	} {
@@ -214,7 +214,6 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 	queryFrom, queryThrough := now.Add(3*time.Hour).Add(time.Millisecond), now.Add(5*time.Hour).Add(-time.Millisecond)
 	queryBounds := newBounds(queryFrom, queryThrough)
 	numChunksToMatch := 0
-
 	var chunkMetas []index.ChunkMeta
 	// build a chunk for every second with randomized chunk length
 	for from, through := now, now.Add(24*time.Hour); from <= through; from = from.Add(time.Second) {
@@ -249,14 +248,14 @@ func BenchmarkTSDBIndex_GetChunkRefs(b *testing.B) {
 			Labels: mustParseLabels(`{foo1="bar1", ping="pong"}`),
 			Chunks: chunkMetas,
 		},
-	})
+	}, IndexOpts{})
 
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		chkRefs, err := tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
-		require.NoError(b, err)
-		require.Len(b, chkRefs, numChunksToMatch*2)
+		chkRefs := ChunkRefsPool.Get()
+		chkRefs, _ = tsdbIndex.GetChunkRefs(context.Background(), "fake", queryFrom, queryThrough, chkRefs, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+		ChunkRefsPool.Put(chkRefs)
 	}
 }
 
@@ -304,7 +303,7 @@ func TestTSDBIndex_Stats(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 
 	// Create the test cases
 	testCases := []struct {
@@ -377,7 +376,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 
 	series := []LoadableSeries{
 		{
-			Labels: mustParseLabels(`{foo="bar", fizz="buzz", __loki_tenant__="fake"}`),
+			Labels: mustParseLabels(`{foo="bar", fizz="buzz", us="them", __loki_tenant__="fake"}`),
 
 			Chunks: []index.ChunkMeta{
 				{
@@ -397,7 +396,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 			},
 		},
 		{
-			Labels: mustParseLabels(`{foo="bar", fizz="fizz", __loki_tenant__="fake"}`),
+			Labels: mustParseLabels(`{foo="bar", fizz="fizz", in="out", __loki_tenant__="fake"}`),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  t1.UnixMilli(),
@@ -438,7 +437,7 @@ func TestTSDBIndex_Volume(t *testing.T) {
 
 	// Create the TSDB index
 	tempDir := t.TempDir()
-	tsdbIndex := BuildIndex(t, tempDir, series)
+	tsdbIndex := BuildIndex(t, tempDir, series, IndexOpts{})
 
 	from := model.TimeFromUnixNano(t1.UnixNano())
 	through := model.TimeFromUnixNano(t2.UnixNano())
@@ -452,8 +451,8 @@ func TestTSDBIndex_Volume(t *testing.T) {
 			require.Equal(t, &logproto.VolumeResponse{
 				Volumes: []logproto.Volume{
 					{Name: `{foo="baz"}`, Volume: (50 + 60) * 1024},
-					{Name: `{fizz="fizz", foo="bar"}`, Volume: (30 + 40) * 1024},
-					{Name: `{fizz="buzz", foo="bar"}`, Volume: (10 + 20) * 1024},
+					{Name: `{fizz="fizz", foo="bar", in="out"}`, Volume: (30 + 40) * 1024},
+					{Name: `{fizz="buzz", foo="bar", us="them"}`, Volume: (10 + 20) * 1024},
 				},
 				Limit: 10,
 			}, acc.Volumes())
@@ -603,6 +602,8 @@ func TestTSDBIndex_Volume(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{Name: `foo`, Volume: (10 + 20 + 30 + 40 + 50 + 60) * 1024},
 					{Name: `fizz`, Volume: (10 + 20 + 30 + 40) * 1024},
+					{Name: `in`, Volume: (30 + 40) * 1024},
+					{Name: `us`, Volume: (10 + 20) * 1024},
 				},
 				Limit: 10,
 			}, acc.Volumes())
@@ -620,6 +621,8 @@ func TestTSDBIndex_Volume(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{Name: `fizz`, Volume: (10 + 20 + 30 + 40) * 1024},
 					{Name: `foo`, Volume: (10 + 20 + 30 + 40) * 1024},
+					{Name: `in`, Volume: (30 + 40) * 1024},
+					{Name: `us`, Volume: (10 + 20) * 1024},
 				},
 				Limit: 10,
 			}, acc.Volumes())
@@ -636,14 +639,16 @@ func TestTSDBIndex_Volume(t *testing.T) {
 			}, acc.Volumes())
 		})
 
-		t.Run("it only returns results for the labels in the matcher", func(t *testing.T) {
-			matcher := labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")
+		t.Run("it only returns labels that exist on series intersecting with the matcher ", func(t *testing.T) {
+			matcher := labels.MustNewMatcher(labels.MatchEqual, "us", "them")
 			acc := seriesvolume.NewAccumulator(10, 10)
 			err := tsdbIndex.Volume(context.Background(), "fake", from, through, acc, nil, nil, nil, seriesvolume.Labels, matcher)
 			require.NoError(t, err)
 			require.Equal(t, &logproto.VolumeResponse{
 				Volumes: []logproto.Volume{
-					{Name: `foo`, Volume: (10 + 20 + 30 + 40) * 1024},
+					{Name: `fizz`, Volume: (10 + 20) * 1024},
+					{Name: `foo`, Volume: (10 + 20) * 1024},
+					{Name: `us`, Volume: (10 + 20) * 1024},
 				},
 				Limit: 10,
 			}, acc.Volumes())
@@ -661,6 +666,8 @@ func TestTSDBIndex_Volume(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{Name: `fizz`, Volume: (10 + 20 + 30 + 40) * 1024},
 					{Name: `foo`, Volume: (10 + 20 + 30 + 40) * 1024},
+					{Name: `in`, Volume: (30 + 40) * 1024},
+					{Name: `us`, Volume: (10 + 20) * 1024},
 				},
 				Limit: 10,
 			}, acc.Volumes())
@@ -690,6 +697,8 @@ func TestTSDBIndex_Volume(t *testing.T) {
 				Volumes: []logproto.Volume{
 					{Name: `foo`, Volume: (29 + 9 + 48) * 1024},
 					{Name: `fizz`, Volume: (29 + 9) * 1024},
+					{Name: `in`, Volume: (29) * 1024},
+					{Name: `us`, Volume: (9) * 1024},
 				},
 				Limit: 10,
 			}, acc.Volumes())

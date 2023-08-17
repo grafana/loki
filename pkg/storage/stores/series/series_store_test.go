@@ -4,19 +4,18 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/test"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/test"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -373,7 +372,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
 
-			store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
+			store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
 			if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
@@ -393,15 +392,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
 						for _, cs := range chunks {
-							keys := make([]string, 0, len(cs))
-							sort.Slice(chunks, func(i, j int) bool {
-								return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
-							})
-
-							for _, c := range cs {
-								keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
-							}
-							cks, err := f.FetchChunks(ctx, cs, keys)
+							cks, err := f.FetchChunks(ctx, cs)
 							if err != nil {
 								t.Fatal(err)
 							}
