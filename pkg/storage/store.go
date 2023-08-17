@@ -75,7 +75,7 @@ type store struct {
 	logger log.Logger
 
 	chunkFilterer               chunk.RequestChunkFilterer
-	congestionControllerFactory func(cfg congestion.Config, metrics *congestion.Metrics) congestion.Controller
+	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -206,7 +206,9 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 
 	if ccCfg.Enabled {
 		cc = s.congestionControllerFactory(
-			ccCfg, congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), ccCfg),
+			ccCfg,
+			s.logger,
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), ccCfg),
 		)
 	}
 

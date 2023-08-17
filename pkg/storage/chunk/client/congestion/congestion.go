@@ -5,12 +5,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-func NewController(cfg Config, metrics *Metrics) Controller {
-	logger := log.With(util_log.Logger, "component", "congestion_control")
+func NewController(cfg Config, logger log.Logger, metrics *Metrics) Controller {
+	logger = log.With(logger, "component", "congestion_control")
 
 	return newController(cfg, logger).
 		withRetrier(newRetrier(cfg, logger)).

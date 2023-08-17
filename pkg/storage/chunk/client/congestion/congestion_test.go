@@ -3,12 +3,13 @@ package congestion
 import (
 	"testing"
 
+	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
 )
 
 func TestZeroValueConstruction(t *testing.T) {
 	cfg := Config{}
-	ctrl := NewController(cfg, NewMetrics(t.Name(), cfg))
+	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
 
 	require.IsType(t, &NoopController{}, ctrl)
 	require.IsType(t, &NoopRetrier{}, ctrl.getRetrier())
@@ -21,7 +22,7 @@ func TestAIMDConstruction(t *testing.T) {
 			Strategy: "aimd",
 		},
 	}
-	ctrl := NewController(cfg, NewMetrics(t.Name(), cfg))
+	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
 
 	require.IsType(t, &AIMDController{}, ctrl)
 	require.IsType(t, &NoopRetrier{}, ctrl.getRetrier())
@@ -34,7 +35,7 @@ func TestRetrierConstruction(t *testing.T) {
 			Strategy: "limited",
 		},
 	}
-	ctrl := NewController(cfg, NewMetrics(t.Name(), cfg))
+	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
 
 	require.IsType(t, &NoopController{}, ctrl)
 	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())
@@ -50,7 +51,7 @@ func TestCombinedConstruction(t *testing.T) {
 			Strategy: "limited",
 		},
 	}
-	ctrl := NewController(cfg, NewMetrics(t.Name(), cfg))
+	ctrl := NewController(cfg, log.NewNopLogger(), NewMetrics(t.Name(), cfg))
 
 	require.IsType(t, &AIMDController{}, ctrl)
 	require.IsType(t, &LimitedRetrier{}, ctrl.getRetrier())

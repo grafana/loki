@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
@@ -26,7 +27,7 @@ func TestRequestNoopRetry(t *testing.T) {
 	}
 
 	metrics := NewMetrics(t.Name(), cfg)
-	ctrl := NewController(cfg, metrics)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// allow 1 request through, fail the rest
 	cli := newMockObjectClient(maxFailer{max: 1})
@@ -58,7 +59,7 @@ func TestRequestZeroLimitedRetry(t *testing.T) {
 	}
 
 	metrics := NewMetrics(t.Name(), cfg)
-	ctrl := NewController(cfg, metrics)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// fail all requests
 	cli := newMockObjectClient(maxFailer{max: 0})
@@ -86,7 +87,7 @@ func TestRequestLimitedRetry(t *testing.T) {
 	}
 
 	metrics := NewMetrics(t.Name(), cfg)
-	ctrl := NewController(cfg, metrics)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// allow 1 request through, fail the rest
 	cli := newMockObjectClient(maxFailer{max: 1})
@@ -121,7 +122,7 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 	}
 
 	metrics := NewMetrics(t.Name(), cfg)
-	ctrl := NewController(cfg, metrics)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// fail all requests
 	cli := newMockObjectClient(maxFailer{max: 0})
@@ -158,7 +159,7 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	var trigger atomic.Bool
 
 	metrics := NewMetrics(t.Name(), cfg)
-	ctrl := NewController(cfg, metrics)
+	ctrl := NewController(cfg, log.NewNopLogger(), metrics)
 
 	// fail requests only when triggered
 	cli := newMockObjectClient(triggeredFailer{trigger: &trigger})

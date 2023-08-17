@@ -94,16 +94,13 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 			}
 
 			// apply back-pressure while rate-limit has been exceeded
-			for {
-				// using Reserve() is slower because it assumes a constant wait time as tokens are replenished, but in experimentation
-				// it's faster to sit in a hot loop and probe every so often if there are tokens available
-				if !a.limiter.Allow() {
-					delay := time.Millisecond * 10
-					time.Sleep(delay)
-					a.metrics.backoffSec.Add(delay.Seconds())
-					continue
-				}
-				break
+			//
+			// using Reserve() is slower because it assumes a constant wait time as tokens are replenished, but in experimentation
+			// it's faster to sit in a hot loop and probe every so often if there are tokens available
+			for !a.limiter.Allow() {
+				delay := time.Millisecond * 10
+				time.Sleep(delay)
+				a.metrics.backoffSec.Add(delay.Seconds())
 			}
 
 			// It is vitally important that retries are DISABLED in the inner implementation.
