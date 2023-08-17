@@ -165,10 +165,12 @@ loki:
     {{- end }}
 
     {{ include "loki.rulerConfig" . }}
-
+    
+    {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
       retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
       retention_period: {{ .Values.tableManager.retention_period }}
+    {{- end }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
