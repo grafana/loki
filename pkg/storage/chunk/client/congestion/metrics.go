@@ -3,11 +3,12 @@ package congestion
 import "github.com/prometheus/client_golang/prometheus"
 
 type Metrics struct {
-	currentLimit    prometheus.Gauge
-	backoffSec      prometheus.Counter
-	requests        prometheus.Counter
-	retries         prometheus.Counter
-	retriesExceeded prometheus.Counter
+	currentLimit       prometheus.Gauge
+	backoffSec         prometheus.Counter
+	requests           prometheus.Counter
+	retries            prometheus.Counter
+	nonRetryableErrors prometheus.Counter
+	retriesExceeded    prometheus.Counter
 }
 
 func (m Metrics) Unregister() {
@@ -55,6 +56,13 @@ func NewMetrics(name string, cfg Config) *Metrics {
 			Help:        "How many retries occurred",
 			ConstLabels: labels,
 		}),
+		nonRetryableErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   namespace,
+			Subsystem:   subsystem,
+			Name:        "non_retryable_errors_total",
+			Help:        "How many request errors occurred which could not be retried",
+			ConstLabels: labels,
+		}),
 		retriesExceeded: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace:   namespace,
 			Subsystem:   subsystem,
@@ -68,6 +76,7 @@ func NewMetrics(name string, cfg Config) *Metrics {
 	prometheus.MustRegister(m.backoffSec)
 	prometheus.MustRegister(m.requests)
 	prometheus.MustRegister(m.retries)
+	prometheus.MustRegister(m.nonRetryableErrors)
 	prometheus.MustRegister(m.retriesExceeded)
 	return &m
 }

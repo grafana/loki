@@ -2,11 +2,11 @@ package congestion
 
 import (
 	"context"
+	"errors"
 	"io"
 	"math"
 	"time"
 
-	"github.com/pkg/errors"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -110,7 +110,7 @@ func (a *AIMDController) GetObject(ctx context.Context, objectKey string) (io.Re
 			// Some object storage clients implement retries internally, and this will interfere here.
 			return a.inner.GetObject(ctx, objectKey)
 		},
-		a.inner.IsRetryableErr,
+		a.IsRetryableErr,
 		a.additiveIncrease,
 		a.multiplicativeDecrease,
 	)
@@ -135,7 +135,12 @@ func (a *AIMDController) IsObjectNotFoundErr(err error) bool {
 }
 
 func (a *AIMDController) IsRetryableErr(err error) bool {
-	return a.inner.IsRetryableErr(err)
+	retryable := a.inner.IsRetryableErr(err)
+	if !retryable {
+		a.metrics.nonRetryableErrors.Inc()
+	}
+
+	return retryable
 }
 
 func (a *AIMDController) Stop() {

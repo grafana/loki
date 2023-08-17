@@ -135,6 +135,7 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 	_, _, err := ctrl.GetObject(ctx, "foo")
 	require.ErrorIs(t, err, fakeFailure)
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
+	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
 }
 
@@ -143,8 +144,8 @@ func TestAIMDReducedThroughput(t *testing.T) {
 		Controller: ControllerConfig{
 			Strategy: "aimd",
 			AIMD: AIMD{
-				Start:         10,
-				UpperBound:    1000,
+				Start:         1000,
+				UpperBound:    5000,
 				BackoffFactor: 0.5,
 			},
 		},
@@ -168,7 +169,7 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.Greater(t, count, 1.0)
 	require.Greater(t, success, 1.0)
 	// no time spent backing off because the per-second limit will not be hit
-	require.Equal(t, 0, testutil.ToFloat64(metrics.backoffSec))
+	require.EqualValues(t, 0, testutil.ToFloat64(metrics.backoffSec))
 
 	previousCount, previousSuccess := count, success
 	count = 0
@@ -243,6 +244,7 @@ func (m *mockObjectClient) PutObject(context.Context, string, io.ReadSeeker) err
 }
 
 func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
+	time.Sleep(time.Millisecond * 10)
 	if m.strategy.fail(m.reqCounter.Inc()) {
 		return nil, 0, fakeFailure
 	}
