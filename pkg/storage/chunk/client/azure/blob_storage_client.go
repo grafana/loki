@@ -560,4 +560,4 @@ func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
 }
 
 // TODO(dannyk): implement for client
-func (b *BlobStorage) IsRetryableErr(err error) bool { return false }
+func (b *BlobStorage) IsRetryableErr(error) bool { return false }

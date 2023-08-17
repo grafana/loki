@@ -425,4 +425,4 @@ func (c *COSObjectClient) IsObjectNotFoundErr(err error) bool {
 }
 
 // TODO(dannyk): implement for client
-func (c *COSObjectClient) IsRetryableErr(err error) bool { return false }
+func (c *COSObjectClient) IsRetryableErr(error) bool { return false }

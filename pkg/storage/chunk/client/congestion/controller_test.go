@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
-var fakeFailure = errors.New("fake failure")
+var errFakeFailure = errors.New("fake failure")
 
 func TestRequestNoopRetry(t *testing.T) {
 	cfg := Config{
@@ -40,7 +40,7 @@ func TestRequestNoopRetry(t *testing.T) {
 
 	// nothing is done for failed requests
 	_, _, err = ctrl.GetObject(ctx, "foo")
-	require.ErrorIs(t, err, fakeFailure)
+	require.ErrorIs(t, err, errFakeFailure)
 
 	require.EqualValues(t, 2, testutil.ToFloat64(metrics.requests))
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
@@ -133,7 +133,7 @@ func TestRequestLimitedRetryNonRetryableErr(t *testing.T) {
 
 	// request fails, retries not done since error is non-retryable
 	_, _, err := ctrl.GetObject(ctx, "foo")
-	require.ErrorIs(t, err, fakeFailure)
+	require.ErrorIs(t, err, errFakeFailure)
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.retries))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.nonRetryableErrors))
 	require.EqualValues(t, 1, testutil.ToFloat64(metrics.requests))
@@ -172,8 +172,6 @@ func TestAIMDReducedThroughput(t *testing.T) {
 	require.EqualValues(t, 0, testutil.ToFloat64(metrics.backoffSec))
 
 	previousCount, previousSuccess := count, success
-	count = 0
-	success = 0
 
 	var wg sync.WaitGroup
 	done := make(chan bool, 1)
@@ -246,7 +244,7 @@ func (m *mockObjectClient) PutObject(context.Context, string, io.ReadSeeker) err
 func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	time.Sleep(time.Millisecond * 10)
 	if m.strategy.fail(m.reqCounter.Inc()) {
-		return nil, 0, fakeFailure
+		return nil, 0, errFakeFailure
 	}
 
 	return io.NopCloser(strings.NewReader("bar")), 3, nil

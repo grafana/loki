@@ -164,4 +164,4 @@ func (s *OssObjectClient) IsObjectNotFoundErr(err error) bool {
 }
 
 // TODO(dannyk): implement for client
-func (s *OssObjectClient) IsRetryableErr(err error) bool { return false }
+func (s *OssObjectClient) IsRetryableErr(error) bool { return false }

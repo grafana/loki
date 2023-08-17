@@ -172,4 +172,4 @@ func (b *BOSObjectStorage) IsObjectNotFoundErr(err error) bool {
 func (b *BOSObjectStorage) Stop() {}
 
 // TODO(dannyk): implement for client
-func (b *BOSObjectStorage) IsRetryableErr(err error) bool { return false }
+func (b *BOSObjectStorage) IsRetryableErr(error) bool { return false }

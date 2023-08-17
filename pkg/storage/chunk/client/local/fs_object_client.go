@@ -213,7 +213,7 @@ func (f *FSObjectClient) IsObjectNotFoundErr(err error) bool {
 }
 
 // TODO(dannyk): implement for client
-func (f *FSObjectClient) IsRetryableErr(err error) bool { return false }
+func (f *FSObjectClient) IsRetryableErr(error) bool { return false }
 
 // copied from https://github.com/thanos-io/thanos/blob/55cb8ca38b3539381dc6a781e637df15c694e50a/pkg/objstore/filesystem/filesystem.go#L181
 func isDirEmpty(name string) (ok bool, err error) {

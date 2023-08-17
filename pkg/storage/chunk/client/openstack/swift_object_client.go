@@ -190,4 +190,4 @@ func (s *SwiftObjectClient) IsObjectNotFoundErr(err error) bool {
 }
 
 // TODO(dannyk): implement for client
-func (s *SwiftObjectClient) IsRetryableErr(err error) bool { return false }
+func (s *SwiftObjectClient) IsRetryableErr(error) bool { return false }
