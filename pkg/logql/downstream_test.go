@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/valyala/histogram"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -457,6 +458,10 @@ func TestSketchEquivalence(t *testing.T) {
 		probabilisticMapper := NewShardMapper(ConstantShards(shards), true, nilShardMetrics)
 
 		t.Run(tc.query, func(t *testing.T) {
+
+			f := histogram.GetFast()
+			defer histogram.PutFast(f)
+
 			params := NewLiteralParams(
 				tc.query,
 				start,
@@ -485,8 +490,6 @@ func TestSketchEquivalence(t *testing.T) {
 			actual := NewMatrixStepper(start, end, step, probabilisticResult.Data.(promql.Matrix))
 
 			ok, ts, expectedVec := expected.Next()
-			totalMisses := 0
-			totalLabels := 0
 			for ok {
 				actualOk, actualTs, actualVec := actual.Next()
 				require.Truef(t, actualOk, "actual series ended before expected series.")
@@ -498,7 +501,6 @@ func TestSketchEquivalence(t *testing.T) {
 				for _, sample := range expectedVec {
 					expectedLabels[sample.Metric.String()] = struct{}{}
 				}
-				totalLabels += len(expectedLabels)
 
 				misses := 0
 				for _, sample := range actualVec {
@@ -508,18 +510,13 @@ func TestSketchEquivalence(t *testing.T) {
 					}
 				}
 
-				// We allow max 2 misses per vector.
-				// TODO: maybe use percentage. Could use InDelta or InEpsilon instead
-				require.LessOrEqual(t, misses, 2)
-
-				totalMisses += misses
+				f.Update(float64(misses))
 
 				ok, ts, expectedVec = expected.Next()
 			}
 
-			// Overall we want to capture 98% of topk.
-			missedPercentage := float64(totalMisses) / float64(totalLabels)
-			require.LessOrEqual(t, missedPercentage, 2.0)
+			require.LessOrEqual(t, f.Quantile(0.99), 2.0)
+			require.LessOrEqual(t, f.Quantile(0.50), 1.0)
 		})
 	}
 }

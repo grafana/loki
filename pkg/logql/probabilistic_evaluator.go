@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"

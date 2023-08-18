@@ -1387,6 +1387,12 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 ## explicit
 github.com/ugorji/go/codec
+# github.com/valyala/fastrand v1.1.0
+## explicit
+github.com/valyala/fastrand
+# github.com/valyala/histogram v1.2.0
+## explicit; go 1.12
+github.com/valyala/histogram
 # github.com/weaveworks/promrus v1.2.0
 ## explicit
 github.com/weaveworks/promrus
