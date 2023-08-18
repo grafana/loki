@@ -188,3 +188,6 @@ func (s *SwiftObjectClient) DeleteObject(_ context.Context, objectKey string) er
 func (s *SwiftObjectClient) IsObjectNotFoundErr(err error) bool {
 	return errors.Is(err, swift.ObjectNotFound)
 }
+
+// TODO(dannyk): implement for client
+func (s *SwiftObjectClient) IsRetryableErr(error) bool { return false }

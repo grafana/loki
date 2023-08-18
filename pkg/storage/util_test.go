@@ -297,6 +297,10 @@ func (m mockChunkStoreClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
+func (m mockChunkStoreClient) IsRetryableErr(_ error) bool {
+	return false
+}
+
 var streamsFixture = []*logproto.Stream{
 	{
 		Labels: "{foo=\"bar\"}",
