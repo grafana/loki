@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
@@ -224,6 +225,58 @@ func TestNamedStores_populateStoreType(t *testing.T) {
 
 		_, ok = ns.storeType["store-4"]
 		assert.False(t, ok)
+	})
+}
+
+func TestNewObjectClient_prefixing(t *testing.T) {
+	t.Run("no prefix", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		_, ok := objectClient.(client.PrefixedObjectClient)
+		assert.False(t, ok)
+	})
+
+	t.Run("prefix with trailing /", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.ObjectPrefix = "my/prefix/"
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		prefixed, ok := objectClient.(client.PrefixedObjectClient)
+		assert.True(t, ok)
+		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
+	})
+
+	t.Run("prefix without trailing /", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.ObjectPrefix = "my/prefix"
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		prefixed, ok := objectClient.(client.PrefixedObjectClient)
+		assert.True(t, ok)
+		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
+	})
+
+	t.Run("prefix with starting and trailing /", func(t *testing.T) {
+		var cfg Config
+		flagext.DefaultValues(&cfg)
+		cfg.ObjectPrefix = "/my/prefix/"
+
+		objectClient, err := NewObjectClient("inmemory", cfg, cm)
+		require.NoError(t, err)
+
+		prefixed, ok := objectClient.(client.PrefixedObjectClient)
+		assert.True(t, ok)
+		assert.Equal(t, "my/prefix/", prefixed.GetPrefix())
 	})
 }
 
