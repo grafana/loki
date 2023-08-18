@@ -633,8 +633,12 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 			gcsCfg = (gcp.GCSConfig)(nsCfg)
 		}
 
-		// TODO(dannyk): drive with config; keep true if congestion control is disabled
-		gcsCfg.EnableRetries = false
+		// ensure the GCS client's internal retry mechanism is disabled if we're using congestion control,
+		// which has its own retry mechanism
+		// TODO(dannyk): implement hedging in controller
+		if cfg.CongestionControl.Enabled {
+			gcsCfg.EnableRetries = false
+		}
 
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)
 	case config.StorageTypeAzure:
