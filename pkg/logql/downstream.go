@@ -505,6 +505,7 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 }
 
 func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, error) {
+	var err error
 	return NewStepEvaluator(
 		func() (ok bool, ts int64, vec promql.Vector) {
 			var cur StepResult
@@ -517,8 +518,10 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 				if acc == nil {
 					acc = cur.TopkVector().Topk
 				} else {
-					// TODO(karsten): handle error
-					acc.Merge(cur.TopkVector().Topk) //nolint:all
+					err = acc.Merge(cur.TopkVector().Topk)
+					if err != nil {
+						return false, 0, promql.Vector{}
+					}
 				}
 			}
 
@@ -528,8 +531,10 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 
 			for _, r := range acc.Topk() {
 				for _, e := range r.Result {
-					// TODO(karsten): handle error.
-					ls, _ := syntax.ParseLabels(e.Event)
+					ls, err := syntax.ParseLabels(e.Event)
+					if err != nil {
+						return false, 0, promql.Vector{}
+					}
 					vec = append(vec, promql.Sample{
 						T:      ts,
 						F:      float64(e.Count),
@@ -550,6 +555,9 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 		},
 		func() error {
 			var errs []error
+			if err != nil {
+				errs = append(errs, err)
+			}
 			for _, eval := range evaluators {
 				if err := eval.Error(); err != nil {
 					errs = append(errs, err)

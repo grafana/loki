@@ -85,10 +85,11 @@ type ProbabilisticEvaluator struct {
 }
 
 type pTopkStepEvaluator struct {
-	expr   *syntax.VectorAggregationExpr
-	next   StepEvaluator
-	k      int
-	logger log.Logger
+	expr    *syntax.VectorAggregationExpr
+	next    StepEvaluator
+	k       int
+	logger  log.Logger
+	lastErr error
 }
 
 func (e *pTopkStepEvaluator) Type() T {
@@ -110,7 +111,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 	// here.
 	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, e.k, 100000)
 	if err != nil {
-		// TODO(karsten): capture error
+		e.lastErr = err
 		return false, ts, nil
 	}
 
@@ -144,6 +145,9 @@ func (e *pTopkStepEvaluator) Close() error {
 }
 
 func (e *pTopkStepEvaluator) Error() error {
+	if e.lastErr != nil {
+		return e.lastErr
+	}
 	return e.next.Error()
 }
 
@@ -208,20 +212,7 @@ type probabilisticQuery struct {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *probabilisticQuery) Exec(ctx context.Context) (logqlmodel.Result, error) {
-	// TODO(karsten): avoid copying all of Exec. We do so now so that we can
-	// explore the proper interfaces.
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
-	defer sp.Finish()
-
-	data, err := q.Eval(ctx)
-
-	// TODO(karsten): record query statistics
-	//statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
-	//statResult.Log(level.Debug(spLogger))
-
-	return logqlmodel.Result{
-		Data: data,
-	}, err
+	return wrapEval(ctx, q.logger, q.logExecQuery, q.record, q.params, q.Eval)
 }
 
 func (q *probabilisticQuery) Eval(ctx context.Context) (promql_parser.Value, error) {
@@ -311,8 +302,12 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 		return nil, stepEvaluator.Error()
 	}
 
+	if !next || r == nil {
+		return promql.Vector{}, nil
+	}
+
 	// fail fast for the first step or instant query
-	vec := r.SampleVector() // TODO(karsten): maybe we have to check for r == nil
+	vec := r.SampleVector()
 	if len(vec) > maxSeries {
 		return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 	}
@@ -410,9 +405,6 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	if expr.Operation != syntax.OpTypeTopK {
 		return nil, errors.Errorf("unexpected operation: want 'topk', have '%q'", expr.Operation)
 	}
-
-	// TODO(karsten): Below is just copy-pasta from newVectorAggEvaluator.
-	// We should find better abstractions.
 
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)

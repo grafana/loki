@@ -217,7 +217,7 @@ type query struct {
 	logExecQuery bool
 }
 
-func (q *query) resultLength(res promql_parser.Value) int {
+func resultLength(res promql_parser.Value) int {
 	switch r := res.(type) {
 	case promql.Vector:
 		return len(r)
@@ -233,30 +233,35 @@ func (q *query) resultLength(res promql_parser.Value) int {
 
 // Exec Implements `Query`. It handles instrumentation & defers to Eval.
 func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
+	return wrapEval(ctx, q.logger, q.logExecQuery, q.record, q.params, q.Eval)
+}
+
+// wrapEval logs and records statistics of the evaluated query.
+func wrapEval(ctx context.Context, logger log.Logger, logExecQuery, record bool, params Params, eval func(ctx context.Context) (promql_parser.Value, error)) (logqlmodel.Result, error) {
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "query.Exec")
 	defer sp.Finish()
 	spLogger := spanlogger.FromContext(ctx)
 	defer spLogger.Finish()
 
 	sp.LogKV(
-		"type", GetRangeType(q.params),
-		"query", q.params.Query(),
-		"start", q.params.Start(),
-		"end", q.params.End(),
-		"step", q.params.Step(),
-		"length", q.params.End().Sub(q.params.Start()),
+		"type", GetRangeType(params),
+		"query", params.Query(),
+		"start", params.Start(),
+		"end", params.End(),
+		"step", params.Step(),
+		"length", params.End().Sub(params.Start()),
 	)
 
-	if q.logExecQuery {
-		queryHash := HashedQuery(q.params.Query())
-		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
+	if logExecQuery {
+		queryHash := HashedQuery(params.Query())
+		if GetRangeType(params) == InstantType {
+			level.Info(logutil.WithContext(ctx, logger)).Log("msg", "executing query", "type", "instant", "query", params.Query(), "query_hash", queryHash)
 		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, logger)).Log("msg", "executing query", "type", "range", "query", params.Query(), "length", params.End().Sub(params.Start()), "step", params.Step(), "query_hash", queryHash)
 		}
 	}
 
-	rangeType := GetRangeType(q.params)
+	rangeType := GetRangeType(params)
 	timer := prometheus.NewTimer(QueryTime.WithLabelValues(string(rangeType)))
 	defer timer.ObserveDuration()
 
@@ -265,11 +270,11 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	statsCtx, ctx := stats.NewContext(ctx)
 	metadataCtx, ctx := metadata.NewContext(ctx)
 
-	data, err := q.Eval(ctx)
+	data, err := eval(ctx)
 
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
-	statResult := statsCtx.Result(time.Since(start), queueTime, q.resultLength(data))
+	statResult := statsCtx.Result(time.Since(start), queueTime, resultLength(data))
 	statResult.Log(level.Debug(spLogger))
 
 	status := "200"
@@ -284,8 +289,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 		}
 	}
 
-	if q.record {
-		RecordRangeAndInstantQueryMetrics(ctx, q.logger, q.params, status, statResult, data)
+	if record {
+		RecordRangeAndInstantQueryMetrics(ctx, logger, params, status, statResult, data)
 	}
 
 	return logqlmodel.Result{
