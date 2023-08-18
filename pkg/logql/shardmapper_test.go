@@ -114,7 +114,6 @@ func TestMapSampleExpr(t *testing.T) {
 }
 
 func TestMappingStrings(t *testing.T) {
-	// TODO: test with probabilistic true
 	m := NewShardMapper(ConstantShards(2), false, nilShardMetrics)
 	for _, tc := range []struct {
 		in  string
@@ -147,8 +146,11 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
-			in:  `topk(3, rate({foo="bar"}[5m]))`,
-			out: `merge_topk(downstream_topk<topk(3,rate({foo="bar"}[5m])), shard=0_of_2>, downstream_topk<topk(3,rate({foo="bar"}[5m])), shard=1_of_2>)`,
+			in: `topk(3, rate({foo="bar"}[5m]))`,
+			out: `topk(3,
+			      downstream<rate({foo="bar"}[5m]), shard=0_of_2>
+			      ++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
+		        )`,
 		},
 		{
 			in: `sum(max(rate({foo="bar"}[5m])))`,
@@ -379,7 +381,6 @@ func TestMappingStrings(t *testing.T) {
 }
 
 func TestMapping(t *testing.T) {
-	// TODO: test with probabilistic true
 	m := NewShardMapper(ConstantShards(2), false, nilShardMetrics)
 
 	for _, tc := range []struct {
@@ -585,16 +586,33 @@ func TestMapping(t *testing.T) {
 		},
 		{
 			in: `topk(3, rate({foo="bar"}[5m]))`,
-			expr: &TopkMergeSampleExpr{
-					DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
+			expr: &syntax.VectorAggregationExpr{
+				Grouping:  &syntax.Grouping{},
+				Params:    3,
+				Operation: syntax.OpTypeTopK,
+				Left: &ConcatSampleExpr{
+					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
 							Shard: 0,
 							Of:    2,
 						},
-						TopkSampleExpr: &syntax.VectorAggregationExpr{
-							Operation: syntax.OpTypeTopK,
-							Params:    3,
-							Left: &syntax.RangeAggregationExpr{
+						SampleExpr: &syntax.RangeAggregationExpr{
+							Operation: syntax.OpRangeTypeRate,
+							Left: &syntax.LogRange{
+								Left: &syntax.MatchersExpr{
+									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+								},
+								Interval: 5 * time.Minute,
+							},
+						},
+					},
+					next: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 1,
+								Of:    2,
+							},
+							SampleExpr: &syntax.RangeAggregationExpr{
 								Operation: syntax.OpRangeTypeRate,
 								Left: &syntax.LogRange{
 									Left: &syntax.MatchersExpr{
@@ -603,34 +621,9 @@ func TestMapping(t *testing.T) {
 									Interval: 5 * time.Minute,
 								},
 							},
-							Grouping: &syntax.Grouping{
-								Without: false,
-							},
 						},
+						next: nil,
 					},
-					next: &TopkMergeSampleExpr{
-						DownstreamTopkSampleExpr: DownstreamTopkSampleExpr{
-							shard: &astmapper.ShardAnnotation{
-								Shard: 1,
-								Of:    2,
-							},
-							TopkSampleExpr: &syntax.VectorAggregationExpr{
-								Operation: syntax.OpTypeTopK,
-								Params:    3,
-								Left: &syntax.RangeAggregationExpr{
-									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
-										Left: &syntax.MatchersExpr{
-											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
-										},
-										Interval: 5 * time.Minute,
-									},
-								},
-								Grouping: &syntax.Grouping{
-									Without: false,
-								},
-							},
-						},
 				},
 			},
 		},

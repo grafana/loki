@@ -294,8 +294,9 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 				Operation: syntax.OpTypeSum,
 			}, bytesPerShard, nil
 		case syntax.OpTypeTopK:
-			// each step of a sharded topk is a set of topk sketch structs whose count-min sketches can be merged
-			return m.mapTopKSampleExpr(expr, r)
+			if m.probabilisticQueries {
+				return m.mapTopKSampleExpr(expr, r)
+			}
 		default:
 			// this should not be reachable. If an operation is shardable it should
 			// have an optimization listed. Nonetheless, we log this as a warning
