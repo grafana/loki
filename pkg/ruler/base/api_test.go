@@ -4,17 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-kit/log"
 	"github.com/gorilla/mux"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
@@ -163,6 +168,162 @@ func TestRuler_alerts(t *testing.T) {
 	})
 
 	require.Equal(t, string(expectedResponse), string(body))
+}
+
+func TestRuler_GetRulesLabelFilter(t *testing.T) {
+	cfg := defaultRulerConfig(t, newMockRuleStore(mockRules))
+
+	r := newTestRuler(t, cfg)
+	defer r.StopAsync()
+
+	a := NewAPI(r, r.store, log.NewNopLogger())
+
+	allRules := map[string][]rulefmt.RuleGroup{
+		"test": {
+			{
+				Name: "group1",
+				Rules: []rulefmt.RuleNode{
+					{
+						Record: yaml.Node{
+							Value:  "UP_RULE",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   5,
+							Column: 19,
+						},
+						Expr: yaml.Node{
+							Value:  "up",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   6,
+							Column: 17,
+						},
+					},
+					{
+						Alert: yaml.Node{
+							Value:  "UP_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   7,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "up < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   8,
+							Column: 17,
+						},
+						Labels: map[string]string{"foo": "bar"},
+					},
+					{
+						Alert: yaml.Node{
+							Value:  "DOWN_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   11,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "down < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   12,
+							Column: 17,
+						},
+						Labels: map[string]string{"namespace": "delta"},
+					},
+				},
+				Interval: model.Duration(1 * time.Minute),
+			},
+		},
+	}
+	filteredRules := map[string][]rulefmt.RuleGroup{
+		"test": {
+			{
+				Name: "group1",
+				Rules: []rulefmt.RuleNode{
+					{
+						Alert: yaml.Node{
+							Value:  "UP_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   5,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "up < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   6,
+							Column: 17,
+						},
+						Labels: map[string]string{"foo": "bar"},
+					},
+					{
+						Alert: yaml.Node{
+							Value:  "DOWN_ALERT",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   9,
+							Column: 18,
+						},
+						Expr: yaml.Node{
+							Value:  "down < 1",
+							Tag:    "!!str",
+							Kind:   8,
+							Line:   10,
+							Column: 17,
+						},
+						Labels: map[string]string{"namespace": "delta"},
+					},
+				},
+				Interval: model.Duration(1 * time.Minute),
+			},
+		},
+	}
+
+	tc := []struct {
+		name     string
+		URLQuery string
+		output   map[string][]rulefmt.RuleGroup
+		err      error
+	}{
+		{
+			name:   "query with no filters",
+			output: allRules,
+		},
+		{
+			name:     "query with a valid filter found",
+			URLQuery: "labels=namespace:delta,foo:bar",
+			output:   filteredRules,
+		},
+		{
+			name:     "query with an invalid query param",
+			URLQuery: "test=namespace:delta,foo|bar",
+			output:   allRules,
+		},
+	}
+
+	for _, tt := range tc {
+		t.Run(tt.name, func(t *testing.T) {
+			url := "https://localhost:8080/api/v1/rules"
+			if tt.URLQuery != "" {
+				url = fmt.Sprintf("%s?%s", url, tt.URLQuery)
+			}
+			req := requestFor(t, http.MethodGet, url, nil, "user3")
+
+			w := httptest.NewRecorder()
+			a.ListRules(w, req)
+			require.Equal(t, 200, w.Code)
+
+			var res map[string][]rulefmt.RuleGroup
+			err := yaml.Unmarshal(w.Body.Bytes(), &res)
+
+			require.Nil(t, err)
+			require.Equal(t, tt.output, res)
+		})
+	}
 }
 
 func TestRuler_Create(t *testing.T) {

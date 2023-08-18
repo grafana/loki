@@ -483,3 +483,6 @@ func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }

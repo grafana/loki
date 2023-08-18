@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
@@ -73,7 +74,8 @@ type store struct {
 	limits StoreLimits
 	logger log.Logger
 
-	chunkFilterer chunk.RequestChunkFilterer
+	chunkFilterer               chunk.RequestChunkFilterer
+	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 }
 
 // NewStore creates a new Loki Store using configuration supplied.
@@ -139,6 +141,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 		storeCfg:  storeCfg,
 		schemaCfg: schemaCfg,
 
+		congestionControllerFactory: congestion.NewController,
+
 		chunkClientMetrics: client.NewChunkClientMetrics(registerer),
 		clientMetrics:      clientMetrics,
 		chunkMetrics:       NewChunkMetrics(registerer, cfg.MaxChunkBatchSize),
@@ -197,7 +201,18 @@ func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, erro
 	chunkClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{"component": "chunk-store-" + p.From.String()}, s.registerer)
 
-	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, s.clientMetrics, chunkClientReg)
+	var cc congestion.Controller
+	ccCfg := s.cfg.CongestionControl
+
+	if ccCfg.Enabled {
+		cc = s.congestionControllerFactory(
+			ccCfg,
+			s.logger,
+			congestion.NewMetrics(fmt.Sprintf("%s-%s", objectStoreType, p.From.String()), ccCfg),
+		)
+	}
+
+	chunks, err := NewChunkClient(objectStoreType, s.cfg, s.schemaCfg, cc, chunkClientReg, s.clientMetrics)
 	if err != nil {
 		return nil, errors.Wrap(err, "error creating object client")
 	}
