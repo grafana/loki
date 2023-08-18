@@ -3,7 +3,7 @@ title: Logstash plugin
 menuTitle:   
 description: Instructions to install, configure, and use the Logstash plugin to send logs to Loki.
 aliases: 
-- ../clients/logstash/
+- ../send-data/a/logstash/
 weight:  800
 ---
 # Logstash plugin
