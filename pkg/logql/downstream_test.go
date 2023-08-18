@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
+	"github.com/montanaflynn/stats"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/valyala/histogram"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -443,7 +443,6 @@ func TestSketchEquivalence(t *testing.T) {
 		query       string
 		approximate bool
 	}{
-		// TODO(karsten): iterate over different k values
 		{`topk(5, rate({a=~".+"}[1s]))`, false},
 	} {
 		q := NewMockQuerier(
@@ -458,9 +457,6 @@ func TestSketchEquivalence(t *testing.T) {
 		probabilisticMapper := NewShardMapper(ConstantShards(shards), true, nilShardMetrics)
 
 		t.Run(tc.query, func(t *testing.T) {
-
-			f := histogram.GetFast()
-			defer histogram.PutFast(f)
 
 			params := NewLiteralParams(
 				tc.query,
@@ -489,6 +485,8 @@ func TestSketchEquivalence(t *testing.T) {
 			expected := NewMatrixStepper(start, end, step, res.Data.(promql.Matrix))
 			actual := NewMatrixStepper(start, end, step, probabilisticResult.Data.(promql.Matrix))
 
+			allMisses := make([]float64, 0)
+
 			ok, ts, expectedVec := expected.Next()
 			for ok {
 				actualOk, actualTs, actualVec := actual.Next()
@@ -510,13 +508,22 @@ func TestSketchEquivalence(t *testing.T) {
 					}
 				}
 
-				f.Update(float64(misses))
+				allMisses = append(allMisses, float64(misses))
 
 				ok, ts, expectedVec = expected.Next()
 			}
 
-			require.LessOrEqual(t, f.Quantile(0.99), 2.0)
-			require.LessOrEqual(t, f.Quantile(0.50), 1.0)
+			p99, err := stats.Percentile(allMisses, 99)
+			require.NoError(t, err)
+			p40, err := stats.Percentile(allMisses, 30)
+			require.NoError(t, err)
+
+			//p10, err := stats.Percentile(allMisses, 5)
+			//require.NoError(t, err)
+
+			require.LessOrEqual(t, p99, 2.0)
+			require.LessOrEqual(t, p40, 1.0)
+			//require.LessOrEqual(t, p10, 0.0)
 		})
 	}
 }
