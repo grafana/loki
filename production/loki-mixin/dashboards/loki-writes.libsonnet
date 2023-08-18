@@ -21,6 +21,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                             distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
                             ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                             ingester_zone: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
+                            any_ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
                           },
 
                           local selector(matcherId) =
@@ -33,6 +34,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           distributorSelector:: selector('distributor'),
                           ingesterSelector:: selector('ingester'),
                           ingesterZoneSelector:: selector('ingester_zone'),
+                          anyIngester:: selector('any_ingester'),
                         } +
                         $.dashboard('Loki / Writes', uid='writes')
                         .addCluster()
@@ -103,11 +105,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                           $.row('Index')
                           .addPanel(
                             $.panel('QPS') +
-                            $.qpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.qpsPanel('loki_index_request_duration_seconds_count{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester)
                           )
                           .addPanel(
                             $.panel('Latency') +
-                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].ingesterSelector)
+                            $.latencyPanel('loki_index_request_duration_seconds', '{%s operation="index_chunk"}' % dashboards['loki-writes.json'].anyIngester)
                           )
                         )
                         .addRowIf(
