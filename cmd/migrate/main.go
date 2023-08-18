@@ -329,15 +329,12 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					chunks := schemaGroups[i][j:k]
 					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
-					chks := make([]chunk.Chunk, 0, len(chunks))
-
-					chks = append(chks, chunks...)
-
-					finalChks, err := f.FetchChunks(m.ctx, chks)
+					var finalChks []chunk.Chunk
+					finalChks, err = f.FetchChunks(m.ctx, chunks)
 					if err != nil {
 						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)
 						finalChks = make([]chunk.Chunk, 0, len(chunks))
-						for i := range chks {
+						for i := range chunks {
 							onechunk := []chunk.Chunk{chunks[i]}
 							var retry int
 							for retry = 4; retry >= 0; retry-- {
