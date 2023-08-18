@@ -69,6 +69,7 @@ type MemcachedClientConfig struct {
 	Service        string        `yaml:"service"`
 	Addresses      string        `yaml:"addresses"` // EXPERIMENTAL.
 	Timeout        time.Duration `yaml:"timeout"`
+	ConnectTimeout time.Duration `yaml:"connect_timeout"`
 	MaxIdleConns   int           `yaml:"max_idle_conns"`
 	MaxItemSize    int           `yaml:"max_item_size"`
 	UpdateInterval time.Duration `yaml:"update_interval"`
@@ -85,6 +86,7 @@ func (cfg *MemcachedClientConfig) RegisterFlagsWithPrefix(prefix, description st
 	f.StringVar(&cfg.Addresses, prefix+"memcached.addresses", "", description+"EXPERIMENTAL: Comma separated addresses list in DNS Service Discovery format: https://cortexmetrics.io/docs/configuration/arguments/#dns-service-discovery")
 	f.IntVar(&cfg.MaxIdleConns, prefix+"memcached.max-idle-conns", 16, description+"Maximum number of idle connections in pool.")
 	f.DurationVar(&cfg.Timeout, prefix+"memcached.timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on memcached requests.")
+	f.DurationVar(&cfg.Timeout, prefix+"memcached.connect_timeout", 100*time.Millisecond, description+"Maximum time to wait before giving up on connection to memcached.")
 	f.DurationVar(&cfg.UpdateInterval, prefix+"memcached.update-interval", 1*time.Minute, description+"Period with which to poll DNS for memcache servers.")
 	f.BoolVar(&cfg.ConsistentHash, prefix+"memcached.consistent-hash", true, description+"Use consistent hashing to distribute to memcache servers.")
 	f.UintVar(&cfg.CBFailures, prefix+"memcached.circuit-breaker-consecutive-failures", 10, description+"Trip circuit-breaker after this number of consecutive dial failures (if zero then circuit-breaker is disabled).")
@@ -106,6 +108,7 @@ func NewMemcachedClient(cfg MemcachedClientConfig, name string, r prometheus.Reg
 	client := memcache.NewFromSelector(selector)
 	client.Timeout = cfg.Timeout
 	client.MaxIdleConns = cfg.MaxIdleConns
+	client.ConnectTimeout = cfg.ConnectTimeout
 
 	dnsProviderRegisterer := prometheus.WrapRegistererWithPrefix("cortex_", prometheus.WrapRegistererWith(prometheus.Labels{
 		"name": name,
