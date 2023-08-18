@@ -15,7 +15,7 @@ Entries should include a reference to the pull request that introduced the chang
 
 ## 5.13.1
  
-- [BUGFIX] Use the correct name of the service inside the ingress. 
+- [BUGFIX] Use the correct name of the service inside the ingress.
 
 ## 5.13.0
 
