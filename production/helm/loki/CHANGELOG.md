@@ -13,9 +13,13 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.13.1
+## 5.14.1
  
 - [BUGFIX] Use the correct name of the service inside the ingress.
+
+## 5.14.0
+
+- [ENHANCEMENT] Make table_manager configuration toggle.
 
 ## 5.13.0
 
