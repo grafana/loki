@@ -17,6 +17,8 @@ import (
 )
 
 const (
+	// Signature Version 2 is being turned off (deprecated) in Amazon S3. Amazon S3 will then only accept API requests that are signed using Signature Version 4.
+	// https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingAWSSDK.html#UsingAWSSDK-sig2-deprecation
 	SignatureVersionV4 = "v4"
 
 	// SSEKMS config type constant to configure S3 server side encryption using KMS
