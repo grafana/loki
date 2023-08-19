@@ -1,11 +1,13 @@
 package manifests
 
 import (
+	"strings"
+	"time"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/manifests/internal"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 	"github.com/grafana/loki/operator/internal/manifests/openshift"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
@@ -13,29 +15,45 @@ import (
 // Options is a set of configuration values to use when building manifests such as resource sizes, etc.
 // Most of this should be provided - either directly or indirectly - by the user.
 type Options struct {
-	Name              string
-	Namespace         string
-	Image             string
-	GatewayImage      string
-	GatewayBaseDomain string
-	ConfigSHA1        string
-
-	TLSProfileType projectconfigv1.TLSProfileType
-	TLSProfileSpec projectconfigv1.TLSProfileSpec
+	Name                   string
+	Namespace              string
+	Image                  string
+	GatewayImage           string
+	GatewayBaseDomain      string
+	ConfigSHA1             string
+	CertRotationRequiredAt string
 
 	Gates                configv1.FeatureGates
 	Stack                lokiv1.LokiStackSpec
 	ResourceRequirements internal.ComponentResources
 
-	AlertingRules  []lokiv1beta1.AlertingRule
-	RecordingRules []lokiv1beta1.RecordingRule
-	Ruler          Ruler
+	AlertingRules       []lokiv1.AlertingRule
+	RecordingRules      []lokiv1.RecordingRule
+	RulesConfigMapNames []string
+	Ruler               Ruler
 
 	ObjectStorage storage.Options
 
 	OpenShiftOptions openshift.Options
 
+	Timeouts TimeoutConfig
+
 	Tenants Tenants
+
+	TLSProfile TLSProfileSpec
+}
+
+// GatewayTimeoutConfig contains the http server configuration options for all Loki components.
+type GatewayTimeoutConfig struct {
+	ReadTimeout          time.Duration
+	WriteTimeout         time.Duration
+	UpstreamWriteTimeout time.Duration
+}
+
+// TimeoutConfig contains the server configuration options for all Loki components
+type TimeoutConfig struct {
+	Loki    config.HTTPTimeoutConfig
+	Gateway GatewayTimeoutConfig
 }
 
 // Tenants contains the configuration per tenant and secrets for authn/authz.
@@ -46,12 +64,21 @@ type Tenants struct {
 	Configs map[string]TenantConfig
 }
 
-// TenantSecrets for clientID, clientSecret and issuerCAPath for tenant's authentication.
+// TenantSecrets for tenant's authentication.
 type TenantSecrets struct {
-	TenantName   string
+	TenantName string
+	OIDCSecret *OIDCSecret
+	MTLSSecret *MTLSSecret
+}
+
+type OIDCSecret struct {
 	ClientID     string
 	ClientSecret string
 	IssuerCAPath string
+}
+
+type MTLSSecret struct {
+	CAPath string
 }
 
 // TenantConfig for tenant authorizationconfig
@@ -75,7 +102,7 @@ type TenantOpenShiftSpec struct {
 
 // Ruler configuration for manifests generation.
 type Ruler struct {
-	Spec   *lokiv1beta1.RulerConfigSpec
+	Spec   *lokiv1.RulerConfigSpec
 	Secret *RulerSecret
 }
 
@@ -87,4 +114,84 @@ type RulerSecret struct {
 	Password string
 	// BearerToken contains the token used for bearer authentication.
 	BearerToken string
+}
+
+// TLSProfileSpec is the desired behavior of a TLSProfileType.
+type TLSProfileSpec struct {
+	// Ciphers is used to specify the cipher algorithms that are negotiated
+	// during the TLS handshake.
+	Ciphers []string
+	// MinTLSVersion is used to specify the minimal version of the TLS protocol
+	// that is negotiated during the TLS handshake.
+	MinTLSVersion string
+}
+
+// TLSCipherSuites transforms TLSProfileSpec.Ciphers from a slice
+// to a string of elements joined with a comma.
+func (o Options) TLSCipherSuites() string {
+	return strings.Join(o.TLSProfile.Ciphers, ",")
+}
+
+// NewTimeoutConfig creates a TimeoutConfig from the QueryTimeout values in the spec's limits.
+func NewTimeoutConfig(s *lokiv1.LimitsSpec) (TimeoutConfig, error) {
+	if s == nil {
+		return defaultTimeoutConfig, nil
+	}
+
+	if s.Global == nil && s.Tenants == nil {
+		return defaultTimeoutConfig, nil
+	}
+
+	queryTimeout := lokiDefaultQueryTimeout
+	if s.Global != nil && s.Global.QueryLimits != nil && s.Global.QueryLimits.QueryTimeout != "" {
+		var err error
+		globalQueryTimeout, err := time.ParseDuration(s.Global.QueryLimits.QueryTimeout)
+		if err != nil {
+			return TimeoutConfig{}, err
+		}
+
+		if globalQueryTimeout > queryTimeout {
+			queryTimeout = globalQueryTimeout
+		}
+	}
+
+	for _, tLimit := range s.Tenants {
+		if tLimit.QueryLimits == nil || tLimit.QueryLimits.QueryTimeout == "" {
+			continue
+		}
+
+		tenantQueryTimeout, err := time.ParseDuration(tLimit.QueryLimits.QueryTimeout)
+		if err != nil {
+			return TimeoutConfig{}, err
+		}
+
+		if tenantQueryTimeout > queryTimeout {
+			queryTimeout = tenantQueryTimeout
+		}
+	}
+
+	return calculateHTTPTimeouts(queryTimeout), nil
+}
+
+func calculateHTTPTimeouts(queryTimeout time.Duration) TimeoutConfig {
+	idleTimeout := lokiDefaultHTTPIdleTimeout
+	if queryTimeout < idleTimeout {
+		idleTimeout = queryTimeout
+	}
+
+	readTimeout := queryTimeout / 10
+	writeTimeout := queryTimeout + lokiQueryWriteDuration
+
+	return TimeoutConfig{
+		Loki: config.HTTPTimeoutConfig{
+			IdleTimeout:  idleTimeout,
+			ReadTimeout:  readTimeout,
+			WriteTimeout: writeTimeout,
+		},
+		Gateway: GatewayTimeoutConfig{
+			ReadTimeout:          readTimeout + gatewayReadDuration,
+			WriteTimeout:         writeTimeout + gatewayWriteDuration,
+			UpstreamWriteTimeout: writeTimeout,
+		},
+	}
 }

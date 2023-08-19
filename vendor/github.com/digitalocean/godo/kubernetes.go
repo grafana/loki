@@ -88,6 +88,9 @@ type KubernetesClusterUpdateRequest struct {
 	MaintenancePolicy *KubernetesMaintenancePolicy `json:"maintenance_policy,omitempty"`
 	AutoUpgrade       *bool                        `json:"auto_upgrade,omitempty"`
 	SurgeUpgrade      bool                         `json:"surge_upgrade,omitempty"`
+
+	// Convert cluster to run highly available control plane
+	HA *bool `json:"ha,omitempty"`
 }
 
 // KubernetesClusterDeleteSelectiveRequest represents a delete selective request to delete a cluster and it's associated resources.

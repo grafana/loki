@@ -210,7 +210,7 @@ func (summer *shardSummer) splitSum(
 
 // ShardSummer is explicitly passed a prometheus.Counter during construction
 // in order to prevent duplicate metric registerings (ShardSummers are created per request).
-//recordShards prevents calling nil interfaces (commonly used in tests).
+// recordShards prevents calling nil interfaces (commonly used in tests).
 func (summer *shardSummer) recordShards(_ float64) {
 	if summer.shardedQueries != nil {
 		summer.shardedQueries.Add(float64(summer.shards))

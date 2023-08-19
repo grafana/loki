@@ -16,14 +16,15 @@ package rulefmt
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"strings"
 	"time"
 
-	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	yaml "gopkg.in/yaml.v3"
+	"gopkg.in/yaml.v3"
 
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql/parser"
@@ -40,12 +41,21 @@ type Error struct {
 
 // Error prints the error message in a formatted string.
 func (err *Error) Error() string {
-	if err.Err.nodeAlt != nil {
-		return errors.Wrapf(err.Err.err, "%d:%d: %d:%d: group %q, rule %d, %q", err.Err.node.Line, err.Err.node.Column, err.Err.nodeAlt.Line, err.Err.nodeAlt.Column, err.Group, err.Rule, err.RuleName).Error()
-	} else if err.Err.node != nil {
-		return errors.Wrapf(err.Err.err, "%d:%d: group %q, rule %d, %q", err.Err.node.Line, err.Err.node.Column, err.Group, err.Rule, err.RuleName).Error()
+	if err.Err.err == nil {
+		return ""
 	}
-	return errors.Wrapf(err.Err.err, "group %q, rule %d, %q", err.Group, err.Rule, err.RuleName).Error()
+	if err.Err.nodeAlt != nil {
+		return fmt.Sprintf("%d:%d: %d:%d: group %q, rule %d, %q: %v", err.Err.node.Line, err.Err.node.Column, err.Err.nodeAlt.Line, err.Err.nodeAlt.Column, err.Group, err.Rule, err.RuleName, err.Err.err)
+	}
+	if err.Err.node != nil {
+		return fmt.Sprintf("%d:%d: group %q, rule %d, %q: %v", err.Err.node.Line, err.Err.node.Column, err.Group, err.Rule, err.RuleName, err.Err.err)
+	}
+	return fmt.Sprintf("group %q, rule %d, %q: %v", err.Group, err.Rule, err.RuleName, err.Err.err)
+}
+
+// Unwrap unpacks wrapped error for use in errors.Is & errors.As.
+func (err *Error) Unwrap() error {
+	return &err.Err
 }
 
 // WrappedError wraps error with the yaml node which can be used to represent
@@ -58,12 +68,21 @@ type WrappedError struct {
 
 // Error prints the error message in a formatted string.
 func (we *WrappedError) Error() string {
+	if we.err == nil {
+		return ""
+	}
 	if we.nodeAlt != nil {
-		return errors.Wrapf(we.err, "%d:%d: %d:%d", we.node.Line, we.node.Column, we.nodeAlt.Line, we.nodeAlt.Column).Error()
-	} else if we.node != nil {
-		return errors.Wrapf(we.err, "%d:%d", we.node.Line, we.node.Column).Error()
+		return fmt.Sprintf("%d:%d: %d:%d: %v", we.node.Line, we.node.Column, we.nodeAlt.Line, we.nodeAlt.Column, we.err)
+	}
+	if we.node != nil {
+		return fmt.Sprintf("%d:%d: %v", we.node.Line, we.node.Column, we.err)
 	}
 	return we.err.Error()
+}
+
+// Unwrap unpacks wrapped error for use in errors.Is & errors.As.
+func (we *WrappedError) Unwrap() error {
+	return we.err
 }
 
 // RuleGroups is a set of rule groups that are typically exposed in a file.
@@ -81,13 +100,13 @@ func (g *RuleGroups) Validate(node ruleGroups) (errs []error) {
 
 	for j, g := range g.Groups {
 		if g.Name == "" {
-			errs = append(errs, errors.Errorf("%d:%d: Groupname must not be empty", node.Groups[j].Line, node.Groups[j].Column))
+			errs = append(errs, fmt.Errorf("%d:%d: Groupname must not be empty", node.Groups[j].Line, node.Groups[j].Column))
 		}
 
 		if _, ok := set[g.Name]; ok {
 			errs = append(
 				errs,
-				errors.Errorf("%d:%d: groupname: \"%s\" is repeated in the same file", node.Groups[j].Line, node.Groups[j].Column, g.Name),
+				fmt.Errorf("%d:%d: groupname: \"%s\" is repeated in the same file", node.Groups[j].Line, node.Groups[j].Column, g.Name),
 			)
 		}
 
@@ -124,29 +143,31 @@ type RuleGroup struct {
 
 // Rule describes an alerting or recording rule.
 type Rule struct {
-	Record      string            `yaml:"record,omitempty"`
-	Alert       string            `yaml:"alert,omitempty"`
-	Expr        string            `yaml:"expr"`
-	For         model.Duration    `yaml:"for,omitempty"`
-	Labels      map[string]string `yaml:"labels,omitempty"`
-	Annotations map[string]string `yaml:"annotations,omitempty"`
+	Record        string            `yaml:"record,omitempty"`
+	Alert         string            `yaml:"alert,omitempty"`
+	Expr          string            `yaml:"expr"`
+	For           model.Duration    `yaml:"for,omitempty"`
+	KeepFiringFor model.Duration    `yaml:"keep_firing_for,omitempty"`
+	Labels        map[string]string `yaml:"labels,omitempty"`
+	Annotations   map[string]string `yaml:"annotations,omitempty"`
 }
 
 // RuleNode adds yaml.v3 layer to support line and column outputs for invalid rules.
 type RuleNode struct {
-	Record      yaml.Node         `yaml:"record,omitempty"`
-	Alert       yaml.Node         `yaml:"alert,omitempty"`
-	Expr        yaml.Node         `yaml:"expr"`
-	For         model.Duration    `yaml:"for,omitempty"`
-	Labels      map[string]string `yaml:"labels,omitempty"`
-	Annotations map[string]string `yaml:"annotations,omitempty"`
+	Record        yaml.Node         `yaml:"record,omitempty"`
+	Alert         yaml.Node         `yaml:"alert,omitempty"`
+	Expr          yaml.Node         `yaml:"expr"`
+	For           model.Duration    `yaml:"for,omitempty"`
+	KeepFiringFor model.Duration    `yaml:"keep_firing_for,omitempty"`
+	Labels        map[string]string `yaml:"labels,omitempty"`
+	Annotations   map[string]string `yaml:"annotations,omitempty"`
 }
 
 // Validate the rule and return a list of encountered errors.
 func (r *RuleNode) Validate() (nodes []WrappedError) {
 	if r.Record.Value != "" && r.Alert.Value != "" {
 		nodes = append(nodes, WrappedError{
-			err:     errors.Errorf("only one of 'record' and 'alert' must be set"),
+			err:     fmt.Errorf("only one of 'record' and 'alert' must be set"),
 			node:    &r.Record,
 			nodeAlt: &r.Alert,
 		})
@@ -154,12 +175,12 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 	if r.Record.Value == "" && r.Alert.Value == "" {
 		if r.Record.Value == "0" {
 			nodes = append(nodes, WrappedError{
-				err:  errors.Errorf("one of 'record' or 'alert' must be set"),
+				err:  fmt.Errorf("one of 'record' or 'alert' must be set"),
 				node: &r.Alert,
 			})
 		} else {
 			nodes = append(nodes, WrappedError{
-				err:  errors.Errorf("one of 'record' or 'alert' must be set"),
+				err:  fmt.Errorf("one of 'record' or 'alert' must be set"),
 				node: &r.Record,
 			})
 		}
@@ -167,31 +188,37 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 
 	if r.Expr.Value == "" {
 		nodes = append(nodes, WrappedError{
-			err:  errors.Errorf("field 'expr' must be set in rule"),
+			err:  fmt.Errorf("field 'expr' must be set in rule"),
 			node: &r.Expr,
 		})
 	} else if _, err := parser.ParseExpr(r.Expr.Value); err != nil {
 		nodes = append(nodes, WrappedError{
-			err:  errors.Wrapf(err, "could not parse expression"),
+			err:  fmt.Errorf("could not parse expression: %w", err),
 			node: &r.Expr,
 		})
 	}
 	if r.Record.Value != "" {
 		if len(r.Annotations) > 0 {
 			nodes = append(nodes, WrappedError{
-				err:  errors.Errorf("invalid field 'annotations' in recording rule"),
+				err:  fmt.Errorf("invalid field 'annotations' in recording rule"),
 				node: &r.Record,
 			})
 		}
 		if r.For != 0 {
 			nodes = append(nodes, WrappedError{
-				err:  errors.Errorf("invalid field 'for' in recording rule"),
+				err:  fmt.Errorf("invalid field 'for' in recording rule"),
+				node: &r.Record,
+			})
+		}
+		if r.KeepFiringFor != 0 {
+			nodes = append(nodes, WrappedError{
+				err:  fmt.Errorf("invalid field 'keep_firing_for' in recording rule"),
 				node: &r.Record,
 			})
 		}
 		if !model.IsValidMetricName(model.LabelValue(r.Record.Value)) {
 			nodes = append(nodes, WrappedError{
-				err:  errors.Errorf("invalid recording rule name: %s", r.Record.Value),
+				err:  fmt.Errorf("invalid recording rule name: %s", r.Record.Value),
 				node: &r.Record,
 			})
 		}
@@ -200,13 +227,13 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 	for k, v := range r.Labels {
 		if !model.LabelName(k).IsValid() || k == model.MetricNameLabel {
 			nodes = append(nodes, WrappedError{
-				err: errors.Errorf("invalid label name: %s", k),
+				err: fmt.Errorf("invalid label name: %s", k),
 			})
 		}
 
 		if !model.LabelValue(v).IsValid() {
 			nodes = append(nodes, WrappedError{
-				err: errors.Errorf("invalid label value: %s", v),
+				err: fmt.Errorf("invalid label value: %s", v),
 			})
 		}
 	}
@@ -214,7 +241,7 @@ func (r *RuleNode) Validate() (nodes []WrappedError) {
 	for k := range r.Annotations {
 		if !model.LabelName(k).IsValid() {
 			nodes = append(nodes, WrappedError{
-				err: errors.Errorf("invalid annotation name: %s", k),
+				err: fmt.Errorf("invalid annotation name: %s", k),
 			})
 		}
 	}
@@ -260,7 +287,7 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 	for k, val := range rl.Labels {
 		err := parseTest(val)
 		if err != nil {
-			errs = append(errs, errors.Wrapf(err, "label %q", k))
+			errs = append(errs, fmt.Errorf("label %q: %w", k, err))
 		}
 	}
 
@@ -268,7 +295,7 @@ func testTemplateParsing(rl *RuleNode) (errs []error) {
 	for k, val := range rl.Annotations {
 		err := parseTest(val)
 		if err != nil {
-			errs = append(errs, errors.Wrapf(err, "annotation %q", k))
+			errs = append(errs, fmt.Errorf("annotation %q: %w", k, err))
 		}
 	}
 
@@ -287,7 +314,7 @@ func Parse(content []byte) (*RuleGroups, []error) {
 	decoder.KnownFields(true)
 	err := decoder.Decode(&groups)
 	// Ignore io.EOF which happens with empty input.
-	if err != nil && err != io.EOF {
+	if err != nil && !errors.Is(err, io.EOF) {
 		errs = append(errs, err)
 	}
 	err = yaml.Unmarshal(content, &node)
@@ -306,11 +333,11 @@ func Parse(content []byte) (*RuleGroups, []error) {
 func ParseFile(file string) (*RuleGroups, []error) {
 	b, err := os.ReadFile(file)
 	if err != nil {
-		return nil, []error{errors.Wrap(err, file)}
+		return nil, []error{fmt.Errorf("%s: %w", file, err)}
 	}
 	rgs, errs := Parse(b)
 	for i := range errs {
-		errs[i] = errors.Wrap(errs[i], file)
+		errs[i] = fmt.Errorf("%s: %w", file, errs[i])
 	}
 	return rgs, errs
 }

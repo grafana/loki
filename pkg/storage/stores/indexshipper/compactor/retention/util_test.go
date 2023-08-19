@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -148,7 +148,7 @@ func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
 	return true, nil
 }
 
-func (t *table) CleanupSeries(userID []byte, lbls labels.Labels) error {
+func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
@@ -315,7 +315,7 @@ func newTestStore(t testing.TB) *testStore {
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
-	util_log.InitLogger(servercfg, nil)
+	util_log.InitLogger(servercfg, nil, true, false)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

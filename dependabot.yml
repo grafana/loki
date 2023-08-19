@@ -1,0 +1,6 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    ignore:
+     - dependency-name: "github.com/mattn/go-ieproxy"
+       versions: ["0.0.9"] 

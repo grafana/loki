@@ -176,5 +176,22 @@ secret_access_key: secret access key
 
 	require.Equal(t, underTest.AccessKeyID, "access key id")
 	require.Equal(t, underTest.SecretAccessKey.String(), "secret access key")
+	require.Equal(t, underTest.SessionToken.String(), "")
+
+}
+
+func Test_ConfigParsesCredentialsInlineWithSessionToken(t *testing.T) {
+	var underTest = S3Config{}
+	yamlCfg := `
+access_key_id: access key id
+secret_access_key: secret access key
+session_token: session token
+`
+	err := yaml.Unmarshal([]byte(yamlCfg), &underTest)
+	require.NoError(t, err)
+
+	require.Equal(t, underTest.AccessKeyID, "access key id")
+	require.Equal(t, underTest.SecretAccessKey.String(), "secret access key")
+	require.Equal(t, underTest.SessionToken.String(), "session token")
 
 }

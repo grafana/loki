@@ -11,11 +11,13 @@ import (
 	"strings"
 	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -37,6 +39,7 @@ type entry struct {
 type batch struct {
 	streams map[string]*logproto.Stream
 	size    int
+	client  Client
 }
 
 type batchIf interface {
@@ -46,9 +49,10 @@ type batchIf interface {
 	flushBatch(ctx context.Context) error
 }
 
-func newBatch(ctx context.Context, entries ...entry) (*batch, error) {
+func newBatch(ctx context.Context, pClient Client, entries ...entry) (*batch, error) {
 	b := &batch{
 		streams: map[string]*logproto.Stream{},
+		client:  pClient,
 	}
 
 	for _, entry := range entries {
@@ -122,34 +126,37 @@ func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 }
 
 func (b *batch) flushBatch(ctx context.Context) error {
-	err := sendToPromtail(ctx, b)
+	err := b.client.sendToPromtail(ctx, b)
 	if err != nil {
 		return err
 	}
-
-	b.streams = make(map[string]*logproto.Stream)
+	b.resetBatch()
 
 	return nil
 }
 
-func sendToPromtail(ctx context.Context, b *batch) error {
+func (b *batch) resetBatch() {
+	b.streams = make(map[string]*logproto.Stream)
+	b.size = 0
+}
+
+func (c *promtailClient) sendToPromtail(ctx context.Context, b *batch) error {
 	buf, _, err := b.encode()
 	if err != nil {
 		return err
 	}
 
-	backoff := backoff.New(ctx, backoff.Config{minBackoff, maxBackoff, maxRetries})
+	backoff := backoff.New(ctx, *c.config.backoff)
 	var status int
 	for {
 		// send uses `timeout` internally, so `context.Background` is good enough.
-		status, err = send(context.Background(), buf)
+		status, err = c.send(context.Background(), buf)
 
 		// Only retry 429s, 500s and connection-level errors.
 		if status > 0 && status != 429 && status/100 != 5 {
 			break
 		}
-
-		fmt.Printf("error sending batch, will retry, status: %d error: %s\n", status, err)
+		level.Error(*c.log).Log("err", fmt.Errorf("error sending batch, will retry, status: %d error: %s\n", status, err))
 		backoff.Wait()
 
 		// Make sure it sends at least once before checking for retry.
@@ -159,15 +166,15 @@ func sendToPromtail(ctx context.Context, b *batch) error {
 	}
 
 	if err != nil {
-		fmt.Printf("Failed to send logs! %s\n", err)
+		level.Error(*c.log).Log("err", fmt.Errorf("Failed to send logs! %s\n", err))
 		return err
 	}
 
 	return nil
 }
 
-func send(ctx context.Context, buf []byte) (int, error) {
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+func (c *promtailClient) send(ctx context.Context, buf []byte) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, c.config.http.timeout)
 	defer cancel()
 
 	req, err := http.NewRequest("POST", writeAddress.String(), bytes.NewReader(buf))
@@ -185,11 +192,15 @@ func send(ctx context.Context, buf []byte) (int, error) {
 		req.SetBasicAuth(username, password)
 	}
 
-	resp, err := http.DefaultClient.Do(req.WithContext(ctx))
+	if bearerToken != "" {
+		req.Header.Set("Authorization", "Bearer "+bearerToken)
+	}
+
+	resp, err := c.http.Do(req.WithContext(ctx))
 	if err != nil {
 		return -1, err
 	}
-
+	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
 		scanner := bufio.NewScanner(io.LimitReader(resp.Body, maxErrMsgLen))
 		line := ""

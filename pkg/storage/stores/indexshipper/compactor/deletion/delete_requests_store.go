@@ -13,7 +13,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 
 	"github.com/prometheus/common/model"
 

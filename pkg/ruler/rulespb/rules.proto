@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package rules;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "google/protobuf/any.proto";
 import "google/protobuf/duration.proto";
 import "pkg/logproto/logproto.proto";
@@ -27,6 +27,7 @@ message RuleGroupDesc {
   // to create custom `ManagerOpts` based on rule configs which can then be passed
   // to the Prometheus Manager.
   repeated google.protobuf.Any options = 9;
+  int64 limit = 10;
 }
 
 // RuleDesc is a proto representation of a Prometheus Rule

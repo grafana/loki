@@ -1,7 +1,7 @@
 package bucket
 
 import (
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 )
 
 // NewUserBucketClient returns a bucket client to use to access the storage on behalf of the provided user.

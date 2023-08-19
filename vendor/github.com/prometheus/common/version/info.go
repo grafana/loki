@@ -31,6 +31,8 @@ var (
 	BuildUser string
 	BuildDate string
 	GoVersion = runtime.Version()
+	GoOS      = runtime.GOOS
+	GoArch    = runtime.GOARCH
 )
 
 // NewCollector returns a collector that exports metrics about current version
@@ -41,14 +43,17 @@ func NewCollector(program string) prometheus.Collector {
 			Namespace: program,
 			Name:      "build_info",
 			Help: fmt.Sprintf(
-				"A metric with a constant '1' value labeled by version, revision, branch, and goversion from which %s was built.",
+				"A metric with a constant '1' value labeled by version, revision, branch, goversion from which %s was built, and the goos and goarch for the build.",
 				program,
 			),
 			ConstLabels: prometheus.Labels{
 				"version":   Version,
-				"revision":  Revision,
+				"revision":  getRevision(),
 				"branch":    Branch,
 				"goversion": GoVersion,
+				"goos":      GoOS,
+				"goarch":    GoArch,
+				"tags":      getTags(),
 			},
 		},
 		func() float64 { return 1 },
@@ -62,6 +67,7 @@ var versionInfoTmpl = `
   build date:       {{.buildDate}}
   go version:       {{.goVersion}}
   platform:         {{.platform}}
+  tags:             {{.tags}}
 `
 
 // Print returns version information.
@@ -69,12 +75,13 @@ func Print(program string) string {
 	m := map[string]string{
 		"program":   program,
 		"version":   Version,
-		"revision":  Revision,
+		"revision":  getRevision(),
 		"branch":    Branch,
 		"buildUser": BuildUser,
 		"buildDate": BuildDate,
 		"goVersion": GoVersion,
-		"platform":  runtime.GOOS + "/" + runtime.GOARCH,
+		"platform":  GoOS + "/" + GoArch,
+		"tags":      getTags(),
 	}
 	t := template.Must(template.New("version").Parse(versionInfoTmpl))
 
@@ -87,10 +94,10 @@ func Print(program string) string {
 
 // Info returns version, branch and revision information.
 func Info() string {
-	return fmt.Sprintf("(version=%s, branch=%s, revision=%s)", Version, Branch, Revision)
+	return fmt.Sprintf("(version=%s, branch=%s, revision=%s)", Version, Branch, getRevision())
 }
 
-// BuildContext returns goVersion, buildUser and buildDate information.
+// BuildContext returns goVersion, platform, buildUser and buildDate information.
 func BuildContext() string {
-	return fmt.Sprintf("(go=%s, user=%s, date=%s)", GoVersion, BuildUser, BuildDate)
+	return fmt.Sprintf("(go=%s, platform=%s, user=%s, date=%s, tags=%s)", GoVersion, GoOS+"/"+GoArch, BuildUser, BuildDate, getTags())
 }

@@ -1,21 +1,23 @@
 ---
 title: Observability
+description: Observing Grafana Loki
 weight: 20
 ---
-# Observing Grafana Loki
+# Observability
 
 Both Grafana Loki and Promtail expose a `/metrics` endpoint that expose Prometheus
-metrics. You will need a local Prometheus and add Loki and Promtail as targets.
-See [configuring
+metrics (the default port is 3100 for Loki and 80 for Promtail). You will need
+a local Prometheus and add Loki and Promtail as targets. See [configuring
 Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/configuration)
 for more information.
 
 All components of Loki expose the following metrics:
 
-| Metric Name                     | Metric Type | Description                              |
-| ------------------------------- | ----------- | ---------------------------------------- |
-| `loki_log_messages_total`       | Counter     | Total number of messages logged by Loki. |
-| `loki_request_duration_seconds` | Histogram   | Number of received HTTP requests.        |
+| Metric Name                        | Metric Type | Description                                                                                                                  |
+| ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by loki itself. |
+| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by loki itself.                                                                         |
+| `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                                                                            |
 
 The Loki Distributors expose the following metrics:
 
@@ -72,7 +74,7 @@ Promtail exposes these metrics:
 | `promtail_encoded_bytes_total`            | Counter     | Number of bytes encoded and ready to send.                                                 |
 | `promtail_file_bytes_total`               | Gauge       | Number of bytes read from files.                                                           |
 | `promtail_files_active_total`             | Gauge       | Number of active files.                                                                    |
-| `promtail_request_duration_seconds_count` | Histogram   | Number of send requests.                                                                   |
+| `promtail_request_duration_seconds` | Histogram   | Number of send requests.                                                                   |
 | `promtail_sent_bytes_total`               | Counter     | Number of bytes sent.                                                                      |
 | `promtail_sent_entries_total`             | Counter     | Number of log entries sent to the ingester.                                                |
 | `promtail_targets_active_total`           | Gauge       | Number of total active targets.                                                            |
@@ -89,10 +91,10 @@ Most of these metrics are counters and should continuously increase during norma
 
 If Promtail uses any pipelines with metrics stages, those metrics will also be
 exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
-[Pipelines](../../clients/promtail/pipelines/) for more information.
+[Pipelines]({{< relref "../send-data/promtail/pipelines" >}}) for more information.
 
 An example Grafana dashboard was built by the community and is available as
-dashboard [10004](https://grafana.com/dashboards/10004).
+dashboard [10004](/dashboards/10004).
 
 ## Metrics cardinality
 
@@ -103,7 +105,7 @@ Review your emitted metrics before scraping with Prometheus, and configure the s
 
 ## Mixins
 
-The Loki repository has a [mixin](https://github.com/grafana/loki/blob/master/production/loki-mixin) that includes a
+The Loki repository has a [mixin](https://github.com/grafana/loki/blob/main/production/loki-mixin) that includes a
 set of dashboards, recording rules, and alerts. Together, the mixin gives you a
 comprehensive package for monitoring Loki in production.
 

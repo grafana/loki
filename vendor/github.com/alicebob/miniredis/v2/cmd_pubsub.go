@@ -29,8 +29,9 @@ func (m *Miniredis) cmdSubscribe(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
@@ -53,8 +54,9 @@ func (m *Miniredis) cmdUnsubscribe(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
@@ -103,8 +105,9 @@ func (m *Miniredis) cmdPsubscribe(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
@@ -127,8 +130,9 @@ func (m *Miniredis) cmdPunsubscribe(c *server.Peer, cmd string, args []string) {
 	if !m.handleAuth(c) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
@@ -212,7 +216,9 @@ func (m *Miniredis) cmdPubSub(c *server.Peer, cmd string, args []string) {
 	case "NUMPAT":
 		argsOk = len(subargs) == 0
 	default:
-		argsOk = false
+		setDirty(c)
+		c.WriteError(fmt.Sprintf(msgFPubsubUsageSimple, subcommand))
+		return
 	}
 
 	if !argsOk {

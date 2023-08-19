@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	gzip "github.com/klauspost/pgzip"
@@ -82,7 +83,16 @@ func DownloadFileFromStorage(destination string, decompressFile bool, sync bool,
 		return err
 	}
 
+	fStat, err := f.Stat()
+	if err != nil {
+		level.Error(logger).Log("msg", "failed to get stat for downloaded file", "err", err)
+	}
+
+	if err == nil {
+		logger = log.With(logger, "size", humanize.Bytes(uint64(fStat.Size())))
+	}
 	level.Info(logger).Log("msg", "downloaded file", "total_time", time.Since(start))
+
 	if sync {
 		return f.Sync()
 	}

@@ -1,0 +1,70 @@
+apiVersion: scorecard.operatorframework.io/v1alpha3
+kind: Configuration
+metadata:
+  name: config
+stages:
+- parallel: true
+  tests:
+  - entrypoint:
+    - scorecard-test
+    - basic-check-spec
+    image: quay.io/operator-framework/scorecard-test:v1.4.0
+    labels:
+      suite: basic
+      test: basic-check-spec-test
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - scorecard-test
+    - olm-bundle-validation
+    image: quay.io/operator-framework/scorecard-test:v1.4.0
+    labels:
+      suite: olm
+      test: olm-bundle-validation-test
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - scorecard-test
+    - olm-crds-have-validation
+    image: quay.io/operator-framework/scorecard-test:v1.4.0
+    labels:
+      suite: olm
+      test: olm-crds-have-validation-test
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - scorecard-test
+    - olm-crds-have-resources
+    image: quay.io/operator-framework/scorecard-test:v1.4.0
+    labels:
+      suite: olm
+      test: olm-crds-have-resources-test
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - scorecard-test
+    - olm-spec-descriptors
+    image: quay.io/operator-framework/scorecard-test:v1.4.0
+    labels:
+      suite: olm
+      test: olm-spec-descriptors-test
+    storage:
+      spec:
+        mountPath: {}
+  - entrypoint:
+    - scorecard-test
+    - olm-status-descriptors
+    image: quay.io/operator-framework/scorecard-test:v1.4.0
+    labels:
+      suite: olm
+      test: olm-status-descriptors-test
+    storage:
+      spec:
+        mountPath: {}
+storage:
+  spec:
+    mountPath: {}

@@ -25,10 +25,10 @@ import (
 
 	ipubsub "cloud.google.com/go/internal/pubsub"
 	vkit "cloud.google.com/go/pubsub/apiv1"
+	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 	"cloud.google.com/go/pubsub/internal/distribution"
 	gax "github.com/googleapis/gax-go/v2"
 	"github.com/googleapis/gax-go/v2/apierror"
-	pb "google.golang.org/genproto/googleapis/pubsub/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -96,9 +96,6 @@ type messageIterator struct {
 	eoMu                      sync.RWMutex
 	enableExactlyOnceDelivery bool
 	sendNewAckDeadline        bool
-	// This stores pending AckResults for cleaner shutdown when sub.Receive's ctx is cancelled.
-	// If exactly once delivery is not enabled, this map should not be populated.
-	pendingAckResults map[string]*AckResult
 }
 
 // newMessageIterator starts and returns a new messageIterator.
@@ -144,7 +141,6 @@ func newMessageIterator(subc *vkit.SubscriberClient, subName string, po *pullOpt
 		pendingAcks:        map[string]*AckResult{},
 		pendingNacks:       map[string]*AckResult{},
 		pendingModAcks:     map[string]*AckResult{},
-		pendingAckResults:  map[string]*AckResult{},
 	}
 	it.wg.Add(1)
 	go it.sender()
@@ -198,7 +194,6 @@ func (it *messageIterator) done(ackID string, ack bool, r *AckResult, receiveTim
 	it.mu.Lock()
 	defer it.mu.Unlock()
 	delete(it.keepAliveDeadlines, ackID)
-	delete(it.pendingAckResults, ackID)
 	if ack {
 		it.pendingAcks[ackID] = r
 	} else {
@@ -260,10 +255,17 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 	// do a receipt mod-ack when streaming.
 	maxExt := time.Now().Add(it.po.maxExtension)
 	ackIDs := map[string]*AckResult{}
-	it.mu.Lock()
 	it.eoMu.RLock()
-	enableExactlyOnceDelivery := it.enableExactlyOnceDelivery
+	exactlyOnceDelivery := it.enableExactlyOnceDelivery
 	it.eoMu.RUnlock()
+	it.mu.Lock()
+
+	// pendingMessages maps ackID -> message, and is used
+	// only when exactly once delivery is enabled.
+	// At first, all messages are pending, and they
+	// are removed if the modack call fails. All other
+	// messages are returned to the client for processing.
+	pendingMessages := make(map[string]*ipubsub.Message)
 	for _, m := range msgs {
 		ackID := msgAckID(m)
 		addRecv(m.ID, ackID, now)
@@ -272,31 +274,52 @@ func (it *messageIterator) receive(maxToPull int32) ([]*Message, error) {
 		// possible if there are retries.
 		if _, ok := it.pendingNacks[ackID]; !ok {
 			// Don't use the message's AckResult here since these are only for receipt modacks.
-			// ModAckResults are transparent to the user anyway so these can automatically succeed.
+			// modack results are transparent to the user so these can automatically succeed unless
+			// exactly once is enabled.
 			// We can't use an empty AckResult here either since SetAckResult will try to
 			// close the channel without checking if it exists.
-			ackIDs[ackID] = newSuccessAckResult()
-		}
-		// If exactly once is enabled, keep track of all pending AckResults
-		// so we can cleanly close them all at shutdown.
-		if enableExactlyOnceDelivery {
-			ackh, ok := ipubsub.MessageAckHandler(m).(*psAckHandler)
-			if !ok {
-				it.fail(errors.New("failed to assert type as psAckHandler"))
+			if !exactlyOnceDelivery {
+				ackIDs[ackID] = newSuccessAckResult()
+			} else {
+				ackIDs[ackID] = ipubsub.NewAckResult()
+				pendingMessages[ackID] = m
 			}
-			it.pendingAckResults[ackID] = ackh.ackResult
 		}
 	}
 	deadline := it.ackDeadline()
 	it.mu.Unlock()
-	go func() {
-		if len(ackIDs) > 0 {
-			// Don't check the return value of this since modacks are fire and forget,
-			// meaning errors should not be propagated to the client.
-			it.sendModAck(ackIDs, deadline)
+
+	if len(ackIDs) > 0 {
+		// When exactly once delivery is not enabled, modacks are fire and forget.
+		if !exactlyOnceDelivery {
+			go func() {
+				it.sendModAck(ackIDs, deadline, false)
+			}()
+			return msgs, nil
 		}
-	}()
-	return msgs, nil
+
+		// If exactly once is enabled, we should wait until modack responses are successes
+		// before attempting to process messages.
+		it.sendModAck(ackIDs, deadline, false)
+		for ackID, ar := range ackIDs {
+			ctx := context.Background()
+			_, err := ar.Get(ctx)
+			if err != nil {
+				delete(pendingMessages, ackID)
+				it.mu.Lock()
+				// Remove the message from lease management if modack fails here.
+				delete(it.keepAliveDeadlines, ackID)
+				it.mu.Unlock()
+			}
+		}
+		// Only return for processing messages that were successfully modack'ed.
+		v := make([]*ipubsub.Message, 0, len(pendingMessages))
+		for _, m := range pendingMessages {
+			v = append(v, m)
+		}
+		return v, nil
+	}
+	return nil, nil
 }
 
 // Get messages using the Pull RPC.
@@ -416,10 +439,10 @@ func (it *messageIterator) sender() {
 		}
 		if sendNacks {
 			// Nack indicated by modifying the deadline to zero.
-			it.sendModAck(nacks, 0)
+			it.sendModAck(nacks, 0, false)
 		}
 		if sendModAcks {
-			it.sendModAck(modAcks, dl)
+			it.sendModAck(modAcks, dl, true)
 		}
 		if sendPing {
 			it.pingStream()
@@ -496,7 +519,7 @@ func (it *messageIterator) sendAck(m map[string]*AckResult) {
 // percentile in order to capture the highest amount of time necessary without
 // considering 1% outliers. If the ModAck RPC fails and exactly once delivery is
 // enabled, we retry it in a separate goroutine for a short duration.
-func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Duration) {
+func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Duration, logOnInvalid bool) {
 	deadlineSec := int32(deadline / time.Second)
 	ackIDs := make([]string, 0, len(m))
 	for k := range m {
@@ -534,7 +557,7 @@ func (it *messageIterator) sendModAck(m map[string]*AckResult, deadline time.Dur
 			if len(toRetry) > 0 {
 				// Retry modacks/nacks in a separate goroutine.
 				go func() {
-					it.retryModAcks(toRetry, deadlineSec)
+					it.retryModAcks(toRetry, deadlineSec, logOnInvalid)
 				}()
 			}
 		}
@@ -580,29 +603,29 @@ func (it *messageIterator) retryAcks(m map[string]*AckResult) {
 // in it.sendModAck(), with a max of 2500 ackIDs. Modacks are retried up to 3 times
 // since after that, the message will have expired. Nacks are retried up until the default
 // deadline of 10 minutes.
-func (it *messageIterator) retryModAcks(m map[string]*AckResult, deadlineSec int32) {
+func (it *messageIterator) retryModAcks(m map[string]*AckResult, deadlineSec int32, logOnInvalid bool) {
 	bo := newExactlyOnceBackoff()
 	retryCount := 0
 	ctx, cancel := context.WithTimeout(context.Background(), exactlyOnceDeliveryRetryDeadline)
 	defer cancel()
 	for {
-		// If context is done, complete all remaining Nacks with DeadlineExceeded
-		// ModAcks are not exposed to the user so these don't need to be modified.
+		// If context is done, complete all AckResults with errors.
 		if ctx.Err() != nil {
-			if deadlineSec == 0 {
-				for _, r := range m {
-					ipubsub.SetAckResult(r, AcknowledgeStatusOther, ctx.Err())
-				}
+			for _, r := range m {
+				ipubsub.SetAckResult(r, AcknowledgeStatusOther, ctx.Err())
 			}
 			return
 		}
 		// Only retry modack requests up to 3 times.
 		if deadlineSec != 0 && retryCount > 3 {
 			ackIDs := make([]string, 0, len(m))
-			for k := range m {
+			for k, ar := range m {
 				ackIDs = append(ackIDs, k)
+				ipubsub.SetAckResult(ar, AcknowledgeStatusOther, errors.New("modack retry failed"))
 			}
-			log.Printf("automatic lease modack retry failed for following IDs: %v", ackIDs)
+			if logOnInvalid {
+				log.Printf("automatic lease modack retry failed for following IDs: %v", ackIDs)
+			}
 			return
 		}
 		// Don't need to split map since this is the retry function and
@@ -740,7 +763,7 @@ func extractMetadata(err error) (*status.Status, map[string]string) {
 	return nil, nil
 }
 
-// processResults processes AckResults by referring to errorStatus and errorsMap.
+// processResults processes AckResults by referring to errorStatus and errorsByAckID.
 // The errors returned by the server in `errorStatus` or in `errorsByAckID`
 // are used to complete the AckResults in `ackResMap` (with a success
 // or error) or to return requests for further retries.

@@ -61,11 +61,10 @@ func TestMultiIndex(t *testing.T) {
 	var indices []Index
 	dir := t.TempDir()
 	for i := 0; i < n; i++ {
-		indices = append(indices, BuildIndex(t, dir, cases))
+		indices = append(indices, BuildIndex(t, dir, cases, IndexOpts{}))
 	}
 
-	idx, err := NewMultiIndex(indices...)
-	require.Nil(t, err)
+	idx := NewMultiIndex(IndexSlice(indices))
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
 		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))

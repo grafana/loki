@@ -22,8 +22,7 @@ See https://cloud.google.com/bigtable/docs/ for general product documentation.
 See https://godoc.org/cloud.google.com/go for authentication, timeouts,
 connection pooling and similar aspects of this package.
 
-
-Reading
+# Reading
 
 The principal way to read from a Bigtable is to use the ReadRows method on
 *Table. A RowRange specifies a contiguous portion of a table. A Filter may be
@@ -49,8 +48,7 @@ To read a single row, use the ReadRow helper method:
 	}
 	// TODO: use r.
 
-
-Writing
+# Writing
 
 This API exposes two distinct forms of writing to a Bigtable: a Mutation and a
 ReadModifyWrite. The former expresses idempotent operations. The latter
@@ -88,8 +86,7 @@ To increment an encoded value in one cell:
 	}
 	// TODO: use r.
 
-
-Retries
+# Retries
 
 If a read or write operation encounters a transient error it will be retried
 until a successful response, an unretryable error or the context deadline is
@@ -98,6 +95,8 @@ not be retried. In the case of ReadRows, retried calls will not re-scan rows
 that have already been processed.
 */
 package bigtable // import "cloud.google.com/go/bigtable"
+
+import "cloud.google.com/go/bigtable/internal"
 
 // Scope constants for authentication credentials. These should be used when
 // using credential creation functions such as oauth.NewServiceAccountFromFile.
@@ -117,9 +116,13 @@ const (
 )
 
 // clientUserAgent identifies the version of this package.
-// It should be bumped upon significant changes only.
-const clientUserAgent = "cbt-go/20180601"
+// It should be the same as https://pkg.go.dev/cloud.google.com/go/bigtable.
+var clientUserAgent = "cbt-go/v" + internal.Version
 
 // resourcePrefixHeader is the name of the metadata header used to indicate
 // the resource being operated on.
 const resourcePrefixHeader = "google-cloud-resource-prefix"
+
+// requestParamsHeader is the name of the metadata header used for routing
+// requests based on resources accessed.
+const requestParamsHeader = "x-goog-request-params"

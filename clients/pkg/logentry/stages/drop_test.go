@@ -6,11 +6,11 @@ import (
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
 
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -23,15 +23,17 @@ pipeline_stages:
       app:
       msg:
 - drop:
-    source: src
+    sources:
+      - src
     expression: ".*test.*"
     older_than: 24h
     longer_than: 8kb
 - drop:
     expression: ".*app1.*"
 - drop:
-    source: app
-    value: loki
+    sources:
+      - app
+    expression: loki
 - drop:
     longer_than: 10000
 `
@@ -40,7 +42,7 @@ func Test_dropStage_Process(t *testing.T) {
 	// Enable debug logging
 	cfg := &ww.Config{}
 	require.Nil(t, cfg.LogLevel.Set("debug"))
-	util_log.InitLogger(cfg, nil)
+	util_log.InitLogger(cfg, nil, true, false)
 	Debug = true
 
 	tests := []struct {
@@ -105,7 +107,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Matched Source",
 			config: &DropConfig{
-				Source: ptrFromString("key"),
+				Source: "key",
 			},
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
@@ -116,7 +118,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Did not match Source",
 			config: &DropConfig{
-				Source: ptrFromString("key1"),
+				Source: "key1",
 			},
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
@@ -127,7 +129,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Matched Source and Value",
 			config: &DropConfig{
-				Source: ptrFromString("key"),
+				Source: "key",
 				Value:  ptrFromString("val1"),
 			},
 			labels: model.LabelSet{},
@@ -139,7 +141,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Did not match Source and Value",
 			config: &DropConfig{
-				Source: ptrFromString("key"),
+				Source: "key",
 				Value:  ptrFromString("val1"),
 			},
 			labels: model.LabelSet{},
@@ -149,21 +151,135 @@ func Test_dropStage_Process(t *testing.T) {
 			shouldDrop: false,
 		},
 		{
-			name: "Regex Matched Source and Value",
+			name: "Matched Source(int) and Value(string)",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
-				Expression: ptrFromString(".*val.*"),
+				Source: "level",
+				Value:  ptrFromString("50"),
 			},
 			labels: model.LabelSet{},
 			extracted: map[string]interface{}{
-				"key": "val1",
+				"level": 50,
 			},
 			shouldDrop: true,
 		},
 		{
-			name: "Regex Did not match Source and Value",
+			name: "Matched Source(string) and Value(string)",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "50",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Did not match Source(int) and Value(string)",
+			config: &DropConfig{
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": 100,
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Did not match Source(string) and Value(string)",
+			config: &DropConfig{
+				Source: "level",
+				Value:  ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"level": "100",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Matched Source and Value with multiple sources",
+			config: &DropConfig{
+				Source: []string{"key1", "key2"},
+				Value:  ptrFromString(`val1;val200.*`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "val1",
+				"key2": "val200.*",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Matched Source and Value with multiple sources and custom separator",
+			config: &DropConfig{
+				Source:    []string{"key1", "key2"},
+				Separator: ptrFromString("|"),
+				Value:     ptrFromString(`val1|val200[a]`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "val1",
+				"key2": "val200[a]",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Regex Matched Source(int) and Expression",
+			config: &DropConfig{
+				Source:     "key",
+				Expression: ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key": 50,
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Regex Matched Source(string) and Expression",
+			config: &DropConfig{
+				Source:     "key",
+				Expression: ptrFromString("50"),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key": "50",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Regex Matched Source and Expression with multiple sources",
+			config: &DropConfig{
+				Source:     []string{"key1", "key2"},
+				Expression: ptrFromString(`val\d{1};val\d{3}$`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "val1",
+				"key2": "val200",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Regex Matched Source and Expression with multiple sources and custom separator",
+			config: &DropConfig{
+				Source:     []string{"key1", "key2"},
+				Separator:  ptrFromString("#"),
+				Expression: ptrFromString(`val\d{1}#val\d{3}$`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "val1",
+				"key2": "val200",
+			},
+			shouldDrop: true,
+		},
+		{
+			name: "Regex Did not match Source and Expression",
+			config: &DropConfig{
+				Source:     "key",
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels: model.LabelSet{},
@@ -173,9 +289,36 @@ func Test_dropStage_Process(t *testing.T) {
 			shouldDrop: false,
 		},
 		{
+			name: "Regex Did not match Source and Expression with multiple sources",
+			config: &DropConfig{
+				Source:     []string{"key1", "key2"},
+				Expression: ptrFromString(`match\d+;match\d+`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "match1",
+				"key2": "notmatch2",
+			},
+			shouldDrop: false,
+		},
+		{
+			name: "Regex Did not match Source and Expression with multiple sources and custom separator",
+			config: &DropConfig{
+				Source:     []string{"key1", "key2"},
+				Separator:  ptrFromString("#"),
+				Expression: ptrFromString(`match\d;match\d`),
+			},
+			labels: model.LabelSet{},
+			extracted: map[string]interface{}{
+				"key1": "match1",
+				"key2": "match2",
+			},
+			shouldDrop: false,
+		},
+		{
 			name: "Regex No Matching Source",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
+				Source:     "key",
 				Expression: ptrFromString(".*val.*"),
 			},
 			labels: model.LabelSet{},
@@ -207,7 +350,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Match Source and Length Both Match",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
+				Source:     "key",
 				LongerThan: ptrFromString("10b"),
 			},
 			labels: model.LabelSet{},
@@ -220,7 +363,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Match Source and Length Only First Matches",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
+				Source:     "key",
 				LongerThan: ptrFromString("10b"),
 			},
 			labels: model.LabelSet{},
@@ -233,7 +376,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Match Source and Length Only Second Matches",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
+				Source:     "key",
 				LongerThan: ptrFromString("10b"),
 			},
 			labels: model.LabelSet{},
@@ -246,7 +389,7 @@ func Test_dropStage_Process(t *testing.T) {
 		{
 			name: "Everything Must Match",
 			config: &DropConfig{
-				Source:     ptrFromString("key"),
+				Source:     "key",
 				Expression: ptrFromString(".*val.*"),
 				OlderThan:  ptrFromString("1h"),
 				LongerThan: ptrFromString("10b"),
@@ -300,8 +443,6 @@ func TestDropPipeline(t *testing.T) {
 
 var (
 	dropInvalidDur      = "10y"
-	dropVal             = "msg"
-	dropRegex           = ".*blah"
 	dropInvalidRegex    = "(?P<ts[0-9]+).*"
 	dropInvalidByteSize = "23QB"
 )
@@ -329,14 +470,6 @@ func Test_validateDropConfig(t *testing.T) {
 			),
 		},
 		{
-			name: "Invalid Config",
-			config: &DropConfig{
-				Value:      &dropVal,
-				Expression: &dropRegex,
-			},
-			wantErr: errors.New(ErrDropStageInvalidConfig),
-		},
-		{
 			name: "Invalid Regex",
 			config: &DropConfig{
 				Expression: &dropInvalidRegex,
@@ -349,6 +482,13 @@ func Test_validateDropConfig(t *testing.T) {
 				LongerThan: &dropInvalidByteSize,
 			},
 			wantErr: fmt.Errorf(ErrDropStageInvalidByteSize, "strconv.UnmarshalText: parsing \"23QB\": invalid syntax"),
+		},
+		{
+			name: "Invalid Source Field Type",
+			config: &DropConfig{
+				Source: 1,
+			},
+			wantErr: errors.New(ErrDropStageInvalidSource),
 		},
 	}
 	for _, tt := range tests {

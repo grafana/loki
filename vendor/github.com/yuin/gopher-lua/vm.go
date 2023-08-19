@@ -549,7 +549,7 @@ func init() {
 					if ret.Type() == LTNumber {
 						reg.SetNumber(RA, ret.(LNumber))
 					} else {
-						reg.SetNumber(RA, LNumber(0))
+						reg.Set(RA, ret)
 					}
 				} else if lv.Type() == LTTable {
 					reg.SetNumber(RA, LNumber(lv.(*LTable).Len()))
@@ -728,26 +728,30 @@ func init() {
 						proto := cf.Fn.Proto
 						nargs := cf.NArgs
 						np := int(proto.NumParameters)
-						newSize := cf.LocalBase + np
-						// this section is inlined by go-inline
-						// source function is 'func (rg *registry) checkSize(requiredSize int) ' in '_state.go'
-						{
-							rg := ls.reg
-							requiredSize := newSize
-							if requiredSize > cap(rg.array) {
-								rg.resize(requiredSize)
+						if nargs < np {
+							// default any missing arguments to nil
+							newSize := cf.LocalBase + np
+							// this section is inlined by go-inline
+							// source function is 'func (rg *registry) checkSize(requiredSize int) ' in '_state.go'
+							{
+								rg := ls.reg
+								requiredSize := newSize
+								if requiredSize > cap(rg.array) {
+									rg.resize(requiredSize)
+								}
 							}
-						}
-						for i := nargs; i < np; i++ {
-							ls.reg.array[cf.LocalBase+i] = LNil
+							for i := nargs; i < np; i++ {
+								ls.reg.array[cf.LocalBase+i] = LNil
+							}
 							nargs = np
+							ls.reg.top = newSize
 						}
 
 						if (proto.IsVarArg & VarArgIsVarArg) == 0 {
 							if nargs < int(proto.NumUsedRegisters) {
 								nargs = int(proto.NumUsedRegisters)
 							}
-							newSize = cf.LocalBase + nargs
+							newSize := cf.LocalBase + nargs
 							// this section is inlined by go-inline
 							// source function is 'func (rg *registry) checkSize(requiredSize int) ' in '_state.go'
 							{
@@ -906,26 +910,30 @@ func init() {
 						proto := cf.Fn.Proto
 						nargs := cf.NArgs
 						np := int(proto.NumParameters)
-						newSize := cf.LocalBase + np
-						// this section is inlined by go-inline
-						// source function is 'func (rg *registry) checkSize(requiredSize int) ' in '_state.go'
-						{
-							rg := ls.reg
-							requiredSize := newSize
-							if requiredSize > cap(rg.array) {
-								rg.resize(requiredSize)
+						if nargs < np {
+							// default any missing arguments to nil
+							newSize := cf.LocalBase + np
+							// this section is inlined by go-inline
+							// source function is 'func (rg *registry) checkSize(requiredSize int) ' in '_state.go'
+							{
+								rg := ls.reg
+								requiredSize := newSize
+								if requiredSize > cap(rg.array) {
+									rg.resize(requiredSize)
+								}
 							}
-						}
-						for i := nargs; i < np; i++ {
-							ls.reg.array[cf.LocalBase+i] = LNil
+							for i := nargs; i < np; i++ {
+								ls.reg.array[cf.LocalBase+i] = LNil
+							}
 							nargs = np
+							ls.reg.top = newSize
 						}
 
 						if (proto.IsVarArg & VarArgIsVarArg) == 0 {
 							if nargs < int(proto.NumUsedRegisters) {
 								nargs = int(proto.NumUsedRegisters)
 							}
-							newSize = cf.LocalBase + nargs
+							newSize := cf.LocalBase + nargs
 							// this section is inlined by go-inline
 							// source function is 'func (rg *registry) checkSize(requiredSize int) ' in '_state.go'
 							{
@@ -1525,7 +1533,7 @@ func luaModulo(lhs, rhs LNumber) LNumber {
 	flhs := float64(lhs)
 	frhs := float64(rhs)
 	v := math.Mod(flhs, frhs)
-	if flhs < 0 || frhs < 0 && !(flhs < 0 && frhs < 0) {
+	if frhs > 0 && v < 0 || frhs < 0 && v > 0 {
 		v += frhs
 	}
 	return LNumber(v)

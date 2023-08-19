@@ -10,9 +10,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/storage/config"
@@ -39,6 +39,7 @@ type dynamoTableClient struct {
 	callManager callManager
 	autoscale   autoscale
 	metrics     *dynamoDBMetrics
+	kmsKeyID    string
 }
 
 // NewDynamoDBTableClient makes a new DynamoTableClient.
@@ -66,6 +67,7 @@ func NewDynamoDBTableClient(cfg DynamoDBConfig, reg prometheus.Registerer) (inde
 		callManager: callManager,
 		autoscale:   autoscale,
 		metrics:     newMetrics(reg),
+		kmsKeyID:    cfg.KMSKeyID,
 	}, nil
 }
 
@@ -88,7 +90,7 @@ func (d callManager) backoffAndRetry(ctx context.Context, fn func(context.Contex
 				level.Warn(log.WithContext(ctx, log.Logger)).Log("msg", "got error, backing off and retrying", "err", err, "retry", backoff.NumRetries())
 				backoff.Wait()
 				continue
-			} else {
+			} else { //nolint:revive
 				return err
 			}
 		}
@@ -159,6 +161,15 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc config.TableDes
 					ReadCapacityUnits:  aws.Int64(desc.ProvisionedRead),
 					WriteCapacityUnits: aws.Int64(desc.ProvisionedWrite),
 				}
+			}
+
+			if d.kmsKeyID != "" {
+				sseSpecification := &dynamodb.SSESpecification{
+					Enabled:        aws.Bool(true),
+					SSEType:        aws.String(dynamodb.SSETypeKms),
+					KMSMasterKeyId: aws.String(d.kmsKeyID),
+				}
+				input.SetSSESpecification(sseSpecification)
 			}
 
 			output, err := d.DynamoDB.CreateTableWithContext(ctx, input)

@@ -3,7 +3,10 @@ package marshal
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
+	"reflect"
 	"testing"
+	"testing/quick"
 	"time"
 
 	json "github.com/json-iterator/go"
@@ -31,6 +34,14 @@ var queryTests = []struct {
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
 					},
+					{
+						Timestamp: time.Unix(0, 123456789012346),
+						Line:      "super line with labels",
+						NonIndexedLabels: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+					},
 				},
 				Labels: `{test="test"}`,
 			},
@@ -45,7 +56,8 @@ var queryTests = []struct {
 							"test": "test"
 						},
 						"values":[
-							[ "123456789012345", "super line" ]
+							[ "123456789012345", "super line"],
+							[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 						]
 					}
 				],
@@ -59,8 +71,11 @@ var queryTests = []struct {
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
+								"decompressedNonIndexedLabelsBytes": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+								"headChunkNonIndexedLabelsBytes": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						},
@@ -78,8 +93,11 @@ var queryTests = []struct {
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
+								"decompressedNonIndexedLabelsBytes": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+								"headChunkNonIndexedLabelsBytes": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						}
@@ -91,7 +109,8 @@ var queryTests = []struct {
 							"entriesStored": 0,
 							"bytesReceived": 0,
 							"bytesSent": 0,
-							"requests": 0
+							"requests": 0,
+							"downloadTime": 0
 						},
 						"index": {
 							"entriesFound": 0,
@@ -99,7 +118,17 @@ var queryTests = []struct {
 							"entriesStored": 0,
 							"bytesReceived": 0,
 							"bytesSent": 0,
-							"requests": 0
+							"requests": 0,
+							"downloadTime": 0
+						},
+						"statsResult": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
 						},
 						"result": {
 							"entriesFound": 0,
@@ -107,7 +136,8 @@ var queryTests = []struct {
 							"entriesStored": 0,
 							"bytesReceived": 0,
 							"bytesSent": 0,
-							"requests": 0
+							"requests": 0,
+							"downloadTime": 0
 						}
 					},
 					"summary": {
@@ -115,10 +145,14 @@ var queryTests = []struct {
 						"execTime": 0,
 						"linesProcessedPerSecond": 0,
 						"queueTime": 0,
+                        "shards": 0,
+                        "splits": 0,
 						"subqueries": 0,
-						"totalBytesProcessed":0,
-                                                "totalEntriesReturned":0,
-						"totalLinesProcessed":0
+						"totalBytesProcessed": 0,
+                        "totalEntriesReturned": 0,
+						"totalLinesProcessed": 0,
+						"totalNonIndexedLabelsBytesProcessed": 0,
+                        "totalPostFilterLines": 0
 					}
 				}
 			}
@@ -128,10 +162,8 @@ var queryTests = []struct {
 	{
 		promql.Vector{
 			{
-				Point: promql.Point{
-					T: 1568404331324,
-					V: 0.013333333333333334,
-				},
+				T: 1568404331324,
+				F: 0.013333333333333334,
 				Metric: []labels.Label{
 					{
 						Name:  "filename",
@@ -144,10 +176,8 @@ var queryTests = []struct {
 				},
 			},
 			{
-				Point: promql.Point{
-					T: 1568404331324,
-					V: 3.45,
-				},
+				T: 1568404331324,
+				F: 3.45,
 				Metric: []labels.Label{
 					{
 						Name:  "filename",
@@ -195,8 +225,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -214,8 +247,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -227,7 +263,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"index": {
 						"entriesFound": 0,
@@ -235,7 +272,17 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"result": {
 						"entriesFound": 0,
@@ -243,7 +290,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					}
 				},
 				"summary": {
@@ -251,10 +299,14 @@ var queryTests = []struct {
 					"execTime": 0,
 					"linesProcessedPerSecond": 0,
 					"queueTime": 0,
+                    "shards": 0,
+                    "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -265,10 +317,10 @@ var queryTests = []struct {
 	{
 		promql.Matrix{
 			{
-				Points: []promql.Point{
+				Floats: []promql.FPoint{
 					{
 						T: 1568404331324,
-						V: 0.013333333333333334,
+						F: 0.013333333333333334,
 					},
 				},
 				Metric: []labels.Label{
@@ -283,14 +335,14 @@ var queryTests = []struct {
 				},
 			},
 			{
-				Points: []promql.Point{
+				Floats: []promql.FPoint{
 					{
 						T: 1568404331324,
-						V: 3.45,
+						F: 3.45,
 					},
 					{
 						T: 1568404331339,
-						V: 4.45,
+						F: 4.45,
 					},
 				},
 				Metric: []labels.Label{
@@ -348,8 +400,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -367,8 +422,11 @@ var queryTests = []struct {
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -380,7 +438,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"index": {
 						"entriesFound": 0,
@@ -388,7 +447,17 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
 					},
 					"result": {
 						"entriesFound": 0,
@@ -396,7 +465,8 @@ var queryTests = []struct {
 						"entriesStored": 0,
 						"bytesReceived": 0,
 						"bytesSent": 0,
-						"requests": 0
+						"requests": 0,
+						"downloadTime": 0
 					}
 				},
 				"summary": {
@@ -404,10 +474,14 @@ var queryTests = []struct {
 					"execTime": 0,
 					"linesProcessedPerSecond": 0,
 					"queueTime": 0,
+                    "shards": 0,
+                    "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -447,6 +521,14 @@ var tailTests = []struct {
 							Timestamp: time.Unix(0, 123456789012345),
 							Line:      "super line",
 						},
+						{
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							NonIndexedLabels: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
 					},
 					Labels: "{test=\"test\"}",
 				},
@@ -465,7 +547,8 @@ var tailTests = []struct {
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line" ]
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 					]
 				}
 			],
@@ -487,7 +570,7 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b)
 		require.NoError(t, err)
 
-		testJSONBytesEqual(t, []byte(queryTest.expected), b.Bytes(), "Query Test %d failed", i)
+		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
 	}
 }
 
@@ -497,8 +580,27 @@ func Test_WriteLabelResponseJSON(t *testing.T) {
 		err := WriteLabelResponseJSON(labelTest.actual, &b)
 		require.NoError(t, err)
 
-		testJSONBytesEqual(t, []byte(labelTest.expected), b.Bytes(), "Label Test %d failed", i)
+		require.JSONEqf(t, labelTest.expected, b.String(), "Label Test %d failed", i)
 	}
+}
+
+func Test_WriteQueryResponseJSONWithError(t *testing.T) {
+	broken := logqlmodel.Result{
+		Data: logqlmodel.Streams{
+			logproto.Stream{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+					},
+				},
+				Labels: `{testtest"}`,
+			},
+		},
+	}
+	var b bytes.Buffer
+	err := WriteQueryResponseJSON(broken, &b)
+	require.Error(t, err)
 }
 
 func Test_MarshalTailResponse(t *testing.T) {
@@ -511,7 +613,7 @@ func Test_MarshalTailResponse(t *testing.T) {
 		bytes, err := json.Marshal(model)
 		require.NoError(t, err)
 
-		testJSONBytesEqual(t, []byte(tailTest.expected), bytes, "Tail Test %d failed", i)
+		require.JSONEqf(t, tailTest.expected, string(bytes), "Tail Test %d failed", i)
 	}
 }
 
@@ -567,7 +669,7 @@ func Test_LabelResponseMarshalLoop(t *testing.T) {
 		jsonOut, err := json.Marshal(r)
 		require.NoError(t, err)
 
-		testJSONBytesEqual(t, []byte(labelTest.expected), jsonOut, "Label Marshal Loop %d failed", i)
+		require.JSONEqf(t, labelTest.expected, string(jsonOut), "Label Marshal Loop %d failed", i)
 	}
 }
 
@@ -581,7 +683,7 @@ func Test_TailResponseMarshalLoop(t *testing.T) {
 		jsonOut, err := json.Marshal(r)
 		require.NoError(t, err)
 
-		testJSONBytesEqual(t, []byte(tailTest.expected), jsonOut, "Tail Marshal Loop %d failed", i)
+		require.JSONEqf(t, tailTest.expected, string(jsonOut), "Tail Marshal Loop %d failed", i)
 	}
 }
 
@@ -615,21 +717,131 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			err := WriteSeriesResponseJSON(tc.input, &b)
 			require.NoError(t, err)
 
-			testJSONBytesEqual(t, []byte(tc.expected), b.Bytes(), "Label Test %d failed", i)
+			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
 		})
 	}
 }
 
-func testJSONBytesEqual(t *testing.T, expected []byte, actual []byte, msg string, args ...interface{}) {
-	var expectedValue map[string]interface{}
-	err := json.Unmarshal(expected, &expectedValue)
-	require.NoError(t, err)
+// wrappedValue and its Generate method is used by quick to generate a random
+// parser.Value.
+type wrappedValue struct {
+	parser.Value
+}
 
-	var actualValue map[string]interface{}
-	err = json.Unmarshal(actual, &actualValue)
-	require.NoError(t, err)
+func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
+	types := []string{
+		loghttp.ResultTypeMatrix,
+		loghttp.ResultTypeScalar,
+		loghttp.ResultTypeStream,
+		loghttp.ResultTypeVector,
+	}
+	t := types[rand.Intn(len(types))]
 
-	require.Equalf(t, expectedValue, actualValue, msg, args)
+	switch t {
+	case loghttp.ResultTypeMatrix:
+		s, _ := quick.Value(reflect.TypeOf(promql.Series{}), rand)
+		series, _ := s.Interface().(promql.Series)
+
+		l, _ := quick.Value(reflect.TypeOf(labels.Labels{}), rand)
+		series.Metric = l.Interface().(labels.Labels)
+
+		matrix := promql.Matrix{series}
+		return reflect.ValueOf(wrappedValue{matrix})
+	case loghttp.ResultTypeScalar:
+		q, _ := quick.Value(reflect.TypeOf(promql.Scalar{}), rand)
+		return reflect.ValueOf(wrappedValue{q.Interface().(parser.Value)})
+	case loghttp.ResultTypeStream:
+		var streams logqlmodel.Streams
+		for i := 0; i < rand.Intn(100); i++ {
+			stream := logproto.Stream{
+				Labels:  randLabels(rand).String(),
+				Entries: randEntries(rand),
+				Hash:    0,
+			}
+
+			streams = append(streams, stream)
+		}
+		return reflect.ValueOf(wrappedValue{streams})
+	case loghttp.ResultTypeVector:
+		var vector promql.Vector
+		for i := 0; i < rand.Intn(100); i++ {
+			v, _ := quick.Value(reflect.TypeOf(promql.Sample{}), rand)
+			sample, _ := v.Interface().(promql.Sample)
+
+			l, _ := quick.Value(reflect.TypeOf(labels.Labels{}), rand)
+			sample.Metric = l.Interface().(labels.Labels)
+			vector = append(vector, sample)
+		}
+		return reflect.ValueOf(wrappedValue{vector})
+
+	}
+	return reflect.ValueOf(nil)
+}
+
+var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_")
+
+func randLabel(rand *rand.Rand) labels.Label {
+	var label labels.Label
+	b := make([]rune, 10)
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	b[0] = 'n'
+	label.Name = string(b)
+
+	for i := range b {
+		b[i] = letterRunes[rand.Intn(len(letterRunes))]
+	}
+	b[0] = 'v'
+	label.Value = string(b)
+
+	return label
+}
+
+func randLabels(rand *rand.Rand) labels.Labels {
+	var labels labels.Labels
+	nLabels := rand.Intn(100)
+	for i := 0; i < nLabels; i++ {
+		labels = append(labels, randLabel(rand))
+	}
+
+	return labels
+}
+
+func randEntries(rand *rand.Rand) []logproto.Entry {
+	var entries []logproto.Entry
+	nEntries := rand.Intn(100)
+	for i := 0; i < nEntries; i++ {
+		l, _ := quick.Value(reflect.TypeOf(""), rand)
+		entries = append(entries, logproto.Entry{Timestamp: time.Now(), Line: l.Interface().(string)})
+	}
+
+	return entries
+}
+
+func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
+	f := func(w wrappedValue) bool {
+		var buf bytes.Buffer
+		js := json.NewStream(json.ConfigFastest, &buf, 0)
+		err := encodeResult(w.Value, js)
+		require.NoError(t, err)
+		js.Flush()
+		actual := buf.String()
+
+		buf.Reset()
+		v, err := NewResultValue(w.Value)
+		require.NoError(t, err)
+		js.WriteVal(v)
+		js.Flush()
+		expected := buf.String()
+
+		require.JSONEq(t, expected, actual)
+		return true
+	}
+
+	if err := quick.Check(f, nil); err != nil {
+		t.Error(err)
+	}
 }
 
 func Benchmark_Encode(b *testing.B) {
@@ -638,6 +850,7 @@ func Benchmark_Encode(b *testing.B) {
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
 			require.NoError(b, WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, buf))
+			buf.Reset()
 		}
 	}
 }

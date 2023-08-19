@@ -7,6 +7,7 @@ package zstd
 import (
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"math/bits"
 )
@@ -58,13 +59,6 @@ func (b *bitReader) getBits(n uint8) int {
 func (b *bitReader) get32BitsFast(n uint8) uint32 {
 	const regMask = 64 - 1
 	v := uint32((b.value << (b.bitsRead & regMask)) >> ((regMask + 1 - n) & regMask))
-	b.bitsRead += n
-	return v
-}
-
-func (b *bitReader) get16BitsFast(n uint8) uint16 {
-	const regMask = 64 - 1
-	v := uint16((b.value << (b.bitsRead & regMask)) >> ((regMask + 1 - n) & regMask))
 	b.bitsRead += n
 	return v
 }
@@ -132,6 +126,9 @@ func (b *bitReader) remain() uint {
 func (b *bitReader) close() error {
 	// Release reference.
 	b.in = nil
+	if !b.finished() {
+		return fmt.Errorf("%d extra bits on block, should be 0", b.remain())
+	}
 	if b.bitsRead > 64 {
 		return io.ErrUnexpectedEOF
 	}

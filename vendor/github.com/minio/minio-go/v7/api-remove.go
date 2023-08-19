@@ -82,8 +82,8 @@ func (c *Client) RemoveBucketWithOptions(ctx context.Context, bucketName string,
 
 // RemoveBucket deletes the bucket name.
 //
-//  All objects (including all object versions and delete markers).
-//  in the bucket must be deleted before successfully attempting this request.
+//	All objects (including all object versions and delete markers).
+//	in the bucket must be deleted before successfully attempting this request.
 func (c *Client) RemoveBucket(ctx context.Context, bucketName string) error {
 	// Input validation.
 	if err := s3utils.CheckValidBucketName(bucketName); err != nil {
@@ -112,10 +112,11 @@ func (c *Client) RemoveBucket(ctx context.Context, bucketName string) error {
 
 // AdvancedRemoveOptions intended for internal use by replication
 type AdvancedRemoveOptions struct {
-	ReplicationDeleteMarker bool
-	ReplicationStatus       ReplicationStatus
-	ReplicationMTime        time.Time
-	ReplicationRequest      bool
+	ReplicationDeleteMarker  bool
+	ReplicationStatus        ReplicationStatus
+	ReplicationMTime         time.Time
+	ReplicationRequest       bool
+	ReplicationValidityCheck bool // check permissions
 }
 
 // RemoveObjectOptions represents options specified by user for RemoveObject call
@@ -166,7 +167,10 @@ func (c *Client) removeObject(ctx context.Context, bucketName, objectName string
 		headers.Set(amzBucketReplicationStatus, string(opts.Internal.ReplicationStatus))
 	}
 	if opts.Internal.ReplicationRequest {
-		headers.Set(minIOBucketReplicationRequest, "")
+		headers.Set(minIOBucketReplicationRequest, "true")
+	}
+	if opts.Internal.ReplicationValidityCheck {
+		headers.Set(minIOBucketReplicationCheck, "true")
 	}
 	if opts.ForceDelete {
 		headers.Set(minIOForceDelete, "true")
@@ -235,7 +239,7 @@ func generateRemoveMultiObjectsRequest(objects []ObjectInfo) []byte {
 
 // processRemoveMultiObjectsResponse - parse the remove multi objects web service
 // and return the success/failure result status for each object
-func processRemoveMultiObjectsResponse(body io.Reader, objects []ObjectInfo, resultCh chan<- RemoveObjectResult) {
+func processRemoveMultiObjectsResponse(body io.Reader, resultCh chan<- RemoveObjectResult) {
 	// Parse multi delete XML response
 	rmResult := &deleteMultiObjectsResult{}
 	err := xmlDecoder(body, rmResult)
@@ -459,7 +463,7 @@ func (c *Client) removeObjects(ctx context.Context, bucketName string, objectsCh
 		}
 
 		// Process multiobjects remove xml response
-		processRemoveMultiObjectsResponse(resp.Body, batch, resultCh)
+		processRemoveMultiObjectsResponse(resp.Body, resultCh)
 
 		closeResponse(resp)
 	}

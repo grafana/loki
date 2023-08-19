@@ -5,15 +5,21 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -22,6 +28,7 @@ import (
 type IngesterQuerier interface {
 	GetChunkIDs(ctx context.Context, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 type AsyncStoreCfg struct {
@@ -50,6 +57,12 @@ func NewAsyncStore(cfg AsyncStoreCfg, store stores.Store, scfg config.SchemaConf
 	}
 }
 
+// queryIngesters uses the queryIngestersWithin flag but will always query them when it's 0.
+func (a *AsyncStore) shouldQueryIngesters(through, now model.Time) bool {
+	// don't query ingesters if the query does not overlap with queryIngestersWithin.
+	return a.queryIngestersWithin == 0 || through.After(now.Add(-a.queryIngestersWithin))
+}
+
 func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	spanLogger := spanlogger.FromContext(ctx)
 
@@ -66,13 +79,10 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 	var ingesterChunks []string
 
 	go func() {
-		if a.queryIngestersWithin != 0 {
-			// don't query ingesters if the query does not overlap with queryIngestersWithin.
-			if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
-				level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
-				errs <- nil
-				return
-			}
+		if !a.shouldQueryIngesters(through, model.Now()) {
+			level.Debug(util_log.Logger).Log("msg", "skipping querying ingesters for chunk ids", "query-from", from, "query-through", through)
+			errs <- nil
+			return
 		}
 
 		var err error
@@ -100,28 +110,44 @@ func (a *AsyncStore) GetChunkRefs(ctx context.Context, userID string, from, thro
 }
 
 func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	if a.queryIngestersWithin != 0 {
-		// don't query ingesters if the query does not overlap with queryIngestersWithin.
-		if !through.After(model.Now().Add(-a.queryIngestersWithin)) {
-			return a.Store.Stats(ctx, userID, from, through, matchers...)
-		}
-	}
 
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	matchersStr := syntax.MatchersString(matchers)
 	type f func() (*stats.Stats, error)
-	jobs := []f{
-		f(func() (*stats.Stats, error) {
-			return a.ingesterQuerier.Stats(ctx, userID, from, through, matchers...)
-		}),
-		f(func() (*stats.Stats, error) {
-			return a.Store.Stats(ctx, userID, from, through, matchers...)
-		}),
-	}
-	resps := make([]*stats.Stats, len(jobs))
+	var jobs []f
 
+	if a.shouldQueryIngesters(through, model.Now()) {
+		jobs = append(jobs, f(func() (*stats.Stats, error) {
+			stats, err := a.ingesterQuerier.Stats(ctx, userID, from, through, matchers...)
+			level.Debug(logger).Log(
+				append(
+					stats.LoggingKeyValues(),
+					"msg", "queried statistics",
+					"matchers", matchersStr,
+					"source", "ingesters",
+				)...,
+			)
+			return stats, err
+		}))
+	}
+	jobs = append(jobs, f(func() (*stats.Stats, error) {
+		stats, err := a.Store.Stats(ctx, userID, from, through, matchers...)
+		level.Debug(logger).Log(
+			append(
+				stats.LoggingKeyValues(),
+				"msg", "queried statistics",
+				"matchers", matchersStr,
+				"source", "store",
+			)...,
+		)
+		return stats, err
+	}))
+
+	resps := make([]*stats.Stats, len(jobs))
 	if err := concurrency.ForEachJob(
 		ctx,
 		len(jobs),
-		2,
+		len(jobs),
 		func(ctx context.Context, i int) error {
 			resp, err := jobs[i]()
 			resps[i] = resp
@@ -131,8 +157,68 @@ func (a *AsyncStore) Stats(ctx context.Context, userID string, from, through mod
 		return nil, err
 	}
 
+	// TODO: fix inflated stats. This happens because:
+	//       - All ingesters are queried. Since we have a replication factor of 3, we get 3x the stats.
+	//       - For the same timespan, we are querying the store as well. This means we can get duplicated stats for
+	//         chunks that are already in the store but also still in the ingesters.
 	merged := stats.MergeStats(resps...)
 	return &merged, nil
+}
+
+func (a *AsyncStore) Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "AsyncStore.Volume")
+	defer sp.Finish()
+
+	logger := util_log.WithContext(ctx, util_log.Logger)
+	matchersStr := syntax.MatchersString(matchers)
+	type f func() (*logproto.VolumeResponse, error)
+	var jobs []f
+
+	if a.shouldQueryIngesters(through, model.Now()) {
+		jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
+			vols, err := a.ingesterQuerier.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+			level.Debug(logger).Log(
+				"msg", "queried label volumes",
+				"matchers", matchersStr,
+				"source", "ingesters",
+			)
+			return vols, err
+		})
+	}
+	jobs = append(jobs, func() (*logproto.VolumeResponse, error) {
+		vols, err := a.Store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+		level.Debug(logger).Log(
+			"msg", "queried label volume",
+			"matchers", matchersStr,
+			"source", "store",
+		)
+		return vols, err
+	})
+
+	resps := make([]*logproto.VolumeResponse, len(jobs))
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		len(jobs),
+		func(ctx context.Context, i int) error {
+			resp, err := jobs[i]()
+			resps[i] = resp
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	sp.LogKV(
+		"user", userID,
+		"from", from.Time(),
+		"through", through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", limit,
+	)
+
+	merged := seriesvolume.Merge(resps, limit)
+	return merged, nil
 }
 
 func (a *AsyncStore) mergeIngesterAndStoreChunks(userID string, storeChunks [][]chunk.Chunk, fetchers []*fetcher.Fetcher, ingesterChunkIDs []string) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {

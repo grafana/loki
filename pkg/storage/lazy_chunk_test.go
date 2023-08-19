@@ -22,6 +22,7 @@ func TestLazyChunkIterator(t *testing.T) {
 		chunk    *LazyChunk
 		expected []logproto.Stream
 	}{
+		// TODO: Add tests for metadata labels.
 		{
 			newLazyChunk(logproto.Stream{
 				Labels: fooLabelsWithName.String(),
@@ -177,7 +178,7 @@ func (fakeBlock) Entries() int     { return 0 }
 func (fakeBlock) Offset() int      { return 0 }
 func (f fakeBlock) MinTime() int64 { return f.mint }
 func (f fakeBlock) MaxTime() int64 { return f.maxt }
-func (fakeBlock) Iterator(context.Context, log.StreamPipeline) iter.EntryIterator {
+func (fakeBlock) Iterator(context.Context, log.StreamPipeline, ...iter.EntryIteratorOption) iter.EntryIterator {
 	return nil
 }
 

@@ -191,10 +191,9 @@ func (d Decimal128) IsNaN() bool {
 
 // IsInf returns:
 //
-//   +1 d == Infinity
-//    0 other case
-//   -1 d == -Infinity
-//
+//	+1 d == Infinity
+//	 0 other case
+//	-1 d == -Infinity
 func (d Decimal128) IsInf() int {
 	if d.h>>58&(1<<5-1) != 0x1E {
 		return 0

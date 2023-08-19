@@ -25,7 +25,7 @@ import (
 var _ io.ReadCloser = &bodyWrapper{}
 
 // bodyWrapper wraps a http.Request.Body (an io.ReadCloser) to track the number
-// of bytes read and the last error
+// of bytes read and the last error.
 type bodyWrapper struct {
 	io.ReadCloser
 	record func(n int64) // must not be nil

@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 
 	"github.com/grafana/dskit/tenant"
@@ -19,7 +19,6 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/util"
-	loki_util "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -292,7 +291,7 @@ func (i *Ingester) flushChunks(ctx context.Context, fp model.Fingerprint, labelP
 			return fmt.Errorf("chunk close for flushing: %w", err)
 		}
 
-		firstTime, lastTime := loki_util.RoundToMilliseconds(c.chunk.Bounds())
+		firstTime, lastTime := util.RoundToMilliseconds(c.chunk.Bounds())
 		ch := chunk.NewChunk(
 			userID, fp, metric,
 			chunkenc.NewFacade(c.chunk, i.cfg.BlockSize, i.cfg.TargetChunkSize),
@@ -403,5 +402,5 @@ func (i *Ingester) reportFlushedChunkStatistics(ch *chunk.Chunk, desc *chunkDesc
 	i.metrics.flushedChunksLinesStats.Record(float64(numEntries))
 	i.metrics.flushedChunksUtilizationStats.Record(utilization)
 	i.metrics.flushedChunksAgeStats.Record(time.Since(boundsFrom).Seconds())
-	i.metrics.flushedChunksLifespanStats.Record(boundsTo.Sub(boundsFrom).Hours())
+	i.metrics.flushedChunksLifespanStats.Record(boundsTo.Sub(boundsFrom).Seconds())
 }

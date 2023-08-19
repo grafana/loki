@@ -2,11 +2,13 @@ package base
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"reflect"
 	"sort"
@@ -24,6 +26,7 @@ import (
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/prometheus/common/model"
@@ -35,7 +38,6 @@ import (
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"google.golang.org/grpc"
 	"gopkg.in/yaml.v2"
@@ -44,6 +46,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/series"
+	"github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/rulespb"
 	"github.com/grafana/loki/pkg/ruler/rulestore"
 	"github.com/grafana/loki/pkg/ruler/rulestore/objectclient"
@@ -83,6 +86,7 @@ type ruleLimits struct {
 	tenantShard          int
 	maxRulesPerRuleGroup int
 	maxRuleGroups        int
+	alertManagerConfig   map[string]*config.AlertManagerConfig
 }
 
 func (r ruleLimits) EvaluationDelay(_ string) time.Duration {
@@ -99,6 +103,10 @@ func (r ruleLimits) RulerMaxRuleGroupsPerTenant(_ string) int {
 
 func (r ruleLimits) RulerMaxRulesPerRuleGroup(_ string) int {
 	return r.maxRulesPerRuleGroup
+}
+
+func (r ruleLimits) RulerAlertManagerConfig(tenantID string) *config.AlertManagerConfig {
+	return r.alertManagerConfig[tenantID]
 }
 
 func testQueryableFunc(q storage.Querier) storage.QueryableFunc {
@@ -139,7 +147,19 @@ func testSetup(t *testing.T, q storage.Querier) (*promql.Engine, storage.Queryab
 
 func newManager(t *testing.T, cfg Config, q storage.Querier) *DefaultMultiTenantManager {
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
-	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger)
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
+	require.NoError(t, err)
+
+	return manager
+}
+
+func newMultiTenantManager(t *testing.T, cfg Config, q storage.Querier, amConf map[string]*config.AlertManagerConfig) *DefaultMultiTenantManager {
+	engine, queryable, pusher, logger, _, reg := testSetup(t, q)
+
+	overrides := ruleLimits{evalDelay: 0, maxRuleGroups: 20, maxRulesPerRuleGroup: 15}
+	overrides.alertManagerConfig = amConf
+
+	manager, err := NewDefaultMultiTenantManager(cfg, DefaultTenantManagerFactory(cfg, pusher, queryable, engine, overrides, nil), reg, logger, overrides)
 	require.NoError(t, err)
 
 	return manager
@@ -184,12 +204,15 @@ func newMockClientsPool(cfg Config, logger log.Logger, reg prometheus.Registerer
 }
 
 func buildRuler(t *testing.T, rulerConfig Config, q storage.Querier, clientMetrics loki_storage.ClientMetrics, rulerAddrMap map[string]*Ruler) *Ruler {
+	// validate here instead of newRuler because it is used elsewhere
+	require.NoError(t, rulerConfig.Validate(log.NewNopLogger()))
+
 	engine, queryable, pusher, logger, overrides, reg := testSetup(t, q)
 	storage, err := NewLegacyRuleStore(rulerConfig.StoreConfig, hedging.Config{}, clientMetrics, promRules.FileLoader{}, log.NewNopLogger())
 	require.NoError(t, err)
 
 	managerFactory := DefaultTenantManagerFactory(rulerConfig, pusher, queryable, engine, overrides, reg)
-	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger())
+	manager, err := NewDefaultMultiTenantManager(rulerConfig, managerFactory, reg, log.NewNopLogger(), overrides)
 	require.NoError(t, err)
 
 	ruler, err := newRuler(
@@ -234,7 +257,6 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 
 	// We create an empty rule store so that the ruler will not load any rule from it.
 	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
-
 	cfg.AlertmanagerURL = ts.URL
 	cfg.AlertmanagerDiscovery = false
 
@@ -259,6 +281,79 @@ func TestNotifierSendsUserIDHeader(t *testing.T) {
 		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
 		# TYPE cortex_prometheus_notifications_dropped_total counter
 		cortex_prometheus_notifications_dropped_total{user="1"} 0
+	`), "cortex_prometheus_notifications_dropped_total"))
+}
+
+func TestMultiTenantsNotifierSendsUserIDHeader(t *testing.T) {
+	var wg sync.WaitGroup
+
+	const tenant1 = "tenant1"
+	const tenant2 = "tenant2"
+
+	// We do expect 2 API calls for the users create with the getOrCreateNotifier()
+	wg.Add(2)
+	ts1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		assert.NoError(t, err)
+		assert.Equal(t, userID, tenant1)
+		wg.Done()
+	}))
+	defer ts1.Close()
+
+	ts2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		userID, _, err := tenant.ExtractTenantIDFromHTTPRequest(r)
+		assert.NoError(t, err)
+		assert.Equal(t, userID, tenant2)
+		wg.Done()
+	}))
+	defer ts2.Close()
+
+	// We create an empty rule store so that the ruler will not load any rule from it.
+	cfg := defaultRulerConfig(t, newMockRuleStore(nil))
+
+	amCfg := map[string]*config.AlertManagerConfig{
+		tenant1: {
+			AlertmanagerURL:       ts1.URL,
+			AlertmanagerDiscovery: false,
+		},
+		tenant2: {
+			AlertmanagerURL:       ts2.URL,
+			AlertmanagerDiscovery: false,
+		},
+	}
+
+	manager := newMultiTenantManager(t, cfg, nil, amCfg)
+	defer manager.Stop()
+
+	n1, err := manager.getOrCreateNotifier(tenant1)
+	require.NoError(t, err)
+
+	n2, err := manager.getOrCreateNotifier(tenant2)
+	require.NoError(t, err)
+
+	// Loop until notifier discovery syncs up
+	for len(n1.Alertmanagers()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	n1.Send(&notifier.Alert{
+		Labels: labels.Labels{labels.Label{Name: "alertname1", Value: "testalert1"}},
+	})
+
+	for len(n2.Alertmanagers()) == 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	n2.Send(&notifier.Alert{
+		Labels: labels.Labels{labels.Label{Name: "alertname2", Value: "testalert2"}},
+	})
+
+	wg.Wait()
+
+	// Ensure we have metrics in the notifier.
+	assert.NoError(t, prom_testutil.GatherAndCompare(manager.registry.(*prometheus.Registry), strings.NewReader(`
+		# HELP cortex_prometheus_notifications_dropped_total Total number of alerts dropped due to errors when sending to Alertmanager.
+		# TYPE cortex_prometheus_notifications_dropped_total counter
+		cortex_prometheus_notifications_dropped_total{user="tenant1"} 0
+		cortex_prometheus_notifications_dropped_total{user="tenant2"} 0
 	`), "cortex_prometheus_notifications_dropped_total"))
 }
 
@@ -304,35 +399,36 @@ func TestGetRules(t *testing.T) {
 	type testCase struct {
 		sharding         bool
 		shardingStrategy string
+		shardingAlgo     string
 		shuffleShardSize int
 	}
 
 	expectedRules := expectedRulesMap{
 		"ruler1": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler2": map[string]rulespb.RuleGroupList{
 			"user1": {
-				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user1", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "first", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "second", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 		"ruler3": map[string]rulespb.RuleGroupList{
 			"user3": {
-				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user3", Namespace: "namespace", Name: "third", Interval: 10 * time.Second, Limit: 10},
 			},
 			"user2": {
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second},
-				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "forth", Interval: 10 * time.Second, Limit: 10},
+				&rulespb.RuleGroupDesc{User: "user2", Namespace: "namespace", Name: "fifty", Interval: 10 * time.Second, Limit: 10},
 			},
 		},
 	}
@@ -342,8 +438,7 @@ func TestGetRules(t *testing.T) {
 			sharding: false,
 		},
 		"Default Sharding": {
-			sharding:         true,
-			shardingStrategy: util.ShardingStrategyDefault,
+			sharding: true,
 		},
 		"Shuffle Sharding and ShardSize = 2": {
 			sharding:         true,
@@ -366,6 +461,7 @@ func TestGetRules(t *testing.T) {
 
 				cfg.ShardingStrategy = tc.shardingStrategy
 				cfg.EnableSharding = tc.sharding
+				cfg.ShardingAlgo = tc.shardingAlgo
 
 				cfg.Ring = RingConfig{
 					InstanceID:   id,
@@ -471,10 +567,22 @@ func TestSharding(t *testing.T) {
 		user3 = "user3"
 	)
 
-	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first"}
-	user1Group2 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second"}
-	user2Group1 := &rulespb.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first"}
-	user3Group1 := &rulespb.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first"}
+	user1Group1Rule1 := &rulespb.RuleDesc{Record: "user1_group1_rule1", Expr: "1", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("rule", "1"))}
+	user1Group1Rule2 := &rulespb.RuleDesc{Record: "user1_group1_rule2", Expr: "2", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("rule", "2"))}
+	user1Group2Rule1 := &rulespb.RuleDesc{Record: "user1_group2_rule1", Expr: "1", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("rule", "1"))}
+
+	user1Group1 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{user1Group1Rule1, user1Group1Rule2}}
+	user1Group2 := &rulespb.RuleGroupDesc{User: user1, Namespace: "namespace", Name: "second", Rules: []*rulespb.RuleDesc{user1Group2Rule1}}
+
+	user2Group1Rule1 := &rulespb.RuleDesc{Alert: "User2Group1Alert1", Expr: "1", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("alert", "1"))}
+	user2Group1Rule2 := &rulespb.RuleDesc{Record: "user2_group1_rule2", Expr: "2", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("rule", "2"))}
+
+	user2Group1 := &rulespb.RuleGroupDesc{User: user2, Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{user2Group1Rule1, user2Group1Rule2}}
+
+	user3Group1Rule1 := &rulespb.RuleDesc{Alert: "User3Group1Alert1", Expr: "1", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("alert", "1"))}
+	user3Group1Rule2 := &rulespb.RuleDesc{Alert: "User3Group1Alert2", Expr: "2", Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("alert", "2"))}
+
+	user3Group1 := &rulespb.RuleGroupDesc{User: user3, Namespace: "namespace", Name: "first", Rules: []*rulespb.RuleDesc{user3Group1Rule1, user3Group1Rule2}}
 
 	// Must be distinct for test to work.
 	user1Group1Token := tokenForGroup(user1Group1)
@@ -482,11 +590,34 @@ func TestSharding(t *testing.T) {
 	user2Group1Token := tokenForGroup(user2Group1)
 	user3Group1Token := tokenForGroup(user3Group1)
 
+	user1Group1Rule1Token := tokenForRule(user1Group1, user1Group1Rule1)
+	user1Group1Rule2Token := tokenForRule(user1Group1, user1Group1Rule2)
+	user1Group2Rule1Token := tokenForRule(user1Group2, user1Group2Rule1)
+	user2Group1Rule1Token := tokenForRule(user2Group1, user2Group1Rule1)
+	user2Group1Rule2Token := tokenForRule(user2Group1, user2Group1Rule2)
+	user3Group1Rule1Token := tokenForRule(user3Group1, user3Group1Rule1)
+	user3Group1Rule2Token := tokenForRule(user3Group1, user3Group1Rule2)
+
 	noRules := map[string]rulespb.RuleGroupList{}
 	allRules := map[string]rulespb.RuleGroupList{
 		user1: {user1Group1, user1Group2},
 		user2: {user2Group1},
 		user3: {user3Group1},
+	}
+	allRulesSharded := map[string]rulespb.RuleGroupList{
+		user1: {
+			cloneGroupWithRule(user1Group1, user1Group1Rule1),
+			cloneGroupWithRule(user1Group1, user1Group1Rule2),
+			cloneGroupWithRule(user1Group2, user1Group2Rule1),
+		},
+		user2: {
+			cloneGroupWithRule(user2Group1, user2Group1Rule1),
+			cloneGroupWithRule(user2Group1, user2Group1Rule2),
+		},
+		user3: {
+			cloneGroupWithRule(user3Group1, user3Group1Rule1),
+			cloneGroupWithRule(user3Group1, user3Group1Rule2),
+		},
 	}
 
 	// ruler ID -> (user ID -> list of groups).
@@ -494,6 +625,7 @@ func TestSharding(t *testing.T) {
 
 	type testCase struct {
 		sharding         bool
+		shardingAlgo     string
 		shardingStrategy string
 		shuffleShardSize int
 		setupRing        func(*ring.Desc)
@@ -852,6 +984,409 @@ func TestSharding(t *testing.T) {
 				},
 			},
 		},
+
+		"sharding by rule, single ruler": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+			},
+			expectedRules: expectedRulesMap{ruler1: allRulesSharded},
+		},
+
+		"sharding by rule, single ruler, single enabled user": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+			enabledUsers: []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+			},
+			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+				user1: {
+					cloneGroupWithRule(user1Group1, user1Group1Rule1),
+					cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					cloneGroupWithRule(user1Group2, user1Group2Rule1),
+				},
+			}},
+		},
+
+		"sharding by rule, single ruler, single disabled user": {
+			sharding:      true,
+			shardingAlgo:  util.ShardingAlgoByRule,
+			disabledUsers: []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", []uint32{0}, ring.ACTIVE, time.Now())
+			},
+			expectedRules: expectedRulesMap{ruler1: map[string]rulespb.RuleGroupList{
+				user2: {
+					cloneGroupWithRule(user2Group1, user2Group1Rule1),
+					cloneGroupWithRule(user2Group1, user2Group1Rule2),
+				},
+				user3: {
+					cloneGroupWithRule(user3Group1, user3Group1Rule1),
+					cloneGroupWithRule(user3Group1, user3Group1Rule2),
+				},
+			}},
+		},
+
+		"sharding by rule, multiple ACTIVE rulers": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					},
+					user2: {cloneGroupWithRule(user2Group1, user2Group1Rule2)},
+				},
+
+				ruler2: map[string]rulespb.RuleGroupList{
+					user1: {cloneGroupWithRule(user1Group2, user1Group2Rule1)},
+					user2: {cloneGroupWithRule(user2Group1, user2Group1Rule1)},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
+				},
+			},
+		},
+
+		"sharding by rule, multiple ACTIVE rulers, single enabled user": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+			enabledUsers: []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					},
+				},
+
+				ruler2: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group2, user1Group2Rule1),
+					},
+				},
+			},
+		},
+
+		"sharding by rule, multiple ACTIVE rulers, single disabled user": {
+			sharding:      true,
+			shardingAlgo:  util.ShardingAlgoByRule,
+			disabledUsers: []string{user1},
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
+					},
+				},
+
+				ruler2: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule1),
+					},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
+				},
+			},
+		},
+
+		"sharding by rule, unhealthy ACTIVE ruler": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+				desc.Ingesters[ruler2] = ring.InstanceDesc{
+					Addr:      ruler2Addr,
+					Timestamp: time.Now().Add(-time.Hour).Unix(),
+					State:     ring.ACTIVE,
+					Tokens:    sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}),
+				}
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					},
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
+					},
+				},
+				// This ruler doesn't get rules from unhealthy ruler (RF=1).
+				ruler2: noRules,
+			},
+		},
+
+		"sharding by rule, LEAVING ruler": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.LEAVING, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				// LEAVING ruler doesn't get any rules.
+				ruler1: noRules,
+				ruler2: allRulesSharded,
+			},
+		},
+
+		"sharding by rule, JOINING ruler": {
+			sharding:     true,
+			shardingAlgo: util.ShardingAlgoByRule,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user2Group1Rule2Token + 1, user1Group1Rule2Token + 1}), ring.JOINING, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				// JOINING ruler has no rules yet.
+				ruler1: noRules,
+				ruler2: allRulesSharded,
+			},
+		},
+
+		"shuffle sharding with 'by-rule' strategy, single ruler": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{0}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: allRulesSharded,
+			},
+		},
+
+		"shuffle sharding with 'by-rule' strategy, multiple rulers, shard size 1": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 1,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now())
+				// immaterial what tokens this ruler has, it won't be assigned any rules
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group2Rule1Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: allRulesSharded,
+				ruler2: noRules,
+			},
+		},
+
+		// Same test as previous one, but with shard size=2. Second ruler gets all the rules.
+		"shuffle sharding with 'by-rule' strategy, two rulers, shard size 2": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 2,
+
+			setupRing: func(desc *ring.Desc) {
+				// Exact same tokens setup as previous test.
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now())
+				// this ruler has all the rule tokens, so it gets all the rules
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1, user2Group1Rule2Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: noRules,
+				ruler2: allRulesSharded,
+			},
+		},
+
+		"shuffle sharding with 'by-rule' strategy, two rulers, shard size 1, distributed users": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 1,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+						cloneGroupWithRule(user1Group2, user1Group2Rule1),
+					},
+				},
+
+				ruler2: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule1),
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
+					},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
+				},
+			},
+		},
+		"shuffle sharding with 'by-rule' strategy, three rulers, shard size 2": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 2,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, user1Group1Rule1Token + 1, user1Group2Rule1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, user1Group1Rule2Token + 1, userToken(user2, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user2Group1Rule1Token + 1, user2Group1Rule2Token + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group2, user1Group2Rule1),
+					},
+				},
+				ruler2: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					},
+				},
+				ruler3: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule1),
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
+					},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
+				},
+			},
+		},
+		"shuffle sharding with 'by-rule' strategy, three rulers, shard size 2, ruler2 has no users": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 2,
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+						cloneGroupWithRule(user1Group2, user1Group2Rule1),
+					},
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule1),
+					},
+				},
+				ruler2: noRules, // Ruler2 owns token for user2group1, but user-2 will only be handled by ruler-1 and 3.
+				ruler3: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
+					},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
+				},
+			},
+		},
+
+		"shuffle sharding with 'by-rule' strategy, three rulers, shard size 2, single enabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 2,
+			enabledUsers:     []string{user1},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user1Group2Rule1Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group1, user1Group1Rule1),
+						cloneGroupWithRule(user1Group1, user1Group1Rule2),
+					},
+				},
+				ruler2: map[string]rulespb.RuleGroupList{
+					user1: {
+						cloneGroupWithRule(user1Group2, user1Group2Rule1),
+					},
+				},
+				ruler3: map[string]rulespb.RuleGroupList{},
+			},
+		},
+
+		"shuffle sharding with 'by-rule' strategy, three rulers, shard size 2, single disabled user": {
+			sharding:         true,
+			shardingStrategy: util.ShardingStrategyShuffle,
+			shardingAlgo:     util.ShardingAlgoByRule,
+			shuffleShardSize: 2,
+			disabledUsers:    []string{user1},
+
+			setupRing: func(desc *ring.Desc) {
+				desc.AddIngester(ruler1, ruler1Addr, "", sortTokens([]uint32{userToken(user1, 0) + 1, userToken(user2, 1) + 1, user1Group1Rule1Token + 1, user1Group1Rule2Token + 1, user2Group1Rule1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler2, ruler2Addr, "", sortTokens([]uint32{userToken(user1, 1) + 1, userToken(user3, 1) + 1, user1Group2Rule1Token + 1}), ring.ACTIVE, time.Now())
+				desc.AddIngester(ruler3, ruler3Addr, "", sortTokens([]uint32{userToken(user2, 0) + 1, userToken(user3, 0) + 1, user3Group1Rule1Token + 1, user3Group1Rule2Token + 1, user2Group1Rule2Token + 1}), ring.ACTIVE, time.Now())
+			},
+
+			expectedRules: expectedRulesMap{
+				ruler1: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule1),
+					},
+				},
+				ruler2: map[string]rulespb.RuleGroupList{},
+				ruler3: map[string]rulespb.RuleGroupList{
+					user2: {
+						cloneGroupWithRule(user2Group1, user2Group1Rule2),
+					},
+					user3: {
+						cloneGroupWithRule(user3Group1, user3Group1Rule1),
+						cloneGroupWithRule(user3Group1, user3Group1Rule2),
+					},
+				},
+			},
+		},
 	}
 
 	for name, tc := range testCases {
@@ -864,6 +1399,7 @@ func TestSharding(t *testing.T) {
 					StoreConfig:      RuleStoreConfig{mock: newMockRuleStore(allRules)},
 					EnableSharding:   tc.sharding,
 					ShardingStrategy: tc.shardingStrategy,
+					ShardingAlgo:     tc.shardingAlgo,
 					Ring: RingConfig{
 						InstanceID:   id,
 						InstanceAddr: host,
@@ -926,11 +1462,11 @@ func TestSharding(t *testing.T) {
 			loadedRules1, err := r1.listRules(context.Background())
 			require.NoError(t, err)
 
-			expected := expectedRulesMap{
+			actual := expectedRulesMap{
 				ruler1: loadedRules1,
 			}
 
-			addToExpected := func(id string, r *Ruler) {
+			addToActual := func(id string, r *Ruler) {
 				// Only expect rules from other rulers when using ring, and they are present in the ring.
 				if r != nil && rulerRing != nil && rulerRing.HasInstance(id) {
 					loaded, err := r.listRules(context.Background())
@@ -939,14 +1475,14 @@ func TestSharding(t *testing.T) {
 					if loaded == nil {
 						loaded = map[string]rulespb.RuleGroupList{}
 					}
-					expected[id] = loaded
+					actual[id] = loaded
 				}
 			}
 
-			addToExpected(ruler2, r2)
-			addToExpected(ruler3, r3)
+			addToActual(ruler2, r2)
+			addToActual(ruler3, r3)
 
-			require.Equal(t, tc.expectedRules, expected)
+			require.Equal(t, tc.expectedRules, actual)
 		})
 	}
 }
@@ -1111,6 +1647,7 @@ func (s senderFunc) Send(alerts ...*notifier.Alert) {
 }
 
 func TestSendAlerts(t *testing.T) {
+	escapedExpression := url.QueryEscape("{\"expr\":\"up\",\"queryType\":\"range\",\"datasource\":{\"type\":\"loki\",\"uid\":\"uid\"}}")
 	testCases := []struct {
 		in  []*promRules.Alert
 		exp []*notifier.Alert
@@ -1131,7 +1668,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(3, 0),
-					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1151,7 +1688,7 @@ func TestSendAlerts(t *testing.T) {
 					Annotations:  []labels.Label{{Name: "a2", Value: "v2"}},
 					StartsAt:     time.Unix(2, 0),
 					EndsAt:       time.Unix(4, 0),
-					GeneratorURL: "http://localhost:9090/graph?g0.expr=up&g0.tab=1",
+					GeneratorURL: fmt.Sprintf("http://localhost:8080/explore?left={\"queries\":[%s]}", escapedExpression),
 				},
 			},
 		},
@@ -1169,7 +1706,7 @@ func TestSendAlerts(t *testing.T) {
 				}
 				require.Equal(t, tc.exp, alerts)
 			})
-			SendAlerts(senderFunc, "http://localhost:9090")(context.TODO(), "up", tc.in...)
+			SendAlerts(senderFunc, "http://localhost:8080", "uid")(context.TODO(), "up", tc.in...)
 		})
 	}
 }
@@ -1182,11 +1719,11 @@ func (f *fakeQuerier) Select(sortSeries bool, hints *storage.SelectHints, matche
 	return f.fn(sortSeries, hints, matchers...)
 }
 
-func (f *fakeQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 
-func (f *fakeQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (f *fakeQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, nil
 }
 func (f *fakeQuerier) Close() error { return nil }
@@ -1213,6 +1750,7 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 					},
 				},
 				Interval: interval,
+				Limit:    limit,
 			},
 		},
 	}
@@ -1295,4 +1833,141 @@ func TestRecoverAlertsPostOutage(t *testing.T) {
 	require.Equal(t, firedAtTime, currentTime)
 
 	require.Equal(t, promRules.StateFiring, promRules.AlertState(activeAlertRuleRaw.FieldByName("State").Int()))
+}
+
+func TestRuleGroupAlertsAndSeriesLimit(t *testing.T) {
+
+	currentTime := time.Now().UTC()
+	seriesStartTime := currentTime.Add(time.Minute * -10)
+	sampleTimeDiff := 5 * time.Minute
+
+	testCases := []struct {
+		name               string
+		rule               *rulespb.RuleDesc
+		limit              int64
+		expectedRuleHealth promRules.RuleHealth
+		expectedError      error
+	}{
+		{
+			name:               "AlertingRule alerts within limit",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              2,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "AlertingRule alerts with limit 0",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              0,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "AlertingRule alerts exceeding limit",
+			rule:               getMockRule("HIGH_HTTP_REQUESTS", "http_requests > 50", "", 2*time.Minute),
+			limit:              1,
+			expectedRuleHealth: promRules.HealthBad,
+			expectedError:      errors.New("exceeded limit of 1 with 2 alerts"),
+		},
+		{
+			name:               "RecordingRule series within limit",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              2,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "RecordingRule series with limit 0",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              0,
+			expectedRuleHealth: promRules.HealthGood,
+			expectedError:      nil,
+		},
+		{
+			name:               "RecordingRule series exceeding limit",
+			rule:               getMockRule("", "sum by (instance) (http_requests)", "total_http_requests_per_instance", 0),
+			limit:              1,
+			expectedRuleHealth: promRules.HealthBad,
+			expectedError:      errors.New("exceeded limit of 1 with 2 series"),
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(tt *testing.T) {
+
+			mockRuleGroupList := map[string]rulespb.RuleGroupList{
+				"user1": {
+					&rulespb.RuleGroupDesc{
+						Name:      "group1",
+						Namespace: "namespace1",
+						User:      "user1",
+						Interval:  interval,
+						Limit:     tc.limit,
+						Rules:     []*rulespb.RuleDesc{tc.rule},
+					},
+				},
+			}
+
+			rulerCfg := defaultRulerConfig(t, newMockRuleStore(mockRuleGroupList))
+			m := loki_storage.NewClientMetrics()
+			defer m.Unregister()
+
+			r := buildRuler(tt, rulerCfg, &fakeQuerier{
+				fn: func(sortSeries bool, hints *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+					return series.NewConcreteSeriesSet([]storage.Series{
+						series.NewConcreteSeries(
+							labels.Labels{
+								{Name: labels.MetricName, Value: "http_requests"},
+								{Name: labels.InstanceName, Value: "server1"},
+							},
+							[]model.SamplePair{
+								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
+								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
+							},
+						),
+						series.NewConcreteSeries(
+							labels.Labels{
+								{Name: labels.MetricName, Value: "http_requests"},
+								{Name: labels.InstanceName, Value: "server2"},
+							},
+							[]model.SamplePair{
+								{Timestamp: model.Time(seriesStartTime.Add(sampleTimeDiff).UnixMilli()), Value: 100},
+								{Timestamp: model.Time(currentTime.UnixMilli()), Value: 100},
+							},
+						),
+					})
+				},
+			}, m, nil)
+
+			r.syncRules(context.Background(), rulerSyncReasonInitial)
+
+			// assert initial state of rule group
+			ruleGroup := r.manager.GetRules("user1")[0]
+			require.Equal(tt, time.Time{}, ruleGroup.GetLastEvaluation())
+			require.Equal(tt, "group1", ruleGroup.Name())
+			require.Equal(tt, 1, len(ruleGroup.Rules()))
+
+			// assert initial state of rule within rule group
+			rule := ruleGroup.Rules()[0]
+			require.Equal(tt, time.Time{}, rule.GetEvaluationTimestamp())
+			require.Equal(tt, promRules.HealthUnknown, rule.Health())
+
+			// evaluate the rule group the first time and assert
+			ctx := user.InjectOrgID(context.Background(), "user1")
+			ruleGroup.Eval(ctx, currentTime)
+
+			require.Equal(tt, tc.expectedRuleHealth, rule.Health())
+			require.Equal(tt, tc.expectedError, rule.LastError())
+		})
+
+	}
+}
+
+func getMockRule(alert, expr, record string, forDuration time.Duration) *rulespb.RuleDesc {
+	return &rulespb.RuleDesc{
+		Alert:  alert,
+		Expr:   expr,
+		For:    forDuration,
+		Record: record,
+	}
 }

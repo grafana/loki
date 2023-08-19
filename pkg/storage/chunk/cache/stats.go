@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"time"
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
@@ -32,8 +33,11 @@ func (s statsCollector) Fetch(ctx context.Context, keys []string) (found []strin
 	st := stats.FromContext(ctx)
 	st.AddCacheRequest(s.Cache.GetCacheType(), 1)
 
+	start := time.Now()
+
 	found, bufs, missing, err = s.Cache.Fetch(ctx, keys)
 
+	st.AddCacheDownloadTime(s.Cache.GetCacheType(), time.Since(start))
 	st.AddCacheEntriesFound(s.Cache.GetCacheType(), len(found))
 	st.AddCacheEntriesRequested(s.Cache.GetCacheType(), len(keys))
 

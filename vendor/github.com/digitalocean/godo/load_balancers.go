@@ -51,6 +51,9 @@ type LoadBalancer struct {
 	VPCUUID                      string           `json:"vpc_uuid,omitempty"`
 	DisableLetsEncryptDNSRecords *bool            `json:"disable_lets_encrypt_dns_records,omitempty"`
 	ValidateOnly                 bool             `json:"validate_only,omitempty"`
+	ProjectID                    string           `json:"project_id,omitempty"`
+	HTTPIdleTimeoutSeconds       *uint64          `json:"http_idle_timeout_seconds,omitempty"`
+	Firewall                     *LBFirewall      `json:"firewall,omitempty"`
 }
 
 // String creates a human-readable description of a LoadBalancer.
@@ -81,6 +84,8 @@ func (l LoadBalancer) AsRequest() *LoadBalancerRequest {
 		VPCUUID:                      l.VPCUUID,
 		DisableLetsEncryptDNSRecords: l.DisableLetsEncryptDNSRecords,
 		ValidateOnly:                 l.ValidateOnly,
+		ProjectID:                    l.ProjectID,
+		HTTPIdleTimeoutSeconds:       l.HTTPIdleTimeoutSeconds,
 	}
 
 	if l.DisableLetsEncryptDNSRecords != nil {
@@ -98,6 +103,11 @@ func (l LoadBalancer) AsRequest() *LoadBalancerRequest {
 	if l.Region != nil {
 		r.Region = l.Region.Slug
 	}
+
+	if l.Firewall != nil {
+		r.Firewall = l.Firewall.deepCopy()
+	}
+
 	return &r
 }
 
@@ -144,6 +154,33 @@ func (s StickySessions) String() string {
 	return Stringify(s)
 }
 
+// LBFirewall holds the allow and deny rules for a loadbalancer's firewall.
+// Currently, allow and deny rules support cidrs and ips.
+// Please use the helper methods (IPSourceFirewall/CIDRSourceFirewall) to format the allow/deny rules.
+type LBFirewall struct {
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+}
+
+func (lbf *LBFirewall) deepCopy() *LBFirewall {
+	return &LBFirewall{
+		Allow: append([]string(nil), lbf.Allow...),
+		Deny:  append([]string(nil), lbf.Deny...),
+	}
+}
+
+// IPSourceFirewall takes an IP (string) and returns a formatted ip source firewall rule
+func IPSourceFirewall(ip string) string { return fmt.Sprintf("ip:%s", ip) }
+
+// CIDRSourceFirewall takes a CIDR notation IP address and prefix length string
+// like "192.0.2.0/24" and returns a formatted cidr source firewall rule
+func CIDRSourceFirewall(cidr string) string { return fmt.Sprintf("cidr:%s", cidr) }
+
+// String creates a human-readable description of an LBFirewall instance.
+func (f LBFirewall) String() string {
+	return Stringify(f)
+}
+
 // LoadBalancerRequest represents the configuration to be applied to an existing or a new load balancer.
 type LoadBalancerRequest struct {
 	Name      string `json:"name,omitempty"`
@@ -165,6 +202,9 @@ type LoadBalancerRequest struct {
 	VPCUUID                      string           `json:"vpc_uuid,omitempty"`
 	DisableLetsEncryptDNSRecords *bool            `json:"disable_lets_encrypt_dns_records,omitempty"`
 	ValidateOnly                 bool             `json:"validate_only,omitempty"`
+	ProjectID                    string           `json:"project_id,omitempty"`
+	HTTPIdleTimeoutSeconds       *uint64          `json:"http_idle_timeout_seconds,omitempty"`
+	Firewall                     *LBFirewall      `json:"firewall,omitempty"`
 }
 
 // String creates a human-readable description of a LoadBalancerRequest.

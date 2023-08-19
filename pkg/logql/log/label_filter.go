@@ -19,9 +19,6 @@ var (
 	_ LabelFilterer = &DurationLabelFilter{}
 	_ LabelFilterer = &NumericLabelFilter{}
 	_ LabelFilterer = &StringLabelFilter{}
-
-	// NoopLabelFilter is a label filter that doesn't filter out any values.
-	NoopLabelFilter = noopLabelFilter{}
 )
 
 // LabelFilterType is an enum for label filtering types.
@@ -118,18 +115,26 @@ func (b *BinaryLabelFilter) String() string {
 	return sb.String()
 }
 
-type noopLabelFilter struct{}
+type NoopLabelFilter struct {
+	*labels.Matcher
+}
 
-func (noopLabelFilter) String() string { return "" }
-func (noopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
+func (NoopLabelFilter) Process(_ int64, line []byte, _ *LabelsBuilder) ([]byte, bool) {
 	return line, true
 }
-func (noopLabelFilter) RequiredLabelNames() []string { return []string{} }
+func (NoopLabelFilter) RequiredLabelNames() []string { return []string{} }
+
+func (f NoopLabelFilter) String() string {
+	if f.Matcher != nil {
+		return f.Matcher.String()
+	}
+	return ""
+}
 
 // ReduceAndLabelFilter Reduces multiple label filterer into one using binary and operation.
 func ReduceAndLabelFilter(filters []LabelFilterer) LabelFilterer {
 	if len(filters) == 0 {
-		return NoopLabelFilter
+		return &NoopLabelFilter{}
 	}
 	if len(filters) == 1 {
 		return filters[0]
@@ -269,6 +274,7 @@ type NumericLabelFilter struct {
 	Name  string
 	Value float64
 	Type  LabelFilterType
+	err   error
 }
 
 // NewNumericLabelFilter creates a new label filterer which parses float64 string representation (5.2)
@@ -332,21 +338,59 @@ type StringLabelFilter struct {
 // NewStringLabelFilter creates a new label filterer which compares string label.
 // This is the only LabelFilterer that can filter out the __error__ label.
 // Unlike other LabelFilterer which apply conversion, if the label name doesn't exist it is compared with an empty value.
-func NewStringLabelFilter(m *labels.Matcher) *StringLabelFilter {
-	return &StringLabelFilter{
+func NewStringLabelFilter(m *labels.Matcher) LabelFilterer {
+	f, err := NewLabelFilter(m.Value, m.Type)
+	if err != nil {
+		return &StringLabelFilter{Matcher: m}
+	}
+
+	if f == TrueFilter {
+		return &NoopLabelFilter{m}
+	}
+
+	return &lineFilterLabelFilter{
 		Matcher: m,
+		filter:  f,
 	}
 }
 
 func (s *StringLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	if s.Name == logqlmodel.ErrorLabel {
-		return line, s.Matches(lbs.GetErr())
-	}
-
-	v, _ := lbs.Get(s.Name)
-	return line, s.Matches(v)
+	return line, s.Matches(labelValue(s.Name, lbs))
 }
 
 func (s *StringLabelFilter) RequiredLabelNames() []string {
 	return []string{s.Name}
+}
+
+// lineFilterLabelFilter filters the desired label using an optimized line filter
+type lineFilterLabelFilter struct {
+	*labels.Matcher
+	filter Filterer
+}
+
+// overrides the matcher.String() function in case there is a regexpFilter
+func (s *lineFilterLabelFilter) String() string {
+	if unwrappedFilter, ok := s.filter.(regexpFilter); ok {
+		rStr := unwrappedFilter.String()
+		str := fmt.Sprintf(`%s%s"%s"`, s.Matcher.Name, s.Matcher.Type, rStr)
+		return str
+	}
+	return s.Matcher.String()
+}
+
+func (s *lineFilterLabelFilter) Process(_ int64, line []byte, lbs *LabelsBuilder) ([]byte, bool) {
+	v := labelValue(s.Name, lbs)
+	return line, s.filter.Filter(unsafeGetBytes(v))
+}
+
+func (s *lineFilterLabelFilter) RequiredLabelNames() []string {
+	return []string{s.Name}
+}
+
+func labelValue(name string, lbs *LabelsBuilder) string {
+	if name == logqlmodel.ErrorLabel {
+		return lbs.GetErr()
+	}
+	v, _ := lbs.Get(name)
+	return v
 }

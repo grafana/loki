@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"go.uber.org/atomic"
-	"gopkg.in/fsnotify.v1"
 
 	"github.com/go-kit/log"
 
@@ -69,14 +69,14 @@ func TestFileTargetSync(t *testing.T) {
 	path := logDir1 + "/*.log"
 	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
-	}, nil, fakeHandler, "")
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -90,7 +90,7 @@ func TestFileTargetSync(t *testing.T) {
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -106,7 +106,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.tails),
+	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -123,7 +123,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 2, len(target.tails),
+	assert.Equal(t, 2, len(target.readers),
 		"Expected tails to be 2 at this point in the test...",
 	)
 
@@ -137,7 +137,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.tails),
+	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
 
@@ -151,7 +151,7 @@ func TestFileTargetSync(t *testing.T) {
 	assert.Equal(t, 0, len(target.watches),
 		"Expected watches to be 0 at this point in the test...",
 	)
-	assert.Equal(t, 0, len(target.tails),
+	assert.Equal(t, 0, len(target.readers),
 		"Expected tails to be 0 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -160,6 +160,64 @@ func TestFileTargetSync(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return receivedStartWatch.Load() == 1
 	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
+
+	target.Stop()
+	ps.Stop()
+}
+
+func TestFileTarget_StopsTailersCleanly(t *testing.T) {
+	w := log.NewSyncWriter(os.Stderr)
+	logger := log.NewLogfmtLogger(w)
+
+	tempDir := t.TempDir()
+	positionsFileName := filepath.Join(tempDir, "positions.yml")
+	logFile := filepath.Join(tempDir, "test1.log")
+
+	ps, err := positions.New(logger, positions.Config{
+		SyncPeriod:    10 * time.Millisecond,
+		PositionsFile: positionsFileName,
+	})
+	require.NoError(t, err)
+
+	client := fake.New(func() {})
+	defer client.Stop()
+
+	fakeHandler := make(chan fileTargetEvent, 10)
+	pathToWatch := filepath.Join(tempDir, "*.log")
+	target, err := NewFileTarget(NewMetrics(nil), logger, client, ps, pathToWatch, "", nil, nil, &Config{
+		SyncPeriod: 10 * time.Millisecond,
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
+	assert.NoError(t, err)
+
+	_, err = os.Create(logFile)
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return len(target.readers) == 1
+	}, time.Second*10, time.Millisecond*1, "expected 1 tailer to be created")
+
+	// Inject an error to tailer
+	initailTailer := target.readers[logFile].(*tailer)
+	_ = initailTailer.tail.Tomb.Killf("test: network file systems can be unreliable")
+
+	// Tailer will be replaced by a new one
+	require.Eventually(t, func() bool {
+		return len(target.readers) == 1 && target.readers[logFile].(*tailer) != initailTailer
+	}, time.Second*10, time.Millisecond*1, "expected dead tailer to be replaced by a new one")
+
+	// The old tailer should be stopped:
+	select {
+	case <-initailTailer.done:
+	case <-time.After(time.Second * 10):
+		t.Fatal("expected position timer to be stopped cleanly")
+	}
+
+	// The old tailer's position timer should be stopped
+	select {
+	case <-initailTailer.posdone:
+	case <-time.After(time.Second * 10):
+		t.Fatal("expected position timer to be stopped cleanly")
+	}
 
 	target.Stop()
 	ps.Stop()
@@ -221,14 +279,14 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	pathExclude := filepath.Join(dirName, "log3", "*.log")
 	target, err := NewFileTarget(metrics, logger, client, ps, path, pathExclude, nil, nil, &Config{
 		SyncPeriod: 1 * time.Minute, // assure the sync is not called by the ticker
-	}, nil, fakeHandler, "")
+	}, DefaultWatchConig, nil, fakeHandler, "", nil)
 	assert.NoError(t, err)
 
 	// Start with nothing watched.
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -246,7 +304,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	if len(target.watches) != 0 {
 		t.Fatal("Expected watches to be 0 at this point in the test...")
 	}
-	if len(target.tails) != 0 {
+	if len(target.readers) != 0 {
 		t.Fatal("Expected tails to be 0 at this point in the test...")
 	}
 
@@ -264,7 +322,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.Equal(t, 2, len(target.watches),
 		"Expected watches to be 2 at this point in the test...",
 	)
-	assert.Equal(t, 3, len(target.tails),
+	assert.Equal(t, 3, len(target.readers),
 		"Expected tails to be 3 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -285,7 +343,7 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	assert.Equal(t, 1, len(target.watches),
 		"Expected watches to be 1 at this point in the test...",
 	)
-	assert.Equal(t, 1, len(target.tails),
+	assert.Equal(t, 1, len(target.readers),
 		"Expected tails to be 1 at this point in the test...",
 	)
 	require.Eventually(t, func() bool {
@@ -294,6 +352,10 @@ func TestFileTargetPathExclusion(t *testing.T) {
 	require.Eventually(t, func() bool {
 		return receivedStopWatch.Load() == 1
 	}, time.Second*10, time.Millisecond*1, "Expected received stopping watch event to be 1 at this point in the test...")
+
+	require.NoError(t, os.RemoveAll(logDir2))
+	require.NoError(t, os.RemoveAll(logDir3))
+	require.NoError(t, target.sync())
 
 	target.Stop()
 	ps.Stop()
@@ -346,7 +408,7 @@ func TestHandleFileCreationEvent(t *testing.T) {
 	target, err := NewFileTarget(metrics, logger, client, ps, path, "", nil, nil, &Config{
 		// To handle file creation event from channel, set enough long time as sync period
 		SyncPeriod: 10 * time.Minute,
-	}, fakeFileHandler, fakeTargetHandler, "")
+	}, DefaultWatchConig, fakeFileHandler, fakeTargetHandler, "", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,13 +422,13 @@ func TestHandleFileCreationEvent(t *testing.T) {
 		Op:   fsnotify.Create,
 	}
 	require.Eventually(t, func() bool {
-		return len(target.tails) == 1
+		return len(target.readers) == 1
 	}, time.Second*10, time.Millisecond*1, "Expected tails to be 1 at this point in the test...")
 }
 
 func TestToStopTailing(t *testing.T) {
 	nt := []string{"file1", "file2", "file3", "file4", "file5", "file6", "file7", "file11", "file12", "file15"}
-	et := make(map[string]*tailer, 15)
+	et := make(map[string]Reader, 15)
 	for i := 1; i <= 15; i++ {
 		et[fmt.Sprintf("file%d", i)] = nil
 	}
@@ -386,7 +448,7 @@ func TestToStopTailing(t *testing.T) {
 
 func BenchmarkToStopTailing(b *testing.B) {
 	nt := []string{"file1", "file2", "file3", "file4", "file5", "file6", "file7", "file11", "file12", "file15"}
-	et := make(map[string]*tailer, 15)
+	et := make(map[string]Reader, 15)
 	for i := 1; i <= 15; i++ {
 		et[fmt.Sprintf("file%d", i)] = nil
 	}

@@ -9,12 +9,13 @@ import (
 
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
+	openshiftv1 "github.com/openshift/api/config/v1"
+	"sigs.k8s.io/yaml"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	projectconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"sigs.k8s.io/yaml"
 )
 
 // Define the manifest options here as structured objects
@@ -36,16 +37,19 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.StringVar(&c.Namespace, "namespace", "", "Namespace to deploy to")
 	f.StringVar(&c.Image, "image", manifests.DefaultContainerImage, "The Loki image pull spec loation.")
 	// Feature flags
-	c.featureFlags = configv1.FeatureGates{}
-	c.featureFlags.OpenShift = configv1.OpenShiftFeatureGates{}
-	f.BoolVar(&c.featureFlags.OpenShift.ServingCertsService, "with-serving-certs-service", false, "Enable usage of serving certs service on OpenShift.")
 	f.BoolVar(&c.featureFlags.ServiceMonitors, "with-service-monitors", false, "Enable service monitors for all LokiStack components.")
+	f.BoolVar(&c.featureFlags.OpenShift.ServingCertsService, "with-serving-certs-service", false, "Enable usage of serving certs service on OpenShift.")
+	f.BoolVar(&c.featureFlags.BuiltInCertManagement.Enabled, "with-builtin-cert-management", false, "Enable usage built-in cert generation and rotation.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CACertValidity, "ca-cert-validity", "8760h", "CA Certificate validity duration.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CACertRefresh, "ca-cert-refresh", "7008h", "CA Certificate refresh time.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CertValidity, "target-cert-validity", "2160h", "Target Certificate validity duration.")
+	f.StringVar(&c.featureFlags.BuiltInCertManagement.CertRefresh, "target-cert-refresh", "1728h", "Target Certificate refresh time.")
 	f.BoolVar(&c.featureFlags.HTTPEncryption, "with-http-tls-services", false, "Enables TLS for all LokiStack GRPC services.")
 	f.BoolVar(&c.featureFlags.GRPCEncryption, "with-grpc-tls-services", false, "Enables TLS for all LokiStack HTTP services.")
 	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
 	f.BoolVar(&c.featureFlags.LokiStackAlerts, "with-lokistack-alerts", false, "Enables prometheus alerts")
 	f.BoolVar(&c.featureFlags.LokiStackGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
-	f.BoolVar(&c.featureFlags.RuntimeSeccompProfile, "with-runtime-seccomp-profile", false, "Enables the usage of the runtime/default seccomp profile for pods and containers.")
+	f.BoolVar(&c.featureFlags.RestrictedPodSecurityStandard, "with-restricted-pod-security-standard", false, "Enable restricted security standard settings")
 	// Object storage options
 	c.objectStorage = storage.Options{
 		S3: &storage.S3StorageConfig{},
@@ -129,26 +133,37 @@ func main() {
 	}
 
 	if cfg.featureFlags.TLSProfile != "" &&
-		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileOldType) &&
-		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileIntermediateType) &&
-		cfg.featureFlags.TLSProfile != string(projectconfigv1.TLSProfileModernType) {
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileOldType) &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileIntermediateType) &&
+		cfg.featureFlags.TLSProfile != string(configv1.TLSProfileModernType) {
 		logger.Error(err, "failed to parse TLS profile. Allowed values: 'Old', 'Intermediate', 'Modern'", "value", cfg.featureFlags.TLSProfile)
 		os.Exit(1)
 	}
 
 	// Convert config to manifest.Options
 	opts := manifests.Options{
-		Name:           cfg.Name,
-		Namespace:      cfg.Namespace,
-		Image:          cfg.Image,
-		Stack:          ls.Spec,
-		Gates:          cfg.featureFlags,
-		ObjectStorage:  cfg.objectStorage,
-		TLSProfileType: projectconfigv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+		Name:          cfg.Name,
+		Namespace:     cfg.Namespace,
+		Image:         cfg.Image,
+		Stack:         ls.Spec,
+		Gates:         cfg.featureFlags,
+		ObjectStorage: cfg.objectStorage,
 	}
 
 	if optErr := manifests.ApplyDefaultSettings(&opts); optErr != nil {
 		logger.Error(optErr, "failed to conform options to build settings")
+		os.Exit(1)
+	}
+
+	var tlsSecurityProfile *openshiftv1.TLSSecurityProfile
+	if cfg.featureFlags.TLSProfile != "" {
+		tlsSecurityProfile = &openshiftv1.TLSSecurityProfile{
+			Type: openshiftv1.TLSProfileType(cfg.featureFlags.TLSProfile),
+		}
+	}
+
+	if optErr := manifests.ApplyTLSSettings(&opts, tlsSecurityProfile); optErr != nil {
+		logger.Error(optErr, "failed to conform options to tls profile settings")
 		os.Exit(1)
 	}
 

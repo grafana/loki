@@ -1,5 +1,75 @@
 # Changes
 
+## [0.13.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.12.0...iam/v0.13.0) (2023-03-15)
+
+
+### Features
+
+* **iam:** Update iam and longrunning deps ([91a1f78](https://github.com/googleapis/google-cloud-go/commit/91a1f784a109da70f63b96414bba8a9b4254cddd))
+
+## [0.12.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.11.0...iam/v0.12.0) (2023-02-17)
+
+
+### Features
+
+* **iam:** Migrate to new stubs ([a61ddcd](https://github.com/googleapis/google-cloud-go/commit/a61ddcd3041c7af4a15109dc4431f9b327c497fb))
+
+## [0.11.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.10.0...iam/v0.11.0) (2023-02-16)
+
+
+### Features
+
+* **iam:** Start generating proto stubs ([970d763](https://github.com/googleapis/google-cloud-go/commit/970d763531b54b2bc75d7ff26a20b6e05150cab8))
+
+## [0.10.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.9.0...iam/v0.10.0) (2023-01-04)
+
+
+### Features
+
+* **iam:** Add REST client ([06a54a1](https://github.com/googleapis/google-cloud-go/commit/06a54a16a5866cce966547c51e203b9e09a25bc0))
+
+## [0.9.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.8.0...iam/v0.9.0) (2022-12-15)
+
+
+### Features
+
+* **iam:** Rewrite iam sigs and update proto import ([#7137](https://github.com/googleapis/google-cloud-go/issues/7137)) ([ad67fa3](https://github.com/googleapis/google-cloud-go/commit/ad67fa36c263c161226f7fecbab5221592374dca))
+
+## [0.8.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.7.0...iam/v0.8.0) (2022-12-05)
+
+
+### Features
+
+* **iam:** Start generating and refresh some libraries ([#7089](https://github.com/googleapis/google-cloud-go/issues/7089)) ([a9045ff](https://github.com/googleapis/google-cloud-go/commit/a9045ff191a711089c37f1d94a63522d9939ce38))
+
+## [0.7.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.6.0...iam/v0.7.0) (2022-11-03)
+
+
+### Features
+
+* **iam:** rewrite signatures in terms of new location ([3c4b2b3](https://github.com/googleapis/google-cloud-go/commit/3c4b2b34565795537aac1661e6af2442437e34ad))
+
+## [0.6.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.5.0...iam/v0.6.0) (2022-10-25)
+
+
+### Features
+
+* **iam:** start generating stubs dir ([de2d180](https://github.com/googleapis/google-cloud-go/commit/de2d18066dc613b72f6f8db93ca60146dabcfdcc))
+
+## [0.5.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.4.0...iam/v0.5.0) (2022-09-28)
+
+
+### Features
+
+* **iam:** remove ListApplicablePolicies ([52dddd1](https://github.com/googleapis/google-cloud-go/commit/52dddd1ed89fbe77e1859311c3b993a77a82bfc7))
+
+## [0.4.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.3.0...iam/v0.4.0) (2022-09-06)
+
+
+### Features
+
+* **iam:** start generating apiv2 ([#6605](https://github.com/googleapis/google-cloud-go/issues/6605)) ([a6004e7](https://github.com/googleapis/google-cloud-go/commit/a6004e762f782869cd85688937475744f7b17e50))
+
 ## [0.3.0](https://github.com/googleapis/google-cloud-go/compare/iam/v0.2.0...iam/v0.3.0) (2022-02-23)
 
 

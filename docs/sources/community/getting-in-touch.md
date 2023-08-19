@@ -1,13 +1,16 @@
 ---
 title: Contacting the Loki Team
+description: How to contact the Loki team
+weight: 100
 ---
 # Contacting the Loki Team
 
 For questions regarding Loki:
 
+- Ask a question in the `#loki` channel of our [Slack](https://slack.grafana.com/) community
 - Open source Loki users are welcome to post technical questions on the Grafana Labs Community Forums under the Grafana Loki category at [community.grafana.com](https://community.grafana.com). Please be mindful that this is a community-driven support channel moderated by Grafana Labs staff where Loki maintainers and community members answer questions when bandwidth allows. Be sure to review the [Community Guidelines](https://community.grafana.com/guidelines) before posting.
-- Users deploying Loki via [Grafana Cloud](https://grafana.com/products/cloud/) can submit support tickets via the [Grafana.com Account Portal](https://grafana.com/login).
-- For questions regarding Enterprise support for Loki, you can get in touch with the Grafana Labs team [here](https://grafana.com/contact?pg=docs).
+- Users deploying Loki via [Grafana Cloud](/products/cloud/) can submit support tickets via the [Grafana.com Account Portal](/login).
+- For questions regarding Enterprise support for Loki, you can get in touch with the Grafana Labs team [here](/contact?pg=docs).
 
 Your feedback is always welcome! To submit feedback or a report a potential bug:
 

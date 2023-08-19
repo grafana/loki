@@ -3,6 +3,7 @@ package base
 import (
 	"crypto/md5"
 	"net/url"
+	"os"
 	"path/filepath"
 	"sort"
 
@@ -60,6 +61,11 @@ func (m *mapper) users() ([]string, error) {
 	var result []string
 
 	dirs, err := afero.ReadDir(m.FS, m.Path)
+	if os.IsNotExist(err) {
+		// The directory may have not been created yet. With regards to this function
+		// it's like the ruler has no tenants and it shouldn't be considered an error.
+		return nil, nil
+	}
 	for _, u := range dirs {
 		if u.IsDir() {
 			result = append(result, u.Name())

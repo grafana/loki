@@ -8,7 +8,6 @@ import (
 subtreeFolder is a NodeMapper which embeds an entire parser.Node in an embedded query
 if it does not contain any previously embedded queries. This allows the frontend to "zip up" entire
 subtrees of an AST that have not already been parallelized.
-
 */
 type subtreeFolder struct{}
 
@@ -73,7 +72,7 @@ type visitor struct {
 }
 
 // Visit implements parser.Visitor
-func (v *visitor) Visit(node parser.Node, path []parser.Node) (parser.Visitor, error) {
+func (v *visitor) Visit(node parser.Node, _ []parser.Node) (parser.Visitor, error) {
 	// if the visitor has already seen a predicate success, don't overwrite
 	if v.result {
 		return nil, nil

@@ -23,6 +23,7 @@ import (
 
 	"github.com/baidubce/bce-sdk-go/bce"
 	"github.com/baidubce/bce-sdk-go/http"
+	"github.com/baidubce/bce-sdk-go/util"
 )
 
 const (
@@ -44,6 +45,9 @@ const (
 	RAW_CONTENT_TYPE = "application/octet-stream"
 
 	THRESHOLD_100_CONTINUE = 1 << 20 // add 100 continue header if body size bigger than 1MB
+
+	TRAFFIC_LIMIT_MAX = 8 * (100 << 20) // 100M bit = 838860800
+	TRAFFIC_LIMIT_MIN = 8 * (100 << 10) // 100K bit = 819200
 
 	STATUS_ENABLED  = "enabled"
 	STATUS_DISABLED = "disabled"
@@ -271,4 +275,18 @@ func SendRequest(cli bce.Client, req *bce.BceRequest, resp *bce.BceResponse) err
 		}
 	}
 	return err
+}
+
+func getDefaultContentType(object string) string {
+	dot := strings.LastIndex(object, ".")
+	if dot == -1 {
+		return "application/octet-stream"
+	}
+	ext := object[dot:]
+	mimeMap := util.GetMimeMap()
+	if contentType, ok := mimeMap[ext]; ok {
+		return contentType
+	}
+	return "application/octet-stream"
+
 }

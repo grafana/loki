@@ -7,23 +7,62 @@ tests:
   - interval: 1m
 
     input_series:
-      - series: 'loki_request_duration_seconds_count{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m{status_code="500", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+1x20'
-      - series: 'loki_request_duration_seconds_count{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
+      - series: 'job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m{status_code="429", namespace="my-ns", job="ingester", route="my-route"}'
+        values: '1+1x20'
+      - series: 'job_namespace_route_statuscode:loki_request_duration_seconds_count:irate1m{status_code="200", namespace="my-ns", job="ingester", route="my-route"}'
         values: '1+3x20'
-      - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+      - series: 'code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{code="500", namespace="my-ns", job="gateway", handler="push"}'
         values: '1+1x20'
-      - series: 'http_requests_total{code="200", namespace="my-ns", job="gateway", handler="push", group="logsv1"}'
+      - series: 'code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{code="200", namespace="my-ns", job="gateway", handler="push"}'
         values: '1+3x20'
-      - series: 'http_requests_total{code="500", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+      - series: 'code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{code="500", namespace="my-ns", job="gateway", handler="query"}'
         values: '1+1x20'
-      - series: 'http_requests_total{code="200", namespace="my-ns", job="gateway", handler="query", group="logsv1"}'
+      - series: 'code_handler_job_namespace:lokistack_gateway_http_requests:irate1m{code="200", namespace="my-ns", job="gateway", handler="query"}'
         values: '1+3x20'
 
       - series: 'loki_panic_total{namespace="my-ns", job="ingester"}'
         values: '0 1 1 2+0x10'
 
-    # Unit test for alerting rules.
+      - series: 'loki_ingester_wal_replay_flushing{namespace="my-ns", job="ingester"}'
+        values: '0 1+0x20'
+
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="1"}'
+        values: '0+10x20'
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="5"}'
+        values: '0+50x20'
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="10"}'
+        values: '0+100x20'
+      - series: 'loki_request_duration_seconds_bucket{namespace="my-ns", job="ingester", route="my-route", le="+Inf"}'
+        values: '0+100x20'
+
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="1"}'
+        values: '0+10x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="5"}'
+        values: '0+50x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="10"}'
+        values: '0+100x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="ingester", operation="WRITE", le="+Inf"}'
+        values: '0+100x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="1"}'
+        values: '0+10x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="5"}'
+        values: '0+50x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="10"}'
+        values: '0+100x20'
+      - series: 'job_le_namespace_operation:loki_boltdb_shipper_request_duration_seconds_bucket:rate5m{namespace="my-ns", job="querier", operation="Shipper.Query", le="+Inf"}'
+        values: '0+100x20'
+
+      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="1"}'
+        values: '0x20'
+      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="30"}'
+        values: '0+10x20'
+      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="60"}'
+        values: '0+100x20'
+      - series: 'loki_logql_querystats_latency_seconds_bucket{namespace="my-ns", job="querier", route="my-route", le="+Inf"}'
+        values: '0+100x20'
+
     alert_rule_test:
       - eval_time: 16m
         alertname: LokiRequestErrors
@@ -35,7 +74,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of requests are responded by 5xx server errors."
-              message: "ingester my-route is experiencing 25.00% errors."
+              message: "ingester my-route is experiencing 20.48% errors."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackWriteRequestErrors
@@ -46,7 +85,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of write requests to the lokistack-gateway are responded with 5xx server errors."
-              message: "25.00% of write requests from gateway are returned with server errors."
+              message: "25.76% of write requests from gateway in my-ns are returned with server errors."
               runbook_url: "[[ .RunbookURL ]]#LokiStack-Write-Request-Errors"
       - eval_time: 16m
         alertname: LokiStackReadRequestErrors
@@ -57,7 +96,7 @@ tests:
               severity: critical
             exp_annotations:
               summary: "At least 10% of query requests to the lokistack-gateway are responded with 5xx server errors."
-              message: "25.00% of query requests from gateway are returned with server errors."
+              message: "25.76% of query requests from gateway in my-ns are returned with server errors."
               runbook_url: "[[ .RunbookURL ]]#LokiStack-Read-Request-Errors"
       - eval_time: 10m
         alertname: LokiRequestPanics
@@ -70,3 +109,71 @@ tests:
               summary: "A panic was triggered."
               message: "ingester is experiencing an increase of 2 panics."
               runbook_url: "[[ .RunbookURL ]]#Loki-Request-Panics"
+      - eval_time: 16m
+        alertname: LokiRequestLatency
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              route: my-route
+              severity: critical
+            exp_annotations:
+              summary: "The 99th percentile is experiencing high latency (higher than 1 second)."
+              message: "ingester my-route is experiencing 9.90s 99th percentile latency."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Request-Latency"
+      - eval_time: 16m
+        alertname: LokiTenantRateLimit
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              route: my-route
+              severity: warning
+            exp_annotations:
+              summary: "At least 10% of requests are responded with the rate limit error code."
+              message: "ingester my-route is experiencing 429 errors."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Tenant-Rate-Limit"
+      - eval_time: 16m
+        alertname: LokiStorageSlowWrite
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              severity: warning
+            exp_annotations:
+              summary: "The storage path is experiencing slow write response rates."
+              message: "The storage path is experiencing slow write response rates."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Write"
+      - eval_time: 16m
+        alertname: LokiStorageSlowRead
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: querier
+              severity: warning
+            exp_annotations:
+              summary: "The storage path is experiencing slow read response rates."
+              message: "The storage path is experiencing slow read response rates."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Storage-Slow-Read"
+      - eval_time: 16m
+        alertname: LokiWritePathHighLoad
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: ingester
+              severity: warning
+            exp_annotations:
+              summary: "The write path is experiencing high load, causing backpressure storage flushing."
+              message: "The write path is experiencing high load."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Write-Path-High-Load"
+      - eval_time: 16m
+        alertname: LokiReadPathHighLoad
+        exp_alerts:
+          - exp_labels:
+              namespace: my-ns
+              job: querier
+              severity: warning
+            exp_annotations:
+              summary: "The read path has high volume of queries, causing longer response times."
+              message: "The read path is experiencing high load."
+              runbook_url: "[[ .RunbookURL ]]#Loki-Read-Path-High-Load"

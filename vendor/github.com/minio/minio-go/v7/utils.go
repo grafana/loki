@@ -20,6 +20,7 @@ package minio
 import (
 	"context"
 	"crypto/md5"
+	fipssha256 "crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/xml"
@@ -27,7 +28,6 @@ import (
 	"fmt"
 	"hash"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"net/http"
@@ -39,6 +39,7 @@ import (
 	"time"
 
 	md5simd "github.com/minio/md5-simd"
+	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 	"github.com/minio/sha256-simd"
 )
@@ -140,7 +141,7 @@ func closeResponse(resp *http.Response) {
 		// Without this closing connection would disallow re-using
 		// the same connection for future uses.
 		//  - http://stackoverflow.com/a/17961593/4465767
-		io.Copy(ioutil.Discard, resp.Body)
+		io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
 }
@@ -254,7 +255,7 @@ func parseRFC7231Time(lastModified string) (time.Time, error) {
 
 // ToObjectInfo converts http header values into ObjectInfo type,
 // extracts metadata and fills in all the necessary fields in ObjectInfo.
-func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectInfo, error) {
+func ToObjectInfo(bucketName, objectName string, h http.Header) (ObjectInfo, error) {
 	var err error
 	// Trim off the odd double quotes from ETag in the beginning and end.
 	etag := trimEtag(h.Get("ETag"))
@@ -376,6 +377,12 @@ func ToObjectInfo(bucketName string, objectName string, h http.Header) (ObjectIn
 		UserTags:     userTags,
 		UserTagCount: tagCount,
 		Restore:      restore,
+
+		// Checksum values
+		ChecksumCRC32:  h.Get("x-amz-checksum-crc32"),
+		ChecksumCRC32C: h.Get("x-amz-checksum-crc32c"),
+		ChecksumSHA1:   h.Get("x-amz-checksum-sha1"),
+		ChecksumSHA256: h.Get("x-amz-checksum-sha256"),
 	}, nil
 }
 
@@ -501,7 +508,24 @@ func isSSEHeader(headerKey string) bool {
 func isAmzHeader(headerKey string) bool {
 	key := strings.ToLower(headerKey)
 
-	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey)
+	return strings.HasPrefix(key, "x-amz-meta-") || strings.HasPrefix(key, "x-amz-grant-") || key == "x-amz-acl" || isSSEHeader(headerKey) || strings.HasPrefix(key, "x-amz-checksum-")
+}
+
+// supportedQueryValues is a list of query strings that can be passed in when using GetObject.
+var supportedQueryValues = map[string]bool{
+	"partNumber":                   true,
+	"versionId":                    true,
+	"response-cache-control":       true,
+	"response-content-disposition": true,
+	"response-content-encoding":    true,
+	"response-content-language":    true,
+	"response-content-type":        true,
+	"response-expires":             true,
+}
+
+// isStandardQueryValue will return true when the passed in query string parameter is supported rather than customized.
+func isStandardQueryValue(qsKey string) bool {
+	return supportedQueryValues[qsKey]
 }
 
 var (
@@ -510,11 +534,14 @@ var (
 )
 
 func newMd5Hasher() md5simd.Hasher {
-	return hashWrapper{Hash: md5Pool.Get().(hash.Hash), isMD5: true}
+	return &hashWrapper{Hash: md5Pool.Get().(hash.Hash), isMD5: true}
 }
 
 func newSHA256Hasher() md5simd.Hasher {
-	return hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
+	if encrypt.FIPS {
+		return &hashWrapper{Hash: fipssha256.New(), isSHA256: true}
+	}
+	return &hashWrapper{Hash: sha256Pool.Get().(hash.Hash), isSHA256: true}
 }
 
 // hashWrapper implements the md5simd.Hasher interface.
@@ -525,7 +552,7 @@ type hashWrapper struct {
 }
 
 // Close will put the hasher back into the pool.
-func (m hashWrapper) Close() {
+func (m *hashWrapper) Close() {
 	if m.isMD5 && m.Hash != nil {
 		m.Reset()
 		md5Pool.Put(m.Hash)
@@ -620,4 +647,39 @@ func IsNetworkOrHostDown(err error, expectTimeouts bool) bool {
 		return true
 	}
 	return false
+}
+
+// newHashReaderWrapper will hash all reads done through r.
+// When r returns io.EOF the done function will be called with the sum.
+func newHashReaderWrapper(r io.Reader, h hash.Hash, done func(hash []byte)) *hashReaderWrapper {
+	return &hashReaderWrapper{
+		r:    r,
+		h:    h,
+		done: done,
+	}
+}
+
+type hashReaderWrapper struct {
+	r    io.Reader
+	h    hash.Hash
+	done func(hash []byte)
+}
+
+// Read implements the io.Reader interface.
+func (h *hashReaderWrapper) Read(p []byte) (n int, err error) {
+	n, err = h.r.Read(p)
+	if n > 0 {
+		n2, err := h.h.Write(p[:n])
+		if err != nil {
+			return 0, err
+		}
+		if n2 != n {
+			return 0, io.ErrShortWrite
+		}
+	}
+	if err == io.EOF {
+		// Call back
+		h.done(h.h.Sum(nil))
+	}
+	return n, err
 }

@@ -17,7 +17,7 @@ TOOLS_MOD_DIR := ./internal/tools
 ALL_DOCS := $(shell find . -name '*.md' -type f | sort)
 ALL_GO_MOD_DIRS := $(shell find . -type f -name 'go.mod' -exec dirname {} \; | sort)
 OTEL_GO_MOD_DIRS := $(filter-out $(TOOLS_MOD_DIR), $(ALL_GO_MOD_DIRS))
-ALL_COVERAGE_MOD_DIRS := $(shell find . -type f -name 'go.mod' -exec dirname {} \; | egrep -v '^./example|^$(TOOLS_MOD_DIR)' | sort)
+ALL_COVERAGE_MOD_DIRS := $(shell find . -type f -name 'go.mod' -exec dirname {} \; | grep -E -v '^./example|^$(TOOLS_MOD_DIR)' | sort)
 
 GO = go
 TIMEOUT = 60
@@ -45,7 +45,7 @@ SEMCONVGEN = $(TOOLS)/semconvgen
 $(TOOLS)/semconvgen: PACKAGE=go.opentelemetry.io/build-tools/semconvgen
 
 CROSSLINK = $(TOOLS)/crosslink
-$(TOOLS)/crosslink: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/crosslink
+$(TOOLS)/crosslink: PACKAGE=go.opentelemetry.io/build-tools/crosslink
 
 SEMCONVKIT = $(TOOLS)/semconvkit
 $(TOOLS)/semconvkit: PACKAGE=go.opentelemetry.io/otel/$(TOOLS_MOD_DIR)/semconvkit
@@ -147,8 +147,8 @@ golangci-lint/%: | $(GOLANGCI_LINT)
 
 .PHONY: crosslink
 crosslink: | $(CROSSLINK)
-	@echo "cross-linking all go modules" \
-		&& $(CROSSLINK)
+	@echo "Updating intra-repository dependencies in all go modules" \
+		&& $(CROSSLINK) --root=$(shell pwd) --prune
 
 .PHONY: go-mod-tidy
 go-mod-tidy: $(ALL_GO_MOD_DIRS:%=go-mod-tidy/%)
@@ -156,7 +156,7 @@ go-mod-tidy/%: DIR=$*
 go-mod-tidy/%: | crosslink
 	@echo "$(GO) mod tidy in $(DIR)" \
 		&& cd $(DIR) \
-		&& $(GO) mod tidy
+		&& $(GO) mod tidy -compat=1.18
 
 .PHONY: lint-modules
 lint-modules: go-mod-tidy
@@ -178,7 +178,7 @@ misspell: | $(MISSPELL)
 
 .PHONY: license-check
 license-check:
-	@licRes=$$(for f in $$(find . -type f \( -iname '*.go' -o -iname '*.sh' \) ! -path '**/third_party/*') ; do \
+	@licRes=$$(for f in $$(find . -type f \( -iname '*.go' -o -iname '*.sh' \) ! -path '**/third_party/*' ! -path './.git/*' ) ; do \
 	           awk '/Copyright The OpenTelemetry Authors|generated|GENERATED/ && NR<=3 { found=1; next } END { if (!found) print FILENAME }' $$f; \
 	   done); \
 	   if [ -n "$${licRes}" ]; then \
@@ -208,11 +208,12 @@ check-clean-work-tree:
 SEMCONVPKG ?= "semconv/"
 .PHONY: semconv-generate
 semconv-generate: | $(SEMCONVGEN) $(SEMCONVKIT)
-	@[ "$(TAG)" ] || ( echo "TAG unset: missing opentelemetry specification tag"; exit 1 )
-	@[ "$(OTEL_SPEC_REPO)" ] || ( echo "OTEL_SPEC_REPO unset: missing path to opentelemetry specification repo"; exit 1 )
-	@$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/trace" -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
-	@$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/resource" -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
-	@$(SEMCONVKIT) -output "$(SEMCONVPKG)/$(TAG)" -tag "$(TAG)"
+	[ "$(TAG)" ] || ( echo "TAG unset: missing opentelemetry specification tag"; exit 1 )
+	[ "$(OTEL_SPEC_REPO)" ] || ( echo "OTEL_SPEC_REPO unset: missing path to opentelemetry specification repo"; exit 1 )
+	$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/." --only=span -p conventionType=trace -f trace.go -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
+	$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/." --only=event -p conventionType=event -f event.go -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
+	$(SEMCONVGEN) -i "$(OTEL_SPEC_REPO)/semantic_conventions/." --only=resource -p conventionType=resource -f resource.go -t "$(SEMCONVPKG)/template.j2" -s "$(TAG)"
+	$(SEMCONVKIT) -output "$(SEMCONVPKG)/$(TAG)" -tag "$(TAG)"
 
 .PHONY: prerelease
 prerelease: | $(MULTIMOD)

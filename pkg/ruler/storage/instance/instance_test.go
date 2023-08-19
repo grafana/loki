@@ -12,12 +12,18 @@ import (
 	"testing"
 	"time"
 
+	"net/url"
+
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
+	common_config "github.com/prometheus/common/config"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -199,6 +205,33 @@ func TestInstance(t *testing.T) {
 		require.NoError(t, err)
 	}
 	assert.Len(t, mockStorage.series, count)
+
+	require.NotPanics(t, func() {
+		sendInterval := 100 * time.Millisecond
+		cfg.RemoteWrite = []*config.RemoteWriteConfig{
+			{
+				Name: "write-test",
+				URL: &common_config.URL{
+					URL: &url.URL{
+						Scheme: "http",
+						Host:   "localhost:8080",
+						Path:   "/write",
+					},
+				},
+				RemoteTimeout: config.DefaultRemoteWriteConfig.RemoteTimeout,
+				QueueConfig:   config.DefaultRemoteWriteConfig.QueueConfig,
+				MetadataConfig: config.MetadataConfig{
+					Send:              true,
+					MaxSamplesPerSend: 1,
+					SendInterval:      model.Duration(sendInterval),
+				},
+			},
+		}
+		err = inst.Update(cfg)
+		assert.NoError(t, err)
+		// Wait enough time for the metrics send interval to kick in.
+		time.Sleep(2 * sendInterval)
+	})
 }
 
 type mockWalStorage struct {
@@ -212,9 +245,9 @@ type mockWalStorage struct {
 
 func (s *mockWalStorage) Directory() string                          { return s.directory }
 func (s *mockWalStorage) StartTime() (int64, error)                  { return 0, nil }
-func (s *mockWalStorage) WriteStalenessMarkers(f func() int64) error { return nil }
+func (s *mockWalStorage) WriteStalenessMarkers(_ func() int64) error { return nil }
 func (s *mockWalStorage) Close() error                               { return nil }
-func (s *mockWalStorage) Truncate(mint int64) error                  { return nil }
+func (s *mockWalStorage) Truncate(_ int64) error                     { return nil }
 
 func (s *mockWalStorage) Appender(context.Context) storage.Appender {
 	return &mockAppender{s: s}
@@ -232,7 +265,7 @@ func (a *mockAppender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v
 }
 
 // Add adds a new series and sets its written count to 1.
-func (a *mockAppender) Add(l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
+func (a *mockAppender) Add(l labels.Labels, _ int64, _ float64) (storage.SeriesRef, error) {
 	a.s.mut.Lock()
 	defer a.s.mut.Unlock()
 
@@ -242,7 +275,7 @@ func (a *mockAppender) Add(l labels.Labels, t int64, v float64) (storage.SeriesR
 }
 
 // AddFast increments the number of writes to an existing series.
-func (a *mockAppender) AddFast(ref storage.SeriesRef, t int64, v float64) error {
+func (a *mockAppender) AddFast(ref storage.SeriesRef, _ int64, _ float64) error {
 	a.s.mut.Lock()
 	defer a.s.mut.Unlock()
 	_, ok := a.s.series[ref]
@@ -254,7 +287,15 @@ func (a *mockAppender) AddFast(ref storage.SeriesRef, t int64, v float64) error 
 	return nil
 }
 
-func (a *mockAppender) AppendExemplar(ref storage.SeriesRef, l labels.Labels, e exemplar.Exemplar) (storage.SeriesRef, error) {
+func (a *mockAppender) AppendExemplar(_ storage.SeriesRef, _ labels.Labels, _ exemplar.Exemplar) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *mockAppender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
 	return 0, nil
 }
 

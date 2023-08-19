@@ -412,19 +412,19 @@ func (opts RebootOpts) ToServerRebootMap() (map[string]interface{}, error) {
 }
 
 /*
-	Reboot requests that a given server reboot.
+Reboot requests that a given server reboot.
 
-	Two methods exist for rebooting a server:
+Two methods exist for rebooting a server:
 
-	HardReboot (aka PowerCycle) starts the server instance by physically cutting
-	power to the machine, or if a VM, terminating it at the hypervisor level.
-	It's done. Caput. Full stop.
-	Then, after a brief while, power is restored or the VM instance restarted.
+HardReboot (aka PowerCycle) starts the server instance by physically cutting
+power to the machine, or if a VM, terminating it at the hypervisor level.
+It's done. Caput. Full stop.
+Then, after a brief while, power is restored or the VM instance restarted.
 
-	SoftReboot (aka OSReboot) simply tells the OS to restart under its own
-	procedure.
-	E.g., in Linux, asking it to enter runlevel 6, or executing
-	"sudo shutdown -r now", or by asking Windows to rtart the machine.
+SoftReboot (aka OSReboot) simply tells the OS to restart under its own
+procedure.
+E.g., in Linux, asking it to enter runlevel 6, or executing
+"sudo shutdown -r now", or by asking Windows to rtart the machine.
 */
 func Reboot(client *gophercloud.ServiceClient, id string, opts RebootOptsBuilder) (r ActionResult) {
 	b, err := opts.ToServerRebootMap()

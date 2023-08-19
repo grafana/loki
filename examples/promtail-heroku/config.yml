@@ -1,0 +1,38 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: "info"
+
+positions:
+  filename: /tmp/positions.yaml
+
+# This bit indicates what Loki instance to write the logs to. We’ll inject the
+# details and credentials through environment variables
+clients:
+  - url: https://${LOKI_TENANT_ID}:${LOKI_TOKEN}@${LOKI_HOST}/loki/api/v1/push
+
+scrape_configs:
+  # Job name, that will be injected in each log line
+  - job_name: ${JOB_NAME}
+
+# Apply relabel to keep Heroku internal labels
+relabel_configs:
+  - source_labels: ["__heroku_drain_host"]
+    target_label: "host"
+  - source_labels: ["__heroku_drain_app"]
+    target_label: "app"
+  - source_labels: ["__heroku_drain_proc"]
+    target_label: "proc"
+
+    # Main heroku target configuration
+    heroku_drain:
+      server:
+        http_listen_address: 0.0.0.0
+        # $PORT is a special environment variable that Heroku fills with
+        # port that’s accessible from outside the container. We indicate promtail
+        # to listen for Heroku logs in it.
+        http_listen_port: ${PORT}
+        log_level: info
+      # Tag each log entry with our job name
+      labels:
+        job: ${JOB_NAME}

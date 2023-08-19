@@ -3,13 +3,16 @@
 
 package s2
 
+const hasAmd64Asm = true
+
 // encodeBlock encodes a non-empty src to a guaranteed-large-enough dst. It
 // assumes that the varint-encoded length of the decompressed bytes has already
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlock(dst, src []byte) (d int) {
 	const (
 		// Use 12 bit table when less than...
@@ -43,8 +46,9 @@ func encodeBlock(dst, src []byte) (d int) {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockBetter(dst, src []byte) (d int) {
 	const (
 		// Use 12 bit table when less than...
@@ -78,8 +82,9 @@ func encodeBlockBetter(dst, src []byte) (d int) {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockSnappy(dst, src []byte) (d int) {
 	const (
 		// Use 12 bit table when less than...
@@ -112,8 +117,9 @@ func encodeBlockSnappy(dst, src []byte) (d int) {
 // been written.
 //
 // It also assumes that:
+//
 //	len(dst) >= MaxEncodedLen(len(src)) &&
-// 	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
+//	minNonLiteralBlockSize <= len(src) && len(src) <= maxBlockSize
 func encodeBlockBetterSnappy(dst, src []byte) (d int) {
 	const (
 		// Use 12 bit table when less than...

@@ -2,11 +2,13 @@ package tsdb
 
 import (
 	"context"
+	"flag"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -20,6 +22,18 @@ type ChunkRef struct {
 	Fingerprint model.Fingerprint
 	Start, End  model.Time
 	Checksum    uint32
+}
+
+type IndexCfg struct {
+	indexshipper.Config `yaml:",inline"`
+
+	CachePostings bool `yaml:"enable_postings_cache" category:"experimental"`
+}
+
+func (cfg *IndexCfg) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	f.BoolVar(&cfg.CachePostings, prefix+"enable-postings-cache", false, "Experimental. Whether TSDB should cache postings or not. The index-read-cache will be used as the backend.")
+
+	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 }
 
 // Compares by (Start, End)
@@ -53,29 +67,34 @@ type Index interface {
 	LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error)
 	LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error)
 	Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error
+	Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error
 }
 
 type NoopIndex struct{}
 
-func (NoopIndex) Close() error                       { return nil }
-func (NoopIndex) Bounds() (from, through model.Time) { return }
-func (NoopIndex) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (NoopIndex) Close() error                    { return nil }
+func (NoopIndex) Bounds() (_, through model.Time) { return }
+func (NoopIndex) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ []ChunkRef, _ *index.ShardAnnotation, _ ...*labels.Matcher) ([]ChunkRef, error) {
 	return nil, nil
 }
 
 // Series follows the same semantics regarding the passed slice and shard as GetChunkRefs.
-func (NoopIndex) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (NoopIndex) Series(_ context.Context, _ string, _, _ model.Time, _ []Series, _ *index.ShardAnnotation, _ ...*labels.Matcher) ([]Series, error) {
 	return nil, nil
 }
-func (NoopIndex) LabelNames(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]string, error) {
+func (NoopIndex) LabelNames(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
-func (NoopIndex) LabelValues(ctx context.Context, userID string, from, through model.Time, name string, matchers ...*labels.Matcher) ([]string, error) {
+func (NoopIndex) LabelValues(_ context.Context, _ string, _, _ model.Time, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (NoopIndex) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStatsAccumulator, _ *index.ShardAnnotation, _ shouldIncludeChunk, _ ...*labels.Matcher) error {
 	return nil
 }
 
-func (NoopIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {}
+func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
+
+func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ *index.ShardAnnotation, _ shouldIncludeChunk, _ []string, _ string, _ ...*labels.Matcher) error {
+	return nil
+}

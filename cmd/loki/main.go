@@ -8,10 +8,10 @@ import (
 	"runtime"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/tracing"
 
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/util"
@@ -20,6 +20,11 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
+
+func exit(code int) {
+	util_log.Flush()
+	os.Exit(code)
+}
 
 func main() {
 	var config loki.ConfigWrapper
@@ -39,17 +44,17 @@ func main() {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
 
 	// Init the logger which will honor the log level set in config.Server
-	if reflect.DeepEqual(&config.Server.LogLevel, &logging.Level{}) {
+	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
-		os.Exit(1)
+		exit(1)
 	}
-	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.
 	if err := config.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())
-		os.Exit(1)
+		exit(1)
 	}
 
 	if config.PrintConfig {
@@ -66,7 +71,7 @@ func main() {
 
 	if config.VerifyConfig {
 		level.Info(util_log.Logger).Log("msg", "config is valid")
-		os.Exit(0)
+		exit(0)
 	}
 
 	if config.Tracing.Enabled {
@@ -97,7 +102,7 @@ func main() {
 
 	if config.ListTargets {
 		t.ListTargets()
-		os.Exit(0)
+		exit(0)
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Loki", "version", version.Info())

@@ -27,12 +27,21 @@ const (
 	// StreamLimit is a reason for discarding lines when we can't create a new stream
 	// because the limit of active streams has been reached.
 	StreamLimit         = "stream_limit"
-	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased"
+	StreamLimitErrorMsg = "Maximum active stream limit exceeded, reduce the number of active streams (reduce labels or reduce label values), or contact your Loki administrator to see if the limit can be increased, user: '%s'"
 	// StreamRateLimit is a reason for discarding lines when the streams own rate limit is hit
 	// rather than the overall ingestion rate limit.
 	StreamRateLimit = "per_stream_rate_limit"
-	OutOfOrder      = "out_of_order"
-	TooFarBehind    = "too_far_behind"
+	// OutOfOrder is a reason for discarding lines when Loki doesn't accept out
+	// of order log lines (parameter `-ingester.unordered-writes` is set to
+	// `false`) and the lines in question are older than the newest line in the
+	// stream.
+	OutOfOrder = "out_of_order"
+	// TooFarBehind is a reason for discarding lines when Loki accepts
+	// unordered ingest  (parameter `-ingester.unordered-writes` is set to
+	// `true`, which is the default) and the lines in question are older than
+	// half of `-ingester.max-chunk-age` compared to the newest line in the
+	// stream.
+	TooFarBehind = "too_far_behind"
 	// GreaterThanMaxSampleAge is a reason for discarding log lines which are older than the current time - `reject_old_samples_max_age`
 	GreaterThanMaxSampleAge         = "greater_than_max_sample_age"
 	GreaterThanMaxSampleAgeErrorMsg = "entry for stream '%s' has timestamp too old: %v, oldest acceptable timestamp is: %v"

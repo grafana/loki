@@ -1,0 +1,27 @@
+FROM registry.access.redhat.com/ubi8/ubi-minimal:latest
+
+USER root
+
+RUN microdnf update \
+    && microdnf install curl gzip java-11-openjdk-headless tar \
+    && microdnf clean all
+
+ENV JAVA_HOME=/usr/lib/jvm/jre-11
+
+# https://docs.oracle.com/javase/7/docs/technotes/guides/net/properties.html
+# Ensure Java doesn't cache any dns results
+RUN cd /etc/java/java-11-openjdk/*/conf/security \
+  && sed -e '/networkaddress.cache.ttl/d' -e '/networkaddress.cache.negative.ttl/d' -i java.security \
+  && echo 'networkaddress.cache.ttl=0' >> java.security \
+  && echo 'networkaddress.cache.negative.ttl=0' >> java.security
+
+# https://github.com/apache/kafka/blob/53eeaad946cd053e9eb1a762972d4efeacb8e4fc/tests/docker/Dockerfile#L65-L69
+ARG KAFKA_MIRROR="https://s3-us-west-2.amazonaws.com/kafka-packages"
+RUN mkdir -p "/opt/kafka-2.8.2" && chmod a+rw /opt/kafka-2.8.2 && curl -s "$KAFKA_MIRROR/kafka_2.12-2.8.2.tgz" | tar xz --strip-components=1 -C "/opt/kafka-2.8.2"
+RUN mkdir -p "/opt/kafka-3.1.2" && chmod a+rw /opt/kafka-3.1.2 && curl -s "$KAFKA_MIRROR/kafka_2.12-3.1.2.tgz" | tar xz --strip-components=1 -C "/opt/kafka-3.1.2"
+RUN mkdir -p "/opt/kafka-3.2.3" && chmod a+rw /opt/kafka-3.2.3 && curl -s "$KAFKA_MIRROR/kafka_2.12-3.2.3.tgz" | tar xz --strip-components=1 -C "/opt/kafka-3.2.3"
+RUN mkdir -p "/opt/kafka-3.3.1" && chmod a+rw /opt/kafka-3.3.1 && curl -s "$KAFKA_MIRROR/kafka_2.12-3.3.1.tgz" | tar xz --strip-components=1 -C "/opt/kafka-3.3.1"
+
+COPY entrypoint.sh /
+
+ENTRYPOINT ["/entrypoint.sh"]

@@ -701,21 +701,19 @@ func fetchLazyChunks(ctx context.Context, s config.SchemaConfig, chunks []*LazyC
 	errChan := make(chan error)
 	for f, chunks := range chksByFetcher {
 		go func(fetcher *fetcher.Fetcher, chunks []*LazyChunk) {
-			keys := make([]string, 0, len(chunks))
 			chks := make([]chunk.Chunk, 0, len(chunks))
 			index := make(map[string]*LazyChunk, len(chunks))
 
-			// FetchChunks requires chunks to be ordered by external key.
-			sort.Slice(chunks, func(i, j int) bool {
-				return s.ExternalKey(chunks[i].Chunk.ChunkRef) < s.ExternalKey(chunks[j].Chunk.ChunkRef)
-			})
 			for _, chk := range chunks {
 				key := s.ExternalKey(chk.Chunk.ChunkRef)
-				keys = append(keys, key)
 				chks = append(chks, chk.Chunk)
 				index[key] = chk
 			}
-			chks, err := fetcher.FetchChunks(ctx, chks, keys)
+			chks, err := fetcher.FetchChunks(ctx, chks)
+			if ctx.Err() != nil {
+				errChan <- nil
+				return
+			}
 			if err != nil {
 				level.Error(logger).Log("msg", "error fetching chunks", "err", err)
 				if isInvalidChunkError(err) {

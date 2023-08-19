@@ -24,6 +24,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
@@ -50,12 +51,33 @@ var (
 		}
 		return ex.ForStream(labels.Labels{})
 	}()
+	allPossibleFormats = []struct {
+		headBlockFmt HeadBlockFmt
+		chunkFormat  byte
+	}{
+		{
+			headBlockFmt: OrderedHeadBlockFmt,
+			chunkFormat:  chunkFormatV2,
+		},
+		{
+			headBlockFmt: OrderedHeadBlockFmt,
+			chunkFormat:  chunkFormatV3,
+		},
+		{
+			headBlockFmt: UnorderedHeadBlockFmt,
+			chunkFormat:  chunkFormatV3,
+		},
+		{
+			headBlockFmt: UnorderedWithNonIndexedLabelsHeadBlockFmt,
+			chunkFormat:  chunkFormatV4,
+		},
+	}
 )
 
-const DefaultHeadBlockFmt = OrderedHeadBlockFmt
+const DefaultTestHeadBlockFmt = DefaultHeadBlockFmt
 
 func TestBlocksInclusive(t *testing.T) {
-	chk := NewMemChunk(EncNone, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+	chk := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 	err := chk.Append(logprotoEntry(1, "1"))
 	require.Nil(t, err)
 	err = chk.cut()
@@ -68,112 +90,182 @@ func TestBlocksInclusive(t *testing.T) {
 
 func TestBlock(t *testing.T) {
 	for _, enc := range testEncoding {
-		t.Run(enc.String(), func(t *testing.T) {
-			t.Parallel()
-
-			chk := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
-			cases := []struct {
-				ts  int64
-				str string
-				cut bool
-			}{
-				{
-					ts:  1,
-					str: "hello, world!",
-				},
-				{
-					ts:  2,
-					str: "hello, world2!",
-				},
-				{
-					ts:  3,
-					str: "hello, world3!",
-				},
-				{
-					ts:  4,
-					str: "hello, world4!",
-				},
-				{
-					ts:  5,
-					str: "hello, world5!",
-				},
-				{
-					ts:  6,
-					str: "hello, world6!",
-					cut: true,
-				},
-				{
-					ts:  7,
-					str: "hello, world7!",
-				},
-				{
-					ts:  8,
-					str: "hello, worl\nd8!",
-				},
-				{
-					ts:  8,
-					str: "hello, world 8, 2!",
-				},
-				{
-					ts:  8,
-					str: "hello, world 8, 3!",
-				},
-				{
-					ts:  9,
-					str: "",
-				},
-			}
-
-			for _, c := range cases {
-				require.NoError(t, chk.Append(logprotoEntry(c.ts, c.str)))
-				if c.cut {
-					require.NoError(t, chk.cut())
+		enc := enc
+		for _, format := range allPossibleFormats {
+			chunkFormat, headBlockFmt := format.chunkFormat, format.headBlockFmt
+			t.Run(fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt), func(t *testing.T) {
+				t.Parallel()
+				chk := newMemChunkWithFormat(chunkFormat, enc, headBlockFmt, testBlockSize, testTargetSize)
+				cases := []struct {
+					ts  int64
+					str string
+					lbs []logproto.LabelAdapter
+					cut bool
+				}{
+					{
+						ts:  1,
+						str: "hello, world!",
+					},
+					{
+						ts:  2,
+						str: "hello, world2!",
+						lbs: []logproto.LabelAdapter{
+							{Name: "app", Value: "myapp"},
+						},
+					},
+					{
+						ts:  3,
+						str: "hello, world3!",
+						lbs: []logproto.LabelAdapter{
+							{Name: "a", Value: "a"},
+							{Name: "b", Value: "b"},
+						},
+					},
+					{
+						ts:  4,
+						str: "hello, world4!",
+					},
+					{
+						ts:  5,
+						str: "hello, world5!",
+					},
+					{
+						ts:  6,
+						str: "hello, world6!",
+						cut: true,
+					},
+					{
+						ts:  7,
+						str: "hello, world7!",
+					},
+					{
+						ts:  8,
+						str: "hello, worl\nd8!",
+					},
+					{
+						ts:  8,
+						str: "hello, world 8, 2!",
+					},
+					{
+						ts:  8,
+						str: "hello, world 8, 3!",
+					},
+					{
+						ts:  9,
+						str: "",
+					},
+					{
+						ts:  10,
+						str: "hello, world10!",
+						lbs: []logproto.LabelAdapter{
+							{Name: "a", Value: "a2"},
+							{Name: "b", Value: "b"},
+						},
+					},
 				}
-			}
 
-			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
-			require.NoError(t, err)
+				for _, c := range cases {
+					require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(c.ts, c.str, c.lbs)))
+					if c.cut {
+						require.NoError(t, chk.cut())
+					}
+				}
 
-			idx := 0
-			for it.Next() {
-				e := it.Entry()
-				require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
-				require.Equal(t, cases[idx].str, e.Line)
-				idx++
-			}
+				var noopStreamPipeline = log.NewNoopPipeline().ForStream(labels.Labels{})
 
-			require.NoError(t, it.Error())
-			require.NoError(t, it.Close())
-			require.Equal(t, len(cases), idx)
-
-			sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
-			idx = 0
-			for sampleIt.Next() {
-				s := sampleIt.Sample()
-				require.Equal(t, cases[idx].ts, s.Timestamp)
-				require.Equal(t, 1., s.Value)
-				require.NotEmpty(t, s.Hash)
-				idx++
-			}
-
-			require.NoError(t, sampleIt.Error())
-			require.NoError(t, sampleIt.Close())
-			require.Equal(t, len(cases), idx)
-
-			t.Run("bounded-iteration", func(t *testing.T) {
-				it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
+				it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 				require.NoError(t, err)
 
-				idx := 2
+				idx := 0
 				for it.Next() {
 					e := it.Entry()
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
+					require.Empty(t, e.NonIndexedLabels)
+					if chunkFormat < chunkFormatV4 {
+						require.Equal(t, labels.EmptyLabels().String(), it.Labels())
+					} else {
+						expectedLabels := logproto.FromLabelAdaptersToLabels(cases[idx].lbs).String()
+						require.Equal(t, expectedLabels, it.Labels())
+					}
 					idx++
 				}
+
 				require.NoError(t, it.Error())
-				require.Equal(t, 6, idx)
+				require.NoError(t, it.Close())
+				require.Equal(t, len(cases), idx)
+
+				countExtractor = func() log.StreamSampleExtractor {
+					ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+					if err != nil {
+						panic(err)
+					}
+					return ex.ForStream(labels.Labels{})
+				}()
+
+				sampleIt := chk.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+				idx = 0
+				for sampleIt.Next() {
+					s := sampleIt.Sample()
+					require.Equal(t, cases[idx].ts, s.Timestamp)
+					require.Equal(t, 1., s.Value)
+					require.NotEmpty(t, s.Hash)
+					idx++
+				}
+
+				require.NoError(t, sampleIt.Error())
+				require.NoError(t, sampleIt.Close())
+				require.Equal(t, len(cases), idx)
+
+				t.Run("bounded-iteration", func(t *testing.T) {
+					it, err := chk.Iterator(context.Background(), time.Unix(0, 3), time.Unix(0, 7), logproto.FORWARD, noopStreamPipeline)
+					require.NoError(t, err)
+
+					idx := 2
+					for it.Next() {
+						e := it.Entry()
+						require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
+						require.Equal(t, cases[idx].str, e.Line)
+						idx++
+					}
+					require.NoError(t, it.Error())
+					require.Equal(t, 6, idx)
+				})
 			})
+
+		}
+	}
+}
+
+func TestCorruptChunk(t *testing.T) {
+	for _, enc := range testEncoding {
+		enc := enc
+		t.Run(enc.String(), func(t *testing.T) {
+			t.Parallel()
+
+			chk := NewMemChunk(enc, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+			cases := []struct {
+				data []byte
+			}{
+				// Data that should not decode as lines from a chunk in any encoding.
+				{data: []byte{0}},
+				{data: []byte{1}},
+				{data: []byte("asdfasdfasdfqwyteqwtyeq")},
+			}
+
+			ctx, start, end := context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64)
+			for i, c := range cases {
+				chk.blocks = []block{{b: c.data}}
+				it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
+				require.NoError(t, err, "case %d", i)
+
+				idx := 0
+				for it.Next() {
+					idx++
+				}
+				require.Error(t, it.Error(), "case %d", i)
+				require.NoError(t, it.Close())
+			}
 		})
 	}
 }
@@ -181,7 +273,7 @@ func TestBlock(t *testing.T) {
 func TestReadFormatV1(t *testing.T) {
 	t.Parallel()
 
-	c := NewMemChunk(EncGZIP, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
 	// overrides default v2 format
 	c.format = chunkFormatV1
@@ -216,66 +308,70 @@ func TestReadFormatV1(t *testing.T) {
 // 1) memory populated chunks <-> []byte loaded chunks
 // 2) []byte loaded chunks <-> []byte loaded chunks
 func TestRoundtripV2(t *testing.T) {
-	for _, f := range HeadBlockFmts {
+	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncoding {
-			for _, version := range []byte{chunkFormatV2, chunkFormatV3} {
-				t.Run(enc.String(), func(t *testing.T) {
-					t.Parallel()
+			enc := enc
+			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
+				t.Parallel()
 
-					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-					c.format = version
-					populated := fillChunk(c)
+				c := newMemChunkWithFormat(testData.chunkFormat, enc, testData.headBlockFmt, testBlockSize, testTargetSize)
+				populated := fillChunk(c)
 
-					assertLines := func(c *MemChunk) {
-						require.Equal(t, enc, c.Encoding())
-						it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
-						if err != nil {
-							t.Fatal(err)
-						}
-
-						i := int64(0)
-						var data int64
-						for it.Next() {
-							require.Equal(t, i, it.Entry().Timestamp.UnixNano())
-							require.Equal(t, testdata.LogString(i), it.Entry().Line)
-
-							data += int64(len(it.Entry().Line))
-							i++
-						}
-						require.Equal(t, populated, data)
-					}
-
-					assertLines(c)
-
-					// test MemChunk -> NewByteChunk loading
-					b, err := c.Bytes()
+				assertLines := func(c *MemChunk) {
+					require.Equal(t, enc, c.Encoding())
+					it, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
 					if err != nil {
 						t.Fatal(err)
 					}
 
-					r, err := NewByteChunk(b, testBlockSize, testTargetSize)
-					if err != nil {
-						t.Fatal(err)
+					i := int64(0)
+					var data int64
+					for it.Next() {
+						require.Equal(t, i, it.Entry().Timestamp.UnixNano())
+						require.Equal(t, testdata.LogString(i), it.Entry().Line)
+
+						data += int64(len(it.Entry().Line))
+						i++
 					}
-					assertLines(r)
+					require.Equal(t, populated, data)
+				}
 
-					// test NewByteChunk -> NewByteChunk loading
-					rOut, err := r.Bytes()
-					require.Nil(t, err)
+				assertLines(c)
 
-					loaded, err := NewByteChunk(rOut, testBlockSize, testTargetSize)
-					require.Nil(t, err)
+				// test MemChunk -> NewByteChunk loading
+				b, err := c.Bytes()
+				if err != nil {
+					t.Fatal(err)
+				}
 
-					assertLines(loaded)
-				})
-			}
+				r, err := NewByteChunk(b, testBlockSize, testTargetSize)
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertLines(r)
+
+				// test NewByteChunk -> NewByteChunk loading
+				rOut, err := r.Bytes()
+				require.Nil(t, err)
+
+				loaded, err := NewByteChunk(rOut, testBlockSize, testTargetSize)
+				require.Nil(t, err)
+
+				assertLines(loaded)
+			})
 		}
+
 	}
+}
+
+func testNameWithFormats(enc Encoding, chunkFormat byte, headBlockFmt HeadBlockFmt) string {
+	return fmt.Sprintf("encoding:%v chunkFormat:%v headBlockFmt:%v", enc, chunkFormat, headBlockFmt)
 }
 
 func TestRoundtripV3(t *testing.T) {
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
+			enc := enc
 			t.Run(fmt.Sprintf("%v-%v", f, enc), func(t *testing.T) {
 				t.Parallel()
 
@@ -297,63 +393,99 @@ func TestRoundtripV3(t *testing.T) {
 }
 
 func TestSerialization(t *testing.T) {
-	for _, f := range HeadBlockFmts {
+	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncoding {
-			t.Run(enc.String(), func(t *testing.T) {
-				t.Parallel()
-
-				chk := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-
-				numSamples := 50000
-
-				for i := 0; i < numSamples; i++ {
-					require.NoError(t, chk.Append(logprotoEntry(int64(i), strconv.Itoa(i))))
+			enc := enc
+			// run tests with and without non-indexed labels set since it is optional
+			for _, appendWithNonIndexedLabels := range []bool{false, true} {
+				appendWithNonIndexedLabels := appendWithNonIndexedLabels
+				testName := testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt)
+				if appendWithNonIndexedLabels {
+					testName = fmt.Sprintf("%s - append non-indexed labels", testName)
+				} else {
+					testName = fmt.Sprintf("%s - without non-indexed labels", testName)
 				}
-				require.NoError(t, chk.Close())
+				t.Run(testName, func(t *testing.T) {
+					t.Parallel()
 
-				byt, err := chk.Bytes()
-				require.NoError(t, err)
+					chk := NewMemChunk(enc, testData.headBlockFmt, testBlockSize, testTargetSize)
+					chk.format = testData.chunkFormat
+					numSamples := 50000
+					var entry *logproto.Entry
 
-				bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
-				require.NoError(t, err)
+					for i := 0; i < numSamples; i++ {
+						entry = logprotoEntry(int64(i), strconv.Itoa(i))
+						if appendWithNonIndexedLabels {
+							entry.NonIndexedLabels = []logproto.LabelAdapter{{Name: "foo", Value: strconv.Itoa(i)}}
+						}
+						require.NoError(t, chk.Append(entry))
+					}
+					require.NoError(t, chk.Close())
 
-				it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline)
-				require.NoError(t, err)
-				for i := 0; i < numSamples; i++ {
-					require.True(t, it.Next())
+					byt, err := chk.Bytes()
+					require.NoError(t, err)
 
-					e := it.Entry()
-					require.Equal(t, int64(i), e.Timestamp.UnixNano())
-					require.Equal(t, strconv.Itoa(i), e.Line)
-				}
-				require.NoError(t, it.Error())
+					bc, err := NewByteChunk(byt, testBlockSize, testTargetSize)
+					require.NoError(t, err)
 
-				sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
-				for i := 0; i < numSamples; i++ {
-					require.True(t, sampleIt.Next(), i)
+					it, err := bc.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
+					require.NoError(t, err)
+					for i := 0; i < numSamples; i++ {
+						require.True(t, it.Next())
 
-					s := sampleIt.Sample()
-					require.Equal(t, int64(i), s.Timestamp)
-					require.Equal(t, 1., s.Value)
-				}
-				require.NoError(t, sampleIt.Error())
+						e := it.Entry()
+						require.Equal(t, int64(i), e.Timestamp.UnixNano())
+						require.Equal(t, strconv.Itoa(i), e.Line)
+						require.Nil(t, e.NonIndexedLabels)
+						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
+							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), it.Labels())
+						} else {
+							require.Equal(t, labels.EmptyLabels().String(), it.Labels())
+						}
+					}
+					require.NoError(t, it.Error())
 
-				byt2, err := chk.Bytes()
-				require.NoError(t, err)
+					countExtractor = func() log.StreamSampleExtractor {
+						ex, err := log.NewLineSampleExtractor(log.CountExtractor, nil, nil, false, false)
+						if err != nil {
+							panic(err)
+						}
+						return ex.ForStream(labels.Labels{})
+					}()
 
-				require.True(t, bytes.Equal(byt, byt2))
-			})
+					sampleIt := bc.SampleIterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), countExtractor)
+					for i := 0; i < numSamples; i++ {
+						require.True(t, sampleIt.Next(), i)
+
+						s := sampleIt.Sample()
+						require.Equal(t, int64(i), s.Timestamp)
+						require.Equal(t, 1., s.Value)
+						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
+							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), sampleIt.Labels())
+						} else {
+							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
+						}
+					}
+					require.NoError(t, sampleIt.Error())
+
+					byt2, err := chk.Bytes()
+					require.NoError(t, err)
+
+					require.True(t, bytes.Equal(byt, byt2))
+				})
+			}
 		}
 	}
 }
 
 func TestChunkFilling(t *testing.T) {
-	for _, f := range HeadBlockFmts {
+	for _, testData := range allPossibleFormats {
 		for _, enc := range testEncoding {
-			t.Run(enc.String(), func(t *testing.T) {
+			enc := enc
+			t.Run(testNameWithFormats(enc, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
 				t.Parallel()
 
-				chk := NewMemChunk(enc, f, testBlockSize, 0)
+				chk := newMemChunkWithFormat(testData.chunkFormat, enc, testData.headBlockFmt, testBlockSize, 0)
 				chk.blockSize = 1024
 
 				// We should be able to append only 10KB of logs.
@@ -393,7 +525,7 @@ func TestChunkFilling(t *testing.T) {
 func TestGZIPChunkTargetSize(t *testing.T) {
 	t.Parallel()
 
-	chk := NewMemChunk(EncGZIP, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+	chk := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 
 	lineSize := 512
 	entry := &logproto.Entry{
@@ -505,11 +637,11 @@ func TestChunkSize(t *testing.T) {
 	}
 	var result []res
 	for _, bs := range testBlockSizes {
-		for _, f := range HeadBlockFmts {
+		for _, f := range allPossibleFormats {
 			for _, enc := range testEncoding {
 				name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 				t.Run(name, func(t *testing.T) {
-					c := NewMemChunk(enc, f, bs, testTargetSize)
+					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, bs, testTargetSize)
 					inserted := fillChunk(c)
 					b, err := c.Bytes()
 					if err != nil {
@@ -535,7 +667,7 @@ func TestChunkSize(t *testing.T) {
 }
 
 func TestChunkStats(t *testing.T) {
-	c := NewMemChunk(EncSnappy, DefaultHeadBlockFmt, testBlockSize, 0)
+	c := NewMemChunk(EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	first := time.Now()
 	entry := &logproto.Entry{
 		Timestamp: first,
@@ -553,7 +685,8 @@ func TestChunkStats(t *testing.T) {
 		inserted++
 		entry.Timestamp = entry.Timestamp.Add(time.Nanosecond)
 	}
-	expectedSize := (inserted * len(entry.Line)) + (inserted * 2 * binary.MaxVarintLen64)
+	// For each entry: timestamp <varint>, line size <varint>, line <bytes>, num of non-indexed labels <varint>
+	expectedSize := inserted * (len(entry.Line) + 3*binary.MaxVarintLen64)
 	statsCtx, ctx := stats.NewContext(context.Background())
 
 	it, err := c.Iterator(ctx, first.Add(-time.Hour), entry.Timestamp.Add(time.Hour), logproto.BACKWARD, noopStreamPipeline)
@@ -602,7 +735,7 @@ func TestChunkStats(t *testing.T) {
 }
 
 func TestIteratorClose(t *testing.T) {
-	for _, f := range HeadBlockFmts {
+	for _, f := range allPossibleFormats {
 		for _, enc := range testEncoding {
 			t.Run(enc.String(), func(t *testing.T) {
 				for _, test := range []func(iter iter.EntryIterator, t *testing.T){
@@ -630,7 +763,7 @@ func TestIteratorClose(t *testing.T) {
 						}
 					},
 				} {
-					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
+					c := newMemChunkWithFormat(f.chunkFormat, enc, f.headBlockFmt, testBlockSize, testTargetSize)
 					inserted := fillChunk(c)
 					iter, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, inserted), logproto.BACKWARD, noopStreamPipeline)
 					if err != nil {
@@ -643,11 +776,7 @@ func TestIteratorClose(t *testing.T) {
 	}
 }
 
-var result []Chunk
-
 func BenchmarkWrite(b *testing.B) {
-	chunks := []Chunk{}
-
 	entry := &logproto.Entry{
 		Timestamp: time.Unix(0, 0),
 		Line:      testdata.LogString(0),
@@ -656,20 +785,34 @@ func BenchmarkWrite(b *testing.B) {
 
 	for _, f := range HeadBlockFmts {
 		for _, enc := range testEncoding {
-			b.Run(fmt.Sprintf("%v-%v", f, enc), func(b *testing.B) {
-				for n := 0; n < b.N; n++ {
-					c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-					// adds until full so we trigger cut which serialize using gzip
-					for c.SpaceFor(entry) {
-						_ = c.Append(entry)
-						entry.Timestamp = time.Unix(0, i)
-						entry.Line = testdata.LogString(i)
-						i++
-					}
-					chunks = append(chunks, c)
+			for _, withNonIndexedLabels := range []bool{false, true} {
+				name := fmt.Sprintf("%v-%v", f, enc)
+				if withNonIndexedLabels {
+					name += "-withNonIndexedLabels"
 				}
-				result = chunks
-			})
+				b.Run(name, func(b *testing.B) {
+					uncompressedBytes, compressedBytes := 0, 0
+					for n := 0; n < b.N; n++ {
+						c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
+						// adds until full so we trigger cut which serialize using gzip
+						for c.SpaceFor(entry) {
+							_ = c.Append(entry)
+							entry.Timestamp = time.Unix(0, i)
+							entry.Line = testdata.LogString(i)
+							if withNonIndexedLabels {
+								entry.NonIndexedLabels = []logproto.LabelAdapter{
+									{Name: "foo", Value: fmt.Sprint(i)},
+								}
+							}
+							i++
+						}
+						uncompressedBytes += c.UncompressedSize()
+						compressedBytes += c.CompressedSize()
+					}
+					b.SetBytes(int64(uncompressedBytes) / int64(b.N))
+					b.ReportMetric(float64(compressedBytes)/float64(uncompressedBytes)*100, "%compressed")
+				})
+			}
 		}
 	}
 }
@@ -677,31 +820,25 @@ func BenchmarkWrite(b *testing.B) {
 type nomatchPipeline struct{}
 
 func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (nomatchPipeline) Process(_ int64, line []byte) ([]byte, log.LabelsResult, bool) {
+func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
 	return line, nil, false
 }
-func (nomatchPipeline) ProcessString(_ int64, line string) (string, log.LabelsResult, bool) {
+func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
 	return line, nil, false
 }
 
 func BenchmarkRead(b *testing.B) {
-	type res struct {
-		name  string
-		speed float64
-	}
-	result := []res{}
 	for _, bs := range testBlockSizes {
 		for _, enc := range testEncoding {
 			name := fmt.Sprintf("%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 			b.Run(name, func(b *testing.B) {
 				chunks, size := generateData(enc, 5, bs, testTargetSize)
+				_, ctx := stats.NewContext(context.Background())
 				b.ResetTimer()
-				bytesRead := uint64(0)
-				now := time.Now()
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
 						// use forward iterator for benchmark -- backward iterator does extra allocations by keeping entries in memory
-						iterator, err := c.Iterator(context.Background(), time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
+						iterator, err := c.Iterator(ctx, time.Unix(0, 0), time.Now(), logproto.FORWARD, nomatchPipeline{})
 						if err != nil {
 							panic(err)
 						}
@@ -712,24 +849,23 @@ func BenchmarkRead(b *testing.B) {
 							b.Fatal(err)
 						}
 					}
-					bytesRead += size
 				}
-				result = append(result, res{
-					name:  name,
-					speed: float64(bytesRead) / time.Since(now).Seconds(),
-				})
+				b.SetBytes(int64(size))
 			})
+		}
+	}
 
-			name = fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
-
+	for _, bs := range testBlockSizes {
+		for _, enc := range testEncoding {
+			name := fmt.Sprintf("sample_%s_%s", enc.String(), humanize.Bytes(uint64(bs)))
 			b.Run(name, func(b *testing.B) {
 				chunks, size := generateData(enc, 5, bs, testTargetSize)
+				_, ctx := stats.NewContext(context.Background())
 				b.ResetTimer()
 				bytesRead := uint64(0)
-				now := time.Now()
 				for n := 0; n < b.N; n++ {
 					for _, c := range chunks {
-						iterator := c.SampleIterator(context.Background(), time.Unix(0, 0), time.Now(), countExtractor)
+						iterator := c.SampleIterator(ctx, time.Unix(0, 0), time.Now(), countExtractor)
 						for iterator.Next() {
 							_ = iterator.Sample()
 						}
@@ -739,18 +875,9 @@ func BenchmarkRead(b *testing.B) {
 					}
 					bytesRead += size
 				}
-				result = append(result, res{
-					name:  name,
-					speed: float64(bytesRead) / time.Since(now).Seconds(),
-				})
+				b.SetBytes(int64(bytesRead) / int64(b.N))
 			})
 		}
-	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].speed > result[j].speed
-	})
-	for _, r := range result {
-		fmt.Printf("%s: %.2f MB/s\n", r.name, r.speed/1024/1024)
 	}
 }
 
@@ -758,7 +885,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 	for _, bs := range testBlockSizes {
 		b.Run(humanize.Bytes(uint64(bs)), func(b *testing.B) {
 			b.ReportAllocs()
-			c := NewMemChunk(EncSnappy, DefaultHeadBlockFmt, bs, testTargetSize)
+			c := NewMemChunk(EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
 			_ = fillChunk(c)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
@@ -805,57 +932,71 @@ func TestGenerateDataSize(t *testing.T) {
 
 func BenchmarkHeadBlockIterator(b *testing.B) {
 	for _, j := range []int{100000, 50000, 15000, 10000} {
-		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
-			h := headBlock{}
+		for _, withNonIndexedLabels := range []bool{false, true} {
+			b.Run(fmt.Sprintf("size=%d nonIndexedLabels=%v", j, withNonIndexedLabels), func(b *testing.B) {
+				h := headBlock{}
 
-			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string"); err != nil {
-					b.Fatal(err)
+				var nonIndexedLabels labels.Labels
+				if withNonIndexedLabels {
+					nonIndexedLabels = labels.Labels{{Name: "foo", Value: "foo"}}
 				}
-			}
 
-			b.ResetTimer()
-
-			for n := 0; n < b.N; n++ {
-				iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
-
-				for iter.Next() {
-					_ = iter.Entry()
+				for i := 0; i < j; i++ {
+					if err := h.Append(int64(i), "this is the append string", nonIndexedLabels); err != nil {
+						b.Fatal(err)
+					}
 				}
-			}
-		})
+
+				b.ResetTimer()
+
+				for n := 0; n < b.N; n++ {
+					iter := h.Iterator(context.Background(), logproto.BACKWARD, 0, math.MaxInt64, noopStreamPipeline)
+
+					for iter.Next() {
+						_ = iter.Entry()
+					}
+				}
+			})
+		}
 	}
 }
 
 func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 	for _, j := range []int{20000, 10000, 8000, 5000} {
-		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
-			h := headBlock{}
+		for _, withNonIndexedLabels := range []bool{false, true} {
+			b.Run(fmt.Sprintf("size=%d nonIndexedLabels=%v", j, withNonIndexedLabels), func(b *testing.B) {
+				h := headBlock{}
 
-			for i := 0; i < j; i++ {
-				if err := h.Append(int64(i), "this is the append string"); err != nil {
-					b.Fatal(err)
+				var nonIndexedLabels labels.Labels
+				if withNonIndexedLabels {
+					nonIndexedLabels = labels.Labels{{Name: "foo", Value: "foo"}}
 				}
-			}
 
-			b.ResetTimer()
-
-			for n := 0; n < b.N; n++ {
-				iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
-
-				for iter.Next() {
-					_ = iter.Sample()
+				for i := 0; i < j; i++ {
+					if err := h.Append(int64(i), "this is the append string", nonIndexedLabels); err != nil {
+						b.Fatal(err)
+					}
 				}
-				iter.Close()
-			}
-		})
+
+				b.ResetTimer()
+
+				for n := 0; n < b.N; n++ {
+					iter := h.SampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+
+					for iter.Next() {
+						_ = iter.Sample()
+					}
+					iter.Close()
+				}
+			})
+		}
 	}
 }
 
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
-		c := NewMemChunk(EncNone, DefaultHeadBlockFmt, 1e6, 1e6)
+		c := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, 1e6, 1e6)
 
 		if err := c.Append(&logproto.Entry{
 			Timestamp: time.Unix(0, 1),
@@ -878,34 +1019,26 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 		expect     []bool // array of expected values for next call in sequence
 	}{
 		{time.Unix(0, 0), time.Unix(0, 1), logproto.FORWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 1), logproto.FORWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 2), time.Unix(0, 2), logproto.FORWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 3), logproto.FORWARD, []bool{true, true, false}},
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.FORWARD, []bool{true, false}},
-		{time.Unix(0, 3), time.Unix(0, 3), logproto.FORWARD, []bool{false}},
 
 		{time.Unix(0, 0), time.Unix(0, 1), logproto.BACKWARD, []bool{false}},
-		{time.Unix(0, 1), time.Unix(0, 1), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 2), time.Unix(0, 2), logproto.BACKWARD, []bool{true, false}},
 		{time.Unix(0, 1), time.Unix(0, 3), logproto.BACKWARD, []bool{true, true, false}},
 		{time.Unix(0, 2), time.Unix(0, 3), logproto.BACKWARD, []bool{true, false}},
-		{time.Unix(0, 3), time.Unix(0, 3), logproto.BACKWARD, []bool{false}},
 	} {
 		t.Run(
 			fmt.Sprintf("mint:%d,maxt:%d,direction:%s", tt.mint.UnixNano(), tt.maxt.UnixNano(), tt.direction),
 			func(t *testing.T) {
-				t.Parallel()
-
 				tt := tt
 				c := createChunk()
 
 				// testing headchunk
 				it, err := c.Iterator(context.Background(), tt.mint, tt.maxt, tt.direction, noopStreamPipeline)
 				require.NoError(t, err)
-				for i := range tt.expect {
-					require.Equal(t, tt.expect[i], it.Next())
+				for idx, expected := range tt.expect {
+					require.Equal(t, expected, it.Next(), "idx: %s", idx)
 				}
 				require.NoError(t, it.Close())
 
@@ -923,10 +1056,11 @@ func TestMemChunk_IteratorBounds(t *testing.T) {
 
 func TestMemchunkLongLine(t *testing.T) {
 	for _, enc := range testEncoding {
+		enc := enc
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
-			c := NewMemChunk(enc, DefaultHeadBlockFmt, testBlockSize, testTargetSize)
+			c := NewMemChunk(enc, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 			for i := 1; i <= 10; i++ {
 				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
 			}
@@ -944,9 +1078,9 @@ func TestMemchunkLongLine(t *testing.T) {
 func TestBytesWith(t *testing.T) {
 	t.Parallel()
 
-	exp, err := NewMemChunk(EncNone, DefaultHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
+	exp, err := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
 	require.Nil(t, err)
-	out, err := NewMemChunk(EncNone, DefaultHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
+	out, err := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
@@ -956,15 +1090,19 @@ func TestCheckpointEncoding(t *testing.T) {
 	t.Parallel()
 
 	blockSize, targetSize := 256*1024, 1500*1024
-	for _, f := range HeadBlockFmts {
-		t.Run(f.String(), func(t *testing.T) {
-			c := NewMemChunk(EncSnappy, f, blockSize, targetSize)
+	for _, f := range allPossibleFormats {
+		t.Run(testNameWithFormats(EncSnappy, f.chunkFormat, f.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(f.chunkFormat, EncSnappy, f.headBlockFmt, blockSize, targetSize)
 
 			// add a few entries
 			for i := 0; i < 5; i++ {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(int64(i), 0),
 					Line:      fmt.Sprintf("hi there - %d", i),
+					NonIndexedLabels: push.LabelsAdapter{{
+						Name:  fmt.Sprintf("name%d", i),
+						Value: fmt.Sprintf("val%d", i),
+					}},
 				}
 				require.Equal(t, true, c.SpaceFor(entry))
 				require.Nil(t, c.Append(entry))
@@ -972,6 +1110,28 @@ func TestCheckpointEncoding(t *testing.T) {
 
 			// cut it
 			require.Nil(t, c.cut())
+
+			// ensure we have cut a block and head block is empty
+			require.Equal(t, 1, len(c.blocks))
+			require.True(t, c.head.IsEmpty())
+
+			// check entries with empty head
+			var chk, head bytes.Buffer
+			var err error
+			var cpy *MemChunk
+			err = c.SerializeForCheckpointTo(&chk, &head)
+			require.Nil(t, err)
+
+			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
+			require.Nil(t, err)
+
+			if f.chunkFormat <= chunkFormatV2 {
+				for i := range c.blocks {
+					c.blocks[i].uncompressedSize = 0
+				}
+			}
+
+			require.Equal(t, c, cpy)
 
 			// add a few more to head
 			for i := 5; i < 10; i++ {
@@ -986,12 +1146,19 @@ func TestCheckpointEncoding(t *testing.T) {
 			// ensure new blocks are not cut
 			require.Equal(t, 1, len(c.blocks))
 
-			var chk, head bytes.Buffer
-			err := c.SerializeForCheckpointTo(&chk, &head)
+			chk.Reset()
+			head.Reset()
+			err = c.SerializeForCheckpointTo(&chk, &head)
 			require.Nil(t, err)
 
-			cpy, err := MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f, blockSize, targetSize)
+			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
+
+			if f.chunkFormat <= chunkFormatV2 {
+				for i := range c.blocks {
+					c.blocks[i].uncompressedSize = 0
+				}
+			}
 
 			require.Equal(t, c, cpy)
 		})
@@ -1105,9 +1272,9 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 }
 
 func Test_HeadIteratorReverse(t *testing.T) {
-	for _, f := range HeadBlockFmts {
-		t.Run(f.String(), func(t *testing.T) {
-			c := NewMemChunk(EncSnappy, f, testBlockSize, testTargetSize)
+	for _, testData := range allPossibleFormats {
+		t.Run(testNameWithFormats(EncSnappy, testData.chunkFormat, testData.headBlockFmt), func(t *testing.T) {
+			c := newMemChunkWithFormat(testData.chunkFormat, EncSnappy, testData.headBlockFmt, testBlockSize, testTargetSize)
 			genEntry := func(i int64) *logproto.Entry {
 				return &logproto.Entry{
 					Timestamp: time.Unix(0, i),
@@ -1220,7 +1387,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 }
 
 func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
-	chk := NewMemChunk(EncGZIP, DefaultHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	for ; from.Before(through); from = from.Add(time.Second) {
 		err := chk.Append(&logproto.Entry{
 			Line:      from.String(),
@@ -1238,7 +1405,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	chkThrough := chkFrom.Add(10 * time.Second)
 	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
 
-	filterFunc := func(in string) bool {
+	filterFunc := func(_ time.Time, in string) bool {
 		return strings.HasPrefix(in, "matching")
 	}
 
@@ -1299,7 +1466,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 }
 
 func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time) *MemChunk {
-	chk := NewMemChunk(EncGZIP, DefaultHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
 	for from.Before(through) {
@@ -1324,4 +1491,411 @@ func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matching
 	}
 
 	return chk
+}
+
+func TestMemChunk_SpaceFor(t *testing.T) {
+	for _, tc := range []struct {
+		desc string
+
+		nBlocks      int
+		targetSize   int
+		headSize     int
+		cutBlockSize int
+		entry        logproto.Entry
+
+		expect     bool
+		expectFunc func(chunkFormat byte, headFmt HeadBlockFmt) bool
+	}{
+		{
+			desc:    "targetSize not defined",
+			nBlocks: blocksPerChunk - 1,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: true,
+		},
+		{
+			desc:    "targetSize not defined and too many blocks",
+			nBlocks: blocksPerChunk + 1,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: false,
+		},
+		{
+			desc:         "head too big",
+			targetSize:   10,
+			headSize:     100,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: false,
+		},
+		{
+			desc:         "cut blocks too big",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 100,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      "a",
+			},
+			expect: false,
+		},
+		{
+			desc:         "entry fits",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 9),
+			},
+			expect: true,
+		},
+		{
+			desc:         "entry fits with non-indexed labels",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 2),
+				NonIndexedLabels: []logproto.LabelAdapter{
+					{Name: "foo", Value: strings.Repeat("a", 2)},
+				},
+			},
+			expect: true,
+		},
+		{
+			desc:         "entry too big",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 100),
+			},
+			expect: false,
+		},
+		{
+			desc:         "entry too big because non-indexed labels",
+			targetSize:   10,
+			headSize:     0,
+			cutBlockSize: 0,
+			entry: logproto.Entry{
+				Timestamp: time.Unix(0, 0),
+				Line:      strings.Repeat("a", 5),
+				NonIndexedLabels: []logproto.LabelAdapter{
+					{Name: "foo", Value: strings.Repeat("a", 5)},
+				},
+			},
+
+			expectFunc: func(chunkFormat byte, _ HeadBlockFmt) bool {
+				// Succeed unless we're using chunk format v4, which should
+				// take the non-indexed labels into account.
+				return chunkFormat < chunkFormatV4
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			for _, format := range allPossibleFormats {
+				t.Run(fmt.Sprintf("chunk_v%d_head_%s", format.chunkFormat, format.headBlockFmt), func(t *testing.T) {
+					chk := newMemChunkWithFormat(format.chunkFormat, EncNone, format.headBlockFmt, 1024, tc.targetSize)
+
+					chk.blocks = make([]block, tc.nBlocks)
+					chk.cutBlockSize = tc.cutBlockSize
+					for i := 0; i < tc.headSize; i++ {
+						require.NoError(t, chk.head.Append(int64(i), "a", nil))
+					}
+
+					expect := tc.expect
+					if tc.expectFunc != nil {
+						expect = tc.expectFunc(format.chunkFormat, format.headBlockFmt)
+					}
+
+					require.Equal(t, expect, chk.SpaceFor(&tc.entry))
+				})
+			}
+
+		})
+	}
+}
+
+func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
+	for _, enc := range testEncoding {
+		enc := enc
+		t.Run(enc.String(), func(t *testing.T) {
+			streamLabels := labels.Labels{
+				{Name: "job", Value: "fake"},
+			}
+			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "lineA", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "123"},
+				{Name: "user", Value: "a"},
+			})))
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(2, "lineB", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "456"},
+				{Name: "user", Value: "b"},
+			})))
+			require.NoError(t, chk.cut())
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(3, "lineC", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "789"},
+				{Name: "user", Value: "c"},
+			})))
+			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(4, "lineD", []logproto.LabelAdapter{
+				{Name: "traceID", Value: "123"},
+				{Name: "user", Value: "d"},
+			})))
+
+			// The expected bytes is the sum of bytes decompressed and bytes read from the head chunk.
+			// First we add the bytes read from the store (aka decompressed). That's
+			// nonIndexedLabelsBytes = n. lines * (n. labels <int> + (2 * n. nonIndexedLabelsSymbols * symbol <int>))
+			// lineBytes = n. lines * (ts <int> + line length <int> + line)
+			expectedNonIndexedLabelsBytes := 2 * (binary.MaxVarintLen64 + (2 * 2 * binary.MaxVarintLen64))
+			lineBytes := 2 * (2*binary.MaxVarintLen64 + len("lineA"))
+			// Now we add the bytes read from the head chunk. That's
+			// nonIndexedLabelsBytes = n. lines * (2 * n. nonIndexedLabelsSymbols * symbol <uint32>)
+			// lineBytes = n. lines * (line)
+			expectedNonIndexedLabelsBytes += 2 * (2 * 2 * 4)
+			lineBytes += 2 * (len("lineC"))
+			// Finally, the expected total bytes is the line bytes + non-indexed labels bytes
+			expectedBytes := lineBytes + expectedNonIndexedLabelsBytes
+
+			for _, tc := range []struct {
+				name            string
+				query           string
+				expectedLines   []string
+				expectedStreams []string
+			}{
+				{
+					name:          "no-filter",
+					query:         `{job="fake"}`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+				},
+				{
+					name:          "filter",
+					query:         `{job="fake"} | traceID="789"`,
+					expectedLines: []string{"lineC"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+					},
+				},
+				{
+					name:          "filter-regex-or",
+					query:         `{job="fake"} | traceID=~"456|789"`,
+					expectedLines: []string{"lineB", "lineC"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+					},
+				},
+				{
+					name:          "filter-regex-contains",
+					query:         `{job="fake"} | traceID=~".*5.*"`,
+					expectedLines: []string{"lineB"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+					},
+				},
+				{
+					name:          "filter-regex-complex",
+					query:         `{job="fake"} | traceID=~"^[0-9]2.*"`,
+					expectedLines: []string{"lineA", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+				},
+				{
+					name:          "multiple-filters",
+					query:         `{job="fake"} | traceID="123" | user="d"`,
+					expectedLines: []string{"lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+				},
+				{
+					name:          "keep",
+					query:         `{job="fake"} | keep job, user`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+				},
+				{
+					name:          "keep-filter",
+					query:         `{job="fake"} | keep job, user="b"`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake").String(),
+						labels.FromStrings("job", "fake").String(),
+					},
+				},
+				{
+					name:          "drop",
+					query:         `{job="fake"} | drop traceID`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "user", "b").String(),
+						labels.FromStrings("job", "fake", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+				},
+				{
+					name:          "drop-filter",
+					query:         `{job="fake"} | drop traceID="123"`,
+					expectedLines: []string{"lineA", "lineB", "lineC", "lineD"},
+					expectedStreams: []string{
+						labels.FromStrings("job", "fake", "user", "a").String(),
+						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+				},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					t.Run("log", func(t *testing.T) {
+						expr, err := syntax.ParseLogSelector(tc.query, true)
+						require.NoError(t, err)
+
+						pipeline, err := expr.Pipeline()
+						require.NoError(t, err)
+
+						// We will run the test twice so the iterator will be created twice.
+						// This is to ensure that the iterator is correctly closed.
+						for i := 0; i < 2; i++ {
+							sts, ctx := stats.NewContext(context.Background())
+							it, err := chk.Iterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+							require.NoError(t, err)
+
+							var lines []string
+							var streams []string
+							for it.Next() {
+								require.NoError(t, it.Error())
+								e := it.Entry()
+								lines = append(lines, e.Line)
+								streams = append(streams, it.Labels())
+
+								// We don't want to send back the non-indexed labels since
+								// they are already part of the returned labels.
+								require.Empty(t, e.NonIndexedLabels)
+							}
+							assert.ElementsMatch(t, tc.expectedLines, lines)
+							assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+							resultStats := sts.Result(0, 0, len(lines))
+							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
+							require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
+						}
+					})
+
+					t.Run("metric", func(t *testing.T) {
+						query := fmt.Sprintf(`count_over_time(%s [1d])`, tc.query)
+						expr, err := syntax.ParseSampleExpr(query)
+						require.NoError(t, err)
+
+						extractor, err := expr.Extractor()
+						require.NoError(t, err)
+
+						// We will run the test twice so the iterator will be created twice.
+						// This is to ensure that the iterator is correctly closed.
+						for i := 0; i < 2; i++ {
+							sts, ctx := stats.NewContext(context.Background())
+							it := chk.SampleIterator(ctx, time.Unix(0, 0), time.Unix(0, math.MaxInt64), extractor.ForStream(streamLabels))
+
+							var sumValues int
+							var streams []string
+							for it.Next() {
+								require.NoError(t, it.Error())
+								e := it.Sample()
+								sumValues += int(e.Value)
+								streams = append(streams, it.Labels())
+							}
+							require.Equal(t, len(tc.expectedLines), sumValues)
+							assert.ElementsMatch(t, tc.expectedStreams, streams)
+
+							resultStats := sts.Result(0, 0, 0)
+							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
+							require.Equal(t, int64(expectedNonIndexedLabelsBytes), resultStats.Summary.TotalNonIndexedLabelsBytesProcessed)
+						}
+					})
+				})
+			}
+		})
+	}
+}
+
+func TestMemChunk_IteratorOptions(t *testing.T) {
+	chk := newMemChunkWithFormat(chunkFormatV4, EncNone, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(0, "0", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "0"),
+	))))
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "1", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "1"),
+	))))
+	require.NoError(t, chk.cut())
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(2, "2", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "2"),
+	))))
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(3, "3", logproto.FromLabelsToLabelAdapters(
+		labels.FromStrings("a", "3"),
+	))))
+
+	for _, tc := range []struct {
+		name                   string
+		options                []iter.EntryIteratorOption
+		expectNonIndexedLabels bool
+	}{
+		{
+			name:                   "No options",
+			expectNonIndexedLabels: false,
+		},
+		{
+			name: "WithKeepNonIndexedLabels",
+			options: []iter.EntryIteratorOption{
+				iter.WithKeepNonIndexedLabels(),
+			},
+
+			expectNonIndexedLabels: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, noopStreamPipeline, tc.options...)
+			require.NoError(t, err)
+
+			var idx int64
+			for it.Next() {
+				expectedLabels := labels.FromStrings("a", fmt.Sprintf("%d", idx))
+				expectedEntry := logproto.Entry{
+					Timestamp: time.Unix(0, idx),
+					Line:      fmt.Sprintf("%d", idx),
+				}
+
+				if tc.expectNonIndexedLabels {
+					expectedEntry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(expectedLabels)
+				}
+
+				require.Equal(t, expectedEntry, it.Entry())
+				require.Equal(t, expectedLabels.String(), it.Labels())
+				idx++
+			}
+		})
+	}
 }

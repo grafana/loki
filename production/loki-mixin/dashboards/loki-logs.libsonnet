@@ -2,7 +2,7 @@ local lokiLogs = (import './dashboard-loki-logs.json');
 local template = import 'grafonnet/template.libsonnet';
 
 
-{
+(import 'dashboard-utils.libsonnet') {
   local deploymentTemplate =
     template.new(
       'deployment',

@@ -8,11 +8,11 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -109,7 +109,7 @@ func TestResponse(t *testing.T) {
 				Body:          io.NopCloser(bytes.NewBuffer([]byte(tc.body))),
 				ContentLength: int64(len(tc.body)),
 			}
-			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), resp)
+			resp2, err := PrometheusCodec.EncodeResponse(context.Background(), nil, resp)
 			require.NoError(t, err)
 			assert.Equal(t, response, resp2)
 		})

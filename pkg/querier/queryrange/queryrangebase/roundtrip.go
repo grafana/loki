@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 )
 
 const day = 24 * time.Hour
@@ -39,15 +39,21 @@ var PassthroughMiddleware = MiddlewareFunc(func(next Handler) Handler {
 // Config for query_range middleware chain.
 type Config struct {
 	// Deprecated: SplitQueriesByInterval will be removed in the next major release
-	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
+	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval" doc:"deprecated|description=Use -querier.split-queries-by-interval instead. CLI flag: -querier.split-queries-by-day. Split queries by day and execute in parallel."`
 
-	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
-	ResultsCacheConfig   `yaml:"results_cache"`
-	CacheResults         bool `yaml:"cache_results"`
-	MaxRetries           int  `yaml:"max_retries"`
-	ShardedQueries       bool `yaml:"parallelise_shardable_queries"`
+	AlignQueriesWithStep bool               `yaml:"align_queries_with_step"`
+	ResultsCacheConfig   ResultsCacheConfig `yaml:"results_cache"`
+	CacheResults         bool               `yaml:"cache_results"`
+	MaxRetries           int                `yaml:"max_retries"`
+	ShardedQueries       bool               `yaml:"parallelise_shardable_queries"`
+
+	// TODO(karsten): remove used option ForwardHeaders with Loki 3.0 since
+	// it's a breaking change.
 	// List of headers which query_range middleware chain would forward to downstream querier.
 	ForwardHeaders flagext.StringSlice `yaml:"forward_headers_list"`
+
+	// Required format for querier responses
+	RequiredQueryResponseFormat string `yaml:"required_query_response_format"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
@@ -57,6 +63,9 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	f.BoolVar(&cfg.ShardedQueries, "querier.parallelise-shardable-queries", true, "Perform query parallelisations based on storage sharding configuration and query ASTs. This feature is supported only by the chunks storage engine.")
 	f.Var(&cfg.ForwardHeaders, "frontend.forward-headers-list", "List of headers forwarded by the query Frontend to downstream querier.")
+
+	f.StringVar(&cfg.RequiredQueryResponseFormat, "frontend.required-query-response-format", "json", "The downstream querier is required to answer in the accepted format. Can be 'json' or 'protobuf'. Note: Both will still be routed over GRPC.")
+
 	cfg.ResultsCacheConfig.RegisterFlags(f)
 }
 
@@ -67,7 +76,7 @@ func (cfg *Config) Validate() error {
 	}
 	if cfg.CacheResults {
 		if err := cfg.ResultsCacheConfig.Validate(); err != nil {
-			return errors.Wrap(err, "invalid ResultsCache config")
+			return errors.Wrap(err, "invalid results_cache config")
 		}
 	}
 	return nil
@@ -122,9 +131,8 @@ func (f RoundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 }
 
 type roundTripper struct {
-	next    http.RoundTripper
+	roundTripperHandler
 	handler Handler
-	codec   Codec
 	headers []string
 }
 
@@ -132,8 +140,10 @@ type roundTripper struct {
 // using the codec to translate requests and responses.
 func NewRoundTripper(next http.RoundTripper, codec Codec, headers []string, middlewares ...Middleware) http.RoundTripper {
 	transport := roundTripper{
-		next:    next,
-		codec:   codec,
+		roundTripperHandler: roundTripperHandler{
+			next:  next,
+			codec: codec,
+		},
 		headers: headers,
 	}
 	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
@@ -156,11 +166,25 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return nil, err
 	}
 
-	return q.codec.EncodeResponse(r.Context(), response)
+	return q.codec.EncodeResponse(r.Context(), r, response)
+}
+
+type roundTripperHandler struct {
+	next  http.RoundTripper
+	codec Codec
+}
+
+// NewRoundTripperHandler returns a handler that translates Loki requests into http requests
+// and passes down these to the next RoundTripper.
+func NewRoundTripperHandler(next http.RoundTripper, codec Codec) Handler {
+	return roundTripperHandler{
+		next:  next,
+		codec: codec,
+	}
 }
 
 // Do implements Handler.
-func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
+func (q roundTripperHandler) Do(ctx context.Context, r Request) (Response, error) {
 	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err

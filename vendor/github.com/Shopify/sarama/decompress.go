@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	snappy "github.com/eapache/go-xerial-snappy"
-	"github.com/pierrec/lz4"
+	"github.com/pierrec/lz4/v4"
 )
 
 var (
@@ -54,7 +54,7 @@ func decompress(cc CompressionCodec, data []byte) ([]byte, error) {
 
 		return io.ReadAll(reader)
 	case CompressionZSTD:
-		return zstdDecompress(nil, data)
+		return zstdDecompress(ZstdDecoderParams{}, nil, data)
 	default:
 		return nil, PacketDecodingError{fmt.Sprintf("invalid compression specified (%d)", cc)}
 	}

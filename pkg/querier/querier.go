@@ -6,12 +6,17 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/httpgrpc"
+	"github.com/prometheus/prometheus/model/labels"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -27,7 +32,6 @@ import (
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
@@ -54,19 +58,21 @@ type Config struct {
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
-	QueryTimeout                  time.Duration    `yaml:"query_timeout"`
+	QueryTimeout                  time.Duration    `yaml:"query_timeout" doc:"hidden"`
+	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
 }
 
 // RegisterFlags register flags.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Engine.RegisterFlagsWithPrefix("querier", f)
-	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Limit the duration for which live tailing request would be served")
+	f.DurationVar(&cfg.TailMaxDuration, "querier.tail-max-duration", 1*time.Hour, "Maximum duration for which the live tailing requests are served.")
 	f.DurationVar(&cfg.ExtraQueryDelay, "querier.extra-query-delay", 0, "Time to wait before sending more than the minimum successful query requests.")
 	f.DurationVar(&cfg.QueryIngestersWithin, "querier.query-ingesters-within", 3*time.Hour, "Maximum lookback beyond which queries are not sent to ingester. 0 means all queries are sent to ingester.")
-	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries.")
-	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Queriers should only query the store and not try to query any ingesters")
-	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "Queriers should only query the ingesters and not try to query any store")
-	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "Enable queries across multiple tenants. (Experimental)")
+	f.IntVar(&cfg.MaxConcurrent, "querier.max-concurrent", 10, "The maximum number of concurrent queries allowed.")
+	f.BoolVar(&cfg.QueryStoreOnly, "querier.query-store-only", false, "Only query the store, and not attempt any ingesters. This is useful for running a standalone querier pool operating only against stored data.")
+	f.BoolVar(&cfg.QueryIngesterOnly, "querier.query-ingester-only", false, "When true, queriers only query the ingesters, and not stored data. This is useful when the object store is unavailable.")
+	f.BoolVar(&cfg.MultiTenantQueriesEnabled, "querier.multi-tenant-queries-enabled", false, "When true, allow queries to span multiple tenants.")
+	f.BoolVar(&cfg.PerRequestLimitsEnabled, "querier.per-request-limits-enabled", false, "When true, querier limits sent via a header are enforced.")
 }
 
 // Validate validates the config.
@@ -84,13 +90,23 @@ type Querier interface {
 	Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error)
 	Tail(ctx context.Context, req *logproto.TailRequest) (*Tailer, error)
 	IndexStats(ctx context.Context, req *loghttp.RangeQuery) (*stats.Stats, error)
+	Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error)
+}
+
+type Limits interface {
+	logql.Limits
+	timeRangeLimits
+	QueryTimeout(context.Context, string) time.Duration
+	MaxStreamsMatchersPerQuery(context.Context, string) int
+	MaxConcurrentTailRequests(context.Context, string) int
+	MaxEntriesLimitPerQuery(context.Context, string) int
 }
 
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg             Config
 	store           storage.Store
-	limits          *validation.Overrides
+	limits          Limits
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
 	metrics         *Metrics
@@ -101,7 +117,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits *validation.Overrides, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -354,8 +370,16 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 		return nil, err
 	}
 
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	// Enforce the query timeout while querying backends
-	queryTimeout := q.limits.QueryTimeout(userID)
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "err", err, "call", "Label")
@@ -391,7 +415,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 			)
 
 			if req.Values {
-				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+				storeValues, err = q.store.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 			} else {
 				storeValues, err = q.store.LabelNamesForMetricName(ctx, userID, from, through, "logs")
 			}
@@ -449,7 +473,7 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to load tenant")
 	}
-	queryTimeout := q.limits.QueryTimeout(tenantID)
+	queryTimeout := q.limits.QueryTimeout(tailCtx, tenantID)
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Tail")
@@ -498,7 +522,7 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout := q.limits.QueryTimeout(userID)
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Series")
@@ -643,7 +667,7 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 	}
 	matchers := selector.Matchers()
 
-	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(userID)
+	maxStreamMatchersPerQuery := q.limits.MaxStreamsMatchersPerQuery(ctx, userID)
 	if len(matchers) > maxStreamMatchersPerQuery {
 		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest,
 			"max streams matchers per query exceeded, matchers-count > limit (%d > %d)", len(matchers), maxStreamMatchersPerQuery)
@@ -653,15 +677,15 @@ func (q *SingleTenantQuerier) validateQueryRequest(ctx context.Context, req logq
 }
 
 type timeRangeLimits interface {
-	MaxQueryLookback(string) time.Duration
-	MaxQueryLength(string) time.Duration
+	MaxQueryLookback(context.Context, string) time.Duration
+	MaxQueryLength(context.Context, string) time.Duration
 }
 
 func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits timeRangeLimits, from, through time.Time) (time.Time, time.Time, error) {
 	now := nowFunc()
 	// Clamp the time range based on the max query lookback.
-	var maxQueryLookback time.Duration
-	if maxQueryLookback = limits.MaxQueryLookback(userID); maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
+	maxQueryLookback := limits.MaxQueryLookback(ctx, userID)
+	if maxQueryLookback > 0 && from.Before(now.Add(-maxQueryLookback)) {
 		origStartTime := from
 		from = now.Add(-maxQueryLookback)
 
@@ -671,11 +695,12 @@ func validateQueryTimeRangeLimits(ctx context.Context, userID string, limits tim
 			"updated", from)
 
 	}
-	if maxQueryLength := limits.MaxQueryLength(userID); maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), maxQueryLength)
+	maxQueryLength := limits.MaxQueryLength(ctx, userID)
+	if maxQueryLength > 0 && (through).Sub(from) > maxQueryLength {
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooLong, (through).Sub(from), model.Duration(maxQueryLength))
 	}
 	if through.Before(from) {
-		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, "this data is no longer available, it is past now - max_query_lookback (%s)", maxQueryLookback)
+		return time.Time{}, time.Time{}, httpgrpc.Errorf(http.StatusBadRequest, util_validation.ErrQueryTooOld, model.Duration(maxQueryLookback))
 	}
 	return from, through, nil
 }
@@ -700,7 +725,7 @@ func (q *SingleTenantQuerier) checkTailRequestLimit(ctx context.Context) error {
 			maxCnt = resp
 		}
 	}
-	l := uint32(q.limits.MaxConcurrentTailRequests(userID))
+	l := uint32(q.limits.MaxConcurrentTailRequests(ctx, userID))
 	if maxCnt >= l {
 		return httpgrpc.Errorf(http.StatusBadRequest,
 			"max concurrent tail requests limit exceeded, count > limit (%d > %d)", maxCnt+1, l)
@@ -726,7 +751,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 	}
 
 	// Enforce the query timeout while querying backends
-	queryTimeout := q.limits.QueryTimeout(userID)
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
 	// TODO: remove this clause once we remove the deprecated query-timeout flag.
 	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
 		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/IndexStats")
@@ -742,5 +767,95 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		model.TimeFromUnixNano(end.UnixNano()),
 		matchers...,
 	)
+}
 
+func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "Querier.Volume")
+	defer sp.Finish()
+
+	userID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	// Enforce the query timeout while querying backends
+	queryTimeout := q.limits.QueryTimeout(ctx, userID)
+
+	// TODO: remove this clause once we remove the deprecated query-timeout flag.
+	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
+		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Volume")
+		queryTimeout = q.cfg.QueryTimeout
+	}
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
+	defer cancel()
+
+	sp.LogKV(
+		"user", userID,
+		"from", req.From.Time(),
+		"through", req.Through.Time(),
+		"matchers", syntax.MatchersString(matchers),
+		"limit", req.Limit,
+		"targetLabels", req.TargetLabels,
+		"aggregateBy", req.AggregateBy,
+	)
+
+	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(req.From.Time(), req.Through.Time())
+
+	queryIngesters := !q.cfg.QueryStoreOnly && ingesterQueryInterval != nil
+	queryStore := !q.cfg.QueryIngesterOnly && storeQueryInterval != nil
+
+	numResponses := 0
+	if queryIngesters {
+		numResponses++
+	}
+	if queryStore {
+		numResponses++
+	}
+	responses := make([]*logproto.VolumeResponse, 0, numResponses)
+
+	if queryIngesters {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+
+		resp, err := q.ingesterQuerier.Volume(
+			ctx,
+			userID,
+			model.TimeFromUnix(ingesterQueryInterval.start.Unix()),
+			model.TimeFromUnix(ingesterQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			req.AggregateBy,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	if queryStore {
+		resp, err := q.store.Volume(
+			ctx,
+			userID,
+			model.TimeFromUnix(storeQueryInterval.start.Unix()),
+			model.TimeFromUnix(storeQueryInterval.end.Unix()),
+			req.Limit,
+			req.TargetLabels,
+			req.AggregateBy,
+			matchers...,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		responses = append(responses, resp)
+	}
+
+	return seriesvolume.Merge(responses, req.Limit), nil
 }

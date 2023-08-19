@@ -8,14 +8,18 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	dto "github.com/prometheus/client_model/go"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
 )
 
 func TestManagerMetricsWithRuleGroupLabel(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics(false)
+	managerMetrics := NewManagerMetrics(false, nil)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -137,7 +141,7 @@ cortex_prometheus_rule_group_rules{rule_group="group_two",user="user3"} 100000
 func TestManagerMetricsWithoutRuleGroupLabel(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics(true)
+	managerMetrics := NewManagerMetrics(true, nil)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -363,7 +367,7 @@ func newGroupMetrics(r prometheus.Registerer) *groupMetrics {
 func TestMetricsArePerUser(t *testing.T) {
 	mainReg := prometheus.NewPedanticRegistry()
 
-	managerMetrics := NewManagerMetrics(true)
+	managerMetrics := NewManagerMetrics(true, nil)
 	mainReg.MustRegister(managerMetrics)
 	managerMetrics.AddUserRegistry("user1", populateManager(1))
 	managerMetrics.AddUserRegistry("user2", populateManager(10))
@@ -374,6 +378,7 @@ func TestMetricsArePerUser(t *testing.T) {
 	defer func() {
 		// drain the channel, so that collecting gouroutine can stop.
 		// This is useful if test fails.
+		//nolint:revive
 		for range ch {
 		}
 	}()
@@ -400,5 +405,65 @@ func TestMetricsArePerUser(t *testing.T) {
 		}
 
 		assert.True(t, foundUserLabel, "user label not found for metric %s", desc.String())
+	}
+}
+
+func TestMetricLabelTransformer(t *testing.T) {
+	mainReg := prometheus.NewPedanticRegistry()
+
+	managerMetrics := NewManagerMetrics(false, func(k, v string) string {
+		if k == RuleGroupLabel {
+			return RemoveRuleTokenFromGroupName(v)
+		}
+
+		return v
+	})
+	mainReg.MustRegister(managerMetrics)
+
+	reg := prometheus.NewRegistry()
+	metrics := newGroupMetrics(reg)
+
+	r := rulespb.RuleDesc{
+		Alert:  "MyAlert",
+		Expr:   "count({foo=\"bar\"}) > 0",
+		Labels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar")),
+	}
+	const ruleGroupName = "my_rule_group"
+	gr := rulespb.RuleGroupDesc{
+		Name:      ruleGroupName,
+		Namespace: "namespace",
+		Rules:     []*rulespb.RuleDesc{&r},
+	}
+
+	metrics.iterationsScheduled.WithLabelValues(AddRuleTokenToGroupName(&gr, &r)).Add(1)
+	managerMetrics.AddUserRegistry("user1", reg)
+
+	ch := make(chan prometheus.Metric)
+
+	defer func() {
+		// drain the channel, so that collecting gouroutine can stop.
+		// This is useful if test fails.
+		//nolint:revive
+		for range ch {
+		}
+	}()
+
+	go func() {
+		managerMetrics.Collect(ch)
+		close(ch)
+	}()
+
+	for m := range ch {
+		dtoM := &dto.Metric{}
+		err := m.Write(dtoM)
+
+		require.NoError(t, err)
+
+		for _, l := range dtoM.Label {
+			if l.GetName() == RuleGroupLabel {
+				// if the value has been capitalised, we know it was processed by the label transformer
+				assert.Equal(t, l.GetValue(), ruleGroupName)
+			}
+		}
 	}
 }

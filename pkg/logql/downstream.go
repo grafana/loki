@@ -13,6 +13,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/logqlmodel/metadata"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/astmapper"
 	"github.com/grafana/loki/pkg/util"
@@ -214,7 +215,22 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 	}
 
 	for _, res := range results {
+		// TODO(owen-d/ewelch): Shard counts should be set by the querier
+		// so we don't have to do it in tricky ways in multiple places.
+		// See pkg/queryrange/downstreamer.go:*accumulatedStreams.Accumulate
+		// for another example
+		if res.Statistics.Summary.Shards == 0 {
+			res.Statistics.Summary.Shards = 1
+		}
+
 		stats.JoinResults(ctx, res.Statistics)
+	}
+
+	for _, res := range results {
+		if err := metadata.JoinHeaders(ctx, res.Headers); err != nil {
+			level.Warn(util_log.Logger).Log("msg", "unable to add headers to results context", "error", err)
+			break
+		}
 	}
 
 	return results, nil
@@ -222,11 +238,11 @@ func (ev DownstreamEvaluator) Downstream(ctx context.Context, queries []Downstre
 
 type errorQuerier struct{}
 
-func (errorQuerier) SelectLogs(ctx context.Context, p SelectLogParams) (iter.EntryIterator, error) {
+func (errorQuerier) SelectLogs(_ context.Context, _ SelectLogParams) (iter.EntryIterator, error) {
 	return nil, errors.New("unimplemented")
 }
 
-func (errorQuerier) SelectSamples(ctx context.Context, p SelectSampleParams) (iter.SampleIterator, error) {
+func (errorQuerier) SelectSamples(_ context.Context, _ SelectSampleParams) (iter.SampleIterator, error) {
 	return nil, errors.New("unimplemented")
 }
 
@@ -346,7 +362,7 @@ func (ev *DownstreamEvaluator) Iterator(
 			return nil, err
 		}
 
-		xs := make([]iter.EntryIterator, 0, len(queries))
+		xs := make([]iter.EntryIterator, 0, len(results))
 		for i, res := range results {
 			iter, err := ResultIterator(res, params)
 			if err != nil {

@@ -26,7 +26,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 }
 
 // Client expects to load already existing rules located at:
-//  cfg.Directory / userID / namespace
+//
+//	cfg.Directory / userID / namespace
 type Client struct {
 	cfg    Config
 	loader promRules.GroupLoader
@@ -43,7 +44,7 @@ func NewLocalRulesClient(cfg Config, loader promRules.GroupLoader) (*Client, err
 	}, nil
 }
 
-func (l *Client) ListAllUsers(ctx context.Context) ([]string, error) {
+func (l *Client) ListAllUsers(_ context.Context) ([]string, error) {
 	root := l.cfg.Directory
 	dirEntries, err := os.ReadDir(root)
 	if err != nil {
@@ -112,22 +113,22 @@ func (l *Client) LoadRuleGroups(_ context.Context, _ map[string]rulespb.RuleGrou
 }
 
 // GetRuleGroup implements RuleStore
-func (l *Client) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error) {
+func (l *Client) GetRuleGroup(_ context.Context, _, _, _ string) (*rulespb.RuleGroupDesc, error) {
 	return nil, errors.New("GetRuleGroup unsupported in rule local store")
 }
 
 // SetRuleGroup implements RuleStore
-func (l *Client) SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error {
+func (l *Client) SetRuleGroup(_ context.Context, _, _ string, _ *rulespb.RuleGroupDesc) error {
 	return errors.New("SetRuleGroup unsupported in rule local store")
 }
 
 // DeleteRuleGroup implements RuleStore
-func (l *Client) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
+func (l *Client) DeleteRuleGroup(_ context.Context, _, _ string, _ string) error {
 	return errors.New("DeleteRuleGroup unsupported in rule local store")
 }
 
 // DeleteNamespace implements RulerStore
-func (l *Client) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+func (l *Client) DeleteNamespace(_ context.Context, _, _ string) error {
 	return errors.New("DeleteNamespace unsupported in rule local store")
 }
 

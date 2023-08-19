@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -18,8 +17,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	serverww "github.com/grafana/dskit/server"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/discovery/targetgroup"
@@ -28,7 +29,6 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
@@ -38,13 +38,14 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/server"
 	pserver "github.com/grafana/loki/clients/pkg/promtail/server"
 	file2 "github.com/grafana/loki/clients/pkg/promtail/targets/file"
+	"github.com/grafana/loki/clients/pkg/promtail/targets/testutils"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
-var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer, nil)
+var clientMetrics = client.NewMetrics(prometheus.DefaultRegisterer)
 
 func TestPromtail(t *testing.T) {
 	// Setup.
@@ -53,8 +54,8 @@ func TestPromtail(t *testing.T) {
 	logger = level.NewFilter(logger, level.AllowInfo())
 	util_log.Logger = logger
 
-	initRandom()
-	dirName := "/tmp/promtail_test_" + randName()
+	testutils.InitRandom()
+	dirName := filepath.Join(os.TempDir(), "/promtail_test_"+testutils.RandName())
 	positionsFileName := dirName + "/positions.yml"
 
 	err := os.MkdirAll(dirName, 0o750)
@@ -88,7 +89,7 @@ func TestPromtail(t *testing.T) {
 		if t.Failed() {
 			return // Test has already failed; don't wait for everything to shut down.
 		}
-		fmt.Fprintf(os.Stdout, "wait close")
+		fmt.Fprintf(os.Stdout, "wait close\n")
 		wg.Wait()
 		if err != nil {
 			t.Fatal(err)
@@ -106,7 +107,7 @@ func TestPromtail(t *testing.T) {
 		_ = server.Shutdown(context.Background())
 	}()
 
-	p, err := New(buildTestConfig(t, positionsFileName, testDir), clientMetrics, false, nil)
+	p, err := New(buildTestConfig(t, positionsFileName, testDir), nil, clientMetrics, false, nil)
 	if err != nil {
 		t.Error("error creating promtail", err)
 		return
@@ -168,23 +169,23 @@ func TestPromtail(t *testing.T) {
 		expectedEntries[entry] = i
 	}
 	lbls := []labels.Labels{}
-	lbls = append(lbls, labels.Labels{
-		labels.Label{Name: "action", Value: "GET"},
-		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
-		labels.Label{Name: "job", Value: "varlogs"},
-		labels.Label{Name: "localhost", Value: ""},
-		labels.Label{Name: "match", Value: "true"},
-		labels.Label{Name: "stream", Value: "stderr"},
-	})
+	lbls = append(lbls, labels.FromStrings(
+		"action", "GET",
+		"filename", dirName+"/logs/testPipeline.log",
+		"job", "varlogs",
+		"address", "localhost",
+		"match", "true",
+		"stream", "stderr",
+	))
 
-	lbls = append(lbls, labels.Labels{
-		labels.Label{Name: "action", Value: "POST"},
-		labels.Label{Name: "filename", Value: dirName + "/logs/testPipeline.log"},
-		labels.Label{Name: "job", Value: "varlogs"},
-		labels.Label{Name: "localhost", Value: ""},
-		labels.Label{Name: "match", Value: "true"},
-		labels.Label{Name: "stream", Value: "stdout"},
-	})
+	lbls = append(lbls, labels.FromStrings(
+		"action", "POST",
+		"filename", dirName+"/logs/testPipeline.log",
+		"job", "varlogs",
+		"address", "localhost",
+		"match", "true",
+		"stream", "stdout",
+	))
 	expectedLabels := make(map[string]int)
 	for i, label := range lbls {
 		expectedLabels[label.String()] = i
@@ -214,6 +215,7 @@ func TestPromtail(t *testing.T) {
 	verifyFile(t, expectedCounts[logFile2], prefix2, handler.receivedMap[logFile2])
 	verifyFile(t, expectedCounts[logFile3], prefix3, handler.receivedMap[logFile3])
 	verifyFile(t, expectedCounts[logFile4], prefix4, handler.receivedMap[logFile4])
+	fmt.Println("Verifying pipeline", logFile5)
 	verifyPipeline(t, expectedCounts[logFile5], expectedEntries, handler.receivedMap[logFile5], handler.receivedLabels[logFile5], expectedLabels)
 
 	if len(handler.receivedMap) != len(expectedCounts) {
@@ -611,7 +613,7 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 
 	targetGroup := targetgroup.Group{
 		Targets: []model.LabelSet{{
-			"localhost": "",
+			"address": "localhost",
 		}},
 		Labels: model.LabelSet{
 			"job":      "varlogs",
@@ -640,26 +642,12 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 	return cfg
 }
 
-func initRandom() {
-	rand.Seed(time.Now().UnixNano())
-}
-
-var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randName() string {
-	b := make([]rune, 10)
-	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
-	}
-	return string(b)
-}
-
 func Test_DryRun(t *testing.T) {
-	f, err := os.CreateTemp("/tmp", "Test_DryRun")
+	f, err := os.CreateTemp("", "Test_DryRun")
 	require.NoError(t, err)
 	defer os.Remove(f.Name())
 
-	_, err = New(config.Config{}, clientMetrics, true, nil)
+	_, err = New(config.Config{}, nil, clientMetrics, true, nil)
 	require.Error(t, err)
 
 	// Set the minimum config needed to start a server. We need to do this since we
@@ -673,7 +661,8 @@ func Test_DryRun(t *testing.T) {
 		},
 	}
 
-	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	prometheus.DefaultRegisterer = prometheus.NewRegistry()
+
 	_, err = New(config.Config{
 		ServerConfig: serverCfg,
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
@@ -681,7 +670,7 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, clientMetrics, true, nil)
+	}, nil, clientMetrics, true, nil)
 	require.NoError(t, err)
 
 	prometheus.DefaultRegisterer = prometheus.NewRegistry()
@@ -693,7 +682,168 @@ func Test_DryRun(t *testing.T) {
 			PositionsFile: f.Name(),
 			SyncPeriod:    time.Second,
 		},
-	}, clientMetrics, false, nil)
+	}, nil, clientMetrics, false, nil)
 	require.NoError(t, err)
-	require.IsType(t, &client.MultiClient{}, p.client)
+	require.IsType(t, &client.Manager{}, p.client)
+}
+
+func Test_Reload(t *testing.T) {
+	f, err := os.CreateTemp("", "Test_Reload")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	cfg := config.Config{
+		ServerConfig: server.Config{
+			Reload: true,
+		},
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}
+
+	expectCfgStr := cfg.String()
+
+	expectedConfig := &config.Config{
+		ServerConfig: server.Config{
+			Reload: true,
+		},
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}
+
+	expectedConfigReloaded := expectedConfig.String()
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	promtailServer, err := New(cfg, func() (*config.Config, error) {
+		return expectedConfig, nil
+	}, clientMetrics, true, nil)
+	require.NoError(t, err)
+	require.Equal(t, len(expectCfgStr), len(promtailServer.configLoaded))
+	require.Equal(t, expectCfgStr, promtailServer.configLoaded)
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = promtailServer.Run()
+		if err != nil {
+			err = errors.Wrap(err, "Failed to start promtail")
+		}
+	}()
+	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
+
+	svr := promtailServer.server.(*pserver.PromtailServer)
+
+	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
+	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
+	result, err := reload(t, svr.Server.HTTPListenAddr())
+	require.NoError(t, err)
+	expectedReloadResult := ""
+	require.Equal(t, expectedReloadResult, result)
+	require.Equal(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
+	require.Equal(t, expectedConfig.String(), svr.PromtailConfig())
+	require.Equal(t, len(expectedConfigReloaded), len(promtailServer.configLoaded))
+	require.Equal(t, expectedConfigReloaded, promtailServer.configLoaded)
+
+	pb := &dto.Metric{}
+	err = reloadSuccessTotal.Write(pb)
+	require.NoError(t, err)
+	require.Equal(t, 1.0, pb.Counter.GetValue())
+}
+
+func Test_ReloadFail_NotPanic(t *testing.T) {
+	f, err := os.CreateTemp("", "Test_Reload")
+	require.NoError(t, err)
+	defer os.Remove(f.Name())
+
+	cfg := config.Config{
+		ServerConfig: server.Config{
+			Reload: true,
+		},
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}
+
+	expectedConfig := &config.Config{
+		ServerConfig: server.Config{
+			Reload: true,
+		},
+		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
+		PositionsConfig: positions.Config{
+			PositionsFile: f.Name(),
+			SyncPeriod:    time.Second,
+		},
+	}
+
+	newConfigErr := errors.New("load config fail")
+
+	prometheus.DefaultRegisterer = prometheus.NewRegistry() // reset registry, otherwise you can't create 2 weavework server.
+	promtailServer, err := New(cfg, func() (*config.Config, error) {
+		return nil, newConfigErr
+	}, clientMetrics, true, nil)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		err = promtailServer.Run()
+		if err != nil {
+			err = errors.Wrap(err, "Failed to start promtail")
+		}
+	}()
+	defer promtailServer.Shutdown() // In case the test fails before the call to Shutdown below.
+
+	svr := promtailServer.server.(*pserver.PromtailServer)
+	httpListenAddr := svr.Server.HTTPListenAddr()
+	require.NotEqual(t, len(expectedConfig.String()), len(svr.PromtailConfig()))
+	require.NotEqual(t, expectedConfig.String(), svr.PromtailConfig())
+	result, err := reload(t, httpListenAddr)
+	require.Error(t, err)
+	expectedReloadResult := fmt.Sprintf("failed to reload config: Error new Config: %s\n", newConfigErr)
+	require.Equal(t, expectedReloadResult, result)
+
+	pb := &dto.Metric{}
+	err = reloadFailTotal.Write(pb)
+	require.NoError(t, err)
+	require.Equal(t, 1.0, pb.Counter.GetValue())
+
+	promtailServer.newConfig = func() (*config.Config, error) {
+		return &cfg, nil
+	}
+	result, err = reload(t, httpListenAddr)
+	require.Error(t, err)
+	require.Equal(t, fmt.Sprintf("failed to reload config: %s\n", errConfigNotChange), result)
+}
+
+func reload(t *testing.T, httpListenAddr net.Addr) (string, error) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/reload", httpListenAddr))
+	if err != nil {
+		t.Fatal("Could not query reload endpoint", err)
+	}
+	if resp.StatusCode == http.StatusInternalServerError {
+		b, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatal("Error reading response body from /reload endpoint", err)
+		}
+		return string(b), errors.New("Received a 500 status code from /reload endpoint")
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", errors.New("Received a non 200 status code from /reload endpoint")
+	}
+
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal("Error reading response body from /reload endpoint", err)
+	}
+	return string(b), nil
 }

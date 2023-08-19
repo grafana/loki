@@ -18,6 +18,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/hashicorp/memberlist"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
@@ -71,7 +72,7 @@ func (c *Client) Get(ctx context.Context, key string) (interface{}, error) {
 }
 
 // Delete is part of kv.Client interface.
-func (c *Client) Delete(ctx context.Context, key string) error {
+func (c *Client) Delete(_ context.Context, _ string) error {
 	return errors.New("memberlist does not support Delete")
 }
 
@@ -141,8 +142,8 @@ type KVConfig struct {
 	AdvertiseAddr string `yaml:"advertise_addr"`
 	AdvertisePort int    `yaml:"advertise_port"`
 
-	ClusterLabel                     string `yaml:"cluster_label" category:"experimental"`
-	ClusterLabelVerificationDisabled bool   `yaml:"cluster_label_verification_disabled" category:"experimental"`
+	ClusterLabel                     string `yaml:"cluster_label" category:"advanced"`
+	ClusterLabelVerificationDisabled bool   `yaml:"cluster_label_verification_disabled" category:"advanced"`
 
 	// List of members to join
 	JoinMembers      flagext.StringSlice `yaml:"join_members"`
@@ -163,9 +164,7 @@ type KVConfig struct {
 
 	TCPTransport TCPTransportConfig `yaml:",inline"`
 
-	// Where to put custom metrics. Metrics are not registered, if this is nil.
-	MetricsRegisterer prometheus.Registerer `yaml:"-"`
-	MetricsNamespace  string                `yaml:"-"`
+	MetricsNamespace string `yaml:"-"`
 
 	// Codecs to register. Codecs need to be registered before joining other members.
 	Codecs []codec.Codec `yaml:"-"`
@@ -233,9 +232,9 @@ type KV struct {
 	provider DNSProvider
 
 	// Protects access to memberlist and broadcasts fields.
-	initWG     sync.WaitGroup
-	memberlist *memberlist.Memberlist
-	broadcasts *memberlist.TransmitLimitedQueue
+	delegateReady atomic.Bool
+	memberlist    *memberlist.Memberlist
+	broadcasts    *memberlist.TransmitLimitedQueue
 
 	// KV Store.
 	storeMu sync.Mutex
@@ -353,7 +352,6 @@ var (
 // trigger connecting to the existing memberlist cluster. If that fails and AbortIfJoinFails is true, error is returned
 // and service enters Failed state.
 func NewKV(cfg KVConfig, logger log.Logger, dnsProvider DNSProvider, registerer prometheus.Registerer) *KV {
-	cfg.TCPTransport.MetricsRegisterer = cfg.MetricsRegisterer
 	cfg.TCPTransport.MetricsNamespace = cfg.MetricsNamespace
 
 	mlkv := &KV{
@@ -385,7 +383,7 @@ func defaultMemberlistConfig() *memberlist.Config {
 }
 
 func (m *KV) buildMemberlistConfig() (*memberlist.Config, error) {
-	tr, err := NewTCPTransport(m.cfg.TCPTransport, m.logger)
+	tr, err := NewTCPTransport(m.cfg.TCPTransport, m.logger, m.registerer)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transport: %v", err)
 	}
@@ -451,7 +449,6 @@ func (m *KV) starting(ctx context.Context) error {
 	//
 	// Note: We cannot check for Starting state, as we want to use delegate during cluster joining process
 	// that happens in Starting state.
-	m.initWG.Add(1)
 	list, err := memberlist.Create(mlCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create memberlist: %v", err)
@@ -462,7 +459,7 @@ func (m *KV) starting(ctx context.Context) error {
 		NumNodes:       list.NumMembers,
 		RetransmitMult: mlCfg.RetransmitMult,
 	}
-	m.initWG.Done()
+	m.delegateReady.Store(true)
 
 	// Try to fast-join memberlist cluster in Starting state, so that we don't start with empty KV store.
 	if len(m.cfg.JoinMembers) > 0 {
@@ -475,11 +472,9 @@ func (m *KV) starting(ctx context.Context) error {
 var errFailedToJoinCluster = errors.New("failed to join memberlist cluster on startup")
 
 func (m *KV) running(ctx context.Context) error {
-	if len(m.cfg.JoinMembers) > 0 {
-		ok := m.joinMembersOnStartup(ctx)
-		if !ok && m.cfg.AbortIfJoinFails {
-			return errFailedToJoinCluster
-		}
+	ok := m.joinMembersOnStartup(ctx)
+	if !ok && m.cfg.AbortIfJoinFails {
+		return errFailedToJoinCluster
 	}
 
 	var tickerChan <-chan time.Time
@@ -565,7 +560,14 @@ func (m *KV) fastJoinMembersOnStartup(ctx context.Context) {
 	l.Log("msg", "memberlist fast-join finished", "joined_nodes", totalJoined, "elapsed_time", time.Since(startTime))
 }
 
+// The joinMembersOnStartup method resolves the addresses of the given join_members hosts and asks memberlist to join to them.
+// This method cannot be called before KV.running state as it may wait for K8S DNS to resolve the service addresses of members
+// running this very method. Which means the service needs to be READY for K8S to add it to DNS.
 func (m *KV) joinMembersOnStartup(ctx context.Context) bool {
+	if len(m.cfg.JoinMembers) == 0 {
+		return true
+	}
+
 	startTime := time.Now()
 
 	level.Info(m.logger).Log("msg", "joining memberlist cluster", "join_members", strings.Join(m.cfg.JoinMembers, ","))
@@ -584,14 +586,17 @@ func (m *KV) joinMembersOnStartup(ctx context.Context) bool {
 		// This is harmless and simpler.
 		nodes := m.discoverMembers(ctx, m.cfg.JoinMembers)
 
-		reached, err := m.memberlist.Join(nodes) // err is only returned if reached==0.
-		if err == nil {
-			level.Info(m.logger).Log("msg", "joining memberlist cluster succeeded", "reached_nodes", reached, "elapsed_time", time.Since(startTime))
-			return true
+		if len(nodes) > 0 {
+			reached, err := m.memberlist.Join(nodes) // err is only returned if reached==0.
+			if err == nil {
+				level.Info(m.logger).Log("msg", "joining memberlist cluster succeeded", "reached_nodes", reached, "elapsed_time", time.Since(startTime))
+				return true
+			}
+			level.Warn(m.logger).Log("msg", "joining memberlist cluster: failed to reach any nodes", "retries", boff.NumRetries(), "err", err)
+			lastErr = err
+		} else {
+			level.Warn(m.logger).Log("msg", "joining memberlist cluster: found no nodes to join", "retries", boff.NumRetries())
 		}
-
-		level.Warn(m.logger).Log("msg", "joining memberlist cluster: failed to reach any nodes", "retries", boff.NumRetries(), "err", err)
-		lastErr = err
 
 		boff.Wait()
 	}
@@ -685,7 +690,7 @@ func (m *KV) Get(key string, codec codec.Codec) (interface{}, error) {
 }
 
 // Returns current value with removed tombstones.
-func (m *KV) get(key string, codec codec.Codec) (out interface{}, version uint, err error) {
+func (m *KV) get(key string, _ codec.Codec) (out interface{}, version uint, err error) {
 	m.storeMu.Lock()
 	v := m.store[key].Clone()
 	m.storeMu.Unlock()
@@ -975,7 +980,7 @@ func (m *KV) broadcastNewValue(key string, change Mergeable, version uint, codec
 }
 
 // NodeMeta is method from Memberlist Delegate interface
-func (m *KV) NodeMeta(limit int) []byte {
+func (m *KV) NodeMeta(_ int) []byte {
 	// we can send local state from here (512 bytes only)
 	// if state is updated, we need to tell memberlist to distribute it.
 	return nil
@@ -984,6 +989,10 @@ func (m *KV) NodeMeta(limit int) []byte {
 // NotifyMsg is method from Memberlist Delegate interface
 // Called when single message is received, i.e. what our broadcastNewValue has sent.
 func (m *KV) NotifyMsg(msg []byte) {
+	if !m.delegateReady.Load() {
+		return
+	}
+
 	m.numberOfReceivedMessages.Inc()
 	m.totalSizeOfReceivedMessages.Add(float64(len(msg)))
 
@@ -1093,7 +1102,9 @@ func (m *KV) queueBroadcast(key string, content []string, version uint, message 
 // GetBroadcasts is method from Memberlist Delegate interface
 // It returns all pending broadcasts (within the size limit)
 func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
-	m.initWG.Wait()
+	if !m.delegateReady.Load() {
+		return nil
+	}
 
 	return m.broadcasts.GetBroadcasts(overhead, limit)
 }
@@ -1103,8 +1114,10 @@ func (m *KV) GetBroadcasts(overhead, limit int) [][]byte {
 // This is "pull" part of push/pull sync (either periodic, or when new node joins the cluster).
 // Here we dump our entire state -- all keys and their values. There is no limit on message size here,
 // as Memberlist uses 'stream' operations for transferring this state.
-func (m *KV) LocalState(join bool) []byte {
-	m.initWG.Wait()
+func (m *KV) LocalState(_ bool) []byte {
+	if !m.delegateReady.Load() {
+		return nil
+	}
 
 	m.numberOfPulls.Inc()
 
@@ -1170,15 +1183,17 @@ func (m *KV) LocalState(join bool) []byte {
 	return buf.Bytes()
 }
 
-// MergeRemoteState is method from Memberlist Delegate interface
+// MergeRemoteState is a method from the Memberlist Delegate interface.
 //
 // This is 'push' part of push/pull sync. We merge incoming KV store (all keys and values) with ours.
 //
 // Data is full state of remote KV store, as generated by LocalState method (run on another node).
-func (m *KV) MergeRemoteState(data []byte, join bool) {
-	received := time.Now()
+func (m *KV) MergeRemoteState(data []byte, _ bool) {
+	if !m.delegateReady.Load() {
+		return
+	}
 
-	m.initWG.Wait()
+	received := time.Now()
 
 	m.numberOfPushes.Inc()
 	m.totalSizeOfPushes.Add(float64(len(data)))

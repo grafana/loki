@@ -40,5 +40,5 @@ func (fakeStream) SetHeader(_ metadata.MD) error  { return nil }
 func (fakeStream) SendHeader(_ metadata.MD) error { return nil }
 func (fakeStream) SetTrailer(_ metadata.MD)       {}
 func (fakeStream) Context() context.Context       { return context.Background() }
-func (fakeStream) SendMsg(m interface{}) error    { return nil }
-func (fakeStream) RecvMsg(m interface{}) error    { return nil }
+func (fakeStream) SendMsg(_ interface{}) error    { return nil }
+func (fakeStream) RecvMsg(_ interface{}) error    { return nil }

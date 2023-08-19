@@ -20,6 +20,8 @@ package models
 // Editing this file might prove futile when you re-run the swagger generate command
 
 import (
+	"context"
+
 	"github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
 	"github.com/go-openapi/swag"
@@ -124,6 +126,8 @@ func (m *Silence) validateMatchers(formats strfmt.Registry) error {
 	if err := m.Matchers.Validate(formats); err != nil {
 		if ve, ok := err.(*errors.Validation); ok {
 			return ve.ValidateName("matchers")
+		} else if ce, ok := err.(*errors.CompositeError); ok {
+			return ce.ValidateName("matchers")
 		}
 		return err
 	}
@@ -138,6 +142,34 @@ func (m *Silence) validateStartsAt(formats strfmt.Registry) error {
 	}
 
 	if err := validate.FormatOf("startsAt", "body", "date-time", m.StartsAt.String(), formats); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// ContextValidate validate this silence based on the context it is used
+func (m *Silence) ContextValidate(ctx context.Context, formats strfmt.Registry) error {
+	var res []error
+
+	if err := m.contextValidateMatchers(ctx, formats); err != nil {
+		res = append(res, err)
+	}
+
+	if len(res) > 0 {
+		return errors.CompositeValidationError(res...)
+	}
+	return nil
+}
+
+func (m *Silence) contextValidateMatchers(ctx context.Context, formats strfmt.Registry) error {
+
+	if err := m.Matchers.ContextValidate(ctx, formats); err != nil {
+		if ve, ok := err.(*errors.Validation); ok {
+			return ve.ValidateName("matchers")
+		} else if ce, ok := err.(*errors.CompositeError); ok {
+			return ce.ValidateName("matchers")
+		}
 		return err
 	}
 

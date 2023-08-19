@@ -15,6 +15,9 @@ var (
 	// ErrWrongType when a key is not the right type.
 	ErrWrongType = errors.New(msgWrongType)
 
+	// ErrNotValidHllValue when a key is not a valid HyperLogLog string value.
+	ErrNotValidHllValue = errors.New(msgNotValidHllValue)
+
 	// ErrIntValueError can returned by INCRBY
 	ErrIntValueError = errors.New(msgInvalidInt)
 
@@ -663,6 +666,24 @@ func (db *RedisDB) ZScore(k, member string) (float64, error) {
 	return db.ssetScore(k, member), nil
 }
 
+// ZScore gives scores of a list of members in a sorted set.
+func (m *Miniredis) ZMScore(k string, members ...string) ([]float64, error) {
+	return m.DB(m.selectedDB).ZMScore(k, members)
+}
+
+func (db *RedisDB) ZMScore(k string, members []string) ([]float64, error) {
+	db.master.Lock()
+	defer db.master.Unlock()
+
+	if !db.exists(k) {
+		return nil, ErrKeyNotFound
+	}
+	if db.t(k) != "zset" {
+		return nil, ErrWrongType
+	}
+	return db.ssetMScore(k, members), nil
+}
+
 // XAdd adds an entry to a stream. `id` can be left empty or be '*'.
 // If a value is given normal XADD rules apply. Values should be an even
 // length.
@@ -678,11 +699,15 @@ func (db *RedisDB) XAdd(k string, id string, values []string) (string, error) {
 	defer db.master.Unlock()
 	defer db.master.signal.Broadcast()
 
-	if db.exists(k) && db.t(k) != "stream" {
-		return "", ErrWrongType
+	s, err := db.stream(k)
+	if err != nil {
+		return "", err
+	}
+	if s == nil {
+		s, _ = db.newStream(k)
 	}
 
-	return db.streamAdd(k, id, values)
+	return s.add(id, values, db.master.effectiveNow())
 }
 
 // Stream returns a slice of stream entries. Oldest first.
@@ -691,17 +716,18 @@ func (m *Miniredis) Stream(k string) ([]StreamEntry, error) {
 }
 
 // Stream returns a slice of stream entries. Oldest first.
-func (db *RedisDB) Stream(k string) ([]StreamEntry, error) {
+func (db *RedisDB) Stream(key string) ([]StreamEntry, error) {
 	db.master.Lock()
 	defer db.master.Unlock()
 
-	if !db.exists(k) {
-		return nil, ErrKeyNotFound
+	s, err := db.stream(key)
+	if err != nil {
+		return nil, err
 	}
-	if db.t(k) != "stream" {
-		return nil, ErrWrongType
+	if s == nil {
+		return nil, nil
 	}
-	return db.stream(k), nil
+	return s.entries, nil
 }
 
 // Publish a message to subscribers. Returns the number of receivers.
@@ -742,4 +768,54 @@ func (m *Miniredis) PubSubNumPat() int {
 	defer m.Unlock()
 
 	return countPsubs(m.allSubscribers())
+}
+
+// PfAdd adds keys to a hll. Returns the flag which equals to 1 if the inner hll value has been changed.
+func (m *Miniredis) PfAdd(k string, elems ...string) (int, error) {
+	return m.DB(m.selectedDB).HllAdd(k, elems...)
+}
+
+// HllAdd adds keys to a hll. Returns the flag which equals to true if the inner hll value has been changed.
+func (db *RedisDB) HllAdd(k string, elems ...string) (int, error) {
+	db.master.Lock()
+	defer db.master.Unlock()
+
+	if db.exists(k) && db.t(k) != "hll" {
+		return 0, ErrWrongType
+	}
+	return db.hllAdd(k, elems...), nil
+}
+
+// PfCount returns an estimation of the amount of elements previously added to a hll.
+func (m *Miniredis) PfCount(keys ...string) (int, error) {
+	return m.DB(m.selectedDB).HllCount(keys...)
+}
+
+// HllCount returns an estimation of the amount of elements previously added to a hll.
+func (db *RedisDB) HllCount(keys ...string) (int, error) {
+	db.master.Lock()
+	defer db.master.Unlock()
+
+	return db.hllCount(keys)
+}
+
+// PfMerge merges all the input hlls into a hll under destKey key.
+func (m *Miniredis) PfMerge(destKey string, sourceKeys ...string) error {
+	return m.DB(m.selectedDB).HllMerge(destKey, sourceKeys...)
+}
+
+// HllMerge merges all the input hlls into a hll under destKey key.
+func (db *RedisDB) HllMerge(destKey string, sourceKeys ...string) error {
+	db.master.Lock()
+	defer db.master.Unlock()
+
+	return db.hllMerge(append([]string{destKey}, sourceKeys...))
+}
+
+// Copy a value.
+// Needs the IDs of both the source and dest DBs (which can differ).
+// Returns ErrKeyNotFound if src does not exist.
+// Overwrites dest if it already exists (unlike the redis command, which needs a flag to allow that).
+func (m *Miniredis) Copy(srcDB int, src string, destDB int, dest string) error {
+	return m.copy(m.DB(srcDB), src, m.DB(destDB), dest)
 }

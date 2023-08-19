@@ -23,11 +23,13 @@ type RedisConfig struct {
 	Expiration         time.Duration  `yaml:"expiration"`
 	DB                 int            `yaml:"db"`
 	PoolSize           int            `yaml:"pool_size"`
+	Username           string         `yaml:"username"`
 	Password           flagext.Secret `yaml:"password"`
 	EnableTLS          bool           `yaml:"tls_enabled"`
 	InsecureSkipVerify bool           `yaml:"tls_insecure_skip_verify"`
 	IdleTimeout        time.Duration  `yaml:"idle_timeout"`
 	MaxConnAge         time.Duration  `yaml:"max_connection_age"`
+	RouteRandomly      bool           `yaml:"route_randomly"`
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
@@ -38,11 +40,13 @@ func (cfg *RedisConfig) RegisterFlagsWithPrefix(prefix, description string, f *f
 	f.DurationVar(&cfg.Expiration, prefix+"redis.expiration", 0, description+"How long keys stay in the redis.")
 	f.IntVar(&cfg.DB, prefix+"redis.db", 0, description+"Database index.")
 	f.IntVar(&cfg.PoolSize, prefix+"redis.pool-size", 0, description+"Maximum number of connections in the pool.")
+	f.StringVar(&cfg.Username, prefix+"redis.username", "", description+"Username to use when connecting to redis.")
 	f.Var(&cfg.Password, prefix+"redis.password", description+"Password to use when connecting to redis.")
 	f.BoolVar(&cfg.EnableTLS, prefix+"redis.tls-enabled", false, description+"Enable connecting to redis with TLS.")
 	f.BoolVar(&cfg.InsecureSkipVerify, prefix+"redis.tls-insecure-skip-verify", false, description+"Skip validating server certificate.")
 	f.DurationVar(&cfg.IdleTimeout, prefix+"redis.idle-timeout", 0, description+"Close connections after remaining idle for this duration. If the value is zero, then idle connections are not closed.")
 	f.DurationVar(&cfg.MaxConnAge, prefix+"redis.max-connection-age", 0, description+"Close connections older than this duration. If the value is zero, then the pool does not close connections based on age.")
+	f.BoolVar(&cfg.RouteRandomly, prefix+"redis.route-randomly", false, description+"By default, the Redis client only reads from the master node. Enabling this option can lower pressure on the master node by randomly routing read-only commands to the master and any available replicas.")
 }
 
 type RedisClient struct {
@@ -53,32 +57,21 @@ type RedisClient struct {
 
 // NewRedisClient creates Redis client
 func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
-	endpoints := strings.Split(cfg.Endpoint, ",")
-	// Handle single configuration endpoint which resolves multiple nodes.
-	if len(endpoints) == 1 {
-		host, port, err := net.SplitHostPort(endpoints[0])
-		if err != nil {
-			return nil, err
-		}
-		addrs, err := net.LookupHost(host)
-		if err != nil {
-			return nil, err
-		}
-		if len(addrs) > 1 {
-			endpoints = nil
-			for _, addr := range addrs {
-				endpoints = append(endpoints, net.JoinHostPort(addr, port))
-			}
-		}
+	endpoints, err := deriveEndpoints(cfg.Endpoint, net.LookupHost)
+	if err != nil {
+		return nil, fmt.Errorf("failed to derive endpoints: %w", err)
 	}
+
 	opt := &redis.UniversalOptions{
-		Addrs:       endpoints,
-		MasterName:  cfg.MasterName,
-		Password:    cfg.Password.String(),
-		DB:          cfg.DB,
-		PoolSize:    cfg.PoolSize,
-		IdleTimeout: cfg.IdleTimeout,
-		MaxConnAge:  cfg.MaxConnAge,
+		Addrs:         endpoints,
+		MasterName:    cfg.MasterName,
+		Username:      cfg.Username,
+		Password:      cfg.Password.String(),
+		DB:            cfg.DB,
+		PoolSize:      cfg.PoolSize,
+		IdleTimeout:   cfg.IdleTimeout,
+		MaxConnAge:    cfg.MaxConnAge,
+		RouteRandomly: cfg.RouteRandomly,
 	}
 	if cfg.EnableTLS {
 		opt.TLSConfig = &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
@@ -88,6 +81,51 @@ func NewRedisClient(cfg *RedisConfig) (*RedisClient, error) {
 		timeout:    cfg.Timeout,
 		rdb:        redis.NewUniversalClient(opt),
 	}, nil
+}
+
+func deriveEndpoints(endpoint string, lookup func(host string) ([]string, error)) ([]string, error) {
+	if lookup == nil {
+		return nil, fmt.Errorf("lookup function is nil")
+	}
+
+	endpoints := strings.Split(endpoint, ",")
+
+	// no endpoints or multiple endpoints will not need derivation
+	if len(endpoints) != 1 {
+		return endpoints, nil
+	}
+
+	// Handle single configuration endpoint which resolves multiple nodes.
+	host, port, err := net.SplitHostPort(endpoints[0])
+	if err != nil {
+		return nil, fmt.Errorf("splitting host:port failed :%w", err)
+	}
+	addrs, err := lookup(host)
+	if err != nil {
+		return nil, fmt.Errorf("could not lookup host: %w", err)
+	}
+
+	// only use the resolved addresses if they are not all loopback addresses;
+	// multiple addresses invokes cluster mode
+	allLoopback := allAddrsAreLoopback(addrs)
+	if len(addrs) > 1 && !allLoopback {
+		endpoints = nil
+		for _, addr := range addrs {
+			endpoints = append(endpoints, net.JoinHostPort(addr, port))
+		}
+	}
+
+	return endpoints, nil
+}
+
+func allAddrsAreLoopback(addrs []string) bool {
+	for _, addr := range addrs {
+		if !net.ParseIP(addr).IsLoopback() {
+			return false
+		}
+	}
+
+	return true
 }
 
 func (c *RedisClient) Ping(ctx context.Context) error {

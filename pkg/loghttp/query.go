@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -13,13 +14,15 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 )
 
 var (
-	errEndBeforeStart   = errors.New("end timestamp must not be before or equal to start time")
-	errNegativeStep     = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
-	errStepTooSmall     = errors.New("exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-	errNegativeInterval = errors.New("interval must be >= 0")
+	errEndBeforeStart     = errors.New("end timestamp must not be before or equal to start time")
+	errZeroOrNegativeStep = errors.New("zero or negative query resolution step widths are not accepted. Try a positive integer")
+	errNegativeStep       = errors.New("negative query resolution step widths are not accepted. Try a positive integer")
+	errStepTooSmall       = errors.New("exceeded maximum resolution of 11,000 points per time series. Try increasing the value of the step parameter")
+	errNegativeInterval   = errors.New("interval must be >= 0")
 )
 
 // QueryStatus holds the status of a query
@@ -53,9 +56,129 @@ func (q *QueryResponse) UnmarshalJSON(data []byte) error {
 	})
 }
 
-// PushRequest models a log stream push
+// PushRequest models a log stream push but is unmarshalled to proto push format.
 type PushRequest struct {
-	Streams []*Stream `json:"streams"`
+	Streams []LogProtoStream `json:"streams"`
+}
+
+// LogProtoStream helps with unmarshalling of each log stream for push request.
+// This might look un-necessary but without it the CPU usage in benchmarks was increasing by ~25% :shrug:
+type LogProtoStream logproto.Stream
+
+func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
+	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
+		switch string(key) {
+		case "stream":
+			labels := make(LabelSet)
+			err := jsonparser.ObjectEach(val, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
+				if dataType != jsonparser.String {
+					return jsonparser.MalformedStringError
+				}
+				labels[string(key)] = string(val)
+				return nil
+			})
+			if err != nil {
+				return err
+			}
+			s.Labels = labels.String()
+		case "values":
+			if ty == jsonparser.Null {
+				return nil
+			}
+			entries, err := unmarshalHTTPToLogProtoEntries(val)
+			if err != nil {
+				return err
+			}
+			s.Entries = entries
+		}
+		return nil
+	})
+	return err
+}
+
+func unmarshalHTTPToLogProtoEntries(data []byte) ([]logproto.Entry, error) {
+	var (
+		entries    []logproto.Entry
+		parseError error
+	)
+	if _, err := jsonparser.ArrayEach(data, func(value []byte, ty jsonparser.ValueType, _ int, err error) {
+		if err != nil || parseError != nil {
+			return
+		}
+		if ty == jsonparser.Null {
+			return
+		}
+		e, err := unmarshalHTTPToLogProtoEntry(value)
+		if err != nil {
+			parseError = err
+			return
+		}
+		entries = append(entries, e)
+	}); err != nil {
+		parseError = err
+	}
+
+	if parseError != nil {
+		return nil, parseError
+	}
+
+	return entries, nil
+}
+
+func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
+	var (
+		i          int
+		parseError error
+		e          logproto.Entry
+	)
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// assert that both items in array are of type string
+		if (i == 0 || i == 1) && t != jsonparser.String {
+			parseError = jsonparser.MalformedStringError
+			return
+		} else if i == 2 && t != jsonparser.Object {
+			parseError = jsonparser.MalformedObjectError
+			return
+		}
+		switch i {
+		case 0: // timestamp
+			ts, err := jsonparser.ParseInt(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Timestamp = time.Unix(0, ts)
+		case 1: // value
+			v, err := jsonparser.ParseString(value)
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.Line = v
+		case 2: // nonIndexedLabels
+			var nonIndexedLabels []logproto.LabelAdapter
+			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
+				if dataType != jsonparser.String {
+					return jsonparser.MalformedStringError
+				}
+				nonIndexedLabels = append(nonIndexedLabels, logproto.LabelAdapter{
+					Name:  string(key),
+					Value: string(val),
+				})
+				return nil
+			})
+			if err != nil {
+				parseError = err
+				return
+			}
+			e.NonIndexedLabels = nonIndexedLabels
+		}
+		i++
+	})
+	if parseError != nil {
+		return e, parseError
+	}
+	return e, err
 }
 
 // ResultType holds the type of the result
@@ -315,7 +438,7 @@ func ParseRangeQuery(r *http.Request) (*RangeQuery, error) {
 	}
 
 	if result.Step <= 0 {
-		return nil, errNegativeStep
+		return nil, errZeroOrNegativeStep
 	}
 
 	result.Shards = shards(r)
@@ -342,4 +465,125 @@ func ParseIndexStatsQuery(r *http.Request) (*RangeQuery, error) {
 	// TODO(owen-d): use a specific type/validation instead
 	// of using range query parameters (superset)
 	return ParseRangeQuery(r)
+}
+
+type VolumeInstantQuery struct {
+	Start        time.Time
+	End          time.Time
+	Query        string
+	Limit        uint32
+	TargetLabels []string
+	AggregateBy  string
+}
+
+func ParseVolumeInstantQuery(r *http.Request) (*VolumeInstantQuery, error) {
+	err := volumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ParseInstantQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	aggregateBy, err := volumeAggregateBy(r)
+	if err != nil {
+		return nil, err
+	}
+
+	svInstantQuery := VolumeInstantQuery{
+		Query:        result.Query,
+		Limit:        result.Limit,
+		TargetLabels: targetLabels(r),
+		AggregateBy:  aggregateBy,
+	}
+
+	svInstantQuery.Start, svInstantQuery.End, err = bounds(r)
+	if err != nil {
+		return nil, err
+	}
+
+	if svInstantQuery.End.Before(svInstantQuery.Start) {
+		return nil, errEndBeforeStart
+	}
+
+	return &svInstantQuery, nil
+}
+
+type VolumeRangeQuery struct {
+	Start        time.Time
+	End          time.Time
+	Step         time.Duration
+	Query        string
+	Limit        uint32
+	TargetLabels []string
+	AggregateBy  string
+}
+
+func ParseVolumeRangeQuery(r *http.Request) (*VolumeRangeQuery, error) {
+	err := volumeLimit(r)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := ParseRangeQuery(r)
+	if err != nil {
+		return nil, err
+	}
+
+	aggregateBy, err := volumeAggregateBy(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return &VolumeRangeQuery{
+		Start:        result.Start,
+		End:          result.End,
+		Step:         result.Step,
+		Query:        result.Query,
+		Limit:        result.Limit,
+		TargetLabels: targetLabels(r),
+		AggregateBy:  aggregateBy,
+	}, nil
+}
+
+func targetLabels(r *http.Request) []string {
+	lbls := strings.Split(r.Form.Get("targetLabels"), ",")
+	if (len(lbls) == 1 && lbls[0] == "") || len(lbls) == 0 {
+		return nil
+	}
+
+	return lbls
+}
+
+func volumeLimit(r *http.Request) error {
+	l, err := parseInt(r.Form.Get("limit"), seriesvolume.DefaultLimit)
+	if err != nil {
+		return err
+	}
+
+	if l == 0 {
+		r.Form.Set("limit", fmt.Sprint(seriesvolume.DefaultLimit))
+		return nil
+	}
+
+	if l <= 0 {
+		return errors.New("limit must be a positive value")
+	}
+
+	return nil
+}
+
+func volumeAggregateBy(r *http.Request) (string, error) {
+	l := r.Form.Get("aggregateBy")
+	if l == "" {
+		return seriesvolume.DefaultAggregateBy, nil
+	}
+
+	if seriesvolume.ValidateAggregateBy(l) {
+		return l, nil
+	}
+
+	return "", errors.New("invalid aggregation option")
 }

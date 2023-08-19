@@ -10,27 +10,48 @@ on:
       - 'operator/**'
 
 jobs:
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ['1.20']
+    steps:
+    - name: Install make
+      run: sudo apt-get install make
+    - name: Set up Go 1.x
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go }}
+      id: go
+    - uses: actions/checkout@v3
+    - name: Check generated docs
+      working-directory: ./operator
+      run: |
+        make docs/operator/api.md docs/operator/feature-gates.md
+        git diff --exit-code
+
   lint:
     name: lint
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
     - uses: actions/checkout@v3
     - name: Lint
-      uses: golangci/golangci-lint-action@v3.2.0
+      uses: golangci/golangci-lint-action@v3.5.0
       with:
-        version: v1.47.2
-        skip-go-installation: true
+        version: v1.53.3
         args: --timeout=4m
         working-directory: ./operator
     - name: Check prometheus rules
@@ -43,12 +64,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
@@ -64,12 +85,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go
@@ -85,12 +106,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go: ['1.18']
+        go: ['1.20']
     steps:
     - name: Install make
       run: sudo apt-get install make
     - name: Set up Go 1.x
-      uses: actions/setup-go@v3
+      uses: actions/setup-go@v4
       with:
         go-version: ${{ matrix.go }}
       id: go

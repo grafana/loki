@@ -20,7 +20,7 @@ import (
 func TestSyncRuleGroups(t *testing.T) {
 	dir := t.TempDir()
 
-	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger())
+	m, err := NewDefaultMultiTenantManager(Config{RulePath: dir}, factory, nil, log.NewNopLogger(), ruleLimits{})
 	require.NoError(t, err)
 
 	const user = "testUser"
@@ -32,6 +32,7 @@ func TestSyncRuleGroups(t *testing.T) {
 				Namespace: "ns",
 				Interval:  1 * time.Minute,
 				User:      user,
+				Limit:     10,
 			},
 		},
 	}
@@ -118,7 +119,7 @@ func (m *mockRulesManager) Stop() {
 	close(m.done)
 }
 
-func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, ruleGroupPostProcessFunc promRules.RuleGroupPostProcessFunc) error {
+func (m *mockRulesManager) Update(_ time.Duration, _ []string, _ labels.Labels, _ string, _ promRules.GroupEvalIterationFunc) error {
 	return nil
 }
 

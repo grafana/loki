@@ -10,6 +10,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -23,16 +25,18 @@ const (
 
 	maxErrMsgLen = 1024
 
-	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma seperated list with an even number of entries. "
+	invalidExtraLabelsError = "Invalid value for environment variable EXTRA_LABELS. Expected a comma separated list with an even number of entries. "
 )
 
 var (
-	writeAddress                                 *url.URL
-	username, password, extraLabelsRaw, tenantID string
-	keepStream                                   bool
-	batchSize                                    int
-	s3Clients                                    map[string]*s3.Client
-	extraLabels                                  model.LabelSet
+	writeAddress                                              *url.URL
+	username, password, extraLabelsRaw, tenantID, bearerToken string
+	keepStream                                                bool
+	batchSize                                                 int
+	s3Clients                                                 map[string]*s3.Client
+	extraLabels                                               model.LabelSet
+	skipTlsVerify                                             bool
+	printLogLine                                              bool
 )
 
 func setupArguments() {
@@ -49,8 +53,9 @@ func setupArguments() {
 
 	fmt.Println("write address: ", writeAddress.String())
 
+	omitExtraLabelsPrefix := os.Getenv("OMIT_EXTRA_LABELS_PREFIX")
 	extraLabelsRaw = os.Getenv("EXTRA_LABELS")
-	extraLabels, err = parseExtraLabels(extraLabelsRaw)
+	extraLabels, err = parseExtraLabels(extraLabelsRaw, strings.EqualFold(omitExtraLabelsPrefix, "true"))
 	if err != nil {
 		panic(err)
 	}
@@ -60,6 +65,18 @@ func setupArguments() {
 	// If either username or password is set then both must be.
 	if (username != "" && password == "") || (username == "" && password != "") {
 		panic("both username and password must be set if either one is set")
+	}
+
+	bearerToken = os.Getenv("BEARER_TOKEN")
+	// If username and password are set, bearer token is not allowed
+	if username != "" && bearerToken != "" {
+		panic("both username and bearerToken are not allowed")
+	}
+
+	skipTls := os.Getenv("SKIP_TLS_VERIFY")
+	// Anything other than case-insensitive 'true' is treated as 'false'.
+	if strings.EqualFold(skipTls, "true") {
+		skipTlsVerify = true
 	}
 
 	tenantID = os.Getenv("TENANT_ID")
@@ -77,10 +94,19 @@ func setupArguments() {
 		batchSize, _ = strconv.Atoi(batch)
 	}
 
+	print := os.Getenv("PRINT_LOG_LINE")
+	printLogLine = true
+	if strings.EqualFold(print, "false") {
+		printLogLine = false
+	}
 	s3Clients = make(map[string]*s3.Client)
 }
 
-func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
+func parseExtraLabels(extraLabelsRaw string, omitPrefix bool) (model.LabelSet, error) {
+	prefix := "__extra_"
+	if omitPrefix {
+		prefix = ""
+	}
 	var extractedLabels = model.LabelSet{}
 	extraLabelsSplit := strings.Split(extraLabelsRaw, ",")
 
@@ -92,7 +118,7 @@ func parseExtraLabels(extraLabelsRaw string) (model.LabelSet, error) {
 		return nil, fmt.Errorf(invalidExtraLabelsError)
 	}
 	for i := 0; i < len(extraLabelsSplit); i += 2 {
-		extractedLabels[model.LabelName("__extra_"+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
+		extractedLabels[model.LabelName(prefix+extraLabelsSplit[i])] = model.LabelValue(extraLabelsSplit[i+1])
 	}
 	err := extractedLabels.Validate()
 	if err != nil {
@@ -108,10 +134,13 @@ func applyExtraLabels(labels model.LabelSet) model.LabelSet {
 
 func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var s3Event events.S3Event
+	var s3TestEvent events.S3TestEvent
 	var cwEvent events.CloudwatchLogsEvent
 	var kinesisEvent events.KinesisEvent
+	var sqsEvent events.SQSEvent
+	var snsEvent events.SNSEvent
 
-	types := [...]interface{}{&s3Event, &cwEvent, &kinesisEvent}
+	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent, &snsEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -132,21 +161,48 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 }
 
 func handler(ctx context.Context, ev map[string]interface{}) error {
+	lvl, ok := os.LookupEnv("LOG_LEVEL")
+	if !ok {
+		lvl = "info"
+	}
+	log := NewLogger(lvl)
+	pClient := NewPromtailClient(&promtailClientConfig{
+		backoff: &backoff.Config{
+			MinBackoff: minBackoff,
+			MaxBackoff: maxBackoff,
+			MaxRetries: maxRetries,
+		},
+		http: &httpClientConfig{
+			timeout:       timeout,
+			skipTlsVerify: skipTlsVerify,
+		},
+	}, log)
+
 	event, err := checkEventType(ev)
 	if err != nil {
-		fmt.Printf("invalid event: %s\n", ev)
+		level.Error(*pClient.log).Log("err", fmt.Errorf("invalid event: %s\n", ev))
 		return err
 	}
 
 	switch evt := event.(type) {
 	case *events.S3Event:
-		return processS3Event(ctx, evt)
+		err = processS3Event(ctx, evt, pClient, pClient.log)
 	case *events.CloudwatchLogsEvent:
-		return processCWEvent(ctx, evt)
+		err = processCWEvent(ctx, evt, pClient)
 	case *events.KinesisEvent:
-		return processKinesisEvent(ctx, evt)
+		err = processKinesisEvent(ctx, evt, pClient)
+	case *events.SQSEvent:
+		err = processSQSEvent(ctx, evt, handler)
+	case *events.SNSEvent:
+		err = processSNSEvent(ctx, evt, handler)
+	// When setting up S3 Notification on a bucket, a test event is first sent, see: https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html
+	case *events.S3TestEvent:
+		return nil
 	}
 
+	if err != nil {
+		level.Error(*pClient.log).Log("err", fmt.Errorf("error processing event: %v", err))
+	}
 	return err
 }
 

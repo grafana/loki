@@ -9,9 +9,12 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/go-kit/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
+	"github.com/grafana/loki/clients/pkg/promtail/limit"
+	"github.com/grafana/loki/clients/pkg/promtail/wal"
 )
 
 var (
@@ -35,9 +38,9 @@ type logger struct {
 }
 
 // NewLogger creates a new client logger that logs entries instead of sending them.
-func NewLogger(metrics *Metrics, streamLogLabels []string, log log.Logger, cfgs ...Config) (Client, error) {
+func NewLogger(metrics *Metrics, log log.Logger, cfgs ...Config) (Client, error) {
 	// make sure the clients config is valid
-	c, err := NewMulti(metrics, streamLogLabels, log, 0, cfgs...)
+	c, err := NewManager(metrics, log, limit.Config{}, prometheus.NewRegistry(), wal.Config{}, NilNotifier, cfgs...)
 	if err != nil {
 		return nil, err
 	}

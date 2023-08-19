@@ -10,6 +10,11 @@
         "grpc": {
           "libraryClient": "Client",
           "rpcs": {
+            "CancelResumableWrite": {
+              "methods": [
+                "CancelResumableWrite"
+              ]
+            },
             "ComposeObject": {
               "methods": [
                 "ComposeObject"

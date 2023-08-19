@@ -41,6 +41,7 @@ type endpointSlicePortAdaptor interface {
 type endpointSliceEndpointAdaptor interface {
 	addresses() []string
 	hostname() *string
+	nodename() *string
 	conditions() endpointSliceEndpointConditionsAdaptor
 	targetRef() *corev1.ObjectReference
 	topology() map[string]string
@@ -48,6 +49,8 @@ type endpointSliceEndpointAdaptor interface {
 
 type endpointSliceEndpointConditionsAdaptor interface {
 	ready() *bool
+	serving() *bool
+	terminating() *bool
 }
 
 // Adaptor for k8s.io/api/discovery/v1
@@ -164,6 +167,10 @@ func (e *endpointSliceEndpointAdaptorV1) hostname() *string {
 	return e.endpoint.Hostname
 }
 
+func (e *endpointSliceEndpointAdaptorV1) nodename() *string {
+	return e.endpoint.NodeName
+}
+
 func (e *endpointSliceEndpointAdaptorV1) conditions() endpointSliceEndpointConditionsAdaptor {
 	return newEndpointSliceEndpointConditionsAdaptorFromV1(e.endpoint.Conditions)
 }
@@ -188,6 +195,14 @@ func (e *endpointSliceEndpointConditionsAdaptorV1) ready() *bool {
 	return e.endpointConditions.Ready
 }
 
+func (e *endpointSliceEndpointConditionsAdaptorV1) serving() *bool {
+	return e.endpointConditions.Serving
+}
+
+func (e *endpointSliceEndpointConditionsAdaptorV1) terminating() *bool {
+	return e.endpointConditions.Terminating
+}
+
 type endpointSliceEndpointAdaptorV1beta1 struct {
 	endpoint v1beta1.Endpoint
 }
@@ -202,6 +217,10 @@ func (e *endpointSliceEndpointAdaptorV1beta1) addresses() []string {
 
 func (e *endpointSliceEndpointAdaptorV1beta1) hostname() *string {
 	return e.endpoint.Hostname
+}
+
+func (e *endpointSliceEndpointAdaptorV1beta1) nodename() *string {
+	return e.endpoint.NodeName
 }
 
 func (e *endpointSliceEndpointAdaptorV1beta1) conditions() endpointSliceEndpointConditionsAdaptor {
@@ -226,6 +245,14 @@ func newEndpointSliceEndpointConditionsAdaptorFromV1beta1(endpointConditions v1b
 
 func (e *endpointSliceEndpointConditionsAdaptorV1beta1) ready() *bool {
 	return e.endpointConditions.Ready
+}
+
+func (e *endpointSliceEndpointConditionsAdaptorV1beta1) serving() *bool {
+	return e.endpointConditions.Serving
+}
+
+func (e *endpointSliceEndpointConditionsAdaptorV1beta1) terminating() *bool {
+	return e.endpointConditions.Terminating
 }
 
 type endpointSlicePortAdaptorV1 struct {

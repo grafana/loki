@@ -14,22 +14,25 @@ import (
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/uber/jaeger-client-go"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	util_log "github.com/grafana/loki/pkg/util/log"
+	"github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -37,13 +40,36 @@ import (
 var (
 	// Value that cacheControlHeader has if the response indicates that the results should not be cached.
 	noStoreValue = "no-store"
-
-	// ResultsCacheGenNumberHeaderName holds name of the header we want to set in http response
-	ResultsCacheGenNumberHeaderName = "Results-Cache-Gen-Number"
 )
+
+const (
+	reasonMissing  = "missing"
+	reasonMismatch = "mismatch"
+)
+
+type ResultsCacheMetrics struct {
+	versionComparisons        prometheus.Counter
+	versionComparisonFailures *prometheus.CounterVec
+}
+
+func NewResultsCacheMetrics(registerer prometheus.Registerer) *ResultsCacheMetrics {
+	return &ResultsCacheMetrics{
+		versionComparisons: promauto.With(registerer).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "results_cache_version_comparisons_total",
+			Help:      "Comparisons of cache key versions in the results cache between query-frontends & queriers",
+		}),
+		versionComparisonFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki",
+			Name:      "results_cache_version_comparisons_failed",
+			Help:      "Comparison failures of cache key versions in the results cache between query-frontends & queriers",
+		}, []string{"reason"}),
+	}
+}
 
 type CacheGenNumberLoader interface {
 	GetResultsCacheGenNumber(tenantIDs []string) string
+	Stop()
 }
 
 // ResultsCacheConfig is the config for the results cache.
@@ -52,13 +78,17 @@ type ResultsCacheConfig struct {
 	Compression string       `yaml:"compression"`
 }
 
+func (cfg *ResultsCacheConfig) RegisterFlagsWithPrefix(f *flag.FlagSet, prefix string) {
+	cfg.CacheConfig.RegisterFlagsWithPrefix(prefix, "", f)
+
+	f.StringVar(&cfg.Compression, prefix+"compression", "", "Use compression in cache. The default is an empty value '', which disables compression. Supported values are: 'snappy' and ''.")
+	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
+	flagext.DeprecatedFlag(f, prefix+"cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
+}
+
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
-	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
-
-	f.StringVar(&cfg.Compression, "frontend.compression", "", "Use compression in results cache. Supported values are: 'snappy' and '' (disable compression).")
-	//lint:ignore faillint Need to pass the global logger like this for warning on deprecated methods
-	flagext.DeprecatedFlag(f, "frontend.cache-split-interval", "Deprecated: The maximum interval expected for each request, results will be cached per single interval. This behavior is now determined by querier.split-queries-by-interval.", util_log.Logger)
+	cfg.RegisterFlagsWithPrefix(f, "frontend.")
 }
 
 func (cfg *ResultsCacheConfig) Validate() error {
@@ -74,8 +104,9 @@ func (cfg *ResultsCacheConfig) Validate() error {
 
 // Extractor is used by the cache to extract a subset of a response from a cache entry.
 type Extractor interface {
-	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
-	Extract(start, end int64, from Response) Response
+	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds
+	// in the `res` response which spans from `resStart` to `resEnd`.
+	Extract(start, end int64, res Response, resStart, resEnd int64) Response
 	ResponseWithoutHeaders(resp Response) Response
 }
 
@@ -83,8 +114,8 @@ type Extractor interface {
 type PrometheusResponseExtractor struct{}
 
 // Extract extracts response for specific a range from a response.
-func (PrometheusResponseExtractor) Extract(start, end int64, from Response) Response {
-	promRes := from.(*PrometheusResponse)
+func (PrometheusResponseExtractor) Extract(start, end int64, res Response, _, _ int64) Response {
+	promRes := res.(*PrometheusResponse)
 	return &PrometheusResponse{
 		Status: StatusSuccess,
 		Data: PrometheusData{
@@ -111,21 +142,21 @@ func (PrometheusResponseExtractor) ResponseWithoutHeaders(resp Response) Respons
 // CacheSplitter generates cache keys. This is a useful interface for downstream
 // consumers who wish to implement their own strategies.
 type CacheSplitter interface {
-	GenerateCacheKey(userID string, r Request) string
+	GenerateCacheKey(ctx context.Context, userID string, r Request) string
 }
 
 // constSplitter is a utility for using a constant split interval when determining cache keys
 type constSplitter time.Duration
 
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
-func (t constSplitter) GenerateCacheKey(userID string, r Request) string {
+func (t constSplitter) GenerateCacheKey(_ context.Context, userID string, r Request) string {
 	currentInterval := r.GetStart() / int64(time.Duration(t)/time.Millisecond)
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 // ShouldCacheFn checks whether the current request should go to cache
 // or not. If not, just send the request to next handler.
-type ShouldCacheFn func(r Request) bool
+type ShouldCacheFn func(ctx context.Context, r Request) bool
 
 type resultsCache struct {
 	logger   log.Logger
@@ -139,6 +170,9 @@ type resultsCache struct {
 	merger               Merger
 	cacheGenNumberLoader CacheGenNumberLoader
 	shouldCache          ShouldCacheFn
+	parallelismForReq    func(ctx context.Context, tenantIDs []string, r Request) int
+	retentionEnabled     bool
+	metrics              *ResultsCacheMetrics
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
@@ -156,7 +190,9 @@ func NewResultsCacheMiddleware(
 	extractor Extractor,
 	cacheGenNumberLoader CacheGenNumberLoader,
 	shouldCache ShouldCacheFn,
-	reg prometheus.Registerer,
+	parallelismForReq func(ctx context.Context, tenantIDs []string, r Request) int,
+	retentionEnabled bool,
+	metrics *ResultsCacheMetrics,
 ) (Middleware, error) {
 	if cacheGenNumberLoader != nil {
 		c = cache.NewCacheGenNumMiddleware(c)
@@ -174,31 +210,45 @@ func NewResultsCacheMiddleware(
 			splitter:             splitter,
 			cacheGenNumberLoader: cacheGenNumberLoader,
 			shouldCache:          shouldCache,
+			parallelismForReq:    parallelismForReq,
+			retentionEnabled:     retentionEnabled,
+			metrics:              metrics,
 		}
 	}), nil
 }
 
 func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "resultsCache.Do")
+	defer sp.Finish()
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	if s.shouldCache != nil && !s.shouldCache(r) {
+	if s.shouldCache != nil && !s.shouldCache(ctx, r) {
 		return s.next.Do(ctx, r)
 	}
 
-	if s.cacheGenNumberLoader != nil {
+	if s.cacheGenNumberLoader != nil && s.retentionEnabled {
 		ctx = cache.InjectCacheGenNumber(ctx, s.cacheGenNumberLoader.GetResultsCacheGenNumber(tenantIDs))
 	}
 
 	var (
-		key      = s.splitter.GenerateCacheKey(tenant.JoinTenantIDs(tenantIDs), r)
+		key      = s.splitter.GenerateCacheKey(ctx, tenant.JoinTenantIDs(tenantIDs), r)
 		extents  []Extent
 		response Response
 	)
 
-	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, s.limits.MaxCacheFreshness)
+	sp.LogKV(
+		"query", r.GetQuery(),
+		"step", time.UnixMilli(r.GetStep()),
+		"start", time.UnixMilli(r.GetStart()),
+		"end", r.GetEnd(),
+		"key", key,
+	)
+
+	cacheFreshnessCapture := func(id string) time.Duration { return s.limits.MaxCacheFreshness(ctx, id) }
+	maxCacheFreshness := validation.MaxDurationPerTenant(tenantIDs, cacheFreshnessCapture)
 	maxCacheTime := int64(model.Now().Add(-maxCacheFreshness))
 	if r.GetStart() > maxCacheTime {
 		return s.next.Do(ctx, r)
@@ -225,9 +275,13 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 // shouldCacheResponse says whether the response should be cached or not.
 func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Response, maxCacheTime int64) bool {
 	headerValues := getHeaderValuesWithName(r, cacheControlHeader)
+
+	user, _ := user.ExtractOrgID(ctx)
+	logger := log.With(s.logger, "org_id", user)
+
 	for _, v := range headerValues {
 		if v == noStoreValue {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
+			level.Debug(logger).Log("msg", fmt.Sprintf("%s header in response is equal to %s, not caching the response", cacheControlHeader, noStoreValue))
 			return false
 		}
 	}
@@ -243,14 +297,22 @@ func (s resultsCache) shouldCacheResponse(ctx context.Context, req Request, r Re
 	genNumbersFromResp := getHeaderValuesWithName(r, ResultsCacheGenNumberHeaderName)
 	genNumberFromCtx := cache.ExtractCacheGenNumber(ctx)
 
+	s.metrics.versionComparisons.Inc()
+
 	if len(genNumbersFromResp) == 0 && genNumberFromCtx != "" {
-		level.Debug(s.logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+		level.Debug(logger).Log("msg", fmt.Sprintf("we found results cache gen number %s set in store but none in headers", genNumberFromCtx))
+
+		// NB(owen-d):
+		// If the queriers aren't returning cache numbers, something is likely broken
+		// (i.e. the queriers aren't reporting the cache numbers they see or aren't seeing cache numbers at all).
+		s.metrics.versionComparisonFailures.WithLabelValues(reasonMissing).Inc()
 		return false
 	}
 
 	for _, gen := range genNumbersFromResp {
 		if gen != genNumberFromCtx {
-			level.Debug(s.logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			level.Debug(logger).Log("msg", fmt.Sprintf("inconsistency in results cache gen numbers %s (GEN-FROM-RESPONSE) != %s (GEN-FROM-STORE), not caching the response", gen, genNumberFromCtx))
+			s.metrics.versionComparisonFailures.WithLabelValues(reasonMismatch).Inc()
 			return false
 		}
 	}
@@ -348,7 +410,9 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		reqResps []RequestResponse
 		err      error
 	)
-	log, ctx := spanlogger.New(ctx, "handleHit")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "handleHit")
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	requests, responses, err := s.partition(r, extents)
@@ -361,7 +425,12 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
+	}
+	reqResps, err = DoRequests(ctx, s.next, requests, s.parallelismForReq(ctx, tenantIDs, r))
+
 	if err != nil {
 		return nil, nil, err
 	}
@@ -440,14 +509,14 @@ type accumulator struct {
 }
 
 func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
-	any, err := types.MarshalAny(acc.Response)
+	anyResp, err := types.MarshalAny(acc.Response)
 	if err != nil {
 		return nil, err
 	}
 	return append(extents, Extent{
 		Start:    acc.Extent.Start,
 		End:      acc.Extent.End,
-		Response: any,
+		Response: anyResp,
 		TraceId:  acc.Extent.TraceId,
 	}), nil
 }
@@ -464,14 +533,14 @@ func newAccumulator(base Extent) (*accumulator, error) {
 }
 
 func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
-	any, err := types.MarshalAny(res)
+	anyResp, err := types.MarshalAny(res)
 	if err != nil {
 		return Extent{}, err
 	}
 	return Extent{
 		Start:    req.GetStart(),
 		End:      req.GetEnd(),
-		Response: any,
+		Response: anyResp,
 		TraceId:  jaegerTraceID(ctx),
 	}, nil
 }
@@ -509,7 +578,7 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res))
+		cachedResponses = append(cachedResponses, s.extractor.Extract(start, req.GetEnd(), res, extent.GetStart(), extent.GetEnd()))
 		start = extent.End
 	}
 
@@ -529,7 +598,8 @@ func (s resultsCache) partition(req Request, extents []Extent) ([]Request, []Res
 }
 
 func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Duration, extents []Extent) ([]Extent, error) {
-	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / req.GetStep()) * req.GetStep()
+	step := math.Max64(1, req.GetStep())
+	maxCacheTime := (int64(model.Now().Add(-maxCacheFreshness)) / step) * step
 	for i := range extents {
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {
@@ -538,12 +608,12 @@ func (s resultsCache) filterRecentExtents(req Request, maxCacheFreshness time.Du
 			if err != nil {
 				return nil, err
 			}
-			extracted := s.extractor.Extract(extents[i].Start, maxCacheTime, res)
-			any, err := types.MarshalAny(extracted)
+			extracted := s.extractor.Extract(extents[i].GetStart(), maxCacheTime, res, extents[i].GetStart(), extents[i].GetEnd())
+			anyResp, err := types.MarshalAny(extracted)
 			if err != nil {
 				return nil, err
 			}
-			extents[i].Response = any
+			extents[i].Response = anyResp
 		}
 	}
 	return extents, nil
@@ -556,7 +626,9 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	}
 
 	var resp CachedResponse
-	log, ctx := spanlogger.New(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "unmarshal-extent") //nolint:ineffassign,staticcheck
+	defer sp.Finish()
+	log := spanlogger.FromContext(ctx)
 	defer log.Finish()
 
 	log.LogFields(otlog.Int("bytes", len(bufs[0])))

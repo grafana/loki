@@ -9,25 +9,29 @@ import (
 )
 
 const (
-	databaseBasePath           = "/v2/databases"
-	databaseSinglePath         = databaseBasePath + "/%s"
-	databaseCAPath             = databaseBasePath + "/%s/ca"
-	databaseResizePath         = databaseBasePath + "/%s/resize"
-	databaseMigratePath        = databaseBasePath + "/%s/migrate"
-	databaseMaintenancePath    = databaseBasePath + "/%s/maintenance"
-	databaseBackupsPath        = databaseBasePath + "/%s/backups"
-	databaseUsersPath          = databaseBasePath + "/%s/users"
-	databaseUserPath           = databaseBasePath + "/%s/users/%s"
-	databaseResetUserAuthPath  = databaseUserPath + "/reset_auth"
-	databaseDBPath             = databaseBasePath + "/%s/dbs/%s"
-	databaseDBsPath            = databaseBasePath + "/%s/dbs"
-	databasePoolPath           = databaseBasePath + "/%s/pools/%s"
-	databasePoolsPath          = databaseBasePath + "/%s/pools"
-	databaseReplicaPath        = databaseBasePath + "/%s/replicas/%s"
-	databaseReplicasPath       = databaseBasePath + "/%s/replicas"
-	databaseEvictionPolicyPath = databaseBasePath + "/%s/eviction_policy"
-	databaseSQLModePath        = databaseBasePath + "/%s/sql_mode"
-	databaseFirewallRulesPath  = databaseBasePath + "/%s/firewall"
+	databaseBasePath                    = "/v2/databases"
+	databaseSinglePath                  = databaseBasePath + "/%s"
+	databaseCAPath                      = databaseBasePath + "/%s/ca"
+	databaseConfigPath                  = databaseBasePath + "/%s/config"
+	databaseResizePath                  = databaseBasePath + "/%s/resize"
+	databaseMigratePath                 = databaseBasePath + "/%s/migrate"
+	databaseMaintenancePath             = databaseBasePath + "/%s/maintenance"
+	databaseBackupsPath                 = databaseBasePath + "/%s/backups"
+	databaseUsersPath                   = databaseBasePath + "/%s/users"
+	databaseUserPath                    = databaseBasePath + "/%s/users/%s"
+	databaseResetUserAuthPath           = databaseUserPath + "/reset_auth"
+	databaseDBPath                      = databaseBasePath + "/%s/dbs/%s"
+	databaseDBsPath                     = databaseBasePath + "/%s/dbs"
+	databasePoolPath                    = databaseBasePath + "/%s/pools/%s"
+	databasePoolsPath                   = databaseBasePath + "/%s/pools"
+	databaseReplicaPath                 = databaseBasePath + "/%s/replicas/%s"
+	databaseReplicasPath                = databaseBasePath + "/%s/replicas"
+	databaseEvictionPolicyPath          = databaseBasePath + "/%s/eviction_policy"
+	databaseSQLModePath                 = databaseBasePath + "/%s/sql_mode"
+	databaseFirewallRulesPath           = databaseBasePath + "/%s/firewall"
+	databaseOptionsPath                 = databaseBasePath + "/options"
+	databaseUpgradeMajorVersionPath     = databaseBasePath + "/%s/upgrade"
+	databasePromoteReplicaToPrimaryPath = databaseReplicaPath + "/promote"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -80,6 +84,16 @@ const (
 	EvictionPolicyVolatileTTL    = "volatile_ttl"
 )
 
+// evictionPolicyMap is used to normalize the eviction policy string in requests
+// to the advanced Redis configuration endpoint from the consts used with SetEvictionPolicy.
+var evictionPolicyMap = map[string]string{
+	EvictionPolicyAllKeysLRU:     "allkeys-lru",
+	EvictionPolicyAllKeysRandom:  "allkeys-random",
+	EvictionPolicyVolatileLRU:    "volatile-lru",
+	EvictionPolicyVolatileRandom: "volatile-random",
+	EvictionPolicyVolatileTTL:    "volatile-ttl",
+}
+
 // The DatabasesService provides access to the DigitalOcean managed database
 // suite of products through the public API. Customers can create new database
 // clusters, migrate them  between regions, create replicas and interact with
@@ -112,16 +126,26 @@ type DatabasesService interface {
 	CreatePool(context.Context, string, *DatabaseCreatePoolRequest) (*DatabasePool, *Response, error)
 	GetPool(context.Context, string, string) (*DatabasePool, *Response, error)
 	DeletePool(context.Context, string, string) (*Response, error)
+	UpdatePool(context.Context, string, string, *DatabaseUpdatePoolRequest) (*Response, error)
 	GetReplica(context.Context, string, string) (*DatabaseReplica, *Response, error)
 	ListReplicas(context.Context, string, *ListOptions) ([]DatabaseReplica, *Response, error)
 	CreateReplica(context.Context, string, *DatabaseCreateReplicaRequest) (*DatabaseReplica, *Response, error)
 	DeleteReplica(context.Context, string, string) (*Response, error)
+	PromoteReplicaToPrimary(context.Context, string, string) (*Response, error)
 	GetEvictionPolicy(context.Context, string) (string, *Response, error)
 	SetEvictionPolicy(context.Context, string, string) (*Response, error)
 	GetSQLMode(context.Context, string) (string, *Response, error)
 	SetSQLMode(context.Context, string, ...string) (*Response, error)
 	GetFirewallRules(context.Context, string) ([]DatabaseFirewallRule, *Response, error)
 	UpdateFirewallRules(context.Context, string, *DatabaseUpdateFirewallRulesRequest) (*Response, error)
+	GetPostgreSQLConfig(context.Context, string) (*PostgreSQLConfig, *Response, error)
+	GetRedisConfig(context.Context, string) (*RedisConfig, *Response, error)
+	GetMySQLConfig(context.Context, string) (*MySQLConfig, *Response, error)
+	UpdatePostgreSQLConfig(context.Context, string, *PostgreSQLConfig) (*Response, error)
+	UpdateRedisConfig(context.Context, string, *RedisConfig) (*Response, error)
+	UpdateMySQLConfig(context.Context, string, *MySQLConfig) (*Response, error)
+	ListOptions(todo context.Context) (*DatabaseOptions, *Response, error)
+	UpgradeMajorVersion(context.Context, string, *UpgradeVersionRequest) (*Response, error)
 }
 
 // DatabasesServiceOp handles communication with the Databases related methods
@@ -154,6 +178,7 @@ type Database struct {
 	CreatedAt          time.Time                  `json:"created_at,omitempty"`
 	PrivateNetworkUUID string                     `json:"private_network_uuid,omitempty"`
 	Tags               []string                   `json:"tags,omitempty"`
+	ProjectID          string                     `json:"project_id,omitempty"`
 }
 
 // DatabaseCA represents a database ca.
@@ -217,6 +242,7 @@ type DatabaseCreateRequest struct {
 	PrivateNetworkUUID string                 `json:"private_network_uuid"`
 	Tags               []string               `json:"tags,omitempty"`
 	BackupRestore      *DatabaseBackupRestore `json:"backup_restore,omitempty"`
+	ProjectID          string                 `json:"project_id"`
 }
 
 // DatabaseResizeRequest can be used to initiate a database resize operation.
@@ -247,6 +273,7 @@ type DatabaseDB struct {
 
 // DatabaseReplica represents a read-only replica of a particular database
 type DatabaseReplica struct {
+	ID                 string              `json:"id"`
 	Name               string              `json:"name"`
 	Connection         *DatabaseConnection `json:"connection"`
 	PrivateConnection  *DatabaseConnection `json:"private_connection,omitempty"`
@@ -272,6 +299,14 @@ type DatabasePool struct {
 type DatabaseCreatePoolRequest struct {
 	User     string `json:"user"`
 	Name     string `json:"name"`
+	Size     int    `json:"size"`
+	Database string `json:"db"`
+	Mode     string `json:"mode"`
+}
+
+// DatabaseUpdatePoolRequest is used to update a database connection pool
+type DatabaseUpdatePoolRequest struct {
+	User     string `json:"user,omitempty"`
 	Size     int    `json:"size"`
 	Database string `json:"db"`
 	Mode     string `json:"mode"`
@@ -316,6 +351,125 @@ type DatabaseFirewallRule struct {
 	CreatedAt   time.Time `json:"created_at"`
 }
 
+// PostgreSQLConfig holds advanced configurations for PostgreSQL database clusters.
+type PostgreSQLConfig struct {
+	AutovacuumFreezeMaxAge          *int                         `json:"autovacuum_freeze_max_age,omitempty"`
+	AutovacuumMaxWorkers            *int                         `json:"autovacuum_max_workers,omitempty"`
+	AutovacuumNaptime               *int                         `json:"autovacuum_naptime,omitempty"`
+	AutovacuumVacuumThreshold       *int                         `json:"autovacuum_vacuum_threshold,omitempty"`
+	AutovacuumAnalyzeThreshold      *int                         `json:"autovacuum_analyze_threshold,omitempty"`
+	AutovacuumVacuumScaleFactor     *float32                     `json:"autovacuum_vacuum_scale_factor,omitempty"`
+	AutovacuumAnalyzeScaleFactor    *float32                     `json:"autovacuum_analyze_scale_factor,omitempty"`
+	AutovacuumVacuumCostDelay       *int                         `json:"autovacuum_vacuum_cost_delay,omitempty"`
+	AutovacuumVacuumCostLimit       *int                         `json:"autovacuum_vacuum_cost_limit,omitempty"`
+	BGWriterDelay                   *int                         `json:"bgwriter_delay,omitempty"`
+	BGWriterFlushAfter              *int                         `json:"bgwriter_flush_after,omitempty"`
+	BGWriterLRUMaxpages             *int                         `json:"bgwriter_lru_maxpages,omitempty"`
+	BGWriterLRUMultiplier           *float32                     `json:"bgwriter_lru_multiplier,omitempty"`
+	DeadlockTimeoutMillis           *int                         `json:"deadlock_timeout,omitempty"`
+	DefaultToastCompression         *string                      `json:"default_toast_compression,omitempty"`
+	IdleInTransactionSessionTimeout *int                         `json:"idle_in_transaction_session_timeout,omitempty"`
+	JIT                             *bool                        `json:"jit,omitempty"`
+	LogAutovacuumMinDuration        *int                         `json:"log_autovacuum_min_duration,omitempty"`
+	LogErrorVerbosity               *string                      `json:"log_error_verbosity,omitempty"`
+	LogLinePrefix                   *string                      `json:"log_line_prefix,omitempty"`
+	LogMinDurationStatement         *int                         `json:"log_min_duration_statement,omitempty"`
+	MaxFilesPerProcess              *int                         `json:"max_files_per_process,omitempty"`
+	MaxPreparedTransactions         *int                         `json:"max_prepared_transactions,omitempty"`
+	MaxPredLocksPerTransaction      *int                         `json:"max_pred_locks_per_transaction,omitempty"`
+	MaxLocksPerTransaction          *int                         `json:"max_locks_per_transaction,omitempty"`
+	MaxStackDepth                   *int                         `json:"max_stack_depth,omitempty"`
+	MaxStandbyArchiveDelay          *int                         `json:"max_standby_archive_delay,omitempty"`
+	MaxStandbyStreamingDelay        *int                         `json:"max_standby_streaming_delay,omitempty"`
+	MaxReplicationSlots             *int                         `json:"max_replication_slots,omitempty"`
+	MaxLogicalReplicationWorkers    *int                         `json:"max_logical_replication_workers,omitempty"`
+	MaxParallelWorkers              *int                         `json:"max_parallel_workers,omitempty"`
+	MaxParallelWorkersPerGather     *int                         `json:"max_parallel_workers_per_gather,omitempty"`
+	MaxWorkerProcesses              *int                         `json:"max_worker_processes,omitempty"`
+	PGPartmanBGWRole                *string                      `json:"pg_partman_bgw.role,omitempty"`
+	PGPartmanBGWInterval            *int                         `json:"pg_partman_bgw.interval,omitempty"`
+	PGStatStatementsTrack           *string                      `json:"pg_stat_statements.track,omitempty"`
+	TempFileLimit                   *int                         `json:"temp_file_limit,omitempty"`
+	Timezone                        *string                      `json:"timezone,omitempty"`
+	TrackActivityQuerySize          *int                         `json:"track_activity_query_size,omitempty"`
+	TrackCommitTimestamp            *string                      `json:"track_commit_timestamp,omitempty"`
+	TrackFunctions                  *string                      `json:"track_functions,omitempty"`
+	TrackIOTiming                   *string                      `json:"track_io_timing,omitempty"`
+	MaxWalSenders                   *int                         `json:"max_wal_senders,omitempty"`
+	WalSenderTimeout                *int                         `json:"wal_sender_timeout,omitempty"`
+	WalWriterDelay                  *int                         `json:"wal_writer_delay,omitempty"`
+	SharedBuffersPercentage         *float32                     `json:"shared_buffers_percentage,omitempty"`
+	PgBouncer                       *PostgreSQLBouncerConfig     `json:"pgbouncer,omitempty"`
+	BackupHour                      *int                         `json:"backup_hour,omitempty"`
+	BackupMinute                    *int                         `json:"backup_minute,omitempty"`
+	WorkMem                         *int                         `json:"work_mem,omitempty"`
+	TimeScaleDB                     *PostgreSQLTimeScaleDBConfig `json:"timescaledb,omitempty"`
+}
+
+// PostgreSQLBouncerConfig configuration
+type PostgreSQLBouncerConfig struct {
+	ServerResetQueryAlways  *bool     `json:"server_reset_query_always,omitempty"`
+	IgnoreStartupParameters *[]string `json:"ignore_startup_parameters,omitempty"`
+	MinPoolSize             *int      `json:"min_pool_size,omitempty"`
+	ServerLifetime          *int      `json:"server_lifetime,omitempty"`
+	ServerIdleTimeout       *int      `json:"server_idle_timeout,omitempty"`
+	AutodbPoolSize          *int      `json:"autodb_pool_size,omitempty"`
+	AutodbPoolMode          *string   `json:"autodb_pool_mode,omitempty"`
+	AutodbMaxDbConnections  *int      `json:"autodb_max_db_connections,omitempty"`
+	AutodbIdleTimeout       *int      `json:"autodb_idle_timeout,omitempty"`
+}
+
+// PostgreSQLTimeScaleDBConfig configuration
+type PostgreSQLTimeScaleDBConfig struct {
+	MaxBackgroundWorkers *int `json:"max_background_workers,omitempty"`
+}
+
+// RedisConfig holds advanced configurations for Redis database clusters.
+type RedisConfig struct {
+	RedisMaxmemoryPolicy               *string `json:"redis_maxmemory_policy,omitempty"`
+	RedisPubsubClientOutputBufferLimit *int    `json:"redis_pubsub_client_output_buffer_limit,omitempty"`
+	RedisNumberOfDatabases             *int    `json:"redis_number_of_databases,omitempty"`
+	RedisIOThreads                     *int    `json:"redis_io_threads,omitempty"`
+	RedisLFULogFactor                  *int    `json:"redis_lfu_log_factor,omitempty"`
+	RedisLFUDecayTime                  *int    `json:"redis_lfu_decay_time,omitempty"`
+	RedisSSL                           *bool   `json:"redis_ssl,omitempty"`
+	RedisTimeout                       *int    `json:"redis_timeout,omitempty"`
+	RedisNotifyKeyspaceEvents          *string `json:"redis_notify_keyspace_events,omitempty"`
+	RedisPersistence                   *string `json:"redis_persistence,omitempty"`
+	RedisACLChannelsDefault            *string `json:"redis_acl_channels_default,omitempty"`
+}
+
+// MySQLConfig holds advanced configurations for MySQL database clusters.
+type MySQLConfig struct {
+	ConnectTimeout               *int     `json:"connect_timeout,omitempty"`
+	DefaultTimeZone              *string  `json:"default_time_zone,omitempty"`
+	InnodbLogBufferSize          *int     `json:"innodb_log_buffer_size,omitempty"`
+	InnodbOnlineAlterLogMaxSize  *int     `json:"innodb_online_alter_log_max_size,omitempty"`
+	InnodbLockWaitTimeout        *int     `json:"innodb_lock_wait_timeout,omitempty"`
+	InteractiveTimeout           *int     `json:"interactive_timeout,omitempty"`
+	MaxAllowedPacket             *int     `json:"max_allowed_packet,omitempty"`
+	NetReadTimeout               *int     `json:"net_read_timeout,omitempty"`
+	SortBufferSize               *int     `json:"sort_buffer_size,omitempty"`
+	SQLMode                      *string  `json:"sql_mode,omitempty"`
+	SQLRequirePrimaryKey         *bool    `json:"sql_require_primary_key,omitempty"`
+	WaitTimeout                  *int     `json:"wait_timeout,omitempty"`
+	NetWriteTimeout              *int     `json:"net_write_timeout,omitempty"`
+	GroupConcatMaxLen            *int     `json:"group_concat_max_len,omitempty"`
+	InformationSchemaStatsExpiry *int     `json:"information_schema_stats_expiry,omitempty"`
+	InnodbFtMinTokenSize         *int     `json:"innodb_ft_min_token_size,omitempty"`
+	InnodbFtServerStopwordTable  *string  `json:"innodb_ft_server_stopword_table,omitempty"`
+	InnodbPrintAllDeadlocks      *bool    `json:"innodb_print_all_deadlocks,omitempty"`
+	InnodbRollbackOnTimeout      *bool    `json:"innodb_rollback_on_timeout,omitempty"`
+	InternalTmpMemStorageEngine  *string  `json:"internal_tmp_mem_storage_engine,omitempty"`
+	MaxHeapTableSize             *int     `json:"max_heap_table_size,omitempty"`
+	TmpTableSize                 *int     `json:"tmp_table_size,omitempty"`
+	SlowQueryLog                 *bool    `json:"slow_query_log,omitempty"`
+	LongQueryTime                *float32 `json:"long_query_time,omitempty"`
+	BackupHour                   *int     `json:"backup_hour,omitempty"`
+	BackupMinute                 *int     `json:"backup_minute,omitempty"`
+	BinlogRetentionPeriod        *int     `json:"binlog_retention_period,omitempty"`
+}
+
 type databaseUserRoot struct {
 	User *DatabaseUser `json:"user"`
 }
@@ -344,6 +498,18 @@ type databaseCARoot struct {
 	CA *DatabaseCA `json:"ca"`
 }
 
+type databasePostgreSQLConfigRoot struct {
+	Config *PostgreSQLConfig `json:"config"`
+}
+
+type databaseRedisConfigRoot struct {
+	Config *RedisConfig `json:"config"`
+}
+
+type databaseMySQLConfigRoot struct {
+	Config *MySQLConfig `json:"config"`
+}
+
 type databaseBackupsRoot struct {
 	Backups []DatabaseBackup `json:"backups"`
 }
@@ -368,12 +534,42 @@ type evictionPolicyRoot struct {
 	EvictionPolicy string `json:"eviction_policy"`
 }
 
+type UpgradeVersionRequest struct {
+	Version string `json:"version"`
+}
+
 type sqlModeRoot struct {
 	SQLMode string `json:"sql_mode"`
 }
 
 type databaseFirewallRuleRoot struct {
 	Rules []DatabaseFirewallRule `json:"rules"`
+}
+
+// databaseOptionsRoot represents the root of all available database options (i.e. engines, regions, version, etc.)
+type databaseOptionsRoot struct {
+	Options *DatabaseOptions `json:"options"`
+}
+
+// DatabaseOptions represents the available database engines
+type DatabaseOptions struct {
+	MongoDBOptions     DatabaseEngineOptions `json:"mongodb"`
+	MySQLOptions       DatabaseEngineOptions `json:"mysql"`
+	PostgresSQLOptions DatabaseEngineOptions `json:"pg"`
+	RedisOptions       DatabaseEngineOptions `json:"redis"`
+}
+
+// DatabaseEngineOptions represents the configuration options that are available for a given database engine
+type DatabaseEngineOptions struct {
+	Regions  []string         `json:"regions"`
+	Versions []string         `json:"versions"`
+	Layouts  []DatabaseLayout `json:"layouts"`
+}
+
+// DatabaseLayout represents the slugs available for a given database engine at various node counts
+type DatabaseLayout struct {
+	NodeNum int      `json:"num_nodes"`
+	Sizes   []string `json:"sizes"`
 }
 
 // URN returns a URN identifier for the database
@@ -725,6 +921,37 @@ func (svc *DatabasesServiceOp) DeletePool(ctx context.Context, databaseID, name 
 	return resp, nil
 }
 
+// UpdatePool will update an existing database connection pool
+func (svc *DatabasesServiceOp) UpdatePool(ctx context.Context, databaseID, name string, updatePool *DatabaseUpdatePoolRequest) (*Response, error) {
+	path := fmt.Sprintf(databasePoolPath, databaseID, name)
+
+	if updatePool == nil {
+		return nil, NewArgError("updatePool", "cannot be nil")
+	}
+
+	if updatePool.Mode == "" {
+		return nil, NewArgError("mode", "cannot be empty")
+	}
+
+	if updatePool.Database == "" {
+		return nil, NewArgError("database", "cannot be empty")
+	}
+
+	if updatePool.Size < 1 {
+		return nil, NewArgError("size", "cannot be less than 1")
+	}
+
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, updatePool)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
 // GetReplica returns a single database replica
 func (svc *DatabasesServiceOp) GetReplica(ctx context.Context, databaseID, name string) (*DatabaseReplica, *Response, error) {
 	path := fmt.Sprintf(databaseReplicaPath, databaseID, name)
@@ -778,6 +1005,20 @@ func (svc *DatabasesServiceOp) CreateReplica(ctx context.Context, databaseID str
 func (svc *DatabasesServiceOp) DeleteReplica(ctx context.Context, databaseID, name string) (*Response, error) {
 	path := fmt.Sprintf(databaseReplicaPath, databaseID, name)
 	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// PromoteReplicaToPrimary will sever the read replica integration and then promote the replica cluster to be a R/W cluster
+func (svc *DatabasesServiceOp) PromoteReplicaToPrimary(ctx context.Context, databaseID, name string) (*Response, error) {
+	path := fmt.Sprintf(databasePromoteReplicaToPrimaryPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -876,4 +1117,143 @@ func (svc *DatabasesServiceOp) UpdateFirewallRules(ctx context.Context, database
 		return nil, err
 	}
 	return svc.client.Do(ctx, req, nil)
+}
+
+// GetPostgreSQLConfig retrieves the config for a PostgreSQL database cluster.
+func (svc *DatabasesServiceOp) GetPostgreSQLConfig(ctx context.Context, databaseID string) (*PostgreSQLConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databasePostgreSQLConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdatePostgreSQLConfig updates the config for a PostgreSQL database cluster.
+func (svc *DatabasesServiceOp) UpdatePostgreSQLConfig(ctx context.Context, databaseID string, config *PostgreSQLConfig) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	root := &databasePostgreSQLConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// GetRedisConfig retrieves the config for a Redis database cluster.
+func (svc *DatabasesServiceOp) GetRedisConfig(ctx context.Context, databaseID string) (*RedisConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseRedisConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdateRedisConfig updates the config for a Redis database cluster.
+func (svc *DatabasesServiceOp) UpdateRedisConfig(ctx context.Context, databaseID string, config *RedisConfig) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+
+	// We provide consts for use with SetEvictionPolicy method. Unfortunately, those are
+	// in a different format than what can be used for RedisConfig.RedisMaxmemoryPolicy.
+	// So we attempt to normalize them here to use dashes as separators if provided in
+	// the old format (underscores). Other values are passed through untouched.
+	if config.RedisMaxmemoryPolicy != nil {
+		if policy, ok := evictionPolicyMap[*config.RedisMaxmemoryPolicy]; ok {
+			config.RedisMaxmemoryPolicy = &policy
+		}
+	}
+
+	root := &databaseRedisConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// GetMySQLConfig retrieves the config for a MySQL database cluster.
+func (svc *DatabasesServiceOp) GetMySQLConfig(ctx context.Context, databaseID string) (*MySQLConfig, *Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	root := new(databaseMySQLConfigRoot)
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+	return root.Config, resp, nil
+}
+
+// UpdateMySQLConfig updates the config for a MySQL database cluster.
+func (svc *DatabasesServiceOp) UpdateMySQLConfig(ctx context.Context, databaseID string, config *MySQLConfig) (*Response, error) {
+	path := fmt.Sprintf(databaseConfigPath, databaseID)
+	root := &databaseMySQLConfigRoot{
+		Config: config,
+	}
+	req, err := svc.client.NewRequest(ctx, http.MethodPatch, path, root)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// ListOptions gets the database options available.
+func (svc *DatabasesServiceOp) ListOptions(ctx context.Context) (*DatabaseOptions, *Response, error) {
+	root := new(databaseOptionsRoot)
+	req, err := svc.client.NewRequest(ctx, http.MethodGet, databaseOptionsPath, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, root)
+	if err != nil {
+		return nil, resp, err
+	}
+
+	return root.Options, resp, nil
+}
+
+// UpgradeMajorVersion upgrades the major version of a cluster.
+func (svc *DatabasesServiceOp) UpgradeMajorVersion(ctx context.Context, databaseID string, upgradeReq *UpgradeVersionRequest) (*Response, error) {
+	path := fmt.Sprintf(databaseUpgradeMajorVersionPath, databaseID)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, upgradeReq)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+
+	return resp, nil
 }

@@ -2,6 +2,15 @@ package openshift
 
 import (
 	"fmt"
+	"time"
+)
+
+const (
+	annotationGatewayRouteTimeout = "haproxy.router.openshift.io/timeout"
+
+	gatewayRouteTimeoutExtension = 15 * time.Second
+
+	dashboardPrometheusRulesName = "lokistack-dashboard-rules"
 )
 
 var (
@@ -14,8 +23,6 @@ var (
 	GatewayOPAHTTPPortName = "public"
 	// GatewayOPAInternalPortName is the HTTP container metrics port name of the OpenPolicyAgent sidecar.
 	GatewayOPAInternalPortName = "opa-metrics"
-
-	bearerTokenFile string = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 
 	cookieSecretLength = 32
 	allowedRunes       = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
@@ -31,10 +38,20 @@ var (
 	// cert-signing service to inject the service CA into the annotated
 	// configmap.
 	InjectCABundleKey = "service.beta.openshift.io/inject-cabundle"
+
+	// MonitoringNS is the namespace containing cluster monitoring objects such as alertmanager.
+	MonitoringNS = "openshift-monitoring"
+	// MonitoringSVCMain is the name of the alertmanager main service used for alerts.
+	MonitoringSVCMain = "alertmanager-main"
+	// MonitoringSVCOperated is the name of the alertmanager operator service used for alerts.
+	MonitoringSVCOperated = "alertmanager-operated"
+
+	MonitoringSVCUserWorkload = "alertmanager-user-workload"
+	MonitoringUserWorkloadNS  = "openshift-user-workload-monitoring"
 )
 
-func authorizerRbacName(opts Options) string {
-	return fmt.Sprintf("%s-authorizer", opts.BuildOpts.GatewayName)
+func authorizerRbacName(componentName string) string {
+	return fmt.Sprintf("%s-authorizer", componentName)
 }
 
 func monitoringRbacName(stackName string) string {
@@ -49,15 +66,26 @@ func routeName(opts Options) string {
 	return opts.BuildOpts.LokiStackName
 }
 
-func serviceAccountName(opts Options) string {
+func gatewayServiceAccountName(opts Options) string {
 	return opts.BuildOpts.GatewayName
 }
 
-func serviceCABundleName(opts Options) string {
-	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.LokiStackName)
+func rulerServiceAccountName(opts Options) string {
+	return opts.BuildOpts.RulerName
 }
 
-func serviceAccountAnnotations(opts Options) map[string]string {
+func serviceCABundleName(opts Options) string {
+	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.GatewayName)
+}
+
+func alertmanagerCABundleName(opts Options) string {
+	return fmt.Sprintf("%s-ca-bundle", opts.BuildOpts.RulerName)
+}
+
+// ServiceAccountAnnotations returns a map of OpenShift specific routes for ServiceAccounts.
+// Specifically the serviceacount will be annotated for each tenant with the OAuthRedirectReference
+// to make the serviceaccount a valid oauth-client.
+func ServiceAccountAnnotations(opts Options) map[string]string {
 	a := make(map[string]string, len(opts.Authentication))
 	for _, auth := range opts.Authentication {
 		key := fmt.Sprintf("serviceaccounts.openshift.io/oauth-redirectreference.%s", auth.TenantName)

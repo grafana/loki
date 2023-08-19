@@ -8,7 +8,8 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/weaveworks/common/tracing"
+
+	"github.com/grafana/dskit/tracing"
 )
 
 type loggerCtxMarker struct{}
@@ -34,6 +35,7 @@ var (
 type SpanLogger struct {
 	log.Logger
 	opentracing.Span
+	sampled bool
 }
 
 // New makes a new SpanLogger with a log.Logger to send logs to. The provided context will have the logger attached
@@ -43,9 +45,11 @@ func New(ctx context.Context, logger log.Logger, method string, resolver TenantR
 	if ids, err := resolver.TenantIDs(ctx); err == nil && len(ids) > 0 {
 		span.SetTag(TenantIDsTagName, ids)
 	}
+	lwc, sampled := withContext(ctx, logger, resolver)
 	l := &SpanLogger{
-		Logger: log.With(withContext(ctx, logger, resolver), "method", method),
-		Span:   span,
+		Logger:  log.With(lwc, "method", method),
+		Span:    span,
+		sampled: sampled,
 	}
 	if len(kvps) > 0 {
 		level.Debug(l).Log(kvps...)
@@ -66,11 +70,13 @@ func FromContext(ctx context.Context, fallback log.Logger, resolver TenantResolv
 	}
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
-		sp = defaultNoopSpan
+		sp = opentracing.NoopTracer{}.StartSpan("noop")
 	}
+	lwc, sampled := withContext(ctx, logger, resolver)
 	return &SpanLogger{
-		Logger: withContext(ctx, logger, resolver),
-		Span:   sp,
+		Logger:  lwc,
+		Span:    sp,
+		sampled: sampled,
 	}
 }
 
@@ -78,6 +84,9 @@ func FromContext(ctx context.Context, fallback log.Logger, resolver TenantResolv
 // also puts the on the spans.
 func (s *SpanLogger) Log(kvps ...interface{}) error {
 	s.Logger.Log(kvps...)
+	if !s.sampled {
+		return nil
+	}
 	fields, err := otlog.InterleavedKVToFields(kvps...)
 	if err != nil {
 		return err
@@ -88,15 +97,15 @@ func (s *SpanLogger) Log(kvps ...interface{}) error {
 
 // Error sets error flag and logs the error on the span, if non-nil. Returns the err passed in.
 func (s *SpanLogger) Error(err error) error {
-	if err == nil {
-		return nil
+	if err == nil || !s.sampled {
+		return err
 	}
 	ext.Error.Set(s.Span, true)
 	s.Span.LogFields(otlog.Error(err))
 	return err
 }
 
-func withContext(ctx context.Context, logger log.Logger, resolver TenantResolver) log.Logger {
+func withContext(ctx context.Context, logger log.Logger, resolver TenantResolver) (log.Logger, bool) {
 	userID, err := resolver.TenantID(ctx)
 	if err == nil && userID != "" {
 		logger = log.With(logger, "user", userID)
@@ -104,8 +113,8 @@ func withContext(ctx context.Context, logger log.Logger, resolver TenantResolver
 
 	traceID, ok := tracing.ExtractSampledTraceID(ctx)
 	if !ok {
-		return logger
+		return logger, false
 	}
 
-	return log.With(logger, "traceID", traceID)
+	return log.With(logger, "traceID", traceID), true
 }

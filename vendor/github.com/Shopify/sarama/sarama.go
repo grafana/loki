@@ -22,28 +22,32 @@ Metrics are exposed through https://github.com/rcrowley/go-metrics library in a 
 
 Broker related metrics:
 
-	+----------------------------------------------+------------+---------------------------------------------------------------+
-	| Name                                         | Type       | Description                                                   |
-	+----------------------------------------------+------------+---------------------------------------------------------------+
-	| incoming-byte-rate                           | meter      | Bytes/second read off all brokers                             |
-	| incoming-byte-rate-for-broker-<broker-id>    | meter      | Bytes/second read off a given broker                          |
-	| outgoing-byte-rate                           | meter      | Bytes/second written off all brokers                          |
-	| outgoing-byte-rate-for-broker-<broker-id>    | meter      | Bytes/second written off a given broker                       |
-	| request-rate                                 | meter      | Requests/second sent to all brokers                           |
-	| request-rate-for-broker-<broker-id>          | meter      | Requests/second sent to a given broker                        |
-	| request-size                                 | histogram  | Distribution of the request size in bytes for all brokers     |
-	| request-size-for-broker-<broker-id>          | histogram  | Distribution of the request size in bytes for a given broker  |
-	| request-latency-in-ms                        | histogram  | Distribution of the request latency in ms for all brokers     |
-	| request-latency-in-ms-for-broker-<broker-id> | histogram  | Distribution of the request latency in ms for a given broker  |
-	| response-rate                                | meter      | Responses/second received from all brokers                    |
-	| response-rate-for-broker-<broker-id>         | meter      | Responses/second received from a given broker                 |
-	| response-size                                | histogram  | Distribution of the response size in bytes for all brokers    |
-	| response-size-for-broker-<broker-id>         | histogram  | Distribution of the response size in bytes for a given broker |
-	| requests-in-flight                           | counter    | The current number of in-flight requests awaiting a response  |
-	|                                              |            | for all brokers                                               |
-	| requests-in-flight-for-broker-<broker-id>    | counter    | The current number of in-flight requests awaiting a response  |
-	|                                              |            | for a given broker                                            |
-	+----------------------------------------------+------------+---------------------------------------------------------------+
+	+---------------------------------------------------------+------------+---------------------------------------------------------------+
+	| Name                                                    | Type       | Description                                                   |
+	+---------------------------------------------------------+------------+---------------------------------------------------------------+
+	| incoming-byte-rate                                      | meter      | Bytes/second read off all brokers                             |
+	| incoming-byte-rate-for-broker-<broker-id>               | meter      | Bytes/second read off a given broker                          |
+	| outgoing-byte-rate                                      | meter      | Bytes/second written off all brokers                          |
+	| outgoing-byte-rate-for-broker-<broker-id>               | meter      | Bytes/second written off a given broker                       |
+	| request-rate                                            | meter      | Requests/second sent to all brokers                           |
+	| request-rate-for-broker-<broker-id>                     | meter      | Requests/second sent to a given broker                        |
+	| request-size                                            | histogram  | Distribution of the request size in bytes for all brokers     |
+	| request-size-for-broker-<broker-id>                     | histogram  | Distribution of the request size in bytes for a given broker  |
+	| request-latency-in-ms                                   | histogram  | Distribution of the request latency in ms for all brokers     |
+	| request-latency-in-ms-for-broker-<broker-id>            | histogram  | Distribution of the request latency in ms for a given broker  |
+	| response-rate                                           | meter      | Responses/second received from all brokers                    |
+	| response-rate-for-broker-<broker-id>                    | meter      | Responses/second received from a given broker                 |
+	| response-size                                           | histogram  | Distribution of the response size in bytes for all brokers    |
+	| response-size-for-broker-<broker-id>                    | histogram  | Distribution of the response size in bytes for a given broker |
+	| requests-in-flight                                      | counter    | The current number of in-flight requests awaiting a response  |
+	|                                                         |            | for all brokers                                               |
+	| requests-in-flight-for-broker-<broker-id>               | counter    | The current number of in-flight requests awaiting a response  |
+	|                                                         |            | for a given broker                                            |
+	| protocol-requests-rate-<api-key>          	          | meter      | Number of api requests sent to the brokers for all brokers    |
+	|                                                         |            | https://kafka.apache.org/protocol.html#protocol_api_keys      |                                        |
+	| protocol-requests-rate-<api-key>-for-broker-<broker-id> | meter      | Number of packets sent to the brokers by api-key for a given  |
+	|                                                         |            | broker                                                        |
+	+---------------------------------------------------------+------------+---------------------------------------------------------------+
 
 Note that we do not gather specific metrics for seed brokers but they are part of the "all brokers" metrics.
 
@@ -68,12 +72,15 @@ Consumer related metrics:
 	| Name                                      | Type       | Description                                                                          |
 	+-------------------------------------------+------------+--------------------------------------------------------------------------------------+
 	| consumer-batch-size                       | histogram  | Distribution of the number of messages in a batch                                    |
+	| consumer-fetch-rate                       | meter      | Fetch requests/second sent to all brokers                                            |
+	| consumer-fetch-rate-for-broker-<broker>   | meter      | Fetch requests/second sent to a given broker                                         |
+	| consumer-fetch-rate-for-topic-<topic>     | meter      | Fetch requests/second sent for a given topic                                         |
+	| consumer-fetch-response-size              | histogram  | Distribution of the fetch response size in bytes                                     |
 	| consumer-group-join-total-<GroupID>       | counter    | Total count of consumer group join attempts                                          |
 	| consumer-group-join-failed-<GroupID>      | counter    | Total count of consumer group join failures                                          |
 	| consumer-group-sync-total-<GroupID>       | counter    | Total count of consumer group sync attempts                                          |
 	| consumer-group-sync-failed-<GroupID>      | counter    | Total count of consumer group sync failures                                          |
 	+-------------------------------------------+------------+--------------------------------------------------------------------------------------+
-
 */
 package sarama
 
@@ -116,13 +123,13 @@ type StdLogger interface {
 type debugLogger struct{}
 
 func (d *debugLogger) Print(v ...interface{}) {
-	Logger.Print(v)
+	Logger.Print(v...)
 }
 func (d *debugLogger) Printf(format string, v ...interface{}) {
-	Logger.Printf(format, v)
+	Logger.Printf(format, v...)
 }
 func (d *debugLogger) Println(v ...interface{}) {
-	Logger.Println(v)
+	Logger.Println(v...)
 }
 
 // DebugLogger is the instance of a StdLogger that Sarama writes more verbose

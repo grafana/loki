@@ -16,8 +16,18 @@ const (
 )
 
 // hcode is a huffman code with a bit code and bit length.
-type hcode struct {
-	code, len uint16
+type hcode uint32
+
+func (h hcode) len() uint8 {
+	return uint8(h)
+}
+
+func (h hcode) code64() uint64 {
+	return uint64(h >> 8)
+}
+
+func (h hcode) zero() bool {
+	return h == 0
 }
 
 type huffmanEncoder struct {
@@ -56,9 +66,12 @@ type levelInfo struct {
 }
 
 // set sets the code and length of an hcode.
-func (h *hcode) set(code uint16, length uint16) {
-	h.len = length
-	h.code = code
+func (h *hcode) set(code uint16, length uint8) {
+	*h = hcode(length) | (hcode(code) << 8)
+}
+
+func newhcode(code uint16, length uint8) hcode {
+	return hcode(length) | (hcode(code) << 8)
 }
 
 func reverseBits(number uint16, bitLength byte) uint16 {
@@ -80,7 +93,7 @@ func generateFixedLiteralEncoding() *huffmanEncoder {
 	var ch uint16
 	for ch = 0; ch < literalCount; ch++ {
 		var bits uint16
-		var size uint16
+		var size uint8
 		switch {
 		case ch < 144:
 			// size 8, 000110000  .. 10111111
@@ -99,7 +112,7 @@ func generateFixedLiteralEncoding() *huffmanEncoder {
 			bits = ch + 192 - 280
 			size = 8
 		}
-		codes[ch] = hcode{code: reverseBits(bits, byte(size)), len: size}
+		codes[ch] = newhcode(reverseBits(bits, size), size)
 	}
 	return h
 }
@@ -108,7 +121,7 @@ func generateFixedOffsetEncoding() *huffmanEncoder {
 	h := newHuffmanEncoder(30)
 	codes := h.codes
 	for ch := range codes {
-		codes[ch] = hcode{code: reverseBits(uint16(ch), 5), len: 5}
+		codes[ch] = newhcode(reverseBits(uint16(ch), 5), 5)
 	}
 	return h
 }
@@ -120,7 +133,7 @@ func (h *huffmanEncoder) bitLength(freq []uint16) int {
 	var total int
 	for i, f := range freq {
 		if f != 0 {
-			total += int(f) * int(h.codes[i].len)
+			total += int(f) * int(h.codes[i].len())
 		}
 	}
 	return total
@@ -129,9 +142,7 @@ func (h *huffmanEncoder) bitLength(freq []uint16) int {
 func (h *huffmanEncoder) bitLengthRaw(b []byte) int {
 	var total int
 	for _, f := range b {
-		if f != 0 {
-			total += int(h.codes[f].len)
-		}
+		total += int(h.codes[f].len())
 	}
 	return total
 }
@@ -142,10 +153,10 @@ func (h *huffmanEncoder) canReuseBits(freq []uint16) int {
 	for i, f := range freq {
 		if f != 0 {
 			code := h.codes[i]
-			if code.len == 0 {
+			if code.zero() {
 				return math.MaxInt32
 			}
-			total += int(f) * int(code.len)
+			total += int(f) * int(code.len())
 		}
 	}
 	return total
@@ -157,13 +168,18 @@ func (h *huffmanEncoder) canReuseBits(freq []uint16) int {
 // The cases of 0, 1, and 2 literals are handled by special case code.
 //
 // list  An array of the literals with non-zero frequencies
-//             and their associated frequencies. The array is in order of increasing
-//             frequency, and has as its last element a special element with frequency
-//             MaxInt32
+//
+//	and their associated frequencies. The array is in order of increasing
+//	frequency, and has as its last element a special element with frequency
+//	MaxInt32
+//
 // maxBits     The maximum number of bits that should be used to encode any literal.
-//             Must be less than 16.
+//
+//	Must be less than 16.
+//
 // return      An integer array in which array[i] indicates the number of literals
-//             that should be encoded in i bits.
+//
+//	that should be encoded in i bits.
 func (h *huffmanEncoder) bitCounts(list []literalNode, maxBits int32) []int32 {
 	if maxBits >= maxBitsLimit {
 		panic("flate: maxBits too large")
@@ -189,14 +205,19 @@ func (h *huffmanEncoder) bitCounts(list []literalNode, maxBits int32) []int32 {
 	// of the level j ancestor.
 	var leafCounts [maxBitsLimit][maxBitsLimit]int32
 
+	// Descending to only have 1 bounds check.
+	l2f := int32(list[2].freq)
+	l1f := int32(list[1].freq)
+	l0f := int32(list[0].freq) + int32(list[1].freq)
+
 	for level := int32(1); level <= maxBits; level++ {
 		// For every level, the first two items are the first two characters.
 		// We initialize the levels as if we had already figured this out.
 		levels[level] = levelInfo{
 			level:        level,
-			lastFreq:     int32(list[1].freq),
-			nextCharFreq: int32(list[2].freq),
-			nextPairFreq: int32(list[0].freq) + int32(list[1].freq),
+			lastFreq:     l1f,
+			nextCharFreq: l2f,
+			nextPairFreq: l0f,
 		}
 		leafCounts[level][level] = 2
 		if level == 1 {
@@ -207,8 +228,8 @@ func (h *huffmanEncoder) bitCounts(list []literalNode, maxBits int32) []int32 {
 	// We need a total of 2*n - 2 items at top level and have already generated 2.
 	levels[maxBits].needed = 2*n - 4
 
-	level := maxBits
-	for {
+	level := uint32(maxBits)
+	for level < 16 {
 		l := &levels[level]
 		if l.nextPairFreq == math.MaxInt32 && l.nextCharFreq == math.MaxInt32 {
 			// We've run out of both leafs and pairs.
@@ -240,7 +261,13 @@ func (h *huffmanEncoder) bitCounts(list []literalNode, maxBits int32) []int32 {
 			// more values in the level below
 			l.lastFreq = l.nextPairFreq
 			// Take leaf counts from the lower level, except counts[level] remains the same.
-			copy(leafCounts[level][:level], leafCounts[level-1][:level])
+			if true {
+				save := leafCounts[level][level]
+				leafCounts[level] = leafCounts[level-1]
+				leafCounts[level][level] = save
+			} else {
+				copy(leafCounts[level][:level], leafCounts[level-1][:level])
+			}
 			levels[l.level-1].needed = 2
 		}
 
@@ -298,7 +325,7 @@ func (h *huffmanEncoder) assignEncodingAndSize(bitCount []int32, list []literalN
 
 		sortByLiteral(chunk)
 		for _, node := range chunk {
-			h.codes[node.literal] = hcode{code: reverseBits(code, uint8(n)), len: uint16(n)}
+			h.codes[node.literal] = newhcode(reverseBits(code, uint8(n)), uint8(n))
 			code++
 		}
 		list = list[0 : len(list)-int(bits)]
@@ -311,6 +338,7 @@ func (h *huffmanEncoder) assignEncodingAndSize(bitCount []int32, list []literalN
 // maxBits  The maximum number of bits to use for any literal.
 func (h *huffmanEncoder) generate(freq []uint16, maxBits int32) {
 	list := h.freqcache[:len(freq)+1]
+	codes := h.codes[:len(freq)]
 	// Number of non-zero literals
 	count := 0
 	// Set list to be the set of all non-zero literals and their frequencies
@@ -319,11 +347,10 @@ func (h *huffmanEncoder) generate(freq []uint16, maxBits int32) {
 			list[count] = literalNode{uint16(i), f}
 			count++
 		} else {
-			list[count] = literalNode{}
-			h.codes[i].len = 0
+			codes[i] = 0
 		}
 	}
-	list[len(freq)] = literalNode{}
+	list[count] = literalNode{}
 
 	list = list[:count]
 	if count <= 2 {
@@ -354,21 +381,37 @@ func atLeastOne(v float32) float32 {
 	return v
 }
 
-// Unassigned values are assigned '1' in the histogram.
-func fillHist(b []uint16) {
-	for i, v := range b {
-		if v == 0 {
-			b[i] = 1
+func histogram(b []byte, h []uint16) {
+	if true && len(b) >= 8<<10 {
+		// Split for bigger inputs
+		histogramSplit(b, h)
+	} else {
+		h = h[:256]
+		for _, t := range b {
+			h[t]++
 		}
 	}
 }
 
-func histogram(b []byte, h []uint16, fill bool) {
+func histogramSplit(b []byte, h []uint16) {
+	// Tested, and slightly faster than 2-way.
+	// Writing to separate arrays and combining is also slightly slower.
 	h = h[:256]
-	for _, t := range b {
-		h[t]++
+	for len(b)&3 != 0 {
+		h[b[0]]++
+		b = b[1:]
 	}
-	if fill {
-		fillHist(h)
+	n := len(b) / 4
+	x, y, z, w := b[:n], b[n:], b[n+n:], b[n+n+n:]
+	y, z, w = y[:len(x)], z[:len(x)], w[:len(x)]
+	for i, t := range x {
+		v0 := &h[t]
+		v1 := &h[y[i]]
+		v3 := &h[w[i]]
+		v2 := &h[z[i]]
+		*v0++
+		*v1++
+		*v2++
+		*v3++
 	}
 }

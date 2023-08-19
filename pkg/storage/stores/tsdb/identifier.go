@@ -25,7 +25,7 @@ func identifierFromPath(p string) (Identifier, error) {
 	// try parsing as single tenant since the filename is more deterministic without an arbitrary nodename for uploader
 	id, ok := parseSingleTenantTSDBPath(p)
 	if ok {
-		return newPrefixedIdentifier(id, filepath.Dir(p), ""), nil
+		return NewPrefixedIdentifier(id, filepath.Dir(p), ""), nil
 	}
 
 	multiID, ok := parseMultitenantTSDBPath(p)
@@ -34,10 +34,10 @@ func identifierFromPath(p string) (Identifier, error) {
 	}
 
 	parent := filepath.Dir(p)
-	return newPrefixedIdentifier(multiID, parent, ""), nil
+	return NewPrefixedIdentifier(multiID, parent, ""), nil
 }
 
-func newPrefixedIdentifier(id Identifier, path, name string) prefixedIdentifier {
+func NewPrefixedIdentifier(id Identifier, path, name string) Identifier {
 	return prefixedIdentifier{
 		Identifier: id,
 		parentPath: path,
@@ -59,23 +59,6 @@ func (p prefixedIdentifier) Name() string {
 	return path.Join(p.parentName, p.Identifier.Name())
 }
 
-func newSuffixedIdentifier(id Identifier, pathSuffix string) suffixedIdentifier {
-	return suffixedIdentifier{
-		pathSuffix: pathSuffix,
-		Identifier: id,
-	}
-}
-
-// Generally useful for gzip extensions
-type suffixedIdentifier struct {
-	pathSuffix string
-	Identifier
-}
-
-func (s suffixedIdentifier) Path() string {
-	return s.Identifier.Path() + s.pathSuffix
-}
-
 // Identifier has all the information needed to resolve a TSDB index
 // Notably this abstracts away OS path separators, etc.
 type SingleTenantTSDBIdentifier struct {
@@ -84,6 +67,7 @@ type SingleTenantTSDBIdentifier struct {
 	Checksum      uint32
 }
 
+// str builds filename with format <file-creation-ts> + `-` + `compactor` + `-` + <oldest-chunk-start-ts> + `-` + <latest-chunk-end-ts> `-` + <index-checksum>
 func (i SingleTenantTSDBIdentifier) str() string {
 	return fmt.Sprintf(
 		"%d-%s-%d-%d-%x.tsdb",
@@ -155,6 +139,7 @@ type MultitenantTSDBIdentifier struct {
 	ts       time.Time
 }
 
+// Name builds filename with format <file-creation-ts> + `-` + `<nodeName>
 func (id MultitenantTSDBIdentifier) Name() string {
 	return fmt.Sprintf("%d-%s.tsdb", id.ts.Unix(), id.nodeName)
 }

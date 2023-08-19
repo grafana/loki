@@ -1,7 +1,7 @@
 ## Append samples you want in your CSV to this file as resources ##
 resources:
-- loki_v1beta1_alertingrule.yaml
-- loki_v1beta1_recordingrule.yaml
-- loki_v1beta1_rulerconfig.yaml
+- loki_v1_alertingrule.yaml
+- loki_v1_recordingrule.yaml
+- loki_v1_rulerconfig.yaml
 - loki_v1_lokistack.yaml
 # +kubebuilder:scaffold:manifestskustomizesamples

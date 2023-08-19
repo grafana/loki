@@ -88,9 +88,22 @@ func IsEmbeddedCacheSet(cfg Config) bool {
 	return cfg.EmbeddedCache.Enabled
 }
 
-// IsCacheConfigured determines if memcached, redis, or embedded-cache have been configured
+func IsFifoCacheSet(cfg Config) bool {
+	return cfg.EnableFifoCache
+}
+
+func IsSpecificImplementationSet(cfg Config) bool {
+	return cfg.Cache != nil
+}
+
+// IsCacheConfigured determines if either of the following caches is configured:
+// - memcached
+// - redis
+// - embedded-cache
+// - fifo-cache
+// - specific cache implementation
 func IsCacheConfigured(cfg Config) bool {
-	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg)
+	return IsMemcacheSet(cfg) || IsRedisSet(cfg) || IsEmbeddedCacheSet(cfg) || IsFifoCacheSet(cfg) || IsSpecificImplementationSet(cfg)
 }
 
 // New creates a new Cache using Config.
@@ -98,7 +111,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 
 	// Have additional check for embeddedcache with distributed mode, because those cache will already be initialized in modules
 	// but still need stats collector wrapper for it.
-	if cfg.Cache != nil && !cfg.EmbeddedCache.IsEnabledWithDistributed() {
+	if cfg.Cache != nil && !cfg.EmbeddedCache.IsEnabled() {
 		return cfg.Cache, nil
 	}
 
@@ -107,8 +120,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 	// Currently fifocache can be enabled in two ways.
 	// 1. cfg.EnableFifocache (old deprecated way)
 	// 2. cfg.EmbeddedCache.Enabled=true and cfg.EmbeddedCache.Distributed=false (new way)
-
-	if cfg.EnableFifoCache || (IsEmbeddedCacheSet(cfg) && !cfg.EmbeddedCache.Distributed) {
+	if cfg.EnableFifoCache || cfg.EmbeddedCache.IsEnabled() {
 		var fifocfg FifoCacheConfig
 
 		if cfg.EnableFifoCache {
@@ -116,7 +128,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 			fifocfg = cfg.Fifocache
 		}
 
-		if cfg.EmbeddedCache.IsEnabledWithoutDistributed() {
+		if cfg.EmbeddedCache.IsEnabled() {
 			fifocfg = FifoCacheConfig{
 				MaxSizeBytes:  fmt.Sprint(cfg.EmbeddedCache.MaxSizeMB * 1e6),
 				TTL:           cfg.EmbeddedCache.TTL,
@@ -160,11 +172,6 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 		}
 		cache := NewRedisCache(cacheName, client, logger, cacheType)
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))
-	}
-
-	if IsEmbeddedCacheSet(cfg) && cfg.EmbeddedCache.Distributed {
-		cacheName := cfg.Prefix + "embedded-cache"
-		caches = append(caches, CollectStats(Instrument(cacheName, cfg.Cache, reg)))
 	}
 
 	cache := NewTiered(caches)

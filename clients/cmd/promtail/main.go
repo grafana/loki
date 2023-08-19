@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sync"
 
 	// embed time zone data
 	_ "time/tzdata"
@@ -13,18 +14,20 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail"
 	"github.com/grafana/loki/clients/pkg/promtail/client"
-	"github.com/grafana/loki/clients/pkg/promtail/config"
+	promtail_config "github.com/grafana/loki/clients/pkg/promtail/config"
 
 	"github.com/grafana/loki/pkg/util"
-	_ "github.com/grafana/loki/pkg/util/build"
 	"github.com/grafana/loki/pkg/util/cfg"
+
+	_ "github.com/grafana/loki/pkg/util/build"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -32,15 +35,18 @@ func init() {
 	prometheus.MustRegister(version.NewCollector("promtail"))
 }
 
+var mtx sync.Mutex
+
 type Config struct {
-	config.Config   `yaml:",inline"`
-	printVersion    bool
-	printConfig     bool
-	logConfig       bool
-	dryRun          bool
-	configFile      string
-	configExpandEnv bool
-	inspect         bool
+	promtail_config.Config `yaml:",inline"`
+	printVersion           bool
+	printConfig            bool
+	logConfig              bool
+	dryRun                 bool
+	checkSyntax            bool
+	configFile             string
+	configExpandEnv        bool
+	inspect                bool
 }
 
 func (c *Config) RegisterFlags(f *flag.FlagSet) {
@@ -49,6 +55,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.logConfig, "log-config-reverse-order", false, "Dump the entire Loki config object at Info log "+
 		"level with the order reversed, reversing the order makes viewing the entries easier in Grafana.")
 	f.BoolVar(&c.dryRun, "dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
+	f.BoolVar(&c.checkSyntax, "check-syntax", false, "Validate the config file of its syntax")
 	f.BoolVar(&c.inspect, "inspect", false, "Allows for detailed inspection of pipeline stages")
 	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
 	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
@@ -63,26 +70,43 @@ func (c *Config) Clone() flagext.Registerer {
 	}(*c)
 }
 
+// wrap os.Exit so that deferred functions execute before the process exits
+func exit(code int) {
+	// flush all logs that may be buffered in memory
+	util_log.Flush()
+
+	os.Exit(code)
+}
+
 func main() {
 	// Load config, merging config file and CLI flags
 	var config Config
-	if err := cfg.DefaultUnmarshal(&config, os.Args[1:], flag.CommandLine); err != nil {
+	args := os.Args[1:]
+	if err := cfg.DefaultUnmarshal(&config, args, flag.CommandLine); err != nil {
 		fmt.Println("Unable to parse config:", err)
-		os.Exit(1)
+		exit(1)
+	}
+	if config.checkSyntax {
+		if config.configFile == "" {
+			fmt.Println("Invalid config file")
+			exit(1)
+		}
+		fmt.Println("Valid config file! No syntax issues found")
+		exit(0)
 	}
 
 	// Handle -version CLI flag
 	if config.printVersion {
 		fmt.Println(version.Print("promtail"))
-		os.Exit(0)
+		exit(0)
 	}
 
 	// Init the logger which will honor the log level set in cfg.Server
-	if reflect.DeepEqual(&config.Config.ServerConfig.Config.LogLevel, &logging.Level{}) {
+	if reflect.DeepEqual(&config.Config.ServerConfig.Config.LogLevel, &log.Level{}) {
 		fmt.Println("Invalid log level")
-		os.Exit(1)
+		exit(1)
 	}
-	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer)
+	util_log.InitLogger(&config.Config.ServerConfig.Config, prometheus.DefaultRegisterer, true, false)
 
 	// Use Stderr instead of files for the klog.
 	klog.SetOutput(os.Stderr)
@@ -111,11 +135,40 @@ func main() {
 		}
 	}
 
-	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer, config.Config.Options.StreamLagLabels)
-	p, err := promtail.New(config.Config, clientMetrics, config.dryRun)
+	if config.Tracing.Enabled {
+		// Setting the environment variable JAEGER_AGENT_HOST enables tracing
+		trace, err := tracing.NewFromEnv("promtail")
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error in initializing tracing. tracing will not be enabled", "err", err)
+		}
+
+		defer func() {
+			if trace != nil {
+				if err := trace.Close(); err != nil {
+					level.Error(util_log.Logger).Log("msg", "error closing tracing", "err", err)
+				}
+			}
+		}()
+	}
+
+	clientMetrics := client.NewMetrics(prometheus.DefaultRegisterer)
+	if config.Options.StreamLagLabels.String() != "" {
+		level.Warn(util_log.Logger).Log("msg", "the stream_lag_labels setting is deprecated and the associated metric has been removed", "stream_lag_labels", config.Options.StreamLagLabels.String())
+	}
+	newConfigFunc := func() (*promtail_config.Config, error) {
+		mtx.Lock()
+		defer mtx.Unlock()
+		var config Config
+		if err := cfg.DefaultUnmarshal(&config, args, flag.NewFlagSet(os.Args[0], flag.ExitOnError)); err != nil {
+			fmt.Println("Unable to parse config:", err)
+			return nil, fmt.Errorf("unable to parse config: %w", err)
+		}
+		return &config.Config, nil
+	}
+	p, err := promtail.New(config.Config, newConfigFunc, clientMetrics, config.dryRun)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error creating promtail", "error", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	level.Info(util_log.Logger).Log("msg", "Starting Promtail", "version", version.Info())
@@ -123,6 +176,6 @@ func main() {
 
 	if err := p.Run(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error starting promtail", "error", err)
-		os.Exit(1)
+		exit(1)
 	}
 }

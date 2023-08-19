@@ -366,7 +366,7 @@ func relabelConfig(config string, lbs model.LabelSet) (model.LabelSet, error) {
 	if err := yaml.UnmarshalStrict([]byte(config), &relabelConfig); err != nil {
 		return nil, err
 	}
-	relabed := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
+	relabed, _ := relabel.Process(labels.FromMap(util.ModelLabelSetToMap(lbs)), relabelConfig...)
 	return model.LabelSet(util.LabelsToMetric(relabed)), nil
 }
 

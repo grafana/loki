@@ -18,13 +18,11 @@
 package credentials
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
 
 	jsoniter "github.com/json-iterator/go"
-	homedir "github.com/mitchellh/go-homedir"
 )
 
 // A FileMinioClient retrieves credentials from the current user's home
@@ -51,7 +49,7 @@ type FileMinioClient struct {
 
 // NewFileMinioClient returns a pointer to a new Credentials object
 // wrapping the Alias file provider.
-func NewFileMinioClient(filename string, alias string) *Credentials {
+func NewFileMinioClient(filename, alias string) *Credentials {
 	return New(&FileMinioClient{
 		Filename: filename,
 		Alias:    alias,
@@ -65,7 +63,7 @@ func (p *FileMinioClient) Retrieve() (Value, error) {
 		if value, ok := os.LookupEnv("MINIO_SHARED_CREDENTIALS_FILE"); ok {
 			p.Filename = value
 		} else {
-			homeDir, err := homedir.Dir()
+			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				return Value{}, err
 			}
@@ -115,6 +113,7 @@ type hostConfig struct {
 type config struct {
 	Version string                `json:"version"`
 	Hosts   map[string]hostConfig `json:"hosts"`
+	Aliases map[string]hostConfig `json:"aliases"`
 }
 
 // loadAliass loads from the file pointed to by shared credentials filename for alias.
@@ -124,12 +123,17 @@ func loadAlias(filename, alias string) (hostConfig, error) {
 	cfg := &config{}
 	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
-	configBytes, err := ioutil.ReadFile(filename)
+	configBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return hostConfig{}, err
 	}
 	if err = json.Unmarshal(configBytes, cfg); err != nil {
 		return hostConfig{}, err
 	}
+
+	if cfg.Version == "10" {
+		return cfg.Aliases[alias], nil
+	}
+
 	return cfg.Hosts[alias], nil
 }

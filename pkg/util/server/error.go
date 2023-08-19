@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -56,7 +56,7 @@ func ClientHTTPStatusAndError(err error) (int, error) {
 		return http.StatusGatewayTimeout, errors.New(ErrDeadlineExceeded)
 	case errors.As(err, &queryErr):
 		return http.StatusBadRequest, err
-	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline):
+	case errors.Is(err, logqlmodel.ErrLimit) || errors.Is(err, logqlmodel.ErrParse) || errors.Is(err, logqlmodel.ErrPipeline) || errors.Is(err, logqlmodel.ErrBlocked):
 		return http.StatusBadRequest, err
 	case errors.Is(err, user.ErrNoOrgID):
 		return http.StatusBadRequest, err

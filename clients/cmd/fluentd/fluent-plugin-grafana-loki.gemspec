@@ -4,7 +4,7 @@ $LOAD_PATH.push File.expand_path('lib', __dir__)
 
 Gem::Specification.new do |spec|
   spec.name    = 'fluent-plugin-grafana-loki'
-  spec.version = '1.2.18'
+  spec.version = '1.2.20'
   spec.authors = %w[woodsaj briangann cyriltovena]
   spec.email   = ['awoods@grafana.com', 'brian@grafana.com', 'cyril.tovena@grafana.com']
 
@@ -13,7 +13,7 @@ Gem::Specification.new do |spec|
   spec.homepage      = 'https://github.com/grafana/loki/'
   spec.license       = 'Apache-2.0'
 
-  spec.required_ruby_version = '~> 2.7'
+  spec.required_ruby_version = '>= 2.7'
 
   # test_files, files  = `git ls-files -z`.split("\x0").partition do |f|
   #   f.match(%r{^(test|spec|features)/})

@@ -1,9 +1,15 @@
 package distributor
 
-import "time"
+import (
+	"time"
+
+	"github.com/grafana/loki/pkg/distributor/shardstreams"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+)
 
 // Limits is an interface for distributor limits/related configs
 type Limits interface {
+	retention.Limits
 	MaxLineSize(userID string) int
 	MaxLineSizeTruncate(userID string) bool
 	EnforceMetricName(userID string) bool
@@ -16,4 +22,9 @@ type Limits interface {
 	RejectOldSamplesMaxAge(userID string) time.Duration
 
 	IncrementDuplicateTimestamps(userID string) bool
+
+	ShardStreams(userID string) *shardstreams.Config
+	IngestionRateStrategy() string
+	IngestionRateBytes(userID string) float64
+	IngestionBurstSizeBytes(userID string) int
 }

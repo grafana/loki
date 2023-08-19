@@ -34,11 +34,13 @@ const (
 
 // kimd is a wrapper for the 'compute intermediate message digest' instruction.
 // src must be a multiple of the rate for the given function code.
+//
 //go:noescape
 func kimd(function code, chain *[200]byte, src []byte)
 
 // klmd is a wrapper for the 'compute last message digest' instruction.
 // src padding is handled by the instruction.
+//
 //go:noescape
 func klmd(function code, chain *[200]byte, dst, src []byte)
 

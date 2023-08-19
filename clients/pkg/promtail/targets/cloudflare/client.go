@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/cloudflare/cloudflare-go"
+	"github.com/grafana/cloudflare-go"
 )
 
 // Client is a wrapper around the Cloudflare API that allow for testing and being zone/fields aware.

@@ -52,6 +52,12 @@ module Fluent
       desc 'TLS: CA certificate file for server certificate verification'
       config_param :ca_cert, :string, default: nil
 
+      desc 'TLS: the ciphers to use for the tls connection (e.g TLS1_0, TLS1_1, TLS1_2)'
+      config_param :ciphers, :string, default: nil
+
+      desc 'TLS: The minimum version for the tls connection'
+      config_param :min_version, :string, default: nil
+
       desc 'TLS: disable server certificate verification'
       config_param :insecure_tls, :bool, default: false
 
@@ -198,6 +204,19 @@ module Fluent
             ca_file: @ca_cert
           )
         end
+
+        if @ciphers
+          opts = opts.merge(
+            ciphers: @ciphers
+          )
+        end
+
+        if @min_version
+          opts = opts.merge(
+            min_version: @min_version.to_sym
+          )
+        end
+
         opts
       end
 

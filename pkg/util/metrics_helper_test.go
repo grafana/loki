@@ -60,8 +60,8 @@ func TestCounterValue(t *testing.T) {
 func TestGetMetricsWithLabelNames(t *testing.T) {
 	labels := []string{"a", "b"}
 
-	require.Equal(t, map[string]metricsWithLabels{}, getMetricsWithLabelNames(nil, labels))
-	require.Equal(t, map[string]metricsWithLabels{}, getMetricsWithLabelNames(&dto.MetricFamily{}, labels))
+	require.Equal(t, map[string]metricsWithLabels{}, getMetricsWithLabelNames(nil, labels, nil))
+	require.Equal(t, map[string]metricsWithLabels{}, getMetricsWithLabelNames(&dto.MetricFamily{}, labels, nil))
 
 	m1 := &dto.Metric{Label: makeLabels("a", "5"), Counter: &dto.Counter{Value: proto.Float64(1)}}
 	m2 := &dto.Metric{Label: makeLabels("a", "10", "b", "20"), Counter: &dto.Counter{Value: proto.Float64(1.5)}}
@@ -70,7 +70,7 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 	m5 := &dto.Metric{Label: makeLabels("a", "11", "b", "21"), Counter: &dto.Counter{Value: proto.Float64(4)}}
 	m6 := &dto.Metric{Label: makeLabels("ignored", "123", "a", "12", "b", "22", "c", "30"), Counter: &dto.Counter{Value: proto.Float64(4)}}
 
-	out := getMetricsWithLabelNames(&dto.MetricFamily{Metric: []*dto.Metric{m1, m2, m3, m4, m5, m6}}, labels)
+	out := getMetricsWithLabelNames(&dto.MetricFamily{Metric: []*dto.Metric{m1, m2, m3, m4, m5, m6}}, labels, nil)
 
 	// m1 is not returned at all, as it doesn't have both required labels.
 	require.Equal(t, map[string]metricsWithLabels{
@@ -87,7 +87,7 @@ func TestGetMetricsWithLabelNames(t *testing.T) {
 
 	// no labels -- returns all metrics in single key. this isn't very efficient, and there are other functions
 	// (without labels) to handle this better, but it still works.
-	out2 := getMetricsWithLabelNames(&dto.MetricFamily{Metric: []*dto.Metric{m1, m2, m3, m4, m5, m6}}, nil)
+	out2 := getMetricsWithLabelNames(&dto.MetricFamily{Metric: []*dto.Metric{m1, m2, m3, m4, m5, m6}}, []string{}, nil)
 	require.Equal(t, map[string]metricsWithLabels{
 		getLabelsString(nil): {
 			labelValues: []string{},
@@ -126,7 +126,7 @@ func BenchmarkGetMetricsWithLabelNames(b *testing.B) {
 	b.ReportAllocs()
 
 	for n := 0; n < b.N; n++ {
-		out := getMetricsWithLabelNames(mf, []string{"label_1", "label_2", "label_3"})
+		out := getMetricsWithLabelNames(mf, []string{"label_1", "label_2", "label_3"}, nil)
 
 		if expected := 1; len(out) != expected {
 			b.Fatalf("unexpected number of output groups: expected = %d got = %d", expected, len(out))
@@ -165,7 +165,7 @@ func TestSendSumOfGaugesPerUserWithLabels(t *testing.T) {
 	regs := NewUserRegistries()
 	regs.AddUserRegistry("user-1", user1Reg)
 	regs.AddUserRegistry("user-2", user2Reg)
-	mf := regs.BuildMetricFamiliesPerUser()
+	mf := regs.BuildMetricFamiliesPerUser(nil)
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
@@ -217,7 +217,7 @@ func TestSendMaxOfGauges(t *testing.T) {
 	regs.AddUserRegistry("user-2", user2Reg)
 
 	// No matching metric.
-	mf := regs.BuildMetricFamiliesPerUser()
+	mf := regs.BuildMetricFamiliesPerUser(nil)
 	actual := collectMetrics(t, func(out chan prometheus.Metric) {
 		mf.SendMaxOfGauges(out, desc, "test_metric")
 	})
@@ -231,7 +231,7 @@ func TestSendMaxOfGauges(t *testing.T) {
 	user2Metric := promauto.With(user2Reg).NewGauge(prometheus.GaugeOpts{Name: "test_metric"})
 	user1Metric.Set(100)
 	user2Metric.Set(80)
-	mf = regs.BuildMetricFamiliesPerUser()
+	mf = regs.BuildMetricFamiliesPerUser(nil)
 
 	actual = collectMetrics(t, func(out chan prometheus.Metric) {
 		mf.SendMaxOfGauges(out, desc, "test_metric")
@@ -259,7 +259,7 @@ func TestSendSumOfHistogramsWithLabels(t *testing.T) {
 	regs := NewUserRegistries()
 	regs.AddUserRegistry("user-1", user1Reg)
 	regs.AddUserRegistry("user-2", user2Reg)
-	mf := regs.BuildMetricFamiliesPerUser()
+	mf := regs.BuildMetricFamiliesPerUser(nil)
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"label_one"}, nil)
@@ -335,7 +335,7 @@ func TestSumOfCounterPerUserWithLabels(t *testing.T) {
 	regs := NewUserRegistries()
 	regs.AddUserRegistry("user-1", user1Reg)
 	regs.AddUserRegistry("user-2", user2Reg)
-	mf := regs.BuildMetricFamiliesPerUser()
+	mf := regs.BuildMetricFamiliesPerUser(nil)
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user", "label_one"}, nil)
@@ -397,7 +397,7 @@ func TestSendSumOfSummariesPerUser(t *testing.T) {
 	regs := NewUserRegistries()
 	regs.AddUserRegistry("user-1", user1Reg)
 	regs.AddUserRegistry("user-2", user2Reg)
-	mf := regs.BuildMetricFamiliesPerUser()
+	mf := regs.BuildMetricFamiliesPerUser(nil)
 
 	{
 		desc := prometheus.NewDesc("test_metric", "", []string{"user"}, nil)
@@ -461,7 +461,7 @@ func TestFloat64PrecisionStability(t *testing.T) {
 
 	// Randomise the seed but log it in case we need to reproduce the test on failure.
 	seed := time.Now().UnixNano()
-	rand.Seed(seed)
+	randomGenerator := rand.New(rand.NewSource(seed))
 	t.Log("random generator seed:", seed)
 
 	// Generate a large number of registries with different metrics each.
@@ -472,22 +472,22 @@ func TestFloat64PrecisionStability(t *testing.T) {
 
 		g := promauto.With(reg).NewGaugeVec(prometheus.GaugeOpts{Name: "test_gauge"}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			g.WithLabelValues("a", strconv.Itoa(i)).Set(rand.Float64())
+			g.WithLabelValues("a", strconv.Itoa(i)).Set(randomGenerator.Float64())
 		}
 
 		c := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{Name: "test_counter"}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			c.WithLabelValues("a", strconv.Itoa(i)).Add(rand.Float64())
+			c.WithLabelValues("a", strconv.Itoa(i)).Add(randomGenerator.Float64())
 		}
 
 		h := promauto.With(reg).NewHistogramVec(prometheus.HistogramOpts{Name: "test_histogram", Buckets: []float64{0.1, 0.5, 1}}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			h.WithLabelValues("a", strconv.Itoa(i)).Observe(rand.Float64())
+			h.WithLabelValues("a", strconv.Itoa(i)).Observe(randomGenerator.Float64())
 		}
 
 		s := promauto.With(reg).NewSummaryVec(prometheus.SummaryOpts{Name: "test_summary"}, labelNames)
 		for i := 0; i < cardinality; i++ {
-			s.WithLabelValues("a", strconv.Itoa(i)).Observe(rand.Float64())
+			s.WithLabelValues("a", strconv.Itoa(i)).Observe(randomGenerator.Float64())
 		}
 
 		registries.AddUserRegistry(strconv.Itoa(userID), reg)
@@ -497,7 +497,7 @@ func TestFloat64PrecisionStability(t *testing.T) {
 	expected := map[string][]*dto.Metric{}
 
 	for run := 0; run < numRuns; run++ {
-		mf := registries.BuildMetricFamiliesPerUser()
+		mf := registries.BuildMetricFamiliesPerUser(nil)
 
 		gauge := collectMetrics(t, func(out chan prometheus.Metric) {
 			mf.SendSumOfGauges(out, prometheus.NewDesc("test_gauge", "", nil, nil), "test_gauge")
@@ -996,7 +996,7 @@ func (tm *testMetrics) Describe(out chan<- *prometheus.Desc) {
 }
 
 func (tm *testMetrics) Collect(out chan<- prometheus.Metric) {
-	data := tm.regs.BuildMetricFamiliesPerUser()
+	data := tm.regs.BuildMetricFamiliesPerUser(nil)
 
 	data.SendSumOfGauges(out, tm.gauge, "test_gauge")
 	data.SendSumOfGaugesPerUser(out, tm.gaugePerUser, "test_gauge")

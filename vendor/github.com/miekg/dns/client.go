@@ -24,7 +24,7 @@ func isPacketConn(c net.Conn) bool {
 	}
 
 	if ua, ok := c.LocalAddr().(*net.UnixAddr); ok {
-		return ua.Net == "unixgram"
+		return ua.Net == "unixgram" || ua.Net == "unixpacket"
 	}
 
 	return true
@@ -106,7 +106,6 @@ func (c *Client) Dial(address string) (conn *Conn, err error) {
 }
 
 // DialContext connects to the address on the named network, with a context.Context.
-// For TLS over TCP (DoT) the context isn't used yet. This will be enabled when Go 1.18 is released.
 func (c *Client) DialContext(ctx context.Context, address string) (conn *Conn, err error) {
 	// create a new dialer with the appropriate timeout
 	var d net.Dialer
@@ -127,15 +126,11 @@ func (c *Client) DialContext(ctx context.Context, address string) (conn *Conn, e
 	if useTLS {
 		network = strings.TrimSuffix(network, "-tls")
 
-		// TODO(miekg): Enable after Go 1.18 is released, to be able to support two prev. releases.
-		/*
-			tlsDialer := tls.Dialer{
-				NetDialer: &d,
-				Config:    c.TLSConfig,
-			}
-			conn.Conn, err = tlsDialer.DialContext(ctx, network, address)
-		*/
-		conn.Conn, err = tls.DialWithDialer(&d, network, address, c.TLSConfig)
+		tlsDialer := tls.Dialer{
+			NetDialer: &d,
+			Config:    c.TLSConfig,
+		}
+		conn.Conn, err = tlsDialer.DialContext(ctx, network, address)
 	} else {
 		conn.Conn, err = d.DialContext(ctx, network, address)
 	}
@@ -185,7 +180,7 @@ func (c *Client) Exchange(m *Msg, address string) (r *Msg, rtt time.Duration, er
 // that entails when using "tcp" and especially "tcp-tls" clients.
 //
 // When the singleflight is set for this client the context is _not_ forwarded to the (shared) exchange, to
-// prevent one cancelation from canceling all outstanding requests.
+// prevent one cancellation from canceling all outstanding requests.
 func (c *Client) ExchangeWithConn(m *Msg, conn *Conn) (r *Msg, rtt time.Duration, err error) {
 	return c.exchangeWithConnContext(context.Background(), m, conn)
 }
@@ -198,7 +193,7 @@ func (c *Client) exchangeWithConnContext(ctx context.Context, m *Msg, conn *Conn
 	q := m.Question[0]
 	key := fmt.Sprintf("%s:%d:%d", q.Name, q.Qtype, q.Qclass)
 	r, rtt, err, shared := c.group.Do(key, func() (*Msg, time.Duration, error) {
-		// When we're doing singleflight we don't want one context cancelation, cancel _all_ outstanding queries.
+		// When we're doing singleflight we don't want one context cancellation, cancel _all_ outstanding queries.
 		// Hence we ignore the context and use Background().
 		return c.exchangeContext(context.Background(), m, conn)
 	})
@@ -280,7 +275,7 @@ func (co *Conn) ReadMsg() (*Msg, error) {
 	}
 	if t := m.IsTsig(); t != nil {
 		// Need to work on the original message p, as that was used to calculate the tsig.
-		err = tsigVerifyProvider(p, co.tsigProvider(), co.tsigRequestMAC, false)
+		err = TsigVerifyWithProvider(p, co.tsigProvider(), co.tsigRequestMAC, false)
 	}
 	return m, err
 }
@@ -358,7 +353,7 @@ func (co *Conn) WriteMsg(m *Msg) (err error) {
 	var out []byte
 	if t := m.IsTsig(); t != nil {
 		// Set tsigRequestMAC for the next read, although only used in zone transfers.
-		out, co.tsigRequestMAC, err = tsigGenerateProvider(m, co.tsigProvider(), co.tsigRequestMAC, false)
+		out, co.tsigRequestMAC, err = TsigGenerateWithProvider(m, co.tsigProvider(), co.tsigRequestMAC, false)
 	} else {
 		out, err = m.Pack()
 	}
@@ -431,7 +426,6 @@ func ExchangeContext(ctx context.Context, m *Msg, a string) (r *Msg, err error) 
 //	co.WriteMsg(m)
 //	in, _  := co.ReadMsg()
 //	co.Close()
-//
 func ExchangeConn(c net.Conn, m *Msg) (r *Msg, err error) {
 	println("dns: ExchangeConn: this function is deprecated")
 	co := new(Conn)

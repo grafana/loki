@@ -44,6 +44,15 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{ foo = "bar" } | decolorize`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newDecolorizeExpr(),
+				},
+			),
+		},
+		{
 			// test [12h] before filter expr
 			in: `count_over_time({foo="bar"}[12h] |= "error")`,
 			exp: &RangeAggregationExpr{
@@ -140,11 +149,20 @@ func TestParse(t *testing.T) {
 			},
 		},
 		{
+			in: `{ foo = "bar" }|logfmt --strict`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLogfmtParserExpr([]string{OpStrict}),
+				},
+			),
+		},
+		{
 			in: `{ foo = "bar" }|logfmt|rate="a"`, // rate should also be able to use it as IDENTIFIER
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "rate", "a"))),
 				},
 			),
@@ -154,7 +172,17 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
+					newLabelFilterExpr(log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "length", 5*24*time.Hour)),
+				},
+			),
+		},
+		{
+			in: `{ foo = "bar" }|logfmt --strict --keep-empty|length>5d`,
+			exp: newPipelineExpr(
+				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
+				MultiStageExpr{
+					newLogfmtParserExpr([]string{OpStrict, OpKeepEmpty}),
 					newLabelFilterExpr(log.NewDurationLabelFilter(log.LabelFilterGreaterThan, "length", 5*24*time.Hour)),
 				},
 			),
@@ -340,7 +368,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			in:  `rate({ foo = "bar" }[5minutes])`,
-			err: logqlmodel.NewParseError(`not a valid duration string: "5minutes"`, 0, 21),
+			err: logqlmodel.NewParseError(`unknown unit "minutes" in duration "5minutes"`, 0, 21),
 		},
 		{
 			in:  `label_replace(rate({ foo = "bar" }[5m]),"")`,
@@ -376,7 +404,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar"), mustNewMatcher(labels.MatchEqual, "ip", "foo")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLineFilterExpr(labels.MatchEqual, OpFilterIP, "127.0.0.1"),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
@@ -490,14 +518,14 @@ func TestParse(t *testing.T) {
 			in: `{ foo = "bar" }|logfmt|addr=ip("1.2.3.4")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual))},
+				MultiStageExpr{newLogfmtParserExpr(nil), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual))},
 			),
 		},
 		{
 			in: `{ foo = "bar" }|logfmt|addr!=ip("1.2.3.4")`,
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
-				MultiStageExpr{newLabelParserExpr(OpParserTypeLogfmt, ""), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual))},
+				MultiStageExpr{newLogfmtParserExpr(nil), newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual))},
 			),
 		},
 		{
@@ -505,7 +533,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual)),
 				},
@@ -516,7 +544,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
 				},
@@ -527,7 +555,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterEqual)),
@@ -539,7 +567,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterNotEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
@@ -551,7 +579,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewIPLabelFilter("2.3.4.5", "remote_addr", log.LabelFilterEqual)),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "level", "error"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("1.2.3.4", "addr", log.LabelFilterNotEqual)),
@@ -563,7 +591,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 				},
 			),
@@ -573,7 +601,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 				},
@@ -584,7 +612,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
@@ -596,7 +624,7 @@ func TestParse(t *testing.T) {
 			exp: newPipelineExpr(
 				newMatcherExpr([]*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}),
 				MultiStageExpr{
-					newLabelParserExpr(OpParserTypeLogfmt, ""),
+					newLogfmtParserExpr(nil),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "2.3.4.5"))),
 					newLabelFilterExpr(log.NewStringLabelFilter(mustNewMatcher(labels.MatchEqual, "ip", "abc"))),
 					newLabelFilterExpr(log.NewIPLabelFilter("4.5.6.7", "ipaddr", log.LabelFilterEqual)),
@@ -1846,6 +1874,17 @@ func TestParse(t *testing.T) {
 			),
 		},
 		{
+			in: `max_over_time({app="foo"} | unwrap bar [5m] offset -5m) without (foo,bar)`,
+			exp: newRangeAggregationExpr(
+				newLogRange(
+					newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+					5*time.Minute,
+					newUnwrapExpr("bar", ""),
+					newOffsetExpr(-5*time.Minute)),
+				OpRangeTypeMax, &Grouping{Without: true, Groups: []string{"foo", "bar"}}, nil,
+			),
+		},
+		{
 			in: `max_over_time(({app="foo"} |= "bar" | json | latency >= 250ms or ( status_code < 500 and status_code > 200)
 			| line_format "blip{{ .foo }}blop {{.status_code}}" | label_format foo=bar,status_code="buzz{{.bar}}" | unwrap foo )[5m])`,
 			exp: newRangeAggregationExpr(
@@ -2859,6 +2898,23 @@ func TestParse(t *testing.T) {
 			err: logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8),
 		},
 		{
+			in:  `vector(1)`,
+			exp: &VectorExpr{Val: 1, err: nil},
+		},
+		{
+			in:  `label_replace(vector(0), "foo", "bar", "", "")`,
+			exp: mustNewLabelReplaceExpr(&VectorExpr{Val: 0, err: nil}, "foo", "bar", "", ""),
+		},
+		{
+			in: `sum(vector(0))`,
+			exp: &VectorAggregationExpr{
+				Left:      &VectorExpr{Val: 0, err: nil},
+				Grouping:  &Grouping{},
+				Params:    0,
+				Operation: "sum",
+			},
+		},
+		{
 			in: `{app="foo"}
 					# |= "bar"
 					| json`,
@@ -2928,8 +2984,8 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("bob", `top.sub["index"]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("bob", `top.sub["index"]`),
 					}),
 				},
 			},
@@ -2939,8 +2995,8 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("bob", `top.params[0]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("bob", `top.params[0]`),
 					}),
 				},
 			},
@@ -2950,9 +3006,9 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("response_code", `response.code`),
-						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("response_code", `response.code`),
+						log.NewLabelExtractionExpr("api_key", `request.headers["X-API-KEY"]`),
 					}),
 				},
 			},
@@ -2962,10 +3018,10 @@ func TestParse(t *testing.T) {
 			exp: &PipelineExpr{
 				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
 				MultiStages: MultiStageExpr{
-					newJSONExpressionParser([]log.JSONExpression{
-						log.NewJSONExpr("response_code", `response_code`),
-						log.NewJSONExpr("api_key", `request.headers["X-API-KEY"]`),
-						log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+					newJSONExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("response_code", `response_code`),
+						log.NewLabelExtractionExpr("api_key", `request.headers["X-API-KEY"]`),
+						log.NewLabelExtractionExpr("layer7_something_specific", `layer7_something_specific`),
 					}),
 				},
 			},
@@ -2976,8 +3032,8 @@ func TestParse(t *testing.T) {
 				Left: &LogRange{
 					Left: &PipelineExpr{
 						MultiStages: MultiStageExpr{
-							newJSONExpressionParser([]log.JSONExpression{
-								log.NewJSONExpr("layer7_something_specific", `layer7_something_specific`),
+							newJSONExpressionParser([]log.LabelExtractionExpr{
+								log.NewLabelExtractionExpr("layer7_something_specific", `layer7_something_specific`),
 							}),
 						},
 						Left: &MatchersExpr{Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")}},
@@ -2985,6 +3041,102 @@ func TestParse(t *testing.T) {
 					Interval: 12 * time.Minute,
 				},
 				Operation: "count_over_time",
+			},
+		},
+		{
+			// binop always includes vector matching. Default is `without ()`,
+			// the zero value.
+			in: `
+			sum(count_over_time({foo="bar"}[5m])) or vector(1)
+			`,
+			exp: mustNewBinOpExpr(
+				OpTypeOr,
+				&BinOpOptions{
+					VectorMatching: &VectorMatching{Card: CardOneToOne},
+				},
+				mustNewVectorAggregationExpr(newRangeAggregationExpr(
+					&LogRange{
+						Left: &MatchersExpr{
+							Mts: []*labels.Matcher{
+								mustNewMatcher(labels.MatchEqual, "foo", "bar"),
+							},
+						},
+						Interval: 5 * time.Minute,
+					}, OpRangeTypeCount, nil, nil),
+					"sum",
+					&Grouping{},
+					nil,
+				),
+				NewVectorExpr("1"),
+			),
+		},
+		{
+			in: `{app="foo"} | logfmt message="msg"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("message", `msg`),
+					}, nil),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+					}, nil),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt --strict msg`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+					}, []string{OpStrict}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt --keep-empty msg, err `,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+						log.NewLabelExtractionExpr("err", `err`),
+					}, []string{OpKeepEmpty}),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt msg, err="error"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `msg`),
+						log.NewLabelExtractionExpr("err", `error`),
+					}, nil),
+				},
+			},
+		},
+		{
+			in: `{app="foo"} | logfmt --strict --keep-empty msg="message", apiKey="api_key"`,
+			exp: &PipelineExpr{
+				Left: newMatcherExpr([]*labels.Matcher{{Type: labels.MatchEqual, Name: "app", Value: "foo"}}),
+				MultiStages: MultiStageExpr{
+					newLogfmtExpressionParser([]log.LabelExtractionExpr{
+						log.NewLabelExtractionExpr("msg", `message`),
+						log.NewLabelExtractionExpr("apiKey", `api_key`),
+					}, []string{OpStrict, OpKeepEmpty}),
+				},
 			},
 		},
 	} {
@@ -3083,12 +3235,12 @@ func Test_PipelineCombined(t *testing.T) {
 
 	p, err := expr.Pipeline()
 	require.Nil(t, err)
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 	line, lbs, matches := sp.Process(0, []byte(`level=debug ts=2020-10-02T10:10:42.092268913Z caller=logging.go:66 traceID=a9d4d8a928d8db1 msg="POST /api/prom/api/v1/query_range (200) 1.5s"`))
 	require.True(t, matches)
 	require.Equal(
 		t,
-		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
 		lbs.Labels(),
 	)
 	require.Equal(t, string([]byte(`1.5s|POST|200`)), string(line))
@@ -3102,7 +3254,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 
 	p, err := expr.Pipeline()
 	require.Nil(b, err)
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 	var (
 		line    []byte
 		lbs     log.LabelsResult
@@ -3118,7 +3270,7 @@ func Benchmark_PipelineCombined(b *testing.B) {
 	require.True(b, matches)
 	require.Equal(
 		b,
-		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
 		lbs.Labels(),
 	)
 	require.Equal(b, string([]byte(`1.5s|POST|200`)), string(line))
@@ -3132,7 +3284,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 
 	p, err := expr.Extractor()
 	require.Nil(b, err)
-	sp := p.ForStream(labels.Labels{})
+	sp := p.ForStream(labels.EmptyLabels())
 	var (
 		v       float64
 		lbs     log.LabelsResult
@@ -3147,7 +3299,7 @@ func Benchmark_MetricPipelineCombined(b *testing.B) {
 	require.True(b, matches)
 	require.Equal(
 		b,
-		labels.Labels{labels.Label{Name: "caller", Value: "logging.go:66"}, labels.Label{Name: "duration", Value: "1.5s"}, labels.Label{Name: "level", Value: "debug"}, labels.Label{Name: "method", Value: "POST"}, labels.Label{Name: "msg", Value: "POST /api/prom/api/v1/query_range (200) 1.5s"}, labels.Label{Name: "path", Value: "/api/prom/api/v1/query_range"}, labels.Label{Name: "status", Value: "200"}, labels.Label{Name: "traceID", Value: "a9d4d8a928d8db1"}, labels.Label{Name: "ts", Value: "2020-10-02T10:10:42.092268913Z"}},
+		labels.FromStrings("caller", "logging.go:66", "duration", "1.5s", "level", "debug", "method", "POST", "msg", "POST /api/prom/api/v1/query_range (200) 1.5s", "path", "/api/prom/api/v1/query_range", "status", "200", "traceID", "a9d4d8a928d8db1", "ts", "2020-10-02T10:10:42.092268913Z"),
 		lbs.Labels(),
 	)
 	require.Equal(b, 1.0, v)
@@ -3230,6 +3382,10 @@ func TestParseSampleExpr_equalityMatcher(t *testing.T) {
 		{
 			in: `1 + count_over_time({app=~".+"}[5m]) + count_over_time({app=~".+"}[5m]) + 1`,
 		},
+		{
+			in:  `count without (rate({namespace="apps"}[15s]))`,
+			err: logqlmodel.NewParseError("syntax error: unexpected RATE, expecting IDENTIFIER or )", 1, 16),
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			_, err := ParseSampleExpr(tc.in)
@@ -3273,4 +3429,49 @@ func TestParseLogSelectorExpr_equalityMatcher(t *testing.T) {
 			require.Equal(t, tc.err, err)
 		})
 	}
+}
+
+func TestParseLabels(t *testing.T) {
+	for _, tc := range []struct {
+		desc   string
+		input  string
+		output labels.Labels
+	}{
+		{
+			desc:   "basic",
+			input:  `{job="foo"}`,
+			output: labels.FromStrings("job", "foo"),
+		},
+		{
+			desc:   "strip empty label value",
+			input:  `{job="foo", bar=""}`,
+			output: labels.FromStrings("job", "foo"),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			got, _ := ParseLabels(tc.input)
+			require.Equal(t, tc.output, got)
+		})
+	}
+}
+
+func TestNoOpLabelToString(t *testing.T) {
+	logExpr := `{container_name="app"} | foo=~".*"`
+	l, err := ParseLogSelector(logExpr, false)
+	require.NoError(t, err)
+	require.Equal(t, `{container_name="app"} | foo=~".*"`, l.String())
+
+	stages, err := l.(*PipelineExpr).MultiStages.stages()
+	require.NoError(t, err)
+	require.Len(t, stages, 0)
+}
+
+// Tests that the regex part of expr doesn't get doubly escaped when we call expr.String()
+func TestParseSampleExpr_String(t *testing.T) {
+	query := `sum(rate({cluster="beep", namespace="boop"} | msg=~` + "`" + `.*?(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) /loki/api/(?i)(\d+[a-z]|[a-z]+\d)\w*/query_range` + "`" + `[1d]))`
+	expr, err := ParseSampleExpr(query)
+	require.NoError(t, err)
+	// need to change some backticks to " in order for query to be exactly equal to expr.String(), otherwise it's the same query
+	expected := `sum(rate({cluster="beep", namespace="boop"} | msg=~".*?(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS) /loki/api/(?i)(\d+[a-z]|[a-z]+\d)\w*/query_range"[1d]))`
+	require.Equal(t, expected, expr.String())
 }

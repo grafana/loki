@@ -5,13 +5,45 @@ import (
 	"fmt"
 
 	"github.com/ViaQ/logerr/v2/kverrors"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/external/k8s"
-
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/external/k8s"
+)
+
+const (
+	messageReady              = "All components ready"
+	messageFailed             = "Some LokiStack components failed"
+	messagePending            = "Some LokiStack components pending on dependencies"
+	messageDegradedNodeLabels = "Cluster contains no nodes matching the labels used for zone-awareness"
+)
+
+var (
+	conditionFailed = metav1.Condition{
+		Type:    string(lokiv1.ConditionFailed),
+		Message: messageFailed,
+		Reason:  string(lokiv1.ReasonFailedComponents),
+	}
+	conditionPending = metav1.Condition{
+		Type:    string(lokiv1.ConditionPending),
+		Message: messagePending,
+		Reason:  string(lokiv1.ReasonPendingComponents),
+	}
+	conditionReady = metav1.Condition{
+		Type:    string(lokiv1.ConditionReady),
+		Message: messageReady,
+		Reason:  string(lokiv1.ReasonReadyComponents),
+	}
+	conditionDegradedNodeLabels = metav1.Condition{
+		Type:    string(lokiv1.ConditionDegraded),
+		Message: messageDegradedNodeLabels,
+		Reason:  string(lokiv1.ReasonNoZoneAwareNodes),
+	}
 )
 
 // DegradedError contains information about why the managed LokiStack has an invalid configuration.
@@ -25,186 +57,123 @@ func (e *DegradedError) Error() string {
 	return fmt.Sprintf("cluster degraded: %s", e.Message)
 }
 
-// SetReadyCondition updates or appends the condition Ready to the lokistack status conditions.
-// In addition it resets all other Status conditions to false.
-func SetReadyCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1.LokiStack
-	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
-	}
-
-	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1.ConditionReady) && cond.Status == metav1.ConditionTrue {
-			return nil
-		}
-	}
-
-	ready := metav1.Condition{
-		Type:               string(lokiv1.ConditionReady),
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Message:            "All components ready",
-		Reason:             string(lokiv1.ReasonReadyComponents),
-	}
-
-	index := -1
-	for i := range s.Status.Conditions {
-		// Reset all other conditions first
-		s.Status.Conditions[i].Status = metav1.ConditionFalse
-		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
-
-		// Locate existing ready condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1.ConditionReady) {
-			index = i
-		}
-	}
-
-	if index == -1 {
-		s.Status.Conditions = append(s.Status.Conditions, ready)
-	} else {
-		s.Status.Conditions[index] = ready
-	}
-
-	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
-}
-
-// SetFailedCondition updates or appends the condition Failed to the lokistack status conditions.
-// In addition it resets all other Status conditions to false.
-func SetFailedCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1.LokiStack
-	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
-	}
-
-	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1.ConditionFailed) && cond.Status == metav1.ConditionTrue {
-			return nil
-		}
-	}
-
-	failed := metav1.Condition{
-		Type:               string(lokiv1.ConditionFailed),
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Message:            "Some LokiStack components failed",
-		Reason:             string(lokiv1.ReasonFailedComponents),
-	}
-
-	index := -1
-	for i := range s.Status.Conditions {
-		// Reset all other conditions first
-		s.Status.Conditions[i].Status = metav1.ConditionFalse
-		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
-
-		// Locate existing failed condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1.ConditionFailed) {
-			index = i
-		}
-	}
-
-	if index == -1 {
-		s.Status.Conditions = append(s.Status.Conditions, failed)
-	} else {
-		s.Status.Conditions[index] = failed
-	}
-
-	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
-}
-
-// SetPendingCondition updates or appends the condition Pending to the lokistack status conditions.
-// In addition it resets all other Status conditions to false.
-func SetPendingCondition(ctx context.Context, k k8s.Client, req ctrl.Request) error {
-	var s lokiv1.LokiStack
-	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
-		if apierrors.IsNotFound(err) {
-			return nil
-		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
-	}
-
-	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1.ConditionPending) && cond.Status == metav1.ConditionTrue {
-			return nil
-		}
-	}
-
-	pending := metav1.Condition{
-		Type:               string(lokiv1.ConditionPending),
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Message:            "Some LokiStack components pending on dependendies",
-		Reason:             string(lokiv1.ReasonPendingComponents),
-	}
-
-	index := -1
-	for i := range s.Status.Conditions {
-		// Reset all other conditions first
-		s.Status.Conditions[i].Status = metav1.ConditionFalse
-		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
-
-		// Locate existing pending condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1.ConditionPending) {
-			index = i
-		}
-	}
-
-	if index == -1 {
-		s.Status.Conditions = append(s.Status.Conditions, pending)
-	} else {
-		s.Status.Conditions[index] = pending
-	}
-
-	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
-}
-
 // SetDegradedCondition appends the condition Degraded to the lokistack status conditions.
 func SetDegradedCondition(ctx context.Context, k k8s.Client, req ctrl.Request, msg string, reason lokiv1.LokiStackConditionReason) error {
-	var s lokiv1.LokiStack
-	if err := k.Get(ctx, req.NamespacedName, &s); err != nil {
+	degraded := metav1.Condition{
+		Type:    string(lokiv1.ConditionDegraded),
+		Message: msg,
+		Reason:  string(reason),
+	}
+
+	return updateCondition(ctx, k, req, degraded)
+}
+
+func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus, k client.Client, req ctrl.Request, stack *lokiv1.LokiStack) (metav1.Condition, error) {
+	// Check for failed pods first
+	failed := len(cs.Compactor[corev1.PodFailed]) +
+		len(cs.Distributor[corev1.PodFailed]) +
+		len(cs.Ingester[corev1.PodFailed]) +
+		len(cs.Querier[corev1.PodFailed]) +
+		len(cs.QueryFrontend[corev1.PodFailed]) +
+		len(cs.Gateway[corev1.PodFailed]) +
+		len(cs.IndexGateway[corev1.PodFailed]) +
+		len(cs.Ruler[corev1.PodFailed])
+
+	if failed != 0 {
+		return conditionFailed, nil
+	}
+
+	// Check for pending pods
+	pending := len(cs.Compactor[corev1.PodPending]) +
+		len(cs.Distributor[corev1.PodPending]) +
+		len(cs.Ingester[corev1.PodPending]) +
+		len(cs.Querier[corev1.PodPending]) +
+		len(cs.QueryFrontend[corev1.PodPending]) +
+		len(cs.Gateway[corev1.PodPending]) +
+		len(cs.IndexGateway[corev1.PodPending]) +
+		len(cs.Ruler[corev1.PodPending])
+
+	if pending != 0 {
+		if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
+			// When there are pending pods and zone-awareness is enabled check if there are any nodes
+			// that can satisfy the constraints and emit a condition if not.
+			nodesOk, err := checkForZoneawareNodes(ctx, k, stack.Spec.Replication.Zones)
+			if err != nil {
+				return metav1.Condition{}, err
+			}
+
+			if !nodesOk {
+				return conditionDegradedNodeLabels, nil
+			}
+		}
+
+		return conditionPending, nil
+	}
+
+	return conditionReady, nil
+}
+
+func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1.ZoneSpec) (bool, error) {
+	nodeLabels := client.HasLabels{}
+	for _, z := range zones {
+		nodeLabels = append(nodeLabels, z.TopologyKey)
+	}
+
+	nodeList := &corev1.NodeList{}
+	if err := k.List(ctx, nodeList, nodeLabels); err != nil {
+		return false, err
+	}
+
+	return len(nodeList.Items) > 0, nil
+}
+
+func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {
+	var stack lokiv1.LokiStack
+	if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
 		}
-		return kverrors.Wrap(err, "failed to lookup lokistack", "name", req.NamespacedName)
+		return kverrors.Wrap(err, "failed to lookup LokiStack", "name", req.NamespacedName)
 	}
 
-	reasonStr := string(reason)
-	for _, cond := range s.Status.Conditions {
-		if cond.Type == string(lokiv1.ConditionDegraded) && cond.Reason == reasonStr && cond.Status == metav1.ConditionTrue {
+	for _, c := range stack.Status.Conditions {
+		if c.Type == condition.Type &&
+			c.Reason == condition.Reason &&
+			c.Message == condition.Message &&
+			c.Status == metav1.ConditionTrue {
+			// resource already has desired condition
 			return nil
 		}
 	}
 
-	degraded := metav1.Condition{
-		Type:               string(lokiv1.ConditionDegraded),
-		Status:             metav1.ConditionTrue,
-		LastTransitionTime: metav1.Now(),
-		Reason:             reasonStr,
-		Message:            msg,
-	}
+	condition.Status = metav1.ConditionTrue
 
-	index := -1
-	for i := range s.Status.Conditions {
-		// Reset all other conditions first
-		s.Status.Conditions[i].Status = metav1.ConditionFalse
-		s.Status.Conditions[i].LastTransitionTime = metav1.Now()
-
-		// Locate existing pending condition if any
-		if s.Status.Conditions[i].Type == string(lokiv1.ConditionDegraded) {
-			index = i
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := k.Get(ctx, req.NamespacedName, &stack); err != nil {
+			return err
 		}
-	}
 
-	if index == -1 {
-		s.Status.Conditions = append(s.Status.Conditions, degraded)
-	} else {
-		s.Status.Conditions[index] = degraded
-	}
+		now := metav1.Now()
+		condition.LastTransitionTime = now
 
-	return k.Status().Update(ctx, &s, &client.UpdateOptions{})
+		index := -1
+		for i := range stack.Status.Conditions {
+			// Reset all other conditions first
+			stack.Status.Conditions[i].Status = metav1.ConditionFalse
+			stack.Status.Conditions[i].LastTransitionTime = now
+
+			// Locate existing pending condition if any
+			if stack.Status.Conditions[i].Type == condition.Type {
+				index = i
+			}
+		}
+
+		if index == -1 {
+			stack.Status.Conditions = append(stack.Status.Conditions, condition)
+		} else {
+			stack.Status.Conditions[index] = condition
+		}
+
+		return k.Status().Update(ctx, &stack)
+	})
 }

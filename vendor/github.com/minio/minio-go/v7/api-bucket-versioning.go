@@ -76,11 +76,20 @@ func (c *Client) SuspendVersioning(ctx context.Context, bucketName string) error
 	return c.SetBucketVersioning(ctx, bucketName, BucketVersioningConfiguration{Status: "Suspended"})
 }
 
+// ExcludedPrefix - holds individual prefixes excluded from being versioned.
+type ExcludedPrefix struct {
+	Prefix string
+}
+
 // BucketVersioningConfiguration is the versioning configuration structure
 type BucketVersioningConfiguration struct {
 	XMLName   xml.Name `xml:"VersioningConfiguration"`
 	Status    string   `xml:"Status"`
 	MFADelete string   `xml:"MfaDelete,omitempty"`
+	// MinIO extension - allows selective, prefix-level versioning exclusion.
+	// Requires versioning to be enabled
+	ExcludedPrefixes []ExcludedPrefix `xml:",omitempty"`
+	ExcludeFolders   bool             `xml:",omitempty"`
 }
 
 // Various supported states

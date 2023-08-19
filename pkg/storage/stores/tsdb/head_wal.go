@@ -6,7 +6,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/encoding"
@@ -38,12 +38,14 @@ const (
 	// WALs and persists across restarts.
 	WalRecordSeries RecordType = iota
 	WalRecordChunks
+	WalRecordSeriesWithFingerprint
 )
 
 type WALRecord struct {
-	UserID string
-	Series record.RefSeries
-	Chks   ChunkMetasRecord
+	UserID      string
+	Series      record.RefSeries
+	Fingerprint uint64
+	Chks        ChunkMetasRecord
 }
 
 type ChunkMetasRecord struct {
@@ -51,10 +53,27 @@ type ChunkMetasRecord struct {
 	Ref  uint64
 }
 
+// NB(owen-d): unused since we started recording the fingerprint
+// with the series, but left here for future understanding
 func (r *WALRecord) encodeSeries(b []byte) []byte {
 	buf := encoding.EncWith(b)
 	buf.PutByte(byte(WalRecordSeries))
 	buf.PutUvarintStr(r.UserID)
+
+	var enc record.Encoder
+	// The 'encoded' already has the type header and userID here, hence re-using
+	// the remaining part of the slice (i.e. encoded[len(encoded):])) to encode the series.
+	encoded := buf.Get()
+	encoded = append(encoded, enc.Series([]record.RefSeries{r.Series}, encoded[len(encoded):])...)
+
+	return encoded
+}
+
+func (r *WALRecord) encodeSeriesWithFingerprint(b []byte) []byte {
+	buf := encoding.EncWith(b)
+	buf.PutByte(byte(WalRecordSeriesWithFingerprint))
+	buf.PutUvarintStr(r.UserID)
+	buf.PutBE64(r.Fingerprint)
 
 	var enc record.Encoder
 	// The 'encoded' already has the type header and userID here, hence re-using
@@ -142,6 +161,20 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 		if len(rSeries) == 1 {
 			walRec.Series = rSeries[0]
 		}
+	case WalRecordSeriesWithFingerprint:
+		userID = decbuf.UvarintStr()
+		walRec.Fingerprint = decbuf.Be64()
+		rSeries, err := dec.Series(decbuf.B, nil)
+		if err != nil {
+			return errors.Wrap(err, "decoding head series")
+		}
+		// unlike tsdb, we only add one series per record.
+		if len(rSeries) > 1 {
+			return errors.New("more than one series detected in tsdb head wal record")
+		}
+		if len(rSeries) == 1 {
+			walRec.Series = rSeries[0]
+		}
 	case WalRecordChunks:
 		userID = decbuf.UvarintStr()
 		if err := decodeChunks(decbuf.B, walRec); err != nil {
@@ -164,14 +197,14 @@ func decodeWALRecord(b []byte, walRec *WALRecord) error {
 type headWAL struct {
 	initialized time.Time
 	log         log.Logger
-	wal         *wal.WAL
+	wal         *wlog.WL
 }
 
 func newHeadWAL(log log.Logger, dir string, t time.Time) (*headWAL, error) {
 	// NB: if we use a non-nil Prometheus Registerer, ensure
 	// that the underlying metrics won't conflict with existing WAL metrics in the ingester.
 	// Likely, this can be done by adding extra label(s)
-	wal, err := wal.NewSize(log, nil, dir, walSegmentSize, false)
+	wal, err := wlog.NewSize(log, nil, dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +229,7 @@ func (w *headWAL) Log(record *WALRecord) error {
 
 	// Always write series before chunks
 	if len(record.Series.Labels) > 0 {
-		buf = record.encodeSeries(buf[:0])
+		buf = record.encodeSeriesWithFingerprint(buf[:0])
 		if err := w.wal.Log(buf); err != nil {
 			return err
 		}

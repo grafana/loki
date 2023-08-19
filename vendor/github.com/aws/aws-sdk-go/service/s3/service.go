@@ -39,13 +39,14 @@ const (
 // aws.Config parameter to add your extra config.
 //
 // Example:
-//     mySession := session.Must(session.NewSession())
 //
-//     // Create a S3 client from just a session.
-//     svc := s3.New(mySession)
+//	mySession := session.Must(session.NewSession())
 //
-//     // Create a S3 client with additional configuration
-//     svc := s3.New(mySession, aws.NewConfig().WithRegion("us-west-2"))
+//	// Create a S3 client from just a session.
+//	svc := s3.New(mySession)
+//
+//	// Create a S3 client with additional configuration
+//	svc := s3.New(mySession, aws.NewConfig().WithRegion("us-west-2"))
 func New(p client.ConfigProvider, cfgs ...*aws.Config) *S3 {
 	c := p.ClientConfig(EndpointsID, cfgs...)
 	if c.SigningNameDerived || len(c.SigningName) == 0 {

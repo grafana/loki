@@ -1,0 +1,27 @@
+{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
+{{- if and $isSimpleScalable (not .Values.read.legacyReadTarget ) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "loki.backendFullname" . }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "loki.backendLabels" . | nindent 4 }}
+    {{- with .Values.backend.serviceLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+    - name: grpc
+      port: 9095
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "loki.backendSelectorLabels" . | nindent 4 }}
+{{- end }}

@@ -7,6 +7,7 @@
 package bsoncodec
 
 import (
+	"encoding"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -230,6 +231,19 @@ func (mc *MapCodec) encodeKey(val reflect.Value) (string, error) {
 		}
 		return "", err
 	}
+	// keys implement encoding.TextMarshaler are marshaled.
+	if km, ok := val.Interface().(encoding.TextMarshaler); ok {
+		if val.Kind() == reflect.Ptr && val.IsNil() {
+			return "", nil
+		}
+
+		buf, err := km.MarshalText()
+		if err != nil {
+			return "", err
+		}
+
+		return string(buf), nil
+	}
 
 	switch val.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -241,6 +255,7 @@ func (mc *MapCodec) encodeKey(val reflect.Value) (string, error) {
 }
 
 var keyUnmarshalerType = reflect.TypeOf((*KeyUnmarshaler)(nil)).Elem()
+var textUnmarshalerType = reflect.TypeOf((*encoding.TextUnmarshaler)(nil)).Elem()
 
 func (mc *MapCodec) decodeKey(key string, keyType reflect.Type) (reflect.Value, error) {
 	keyVal := reflect.ValueOf(key)
@@ -251,6 +266,12 @@ func (mc *MapCodec) decodeKey(key string, keyType reflect.Type) (reflect.Value, 
 		keyVal = reflect.New(keyType)
 		v := keyVal.Interface().(KeyUnmarshaler)
 		err = v.UnmarshalKey(key)
+		keyVal = keyVal.Elem()
+	// Try to decode encoding.TextUnmarshalers.
+	case reflect.PtrTo(keyType).Implements(textUnmarshalerType):
+		keyVal = reflect.New(keyType)
+		v := keyVal.Interface().(encoding.TextUnmarshaler)
+		err = v.UnmarshalText([]byte(key))
 		keyVal = keyVal.Elem()
 	// Otherwise, go to type specific behavior
 	default:

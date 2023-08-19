@@ -284,7 +284,7 @@ func (l managerServiceListener) Terminated(from State) {
 	l.m.serviceStateChanged(l.s, from, Terminated)
 }
 
-func (l managerServiceListener) Failed(from State, failure error) {
+func (l managerServiceListener) Failed(from State, _ error) {
 	l.m.serviceStateChanged(l.s, from, Failed)
 }
 
@@ -304,7 +304,7 @@ type funcBasedManagerListener struct {
 	failure func(service Service)
 }
 
-func (f *funcBasedManagerListener) Healthy() {
+func (f funcBasedManagerListener) Healthy() {
 	if f.healthy != nil {
 		f.healthy()
 	}

@@ -8,8 +8,7 @@
 // Both types of hash function use the "sponge" construction and the Keccak
 // permutation. For a detailed specification see http://keccak.noekeon.org/
 //
-//
-// Guidance
+// # Guidance
 //
 // If you aren't sure what function you need, use SHAKE256 with at least 64
 // bytes of output. The SHAKE instances are faster than the SHA3 instances;
@@ -19,8 +18,7 @@
 // secret key to the input, hash with SHAKE256 and read at least 32 bytes of
 // output.
 //
-//
-// Security strengths
+// # Security strengths
 //
 // The SHA3-x (x equals 224, 256, 384, or 512) functions have a security
 // strength against preimage attacks of x bits. Since they only produce "x"
@@ -31,8 +29,7 @@
 // is used.  Requesting more than 64 or 32 bytes of output, respectively, does
 // not increase the collision-resistance of the SHAKE functions.
 //
-//
-// The sponge construction
+// # The sponge construction
 //
 // A sponge builds a pseudo-random function from a public pseudo-random
 // permutation, by applying the permutation to a state of "rate + capacity"
@@ -50,8 +47,7 @@
 // Since the KeccakF-1600 permutation is 1600 bits (200 bytes) wide, this means
 // that the security strength of a sponge instance is equal to (1600 - bitrate) / 2.
 //
-//
-// Recommendations
+// # Recommendations
 //
 // The SHAKE functions are recommended for most new uses. They can produce
 // output of arbitrary length. SHAKE256, with an output length of at least

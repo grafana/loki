@@ -88,7 +88,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/cortex-gw\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[5m]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
+                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n        rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-read\", route=~\"api_prom_query|api_prom_label|api_prom_label_name_values|loki_api_v1_query|loki_api_v1_query_range|loki_api_v1_label|loki_api_v1_label_name_values\"}[5m]),\n  \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\")\n)",
                   "legendFormat": "{{status}}",
                   "refId": "A"
                }
@@ -184,7 +184,7 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
+                  "expr": "sum by (status) (\nlabel_replace(\n  label_replace(\n          rate(loki_request_duration_seconds_count{cluster=\"$cluster\", job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\"}[5m]),\n   \"status\", \"${1}xx\", \"status_code\", \"([0-9])..\"),\n\"status\", \"${1}\", \"status_code\", \"([a-z]+)\"))",
                   "legendFormat": "{{status}}",
                   "refId": "A"
                }
@@ -212,102 +212,6 @@
                   "format": "short",
                   "label": null,
                   "logBase": 10,
-                  "max": null,
-                  "min": null,
-                  "show": true
-               },
-               {
-                  "format": "short",
-                  "label": null,
-                  "logBase": 1,
-                  "max": null,
-                  "min": null,
-                  "show": true
-               }
-            ],
-            "yaxis": {
-               "align": false,
-               "alignLevel": null
-            }
-         },
-         {
-            "aliasColors": { },
-            "bars": false,
-            "dashLength": 10,
-            "dashes": false,
-            "datasource": "$datasource",
-            "fieldConfig": {
-               "defaults": {
-                  "custom": { }
-               },
-               "overrides": [ ]
-            },
-            "fill": 1,
-            "fillGradient": 0,
-            "gridPos": {
-               "h": 5,
-               "w": 4,
-               "x": 8,
-               "y": 1
-            },
-            "hiddenSeries": false,
-            "id": 11,
-            "legend": {
-               "avg": false,
-               "current": false,
-               "hideEmpty": false,
-               "hideZero": false,
-               "max": false,
-               "min": false,
-               "show": false,
-               "total": false,
-               "values": false
-            },
-            "lines": true,
-            "linewidth": 1,
-            "nullPointMode": "null",
-            "options": {
-               "dataLinks": [ ]
-            },
-            "panels": [ ],
-            "percentage": false,
-            "pointradius": 2,
-            "points": false,
-            "renderer": "flot",
-            "seriesOverrides": [ ],
-            "spaceLength": 10,
-            "stack": false,
-            "steppedLine": false,
-            "targets": [
-               {
-                  "expr": "topk(5, sum by (name,level) (rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[$__interval])) - \nsum by (name,level) (rate(promtail_custom_bad_words_total{cluster=\"$cluster\", exported_namespace=\"$namespace\"}[$__interval] offset 1h)))",
-                  "legendFormat": "{{name}}-{{level}}",
-                  "refId": "A"
-               }
-            ],
-            "thresholds": [ ],
-            "timeFrom": null,
-            "timeRegions": [ ],
-            "timeShift": null,
-            "title": "Bad Words",
-            "tooltip": {
-               "shared": true,
-               "sort": 2,
-               "value_type": "individual"
-            },
-            "type": "graph",
-            "xaxis": {
-               "buckets": null,
-               "mode": "time",
-               "name": null,
-               "show": true,
-               "values": [ ]
-            },
-            "yaxes": [
-               {
-                  "format": "short",
-                  "label": null,
-                  "logBase": 1,
                   "max": null,
                   "min": null,
                   "show": true
@@ -663,17 +567,17 @@
             "steppedLine": false,
             "targets": [
                {
-                  "expr": "histogram_quantile(0.99, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.99, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".99",
                   "refId": "A"
                },
                {
-                  "expr": "histogram_quantile(0.75, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.75, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".9",
                   "refId": "B"
                },
                {
-                  "expr": "histogram_quantile(0.5, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/cortex-gw\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
+                  "expr": "histogram_quantile(0.5, sum by (le) (job_route:loki_request_duration_seconds_bucket:sum_rate{job=~\"($namespace)/(loki|enterprise-logs)-write\", route=~\"api_prom_push|loki_api_v1_push\", cluster=~\"$cluster\"})) * 1e3",
                   "legendFormat": ".5",
                   "refId": "C"
                }
