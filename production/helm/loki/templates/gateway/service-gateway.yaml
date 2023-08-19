@@ -1,9 +1,9 @@
-{{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if and $isSimpleScalable .Values.gateway.enabled }}
+{{- if .Values.gateway.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
   name: {{ include "loki.gatewayFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.gatewayLabels" . | nindent 4 }}
     {{- with .Values.gateway.service.labels }}

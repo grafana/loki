@@ -3,7 +3,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 (import 'dashboard-utils.libsonnet') {
   local ingester_pod_matcher = if $._config.ssd.enabled then 'container="loki", pod=~"%s-write.*"' % $._config.ssd.pod_prefix_matcher else 'container="ingester"',
-  local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester',
+  local ingester_job_matcher = if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*',
 
   grafanaDashboards+::
     {
@@ -16,13 +16,13 @@ local utils = import 'mixin-utils/utils.libsonnet';
           $._config.internal_components,
           $.row('Gateway')
           .addPanel(
-            $.containerCPUUsagePanel('CPU', 'cortex-gw'),
+            $.containerCPUUsagePanel('CPU', 'cortex-gw(-internal)?'),
           )
           .addPanel(
-            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw'),
+            $.containerMemoryWorkingSetPanel('Memory (workingset)', 'cortex-gw(-internal)?'),
           )
           .addPanel(
-            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw'),
+            $.goHeapInUsePanel('Memory (go heap inuse)', 'cortex-gw(-internal)?'),
           )
         )
         .addRowIf(

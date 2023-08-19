@@ -31,7 +31,8 @@ import (
 // - "google.golang.org/api/googleapi".Error
 // If the error is not one of these types, Annotate behaves
 // like
-//   fmt.Errorf("%s: %v", msg, err)
+//
+//	fmt.Errorf("%s: %v", msg, err)
 func Annotate(err error, msg string) error {
 	if err == nil {
 		panic("Annotate called with nil")

@@ -7,9 +7,10 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/promql"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -49,6 +50,7 @@ func TestMappingEquivalence(t *testing.T) {
 		{`sum(max(rate({a=~".+"}[1s])))`, false},
 		{`max(count(rate({a=~".+"}[1s])))`, false},
 		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
+		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -79,7 +81,7 @@ func TestMappingEquivalence(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			_, mapped, err := mapper.Parse(tc.query)
+			_, _, mapped, err := mapper.Parse(tc.query)
 			require.Nil(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
@@ -94,6 +96,68 @@ func TestMappingEquivalence(t *testing.T) {
 				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
 			} else {
 				require.Equal(t, res.Data, shardedRes.Data)
+			}
+		})
+	}
+}
+
+func TestShardCounter(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 60
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"})
+		start    = time.Unix(0, 0)
+		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
+		step     = time.Second
+		interval = time.Duration(0)
+		limit    = 100
+	)
+
+	for _, tc := range []struct {
+		query string
+	}{
+		// Test a few queries which will not shard and shard
+		// Avoid testing queries where the shard mapping produces a different query such as avg()
+		{`1`},
+		{`rate({a=~".+"}[1s])`},
+		{`sum by (a) (rate({a=~".+"}[1s]))`},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		t.Run(tc.query, func(t *testing.T) {
+			params := NewLiteralParams(
+				tc.query,
+				start,
+				end,
+				step,
+				interval,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			noop, _, mapped, err := mapper.Parse(tc.query)
+			require.Nil(t, err)
+
+			shardedQry := sharded.Query(ctx, params, mapped)
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.Nil(t, err)
+
+			if noop {
+				assert.Equal(t, int64(0), shardedRes.Statistics.Summary.Shards)
+			} else {
+				assert.Equal(t, int64(shards), shardedRes.Statistics.Summary.Shards)
 			}
 		})
 	}
@@ -306,6 +370,10 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 		// range with offset
 		{`rate({a=~".+"}[2s] offset 2s)`, time.Second},
+		{`rate({a=~".+"}[4s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset 1s)`, 2 * time.Second},
+		{`rate({a=~".+"}[5s] offset 0s)`, 2 * time.Second},
+		{`rate({a=~".+"}[3s] offset -1s)`, 2 * time.Second},
 
 		// label_replace
 		{`label_replace(sum by (a) (count_over_time({a=~".+"}[3s])), "", "", "", "")`, time.Second},
@@ -340,7 +408,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			require.Nil(t, err)
 
 			// Downstream engine - split by range
-			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics)
+			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
 			require.Nil(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
 			require.Nil(t, err)
@@ -365,13 +433,13 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
-		require.Equal(t, len(a.Points), len(b.Points))
+		require.Equal(t, len(a.Floats), len(b.Floats))
 
-		for j := 0; j < len(a.Points); j++ {
-			aSample := &a.Points[j]
-			aSample.V = math.Round(aSample.V*1e6) / 1e6
-			bSample := &b.Points[j]
-			bSample.V = math.Round(bSample.V*1e6) / 1e6
+		for j := 0; j < len(a.Floats); j++ {
+			aSample := &a.Floats[j]
+			aSample.F = math.Round(aSample.F*1e6) / 1e6
+			bSample := &b.Floats[j]
+			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
 		require.Equal(t, a, b)
 	}

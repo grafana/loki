@@ -19,8 +19,8 @@ package sha256
 import (
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"hash"
-	"runtime"
 )
 
 // Size - The size of a SHA256 checksum in bytes.
@@ -66,48 +66,34 @@ func (d *digest) Reset() {
 type blockfuncType int
 
 const (
-	blockfuncGeneric blockfuncType = iota
-	blockfuncAvx512  blockfuncType = iota
-	blockfuncAvx2    blockfuncType = iota
-	blockfuncAvx     blockfuncType = iota
-	blockfuncSsse    blockfuncType = iota
-	blockfuncSha     blockfuncType = iota
-	blockfuncArm     blockfuncType = iota
+	blockfuncStdlib blockfuncType = iota
+	blockfuncIntelSha
+	blockfuncArmSha2
+	blockfuncForceGeneric = -1
 )
 
 var blockfunc blockfuncType
 
 func init() {
-	is386bit := runtime.GOARCH == "386"
-	isARM := runtime.GOARCH == "arm"
 	switch {
-	case is386bit || isARM:
-		blockfunc = blockfuncGeneric
-	case sha && ssse3 && sse41:
-		blockfunc = blockfuncSha
-	case avx2:
-		blockfunc = blockfuncAvx2
-	case avx:
-		blockfunc = blockfuncAvx
-	case ssse3:
-		blockfunc = blockfuncSsse
-	case armSha:
-		blockfunc = blockfuncArm
-	default:
-		blockfunc = blockfuncGeneric
+	case hasIntelSha:
+		blockfunc = blockfuncIntelSha
+	case hasArmSha2():
+		blockfunc = blockfuncArmSha2
 	}
 }
 
 // New returns a new hash.Hash computing the SHA256 checksum.
 func New() hash.Hash {
-	if blockfunc != blockfuncGeneric {
-		d := new(digest)
-		d.Reset()
-		return d
+	if blockfunc == blockfuncStdlib {
+		// Fallback to the standard golang implementation
+		// if no features were found.
+		return sha256.New()
 	}
-	// Fallback to the standard golang implementation
-	// if no features were found.
-	return sha256.New()
+
+	d := new(digest)
+	d.Reset()
+	return d
 }
 
 // Sum256 - single caller sha256 helper
@@ -276,17 +262,11 @@ func (d *digest) checkSum() (digest [Size]byte) {
 }
 
 func block(dig *digest, p []byte) {
-	if blockfunc == blockfuncSha {
-		blockShaGo(dig, p)
-	} else if blockfunc == blockfuncAvx2 {
-		blockAvx2Go(dig, p)
-	} else if blockfunc == blockfuncAvx {
-		blockAvxGo(dig, p)
-	} else if blockfunc == blockfuncSsse {
-		blockSsseGo(dig, p)
-	} else if blockfunc == blockfuncArm {
-		blockArmGo(dig, p)
-	} else if blockfunc == blockfuncGeneric {
+	if blockfunc == blockfuncIntelSha {
+		blockIntelShaGo(dig, p)
+	} else if blockfunc == blockfuncArmSha2 {
+		blockArmSha2Go(dig, p)
+	} else {
 		blockGeneric(dig, p)
 	}
 }
@@ -406,4 +386,83 @@ var _K = []uint32{
 	0xa4506ceb,
 	0xbef9a3f7,
 	0xc67178f2,
+}
+
+const (
+	magic256      = "sha\x03"
+	marshaledSize = len(magic256) + 8*4 + chunk + 8
+)
+
+func (d *digest) MarshalBinary() ([]byte, error) {
+	b := make([]byte, 0, marshaledSize)
+	b = append(b, magic256...)
+	b = appendUint32(b, d.h[0])
+	b = appendUint32(b, d.h[1])
+	b = appendUint32(b, d.h[2])
+	b = appendUint32(b, d.h[3])
+	b = appendUint32(b, d.h[4])
+	b = appendUint32(b, d.h[5])
+	b = appendUint32(b, d.h[6])
+	b = appendUint32(b, d.h[7])
+	b = append(b, d.x[:d.nx]...)
+	b = b[:len(b)+len(d.x)-d.nx] // already zero
+	b = appendUint64(b, d.len)
+	return b, nil
+}
+
+func (d *digest) UnmarshalBinary(b []byte) error {
+	if len(b) < len(magic256) || string(b[:len(magic256)]) != magic256 {
+		return errors.New("crypto/sha256: invalid hash state identifier")
+	}
+	if len(b) != marshaledSize {
+		return errors.New("crypto/sha256: invalid hash state size")
+	}
+	b = b[len(magic256):]
+	b, d.h[0] = consumeUint32(b)
+	b, d.h[1] = consumeUint32(b)
+	b, d.h[2] = consumeUint32(b)
+	b, d.h[3] = consumeUint32(b)
+	b, d.h[4] = consumeUint32(b)
+	b, d.h[5] = consumeUint32(b)
+	b, d.h[6] = consumeUint32(b)
+	b, d.h[7] = consumeUint32(b)
+	b = b[copy(d.x[:], b):]
+	b, d.len = consumeUint64(b)
+	d.nx = int(d.len % chunk)
+	return nil
+}
+
+func appendUint32(b []byte, v uint32) []byte {
+	return append(b,
+		byte(v>>24),
+		byte(v>>16),
+		byte(v>>8),
+		byte(v),
+	)
+}
+
+func appendUint64(b []byte, v uint64) []byte {
+	return append(b,
+		byte(v>>56),
+		byte(v>>48),
+		byte(v>>40),
+		byte(v>>32),
+		byte(v>>24),
+		byte(v>>16),
+		byte(v>>8),
+		byte(v),
+	)
+}
+
+func consumeUint64(b []byte) ([]byte, uint64) {
+	_ = b[7]
+	x := uint64(b[7]) | uint64(b[6])<<8 | uint64(b[5])<<16 | uint64(b[4])<<24 |
+		uint64(b[3])<<32 | uint64(b[2])<<40 | uint64(b[1])<<48 | uint64(b[0])<<56
+	return b[8:], x
+}
+
+func consumeUint32(b []byte) ([]byte, uint32) {
+	_ = b[3]
+	x := uint32(b[3]) | uint32(b[2])<<8 | uint32(b[1])<<16 | uint32(b[0])<<24
+	return b[4:], x
 }

@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -12,7 +13,7 @@ import (
 )
 
 func TestSingleBinaryIngestQuery(t *testing.T) {
-	clu := cluster.New()
+	clu := cluster.New(nil)
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
 	}()
@@ -27,7 +28,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	require.NoError(t, clu.Run())
 
 	tenantID := randStringRunes()
-	cli := client.New(tenantID, "", tAll.HTTPURL().String())
+	cli := client.New(tenantID, "", tAll.HTTPURL())
 
 	t.Run("ingest-logs-store", func(t *testing.T) {
 		// ingest some log lines
@@ -46,7 +47,7 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	})
 
 	t.Run("query", func(t *testing.T) {
-		resp, err := cli.RunRangeQuery(`{job="fake"}`)
+		resp, err := cli.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -60,13 +61,13 @@ func TestSingleBinaryIngestQuery(t *testing.T) {
 	})
 
 	t.Run("label-names", func(t *testing.T) {
-		resp, err := cli.LabelNames()
+		resp, err := cli.LabelNames(context.Background())
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"job"}, resp)
 	})
 
 	t.Run("label-values", func(t *testing.T) {
-		resp, err := cli.LabelValues("job")
+		resp, err := cli.LabelValues(context.Background(), "job")
 		require.NoError(t, err)
 		assert.ElementsMatch(t, []string{"fake"}, resp)
 	})

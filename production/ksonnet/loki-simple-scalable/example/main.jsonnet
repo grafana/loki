@@ -1,5 +1,5 @@
 local k = import 'ksonnet-util/kausal.libsonnet',
-      loki = import 'github.com/grafana/jsonnet-libs/loki-simple-scalable/loki.libsonnet',
+      loki = import 'loki-simple-scalable/loki.libsonnet',
       namespace = 'loki-ssd-jsonnet-libs',
       cluster = 'ssd-jsonnet-libs',
       grpc_listen_port = 9095,
@@ -8,7 +8,7 @@ local k = import 'ksonnet-util/kausal.libsonnet',
 
 loki {
   _images+:: {
-    loki: 'grafana/loki:2.6.1',
+    loki: 'grafana/loki:2.7.5',
   },
 
   _config+:: {

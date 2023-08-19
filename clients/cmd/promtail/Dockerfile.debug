@@ -2,17 +2,17 @@
 # This file is intended to be called from the root like so:
 # docker build -t grafana/promtail -f clients/cmd/promtail/Dockerfile.debug .
 
-FROM grafana/loki-build-image as build
+FROM grafana/loki-build-image:0.29.3 as build
 ARG GOARCH="amd64"
 COPY . /src/loki
 WORKDIR /src/loki
-RUN make clean && make BUILD_IN_CONTAINER=false promtail-debug
+RUN make clean && make BUILD_IN_CONTAINER=false PROMTAIL_JOURNAL_ENABLED=true promtail-debug
 
 
-FROM       alpine:3.16.2
+FROM       alpine:3.16.7
 RUN        apk add --update --no-cache ca-certificates tzdata
 COPY       --from=build /src/loki/clients/cmd/promtail/promtail-debug /usr/bin/promtail-debug
-COPY       --from=build /go/bin/dlv /usr/bin/dlv
+COPY       --from=build /usr/bin/dlv /usr/bin/dlv
 COPY       clients/cmd/promtail/promtail-local-config.yaml /etc/promtail/local-config.yaml
 COPY       clients/cmd/promtail/promtail-docker-config.yaml /etc/promtail/config.yml
 
@@ -25,5 +25,5 @@ RUN apk add --no-cache libc6-compat
 # Run delve, ending with -- because we pass params via kubernetes, per the docs:
 #   Pass flags to the program you are debugging using --, for example:`
 #   dlv exec ./hello -- server --config conf/config.toml`
-ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--api-version=2", "exec", "/usr/bin/promtail-debug", "--"]
+ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--continue", "--accept-multiclient", "--api-version=2", "exec", "/usr/bin/promtail-debug", "--"]
 CMD ["-config.file=/etc/promtail/config.yml"]

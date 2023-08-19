@@ -47,7 +47,7 @@ func (f *UnionFile) Read(s []byte) (int, error) {
 		if (err == nil || err == io.EOF) && f.Base != nil {
 			// advance the file position also in the base file, the next
 			// call may be a write at this position (or a seek with SEEK_CUR)
-			if _, seekErr := f.Base.Seek(int64(n), os.SEEK_CUR); seekErr != nil {
+			if _, seekErr := f.Base.Seek(int64(n), io.SeekCurrent); seekErr != nil {
 				// only overwrite err in case the seek fails: we need to
 				// report an eventual io.EOF to the caller
 				err = seekErr
@@ -65,7 +65,7 @@ func (f *UnionFile) ReadAt(s []byte, o int64) (int, error) {
 	if f.Layer != nil {
 		n, err := f.Layer.ReadAt(s, o)
 		if (err == nil || err == io.EOF) && f.Base != nil {
-			_, err = f.Base.Seek(o+int64(n), os.SEEK_SET)
+			_, err = f.Base.Seek(o+int64(n), io.SeekStart)
 		}
 		return n, err
 	}
@@ -130,7 +130,7 @@ func (f *UnionFile) Name() string {
 type DirsMerger func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error)
 
 var defaultUnionMergeDirsFn = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, error) {
-	var files = make(map[string]os.FileInfo)
+	files := make(map[string]os.FileInfo)
 
 	for _, fi := range lofi {
 		files[fi.Name()] = fi
@@ -151,7 +151,6 @@ var defaultUnionMergeDirsFn = func(lofi, bofi []os.FileInfo) ([]os.FileInfo, err
 	}
 
 	return rfi, nil
-
 }
 
 // Readdir will weave the two directories together and
@@ -268,20 +267,14 @@ func (f *UnionFile) WriteString(s string) (n int, err error) {
 	return 0, BADFD
 }
 
-func copyToLayer(base Fs, layer Fs, name string) error {
-	bfh, err := base.Open(name)
-	if err != nil {
-		return err
-	}
-	defer bfh.Close()
-
+func copyFile(base Fs, layer Fs, name string, bfh File) error {
 	// First make sure the directory exists
 	exists, err := Exists(layer, filepath.Dir(name))
 	if err != nil {
 		return err
 	}
 	if !exists {
-		err = layer.MkdirAll(filepath.Dir(name), 0777) // FIXME?
+		err = layer.MkdirAll(filepath.Dir(name), 0o777) // FIXME?
 		if err != nil {
 			return err
 		}
@@ -314,4 +307,24 @@ func copyToLayer(base Fs, layer Fs, name string) error {
 		return err
 	}
 	return layer.Chtimes(name, bfi.ModTime(), bfi.ModTime())
+}
+
+func copyToLayer(base Fs, layer Fs, name string) error {
+	bfh, err := base.Open(name)
+	if err != nil {
+		return err
+	}
+	defer bfh.Close()
+
+	return copyFile(base, layer, name, bfh)
+}
+
+func copyFileToLayer(base Fs, layer Fs, name string, flag int, perm os.FileMode) error {
+	bfh, err := base.OpenFile(name, flag, perm)
+	if err != nil {
+		return err
+	}
+	defer bfh.Close()
+
+	return copyFile(base, layer, name, bfh)
 }

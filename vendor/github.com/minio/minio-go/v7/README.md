@@ -2,7 +2,7 @@
 
 The MinIO Go Client SDK provides simple APIs to access any Amazon S3 compatible object storage.
 
-This quickstart guide will show you how to install the MinIO client SDK, connect to MinIO, and provide a walkthrough for a simple file uploader. For a complete list of APIs and examples, please take a look at the [Go Client API Reference](https://docs.min.io/docs/golang-client-api-reference).
+This quickstart guide will show you how to install the MinIO client SDK, connect to MinIO, and provide a walkthrough for a simple file uploader. For a complete list of APIs and examples, please take a look at the [Go Client API Reference](https://min.io/docs/minio/linux/developers/go/API.html).
 
 This document assumes that you have a working [Go development environment](https://golang.org/doc/install).
 
@@ -126,53 +126,53 @@ mc ls play/mymusic/
 ## API Reference
 The full API Reference is available here.
 
-* [Complete API Reference](https://docs.min.io/docs/golang-client-api-reference)
+* [Complete API Reference](https://min.io/docs/minio/linux/developers/go/API.html)
 
 ### API Reference : Bucket Operations
-* [`MakeBucket`](https://docs.min.io/docs/golang-client-api-reference#MakeBucket)
-* [`ListBuckets`](https://docs.min.io/docs/golang-client-api-reference#ListBuckets)
-* [`BucketExists`](https://docs.min.io/docs/golang-client-api-reference#BucketExists)
-* [`RemoveBucket`](https://docs.min.io/docs/golang-client-api-reference#RemoveBucket)
-* [`ListObjects`](https://docs.min.io/docs/golang-client-api-reference#ListObjects)
-* [`ListIncompleteUploads`](https://docs.min.io/docs/golang-client-api-reference#ListIncompleteUploads)
+* [`MakeBucket`](https://min.io/docs/minio/linux/developers/go/API.html#MakeBucket)
+* [`ListBuckets`](https://min.io/docs/minio/linux/developers/go/API.html#ListBuckets)
+* [`BucketExists`](https://min.io/docs/minio/linux/developers/go/API.html#BucketExists)
+* [`RemoveBucket`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveBucket)
+* [`ListObjects`](https://min.io/docs/minio/linux/developers/go/API.html#ListObjects)
+* [`ListIncompleteUploads`](https://min.io/docs/minio/linux/developers/go/API.html#ListIncompleteUploads)
 
 ### API Reference : Bucket policy Operations
-* [`SetBucketPolicy`](https://docs.min.io/docs/golang-client-api-reference#SetBucketPolicy)
-* [`GetBucketPolicy`](https://docs.min.io/docs/golang-client-api-reference#GetBucketPolicy)
+* [`SetBucketPolicy`](https://min.io/docs/minio/linux/developers/go/API.html#SetBucketPolicy)
+* [`GetBucketPolicy`](https://min.io/docs/minio/linux/developers/go/API.html#GetBucketPolicy)
 
 ### API Reference : Bucket notification Operations
-* [`SetBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#SetBucketNotification)
-* [`GetBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#GetBucketNotification)
-* [`RemoveAllBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#RemoveAllBucketNotification)
-* [`ListenBucketNotification`](https://docs.min.io/docs/golang-client-api-reference#ListenBucketNotification) (MinIO Extension)
-* [`ListenNotification`](https://docs.min.io/docs/golang-client-api-reference#ListenNotification) (MinIO Extension)
+* [`SetBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#SetBucketNotification)
+* [`GetBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#GetBucketNotification)
+* [`RemoveAllBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveAllBucketNotification)
+* [`ListenBucketNotification`](https://min.io/docs/minio/linux/developers/go/API.html#ListenBucketNotification) (MinIO Extension)
+* [`ListenNotification`](https://min.io/docs/minio/linux/developers/go/API.html#ListenNotification) (MinIO Extension)
 
 ### API Reference : File Object Operations
-* [`FPutObject`](https://docs.min.io/docs/golang-client-api-reference#FPutObject)
-* [`FGetObject`](https://docs.min.io/docs/golang-client-api-reference#FGetObject)
+* [`FPutObject`](https://min.io/docs/minio/linux/developers/go/API.html#FPutObject)
+* [`FGetObject`](https://min.io/docs/minio/linux/developers/go/API.html#FGetObject)
 
 ### API Reference : Object Operations
-* [`GetObject`](https://docs.min.io/docs/golang-client-api-reference#GetObject)
-* [`PutObject`](https://docs.min.io/docs/golang-client-api-reference#PutObject)
-* [`PutObjectStreaming`](https://docs.min.io/docs/golang-client-api-reference#PutObjectStreaming)
-* [`StatObject`](https://docs.min.io/docs/golang-client-api-reference#StatObject)
-* [`CopyObject`](https://docs.min.io/docs/golang-client-api-reference#CopyObject)
-* [`RemoveObject`](https://docs.min.io/docs/golang-client-api-reference#RemoveObject)
-* [`RemoveObjects`](https://docs.min.io/docs/golang-client-api-reference#RemoveObjects)
-* [`RemoveIncompleteUpload`](https://docs.min.io/docs/golang-client-api-reference#RemoveIncompleteUpload)
-* [`SelectObjectContent`](https://docs.min.io/docs/golang-client-api-reference#SelectObjectContent)
+* [`GetObject`](https://min.io/docs/minio/linux/developers/go/API.html#GetObject)
+* [`PutObject`](https://min.io/docs/minio/linux/developers/go/API.html#PutObject)
+* [`PutObjectStreaming`](https://min.io/docs/minio/linux/developers/go/API.html#PutObjectStreaming)
+* [`StatObject`](https://min.io/docs/minio/linux/developers/go/API.html#StatObject)
+* [`CopyObject`](https://min.io/docs/minio/linux/developers/go/API.html#CopyObject)
+* [`RemoveObject`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveObject)
+* [`RemoveObjects`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveObjects)
+* [`RemoveIncompleteUpload`](https://min.io/docs/minio/linux/developers/go/API.html#RemoveIncompleteUpload)
+* [`SelectObjectContent`](https://min.io/docs/minio/linux/developers/go/API.html#SelectObjectContent)
 
 
 ### API Reference : Presigned Operations
-* [`PresignedGetObject`](https://docs.min.io/docs/golang-client-api-reference#PresignedGetObject)
-* [`PresignedPutObject`](https://docs.min.io/docs/golang-client-api-reference#PresignedPutObject)
-* [`PresignedHeadObject`](https://docs.min.io/docs/golang-client-api-reference#PresignedHeadObject)
-* [`PresignedPostPolicy`](https://docs.min.io/docs/golang-client-api-reference#PresignedPostPolicy)
+* [`PresignedGetObject`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedGetObject)
+* [`PresignedPutObject`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedPutObject)
+* [`PresignedHeadObject`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedHeadObject)
+* [`PresignedPostPolicy`](https://min.io/docs/minio/linux/developers/go/API.html#PresignedPostPolicy)
 
 ### API Reference : Client custom settings
-* [`SetAppInfo`](https://docs.min.io/docs/golang-client-api-reference#SetAppInfo)
-* [`TraceOn`](https://docs.min.io/docs/golang-client-api-reference#TraceOn)
-* [`TraceOff`](https://docs.min.io/docs/golang-client-api-reference#TraceOff)
+* [`SetAppInfo`](https://min.io/docs/minio/linux/developers/go/API.html#SetAppInfo)
+* [`TraceOn`](https://min.io/docs/minio/linux/developers/go/API.html#TraceOn)
+* [`TraceOff`](https://min.io/docs/minio/linux/developers/go/API.html#TraceOff)
 
 ## Full Examples
 
@@ -236,8 +236,8 @@ The full API Reference is available here.
 * [presignedpostpolicy.go](https://github.com/minio/minio-go/blob/master/examples/s3/presignedpostpolicy.go)
 
 ## Explore Further
-* [Complete Documentation](https://docs.min.io)
-* [MinIO Go Client SDK API Reference](https://docs.min.io/docs/golang-client-api-reference)
+* [Complete Documentation](https://min.io/docs/minio/kubernetes/upstream/index.html)
+* [MinIO Go Client SDK API Reference](https://min.io/docs/minio/linux/developers/go/API.html)
 
 ## Contribute
 [Contributors Guide](https://github.com/minio/minio-go/blob/master/CONTRIBUTING.md)

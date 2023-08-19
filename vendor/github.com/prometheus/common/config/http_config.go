@@ -21,15 +21,17 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/mwitkow/go-conntrack"
+	"golang.org/x/net/http/httpproxy"
 	"golang.org/x/net/http2"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
@@ -79,12 +81,9 @@ func (tv *TLSVersion) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return fmt.Errorf("unknown TLS version: %s", s)
 }
 
-func (tv *TLSVersion) MarshalYAML() (interface{}, error) {
-	if tv != nil || *tv == 0 {
-		return []byte("null"), nil
-	}
+func (tv TLSVersion) MarshalYAML() (interface{}, error) {
 	for s, v := range TLSVersions {
-		if *tv == v {
+		if tv == v {
 			return s, nil
 		}
 	}
@@ -105,16 +104,26 @@ func (tv *TLSVersion) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface for TLSVersion.
-func (tv *TLSVersion) MarshalJSON() ([]byte, error) {
-	if tv != nil || *tv == 0 {
-		return []byte("null"), nil
-	}
+func (tv TLSVersion) MarshalJSON() ([]byte, error) {
 	for s, v := range TLSVersions {
-		if *tv == v {
-			return []byte(s), nil
+		if tv == v {
+			return json.Marshal(s)
 		}
 	}
 	return nil, fmt.Errorf("unknown TLS version: %d", tv)
+}
+
+// String implements the fmt.Stringer interface for TLSVersion.
+func (tv *TLSVersion) String() string {
+	if tv == nil || *tv == 0 {
+		return ""
+	}
+	for s, v := range TLSVersions {
+		if *tv == v {
+			return s
+		}
+	}
+	return fmt.Sprintf("%d", tv)
 }
 
 // BasicAuth contains basic HTTP authentication credentials.
@@ -219,11 +228,26 @@ type OAuth2 struct {
 	Scopes           []string          `yaml:"scopes,omitempty" json:"scopes,omitempty"`
 	TokenURL         string            `yaml:"token_url" json:"token_url"`
 	EndpointParams   map[string]string `yaml:"endpoint_params,omitempty" json:"endpoint_params,omitempty"`
+	TLSConfig        TLSConfig         `yaml:"tls_config,omitempty"`
+	ProxyConfig      `yaml:",inline"`
+}
 
-	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
-	// TLSConfig is used to connect to the token URL.
-	TLSConfig TLSConfig `yaml:"tls_config,omitempty"`
+// UnmarshalYAML implements the yaml.Unmarshaler interface
+func (o *OAuth2) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain OAuth2
+	if err := unmarshal((*plain)(o)); err != nil {
+		return err
+	}
+	return o.ProxyConfig.Validate()
+}
+
+// UnmarshalJSON implements the json.Marshaler interface for URL.
+func (o *OAuth2) UnmarshalJSON(data []byte) error {
+	type plain OAuth2
+	if err := json.Unmarshal(data, (*plain)(o)); err != nil {
+		return err
+	}
+	return o.ProxyConfig.Validate()
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -233,6 +257,30 @@ func (a *OAuth2) SetDirectory(dir string) {
 	}
 	a.ClientSecretFile = JoinDir(dir, a.ClientSecretFile)
 	a.TLSConfig.SetDirectory(dir)
+}
+
+// LoadHTTPConfig parses the YAML input s into a HTTPClientConfig.
+func LoadHTTPConfig(s string) (*HTTPClientConfig, error) {
+	cfg := &HTTPClientConfig{}
+	err := yaml.UnmarshalStrict([]byte(s), cfg)
+	if err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+// LoadHTTPConfigFile parses the given YAML file into a HTTPClientConfig.
+func LoadHTTPConfigFile(filename string) (*HTTPClientConfig, []byte, error) {
+	content, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg, err := LoadHTTPConfig(string(content))
+	if err != nil {
+		return nil, nil, err
+	}
+	cfg.SetDirectory(filepath.Dir(filepath.Dir(filename)))
+	return cfg, content, nil
 }
 
 // HTTPClientConfig configures an HTTP client.
@@ -249,8 +297,6 @@ type HTTPClientConfig struct {
 	// The bearer token file for the targets. Deprecated in favour of
 	// Authorization.CredentialsFile.
 	BearerTokenFile string `yaml:"bearer_token_file,omitempty" json:"bearer_token_file,omitempty"`
-	// HTTP proxy server to use to connect to the targets.
-	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
 	// TLSConfig to use to connect to the targets.
 	TLSConfig TLSConfig `yaml:"tls_config,omitempty" json:"tls_config,omitempty"`
 	// FollowRedirects specifies whether the client should follow HTTP 3xx redirects.
@@ -261,6 +307,8 @@ type HTTPClientConfig struct {
 	// The omitempty flag is not set, because it would be hidden from the
 	// marshalled configuration when set to false.
 	EnableHTTP2 bool `yaml:"enable_http2" json:"enable_http2"`
+	// Proxy configuration.
+	ProxyConfig `yaml:",inline"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -276,7 +324,8 @@ func (c *HTTPClientConfig) SetDirectory(dir string) {
 }
 
 // Validate validates the HTTPClientConfig to check only one of BearerToken,
-// BasicAuth and BearerTokenFile is configured.
+// BasicAuth and BearerTokenFile is configured. It also validates that ProxyURL
+// is set if ProxyConnectHeader is set.
 func (c *HTTPClientConfig) Validate() error {
 	// Backwards compatibility with the bearer_token field.
 	if len(c.BearerToken) > 0 && len(c.BearerTokenFile) > 0 {
@@ -333,6 +382,9 @@ func (c *HTTPClientConfig) Validate() error {
 		if len(c.OAuth2.ClientSecret) > 0 && len(c.OAuth2.ClientSecretFile) > 0 {
 			return fmt.Errorf("at most one of oauth2 client_secret & client_secret_file must be configured")
 		}
+	}
+	if err := c.ProxyConfig.Validate(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -461,7 +513,8 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		// The only timeout we care about is the configured scrape timeout.
 		// It is applied on request. So we leave out any timings here.
 		var rt http.RoundTripper = &http.Transport{
-			Proxy:                 http.ProxyURL(cfg.ProxyURL.URL),
+			Proxy:                 cfg.ProxyConfig.Proxy(),
+			ProxyConnectHeader:    cfg.ProxyConfig.GetProxyConnectHeader(),
 			MaxIdleConns:          20000,
 			MaxIdleConnsPerHost:   1000, // see https://github.com/golang/go/issues/13801
 			DisableKeepAlives:     !opts.keepAlivesEnabled,
@@ -526,8 +579,7 @@ func NewRoundTripperFromConfig(cfg HTTPClientConfig, name string, optFuncs ...HT
 		// No need for a RoundTripper that reloads the CA file automatically.
 		return newRT(tlsConfig)
 	}
-
-	return NewTLSRoundTripper(tlsConfig, cfg.TLSConfig.CAFile, newRT)
+	return NewTLSRoundTripper(tlsConfig, cfg.TLSConfig.roundTripperSettings(), newRT)
 }
 
 type authorizationCredentialsRoundTripper struct {
@@ -571,7 +623,7 @@ func NewAuthorizationCredentialsFileRoundTripper(authType, authCredentialsFile s
 
 func (rt *authorizationCredentialsFileRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	if len(req.Header.Get("Authorization")) == 0 {
-		b, err := ioutil.ReadFile(rt.authCredentialsFile)
+		b, err := os.ReadFile(rt.authCredentialsFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read authorization credentials file %s: %s", rt.authCredentialsFile, err)
 		}
@@ -609,7 +661,7 @@ func (rt *basicAuthRoundTripper) RoundTrip(req *http.Request) (*http.Response, e
 	}
 	req = cloneRequest(req)
 	if rt.passwordFile != "" {
-		bs, err := ioutil.ReadFile(rt.passwordFile)
+		bs, err := os.ReadFile(rt.passwordFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read basic auth password file %s: %s", rt.passwordFile, err)
 		}
@@ -651,7 +703,7 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 	)
 
 	if rt.config.ClientSecretFile != "" {
-		data, err := ioutil.ReadFile(rt.config.ClientSecretFile)
+		data, err := os.ReadFile(rt.config.ClientSecretFile)
 		if err != nil {
 			return nil, fmt.Errorf("unable to read oauth2 client secret file %s: %s", rt.config.ClientSecretFile, err)
 		}
@@ -682,7 +734,8 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		tlsTransport := func(tlsConfig *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{
 				TLSClientConfig:       tlsConfig,
-				Proxy:                 http.ProxyURL(rt.config.ProxyURL.URL),
+				Proxy:                 rt.config.ProxyConfig.Proxy(),
+				ProxyConnectHeader:    rt.config.ProxyConfig.GetProxyConnectHeader(),
 				DisableKeepAlives:     !rt.opts.keepAlivesEnabled,
 				MaxIdleConns:          20,
 				MaxIdleConnsPerHost:   1, // see https://github.com/golang/go/issues/13801
@@ -696,7 +749,7 @@ func (rt *oauth2RoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 		if len(rt.config.TLSConfig.CAFile) == 0 {
 			t, _ = tlsTransport(tlsConfig)
 		} else {
-			t, err = NewTLSRoundTripper(tlsConfig, rt.config.TLSConfig.CAFile, tlsTransport)
+			t, err = NewTLSRoundTripper(tlsConfig, rt.config.TLSConfig.roundTripperSettings(), tlsTransport)
 			if err != nil {
 				return nil, err
 			}
@@ -763,14 +816,29 @@ func cloneRequest(r *http.Request) *http.Request {
 
 // NewTLSConfig creates a new tls.Config from the given TLSConfig.
 func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: cfg.InsecureSkipVerify,
 		MinVersion:         uint16(cfg.MinVersion),
+		MaxVersion:         uint16(cfg.MaxVersion),
+	}
+
+	if cfg.MaxVersion != 0 && cfg.MinVersion != 0 {
+		if cfg.MaxVersion < cfg.MinVersion {
+			return nil, fmt.Errorf("tls_config.max_version must be greater than or equal to tls_config.min_version if both are specified")
+		}
 	}
 
 	// If a CA cert is provided then let's read it in so we can validate the
 	// scrape target's certificate properly.
-	if len(cfg.CAFile) > 0 {
+	if len(cfg.CA) > 0 {
+		if !updateRootCA(tlsConfig, []byte(cfg.CA)) {
+			return nil, fmt.Errorf("unable to use inline CA cert")
+		}
+	} else if len(cfg.CAFile) > 0 {
 		b, err := readCAFile(cfg.CAFile)
 		if err != nil {
 			return nil, err
@@ -783,12 +851,9 @@ func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 	if len(cfg.ServerName) > 0 {
 		tlsConfig.ServerName = cfg.ServerName
 	}
+
 	// If a client cert & key is provided then configure TLS config accordingly.
-	if len(cfg.CertFile) > 0 && len(cfg.KeyFile) == 0 {
-		return nil, fmt.Errorf("client cert file %q specified without client key file", cfg.CertFile)
-	} else if len(cfg.KeyFile) > 0 && len(cfg.CertFile) == 0 {
-		return nil, fmt.Errorf("client key file %q specified without client cert file", cfg.KeyFile)
-	} else if len(cfg.CertFile) > 0 && len(cfg.KeyFile) > 0 {
+	if cfg.usingClientCert() && cfg.usingClientKey() {
 		// Verify that client cert and key are valid.
 		if _, err := cfg.getClientCertificate(nil); err != nil {
 			return nil, err
@@ -801,6 +866,12 @@ func NewTLSConfig(cfg *TLSConfig) (*tls.Config, error) {
 
 // TLSConfig configures the options for TLS connections.
 type TLSConfig struct {
+	// Text of the CA cert to use for the targets.
+	CA string `yaml:"ca,omitempty" json:"ca,omitempty"`
+	// Text of the client cert file for the targets.
+	Cert string `yaml:"cert,omitempty" json:"cert,omitempty"`
+	// Text of the client key file for the targets.
+	Key Secret `yaml:"key,omitempty" json:"key,omitempty"`
 	// The CA cert to use for the targets.
 	CAFile string `yaml:"ca_file,omitempty" json:"ca_file,omitempty"`
 	// The client cert file for the targets.
@@ -813,6 +884,8 @@ type TLSConfig struct {
 	InsecureSkipVerify bool `yaml:"insecure_skip_verify" json:"insecure_skip_verify"`
 	// Minimum TLS version.
 	MinVersion TLSVersion `yaml:"min_version,omitempty" json:"min_version,omitempty"`
+	// Maximum TLS version.
+	MaxVersion TLSVersion `yaml:"max_version,omitempty" json:"max_version,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -825,18 +898,93 @@ func (c *TLSConfig) SetDirectory(dir string) {
 	c.KeyFile = JoinDir(dir, c.KeyFile)
 }
 
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *TLSConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	type plain TLSConfig
+	if err := unmarshal((*plain)(c)); err != nil {
+		return err
+	}
+	return c.Validate()
+}
+
+// Validate validates the TLSConfig to check that only one of the inlined or
+// file-based fields for the TLS CA, client certificate, and client key are
+// used.
+func (c *TLSConfig) Validate() error {
+	if len(c.CA) > 0 && len(c.CAFile) > 0 {
+		return fmt.Errorf("at most one of ca and ca_file must be configured")
+	}
+	if len(c.Cert) > 0 && len(c.CertFile) > 0 {
+		return fmt.Errorf("at most one of cert and cert_file must be configured")
+	}
+	if len(c.Key) > 0 && len(c.KeyFile) > 0 {
+		return fmt.Errorf("at most one of key and key_file must be configured")
+	}
+
+	if c.usingClientCert() && !c.usingClientKey() {
+		return fmt.Errorf("exactly one of key or key_file must be configured when a client certificate is configured")
+	} else if c.usingClientKey() && !c.usingClientCert() {
+		return fmt.Errorf("exactly one of cert or cert_file must be configured when a client key is configured")
+	}
+
+	return nil
+}
+
+func (c *TLSConfig) usingClientCert() bool {
+	return len(c.Cert) > 0 || len(c.CertFile) > 0
+}
+
+func (c *TLSConfig) usingClientKey() bool {
+	return len(c.Key) > 0 || len(c.KeyFile) > 0
+}
+
+func (c *TLSConfig) roundTripperSettings() TLSRoundTripperSettings {
+	return TLSRoundTripperSettings{
+		CA:       c.CA,
+		CAFile:   c.CAFile,
+		Cert:     c.Cert,
+		CertFile: c.CertFile,
+		Key:      string(c.Key),
+		KeyFile:  c.KeyFile,
+	}
+}
+
 // getClientCertificate reads the pair of client cert and key from disk and returns a tls.Certificate.
-func (c *TLSConfig) getClientCertificate(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
-	cert, err := tls.LoadX509KeyPair(c.CertFile, c.KeyFile)
+func (c *TLSConfig) getClientCertificate(_ *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+	var (
+		certData, keyData []byte
+		err               error
+	)
+
+	if c.CertFile != "" {
+		certData, err = os.ReadFile(c.CertFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read specified client cert (%s): %s", c.CertFile, err)
+		}
+	} else {
+		certData = []byte(c.Cert)
+	}
+
+	if c.KeyFile != "" {
+		keyData, err = os.ReadFile(c.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("unable to read specified client key (%s): %s", c.KeyFile, err)
+		}
+	} else {
+		keyData = []byte(c.Key)
+	}
+
+	cert, err := tls.X509KeyPair(certData, keyData)
 	if err != nil {
 		return nil, fmt.Errorf("unable to use specified client cert (%s) & key (%s): %s", c.CertFile, c.KeyFile, err)
 	}
+
 	return &cert, nil
 }
 
 // readCAFile reads the CA cert file from disk.
 func readCAFile(f string) ([]byte, error) {
-	data, err := ioutil.ReadFile(f)
+	data, err := os.ReadFile(f)
 	if err != nil {
 		return nil, fmt.Errorf("unable to load specified CA cert %s: %s", f, err)
 	}
@@ -856,23 +1004,32 @@ func updateRootCA(cfg *tls.Config, b []byte) bool {
 // tlsRoundTripper is a RoundTripper that updates automatically its TLS
 // configuration whenever the content of the CA file changes.
 type tlsRoundTripper struct {
-	caFile string
+	settings TLSRoundTripperSettings
+
 	// newRT returns a new RoundTripper.
 	newRT func(*tls.Config) (http.RoundTripper, error)
 
-	mtx        sync.RWMutex
-	rt         http.RoundTripper
-	hashCAFile []byte
-	tlsConfig  *tls.Config
+	mtx          sync.RWMutex
+	rt           http.RoundTripper
+	hashCAData   []byte
+	hashCertData []byte
+	hashKeyData  []byte
+	tlsConfig    *tls.Config
+}
+
+type TLSRoundTripperSettings struct {
+	CA, CAFile     string
+	Cert, CertFile string
+	Key, KeyFile   string
 }
 
 func NewTLSRoundTripper(
 	cfg *tls.Config,
-	caFile string,
+	settings TLSRoundTripperSettings,
 	newRT func(*tls.Config) (http.RoundTripper, error),
 ) (http.RoundTripper, error) {
 	t := &tlsRoundTripper{
-		caFile:    caFile,
+		settings:  settings,
 		newRT:     newRT,
 		tlsConfig: cfg,
 	}
@@ -882,7 +1039,7 @@ func NewTLSRoundTripper(
 		return nil, err
 	}
 	t.rt = rt
-	_, t.hashCAFile, err = t.getCAWithHash()
+	_, t.hashCAData, t.hashCertData, t.hashKeyData, err = t.getTLSDataWithHash()
 	if err != nil {
 		return nil, err
 	}
@@ -890,25 +1047,66 @@ func NewTLSRoundTripper(
 	return t, nil
 }
 
-func (t *tlsRoundTripper) getCAWithHash() ([]byte, []byte, error) {
-	b, err := readCAFile(t.caFile)
-	if err != nil {
-		return nil, nil, err
-	}
-	h := sha256.Sum256(b)
-	return b, h[:], nil
+func (t *tlsRoundTripper) getTLSDataWithHash() ([]byte, []byte, []byte, []byte, error) {
+	var (
+		caBytes, certBytes, keyBytes []byte
 
+		err error
+	)
+
+	if t.settings.CAFile != "" {
+		caBytes, err = os.ReadFile(t.settings.CAFile)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	} else if t.settings.CA != "" {
+		caBytes = []byte(t.settings.CA)
+	}
+
+	if t.settings.CertFile != "" {
+		certBytes, err = os.ReadFile(t.settings.CertFile)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	} else if t.settings.Cert != "" {
+		certBytes = []byte(t.settings.Cert)
+	}
+
+	if t.settings.KeyFile != "" {
+		keyBytes, err = os.ReadFile(t.settings.KeyFile)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+	} else if t.settings.Key != "" {
+		keyBytes = []byte(t.settings.Key)
+	}
+
+	var caHash, certHash, keyHash [32]byte
+
+	if len(caBytes) > 0 {
+		caHash = sha256.Sum256(caBytes)
+	}
+	if len(certBytes) > 0 {
+		certHash = sha256.Sum256(certBytes)
+	}
+	if len(keyBytes) > 0 {
+		keyHash = sha256.Sum256(keyBytes)
+	}
+
+	return caBytes, caHash[:], certHash[:], keyHash[:], nil
 }
 
 // RoundTrip implements the http.RoundTrip interface.
 func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	b, h, err := t.getCAWithHash()
+	caData, caHash, certHash, keyHash, err := t.getTLSDataWithHash()
 	if err != nil {
 		return nil, err
 	}
 
 	t.mtx.RLock()
-	equal := bytes.Equal(h[:], t.hashCAFile)
+	equal := bytes.Equal(caHash[:], t.hashCAData) &&
+		bytes.Equal(certHash[:], t.hashCertData) &&
+		bytes.Equal(keyHash[:], t.hashKeyData)
 	rt := t.rt
 	t.mtx.RUnlock()
 	if equal {
@@ -917,9 +1115,11 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 
 	// Create a new RoundTripper.
+	// The cert and key files are read separately by the client
+	// using GetClientCertificate.
 	tlsConfig := t.tlsConfig.Clone()
-	if !updateRootCA(tlsConfig, b) {
-		return nil, fmt.Errorf("unable to use specified CA cert %s", t.caFile)
+	if !updateRootCA(tlsConfig, caData) {
+		return nil, fmt.Errorf("unable to use specified CA cert %s", t.settings.CAFile)
 	}
 	rt, err = t.newRT(tlsConfig)
 	if err != nil {
@@ -929,7 +1129,9 @@ func (t *tlsRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	t.mtx.Lock()
 	t.rt = rt
-	t.hashCAFile = h[:]
+	t.hashCAData = caHash[:]
+	t.hashCertData = certHash[:]
+	t.hashKeyData = keyHash[:]
 	t.mtx.Unlock()
 
 	return rt.RoundTrip(req)
@@ -971,4 +1173,79 @@ func (c HTTPClientConfig) String() string {
 		return fmt.Sprintf("<error creating http client config string: %s>", err)
 	}
 	return string(b)
+}
+
+type ProxyConfig struct {
+	// HTTP proxy server to use to connect to the targets.
+	ProxyURL URL `yaml:"proxy_url,omitempty" json:"proxy_url,omitempty"`
+	// NoProxy contains addresses that should not use a proxy.
+	NoProxy string `yaml:"no_proxy,omitempty" json:"no_proxy,omitempty"`
+	// ProxyFromEnvironment makes use of net/http ProxyFromEnvironment function
+	// to determine proxies.
+	ProxyFromEnvironment bool `yaml:"proxy_from_environment,omitempty" json:"proxy_from_environment,omitempty"`
+	// ProxyConnectHeader optionally specifies headers to send to
+	// proxies during CONNECT requests. Assume that at least _some_ of
+	// these headers are going to contain secrets and use Secret as the
+	// value type instead of string.
+	ProxyConnectHeader Header `yaml:"proxy_connect_header,omitempty" json:"proxy_connect_header,omitempty"`
+
+	proxyFunc func(*http.Request) (*url.URL, error)
+}
+
+// UnmarshalYAML implements the yaml.Unmarshaler interface.
+func (c *ProxyConfig) Validate() error {
+	if len(c.ProxyConnectHeader) > 0 && (!c.ProxyFromEnvironment && (c.ProxyURL.URL == nil || c.ProxyURL.String() == "")) {
+		return fmt.Errorf("if proxy_connect_header is configured, proxy_url or proxy_from_environment must also be configured")
+	}
+	if c.ProxyFromEnvironment && c.ProxyURL.URL != nil && c.ProxyURL.String() != "" {
+		return fmt.Errorf("if proxy_from_environment is configured, proxy_url must not be configured")
+	}
+	if c.ProxyFromEnvironment && c.NoProxy != "" {
+		return fmt.Errorf("if proxy_from_environment is configured, no_proxy must not be configured")
+	}
+	if c.ProxyURL.URL == nil && c.NoProxy != "" {
+		return fmt.Errorf("if no_proxy is configured, proxy_url must also be configured")
+	}
+	return nil
+}
+
+// Proxy returns the Proxy URL for a request.
+func (c *ProxyConfig) Proxy() (fn func(*http.Request) (*url.URL, error)) {
+	if c == nil {
+		return nil
+	}
+	defer func() {
+		fn = c.proxyFunc
+	}()
+	if c.proxyFunc != nil {
+		return
+	}
+	if c.ProxyFromEnvironment {
+		proxyFn := httpproxy.FromEnvironment().ProxyFunc()
+		c.proxyFunc = func(req *http.Request) (*url.URL, error) {
+			return proxyFn(req.URL)
+		}
+		return
+	}
+	if c.ProxyURL.URL != nil && c.ProxyURL.URL.String() != "" {
+		if c.NoProxy == "" {
+			c.proxyFunc = http.ProxyURL(c.ProxyURL.URL)
+			return
+		}
+		proxy := &httpproxy.Config{
+			HTTPProxy:  c.ProxyURL.String(),
+			HTTPSProxy: c.ProxyURL.String(),
+			NoProxy:    c.NoProxy,
+		}
+		proxyFn := proxy.ProxyFunc()
+		c.proxyFunc = func(req *http.Request) (*url.URL, error) {
+			return proxyFn(req.URL)
+		}
+	}
+	return
+}
+
+// ProxyConnectHeader() return the Proxy Connext Headers.
+func (c *ProxyConfig) GetProxyConnectHeader() http.Header {
+	return c.ProxyConnectHeader.HTTPHeader()
 }

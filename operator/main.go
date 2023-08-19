@@ -8,27 +8,27 @@ import (
 
 	"github.com/ViaQ/logerr/v2/kverrors"
 	"github.com/ViaQ/logerr/v2/log"
-
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
-
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	monitoringv1 "github.com/prometheus-operator/prometheus-operator/pkg/apis/monitoring/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/healthz"
 
 	ctrlconfigv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	lokictrl "github.com/grafana/loki/operator/controllers/loki"
 	"github.com/grafana/loki/operator/internal/metrics"
+	"github.com/grafana/loki/operator/internal/operator"
+	"github.com/grafana/loki/operator/internal/validation"
+	"github.com/grafana/loki/operator/internal/validation/openshift"
 
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
-	// +kubebuilder:scaffold:imports
+	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
+	// to ensure that exec-entrypoint and run can make use of them.
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
 var scheme = runtime.NewScheme()
@@ -86,7 +86,7 @@ func main() {
 	if ctrlCfg.Gates.LokiStackGateway {
 		utilruntime.Must(configv1.AddToScheme(scheme))
 
-		if ctrlCfg.Gates.OpenShift.GatewayRoute {
+		if ctrlCfg.Gates.OpenShift.Enabled {
 			utilruntime.Must(routev1.AddToScheme(scheme))
 		}
 	}
@@ -99,44 +99,75 @@ func main() {
 
 	if err = (&lokictrl.LokiStackReconciler{
 		Client:       mgr.GetClient(),
-		Log:          logger.WithName("controllers").WithName("LokiStack"),
+		Log:          logger.WithName("controllers").WithName("lokistack"),
 		Scheme:       mgr.GetScheme(),
 		FeatureGates: ctrlCfg.Gates,
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "LokiStack")
+		logger.Error(err, "unable to create controller", "controller", "lokistack")
 		os.Exit(1)
 	}
+
+	if ctrlCfg.Gates.ServiceMonitors && ctrlCfg.Gates.OpenShift.Enabled && ctrlCfg.Gates.OpenShift.Dashboards {
+		var ns string
+		ns, err = operator.GetNamespace()
+		if err != nil {
+			logger.Error(err, "unable to read in operator namespace")
+			os.Exit(1)
+		}
+
+		if err = (&lokictrl.DashboardsReconciler{
+			Client:     mgr.GetClient(),
+			Scheme:     mgr.GetScheme(),
+			Log:        logger.WithName("controllers").WithName("lokistack-dashboards"),
+			OperatorNs: ns,
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "lokistack-dashboards")
+			os.Exit(1)
+		}
+	}
+
 	if ctrlCfg.Gates.LokiStackWebhook {
-		if err = (&lokiv1.LokiStack{}).SetupWebhookWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create webhook", "webhook", "LokiStack")
+		v := &validation.LokiStackValidator{}
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "lokistack")
 			os.Exit(1)
 		}
 	}
 	if err = (&lokictrl.AlertingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("AlertingRule"),
+		Log:    logger.WithName("controllers").WithName("alertingrule"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "AlertingRule")
+		logger.Error(err, "unable to create controller", "controller", "alertingrule")
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.AlertingRuleWebhook {
-		if err = (&lokiv1beta1.AlertingRule{}).SetupWebhookWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create webhook", "webhook", "AlertingRule")
+		v := &validation.AlertingRuleValidator{}
+		if ctrlCfg.Gates.OpenShift.ExtendedRuleValidation {
+			v.ExtendedValidator = openshift.AlertingRuleValidator
+		}
+
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "alertingrule")
 			os.Exit(1)
 		}
 	}
 	if err = (&lokictrl.RecordingRuleReconciler{
 		Client: mgr.GetClient(),
-		Log:    logger.WithName("controllers").WithName("RecordingRule"),
+		Log:    logger.WithName("controllers").WithName("recordingrule"),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "RecordingRule")
+		logger.Error(err, "unable to create controller", "controller", "recordingrule")
 		os.Exit(1)
 	}
 	if ctrlCfg.Gates.RecordingRuleWebhook {
-		if err = (&lokiv1beta1.RecordingRule{}).SetupWebhookWithManager(mgr); err != nil {
-			logger.Error(err, "unable to create webhook", "webhook", "RecordingRule")
+		v := &validation.RecordingRuleValidator{}
+		if ctrlCfg.Gates.OpenShift.ExtendedRuleValidation {
+			v.ExtendedValidator = openshift.RecordingRuleValidator
+		}
+
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "recordingrule")
 			os.Exit(1)
 		}
 	}
@@ -144,7 +175,33 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
-		logger.Error(err, "unable to create controller", "controller", "RulerConfig")
+		logger.Error(err, "unable to create controller", "controller", "rulerconfig")
+		os.Exit(1)
+	}
+	if ctrlCfg.Gates.RulerConfigWebhook {
+		v := &validation.RulerConfigValidator{}
+		if err = v.SetupWebhookWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create webhook", "webhook", "rulerconfig")
+			os.Exit(1)
+		}
+	}
+	if ctrlCfg.Gates.BuiltInCertManagement.Enabled {
+		if err = (&lokictrl.CertRotationReconciler{
+			Client:       mgr.GetClient(),
+			Log:          logger.WithName("controllers").WithName("certrotation"),
+			Scheme:       mgr.GetScheme(),
+			FeatureGates: ctrlCfg.Gates,
+		}).SetupWithManager(mgr); err != nil {
+			logger.Error(err, "unable to create controller", "controller", "certrotation")
+			os.Exit(1)
+		}
+	}
+
+	if err = (&lokictrl.LokiStackZoneAwarePodReconciler{
+		Client: mgr.GetClient(),
+		Log:    logger.WithName("controllers").WithName("lokistack-zoneaware-pod"),
+	}).SetupWithManager(mgr); err != nil {
+		logger.Error(err, "unable to create controller", "controller", "lokistack-zoneaware-pod")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

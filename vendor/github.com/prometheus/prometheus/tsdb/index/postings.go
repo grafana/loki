@@ -21,6 +21,7 @@ import (
 	"sync"
 
 	"github.com/pkg/errors"
+	"golang.org/x/exp/slices"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
@@ -90,7 +91,7 @@ func (p *MemPostings) Symbols() StringIter {
 		res = append(res, k)
 	}
 
-	sort.Strings(res)
+	slices.Sort(res)
 	return NewStringListIter(res)
 }
 
@@ -223,7 +224,10 @@ func (p *MemPostings) All() Postings {
 
 // EnsureOrder ensures that all postings lists are sorted. After it returns all further
 // calls to add and addFor will insert new IDs in a sorted manner.
-func (p *MemPostings) EnsureOrder() {
+// Parameter numberOfConcurrentProcesses is used to specify the maximal number of
+// CPU cores used for this operation. If it is <= 0, GOMAXPROCS is used.
+// GOMAXPROCS was the default before introducing this parameter.
+func (p *MemPostings) EnsureOrder(numberOfConcurrentProcesses int) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
@@ -231,19 +235,20 @@ func (p *MemPostings) EnsureOrder() {
 		return
 	}
 
-	n := runtime.GOMAXPROCS(0)
+	concurrency := numberOfConcurrentProcesses
+	if concurrency <= 0 {
+		concurrency = runtime.GOMAXPROCS(0)
+	}
 	workc := make(chan *[][]storage.SeriesRef)
 
 	var wg sync.WaitGroup
-	wg.Add(n)
+	wg.Add(concurrency)
 
-	for i := 0; i < n; i++ {
+	for i := 0; i < concurrency; i++ {
 		go func() {
-			var sortable seriesRefSlice
 			for job := range workc {
 				for _, l := range *job {
-					sortable = l
-					sort.Sort(&sortable)
+					slices.Sort(l)
 				}
 
 				*job = (*job)[:0]
@@ -354,9 +359,9 @@ func (p *MemPostings) Iter(f func(labels.Label, Postings) error) error {
 func (p *MemPostings) Add(id storage.SeriesRef, lset labels.Labels) {
 	p.mtx.Lock()
 
-	for _, l := range lset {
+	lset.Range(func(l labels.Label) {
 		p.addFor(id, l)
-	}
+	})
 	p.addFor(id, allPostingsKey)
 
 	p.mtx.Unlock()
@@ -427,6 +432,13 @@ var emptyPostings = errPostings{}
 // It triggers optimized flow in other functions like Intersect, Without etc.
 func EmptyPostings() Postings {
 	return emptyPostings
+}
+
+// IsEmptyPostingsType returns true if the postings are an empty postings list.
+// When this function returns false, it doesn't mean that the postings isn't empty
+// (it could be an empty intersection of two non-empty postings, for example).
+func IsEmptyPostingsType(p Postings) bool {
+	return p == emptyPostings
 }
 
 // ErrPostings returns new postings that immediately error.
@@ -553,12 +565,11 @@ func newMergedPostings(p []Postings) (m *mergedPostings, nonEmpty bool) {
 
 	for _, it := range p {
 		// NOTE: mergedPostings struct requires the user to issue an initial Next.
-		if it.Next() {
+		switch {
+		case it.Next():
 			ph = append(ph, it)
-		} else {
-			if it.Err() != nil {
-				return &mergedPostings{err: it.Err()}, true
-			}
+		case it.Err() != nil:
+			return &mergedPostings{err: it.Err()}, true
 		}
 	}
 
@@ -692,16 +703,16 @@ func (rp *removedPostings) Next() bool {
 			return true
 		}
 
-		fcur, rcur := rp.full.At(), rp.remove.At()
-		if fcur < rcur {
+		switch fcur, rcur := rp.full.At(), rp.remove.At(); {
+		case fcur < rcur:
 			rp.cur = fcur
 			rp.fok = rp.full.Next()
 
 			return true
-		} else if rcur < fcur {
+		case rcur < fcur:
 			// Forward the remove postings to the right position.
 			rp.rok = rp.remove.Seek(fcur)
-		} else {
+		default:
 			// Skip the current posting.
 			rp.fok = rp.full.Next()
 		}
@@ -830,22 +841,16 @@ func (it *bigEndianPostings) Err() error {
 	return nil
 }
 
-// seriesRefSlice attaches the methods of sort.Interface to []storage.SeriesRef, sorting in increasing order.
-type seriesRefSlice []storage.SeriesRef
-
-func (x seriesRefSlice) Len() int           { return len(x) }
-func (x seriesRefSlice) Less(i, j int) bool { return x[i] < x[j] }
-func (x seriesRefSlice) Swap(i, j int)      { x[i], x[j] = x[j], x[i] }
-
 // FindIntersectingPostings checks the intersection of p and candidates[i] for each i in candidates,
 // if intersection is non empty, then i is added to the indexes returned.
 // Returned indexes are not sorted.
 func FindIntersectingPostings(p Postings, candidates []Postings) (indexes []int, err error) {
 	h := make(postingsWithIndexHeap, 0, len(candidates))
 	for idx, it := range candidates {
-		if it.Next() {
+		switch {
+		case it.Next():
 			h = append(h, postingsWithIndex{index: idx, p: it})
-		} else if it.Err() != nil {
+		case it.Err() != nil:
 			return nil, it.Err()
 		}
 	}

@@ -43,7 +43,7 @@ func NewAuthenticator(realm string, cname PrincipalName) (Authenticator, error) 
 		Cksum:     Checksum{},
 		Cusec:     int((t.UnixNano() / int64(time.Microsecond)) - (t.Unix() * 1e6)),
 		CTime:     t,
-		SeqNumber: seq.Int64(),
+		SeqNumber: seq.Int64() & 0x3fffffff,
 	}, nil
 }
 
@@ -53,7 +53,7 @@ func (a *Authenticator) GenerateSeqNumberAndSubKey(keyType int32, keySize int) e
 	if err != nil {
 		return err
 	}
-	a.SeqNumber = seq.Int64()
+	a.SeqNumber = seq.Int64() & 0x3fffffff
 	//Generate subkey value
 	sk := make([]byte, keySize, keySize)
 	rand.Read(sk)

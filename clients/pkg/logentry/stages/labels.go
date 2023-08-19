@@ -62,24 +62,32 @@ type labelStage struct {
 }
 
 // Process implements Stage
-func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, t *time.Time, entry *string) {
-	for lName, lSrc := range l.cfgs {
+func (l *labelStage) Process(labels model.LabelSet, extracted map[string]interface{}, _ *time.Time, _ *string) {
+	processLabelsConfigs(l.logger, extracted, l.cfgs, func(labelName model.LabelName, labelValue model.LabelValue) {
+		labels[labelName] = labelValue
+	})
+}
+
+type labelsConsumer func(labelName model.LabelName, labelValue model.LabelValue)
+
+func processLabelsConfigs(logger log.Logger, extracted map[string]interface{}, configs LabelsConfig, consumer labelsConsumer) {
+	for lName, lSrc := range configs {
 		if lValue, ok := extracted[*lSrc]; ok {
 			s, err := getString(lValue)
 			if err != nil {
 				if Debug {
-					level.Debug(l.logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue))
+					level.Debug(logger).Log("msg", "failed to convert extracted label value to string", "err", err, "type", reflect.TypeOf(lValue))
 				}
 				continue
 			}
 			labelValue := model.LabelValue(s)
 			if !labelValue.IsValid() {
 				if Debug {
-					level.Debug(l.logger).Log("msg", "invalid label value parsed", "value", labelValue)
+					level.Debug(logger).Log("msg", "invalid label value parsed", "value", labelValue)
 				}
 				continue
 			}
-			labels[model.LabelName(lName)] = labelValue
+			consumer(model.LabelName(lName), labelValue)
 		}
 	}
 }

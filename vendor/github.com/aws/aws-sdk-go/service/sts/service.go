@@ -39,13 +39,14 @@ const (
 // aws.Config parameter to add your extra config.
 //
 // Example:
-//     mySession := session.Must(session.NewSession())
 //
-//     // Create a STS client from just a session.
-//     svc := sts.New(mySession)
+//	mySession := session.Must(session.NewSession())
 //
-//     // Create a STS client with additional configuration
-//     svc := sts.New(mySession, aws.NewConfig().WithRegion("us-west-2"))
+//	// Create a STS client from just a session.
+//	svc := sts.New(mySession)
+//
+//	// Create a STS client with additional configuration
+//	svc := sts.New(mySession, aws.NewConfig().WithRegion("us-west-2"))
 func New(p client.ConfigProvider, cfgs ...*aws.Config) *STS {
 	c := p.ClientConfig(EndpointsID, cfgs...)
 	if c.SigningNameDerived || len(c.SigningName) == 0 {

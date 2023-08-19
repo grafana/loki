@@ -1,6 +1,8 @@
 package deletion
 
 import (
+	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +14,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 func TestDeleteRequest_IsDeleted(t *testing.T) {
@@ -31,8 +34,8 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 	}
 
 	type resp struct {
-		isDeleted           bool
-		nonDeletedIntervals []retention.IntervalFilter
+		isDeleted      bool
+		expectedFilter filter.Func
 	}
 
 	for _, tc := range []struct {
@@ -49,8 +52,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				Query:     lbl,
 			},
 			expectedResp: resp{
-				isDeleted:           true,
-				nonDeletedIntervals: nil,
+				isDeleted: true,
 			},
 		},
 		{
@@ -63,13 +65,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-3 * time.Hour),
-							End:   now.Add(-time.Hour),
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if strings.Contains(s, "filter") && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+						return true
+					}
+					return false
 				},
 			},
 		},
@@ -83,13 +84,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-2*time.Hour) + 1,
-							End:   now.Add(-time.Hour),
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-2*time.Hour).UnixNano() {
+						return true
+					}
+					return false
 				},
 			},
 		},
@@ -103,33 +103,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-3 * time.Hour),
-							End:   now.Add(-2*time.Hour) - 1,
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "chunk deleted from end",
-			deleteRequest: DeleteRequest{
-				UserID:    user1,
-				StartTime: now.Add(-2 * time.Hour),
-				EndTime:   now,
-				Query:     lbl,
-			},
-			expectedResp: resp{
-				isDeleted: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-3 * time.Hour),
-							End:   now.Add(-2*time.Hour) - 1,
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+						return true
+					}
+					return false
 				},
 			},
 		},
@@ -143,13 +122,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-3 * time.Hour),
-							End:   now.Add(-2*time.Hour) - 1,
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if strings.Contains(s, "filter") && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+						return true
+					}
+					return false
 				},
 			},
 		},
@@ -163,19 +141,12 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-3 * time.Hour),
-							End:   now.Add(-(2*time.Hour + 30*time.Minute)) - 1,
-						},
-					},
-					{
-						Interval: model.Interval{
-							Start: now.Add(-(time.Hour + 30*time.Minute)) + 1,
-							End:   now.Add(-time.Hour),
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if now.Add(-(2*time.Hour+30*time.Minute)).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-(time.Hour+30*time.Minute)).UnixNano() {
+						return true
+					}
+					return false
 				},
 			},
 		},
@@ -218,17 +189,21 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			require.NoError(t, tc.deleteRequest.SetQuery(tc.deleteRequest.Query))
-			isDeleted, nonDeletedIntervals := tc.deleteRequest.IsDeleted(chunkEntry)
-			require.Equal(t, tc.expectedResp.isDeleted, isDeleted)
-			for idx := range tc.expectedResp.nonDeletedIntervals {
-				require.Equal(t,
-					tc.expectedResp.nonDeletedIntervals[idx].Interval.Start,
-					nonDeletedIntervals[idx].Interval.Start,
-				)
-				require.Equal(t,
-					tc.expectedResp.nonDeletedIntervals[idx].Interval.End,
-					nonDeletedIntervals[idx].Interval.End,
-				)
+			tc.deleteRequest.Metrics = newDeleteRequestsManagerMetrics(nil)
+			isExpired, filterFunc := tc.deleteRequest.IsDeleted(chunkEntry)
+			require.Equal(t, tc.expectedResp.isDeleted, isExpired)
+			if tc.expectedResp.expectedFilter == nil {
+				require.Nil(t, filterFunc)
+				return
+			}
+			require.NotNil(t, filterFunc)
+
+			for start := chunkEntry.From; start <= chunkEntry.Through; start = start.Add(time.Minute) {
+				line := "foo bar"
+				if start.Time().Minute()%2 == 1 {
+					line = "filter bar"
+				}
+				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line), filterFunc(start.Time(), line), "line", line, "time", start.Time(), "now", now.Time())
 			}
 		})
 	}
@@ -249,17 +224,20 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 			Query:        `{foo="bar"} |= "some"`,
 			DeletedLines: 0,
 			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			StartTime:    0,
+			EndTime:      math.MaxInt64,
 		}
 
 		lblStr := `{foo="bar"}`
 		lbls := mustParseLabel(lblStr)
 
+		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
 
-		require.True(t, f(`some line`))
-		require.False(t, f(""))
-		require.False(t, f("other line"))
+		require.True(t, f(time.Now(), `some line`))
+		require.False(t, f(time.Now(), ""))
+		require.False(t, f(time.Now(), "other line"))
 		require.Equal(t, int32(1), dr.DeletedLines)
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
 	})
@@ -275,34 +253,42 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		lblStr := `{foo2="buzz"}`
 		lbls := mustParseLabel(lblStr)
 
+		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
 
-		require.False(t, f(""))
-		require.False(t, f("other line"))
-		require.False(t, f("some line"))
+		require.False(t, f(time.Time{}, ""))
+		require.False(t, f(time.Time{}, "other line"))
+		require.False(t, f(time.Time{}, "some line"))
 		require.Equal(t, int32(0), dr.DeletedLines)
 		// testutil.ToFloat64 panics when there are 0 metrics
 		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 
-	t.Run("all_lines_matching", func(t *testing.T) {
+	t.Run("no_line_filter", func(t *testing.T) {
+		now := model.Now()
 		dr := DeleteRequest{
 			Query:        `{namespace="default"}`,
 			DeletedLines: 0,
 			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			StartTime:    now.Add(-time.Hour),
+			EndTime:      now,
 		}
 
 		lblStr := `{namespace="default"}`
 		lbls := mustParseLabel(lblStr)
 
+		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
+		require.NotNil(t, f)
 
-		require.True(t, f(`some line`))
-		require.True(t, f(""))
-		require.True(t, f("other line"))
-		require.Equal(t, int32(3), dr.DeletedLines)
-		require.Equal(t, float64(3), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+		require.True(t, f(now.Time(), `some line`))
+		require.False(t, f(now.Time().Add(-2*time.Hour), `some line`))
+		require.True(t, f(now.Time(), "other line"))
+
+		require.Equal(t, int32(0), dr.DeletedLines)
+		// testutil.ToFloat64 panics when there are 0 metrics
+		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 }

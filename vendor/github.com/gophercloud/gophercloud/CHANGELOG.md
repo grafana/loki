@@ -1,3 +1,54 @@
+## v1.2.0 (2023-01-27)
+
+Starting with this version, Gophercloud sends its actual version in the
+user-agent string in the format `gophercloud/v1.2.0`. It no longer sends the
+hardcoded string `gophercloud/2.0.0`.
+
+* [GH-2542](https://github.com/gophercloud/gophercloud/pull/2542) Add field hidden in containerinfra/v1/clustertemplates
+* [GH-2537](https://github.com/gophercloud/gophercloud/pull/2537) Support value_specs for Ports
+* [GH-2530](https://github.com/gophercloud/gophercloud/pull/2530) keystone: add v3 OS-FEDERATION mappings create operation
+* [GH-2519](https://github.com/gophercloud/gophercloud/pull/2519) Modify user-agent header to ensure current gophercloud version is provided
+
+## v1.1.1 (2022-12-07)
+
+The GOPROXY cache for v1.1.0 was corrupted with a tag pointing to the wrong commit. This release fixes the problem by exposing a new release with the same content.
+
+Please use `v1.1.1` instead of `v1.1.0` to avoid cache issues.
+
+## v1.1.0 (2022-11-24)
+
+* [GH-2513](https://github.com/gophercloud/gophercloud/pull/2513) objectstorage: Do not parse NoContent responses
+* [GH-2503](https://github.com/gophercloud/gophercloud/pull/2503) Bump golang.org/x/crypto
+* [GH-2501](https://github.com/gophercloud/gophercloud/pull/2501) Staskraev/l3 agent scheduler
+* [GH-2496](https://github.com/gophercloud/gophercloud/pull/2496) Manila: add Get for share-access-rules API
+* [GH-2491](https://github.com/gophercloud/gophercloud/pull/2491) Add VipQosPolicyID to loadbalancer Create and Update
+* [GH-2488](https://github.com/gophercloud/gophercloud/pull/2488) Add Persistance for octavia pools.UpdateOpts
+* [GH-2487](https://github.com/gophercloud/gophercloud/pull/2487) Add Prometheus protocol for octavia listeners
+* [GH-2482](https://github.com/gophercloud/gophercloud/pull/2482) Add createdAt, updatedAt and provisionUpdatedAt fields in Baremetal V1 nodes
+* [GH-2479](https://github.com/gophercloud/gophercloud/pull/2479) Add service_types support for neutron subnet
+* [GH-2477](https://github.com/gophercloud/gophercloud/pull/2477) Port CreatedAt and UpdatedAt: add back JSON tags
+* [GH-2475](https://github.com/gophercloud/gophercloud/pull/2475) Support old time format for port CreatedAt and UpdatedAt
+* [GH-2474](https://github.com/gophercloud/gophercloud/pull/2474) Implementing re-image volumeaction
+* [GH-2470](https://github.com/gophercloud/gophercloud/pull/2470) keystone: add v3 limits GetEnforcementModel operation
+* [GH-2468](https://github.com/gophercloud/gophercloud/pull/2468) keystone: add v3 OS-FEDERATION extension List Mappings
+* [GH-2458](https://github.com/gophercloud/gophercloud/pull/2458) Fix typo in blockstorage/v3/attachments docs
+* [GH-2456](https://github.com/gophercloud/gophercloud/pull/2456) Add support for Update for flavors
+* [GH-2453](https://github.com/gophercloud/gophercloud/pull/2453) Add description to flavor
+* [GH-2417](https://github.com/gophercloud/gophercloud/pull/2417) Neutron v2: ScheduleBGPSpeakerOpts, RemoveBGPSpeaker, Lis…
+
+## 1.0.0 (2022-08-29)
+
+UPGRADE NOTES + PROMISE OF COMPATIBILITY
+
+* Introducing Gophercloud v1! Like for every other release so far, all clients will upgrade automatically with `go get -d github.com/gophercloud/gophercloud` unless the dependency is pinned in `go.mod`.
+* Gophercloud v1 comes with a promise of compatibility: no breaking changes are expected to merge before v2.0.0.
+
+IMPROVEMENTS
+
+* Added `compute.v2/extensions/services.Delete` [GH-2427](https://github.com/gophercloud/gophercloud/pull/2427)
+* Added support for `standard-attr-revisions` to `networking/v2/networks`, `networking/v2/ports`, and `networking/v2/subnets` [GH-2437](https://github.com/gophercloud/gophercloud/pull/2437)
+* Added `updated_at` and `created_at` fields to `networking/v2/ports.Port` [GH-2445](https://github.com/gophercloud/gophercloud/pull/2445)
+
 ## 0.25.0 (May 30, 2022)
 
 BREAKING CHANGES
@@ -134,7 +185,7 @@ IMPROVEMENTS
 NOTES / BREAKING CHANGES
 
 * `compute/v2/extensions/keypairs.List` now takes a `ListOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
-* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186) 
+* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
 * `compute/v2/extensions/keypairs.Delete` now takes a `DeleteOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
 * `compute/v2/extensions/hypervisors.List` now takes a `ListOptsBuilder` argument [GH-2187](https://github.com/gophercloud/gophercloud/pull/2187)
 
@@ -429,7 +480,7 @@ UPGRADE NOTES
 * The various `IDFromName` convenience functions have been moved to https://github.com/gophercloud/utils [GH-1897](https://github.com/gophercloud/gophercloud/pull/1897)
 * `sharedfilesystems/v2/shares.GetExportLocations` was renamed to `sharedfilesystems/v2/shares.ListExportLocations` [GH-1932](https://github.com/gophercloud/gophercloud/pull/1932)
 
-IMPROVEMENTS 
+IMPROVEMENTS
 
 * Added `blockstorage/extensions/volumeactions.SetBootable` [GH-1891](https://github.com/gophercloud/gophercloud/pull/1891)
 * Added `blockstorage/extensions/backups.Export` [GH-1894](https://github.com/gophercloud/gophercloud/pull/1894)
@@ -725,4 +776,4 @@ BUG FIXES
 
 ## 0.1.0 (May 27, 2019)
 
-Initial tagged release. 
+Initial tagged release.

@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/server"
 
 	internalserver "github.com/grafana/loki/pkg/server"
 )
@@ -99,24 +99,49 @@ func TestLoki_isModuleEnabled(t1 *testing.T) {
 }
 
 func TestLoki_AppendOptionalInternalServer(t *testing.T) {
-	tests := []string{Distributor, Ingester, Querier, QueryFrontend, QueryScheduler, Ruler, TableManager, Compactor, IndexGateway}
+	fake := &Loki{
+		Cfg: Config{
+			Target: flagext.StringSliceCSV{All},
+			Server: server.Config{
+				HTTPListenAddress: "3100",
+			},
+		},
+	}
+	err := fake.setupModuleManager()
+	assert.NoError(t, err)
+
+	var tests []string
+	for target, deps := range fake.deps {
+		for _, dep := range deps {
+			if dep == Server {
+				tests = append(tests, target)
+				break
+			}
+		}
+	}
+
+	assert.NotEmpty(t, tests, tests)
+
 	for _, tt := range tests {
 		t.Run(tt, func(t *testing.T) {
 			l := &Loki{
 				Cfg: Config{
 					Target: flagext.StringSliceCSV{tt},
+					Server: server.Config{
+						HTTPListenAddress: "3100",
+					},
 					InternalServer: internalserver.Config{
 						Config: server.Config{
-							HTTPListenAddress: "3002",
+							HTTPListenAddress: "3101",
 						},
 						Enable: true,
 					},
 				},
 			}
-
 			err := l.setupModuleManager()
 			assert.NoError(t, err)
 			assert.Contains(t, l.deps[tt], InternalServer)
+			assert.Contains(t, l.deps[tt], Server)
 		})
 	}
 }

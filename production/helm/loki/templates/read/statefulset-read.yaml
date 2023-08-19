@@ -1,22 +1,25 @@
 {{- $isSimpleScalable := eq (include "loki.deployment.isScalable" .) "true" -}}
-{{- if $isSimpleScalable }}
+{{- if and $isSimpleScalable (.Values.read.legacyReadTarget ) }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.readFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
 spec:
+{{- if not .Values.read.autoscaling.enabled }}
   replicas: {{ .Values.read.replicas }}
-  podManagementPolicy: Parallel
+{{- end }}
+  podManagementPolicy: {{ .Values.read.podManagementPolicy }}
   updateStrategy:
     rollingUpdate:
       partition: 0
   serviceName: {{ printf "%s-headless" (include "loki.readFullname" .) }}
   revisionHistoryLimit: {{ .Values.loki.revisionHistoryLimit }}
-  {{- if (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) }}
+  {{- if and (semverCompare ">= 1.23-0" .Capabilities.KubeVersion.Version) (.Values.read.persistence.enableStatefulSetAutoDeletePVC)  }}
   {{/*
     Data on the read nodes is easy to replace, so we want to always delete PVCs to make
     operation easier, and will rely on re-fetching data when needed.
@@ -31,7 +34,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -41,12 +44,19 @@ spec:
       labels:
         app.kubernetes.io/part-of: memberlist
         {{- include "loki.readSelectorLabels" . | nindent 8 }}
+        {{- with .Values.loki.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.read.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
         {{- with .Values.read.selectorLabels }}
         {{- tpl (toYaml .) $ | nindent 8 }}
         {{- end }}
     spec:
       serviceAccountName: {{ include "loki.serviceAccountName" . }}
       automountServiceAccountToken: {{ .Values.serviceAccount.automountServiceAccountToken }}
+      {{ include "loki.enableServiceLinks" . }}
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -56,12 +66,12 @@ spec:
         {{- toYaml .Values.loki.podSecurityContext | nindent 8 }}
       terminationGracePeriodSeconds: {{ .Values.read.terminationGracePeriodSeconds }}
       containers:
-        - name: read
+        - name: loki
           image: {{ include "loki.image" . }}
           imagePullPolicy: {{ .Values.loki.image.pullPolicy }}
           args:
             - -config.file=/etc/loki/config/config.yaml
-            - -target=read
+            - -target={{ .Values.read.targetModule }}
             {{- with .Values.read.extraArgs }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -87,9 +97,15 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
+          {{- with .Values.read.lifecycle }}
+          lifecycle:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           volumeMounts:
             - name: config
               mountPath: /etc/loki/config
+            - name: runtime-config
+              mountPath: /etc/loki/runtime-config
             - name: tmp
               mountPath: /tmp
             - name: data
@@ -126,6 +142,9 @@ spec:
           configMap:
             name: {{ include "loki.name" . }}
           {{- end }}
+        - name: runtime-config
+          configMap:
+            name: {{ template "loki.name" . }}-runtime
         {{- if .Values.enterprise.enabled }}
         - name: license
           secret:
@@ -150,4 +169,8 @@ spec:
         resources:
           requests:
             storage: {{ .Values.read.persistence.size | quote }}
+        {{- with .Values.read.persistence.selector }}
+        selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
 {{- end }}

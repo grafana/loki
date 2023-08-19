@@ -1,8 +1,8 @@
 package api
 
-// QueryDatacenterOptions sets options about how we fail over if there are no
+// QueryFailoverOptions sets options about how we fail over if there are no
 // healthy nodes in the local datacenter.
-type QueryDatacenterOptions struct {
+type QueryFailoverOptions struct {
 	// NearestN is set to the number of remote datacenters to try, based on
 	// network coordinates.
 	NearestN int
@@ -11,6 +11,21 @@ type QueryDatacenterOptions struct {
 	// never try a datacenter multiple times, so those are subtracted from
 	// this list before proceeding.
 	Datacenters []string
+
+	// Targets is a fixed list of datacenters and peers to try. This field cannot
+	// be populated with NearestN or Datacenters.
+	Targets []QueryFailoverTarget
+}
+
+// Deprecated: use QueryFailoverOptions instead.
+type QueryDatacenterOptions = QueryFailoverOptions
+
+type QueryFailoverTarget struct {
+	// Peer specifies a peer to try during failover.
+	Peer string
+
+	// Datacenter specifies a datacenter to try during failover.
+	Datacenter string
 }
 
 // QueryDNSOptions controls settings when query results are served over DNS.
@@ -35,7 +50,7 @@ type ServiceQuery struct {
 
 	// Failover controls what we do if there are no healthy nodes in the
 	// local datacenter.
-	Failover QueryDatacenterOptions
+	Failover QueryFailoverOptions
 
 	// IgnoreCheckIDs is an optional list of health check IDs to ignore when
 	// considering which nodes are healthy. It is useful as an emergency measure
@@ -81,6 +96,12 @@ type QueryTemplate struct {
 	// Regexp allows specifying a regex pattern to match against the name
 	// of the query being executed.
 	Regexp string
+
+	// RemoveEmptyTags if set to true, will cause the Tags list inside
+	// the Service structure to be stripped of any empty strings. This is useful
+	// when interpolating into tags in a way where the tag is optional, and
+	// where searching for an empty tag would yield no results from the query.
+	RemoveEmptyTags bool
 }
 
 // PreparedQueryDefinition defines a complete prepared query.

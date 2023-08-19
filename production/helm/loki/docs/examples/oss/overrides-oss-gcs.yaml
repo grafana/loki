@@ -15,7 +15,7 @@ enterprise:
     cluster_name: loki-logs
 
 loki:
-  authEnabled: false
+  auth_enabled: false
 
   commonConfig:
     path_prefix: /var/loki

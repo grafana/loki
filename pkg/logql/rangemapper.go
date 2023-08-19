@@ -2,6 +2,7 @@ package logql
 
 import (
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -13,12 +14,14 @@ import (
 )
 
 var splittableVectorOp = map[string]struct{}{
-	syntax.OpTypeSum:   {},
-	syntax.OpTypeCount: {},
-	syntax.OpTypeMax:   {},
-	syntax.OpTypeMin:   {},
-	syntax.OpTypeAvg:   {},
-	syntax.OpTypeTopK:  {},
+	syntax.OpTypeSum:      {},
+	syntax.OpTypeCount:    {},
+	syntax.OpTypeMax:      {},
+	syntax.OpTypeMin:      {},
+	syntax.OpTypeAvg:      {},
+	syntax.OpTypeTopK:     {},
+	syntax.OpTypeSort:     {},
+	syntax.OpTypeSortDesc: {},
 }
 
 var splittableRangeVectorOp = map[string]struct{}{
@@ -36,34 +39,36 @@ var splittableRangeVectorOp = map[string]struct{}{
 // using the downstream engine.
 //
 // A rewrite is performed using the following rules:
-// 1) Check if query is splittable based on the range.
-// 2) Check if the query is splittable based on the query AST
-// 3) Range aggregations are split into multiple downstream range aggregation expressions
-//    that are concatenated with an appropriate vector aggregator with a grouping operator.
-//    If the range aggregation has a grouping, the grouping is also applied to
-//    the resultant vector aggregator expression.
-//    If the range aggregation has no grouping, a grouping operator using "without" is applied
-//    to the resultant vector aggregator expression to preserve the stream labels.
-// 4) Vector aggregations are split into multiple downstream vector aggregations
-//    that are merged with vector aggregation using "without" and then aggregated
-//    using the vector aggregation with the same operator,
-//    either with or without grouping.
-// 5) Left and right-hand side of binary operations are split individually
-//    using the same rules as above.
+//  1. Check if query is splittable based on the range.
+//  2. Check if the query is splittable based on the query AST
+//  3. Range aggregations are split into multiple downstream range aggregation expressions
+//     that are concatenated with an appropriate vector aggregator with a grouping operator.
+//     If the range aggregation has a grouping, the grouping is also applied to
+//     the resultant vector aggregator expression.
+//     If the range aggregation has no grouping, a grouping operator using "without" is applied
+//     to the resultant vector aggregator expression to preserve the stream labels.
+//  4. Vector aggregations are split into multiple downstream vector aggregations
+//     that are merged with vector aggregation using "without" and then aggregated
+//     using the vector aggregation with the same operator,
+//     either with or without grouping.
+//  5. Left and right-hand side of binary operations are split individually
+//     using the same rules as above.
 type RangeMapper struct {
 	splitByInterval time.Duration
 	metrics         *MapperMetrics
+	stats           *MapperStats
 }
 
 // NewRangeMapper creates a new RangeMapper instance with the given duration as
 // split interval. The interval must be greater than 0.
-func NewRangeMapper(interval time.Duration, metrics *MapperMetrics) (RangeMapper, error) {
+func NewRangeMapper(interval time.Duration, metrics *MapperMetrics, stats *MapperStats) (RangeMapper, error) {
 	if interval <= 0 {
 		return RangeMapper{}, fmt.Errorf("cannot create RangeMapper with splitByInterval <= 0; got %s", interval)
 	}
 	return RangeMapper{
 		splitByInterval: interval,
 		metrics:         metrics,
+		stats:           stats,
 	}, nil
 }
 
@@ -97,6 +102,8 @@ func (m RangeMapper) Parse(query string) (bool, syntax.Expr, error) {
 
 	noop := origExpr.String() == modExpr.String()
 	if noop {
+		// reset split queries counter if the query is a noop
+		m.stats.resetSplitQueries()
 		m.metrics.ParsedQueries.WithLabelValues(NoopKey).Inc()
 	} else {
 		m.metrics.ParsedQueries.WithLabelValues(SuccessKey).Inc()
@@ -156,6 +163,8 @@ func (m RangeMapper) Map(expr syntax.SampleExpr, vectorAggrPushdown *syntax.Vect
 		return e, nil
 	case *syntax.LiteralExpr:
 		return e, nil
+	case *syntax.VectorExpr:
+		return e, nil
 	default:
 		// ConcatSampleExpr and DownstreamSampleExpr are not supported input expression types
 		return nil, errors.Errorf("unexpected expr type (%T) for ASTMapper type (%T) ", expr, m)
@@ -183,10 +192,12 @@ func hasLabelExtractionStage(expr syntax.SampleExpr) bool {
 	found := false
 	expr.Walk(func(e interface{}) {
 		switch concrete := e.(type) {
+		case *syntax.LogfmtParserExpr:
+			found = true
 		case *syntax.LabelParserExpr:
 			// It will **not** return true for `regexp`, `unpack` and `pattern`, since these label extraction
 			// stages can control how many labels, and therefore the resulting amount of series, are extracted.
-			if concrete.Op == syntax.OpParserTypeJSON || concrete.Op == syntax.OpParserTypeLogfmt {
+			if concrete.Op == syntax.OpParserTypeJSON {
 				found = true
 			}
 		}
@@ -226,6 +237,7 @@ func (m RangeMapper) sumOverFullRange(expr *syntax.RangeAggregationExpr, overrid
 			Left: m.mapConcatSampleExpr(downstreamExpr, rangeInterval, recorder),
 			Grouping: &syntax.Grouping{
 				Without: true,
+				Groups:  []string{},
 			},
 			Operation: syntax.OpTypeSum,
 		},
@@ -248,6 +260,7 @@ func (m RangeMapper) vectorAggrWithRangeDownstreams(expr *syntax.RangeAggregatio
 	if expr.Grouping == nil {
 		grouping = &syntax.Grouping{
 			Without: true,
+			Groups:  []string{},
 		}
 	}
 	var downstream syntax.SampleExpr = expr
@@ -270,7 +283,7 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 		case *syntax.RangeAggregationExpr:
 			concrete.Left.Interval = interval
 			if offset != 0 {
-				concrete.Left.Offset += offset
+				concrete.Left.Offset = offset
 			}
 		}
 	})
@@ -283,29 +296,63 @@ func appendDownstream(downstreams *ConcatSampleExpr, expr syntax.SampleExpr, int
 	return downstreams
 }
 
+func getOffsets(expr syntax.SampleExpr) []time.Duration {
+	// Expect to always find at most 1 offset, so preallocate it accordingly
+	offsets := make([]time.Duration, 0, 1)
+
+	expr.Walk(func(e interface{}) {
+		switch concrete := e.(type) {
+		case *syntax.RangeAggregationExpr:
+			offsets = append(offsets, concrete.Left.Offset)
+		}
+	})
+	return offsets
+}
+
+// getOriginalOffset returns the offset specified in the input expr
+// Note that the returned offset can be zero or negative
+func (m RangeMapper) getOriginalOffset(expr syntax.SampleExpr) (offset time.Duration, err error) {
+	offsets := getOffsets(expr)
+	if len(offsets) == 0 {
+		return time.Duration(0), nil
+	}
+	if len(offsets) > 1 {
+		return time.Duration(0), fmt.Errorf("found %d offsets while expecting at most 1", len(offsets))
+	}
+
+	return offsets[0], nil
+}
+
 // mapConcatSampleExpr transform expr in multiple downstream subexpressions split by offset range interval
 // rangeInterval should be greater than m.splitByInterval, otherwise the resultant expression
 // will have an unnecessary aggregation operation
 func (m RangeMapper) mapConcatSampleExpr(expr syntax.SampleExpr, rangeInterval time.Duration, recorder *downstreamRecorder) syntax.SampleExpr {
-	splitCount := int(rangeInterval / m.splitByInterval)
-
-	if splitCount == 0 {
+	splitCount := int(math.Ceil(float64(rangeInterval) / float64(m.splitByInterval)))
+	if splitCount <= 1 {
 		return expr
 	}
 
-	var split int
-	var downstreams *ConcatSampleExpr
-	for split = 0; split < splitCount; split++ {
-		downstreams = appendDownstream(downstreams, expr, m.splitByInterval, time.Duration(split)*m.splitByInterval)
+	originalOffset, err := m.getOriginalOffset(expr)
+	if err != nil {
+		return expr
 	}
-	recorder.Add(splitCount, MetricsKey)
 
-	// Add the remainder offset interval
-	if rangeInterval%m.splitByInterval != 0 {
-		offset := time.Duration(split) * m.splitByInterval
-		downstreams = appendDownstream(downstreams, expr, rangeInterval-offset, offset)
-		recorder.Add(1, MetricsKey)
+	var downstreams *ConcatSampleExpr
+	for split := 0; split < splitCount; split++ {
+		splitOffset := time.Duration(split) * m.splitByInterval
+		// The range interval of the last downstream query can be smaller than the split interval
+		splitRangeInterval := m.splitByInterval
+		if splitOffset+splitRangeInterval > rangeInterval {
+			splitRangeInterval = rangeInterval - splitOffset
+		}
+		// The offset of downstream queries is always the original offset + a multiple of the split interval
+		splitOffset += originalOffset
+		downstreams = appendDownstream(downstreams, expr, splitRangeInterval, splitOffset)
 	}
+
+	// Update stats and metrics
+	m.stats.AddSplitQueries(splitCount)
+	recorder.Add(splitCount, MetricsKey)
 
 	return downstreams
 }
@@ -324,7 +371,7 @@ func (m RangeMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 	// This does not work for `count()` and `topk()`, though.
 	// We also do not want to push down, if the inner expression is a binary operation.
 	var vectorAggrPushdown *syntax.VectorAggregationExpr
-	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK {
+	if _, ok := expr.Left.(*syntax.BinOpExpr); !ok && expr.Operation != syntax.OpTypeCount && expr.Operation != syntax.OpTypeTopK && expr.Operation != syntax.OpTypeSort && expr.Operation != syntax.OpTypeSortDesc {
 		vectorAggrPushdown = expr
 	}
 
@@ -438,6 +485,8 @@ func isSplittableByRange(expr syntax.SampleExpr) bool {
 		return isSplittableByRange(e.SampleExpr) || literalLHS && isSplittableByRange(e.RHS) || literalRHS
 	case *syntax.LabelReplaceExpr:
 		return isSplittableByRange(e.Left)
+	case *syntax.VectorExpr:
+		return false
 	default:
 		return false
 	}

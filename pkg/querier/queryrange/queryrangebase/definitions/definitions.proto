@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package definitions;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 
 option go_package = "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase/definitions";
 option (gogoproto.marshaler_all) = true;

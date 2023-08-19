@@ -18,14 +18,16 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/prometheus/model/exemplar"
+	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/prometheus/prometheus/model/metadata"
 	"github.com/prometheus/prometheus/model/timestamp"
 	"github.com/prometheus/prometheus/model/value"
 	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
-	"github.com/prometheus/prometheus/tsdb/wal"
+	"github.com/prometheus/prometheus/tsdb/wlog"
 	"go.uber.org/atomic"
 )
 
@@ -47,7 +49,7 @@ type Storage struct {
 	walClosed bool
 
 	path   string
-	wal    *wal.WAL
+	wal    *wlog.WL
 	logger log.Logger
 
 	appenderPool sync.Pool
@@ -64,7 +66,7 @@ type Storage struct {
 
 // NewStorage makes a new Storage.
 func NewStorage(logger log.Logger, metrics *Metrics, registerer prometheus.Registerer, path string) (*Storage, error) {
-	w, err := wal.NewSize(logger, registerer, SubDirectory(path), wal.DefaultSegmentSize, true)
+	w, err := wlog.NewSize(logger, registerer, SubDirectory(path), wlog.DefaultSegmentSize, true)
 	if err != nil {
 		return nil, err
 	}
@@ -123,13 +125,13 @@ func (w *Storage) replayWAL() error {
 	}
 
 	level.Info(w.logger).Log("msg", "replaying WAL, this may take a while", "dir", w.wal.Dir())
-	dir, startFrom, err := wal.LastCheckpoint(w.wal.Dir())
+	dir, startFrom, err := wlog.LastCheckpoint(w.wal.Dir())
 	if err != nil && err != record.ErrNotFound {
 		return errors.Wrap(err, "find last checkpoint")
 	}
 
 	if err == nil {
-		sr, err := wal.NewSegmentsReader(dir)
+		sr, err := wlog.NewSegmentsReader(dir)
 		if err != nil {
 			return errors.Wrap(err, "open checkpoint")
 		}
@@ -141,7 +143,7 @@ func (w *Storage) replayWAL() error {
 
 		// A corrupted checkpoint is a hard error for now and requires user
 		// intervention. There's likely little data that can be recovered anyway.
-		if err := w.loadWAL(wal.NewReader(sr)); err != nil {
+		if err := w.loadWAL(wlog.NewReader(sr)); err != nil {
 			return errors.Wrap(err, "backfill checkpoint")
 		}
 		startFrom++
@@ -149,20 +151,20 @@ func (w *Storage) replayWAL() error {
 	}
 
 	// Find the last segment.
-	_, last, err := wal.Segments(w.wal.Dir())
+	_, last, err := wlog.Segments(w.wal.Dir())
 	if err != nil {
 		return errors.Wrap(err, "finding WAL segments")
 	}
 
 	// Backfill segments from the most recent checkpoint onwards.
 	for i := startFrom; i <= last; i++ {
-		s, err := wal.OpenReadSegment(wal.SegmentName(w.wal.Dir(), i))
+		s, err := wlog.OpenReadSegment(wlog.SegmentName(w.wal.Dir(), i))
 		if err != nil {
 			return errors.Wrap(err, fmt.Sprintf("open WAL segment: %d", i))
 		}
 
-		sr := wal.NewSegmentBufReader(s)
-		err = w.loadWAL(wal.NewReader(sr))
+		sr := wlog.NewSegmentBufReader(s)
+		err = w.loadWAL(wlog.NewReader(sr))
 		if err := sr.Close(); err != nil {
 			level.Warn(w.logger).Log("msg", "error while closing the wal segments reader", "err", err)
 		}
@@ -175,7 +177,7 @@ func (w *Storage) replayWAL() error {
 	return nil
 }
 
-func (w *Storage) loadWAL(r *wal.Reader) (err error) {
+func (w *Storage) loadWAL(r *wlog.Reader) (err error) {
 	var dec record.Decoder
 
 	var (
@@ -202,7 +204,7 @@ func (w *Storage) loadWAL(r *wal.Reader) (err error) {
 				series := seriesPool.Get().([]record.RefSeries)[:0]
 				series, err = dec.Series(rec, series)
 				if err != nil {
-					errCh <- &wal.CorruptionErr{
+					errCh <- &wlog.CorruptionErr{
 						Err:     errors.Wrap(err, "decode series"),
 						Segment: r.Segment(),
 						Offset:  r.Offset(),
@@ -214,7 +216,7 @@ func (w *Storage) loadWAL(r *wal.Reader) (err error) {
 				samples := samplesPool.Get().([]record.RefSample)[:0]
 				samples, err = dec.Samples(rec, samples)
 				if err != nil {
-					errCh <- &wal.CorruptionErr{
+					errCh <- &wlog.CorruptionErr{
 						Err:     errors.Wrap(err, "decode samples"),
 						Segment: r.Segment(),
 						Offset:  r.Offset(),
@@ -225,7 +227,7 @@ func (w *Storage) loadWAL(r *wal.Reader) (err error) {
 				// We don't care about decoding tombstones or exemplars
 				continue
 			default:
-				errCh <- &wal.CorruptionErr{
+				errCh <- &wlog.CorruptionErr{
 					Err:     errors.Errorf("invalid record type %v", dec.Type(rec)),
 					Segment: r.Segment(),
 					Offset:  r.Offset(),
@@ -330,14 +332,14 @@ func (w *Storage) Truncate(mint int64) error {
 	w.gc(mint)
 	level.Info(w.logger).Log("msg", "series GC completed", "duration", time.Since(start))
 
-	first, last, err := wal.Segments(w.wal.Dir())
+	first, last, err := wlog.Segments(w.wal.Dir())
 	if err != nil {
 		return errors.Wrap(err, "get segment range")
 	}
 
 	// Start a new segment, so low ingestion volume instance don't have more WAL
 	// than needed.
-	err = w.wal.NextSegment()
+	_, err = w.wal.NextSegment()
 	if err != nil {
 		return errors.Wrap(err, "next segment")
 	}
@@ -364,7 +366,7 @@ func (w *Storage) Truncate(mint int64) error {
 		w.deletedMtx.Unlock()
 		return ok
 	}
-	if _, err = wal.Checkpoint(w.logger, w.wal, first, last, keep, mint); err != nil {
+	if _, err = wlog.Checkpoint(w.logger, w.wal, first, last, keep, mint); err != nil {
 		return errors.Wrap(err, "create checkpoint")
 	}
 	if err := w.wal.Truncate(last + 1); err != nil {
@@ -386,7 +388,7 @@ func (w *Storage) Truncate(mint int64) error {
 	w.metrics.NumDeletedSeries.Set(float64(len(w.deleted)))
 	w.deletedMtx.Unlock()
 
-	if err := wal.DeleteCheckpoints(w.wal.Dir(), last); err != nil {
+	if err := wlog.DeleteCheckpoints(w.wal.Dir(), last); err != nil {
 		// Leftover old checkpoints do not cause problems down the line beyond
 		// occupying disk space.
 		// They will just be ignored since a higher checkpoint exists.
@@ -403,7 +405,7 @@ func (w *Storage) gc(mint int64) {
 	deleted := w.series.gc(mint)
 	w.metrics.NumActiveSeries.Sub(float64(len(deleted)))
 
-	_, last, _ := wal.Segments(w.wal.Dir())
+	_, last, _ := wlog.Segments(w.wal.Dir())
 	w.deletedMtx.Lock()
 	defer w.deletedMtx.Unlock()
 
@@ -536,6 +538,8 @@ type appender struct {
 	exemplars []record.RefExemplar
 }
 
+var _ storage.Appender = (*appender)(nil)
+
 func (a *appender) Append(ref storage.SeriesRef, l labels.Labels, t int64, v float64) (storage.SeriesRef, error) {
 	series := a.w.series.getByID(chunks.HeadSeriesRef(ref))
 	if series == nil {
@@ -626,6 +630,15 @@ func (a *appender) AppendExemplar(ref storage.SeriesRef, _ labels.Labels, e exem
 	})
 
 	return storage.SeriesRef(s.ref), nil
+}
+
+func (a *appender) UpdateMetadata(_ storage.SeriesRef, _ labels.Labels, _ metadata.Metadata) (storage.SeriesRef, error) {
+	return 0, nil
+}
+
+func (a *appender) AppendHistogram(_ storage.SeriesRef, _ labels.Labels, _ int64, _ *histogram.Histogram, _ *histogram.FloatHistogram) (storage.SeriesRef, error) {
+	// TODO: support native histograms
+	return 0, nil
 }
 
 // Commit submits the collected samples and purges the batch.

@@ -3,7 +3,6 @@ package baidubce
 import (
 	"context"
 	"flag"
-
 	"io"
 	"time"
 
@@ -11,16 +10,17 @@ import (
 	"github.com/baidubce/bce-sdk-go/services/bos"
 	"github.com/baidubce/bce-sdk-go/services/bos/api"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 )
 
 // NoSuchKeyErr The resource you requested does not exist.
 // refer to: https://cloud.baidu.com/doc/BOS/s/Ajwvysfpl
-//			 https://intl.cloud.baidu.com/doc/BOS/s/Ajwvysfpl-en
+//
+//	https://intl.cloud.baidu.com/doc/BOS/s/Ajwvysfpl-en
 const NoSuchKeyErr = "NoSuchKey"
 
 const DefaultEndpoint = bos.DEFAULT_SERVICE_DOMAIN
@@ -50,10 +50,10 @@ func (cfg *BOSStorageConfig) RegisterFlags(f *flag.FlagSet) {
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
 func (cfg *BOSStorageConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.StringVar(&cfg.BucketName, prefix+"baidubce.bucket-name", "", "Name of BOS bucket.")
-	f.StringVar(&cfg.Endpoint, prefix+"baidubce.endpoint", DefaultEndpoint, "BOS endpoint to connect to.")
-	f.StringVar(&cfg.AccessKeyID, prefix+"baidubce.access-key-id", "", "Baidu Cloud Engine (BCE) Access Key ID.")
-	f.Var(&cfg.SecretAccessKey, prefix+"baidubce.secret-access-key", "Baidu Cloud Engine (BCE) Secret Access Key.")
+	f.StringVar(&cfg.BucketName, prefix+"bos.bucket-name", "", "Name of BOS bucket.")
+	f.StringVar(&cfg.Endpoint, prefix+"bos.endpoint", DefaultEndpoint, "BOS endpoint to connect to.")
+	f.StringVar(&cfg.AccessKeyID, prefix+"bos.access-key-id", "", "Baidu Cloud Engine (BCE) Access Key ID.")
+	f.Var(&cfg.SecretAccessKey, prefix+"bos.secret-access-key", "Baidu Cloud Engine (BCE) Secret Access Key.")
 }
 
 type BOSObjectStorage struct {
@@ -170,3 +170,6 @@ func (b *BOSObjectStorage) IsObjectNotFoundErr(err error) bool {
 }
 
 func (b *BOSObjectStorage) Stop() {}
+
+// TODO(dannyk): implement for client
+func (b *BOSObjectStorage) IsRetryableErr(error) bool { return false }

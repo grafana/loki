@@ -7,32 +7,41 @@ run:
 # golangci.com configuration
 # https://github.com/golangci/golangci/wiki/Configuration
 linters-settings:
+  gci:
+    sections:
+    - standard
+    - default
+    - prefix(github.com/grafana/loki/operator)
+    - blank
+    - dot
   govet:
     check-shadowing: true
   maligned:
     suggest-new: true
   misspell:
     locale: US
+  revive:
+    rules:
+      - name: package-comments
+        disabled: true
 
 linters:
   enable-all: false
   enable:
-  - deadcode # Finds unused code
   - errcheck # Errcheck is a program for checking for unchecked errors in go programs. These unchecked errors can be critical bugs in some cases
+  - gci # Gci controls Go package import order and makes it always deterministic
   - goerr113 # checks that errors are wrapped according to go 1.13 error wrapping tools
   - gofumpt # checks that gofumpt was run on all source code
   - goimports # checks that goimports was run on all source code
-  - golint
   - gosimple # Linter for Go source code that specializes in simplifying a code
   - govet # Vet examines Go source code and reports suspicious constructs, such as Printf calls whose arguments do not align with the format string
   - ineffassign # Detects when assignments to existing variables are not used
   - misspell # spell checker
+  - revive
   - rowserrcheck # checks whether Err of rows is checked successfully
   - staticcheck # Staticcheck is a go vet on steroids, applying a ton of static analysis checks
-  - structcheck # Finds unused struct fields
   - typecheck # Like the front-end of a Go compiler, parses and type-checks Go code
   - unused # Checks Go code for unused constants, variables, functions and types
-  - varcheck # Finds unused global variables and constants
 
 issues:
   exclude-use-default: false

@@ -27,17 +27,17 @@ import (
 // IAM provides access to IAM access control for the bucket.
 func (b *BucketHandle) IAM() *iam.Handle {
 	return iam.InternalNewHandleClient(&iamClient{
-		raw:         b.c.raw,
 		userProject: b.userProject,
 		retry:       b.retry,
+		client:      b.c,
 	}, b.name)
 }
 
 // iamClient implements the iam.client interface.
 type iamClient struct {
-	raw         *raw.Service
 	userProject string
 	retry       *retryConfig
+	client      *Client
 }
 
 func (c *iamClient) Get(ctx context.Context, resource string) (p *iampb.Policy, err error) {
@@ -48,57 +48,25 @@ func (c *iamClient) GetWithVersion(ctx context.Context, resource string, request
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.IAM.Get")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	call := c.raw.Buckets.GetIamPolicy(resource).OptionsRequestedPolicyVersion(int64(requestedPolicyVersion))
-	setClientHeader(call.Header())
-	if c.userProject != "" {
-		call.UserProject(c.userProject)
-	}
-	var rp *raw.Policy
-	err = run(ctx, func() error {
-		rp, err = call.Context(ctx).Do()
-		return err
-	}, c.retry, true, setRetryHeaderHTTP(call))
-	if err != nil {
-		return nil, err
-	}
-	return iamFromStoragePolicy(rp), nil
+	o := makeStorageOpts(true, c.retry, c.userProject)
+	return c.client.tc.GetIamPolicy(ctx, resource, requestedPolicyVersion, o...)
 }
 
 func (c *iamClient) Set(ctx context.Context, resource string, p *iampb.Policy) (err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.IAM.Set")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	rp := iamToStoragePolicy(p)
-	call := c.raw.Buckets.SetIamPolicy(resource, rp)
-	setClientHeader(call.Header())
-	if c.userProject != "" {
-		call.UserProject(c.userProject)
-	}
 	isIdempotent := len(p.Etag) > 0
-	return run(ctx, func() error {
-		_, err := call.Context(ctx).Do()
-		return err
-	}, c.retry, isIdempotent, setRetryHeaderHTTP(call))
+	o := makeStorageOpts(isIdempotent, c.retry, c.userProject)
+	return c.client.tc.SetIamPolicy(ctx, resource, p, o...)
 }
 
 func (c *iamClient) Test(ctx context.Context, resource string, perms []string) (permissions []string, err error) {
 	ctx = trace.StartSpan(ctx, "cloud.google.com/go/storage.IAM.Test")
 	defer func() { trace.EndSpan(ctx, err) }()
 
-	call := c.raw.Buckets.TestIamPermissions(resource, perms)
-	setClientHeader(call.Header())
-	if c.userProject != "" {
-		call.UserProject(c.userProject)
-	}
-	var res *raw.TestIamPermissionsResponse
-	err = run(ctx, func() error {
-		res, err = call.Context(ctx).Do()
-		return err
-	}, c.retry, true, setRetryHeaderHTTP(call))
-	if err != nil {
-		return nil, err
-	}
-	return res.Permissions, nil
+	o := makeStorageOpts(true, c.retry, c.userProject)
+	return c.client.tc.TestIamPermissions(ctx, resource, perms, o...)
 }
 
 func iamToStoragePolicy(ip *iampb.Policy) *raw.Policy {

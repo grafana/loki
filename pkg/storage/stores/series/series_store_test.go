@@ -4,19 +4,18 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/test"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/test"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -101,33 +100,28 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	now := model.Now()
 
-	fooMetric1 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "flip", Value: "flop"},
-		{Name: "toms", Value: "code"},
-	}
-	fooMetric2 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "beep"},
-		{Name: "toms", Value: "code"},
-	}
-	fooMetric3 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "bop"},
-		{Name: "flip", Value: "flap"},
-	}
+	fooMetric1 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "baz",
+		"flip", "flop",
+		"toms", "code",
+	)
+	fooMetric2 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "beep",
+		"toms", "code",
+	)
+	fooMetric3 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "bop",
+		"flip", "flap",
+	)
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
-	barMetric1 := labels.Labels{
-		{Name: labels.MetricName, Value: "bar"},
-		{Name: "bar", Value: "baz"},
-	}
-	barMetric2 := labels.Labels{
-		{Name: labels.MetricName, Value: "bar"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	}
+	barMetric1 := labels.FromStrings(labels.MetricName, "bar",
+		"bar", "baz",
+	)
+	barMetric2 := labels.FromStrings(labels.MetricName, "bar",
+		"bar", "baz",
+		"toms", "code",
+	)
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
 	fooChunk2 := dummyChunkFor(now, fooMetric2)
@@ -139,26 +133,39 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 	for _, tc := range []struct {
 		metricName, labelName string
 		expect                []string
+		matchers              []*labels.Matcher
 	}{
 		{
 			`foo`, `bar`,
 			[]string{"baz", "beep", "bop"},
+			nil,
 		},
 		{
 			`bar`, `toms`,
 			[]string{"code"},
+			nil,
 		},
 		{
 			`bar`, `bar`,
 			[]string{"baz"},
+			nil,
 		},
 		{
 			`foo`, `foo`,
+			nil,
 			nil,
 		},
 		{
 			`foo`, `flip`,
 			[]string{"flap", "flop"},
+			nil,
+		},
+		{
+			`foo`, `toms`,
+			[]string{"code"},
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "bar", "baz|beep"),
+			},
 		},
 	} {
 		for _, schema := range schemas {
@@ -180,7 +187,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with ordinary time-range
-					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName)
+					labelValues1, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now, tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues1) {
@@ -188,7 +195,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Pushing end of time-range into future should yield exact same resultset
-					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName)
+					labelValues2, err := store.LabelValuesForMetricName(ctx, userID, now.Add(-time.Hour), now.Add(time.Hour*24*10), tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 
 					if !reflect.DeepEqual(tc.expect, labelValues2) {
@@ -196,7 +203,7 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					}
 
 					// Query with both begin & end of time-range in future should yield empty resultset
-					labelValues3, err := store.LabelValuesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName)
+					labelValues3, err := store.LabelValuesForMetricName(ctx, userID, now.Add(time.Hour), now.Add(time.Hour*2), tc.metricName, tc.labelName, tc.matchers...)
 					require.NoError(t, err)
 					if len(labelValues3) != 0 {
 						t.Fatalf("%s/%s: future query should yield empty resultset ... actually got %v label values: %#v",
@@ -211,33 +218,28 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 	now := model.Now()
 
-	fooMetric1 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "flip", Value: "flop"},
-		{Name: "toms", Value: "code"},
-	}
-	fooMetric2 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "beep"},
-		{Name: "toms", Value: "code"},
-	}
-	fooMetric3 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "bop"},
-		{Name: "flip", Value: "flap"},
-	}
+	fooMetric1 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "baz",
+		"flip", "flop",
+		"toms", "code",
+	)
+	fooMetric2 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "beep",
+		"toms", "code",
+	)
+	fooMetric3 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "bop",
+		"flip", "flap",
+	)
 
 	// barMetric1 is a subset of barMetric2 to test over-matching bug.
-	barMetric1 := labels.Labels{
-		{Name: labels.MetricName, Value: "bar"},
-		{Name: "bar", Value: "baz"},
-	}
-	barMetric2 := labels.Labels{
-		{Name: labels.MetricName, Value: "bar"},
-		{Name: "bar", Value: "baz"},
-		{Name: "toms", Value: "code"},
-	}
+	barMetric1 := labels.FromStrings(labels.MetricName, "bar",
+		"bar", "baz",
+	)
+	barMetric2 := labels.FromStrings(labels.MetricName, "bar",
+		"bar", "baz",
+		"toms", "code",
+	)
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
 	fooChunk2 := dummyChunkFor(now, fooMetric2)
@@ -311,17 +313,15 @@ func TestChunkStore_LabelNamesForMetricName(t *testing.T) {
 // TestChunkStore_getMetricNameChunks tests if chunks are fetched correctly when we have the metric name
 func TestChunkStore_getMetricNameChunks(t *testing.T) {
 	now := model.Now()
-	chunk1 := dummyChunkFor(now, labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "flip", Value: "flop"},
-		{Name: "toms", Value: "code"},
-	})
-	chunk2 := dummyChunkFor(now, labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "beep"},
-		{Name: "toms", Value: "code"},
-	})
+	chunk1 := dummyChunkFor(now, labels.FromStrings(labels.MetricName, "foo",
+		"bar", "baz",
+		"flip", "flop",
+		"toms", "code",
+	))
+	chunk2 := dummyChunkFor(now, labels.FromStrings(labels.MetricName, "foo",
+		"bar", "beep",
+		"toms", "code",
+	))
 
 	testCases := []struct {
 		query  string
@@ -372,7 +372,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 		for _, storeCase := range stores {
 			storeCfg := storeCase.configFn()
 
-			store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
+			store, _ := newTestChunkStoreConfig(t, schema, storeCfg)
 			defer store.Stop()
 
 			if err := store.Put(ctx, []chunk.Chunk{chunk1, chunk2}); err != nil {
@@ -392,15 +392,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
 						for _, cs := range chunks {
-							keys := make([]string, 0, len(cs))
-							sort.Slice(chunks, func(i, j int) bool {
-								return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
-							})
-
-							for _, c := range cs {
-								keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
-							}
-							cks, err := f.FetchChunks(ctx, cs, keys)
+							cks, err := f.FetchChunks(ctx, cs)
 							if err != nil {
 								t.Fatal(err)
 							}
@@ -435,18 +427,16 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 
 func Test_GetSeries(t *testing.T) {
 	now := model.Now()
-	ch1lbs := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "flip", Value: "flop"},
-		{Name: "toms", Value: "code"},
-	}
+	ch1lbs := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "baz",
+		"flip", "flop",
+		"toms", "code",
+	)
 	chunk1 := dummyChunkFor(now, ch1lbs)
-	ch2lbs := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "beep"},
-		{Name: "toms", Value: "code"},
-	}
+	ch2lbs := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "beep",
+		"toms", "code",
+	)
 	chunk2 := dummyChunkFor(now, ch2lbs)
 
 	testCases := []struct {
@@ -536,18 +526,16 @@ func Test_GetSeries(t *testing.T) {
 
 func Test_GetSeriesShard(t *testing.T) {
 	now := model.Now()
-	ch1lbs := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "flip", Value: "flop"},
-		{Name: "toms", Value: "code"},
-	}
+	ch1lbs := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "baz",
+		"flip", "flop",
+		"toms", "code",
+	)
 	chunk1 := dummyChunkFor(now, ch1lbs)
-	ch2lbs := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "beep"},
-		{Name: "toms", Value: "code"},
-	}
+	ch2lbs := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "beep",
+		"toms", "code",
+	)
 	chunk2 := dummyChunkFor(now, ch2lbs)
 
 	testCases := []struct {
@@ -629,7 +617,7 @@ func TestChunkStoreError(t *testing.T) {
 			query:   "foo",
 			from:    model.Time(0),
 			through: model.Time(0).Add(31 * 24 * time.Hour),
-			err:     "the query time range exceeds the limit (query length: 744h0m0s, limit: 720h0m0s)",
+			err:     "the query time range exceeds the limit (query length: 31d, limit: 30d)",
 		},
 		{
 			query:   "{foo=\"bar\"}",
@@ -663,21 +651,19 @@ func TestChunkStoreError(t *testing.T) {
 func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 	now := model.Now()
 
-	fooMetric1 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "baz"},
-		{Name: "flip", Value: "flop"},
-		{Name: "toms", Value: "code"},
-		{Name: "env", Value: "dev"},
-		{Name: "class", Value: "not-secret"},
-	}
-	fooMetric2 := labels.Labels{
-		{Name: labels.MetricName, Value: "foo"},
-		{Name: "bar", Value: "beep"},
-		{Name: "toms", Value: "code"},
-		{Name: "env", Value: "prod"},
-		{Name: "class", Value: "secret"},
-	}
+	fooMetric1 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "baz",
+		"flip", "flop",
+		"toms", "code",
+		"env", "dev",
+		"class", "not-secret",
+	)
+	fooMetric2 := labels.FromStrings(labels.MetricName, "foo",
+		"bar", "beep",
+		"toms", "code",
+		"env", "prod",
+		"class", "secret",
+	)
 
 	fooChunk1 := dummyChunkFor(now, fooMetric1)
 	fooChunk2 := dummyChunkFor(now, fooMetric2)
@@ -698,6 +684,13 @@ func TestSeriesStore_LabelValuesForMetricName(t *testing.T) {
 			[]*labels.Matcher{
 				labels.MustNewMatcher(labels.MatchNotEqual, "env", "prod"),
 				labels.MustNewMatcher(labels.MatchEqual, "toms", "code"),
+			},
+		},
+		{
+			`foo`, `toms`,
+			[]string{"code"},
+			[]*labels.Matcher{
+				labels.MustNewMatcher(labels.MatchRegexp, "env", "dev|prod"),
 			},
 		},
 	} {
@@ -767,22 +760,21 @@ func dummyChunkFor(now model.Time, metric labels.Labels) chunk.Chunk {
 }
 
 // BenchmarkLabels is a real example from Kubernetes' embedded cAdvisor metrics, lightly obfuscated
-var BenchmarkLabels = labels.Labels{
-	{Name: model.MetricNameLabel, Value: "container_cpu_usage_seconds_total"},
-	{Name: "beta_kubernetes_io_arch", Value: "amd64"},
-	{Name: "beta_kubernetes_io_instance_type", Value: "c3.somesize"},
-	{Name: "beta_kubernetes_io_os", Value: "linux"},
-	{Name: "container_name", Value: "some-name"},
-	{Name: "cpu", Value: "cpu01"},
-	{Name: "failure_domain_beta_kubernetes_io_region", Value: "somewhere-1"},
-	{Name: "failure_domain_beta_kubernetes_io_zone", Value: "somewhere-1b"},
-	{Name: "id", Value: "/kubepods/burstable/pod6e91c467-e4c5-11e7-ace3-0a97ed59c75e/a3c8498918bd6866349fed5a6f8c643b77c91836427fb6327913276ebc6bde28"},
-	{Name: "image", Value: "registry/organisation/name@sha256:dca3d877a80008b45d71d7edc4fd2e44c0c8c8e7102ba5cbabec63a374d1d506"},
-	{Name: "instance", Value: "ip-111-11-1-11.ec2.internal"},
-	{Name: "job", Value: "kubernetes-cadvisor"},
-	{Name: "kubernetes_io_hostname", Value: "ip-111-11-1-11"},
-	{Name: "monitor", Value: "prod"},
-	{Name: "name", Value: "k8s_some-name_some-other-name-5j8s8_kube-system_6e91c467-e4c5-11e7-ace3-0a97ed59c75e_0"},
-	{Name: "namespace", Value: "kube-system"},
-	{Name: "pod_name", Value: "some-other-name-5j8s8"},
-}
+var BenchmarkLabels = labels.FromStrings(model.MetricNameLabel, "container_cpu_usage_seconds_total",
+	"beta_kubernetes_io_arch", "amd64",
+	"beta_kubernetes_io_instance_type", "c3.somesize",
+	"beta_kubernetes_io_os", "linux",
+	"container_name", "some-name",
+	"cpu", "cpu01",
+	"failure_domain_beta_kubernetes_io_region", "somewhere-1",
+	"failure_domain_beta_kubernetes_io_zone", "somewhere-1b",
+	"id", "/kubepods/burstable/pod6e91c467-e4c5-11e7-ace3-0a97ed59c75e/a3c8498918bd6866349fed5a6f8c643b77c91836427fb6327913276ebc6bde28",
+	"image", "registry/organisation/name@sha256:dca3d877a80008b45d71d7edc4fd2e44c0c8c8e7102ba5cbabec63a374d1d506",
+	"instance", "ip-111-11-1-11.ec2.internal",
+	"job", "kubernetes-cadvisor",
+	"kubernetes_io_hostname", "ip-111-11-1-11",
+	"monitor", "prod",
+	"name", "k8s_some-name_some-other-name-5j8s8_kube-system_6e91c467-e4c5-11e7-ace3-0a97ed59c75e_0",
+	"namespace", "kube-system",
+	"pod_name", "some-other-name-5j8s8",
+)

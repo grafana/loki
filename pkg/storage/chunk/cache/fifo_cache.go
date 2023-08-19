@@ -125,7 +125,7 @@ func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, l
 
 	if cfg.DeprecatedValidity > 0 {
 		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.interval, use fifocache.ttl instead", "cache", name)
+		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.duration, use fifocache.ttl instead", "cache", name)
 		cfg.TTL = cfg.DeprecatedValidity
 	}
 
@@ -265,7 +265,7 @@ func (c *FifoCache) Fetch(ctx context.Context, keys []string) (found []string, b
 }
 
 // Store implements Cache.
-func (c *FifoCache) Store(ctx context.Context, keys []string, values [][]byte) error {
+func (c *FifoCache) Store(_ context.Context, keys []string, values [][]byte) error {
 	c.entriesAdded.Inc()
 
 	c.lock.Lock()
@@ -348,7 +348,7 @@ func (c *FifoCache) put(key string, value []byte) {
 }
 
 // Get returns the stored value against the key and when the key was last updated.
-func (c *FifoCache) Get(ctx context.Context, key string) ([]byte, bool) {
+func (c *FifoCache) Get(_ context.Context, key string) ([]byte, bool) {
 	c.totalGets.Inc()
 
 	c.lock.RLock()

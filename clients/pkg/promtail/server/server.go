@@ -10,15 +10,18 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"text/template"
 
 	"github.com/felixge/fgprof"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	serverww "github.com/grafana/dskit/server"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/common/version"
-	serverww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/server/ui"
 	"github.com/grafana/loki/clients/pkg/promtail/targets"
@@ -39,8 +42,10 @@ type Server interface {
 type PromtailServer struct {
 	*serverww.Server
 	log               log.Logger
+	mtx               sync.Mutex
 	tms               *targets.TargetManagers
 	externalURL       *url.URL
+	reloadCh          chan chan error
 	healthCheckTarget bool
 	promtailCfg       string
 }
@@ -51,6 +56,8 @@ type Config struct {
 	ExternalURL       string `yaml:"external_url"`
 	HealthCheckTarget *bool  `yaml:"health_check_target"`
 	Disable           bool   `yaml:"disable"`
+	ProfilingEnabled  bool   `yaml:"profiling_enabled"`
+	Reload            bool   `yaml:"enable_runtime_reload"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
@@ -60,6 +67,8 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 
 	f.BoolVar(&cfg.Disable, prefix+"server.disable", false, "Disable the http and grpc server.")
+	f.BoolVar(&cfg.ProfilingEnabled, prefix+"server.profiling_enabled", false, "Enable the /debug/fgprof and /debug/pprof endpoints for profiling.")
+	f.BoolVar(&cfg.Reload, prefix+"server.enable-runtime-reload", false, "Enable reload via HTTP request.")
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
@@ -72,6 +81,14 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	if cfg.Disable {
 		return newNoopServer(log), nil
 	}
+
+	// Don't let serverww.New() add /metrics and /debug/pprof routes when
+	// cfg.Debug is false. We'll add the former bellow if
+	// cfg.RegisterInstrumentation was true, and we'll add the latter only
+	// if cfg.Debug is true.
+	registerMetrics := cfg.RegisterInstrumentation && !cfg.ProfilingEnabled
+	cfg.RegisterInstrumentation = cfg.ProfilingEnabled
+
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err
@@ -91,10 +108,19 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	serv := &PromtailServer{
 		Server:            wws,
 		log:               log,
+		reloadCh:          make(chan chan error),
 		tms:               tms,
 		externalURL:       externalURL,
 		healthCheckTarget: healthCheckTargetFlag,
 		promtailCfg:       promtailCfg,
+	}
+
+	// Register the /metrics route if cfg.RegisterInstrumentation was true
+	// initially.
+	if registerMetrics {
+		wws.HTTP.Handle("/metrics", promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+			EnableOpenMetrics: true,
+		}))
 	}
 
 	serv.HTTP.Path("/").Handler(http.RedirectHandler(path.Join(serv.externalURL.Path, "/targets"), 303))
@@ -103,12 +129,19 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	serv.HTTP.Path("/service-discovery").Handler(http.HandlerFunc(serv.serviceDiscovery))
 	serv.HTTP.Path("/targets").Handler(http.HandlerFunc(serv.targets))
 	serv.HTTP.Path("/config").Handler(http.HandlerFunc(serv.config))
-	serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
+	if cfg.ProfilingEnabled {
+		serv.HTTP.Path("/debug/fgprof").Handler(fgprof.Handler())
+	}
+	if cfg.Reload {
+		serv.HTTP.Path("/reload").Handler(http.HandlerFunc(serv.reload))
+	}
 	return serv, nil
 }
 
 // serviceDiscovery serves the service discovery page.
 func (s *PromtailServer) serviceDiscovery(rw http.ResponseWriter, req *http.Request) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	var index []string
 	allTarget := s.tms.AllTargets()
 	for job := range allTarget {
@@ -187,6 +220,8 @@ func (s *PromtailServer) config(rw http.ResponseWriter, req *http.Request) {
 
 // targets serves the targets page.
 func (s *PromtailServer) targets(rw http.ResponseWriter, req *http.Request) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	executeTemplate(req.Context(), rw, templateOptions{
 		Data: struct {
 			TargetPools map[string][]target.Target
@@ -218,8 +253,36 @@ func (s *PromtailServer) targets(rw http.ResponseWriter, req *http.Request) {
 	})
 }
 
+func (s *PromtailServer) reload(rw http.ResponseWriter, _ *http.Request) {
+	rc := make(chan error)
+	s.reloadCh <- rc
+	if err := <-rc; err != nil {
+		http.Error(rw, fmt.Sprintf("failed to reload config: %s", err), http.StatusInternalServerError)
+	}
+
+}
+
+// Reload returns the receive-only channel that signals configuration reload requests.
+func (s *PromtailServer) Reload() <-chan chan error {
+	return s.reloadCh
+}
+
+// Reload returns the receive-only channel that signals configuration reload requests.
+func (s *PromtailServer) PromtailConfig() string {
+	return s.promtailCfg
+}
+
+func (s *PromtailServer) ReloadServer(tms *targets.TargetManagers, promtailCfg string) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
+	s.tms = tms
+	s.promtailCfg = promtailCfg
+}
+
 // ready serves the ready endpoint
 func (s *PromtailServer) ready(rw http.ResponseWriter, _ *http.Request) {
+	s.mtx.Lock()
+	defer s.mtx.Unlock()
 	if s.healthCheckTarget && !s.tms.Ready() {
 		http.Error(rw, readinessProbeFailure, http.StatusInternalServerError)
 		return

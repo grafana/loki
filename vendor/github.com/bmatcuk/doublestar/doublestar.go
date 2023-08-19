@@ -5,9 +5,31 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
+
+// An OS abstracts functions in the standard library's os package.
+type OS interface {
+	Lstat(name string) (os.FileInfo, error)
+	Open(name string) (*os.File, error)
+	PathSeparator() rune
+	Stat(name string) (os.FileInfo, error)
+}
+
+// StandardOS is a value that implements the OS interface by calling functions
+// in the standard libray's os package.
+var StandardOS OS = standardOS{}
+
+// A standardOS implements OS by calling functions in the standard library's os
+// package.
+type standardOS struct{}
+
+func (standardOS) Lstat(name string) (os.FileInfo, error) { return os.Lstat(name) }
+func (standardOS) Open(name string) (*os.File, error)     { return os.Open(name) }
+func (standardOS) PathSeparator() rune                    { return os.PathSeparator }
+func (standardOS) Stat(name string) (os.FileInfo, error)  { return os.Stat(name) }
 
 // ErrBadPattern indicates a pattern was malformed.
 var ErrBadPattern = path.ErrBadPattern
@@ -209,8 +231,13 @@ func Match(pattern, name string) (bool, error) {
 // Note: this is meant as a drop-in replacement for filepath.Match().
 //
 func PathMatch(pattern, name string) (bool, error) {
+	return PathMatchOS(StandardOS, pattern, name)
+}
+
+// PathMatchOS is like PathMatch except that it uses vos's path separator.
+func PathMatchOS(vos OS, pattern, name string) (bool, error) {
 	pattern = filepath.ToSlash(pattern)
-	return matchWithSeparator(pattern, name, os.PathSeparator)
+	return matchWithSeparator(pattern, name, vos.PathSeparator())
 }
 
 // Match returns true if name matches the shell file name pattern.
@@ -249,8 +276,12 @@ func doMatching(pattern string, nameComponents []string) (matched bool, err erro
 	if patternLen == 0 && nameLen == 0 {
 		return true, nil
 	}
-	if patternLen == 0 || nameLen == 0 {
-		return false, nil
+	if patternLen == 0 {
+		if nameLen == 1 && nameComponents[0] == "" {
+			return true, nil
+		} else if nameLen == 0 {
+			return false, nil
+		}
 	}
 
 	slashIdx := indexRuneWithEscaping(pattern, '/')
@@ -311,6 +342,11 @@ func doMatching(pattern string, nameComponents []string) (matched bool, err erro
 // Note: this is meant as a drop-in replacement for filepath.Glob().
 //
 func Glob(pattern string) (matches []string, err error) {
+	return GlobOS(StandardOS, pattern)
+}
+
+// GlobOS is like Glob except that it operates on vos.
+func GlobOS(vos OS, pattern string) (matches []string, err error) {
 	if len(pattern) == 0 {
 		return nil, nil
 	}
@@ -323,7 +359,7 @@ func Glob(pattern string) (matches []string, err error) {
 			return nil, ErrBadPattern
 		}
 		for _, o := range options {
-			m, e := Glob(o + pattern[endOptions+1:])
+			m, e := GlobOS(vos, o+pattern[endOptions+1:])
 			if e != nil {
 				return nil, e
 			}
@@ -341,15 +377,15 @@ func Glob(pattern string) (matches []string, err error) {
 	isWindowsUNC := strings.HasPrefix(volumeName, `\\`)
 	if isWindowsUNC || isAbs {
 		startIdx := len(volumeName) + 1
-		return doGlob(fmt.Sprintf("%s%s", volumeName, string(os.PathSeparator)), filepath.ToSlash(pattern[startIdx:]), matches)
+		return doGlob(vos, fmt.Sprintf("%s%s", volumeName, string(vos.PathSeparator())), filepath.ToSlash(pattern[startIdx:]), matches)
 	}
 
 	// otherwise, it's a relative pattern
-	return doGlob(".", filepath.ToSlash(pattern), matches)
+	return doGlob(vos, ".", filepath.ToSlash(pattern), matches)
 }
 
 // Perform a glob
-func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
+func doGlob(vos OS, basedir, pattern string, matches []string) (m []string, e error) {
 	m = matches
 	e = nil
 
@@ -368,7 +404,7 @@ func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
 	}
 
 	// Lstat will return an error if the file/directory doesn't exist
-	fi, err := os.Lstat(basedir)
+	fi, err := vos.Lstat(basedir)
 	if err != nil {
 		return
 	}
@@ -380,9 +416,10 @@ func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
 	}
 
 	// otherwise, we need to check each item in the directory...
+
 	// first, if basedir is a symlink, follow it...
 	if (fi.Mode() & os.ModeSymlink) != 0 {
-		fi, err = os.Stat(basedir)
+		fi, err = vos.Stat(basedir)
 		if err != nil {
 			return
 		}
@@ -393,14 +430,13 @@ func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
 		return
 	}
 
-	// read directory
-	dir, err := os.Open(basedir)
+	files, err := filesInDir(vos, basedir)
 	if err != nil {
 		return
 	}
-	defer dir.Close()
 
-	files, _ := dir.Readdir(-1)
+	sort.Slice(files, func(i, j int) bool { return files[i].Name() < files[j].Name() })
+
 	slashIdx := indexRuneWithEscaping(pattern, '/')
 	lastComponent := slashIdx == -1
 	if lastComponent {
@@ -411,7 +447,7 @@ func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
 		for _, file := range files {
 			// if symlink, we may want to follow
 			if (file.Mode() & os.ModeSymlink) != 0 {
-				file, err = os.Stat(filepath.Join(basedir, file.Name()))
+				file, err = vos.Stat(filepath.Join(basedir, file.Name()))
 				if err != nil {
 					continue
 				}
@@ -422,7 +458,7 @@ func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
 				if lastComponent {
 					m = append(m, filepath.Join(basedir, file.Name()))
 				}
-				m, e = doGlob(filepath.Join(basedir, file.Name()), pattern, m)
+				m, e = doGlob(vos, filepath.Join(basedir, file.Name()), pattern, m)
 			} else if lastComponent {
 				// if the pattern's last component is a doublestar, we match filenames, too
 				m = append(m, filepath.Join(basedir, file.Name()))
@@ -447,11 +483,30 @@ func doGlob(basedir, pattern string, matches []string) (m []string, e error) {
 				m = append(m, filepath.Join(basedir, file.Name()))
 			} else {
 				for _, alt := range match {
-					m, e = doGlob(filepath.Join(basedir, file.Name()), alt, m)
+					m, e = doGlob(vos, filepath.Join(basedir, file.Name()), alt, m)
 				}
 			}
 		}
 	}
+	return
+}
+
+func filesInDir(vos OS, dirPath string) (files []os.FileInfo, e error) {
+	dir, err := vos.Open(dirPath)
+	if err != nil {
+		return nil, nil
+	}
+	defer func() {
+		if err := dir.Close(); e == nil {
+			e = err
+		}
+	}()
+
+	files, err = dir.Readdir(-1)
+	if err != nil {
+		return nil, nil
+	}
+
 	return
 }
 
@@ -498,6 +553,7 @@ func matchComponent(pattern, name string) ([]string, error) {
 				if m, e := matchComponent(pattern[patIdx:], name[nameIdx:]); m != nil || e != nil {
 					return m, e
 				}
+				_, nameAdj = utf8.DecodeRuneInString(name[nameIdx:])
 			}
 			return nil, nil
 		} else if patRune == '[' {

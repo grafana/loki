@@ -2,14 +2,13 @@ package controllers
 
 import (
 	"context"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/controllers/loki/internal/lokistack"
 )
 
@@ -29,29 +28,33 @@ type RulerConfigReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.0/pkg/reconcile
 func (r *RulerConfigReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	var rc lokiv1beta1.RulerConfig
+	var rc lokiv1.RulerConfig
 	key := client.ObjectKey{Name: req.Name, Namespace: req.Namespace}
 	if err := r.Get(ctx, key, &rc); err != nil {
 		if errors.IsNotFound(err) {
+			// RulerConfig not found, remove annotation from LokiStack.
+			err = lokistack.RemoveRulerConfigAnnotation(ctx, r.Client, req.Name, req.Namespace)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
 			return ctrl.Result{}, nil
 		}
 
-		return ctrl.Result{Requeue: true, RequeueAfter: time.Second}, err
+		return ctrl.Result{}, err
 	}
 
 	err := lokistack.AnnotateForRulerConfig(ctx, r.Client, req.Name, req.Namespace)
 	if err != nil {
-		return ctrl.Result{
-			Requeue:      true,
-			RequeueAfter: time.Second,
-		}, err
+		return ctrl.Result{}, err
 	}
+
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RulerConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&lokiv1beta1.RulerConfig{}).
+		For(&lokiv1.RulerConfig{}).
 		Complete(r)
 }

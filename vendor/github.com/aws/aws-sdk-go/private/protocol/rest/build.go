@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"path"
@@ -18,6 +19,12 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/private/protocol"
+)
+
+const (
+	floatNaN    = "NaN"
+	floatInf    = "Infinity"
+	floatNegInf = "-Infinity"
 )
 
 // Whether the byte value can be sent without escaping in AWS URLs
@@ -280,6 +287,10 @@ func convertType(v reflect.Value, tag reflect.StructTag) (str string, err error)
 		if tag.Get("location") != "header" || tag.Get("enum") == "" {
 			return "", fmt.Errorf("%T is only supported with location header and enum shapes", value)
 		}
+		if len(value) == 0 {
+			return "", errValueNotSet
+		}
+
 		buff := &bytes.Buffer{}
 		for i, sv := range value {
 			if sv == nil || len(*sv) == 0 {
@@ -302,7 +313,16 @@ func convertType(v reflect.Value, tag reflect.StructTag) (str string, err error)
 	case int64:
 		str = strconv.FormatInt(value, 10)
 	case float64:
-		str = strconv.FormatFloat(value, 'f', -1, 64)
+		switch {
+		case math.IsNaN(value):
+			str = floatNaN
+		case math.IsInf(value, 1):
+			str = floatInf
+		case math.IsInf(value, -1):
+			str = floatNegInf
+		default:
+			str = strconv.FormatFloat(value, 'f', -1, 64)
+		}
 	case time.Time:
 		format := tag.Get("timestampFormat")
 		if len(format) == 0 {

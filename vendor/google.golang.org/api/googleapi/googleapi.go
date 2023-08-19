@@ -11,7 +11,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,6 +78,9 @@ type Error struct {
 	Header http.Header
 
 	Errors []ErrorItem
+	// err is typically a wrapped apierror.APIError, see
+	// google-api-go-client/internal/gensupport/error.go.
+	err error
 }
 
 // ErrorItem is a detailed error code & message from the Google API frontend.
@@ -122,6 +124,15 @@ func (e *Error) Error() string {
 	return buf.String()
 }
 
+// Wrap allows an existing Error to wrap another error. See also [Error.Unwrap].
+func (e *Error) Wrap(err error) {
+	e.err = err
+}
+
+func (e *Error) Unwrap() error {
+	return e.err
+}
+
 type errorReply struct {
 	Error *Error `json:"error"`
 }
@@ -132,7 +143,7 @@ func CheckResponse(res *http.Response) error {
 	if res.StatusCode >= 200 && res.StatusCode <= 299 {
 		return nil
 	}
-	slurp, err := ioutil.ReadAll(res.Body)
+	slurp, err := io.ReadAll(res.Body)
 	if err == nil {
 		jerr := new(errorReply)
 		err = json.Unmarshal(slurp, jerr)
@@ -172,10 +183,11 @@ func CheckMediaResponse(res *http.Response) error {
 	if res.StatusCode >= 200 && res.StatusCode <= 299 {
 		return nil
 	}
-	slurp, _ := ioutil.ReadAll(io.LimitReader(res.Body, 1<<20))
+	slurp, _ := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	return &Error{
-		Code: res.StatusCode,
-		Body: string(slurp),
+		Code:   res.StatusCode,
+		Body:   string(slurp),
+		Header: res.Header,
 	}
 }
 

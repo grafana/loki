@@ -4,7 +4,7 @@ import (
 	"flag"
 	"time"
 
-	serverww "github.com/weaveworks/common/server"
+	serverww "github.com/grafana/dskit/server"
 )
 
 // Config extends weaveworks server config
@@ -21,6 +21,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Config.HTTPTLSConfig.TLSKeyPath, "internal-server.http-tls-key-path", "", "HTTP internal server key path.")
 	f.StringVar(&cfg.Config.HTTPTLSConfig.ClientAuth, "internal-server.http-tls-client-auth", "", "HTTP TLS Client Auth type.")
 	f.StringVar(&cfg.Config.HTTPTLSConfig.ClientCAs, "internal-server.http-tls-ca-path", "", "HTTP TLS Client CA path.")
+	f.StringVar(&cfg.Config.CipherSuites, "internal-server.http-tls-cipher-suites", "", "HTTP TLS Cipher Suites.")
+	f.StringVar(&cfg.Config.MinVersion, "internal-server.http-tls-min-version", "", "HTTP TLS Min Version.")
 	f.IntVar(&cfg.Config.HTTPListenPort, "internal-server.http-listen-port", 3101, "HTTP internal server listen port.")
 	f.IntVar(&cfg.Config.HTTPConnLimit, "internal-server.http-conn-limit", 0, "Maximum number of simultaneous http connections, <=0 to disable")
 	f.DurationVar(&cfg.Config.ServerGracefulShutdownTimeout, "internal-server.graceful-shutdown-timeout", 30*time.Second, "Timeout for graceful shutdowns")

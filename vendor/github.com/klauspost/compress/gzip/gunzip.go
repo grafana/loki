@@ -252,48 +252,71 @@ func (z *Reader) Read(p []byte) (n int, err error) {
 		return 0, z.err
 	}
 
-	n, z.err = z.decompressor.Read(p)
-	z.digest = crc32.Update(z.digest, crc32.IEEETable, p[:n])
-	z.size += uint32(n)
-	if z.err != io.EOF {
-		// In the normal case we return here.
-		return n, z.err
+	for n == 0 {
+		n, z.err = z.decompressor.Read(p)
+		z.digest = crc32.Update(z.digest, crc32.IEEETable, p[:n])
+		z.size += uint32(n)
+		if z.err != io.EOF {
+			// In the normal case we return here.
+			return n, z.err
+		}
+
+		// Finished file; check checksum and size.
+		if _, err := io.ReadFull(z.r, z.buf[:8]); err != nil {
+			z.err = noEOF(err)
+			return n, z.err
+		}
+		digest := le.Uint32(z.buf[:4])
+		size := le.Uint32(z.buf[4:8])
+		if digest != z.digest || size != z.size {
+			z.err = ErrChecksum
+			return n, z.err
+		}
+		z.digest, z.size = 0, 0
+
+		// File is ok; check if there is another.
+		if !z.multistream {
+			return n, io.EOF
+		}
+		z.err = nil // Remove io.EOF
+
+		if _, z.err = z.readHeader(); z.err != nil {
+			return n, z.err
+		}
 	}
 
-	// Finished file; check checksum and size.
-	if _, err := io.ReadFull(z.r, z.buf[:8]); err != nil {
-		z.err = noEOF(err)
-		return n, z.err
-	}
-	digest := le.Uint32(z.buf[:4])
-	size := le.Uint32(z.buf[4:8])
-	if digest != z.digest || size != z.size {
-		z.err = ErrChecksum
-		return n, z.err
-	}
-	z.digest, z.size = 0, 0
-
-	// File is ok; check if there is another.
-	if !z.multistream {
-		return n, io.EOF
-	}
-	z.err = nil // Remove io.EOF
-
-	if _, z.err = z.readHeader(); z.err != nil {
-		return n, z.err
-	}
-
-	// Read from next file, if necessary.
-	if n > 0 {
-		return n, nil
-	}
-	return z.Read(p)
+	return n, nil
 }
 
-// Support the io.WriteTo interface for io.Copy and friends.
+type crcer interface {
+	io.Writer
+	Sum32() uint32
+	Reset()
+}
+type crcUpdater struct {
+	z *Reader
+}
+
+func (c *crcUpdater) Write(p []byte) (int, error) {
+	c.z.digest = crc32.Update(c.z.digest, crc32.IEEETable, p)
+	return len(p), nil
+}
+
+func (c *crcUpdater) Sum32() uint32 {
+	return c.z.digest
+}
+
+func (c *crcUpdater) Reset() {
+	c.z.digest = 0
+}
+
+// WriteTo support the io.WriteTo interface for io.Copy and friends.
 func (z *Reader) WriteTo(w io.Writer) (int64, error) {
 	total := int64(0)
-	crcWriter := crc32.NewIEEE()
+	crcWriter := crcer(crc32.NewIEEE())
+	if z.digest != 0 {
+		crcWriter = &crcUpdater{z: z}
+	}
 	for {
 		if z.err != nil {
 			if z.err == io.EOF {

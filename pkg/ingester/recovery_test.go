@@ -2,20 +2,23 @@ package ingester
 
 import (
 	"context"
-	fmt "fmt"
+	"fmt"
 	"runtime"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/ingester/wal"
 	"github.com/grafana/loki/pkg/logproto"
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -47,12 +50,12 @@ func (m *MemoryWALReader) Err() error { return nil }
 
 func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 
-func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALReader, []*WALRecord) {
-	var recs []*WALRecord
+func buildMemoryReader(users, totalStreams, entriesPerStream int, withNonIndexedLabels bool) (*MemoryWALReader, []*wal.Record) {
+	var recs []*wal.Record
 	reader := &MemoryWALReader{}
 	for i := 0; i < totalStreams; i++ {
 		user := fmt.Sprintf("%d", i%users)
-		recs = append(recs, &WALRecord{
+		recs = append(recs, &wal.Record{
 			UserID: user,
 			Series: []record.RefSeries{
 				{
@@ -69,14 +72,23 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 
 		var entries []logproto.Entry
 		for j := 0; j < entriesPerStream; j++ {
-			entries = append(entries, logproto.Entry{
+			entry := logproto.Entry{
 				Timestamp: time.Unix(int64(j), 0),
 				Line:      fmt.Sprintf("%d", j),
-			})
+			}
+
+			if withNonIndexedLabels {
+				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+					"traceID", strings.Repeat(fmt.Sprintf("%d", j), 10),
+					"userID", strings.Repeat(fmt.Sprintf("%d", j), 10),
+				))
+			}
+
+			entries = append(entries, entry)
 		}
-		recs = append(recs, &WALRecord{
+		recs = append(recs, &wal.Record{
 			UserID: user,
-			RefEntries: []RefEntries{
+			RefEntries: []wal.RefEntries{
 				{
 					Ref:     chunks.HeadSeriesRef(i),
 					Entries: entries,
@@ -87,11 +99,11 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int) (*MemoryWALRea
 
 	for _, rec := range recs {
 		if len(rec.Series) > 0 {
-			reader.xs = append(reader.xs, rec.encodeSeries(nil))
+			reader.xs = append(reader.xs, rec.EncodeSeries(nil))
 		}
 
 		if len(rec.RefEntries) > 0 {
-			reader.xs = append(reader.xs, rec.encodeEntries(CurrentEntriesRec, nil))
+			reader.xs = append(reader.xs, rec.EncodeEntries(wal.CurrentEntriesRec, nil))
 		}
 	}
 
@@ -136,7 +148,7 @@ func (r *MemRecoverer) SetStream(userID string, series record.RefSeries) error {
 	return nil
 }
 
-func (r *MemRecoverer) Push(userID string, entries RefEntries) error {
+func (r *MemRecoverer) Push(userID string, entries wal.RefEntries) error {
 	r.Lock()
 	defer r.Unlock()
 
@@ -160,39 +172,48 @@ func (r *MemRecoverer) Close() { close(r.done) }
 func (r *MemRecoverer) Done() <-chan struct{} { return r.done }
 
 func Test_InMemorySegmentRecover(t *testing.T) {
-	var (
-		users            = 10
-		streamsCt        = 1000
-		entriesPerStream = 50
-	)
-	reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream)
+	for _, withNonIndexedLabels := range []bool{true, false} {
+		t.Run(fmt.Sprintf("nonIndexedLabels=%t", withNonIndexedLabels), func(t *testing.T) {
+			var (
+				users            = 10
+				streamsCt        = 1000
+				entriesPerStream = 50
+			)
 
-	recoverer := NewMemRecoverer()
-
-	require.Nil(t, RecoverWAL(reader, recoverer))
-	recoverer.Close()
-
-	require.Equal(t, users, recoverer.usersCt)
-	require.Equal(t, streamsCt, recoverer.streamsCt)
-	require.Equal(t, streamsCt*entriesPerStream, recoverer.seriesCt)
-
-	for _, rec := range recs {
-		user, ok := recoverer.users[rec.UserID]
-		require.Equal(t, true, ok)
-
-		for _, s := range rec.Series {
-			_, ok := user[s.Ref]
-			require.Equal(t, true, ok)
-		}
-
-		for _, entries := range rec.RefEntries {
-			stream, ok := user[entries.Ref]
-			require.Equal(t, true, ok)
-
-			for i, entry := range entries.Entries {
-				require.Equal(t, entry, stream[i])
+			// TODO: remove once we set v3 as current
+			if wal.CurrentEntriesRec < wal.WALRecordEntriesV3 {
+				withNonIndexedLabels = false
 			}
-		}
+			reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream, withNonIndexedLabels)
+
+			recoverer := NewMemRecoverer()
+
+			require.Nil(t, RecoverWAL(reader, recoverer))
+			recoverer.Close()
+
+			require.Equal(t, users, recoverer.usersCt)
+			require.Equal(t, streamsCt, recoverer.streamsCt)
+			require.Equal(t, streamsCt*entriesPerStream, recoverer.seriesCt)
+
+			for _, rec := range recs {
+				user, ok := recoverer.users[rec.UserID]
+				require.Equal(t, true, ok)
+
+				for _, s := range rec.Series {
+					_, ok := user[s.Ref]
+					require.Equal(t, true, ok)
+				}
+
+				for _, entries := range rec.RefEntries {
+					stream, ok := user[entries.Ref]
+					require.Equal(t, true, ok)
+
+					for i, entry := range entries.Entries {
+						require.Equal(t, entry, stream[i])
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -205,7 +226,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		chunks: map[string][]chunk.Chunk{},
 	}
 
-	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil)
+	i, err := New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	mkSample := func(i int) *logproto.PushRequest {
@@ -239,7 +260,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	require.Equal(t, false, iter.Next())
 
 	// create a new ingester now
-	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil)
+	i, err = New(ingesterConfig, client.Config{}, store, limits, loki_runtime.DefaultTenantConfigs(), nil, writefailures.Cfg{})
 	require.NoError(t, err)
 
 	// recover the checkpointed series
@@ -261,7 +282,8 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		End:      time.Unix(10, 0),
 	}, &result)
 	require.NoError(t, err)
-	require.Len(t, result.resps, 1)
+	// We always send an empty batch to make sure stats are sent, so there will always be one empty response.
+	require.Len(t, result.resps, 2)
 	lbls := labels.Labels{{Name: "bar", Value: "baz1"}, {Name: "foo", Value: "bar"}}
 	expected := []logproto.Stream{
 		{

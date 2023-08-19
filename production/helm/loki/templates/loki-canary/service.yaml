@@ -1,11 +1,13 @@
-{{- if .Values.monitoring.selfMonitoring.lokiCanary.enabled -}}
+{{- with .Values.monitoring.lokiCanary -}}
+{{- if .enabled -}}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "loki-canary.fullname" . }}
+  name: {{ include "loki-canary.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   labels:
-    {{- include "loki-canary.labels" . | nindent 4 }}
+    {{- include "loki-canary.labels" $ | nindent 4 }}
 spec:
   type: ClusterIP
   ports:
@@ -14,5 +16,6 @@ spec:
       targetPort: http-metrics
       protocol: TCP
   selector:
-    {{- include "loki-canary.selectorLabels" . | nindent 4 }}
+    {{- include "loki-canary.selectorLabels" $ | nindent 4 }}
+{{- end -}}
 {{- end -}}

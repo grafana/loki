@@ -8,6 +8,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/dskit/server"
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -25,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
@@ -33,57 +33,65 @@ import (
 
 // Config describes a job to scrape.
 type Config struct {
-	JobName           string                     `yaml:"job_name,omitempty"`
-	PipelineStages    stages.PipelineStages      `yaml:"pipeline_stages,omitempty"`
-	JournalConfig     *JournalTargetConfig       `yaml:"journal,omitempty"`
-	SyslogConfig      *SyslogTargetConfig        `yaml:"syslog,omitempty"`
-	GcplogConfig      *GcplogTargetConfig        `yaml:"gcplog,omitempty"`
-	PushConfig        *PushTargetConfig          `yaml:"loki_push_api,omitempty"`
-	WindowsConfig     *WindowsEventsTargetConfig `yaml:"windows_events,omitempty"`
-	KafkaConfig       *KafkaTargetConfig         `yaml:"kafka,omitempty"`
-	GelfConfig        *GelfTargetConfig          `yaml:"gelf,omitempty"`
-	CloudflareConfig  *CloudflareConfig          `yaml:"cloudflare,omitempty"`
-	HerokuDrainConfig *HerokuDrainTargetConfig   `yaml:"heroku_drain,omitempty"`
-	RelabelConfigs    []*relabel.Config          `yaml:"relabel_configs,omitempty"`
+	JobName              string                      `mapstructure:"job_name,omitempty" yaml:"job_name,omitempty"`
+	PipelineStages       stages.PipelineStages       `mapstructure:"pipeline_stages,omitempty" yaml:"pipeline_stages,omitempty"`
+	JournalConfig        *JournalTargetConfig        `mapstructure:"journal,omitempty" yaml:"journal,omitempty"`
+	SyslogConfig         *SyslogTargetConfig         `mapstructure:"syslog,omitempty" yaml:"syslog,omitempty"`
+	GcplogConfig         *GcplogTargetConfig         `mapstructure:"gcplog,omitempty" yaml:"gcplog,omitempty"`
+	PushConfig           *PushTargetConfig           `mapstructure:"loki_push_api,omitempty" yaml:"loki_push_api,omitempty"`
+	WindowsConfig        *WindowsEventsTargetConfig  `mapstructure:"windows_events,omitempty" yaml:"windows_events,omitempty"`
+	KafkaConfig          *KafkaTargetConfig          `mapstructure:"kafka,omitempty" yaml:"kafka,omitempty"`
+	AzureEventHubsConfig *AzureEventHubsTargetConfig `mapstructure:"azure_event_hubs,omitempty" yaml:"azure_event_hubs,omitempty"`
+	GelfConfig           *GelfTargetConfig           `mapstructure:"gelf,omitempty" yaml:"gelf,omitempty"`
+	CloudflareConfig     *CloudflareConfig           `mapstructure:"cloudflare,omitempty" yaml:"cloudflare,omitempty"`
+	HerokuDrainConfig    *HerokuDrainTargetConfig    `mapstructure:"heroku_drain,omitempty" yaml:"heroku_drain,omitempty"`
+	RelabelConfigs       []*relabel.Config           `mapstructure:"relabel_configs,omitempty" yaml:"relabel_configs,omitempty"`
 	// List of Docker service discovery configurations.
-	DockerSDConfigs        []*moby.DockerSDConfig `yaml:"docker_sd_configs,omitempty"`
-	ServiceDiscoveryConfig ServiceDiscoveryConfig `yaml:",inline"`
-	Encoding               string                 `yaml:"encoding,omitempty"`
+	DockerSDConfigs        []*moby.DockerSDConfig `mapstructure:"docker_sd_configs,omitempty" yaml:"docker_sd_configs,omitempty"`
+	ServiceDiscoveryConfig ServiceDiscoveryConfig `mapstructure:",squash" yaml:",inline"`
+	Encoding               string                 `mapstructure:"encoding,omitempty" yaml:"encoding,omitempty"`
+	DecompressionCfg       *DecompressionConfig   `yaml:"decompression,omitempty"`
+}
+
+type DecompressionConfig struct {
+	Enabled      bool
+	InitialDelay time.Duration `yaml:"initial_delay"`
+	Format       string
 }
 
 type ServiceDiscoveryConfig struct {
 	// List of labeled target groups for this job.
-	StaticConfigs discovery.StaticConfig `yaml:"static_configs"`
+	StaticConfigs discovery.StaticConfig `mapstructure:"static_configs" yaml:"static_configs"`
 	// List of DNS service discovery configurations.
-	DNSSDConfigs []*dns.SDConfig `yaml:"dns_sd_configs,omitempty"`
+	DNSSDConfigs []*dns.SDConfig `mapstructure:"dns_sd_configs,omitempty" yaml:"dns_sd_configs,omitempty"`
 	// List of file service discovery configurations.
-	FileSDConfigs []*file.SDConfig `yaml:"file_sd_configs,omitempty"`
+	FileSDConfigs []*file.SDConfig `mapstructure:"file_sd_configs,omitempty" yaml:"file_sd_configs,omitempty"`
 	// List of Consul service discovery configurations.
-	ConsulSDConfigs []*consul.SDConfig `yaml:"consul_sd_configs,omitempty"`
+	ConsulSDConfigs []*consul.SDConfig `mapstructure:"consul_sd_configs,omitempty" yaml:"consul_sd_configs,omitempty"`
 	// List of Consul agent service discovery configurations.
-	ConsulAgentSDConfigs []*consulagent.SDConfig `yaml:"consulagent_sd_configs,omitempty"`
+	ConsulAgentSDConfigs []*consulagent.SDConfig `mapstructure:"consulagent_sd_configs,omitempty" yaml:"consulagent_sd_configs,omitempty"`
 	// List of DigitalOcean service discovery configurations.
-	DigitalOceanSDConfigs []*digitalocean.SDConfig `yaml:"digitalocean_sd_configs,omitempty"`
+	DigitalOceanSDConfigs []*digitalocean.SDConfig `mapstructure:"digitalocean_sd_configs,omitempty" yaml:"digitalocean_sd_configs,omitempty"`
 	// List of Docker Swarm service discovery configurations.
-	DockerSwarmSDConfigs []*moby.DockerSwarmSDConfig `yaml:"dockerswarm_sd_configs,omitempty"`
+	DockerSwarmSDConfigs []*moby.DockerSwarmSDConfig `mapstructure:"dockerswarm_sd_configs,omitempty" yaml:"dockerswarm_sd_configs,omitempty"`
 	// List of Serverset service discovery configurations.
-	ServersetSDConfigs []*zookeeper.ServersetSDConfig `yaml:"serverset_sd_configs,omitempty"`
+	ServersetSDConfigs []*zookeeper.ServersetSDConfig `mapstructure:"serverset_sd_configs,omitempty" yaml:"serverset_sd_configs,omitempty"`
 	// NerveSDConfigs is a list of Nerve service discovery configurations.
-	NerveSDConfigs []*zookeeper.NerveSDConfig `yaml:"nerve_sd_configs,omitempty"`
+	NerveSDConfigs []*zookeeper.NerveSDConfig `mapstructure:"nerve_sd_configs,omitempty" yaml:"nerve_sd_configs,omitempty"`
 	// MarathonSDConfigs is a list of Marathon service discovery configurations.
-	MarathonSDConfigs []*marathon.SDConfig `yaml:"marathon_sd_configs,omitempty"`
+	MarathonSDConfigs []*marathon.SDConfig `mapstructure:"marathon_sd_configs,omitempty" yaml:"marathon_sd_configs,omitempty"`
 	// List of Kubernetes service discovery configurations.
-	KubernetesSDConfigs []*kubernetes.SDConfig `yaml:"kubernetes_sd_configs,omitempty"`
+	KubernetesSDConfigs []*kubernetes.SDConfig `mapstructure:"kubernetes_sd_configs,omitempty" yaml:"kubernetes_sd_configs,omitempty"`
 	// List of GCE service discovery configurations.
-	GCESDConfigs []*gce.SDConfig `yaml:"gce_sd_configs,omitempty"`
+	GCESDConfigs []*gce.SDConfig `mapstructure:"gce_sd_configs,omitempty" yaml:"gce_sd_configs,omitempty"`
 	// List of EC2 service discovery configurations.
-	EC2SDConfigs []*aws.EC2SDConfig `yaml:"ec2_sd_configs,omitempty"`
+	EC2SDConfigs []*aws.EC2SDConfig `mapstructure:"ec2_sd_configs,omitempty" yaml:"ec2_sd_configs,omitempty"`
 	// List of OpenStack service discovery configurations.
-	OpenstackSDConfigs []*openstack.SDConfig `yaml:"openstack_sd_configs,omitempty"`
+	OpenstackSDConfigs []*openstack.SDConfig `mapstructure:"openstack_sd_configs,omitempty" yaml:"openstack_sd_configs,omitempty"`
 	// List of Azure service discovery configurations.
-	AzureSDConfigs []*azure.SDConfig `yaml:"azure_sd_configs,omitempty"`
+	AzureSDConfigs []*azure.SDConfig `mapstructure:"azure_sd_configs,omitempty" yaml:"azure_sd_configs,omitempty"`
 	// List of Triton service discovery configurations.
-	TritonSDConfigs []*triton.SDConfig `yaml:"triton_sd_configs,omitempty"`
+	TritonSDConfigs []*triton.SDConfig `mapstructure:"triton_sd_configs,omitempty" yaml:"triton_sd_configs,omitempty"`
 }
 
 func (cfg ServiceDiscoveryConfig) Configs() (res discovery.Configs) {
@@ -236,11 +244,38 @@ type WindowsEventsTargetConfig struct {
 	// ExcludeEventData allows to exclude the xml event data.
 	ExcludeEventData bool `yaml:"exclude_event_data"`
 
+	// ExcludeEventMessage allows to exclude the human-friendly message contained in each windows event.
+	ExcludeEventMessage bool `yaml:"exclude_event_message"`
+
 	// ExcludeUserData allows to exclude the user data of each windows event.
 	ExcludeUserData bool `yaml:"exclude_user_data"`
 
 	// Labels optionally holds labels to associate with each log line.
 	Labels model.LabelSet `yaml:"labels"`
+}
+
+type AzureEventHubsTargetConfig struct {
+	// Labels optionally holds labels to associate with each log line.
+	Labels model.LabelSet `yaml:"labels"`
+
+	// UseIncomingTimestamp sets the timestamp to the incoming messages
+	// timestamp if it's set.
+	UseIncomingTimestamp bool `yaml:"use_incoming_timestamp"`
+
+	// Event Hubs to consume (Required).
+	EventHubs []string `yaml:"event_hubs"`
+
+	// Event Hubs ConnectionString for authentication on Azure Cloud (Required).
+	ConnectionString string `yaml:"connection_string"`
+
+	// Event Hubs namespace host name (Required). Typically, it looks like <your-namespace>.servicebus.windows.net:9093.
+	FullyQualifiedNamespace string `yaml:"fully_qualified_namespace"`
+
+	// The consumer group id.
+	GroupID string `yaml:"group_id"`
+
+	// Ignore messages that doesn't match schema for Azure resource logs
+	DisallowCustomMessages bool `yaml:"disallow_custom_messages"`
 }
 
 type KafkaTargetConfig struct {
@@ -367,8 +402,15 @@ type GcplogTargetConfig struct {
 	// Defaults to `pull` for backwards compatibility reasons.
 	SubscriptionType string `yaml:"subscription_type"`
 
+	// PushTimeout is used to set a maximum processing time for each incoming GCP Logs entry. Used just for `push` subscription type.
+	PushTimeout time.Duration `yaml:"push_timeout"`
+
 	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
 	Server server.Config `yaml:"server"`
+
+	// UseFullLine force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+	// By default, if `textPayload` is present in the line, then it's used as log line.
+	UseFullLine bool `yaml:"use_full_line"`
 }
 
 // HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.

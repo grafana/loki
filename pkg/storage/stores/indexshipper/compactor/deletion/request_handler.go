@@ -74,14 +74,22 @@ func (dm *DeleteRequestHandler) AddDeleteRequestHandler(w http.ResponseWriter, r
 	}
 
 	deleteRequests := shardDeleteRequestsByInterval(startTime, endTime, query, userID, interval)
-	if _, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests); err != nil {
+	createdDeleteRequests, err := dm.deleteRequestsStore.AddDeleteRequestGroup(ctx, deleteRequests)
+	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error adding delete request to the store", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	if len(createdDeleteRequests) == 0 {
+		level.Error(util_log.Logger).Log("msg", "zero delete requests created", "user", userID, "query", query)
+		http.Error(w, "Zero delete requests were created due to an internal error. Please contact support.", http.StatusInternalServerError)
+		return
+	}
+
 	level.Info(util_log.Logger).Log(
 		"msg", "delete request for user added",
+		"delete_request_id", createdDeleteRequests[0].RequestID,
 		"user", userID,
 		"query", query,
 		"interval", interval.String(),
@@ -113,11 +121,7 @@ func shardDeleteRequestsByInterval(startTime, endTime model.Time, query, userID 
 func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime model.Time) (time.Duration, error) {
 	qr := params.Get("max_interval")
 	if qr == "" {
-		if dm.maxInterval == 0 {
-			return endTime.Sub(startTime), nil
-		}
-
-		return min(endTime.Sub(startTime), dm.maxInterval), nil
+		return dm.intervalFromStartAndEnd(startTime, endTime)
 	}
 
 	interval, err := time.ParseDuration(qr)
@@ -134,6 +138,18 @@ func (dm *DeleteRequestHandler) interval(params url.Values, startTime, endTime m
 	}
 
 	return interval, nil
+}
+
+func (dm *DeleteRequestHandler) intervalFromStartAndEnd(startTime, endTime model.Time) (time.Duration, error) {
+	interval := endTime.Sub(startTime)
+	if interval < time.Second {
+		return 0, errors.New("difference between start time and end time must be at least one second")
+	}
+
+	if dm.maxInterval == 0 {
+		return interval, nil
+	}
+	return min(interval, dm.maxInterval), nil
 }
 
 func min(a, b time.Duration) time.Duration {
@@ -166,6 +182,7 @@ func (dm *DeleteRequestHandler) GetAllDeleteRequestsHandler(w http.ResponseWrite
 		return deleteRequests[i].CreatedAt < deleteRequests[j].CreatedAt
 	})
 
+	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(deleteRequests); err != nil {
 		level.Error(util_log.Logger).Log("msg", "error marshalling response", "err", err)
 		http.Error(w, fmt.Sprintf("Error marshalling response: %v", err), http.StatusInternalServerError)

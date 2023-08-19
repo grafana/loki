@@ -18,21 +18,21 @@ package chunk
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	errs "github.com/weaveworks/common/errors"
 
 	"github.com/grafana/loki/pkg/util/filter"
 )
 
-const (
-	// ChunkLen is the length of a chunk in bytes.
-	ChunkLen = 1024
+// ChunkLen is the length of a chunk in bytes.
+const ChunkLen = 1024
 
-	ErrSliceNoDataInRange = errs.Error("chunk has no data for given range to slice")
-	ErrSliceChunkOverflow = errs.Error("slicing should not overflow a chunk")
+var (
+	ErrSliceNoDataInRange = errors.New("chunk has no data for given range to slice")
+	ErrSliceChunkOverflow = errors.New("slicing should not overflow a chunk")
 )
 
 // Data is the interface for all chunks. Chunks are generally not

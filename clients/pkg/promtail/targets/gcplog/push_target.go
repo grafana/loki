@@ -1,6 +1,7 @@
 package gcplog
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -8,10 +9,10 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
@@ -51,6 +52,8 @@ func newPushTarget(metrics *Metrics, logger log.Logger, handler api.EntryHandler
 		return nil, fmt.Errorf("failed to parse configs and override defaults when configuring gcp push target: %w", err)
 	}
 	config.Server = mergedServerConfigs
+	// Avoid logging entire received request on failures
+	config.Server.ExcludeRequestInLog = true
 
 	err = ht.run()
 	if err != nil {
@@ -77,14 +80,14 @@ func (h *pushTarget) run() error {
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "gcp_push"))
+	h.config.Server.Log = dslog.GoKit(log.With(util_log.Logger, "component", "gcp_push"))
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {
 		return err
 	}
-
 	h.server = srv
+
 	h.server.HTTP.Path("/gcp/api/v1/push").Methods("POST").Handler(http.HandlerFunc(h.push))
 
 	go func() {
@@ -99,6 +102,14 @@ func (h *pushTarget) run() error {
 
 func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
+
+	// Create no-op context.WithTimeout returns to simplify logic
+	ctx := r.Context()
+	cancel := context.CancelFunc(func() {})
+	if h.config.PushTimeout != 0 {
+		ctx, cancel = context.WithTimeout(r.Context(), h.config.PushTimeout)
+	}
+	defer cancel()
 
 	pushMessage := PushMessage{}
 	bs, err := io.ReadAll(r.Body)
@@ -122,7 +133,7 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
+	entry, err := translate(pushMessage, h.config.Labels, h.config.UseIncomingTimestamp, h.config.UseFullLine, h.relabelConfigs, r.Header.Get("X-Scope-OrgID"))
 	if err != nil {
 		h.metrics.gcpPushErrors.WithLabelValues("translation").Inc()
 		level.Warn(h.logger).Log("msg", "failed to translate gcp push request", "err", err.Error())
@@ -132,9 +143,26 @@ func (h *pushTarget) push(w http.ResponseWriter, r *http.Request) {
 
 	level.Debug(h.logger).Log("msg", fmt.Sprintf("Received line: %s", entry.Line))
 
-	h.entries <- entry
+	if err := h.doSendEntry(ctx, entry); err != nil {
+		// NOTE: timeout errors can be tracked with a metrics exporter from the spun weave-works server, and the 503 status code
+		// promtail_gcp_push_target_{job name}_request_duration_seconds_count{status_code="503"}
+		level.Warn(h.logger).Log("msg", "error sending log entry", "err", err.Error())
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
 	h.metrics.gcpPushEntries.WithLabelValues().Inc()
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *pushTarget) doSendEntry(ctx context.Context, entry api.Entry) error {
+	select {
+	// Timeout the api.Entry channel send operation, which is the only blocking operation in the handler
+	case <-ctx.Done():
+		return fmt.Errorf("timeout exceeded: %w", ctx.Err())
+	case h.entries <- entry:
+		return nil
+	}
 }
 
 func (h *pushTarget) Type() target.TargetType {
@@ -159,6 +187,7 @@ func (h *pushTarget) Details() interface{} {
 
 func (h *pushTarget) Stop() error {
 	level.Info(h.logger).Log("msg", "stopping gcp push target", "job", h.jobName)
+	h.server.Stop()
 	h.server.Shutdown()
 	h.handler.Stop()
 	return nil

@@ -2,27 +2,27 @@ package manifests
 
 import (
 	"fmt"
+	"math"
 	"path"
-
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
-	"github.com/imdario/mergo"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildQuerier returns a list of k8s objects for Loki Querier
 func BuildQuerier(opts Options) ([]client.Object, error) {
 	deployment := NewQuerierDeployment(opts)
 	if opts.Gates.HTTPEncryption {
-		if err := configureQuerierHTTPServicePKI(deployment, opts.Name); err != nil {
+		if err := configureQuerierHTTPServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
 	}
@@ -32,22 +32,50 @@ func BuildQuerier(opts Options) ([]client.Object, error) {
 	}
 
 	if opts.Gates.GRPCEncryption {
-		if err := configureQuerierGRPCServicePKI(deployment, opts.Name, opts.Namespace); err != nil {
+		if err := configureQuerierGRPCServicePKI(deployment, opts); err != nil {
 			return nil, err
 		}
+	}
+
+	if opts.Gates.HTTPEncryption || opts.Gates.GRPCEncryption {
+		caBundleName := signingCABundleName(opts.Name)
+		if err := configureServiceCA(&deployment.Spec.Template.Spec, caBundleName); err != nil {
+			return nil, err
+		}
+	}
+
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureProxyEnv(&deployment.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQuerierComponent, opts.Name); err != nil {
+		return nil, err
 	}
 
 	return []client.Object{
 		deployment,
 		NewQuerierGRPCService(opts),
 		NewQuerierHTTPService(opts),
+		NewQuerierPodDisruptionBudget(opts),
 	}, nil
 }
 
 // NewQuerierDeployment creates a deployment object for a querier
 func NewQuerierDeployment(opts Options) *appsv1.Deployment {
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelQuerierComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Querier),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -73,6 +101,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 					"-target=querier",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -103,19 +132,14 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Querier != nil {
 		podSpec.Tolerations = opts.Stack.Template.Querier.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Querier.NodeSelector
 	}
-
-	l := ComponentLabels(LabelQuerierComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -127,7 +151,7 @@ func NewQuerierDeployment(opts Options) *appsv1.Deployment {
 			Labels: l,
 		},
 		Spec: appsv1.DeploymentSpec{
-			Replicas: pointer.Int32Ptr(opts.Stack.Template.Querier.Replicas),
+			Replicas: pointer.Int32(opts.Stack.Template.Querier.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -157,9 +181,8 @@ func NewQuerierGRPCService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "None",
@@ -187,9 +210,8 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 			APIVersion: corev1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        serviceName,
-			Labels:      labels,
-			Annotations: serviceAnnotations(serviceName, opts.Gates.OpenShift.ServingCertsService),
+			Name:   serviceName,
+			Labels: labels,
 		},
 		Spec: corev1.ServiceSpec{
 			Ports: []corev1.ServicePort{
@@ -205,60 +227,39 @@ func NewQuerierHTTPService(opts Options) *corev1.Service {
 	}
 }
 
-func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, stackName string) error {
-	serviceName := serviceNameQuerierHTTP(stackName)
+// NewQuerierPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack querier pods.
+func NewQuerierPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelQuerierComponent, opts.Name)
+
+	// Have at least N-1 replicas available, unless N==1 in which case the minimum available is 1.
+	replicas := opts.Stack.Template.Querier.Replicas
+	ma := intstr.FromInt(int(math.Max(1, float64(replicas-1))))
+
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      QuerierName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
+		},
+	}
+}
+
+func configureQuerierHTTPServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQuerierHTTP(opts.Name)
 	return configureHTTPServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }
 
-func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, stackName, stackNS string) error {
-	caBundleName := signingCABundleName(stackName)
-	secretVolumeSpec := corev1.PodSpec{
-		Volumes: []corev1.Volume{
-			{
-				Name: caBundleName,
-				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: caBundleName,
-						},
-					},
-				},
-			},
-		},
-	}
-
-	secretContainerSpec := corev1.Container{
-		VolumeMounts: []corev1.VolumeMount{
-			{
-				Name:      caBundleName,
-				ReadOnly:  false,
-				MountPath: caBundleDir,
-			},
-		},
-		Args: []string{
-			// Enable GRPC over TLS for ingester client
-			"-ingester.client.tls-enabled=true",
-			fmt.Sprintf("-ingester.client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-ingester.client.tls-server-name=%s", fqdn(serviceNameIngesterGRPC(stackName), stackNS)),
-			// Enable GRPC over TLS for query frontend client
-			"-querier.frontend-client.tls-enabled=true",
-			fmt.Sprintf("-querier.frontend-client.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-querier.frontend-client.tls-server-name=%s", fqdn(serviceNameQueryFrontendGRPC(stackName), stackNS)),
-			// Enable GRPC over TLS for boltb-shipper index-gateway client
-			"-boltdb.shipper.index-gateway-client.grpc.tls-enabled=true",
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-ca-path=%s", signingCAPath()),
-			fmt.Sprintf("-boltdb.shipper.index-gateway-client.grpc.tls-server-name=%s", fqdn(serviceNameIndexGatewayGRPC(stackName), stackNS)),
-		},
-	}
-
-	if err := mergo.Merge(&deployment.Spec.Template.Spec, secretVolumeSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge volumes")
-	}
-
-	if err := mergo.Merge(&deployment.Spec.Template.Spec.Containers[0], secretContainerSpec, mergo.WithAppendSlice); err != nil {
-		return kverrors.Wrap(err, "failed to merge container")
-	}
-
-	serviceName := serviceNameQuerierGRPC(stackName)
+func configureQuerierGRPCServicePKI(deployment *appsv1.Deployment, opts Options) error {
+	serviceName := serviceNameQuerierGRPC(opts.Name)
 	return configureGRPCServicePKI(&deployment.Spec.Template.Spec, serviceName)
 }

@@ -36,8 +36,7 @@ func NewConfigRuleStore(c client.Client) *ConfigRuleStore {
 func (c *ConfigRuleStore) ListAllUsers(ctx context.Context) ([]string, error) {
 	m, err := c.ListAllRuleGroups(ctx)
 
-	// TODO: this should be optimized, if possible.
-	result := []string(nil)
+	result := make([]string, 0, len(m))
 	for u := range m {
 		result = append(result, u)
 	}
@@ -110,27 +109,27 @@ func (c *ConfigRuleStore) ListRuleGroupsForUserAndNamespace(ctx context.Context,
 	return list, nil
 }
 
-func (c *ConfigRuleStore) LoadRuleGroups(ctx context.Context, groupsToLoad map[string]rulespb.RuleGroupList) error {
+func (c *ConfigRuleStore) LoadRuleGroups(_ context.Context, _ map[string]rulespb.RuleGroupList) error {
 	// Since ConfigRuleStore already Loads the rules in the List methods, there is nothing left to do here.
 	return nil
 }
 
 // GetRuleGroup is not implemented
-func (c *ConfigRuleStore) GetRuleGroup(ctx context.Context, userID, namespace, group string) (*rulespb.RuleGroupDesc, error) {
+func (c *ConfigRuleStore) GetRuleGroup(_ context.Context, _, _, _ string) (*rulespb.RuleGroupDesc, error) {
 	return nil, errors.New("not implemented by the config service rule store")
 }
 
 // SetRuleGroup is not implemented
-func (c *ConfigRuleStore) SetRuleGroup(ctx context.Context, userID, namespace string, group *rulespb.RuleGroupDesc) error {
+func (c *ConfigRuleStore) SetRuleGroup(_ context.Context, _, _ string, _ *rulespb.RuleGroupDesc) error {
 	return errors.New("not implemented by the config service rule store")
 }
 
 // DeleteRuleGroup is not implemented
-func (c *ConfigRuleStore) DeleteRuleGroup(ctx context.Context, userID, namespace string, group string) error {
+func (c *ConfigRuleStore) DeleteRuleGroup(_ context.Context, _, _ string, _ string) error {
 	return errors.New("not implemented by the config service rule store")
 }
 
 // DeleteNamespace is not implemented
-func (c *ConfigRuleStore) DeleteNamespace(ctx context.Context, userID, namespace string) error {
+func (c *ConfigRuleStore) DeleteNamespace(_ context.Context, _, _ string) error {
 	return errors.New("not implemented by the config service rule store")
 }

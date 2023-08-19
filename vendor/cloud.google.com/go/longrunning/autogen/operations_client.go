@@ -1,4 +1,4 @@
-// Copyright 2022 Google LLC
+// Copyright 2023 Google LLC
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@ import (
 	"net/url"
 	"time"
 
+	longrunningpb "cloud.google.com/go/longrunning/autogen/longrunningpb"
 	gax "github.com/googleapis/gax-go/v2"
 	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
@@ -33,7 +34,6 @@ import (
 	"google.golang.org/api/option/internaloption"
 	gtransport "google.golang.org/api/transport/grpc"
 	httptransport "google.golang.org/api/transport/http"
-	longrunningpb "google.golang.org/genproto/googleapis/longrunning"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -114,7 +114,53 @@ func defaultOperationsCallOptions() *OperationsCallOptions {
 	}
 }
 
-// internalOperationsClient is an interface that defines the methods availaible from Long Running Operations API.
+func defaultOperationsRESTCallOptions() *OperationsCallOptions {
+	return &OperationsCallOptions{
+		ListOperations: []gax.CallOption{
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnHTTPCodes(gax.Backoff{
+					Initial:    500 * time.Millisecond,
+					Max:        10000 * time.Millisecond,
+					Multiplier: 2.00,
+				},
+					http.StatusServiceUnavailable)
+			}),
+		},
+		GetOperation: []gax.CallOption{
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnHTTPCodes(gax.Backoff{
+					Initial:    500 * time.Millisecond,
+					Max:        10000 * time.Millisecond,
+					Multiplier: 2.00,
+				},
+					http.StatusServiceUnavailable)
+			}),
+		},
+		DeleteOperation: []gax.CallOption{
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnHTTPCodes(gax.Backoff{
+					Initial:    500 * time.Millisecond,
+					Max:        10000 * time.Millisecond,
+					Multiplier: 2.00,
+				},
+					http.StatusServiceUnavailable)
+			}),
+		},
+		CancelOperation: []gax.CallOption{
+			gax.WithRetry(func() gax.Retryer {
+				return gax.OnHTTPCodes(gax.Backoff{
+					Initial:    500 * time.Millisecond,
+					Max:        10000 * time.Millisecond,
+					Multiplier: 2.00,
+				},
+					http.StatusServiceUnavailable)
+			}),
+		},
+		WaitOperation: []gax.CallOption{},
+	}
+}
+
+// internalOperationsClient is an interface that defines the methods available from Long Running Operations API.
 type internalOperationsClient interface {
 	Close() error
 	setGoogleClientInfo(...string)
@@ -163,7 +209,8 @@ func (c *OperationsClient) setGoogleClientInfo(keyval ...string) {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *OperationsClient) Connection() *grpc.ClientConn {
 	return c.internalClient.Connection()
 }
@@ -292,7 +339,8 @@ func NewOperationsClient(ctx context.Context, opts ...option.ClientOption) (*Ope
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: Connections are now pooled so this method does not always
+// return the same resource.
 func (c *operationsGRPCClient) Connection() *grpc.ClientConn {
 	return c.connPool.Conn()
 }
@@ -322,6 +370,9 @@ type operationsRESTClient struct {
 
 	// The x-goog-* metadata to be sent with each request.
 	xGoogMetadata metadata.MD
+
+	// Points back to the CallOptions field of the containing OperationsClient
+	CallOptions **OperationsCallOptions
 }
 
 // NewOperationsRESTClient creates a new operations rest client.
@@ -342,13 +393,15 @@ func NewOperationsRESTClient(ctx context.Context, opts ...option.ClientOption) (
 		return nil, err
 	}
 
+	callOpts := defaultOperationsRESTCallOptions()
 	c := &operationsRESTClient{
-		endpoint:   endpoint,
-		httpClient: httpClient,
+		endpoint:    endpoint,
+		httpClient:  httpClient,
+		CallOptions: &callOpts,
 	}
 	c.setGoogleClientInfo()
 
-	return &OperationsClient{internalClient: c, CallOptions: &OperationsCallOptions{}}, nil
+	return &OperationsClient{internalClient: c, CallOptions: callOpts}, nil
 }
 
 func defaultOperationsRESTClientOptions() []option.ClientOption {
@@ -379,7 +432,7 @@ func (c *operationsRESTClient) Close() error {
 
 // Connection returns a connection to the API service.
 //
-// Deprecated.
+// Deprecated: This method always returns nil.
 func (c *operationsRESTClient) Connection() *grpc.ClientConn {
 	return nil
 }
@@ -535,9 +588,6 @@ func (c *operationsRESTClient) ListOperations(ctx context.Context, req *longrunn
 		if req.GetFilter() != "" {
 			params.Add("filter", fmt.Sprintf("%v", req.GetFilter()))
 		}
-		if req.GetName() != "" {
-			params.Add("name", fmt.Sprintf("%v", req.GetName()))
-		}
 		if req.GetPageSize() != 0 {
 			params.Add("pageSize", fmt.Sprintf("%v", req.GetPageSize()))
 		}
@@ -613,17 +663,11 @@ func (c *operationsRESTClient) GetOperation(ctx context.Context, req *longrunnin
 	}
 	baseUrl.Path += fmt.Sprintf("/v1/%v", req.GetName())
 
-	params := url.Values{}
-	if req.GetName() != "" {
-		params.Add("name", fmt.Sprintf("%v", req.GetName()))
-	}
-
-	baseUrl.RawQuery = params.Encode()
-
 	// Build HTTP headers from client and context metadata.
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 
 	headers := buildHeaders(ctx, c.xGoogMetadata, md, metadata.Pairs("Content-Type", "application/json"))
+	opts = append((*c.CallOptions).GetOperation[0:len((*c.CallOptions).GetOperation):len((*c.CallOptions).GetOperation)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &longrunningpb.Operation{}
 	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {
@@ -675,13 +719,6 @@ func (c *operationsRESTClient) DeleteOperation(ctx context.Context, req *longrun
 	}
 	baseUrl.Path += fmt.Sprintf("/v1/%v", req.GetName())
 
-	params := url.Values{}
-	if req.GetName() != "" {
-		params.Add("name", fmt.Sprintf("%v", req.GetName()))
-	}
-
-	baseUrl.RawQuery = params.Encode()
-
 	// Build HTTP headers from client and context metadata.
 	md := metadata.Pairs("x-goog-request-params", fmt.Sprintf("%s=%v", "name", url.QueryEscape(req.GetName())))
 
@@ -720,7 +757,7 @@ func (c *operationsRESTClient) DeleteOperation(ctx context.Context, req *longrun
 // an Operation.error value with a google.rpc.Status.code of 1,
 // corresponding to Code.CANCELLED.
 func (c *operationsRESTClient) CancelOperation(ctx context.Context, req *longrunningpb.CancelOperationRequest, opts ...gax.CallOption) error {
-	m := protojson.MarshalOptions{AllowPartial: true, UseProtoNames: false}
+	m := protojson.MarshalOptions{AllowPartial: true, UseEnumNumbers: true}
 	jsonReq, err := m.Marshal(req)
 	if err != nil {
 		return err
@@ -779,17 +816,19 @@ func (c *operationsRESTClient) WaitOperation(ctx context.Context, req *longrunni
 	if req.GetName() != "" {
 		params.Add("name", fmt.Sprintf("%v", req.GetName()))
 	}
-	if req.GetTimeout().GetNanos() != 0 {
-		params.Add("timeout.nanos", fmt.Sprintf("%v", req.GetTimeout().GetNanos()))
-	}
-	if req.GetTimeout().GetSeconds() != 0 {
-		params.Add("timeout.seconds", fmt.Sprintf("%v", req.GetTimeout().GetSeconds()))
+	if req.GetTimeout() != nil {
+		timeout, err := protojson.Marshal(req.GetTimeout())
+		if err != nil {
+			return nil, err
+		}
+		params.Add("timeout", string(timeout))
 	}
 
 	baseUrl.RawQuery = params.Encode()
 
 	// Build HTTP headers from client and context metadata.
 	headers := buildHeaders(ctx, c.xGoogMetadata, metadata.Pairs("Content-Type", "application/json"))
+	opts = append((*c.CallOptions).WaitOperation[0:len((*c.CallOptions).WaitOperation):len((*c.CallOptions).WaitOperation)], opts...)
 	unm := protojson.UnmarshalOptions{AllowPartial: true, DiscardUnknown: true}
 	resp := &longrunningpb.Operation{}
 	e := gax.Invoke(ctx, func(ctx context.Context, settings gax.CallSettings) error {

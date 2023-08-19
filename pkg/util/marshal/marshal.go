@@ -3,7 +3,9 @@
 package marshal
 
 import (
+	"fmt"
 	"io"
+	"net/http"
 
 	"github.com/gorilla/websocket"
 	jsoniter "github.com/json-iterator/go"
@@ -13,26 +15,46 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
+
+func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
+	switch result := v.(type) {
+	case logqlmodel.Result:
+		version := loghttp.GetVersion(r.RequestURI)
+		if version == loghttp.VersionV1 {
+			return WriteQueryResponseJSON(result, w)
+		}
+
+		return marshal_legacy.WriteQueryResponseJSON(result, w)
+	case *logproto.LabelResponse:
+		version := loghttp.GetVersion(r.RequestURI)
+		if version == loghttp.VersionV1 {
+			return WriteLabelResponseJSON(*result, w)
+		}
+
+		return marshal_legacy.WriteLabelResponseJSON(*result, w)
+	case *logproto.SeriesResponse:
+		return WriteSeriesResponseJSON(*result, w)
+	case *stats.Stats:
+		return WriteIndexStatsResponseJSON(result, w)
+	case *logproto.VolumeResponse:
+		return WriteVolumeResponseJSON(result, w)
+	}
+	return fmt.Errorf("unknown response type %T", v)
+}
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
 func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer) error {
-	value, err := NewResultValue(v.Data)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	err := EncodeResult(v, s)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not write JSON response: %w", err)
 	}
-
-	q := loghttp.QueryResponse{
-		Status: "success",
-		Data: loghttp.QueryResponseData{
-			ResultType: value.Type(),
-			Result:     value,
-			Statistics: v.Statistics,
-		},
-	}
-
-	return jsoniter.NewEncoder(w).Encode(q)
+	s.WriteRaw("\n")
+	return s.Flush()
 }
 
 // WriteLabelResponseJSON marshals a logproto.LabelResponse to v1 loghttp JSON
@@ -43,7 +65,11 @@ func WriteLabelResponseJSON(l logproto.LabelResponse, w io.Writer) error {
 		Data:   l.GetValues(),
 	}
 
-	return jsoniter.NewEncoder(w).Encode(v1Response)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(v1Response)
+	s.WriteRaw("\n")
+	return s.Flush()
 }
 
 // WebsocketWriter knows how to write message to a websocket connection.
@@ -77,7 +103,11 @@ func WriteSeriesResponseJSON(r logproto.SeriesResponse, w io.Writer) error {
 		adapter.Data = append(adapter.Data, series.GetLabels())
 	}
 
-	return jsoniter.NewEncoder(w).Encode(adapter)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(adapter)
+	s.WriteRaw("\n")
+	return s.Flush()
 }
 
 // This struct exists primarily because we can't specify a repeated map in proto v3.
@@ -90,5 +120,19 @@ type seriesResponseAdapter struct {
 // WriteIndexStatsResponseJSON marshals a gatewaypb.Stats to JSON and then
 // writes it to the provided io.Writer.
 func WriteIndexStatsResponseJSON(r *stats.Stats, w io.Writer) error {
-	return jsoniter.NewEncoder(w).Encode(r)
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
+}
+
+// WriteVolumeResponseJSON marshals a logproto.VolumeResponse to JSON and then
+// writes it to the provided io.Writer.
+func WriteVolumeResponseJSON(r *logproto.VolumeResponse, w io.Writer) error {
+	s := jsoniter.ConfigFastest.BorrowStream(w)
+	defer jsoniter.ConfigFastest.ReturnStream(s)
+	s.WriteVal(r)
+	s.WriteRaw("\n")
+	return s.Flush()
 }

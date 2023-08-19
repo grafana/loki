@@ -19,11 +19,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  'Ingester',
                                ],
 
+                               hiddenPanels:: if $._config.promtail.enabled then [] else [
+                                 'Bad Words',
+                               ],
+
                                jobMatchers:: {
-                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw')],
+                                 cortexgateway: [utils.selector.re('job', '($namespace)/cortex-gw(-internal)?')],
                                  distributor: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'distributor'))],
-                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
+                                 ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester.*'))],
                                  querier: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'querier'))],
+                                 queryFrontend: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'query-frontend'))],
                                },
 
                                podMatchers:: {
@@ -136,23 +141,45 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    std.rstripChars(matcherStr('querier'), ',')
                                  ),
 
+
                                local replaceAllMatchers(expr) =
                                  replaceMatchers(replaceClusterMatchers(expr)),
 
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
                                  else if ds == '$datasource' then '$datasource'
-                                 else '$logs',
+                                 else '$loki_datasource',
 
                                local isRowHidden(row) =
                                  std.member(dashboards['loki-operational.json'].hiddenRows, row),
+
+                               local isPanelHidden(panelTitle) =
+                                 std.member(dashboards['loki-operational.json'].hiddenPanels, panelTitle),
+
+                               local replaceCortexGateway(expr, replacement) = if $._config.internal_components then
+                                 expr
+                               else
+                                 std.strReplace(
+                                   expr,
+                                   'job=~"$namespace/cortex-gw(-internal)?"',
+                                   matcherStr(replacement, matcher='job', sep='')
+                                 ),
+
+                               local removeInternalComponents(title, expr) = if (title == 'Queries/Second') then
+                                 replaceCortexGateway(expr, 'queryFrontend')
+                               else if (title == 'Pushes/Second') then
+                                 replaceCortexGateway(expr, 'distributor')
+                               else if (title == 'Push Latency') then
+                                 replaceCortexGateway(expr, 'distributor')
+                               else
+                                 replaceAllMatchers(expr),
 
                                panels: [
                                  p {
                                    datasource: selectDatasource(super.datasource),
                                    targets: if std.objectHas(p, 'targets') then [
                                      e {
-                                       expr: replaceAllMatchers(e.expr),
+                                       expr: removeInternalComponents(p.title, e.expr),
                                      }
                                      for e in p.targets
                                    ] else [],
@@ -161,7 +188,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                        datasource: selectDatasource(super.datasource),
                                        targets: if std.objectHas(sp, 'targets') then [
                                          e {
-                                           expr: replaceAllMatchers(e.expr),
+                                           expr: removeInternalComponents(p.title, e.expr),
                                          }
                                          for e in sp.targets
                                        ] else [],
@@ -170,15 +197,17 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                            datasource: selectDatasource(super.datasource),
                                            targets: if std.objectHas(ssp, 'targets') then [
                                              e {
-                                               expr: replaceAllMatchers(e.expr),
+                                               expr: removeInternalComponents(p.title, e.expr),
                                              }
                                              for e in ssp.targets
                                            ] else [],
                                          }
                                          for ssp in sp.panels
+                                         if !(isPanelHidden(ssp.title))
                                        ] else [],
                                      }
                                      for sp in p.panels
+                                     if !(isPanelHidden(sp.title))
                                    ] else [],
                                    title: if !($._config.ssd.enabled && p.type == 'row') then p.title else
                                      if p.title == 'Distributor' then 'Write Path'
@@ -186,11 +215,11 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                      else p.title,
                                  }
                                  for p in super.panels
-                                 if !(p.type == 'row' && isRowHidden(p.title))
+                                 if !(p.type == 'row' && isRowHidden(p.title)) && !(isPanelHidden(p.title))
                                ],
                              } +
                              $.dashboard('Loki / Operational', uid='operational')
-                             // The queries in this dashboard don't make use of the cluster tempalte label selector
+                             // The queries in this dashboard don't make use of the cluster template label selector
                              // but we keep it here to allow selecting a namespace specific to a certain cluster, the
                              // namespace template variable selectors query uses the cluster value.
                              .addLog()

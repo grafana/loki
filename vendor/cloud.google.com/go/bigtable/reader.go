@@ -43,6 +43,7 @@ type ReadItem struct {
 	Row, Column string
 	Timestamp   Timestamp
 	Value       []byte
+	Labels      []string
 }
 
 // The current state of the read rows state machine.
@@ -57,14 +58,15 @@ const (
 // chunkReader handles cell chunks from the read rows response and combines
 // them into full Rows.
 type chunkReader struct {
-	state   rrState
-	curKey  []byte
-	curFam  string
-	curQual []byte
-	curTS   int64
-	curVal  []byte
-	curRow  Row
-	lastKey string
+	state     rrState
+	curKey    []byte
+	curLabels []string
+	curFam    string
+	curQual   []byte
+	curTS     int64
+	curVal    []byte
+	curRow    Row
+	lastKey   string
 }
 
 // newChunkReader returns a new chunkReader for handling read rows responses.
@@ -138,6 +140,7 @@ func (cr *chunkReader) handleCellValue(cc *btpb.ReadRowsResponse_CellChunk) Row 
 		// ValueSize is specified so expect a split value of ValueSize bytes
 		if cr.curVal == nil {
 			cr.curVal = make([]byte, 0, cc.ValueSize)
+			cr.curLabels = cc.Labels
 		}
 		cr.curVal = append(cr.curVal, cc.Value...)
 		cr.state = cellInProgress
@@ -145,6 +148,7 @@ func (cr *chunkReader) handleCellValue(cc *btpb.ReadRowsResponse_CellChunk) Row 
 		// This cell is either the complete value or the last chunk of a split
 		if cr.curVal == nil {
 			cr.curVal = cc.Value
+			cr.curLabels = cc.Labels
 		} else {
 			cr.curVal = append(cr.curVal, cc.Value...)
 		}
@@ -165,9 +169,11 @@ func (cr *chunkReader) finishCell() {
 		Column:    string(cr.curFam) + ":" + string(cr.curQual),
 		Timestamp: Timestamp(cr.curTS),
 		Value:     cr.curVal,
+		Labels:    cr.curLabels,
 	}
 	cr.curRow[cr.curFam] = append(cr.curRow[cr.curFam], ri)
 	cr.curVal = nil
+	cr.curLabels = nil
 }
 
 func (cr *chunkReader) commitRow() Row {

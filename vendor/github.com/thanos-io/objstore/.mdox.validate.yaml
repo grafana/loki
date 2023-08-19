@@ -1,0 +1,25 @@
+version: 1
+
+validators:
+  # Validators to skip checking PR/issue links of Thanos, Prometheus and Cortex.
+  - regex: '(^http[s]?:\/\/)(www\.)?(github\.com\/)thanos-io\/thanos(\/pull\/|\/issues\/)'
+    type: 'githubPullsIssues'
+  - regex: '(^http[s]?:\/\/)(www\.)?(github\.com\/)prometheus\/prometheus(\/pull\/|\/issues\/)'
+    type: 'githubPullsIssues'
+  - regex: '(^http[s]?:\/\/)(www\.)?(github\.com\/)cortexproject\/cortex(\/pull\/|\/issues\/)'
+    type: 'githubPullsIssues'
+  # Ignore Thanos release links.
+  - regex: '(^http[s]?:\/\/)(www\.)?(github\.com\/)thanos-io\/thanos(\/releases\/)'
+    type: 'ignore'
+  # Causes http stream errors with statuscode 0 sometimes. But is safe to skip.
+  - regex: 'slack\.cncf\.io'
+    type: 'ignore'
+  # 301 errors even when curl-ed.
+  - regex: 'envoyproxy\.io'
+    type: 'ignore'
+  # couldn't reach even when curl-ed.
+  - regex: 'cloud\.baidu\.com'
+    type: 'ignore'
+  # 403 when curl-ed from GitHub actions, though not from a developer machine. Likely due to secondary rate limits.
+  - regex: 'docs\.github\.com'
+    type: 'ignore'

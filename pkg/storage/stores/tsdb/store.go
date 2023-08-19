@@ -6,24 +6,27 @@ import (
 	"math"
 	"sync"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
+	indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type IndexWriter interface {
-	Append(userID string, ls labels.Labels, chks tsdb_index.ChunkMetas) error
+	Append(userID string, ls labels.Labels, fprint uint64, chks tsdb_index.ChunkMetas) error
 }
 
 type store struct {
@@ -31,89 +34,68 @@ type store struct {
 	indexShipper      indexshipper.IndexShipper
 	indexWriter       IndexWriter
 	backupIndexWriter index.Writer
+	logger            log.Logger
 	stopOnce          sync.Once
 }
 
-var storeInstance *store
-
-// This must only be called in test cases where a new store instances
-// cannot be explicitly created.
-func ResetStoreInstance() {
-	if storeInstance == nil {
-		return
-	}
-	storeInstance.Stop()
-	storeInstance = nil
-}
-
-type newStoreFactoryFunc func(
-	indexShipperCfg indexshipper.Config,
-	p config.PeriodConfig,
-	f *fetcher.Fetcher,
+// NewStore creates a new tsdb index ReaderWriter.
+func NewStore(
+	name string,
+	indexShipperCfg IndexCfg,
+	schemaCfg config.SchemaConfig,
+	_ *fetcher.Fetcher,
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
-	tableRanges config.TableRanges,
+	tableRange config.TableRange,
 	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
+	logger log.Logger,
+	idxCache cache.Cache,
 ) (
-	indexReaderWriter index.ReaderWriter,
-	stopFunc func(),
-	err error,
-)
-
-// NewStore creates a new store if not initialized already.
-// Each call to NewStore will always build a new stores.ChunkWriter even if the store was already initialized since
-// fetcher.Fetcher instances could be different due to periodic configs having different types of object storage configured
-// for storing chunks.
-// It also helps us make tsdb store a singleton because
-// we do not need to build store for each schema config since we do not do any schema specific handling yet.
-// If we do need to do schema specific handling, it would be a good idea to abstract away the handling since
-// running multiple head managers would be complicated and wasteful.
-var NewStore = func() newStoreFactoryFunc {
-	return func(
-		indexShipperCfg indexshipper.Config,
-		p config.PeriodConfig,
-		f *fetcher.Fetcher,
-		objectClient client.ObjectClient,
-		limits downloads.Limits,
-		tableRanges config.TableRanges,
-		backupIndexWriter index.Writer,
-		reg prometheus.Registerer,
-	) (
-		index.ReaderWriter,
-		func(),
-		error,
-	) {
-		if storeInstance == nil {
-			if backupIndexWriter == nil {
-				backupIndexWriter = noopBackupIndexWriter{}
-			}
-			storeInstance = &store{
-				backupIndexWriter: backupIndexWriter,
-			}
-			err := storeInstance.init(indexShipperCfg, objectClient, limits, tableRanges, reg)
-			if err != nil {
-				return nil, nil, err
-			}
-		}
-
-		return storeInstance, storeInstance.Stop, nil
+	index.ReaderWriter,
+	func(),
+	error,
+) {
+	if backupIndexWriter == nil {
+		backupIndexWriter = noopBackupIndexWriter{}
 	}
-}()
 
-func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.ObjectClient,
-	limits downloads.Limits, tableRanges config.TableRanges, reg prometheus.Registerer) error {
+	storeInstance := &store{
+		backupIndexWriter: backupIndexWriter,
+		logger:            logger,
+	}
+
+	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
+		return nil, nil, err
+	}
+
+	return storeInstance, storeInstance.Stop, nil
+}
+
+func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
+	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
+
+	var sharedCache cache.Cache
+	if indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil {
+		sharedCache = idxCache
+	}
+
+	openFn := func(p string) (indexshipper_index.Index, error) {
+		return OpenShippableTSDB(p, IndexOpts{PostingsCache: sharedCache})
+	}
 
 	var err error
 	s.indexShipper, err = indexshipper.NewIndexShipper(
-		indexShipperCfg,
+		indexCfg.Config,
 		objectClient,
 		limits,
 		nil,
-		OpenShippableTSDB,
-		tableRanges,
+		openFn,
+		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
+		s.logger,
 	)
+
 	if err != nil {
 		return err
 	}
@@ -121,7 +103,7 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 	var indices []Index
 	opts := DefaultIndexClientOptions()
 
-	if indexShipperCfg.Mode == indexshipper.ModeWriteOnly {
+	if indexCfg.Mode == indexshipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
 		// for the Stats() methods as it's of relatively little
 		// benefit when compared to the memory cost. The bloom filters
@@ -131,26 +113,28 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		opts.UseBloomFilters = false
 	}
 
-	if indexShipperCfg.Mode != indexshipper.ModeReadOnly {
-
-		var (
-			nodeName = indexShipperCfg.IngesterName
-			dir      = indexShipperCfg.ActiveIndexDirectory
-		)
+	if indexCfg.Mode != indexshipper.ModeReadOnly {
+		nodeName, err := indexCfg.GetUniqueUploaderName()
+		if err != nil {
+			return err
+		}
 
 		tsdbMetrics := NewMetrics(reg)
 		tsdbManager := NewTSDBManager(
+			name,
 			nodeName,
-			dir,
+			indexCfg.ActiveIndexDirectory,
 			s.indexShipper,
-			tableRanges,
-			util_log.Logger,
+			tableRange,
+			schemaCfg,
+			s.logger,
 			tsdbMetrics,
 		)
 
 		headManager := NewHeadManager(
-			util_log.Logger,
-			dir,
+			name,
+			s.logger,
+			indexCfg.ActiveIndexDirectory,
 			tsdbMetrics,
 			tsdbManager,
 		)
@@ -164,13 +148,10 @@ func (s *store) init(indexShipperCfg indexshipper.Config, objectClient client.Ob
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRanges))
-	multiIndex, err := NewMultiIndex(indices...)
-	if err != nil {
-		return err
-	}
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
+	multiIndex := NewMultiIndex(IndexSlice(indices))
 
-	s.Reader = NewIndexClient(multiIndex, opts)
+	s.Reader = NewIndexClient(multiIndex, opts, limits)
 
 	return nil
 }
@@ -179,14 +160,14 @@ func (s *store) Stop() {
 	s.stopOnce.Do(func() {
 		if hm, ok := s.indexWriter.(*HeadManager); ok {
 			if err := hm.Stop(); err != nil {
-				level.Error(util_log.Logger).Log("msg", "failed to stop head manager", "err", err)
+				level.Error(s.logger).Log("msg", "failed to stop head manager", "err", err)
 			}
 		}
 		s.indexShipper.Stop()
 	})
 }
 
-func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdb_index.ChunkMetas{
@@ -198,21 +179,21 @@ func (s *store) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
 			Entries:  uint32(chk.Data.Entries()),
 		},
 	}
-	if err := s.indexWriter.Append(chk.UserID, chk.Metric, metas); err != nil {
+	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}
 
-	return s.backupIndexWriter.IndexChunk(ctx, chk)
+	return s.backupIndexWriter.IndexChunk(ctx, from, through, chk)
 }
 
 type failingIndexWriter struct{}
 
-func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ tsdb_index.ChunkMetas) error {
+func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_index.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }
 
 type noopBackupIndexWriter struct{}
 
-func (n noopBackupIndexWriter) IndexChunk(ctx context.Context, chk chunk.Chunk) error {
+func (n noopBackupIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }

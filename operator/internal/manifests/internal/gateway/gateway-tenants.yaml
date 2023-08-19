@@ -1,25 +1,26 @@
-tenants:
-{{- if $l := . -}}
-{{- if eq $l.Stack.Tenants.Mode "static" -}}
-{{- range $spec := $l.Stack.Tenants.Authentication }}
-- name: {{ $spec.TenantName }}
-  id: {{ $spec.TenantID }}
+{{- define "mTLS" }}
+  {{- $secret := index . 0 -}}
+  mTLS:
+    {{ if $secret.MTLS.CAPath }}
+    caPath: {{ $secret.MTLS.CAPath }}
+    {{- end -}}
+{{- end }}
+
+{{- define "oidc" }}
+  {{- $secret := index . 0 -}}
+  {{- $spec := index . 1 -}}
   oidc:
-    {{- range $secret := $l.TenantSecrets }}
-    {{- if eq $secret.TenantName $spec.TenantName -}}
-    {{ if $secret.ClientID }}
-    clientID: {{ $secret.ClientID }}
+    {{- if $secret.OIDC.ClientID }}
+    clientID: {{ $secret.OIDC.ClientID }}
     {{- end -}}
-    {{ if $secret.ClientSecret }}
-    clientSecret: {{ $secret.ClientSecret }}
+    {{ if $secret.OIDC.ClientSecret }}
+    clientSecret: {{ $secret.OIDC.ClientSecret }}
     {{- end -}}
-    {{ if $secret.IssuerCAPath }}
-    issuerCAPath: {{ $secret.IssuerCAPath }}
-    {{- end -}}
-    {{- end -}}
+    {{ if $secret.OIDC.IssuerCAPath }}
+    issuerCAPath: {{ $secret.OIDC.IssuerCAPath }}
     {{- end }}
     issuerURL: {{ $spec.OIDC.IssuerURL }}
-    {{ if $spec.OIDC.RedirectURL }}
+    {{- if $spec.OIDC.RedirectURL }}
     redirectURL: {{ $spec.OIDC.RedirectURL }}
     {{- end -}}
     {{ if $spec.OIDC.UsernameClaim }}
@@ -28,6 +29,29 @@ tenants:
     {{- if $spec.OIDC.GroupClaim }}
     groupClaim: {{ $spec.OIDC.GroupClaim }}
     {{- end }}
+{{- end }}
+
+{{- define "authorization" }}
+  {{- $l := index . 0 -}}
+  {{- $spec := index . 1 -}}
+  {{- range $secret := $l.TenantSecrets }}
+  {{- if eq $secret.TenantName $spec.TenantName }}
+  {{- if $secret.OIDC }}
+  {{ template "oidc" (make_array $secret $spec) }}
+  {{- else if $secret.MTLS }}
+  {{ template "mTLS" (make_array $secret) }}
+  {{- end -}}
+  {{- end -}}
+  {{- end }}
+{{- end }}
+
+tenants:
+{{- if $l := . -}}
+{{- if eq $l.Stack.Tenants.Mode "static" -}}
+{{- range $spec := $l.Stack.Tenants.Authentication }}
+- name: {{ $spec.TenantName }}
+  id: {{ $spec.TenantID }}
+  {{ template "authorization" (make_array $l $spec) }}
   opa:
     query: data.lokistack.allow
     paths:
@@ -39,28 +63,7 @@ tenants:
 {{- range $spec := $tenant.Authentication }}
 - name: {{ $spec.TenantName }}
   id: {{ $spec.TenantID }}
-  oidc:
-    {{- range $secret := $l.TenantSecrets }}
-    {{- if eq $secret.TenantName $spec.TenantName -}}
-    {{ if $secret.ClientID }}
-    clientID: {{ $secret.ClientID }}
-    {{- end -}}
-    {{ if $secret.ClientSecret }}
-    clientSecret: {{ $secret.ClientSecret }}
-    {{- end -}}
-    {{ if $secret.IssuerCAPath }}
-    issuerCAPath: {{ $secret.IssuerCAPath }}
-    {{- end -}}
-    {{- end -}}
-    {{- end }}
-    issuerURL: {{ $spec.OIDC.IssuerURL }}
-    redirectURL: {{ $spec.OIDC.RedirectURL }}
-    {{- if $spec.OIDC.UsernameClaim }}
-    usernameClaim: {{ $spec.OIDC.UsernameClaim }}
-    {{- end -}}
-    {{- if $spec.OIDC.GroupClaim }}
-    groupClaim: {{ $spec.OIDC.GroupClaim }}
-    {{- end }}
+  {{ template "authorization" (make_array $l $spec) }}
   opa:
     url: {{ $tenant.Authorization.OPA.URL }}
 {{- end -}}

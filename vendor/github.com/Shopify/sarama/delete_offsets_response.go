@@ -5,10 +5,10 @@ import (
 )
 
 type DeleteOffsetsResponse struct {
-	//The top-level error code, or 0 if there was no error.
+	// The top-level error code, or 0 if there was no error.
 	ErrorCode    KError
 	ThrottleTime time.Duration
-	//The responses for each partition of the topics.
+	// The responses for each partition of the topics.
 	Errors map[string]map[int32]KError
 }
 

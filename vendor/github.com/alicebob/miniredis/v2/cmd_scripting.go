@@ -7,6 +7,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 
 	luajson "github.com/alicebob/gopher-json"
 	lua "github.com/yuin/gopher-lua"
@@ -21,8 +22,13 @@ func commandsScripting(m *Miniredis) {
 	m.srv.Register("SCRIPT", m.cmdScript)
 }
 
+var (
+	parsedScripts = sync.Map{}
+)
+
 // Execute lua. Needs to run m.Lock()ed, from within withTx().
-func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) {
+// Returns true if the lua was OK (and hence should be cached).
+func (m *Miniredis) runLuaScript(c *server.Peer, sha, script string, args []string) bool {
 	l := lua.NewState(lua.Options{SkipOpenLibs: true})
 	defer l.Close()
 
@@ -57,15 +63,15 @@ func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) {
 	keysLen, err := strconv.Atoi(keysS)
 	if err != nil {
 		c.WriteError(msgInvalidInt)
-		return
+		return false
 	}
 	if keysLen < 0 {
 		c.WriteError(msgNegativeKeysNumber)
-		return
+		return false
 	}
 	if keysLen > len(args) {
 		c.WriteError(msgInvalidKeysNumber)
-		return
+		return false
 	}
 	keys, args := args[:keysLen], args[keysLen:]
 	for i, k := range keys {
@@ -79,25 +85,65 @@ func (m *Miniredis) runLuaScript(c *server.Peer, script string, args []string) {
 	}
 	l.SetGlobal("ARGV", argvTable)
 
-	redisFuncs := mkLuaFuncs(m.srv, c)
+	redisFuncs, redisConstants := mkLua(m.srv, c, sha)
 	// Register command handlers
 	l.Push(l.NewFunction(func(l *lua.LState) int {
 		mod := l.RegisterModule("redis", redisFuncs).(*lua.LTable)
+		for k, v := range redisConstants {
+			mod.RawSetString(k, v)
+		}
 		l.Push(mod)
 		return 1
 	}))
 
-	l.DoString(protectGlobals)
+	_ = doScript(l, protectGlobals)
 
 	l.Push(lua.LString("redis"))
 	l.Call(1, 0)
 
-	if err := l.DoString(script); err != nil {
-		c.WriteError(errLuaParseError(err))
-		return
+	if err := doScript(l, script); err != nil {
+		c.WriteError(err.Error())
+		return false
 	}
 
 	luaToRedis(l, c, l.Get(1))
+	return true
+}
+
+// doScript pre-compiiles the given script into a Lua prototype,
+// then executes the pre-compiled function against the given lua state.
+//
+// This is thread-safe.
+func doScript(l *lua.LState, script string) error {
+	proto, err := compile(script)
+	if err != nil {
+		return fmt.Errorf(errLuaParseError(err))
+	}
+
+	lfunc := l.NewFunctionFromProto(proto)
+	l.Push(lfunc)
+	if err := l.PCall(0, lua.MultRet, nil); err != nil {
+		// ensure we wrap with the correct format.
+		return fmt.Errorf(errLuaParseError(err))
+	}
+
+	return nil
+}
+
+func compile(script string) (*lua.FunctionProto, error) {
+	if val, ok := parsedScripts.Load(script); ok {
+		return val.(*lua.FunctionProto), nil
+	}
+	chunk, err := parse.Parse(strings.NewReader(script), "<string>")
+	if err != nil {
+		return nil, err
+	}
+	proto, err := lua.Compile(chunk, "")
+	if err != nil {
+		return nil, err
+	}
+	parsedScripts.Store(script, proto)
+	return proto, nil
 }
 
 func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
@@ -112,16 +158,20 @@ func (m *Miniredis) cmdEval(c *server.Peer, cmd string, args []string) {
 	if m.checkPubsub(c, cmd) {
 		return
 	}
-
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
 	script, args := args[0], args[1:]
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		m.runLuaScript(c, script, args)
+		sha := sha1Hex(script)
+		ok := m.runLuaScript(c, sha, script, args)
+		if ok {
+			m.scripts[sha] = script
+		}
 	})
 }
 
@@ -137,8 +187,9 @@ func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
 	if m.checkPubsub(c, cmd) {
 		return
 	}
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
@@ -151,7 +202,7 @@ func (m *Miniredis) cmdEvalsha(c *server.Peer, cmd string, args []string) {
 			return
 		}
 
-		m.runLuaScript(c, script, args)
+		m.runLuaScript(c, sha, script, args)
 	})
 }
 
@@ -168,28 +219,62 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 		return
 	}
 
-	if getCtx(c).nested {
-		c.WriteError(msgNotFromScripts)
+	ctx := getCtx(c)
+	if ctx.nested {
+		c.WriteError(msgNotFromScripts(ctx.nestedSHA))
 		return
 	}
 
-	subcmd, args := args[0], args[1:]
+	var opts struct {
+		subcmd string
+		script string
+	}
+
+	opts.subcmd, args = args[0], args[1:]
+
+	switch strings.ToLower(opts.subcmd) {
+	case "load":
+		if len(args) != 1 {
+			setDirty(c)
+			c.WriteError(fmt.Sprintf(msgFScriptUsage, "LOAD"))
+			return
+		}
+		opts.script = args[0]
+	case "exists":
+		if len(args) == 0 {
+			setDirty(c)
+			c.WriteError(errWrongNumber("script|exists"))
+			return
+		}
+	case "flush":
+		if len(args) == 1 {
+			switch strings.ToUpper(args[0]) {
+			case "SYNC", "ASYNC":
+				args = args[1:]
+			default:
+			}
+		}
+		if len(args) != 0 {
+			setDirty(c)
+			c.WriteError(msgScriptFlush)
+			return
+		}
+
+	default:
+		setDirty(c)
+		c.WriteError(fmt.Sprintf(msgFScriptUsageSimple, strings.ToUpper(opts.subcmd)))
+		return
+	}
 
 	withTx(m, c, func(c *server.Peer, ctx *connCtx) {
-		switch strings.ToLower(subcmd) {
+		switch strings.ToLower(opts.subcmd) {
 		case "load":
-			if len(args) != 1 {
-				c.WriteError(fmt.Sprintf(msgFScriptUsage, "LOAD"))
-				return
-			}
-			script := args[0]
-
-			if _, err := parse.Parse(strings.NewReader(script), "user_script"); err != nil {
+			if _, err := parse.Parse(strings.NewReader(opts.script), "user_script"); err != nil {
 				c.WriteError(errLuaParseError(err))
 				return
 			}
-			sha := sha1Hex(script)
-			m.scripts[sha] = script
+			sha := sha1Hex(opts.script)
+			m.scripts[sha] = opts.script
 			c.WriteBulk(sha)
 
 		case "exists":
@@ -203,16 +288,9 @@ func (m *Miniredis) cmdScript(c *server.Peer, cmd string, args []string) {
 			}
 
 		case "flush":
-			if len(args) != 0 {
-				c.WriteError(fmt.Sprintf(msgFScriptUsage, "FLUSH"))
-				return
-			}
-
 			m.scripts = map[string]string{}
 			c.WriteOK()
 
-		default:
-			c.WriteError(fmt.Sprintf(msgFScriptUsage, strings.ToUpper(subcmd)))
 		}
 	})
 }

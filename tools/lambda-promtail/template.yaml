@@ -22,6 +22,11 @@ Parameters:
     Type: String
     Default: ""
     NoEcho: true
+  BearerToken:
+    Description: The bearer token, necessary if target endpoint requires it.
+    Type: String
+    Default: ""
+    NoEcho: true
   LambdaPromtailImage:
     Description: The ECR image URI to pull and use for lambda-promtail.
     Type: String
@@ -34,10 +39,18 @@ Parameters:
     Description: Comma separated list of extra labels, in the format 'name1,value1,name2,value2,...,nameN,valueN' to add to entries forwarded by lambda-promtail.
     Type: String
     Default: ""
+  OmitExtraLabelsPrefix:
+    Description: Whether or not to omit the prefix `__extra_` from extra labels defined in `ExtraLabels`.
+    Type: String
+    Default: "false"
   TenantID:
     Description: Tenant ID to be added when writing logs from lambda-promtail.
     Type: String
     Default: ""
+  SkipTlsVerify:
+    Description: Determines whether to verify the TLS certificate
+    Type: String
+    Default: "false"
 
 Resources:
   LambdaPromtailRole:
@@ -82,9 +95,12 @@ Resources:
           WRITE_ADDRESS: !Ref WriteAddress
           USERNAME: !Ref Username
           PASSWORD: !Ref Password
+          BEARER_TOKEN: !Ref BearerToken
           KEEP_STREAM: !Ref KeepStream
           EXTRA_LABELS: !Ref ExtraLabels
+          OMIT_EXTRA_LABELS_PREFIX: !Ref OmitExtraLabelsPrefix
           TENANT_ID: !Ref TenantID
+          SKIP_TLS_VERIFY: !Ref SkipTlsVerify
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:

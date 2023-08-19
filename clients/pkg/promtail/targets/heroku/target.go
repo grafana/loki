@@ -8,12 +8,12 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	dslog "github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/server"
 	herokuEncoding "github.com/heroku/x/logplex/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/promtail/api"
 	lokiClient "github.com/grafana/loki/clients/pkg/promtail/client"
@@ -80,7 +80,7 @@ func (h *Target) run() error {
 	h.config.Server.RegisterInstrumentation = false
 
 	// Wrapping util logger with component-specific key vals, and the expected GoKit logging interface
-	h.config.Server.Log = logging.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
+	h.config.Server.Log = dslog.GoKit(log.With(util_log.Logger, "component", "heroku_drain"))
 
 	srv, err := server.New(h.config.Server)
 	if err != nil {
@@ -117,22 +117,32 @@ func (h *Target) drain(w http.ResponseWriter, r *http.Request) {
 			ts = message.Timestamp
 		}
 
-		// If the incoming request carries the tenant id, inject it as the reserved label so it's used by the
-		// remote write client.
+		// Create __heroku_drain_param_<name> labels from query parameters
+		params := r.URL.Query()
+		for k, v := range params {
+			lb.Set(fmt.Sprintf("__heroku_drain_param_%s", k), strings.Join(v, ","))
+		}
+
 		tenantIDHeaderValue := r.Header.Get("X-Scope-OrgID")
 		if tenantIDHeaderValue != "" {
+			// If present, first inject the tenant ID in, so it can be relabeled if necessary
 			lb.Set(lokiClient.ReservedLabelTenantID, tenantIDHeaderValue)
 		}
 
-		processed := relabel.Process(lb.Labels(), h.relabelConfigs...)
+		processed, _ := relabel.Process(lb.Labels(), h.relabelConfigs...)
 
 		// Start with the set of labels fixed in the configuration
 		filtered := h.Labels().Clone()
 		for _, lbl := range processed {
-			if strings.HasPrefix(lbl.Name, "__") && lbl.Name != lokiClient.ReservedLabelTenantID {
+			if strings.HasPrefix(lbl.Name, "__") {
 				continue
 			}
 			filtered[model.LabelName(lbl.Name)] = model.LabelValue(lbl.Value)
+		}
+
+		// Then, inject it as the reserved label, so it's used by the remote write client
+		if tenantIDHeaderValue != "" {
+			filtered[lokiClient.ReservedLabelTenantID] = model.LabelValue(tenantIDHeaderValue)
 		}
 
 		entries <- api.Entry{

@@ -11,6 +11,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// nolint:revive // Many legitimately empty blocks in this file.
 package parser
 
 import (
@@ -47,6 +48,10 @@ func (i Item) String() string {
 	}
 	return fmt.Sprintf("%q", i.Val)
 }
+
+// Pretty returns the prettified form of an item.
+// This is same as the item's stringified format.
+func (i Item) Pretty(int) string { return i.String() }
 
 // IsOperator returns true if the Item corresponds to a arithmetic or set operator.
 // Returns false otherwise.
@@ -289,7 +294,7 @@ func (l *Lexer) accept(valid string) bool {
 // acceptRun consumes a run of runes from the valid set.
 func (l *Lexer) acceptRun(valid string) {
 	for strings.ContainsRune(valid, l.next()) {
-		// consume
+		// Consume.
 	}
 	l.backup()
 }
@@ -342,9 +347,10 @@ func lexStatements(l *Lexer) stateFn {
 
 	switch r := l.next(); {
 	case r == eof:
-		if l.parenDepth != 0 {
+		switch {
+		case l.parenDepth != 0:
 			return l.errorf("unclosed left parenthesis")
-		} else if l.bracketOpen {
+		case l.bracketOpen:
 			return l.errorf("unclosed left bracket")
 		}
 		l.emit(EOF)
@@ -366,12 +372,13 @@ func lexStatements(l *Lexer) stateFn {
 	case r == '^':
 		l.emit(POW)
 	case r == '=':
-		if t := l.peek(); t == '=' {
+		switch t := l.peek(); t {
+		case '=':
 			l.next()
 			l.emit(EQLC)
-		} else if t == '~' {
+		case '~':
 			return l.errorf("unexpected character after '=': %q", t)
-		} else {
+		default:
 			l.emit(EQL)
 		}
 	case r == '!':
@@ -786,11 +793,12 @@ Loop:
 		default:
 			l.backup()
 			word := l.input[l.start:l.pos]
-			if kw, ok := key[strings.ToLower(word)]; ok {
+			switch kw, ok := key[strings.ToLower(word)]; {
+			case ok:
 				l.emit(kw)
-			} else if !strings.Contains(word, ":") {
+			case !strings.Contains(word, ":"):
 				l.emit(IDENTIFIER)
-			} else {
+			default:
 				l.emit(METRIC_IDENTIFIER)
 			}
 			break Loop

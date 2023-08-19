@@ -24,9 +24,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"runtime"
 	"strings"
 
+	"go.uber.org/zap/internal/bufferpool"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -259,8 +259,10 @@ func (log *Logger) clone() *Logger {
 }
 
 func (log *Logger) check(lvl zapcore.Level, msg string) *zapcore.CheckedEntry {
-	// check must always be called directly by a method in the Logger interface
-	// (e.g., Check, Info, Fatal).
+	// Logger.check must always be called directly by a method in the
+	// Logger interface (e.g., Check, Info, Fatal).
+	// This skips Logger.check and the Info/Fatal/Check/etc. method that
+	// called it.
 	const callerSkipOffset = 2
 
 	// Check the level first to reduce the cost of disabled log calls.
@@ -307,42 +309,55 @@ func (log *Logger) check(lvl zapcore.Level, msg string) *zapcore.CheckedEntry {
 
 	// Thread the error output through to the CheckedEntry.
 	ce.ErrorOutput = log.errorOutput
-	if log.addCaller {
-		frame, defined := getCallerFrame(log.callerSkip + callerSkipOffset)
-		if !defined {
+
+	addStack := log.addStack.Enabled(ce.Level)
+	if !log.addCaller && !addStack {
+		return ce
+	}
+
+	// Adding the caller or stack trace requires capturing the callers of
+	// this function. We'll share information between these two.
+	stackDepth := stacktraceFirst
+	if addStack {
+		stackDepth = stacktraceFull
+	}
+	stack := captureStacktrace(log.callerSkip+callerSkipOffset, stackDepth)
+	defer stack.Free()
+
+	if stack.Count() == 0 {
+		if log.addCaller {
 			fmt.Fprintf(log.errorOutput, "%v Logger.check error: failed to get caller\n", ent.Time.UTC())
 			log.errorOutput.Sync()
 		}
+		return ce
+	}
 
-		ce.Entry.Caller = zapcore.EntryCaller{
-			Defined:  defined,
+	frame, more := stack.Next()
+
+	if log.addCaller {
+		ce.Caller = zapcore.EntryCaller{
+			Defined:  frame.PC != 0,
 			PC:       frame.PC,
 			File:     frame.File,
 			Line:     frame.Line,
 			Function: frame.Function,
 		}
 	}
-	if log.addStack.Enabled(ce.Entry.Level) {
-		ce.Entry.Stack = StackSkip("", log.callerSkip+callerSkipOffset).String
+
+	if addStack {
+		buffer := bufferpool.Get()
+		defer buffer.Free()
+
+		stackfmt := newStackFormatter(buffer)
+
+		// We've already extracted the first frame, so format that
+		// separately and defer to stackfmt for the rest.
+		stackfmt.FormatFrame(frame)
+		if more {
+			stackfmt.FormatStack(stack)
+		}
+		ce.Stack = buffer.String()
 	}
 
 	return ce
-}
-
-// getCallerFrame gets caller frame. The argument skip is the number of stack
-// frames to ascend, with 0 identifying the caller of getCallerFrame. The
-// boolean ok is false if it was not possible to recover the information.
-//
-// Note: This implementation is similar to runtime.Caller, but it returns the whole frame.
-func getCallerFrame(skip int) (frame runtime.Frame, ok bool) {
-	const skipOffset = 2 // skip getCallerFrame and Callers
-
-	pc := make([]uintptr, 1)
-	numFrames := runtime.Callers(skip+skipOffset, pc)
-	if numFrames < 1 {
-		return
-	}
-
-	frame, _ = runtime.CallersFrames(pc).Next()
-	return frame, frame.PC != 0
 }

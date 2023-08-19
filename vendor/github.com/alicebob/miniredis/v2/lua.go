@@ -11,7 +11,14 @@ import (
 	"github.com/alicebob/miniredis/v2/server"
 )
 
-func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
+var luaRedisConstants = map[string]lua.LValue{
+	"LOG_DEBUG":   lua.LNumber(0),
+	"LOG_VERBOSE": lua.LNumber(1),
+	"LOG_NOTICE":  lua.LNumber(2),
+	"LOG_WARNING": lua.LNumber(3),
+}
+
+func mkLua(srv *server.Server, c *server.Peer, sha string) (map[string]lua.LGFunction, map[string]lua.LValue) {
 	mkCall := func(failFast bool) func(l *lua.LState) int {
 		// one server.Ctx for a single Lua run
 		pCtx := &connCtx{}
@@ -19,12 +26,13 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 			pCtx.authenticated = true
 		}
 		pCtx.nested = true
+		pCtx.nestedSHA = sha
 		pCtx.selectedDB = getCtx(c).selectedDB
 
 		return func(l *lua.LState) int {
 			top := l.GetTop()
 			if top == 0 {
-				l.Error(lua.LString("Please specify at least one argument for redis.call()"), 1)
+				l.Error(lua.LString(fmt.Sprintf("Please specify at least one argument for this redis lib call script: %s, &c.", sha)), 1)
 				return 0
 			}
 			var args []string
@@ -35,12 +43,12 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 				case lua.LString:
 					args = append(args, string(a))
 				default:
-					l.Error(lua.LString("Lua redis() command arguments must be strings or integers"), 1)
+					l.Error(lua.LString(fmt.Sprintf("Lua redis lib command arguments must be strings or integers script: %s, &c.", sha)), 1)
 					return 0
 				}
 			}
 			if len(args) == 0 {
-				l.Error(lua.LString(msgNotFromScripts), 1)
+				l.Error(lua.LString(msgNotFromScripts(sha)), 1)
 				return 0
 			}
 
@@ -56,7 +64,7 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 				if failFast {
 					// call() mode
 					if strings.Contains(err.Error(), "ERR unknown command") {
-						l.Error(lua.LString("Unknown Redis command called from Lua script"), 1)
+						l.Error(lua.LString(fmt.Sprintf("Unknown Redis command called from script script: %s, &c.", sha)), 1)
 					} else {
 						l.Error(lua.LString(err.Error()), 1)
 					}
@@ -79,6 +87,8 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 					l.Push(lua.LString(string(r)))
 				case []interface{}:
 					l.Push(redisToLua(l, r))
+				case server.Simple:
+					l.Push(luaStatusReply(string(r)))
 				case string:
 					l.Push(lua.LString(r))
 				case error:
@@ -103,9 +113,28 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 				return 0
 			}
 			res := &lua.LTable{}
-			res.RawSetString("err", lua.LString(msg))
+			parts := strings.SplitN(msg.String(), " ", 2)
+			// '-' at the beginging will be added as a part of error response
+			if parts[0] != "" && parts[0][0] == '-' {
+				parts[0] = parts[0][1:]
+			}
+			var final_msg string
+			if len(parts) == 2 {
+				final_msg = fmt.Sprintf("%s %s", parts[0], parts[1])
+			} else {
+				final_msg = fmt.Sprintf("ERR %s", parts[0])
+			}
+			res.RawSetString("err", lua.LString(final_msg))
 			l.Push(res)
 			return 1
+		},
+		"log": func(l *lua.LState) int {
+			level := l.CheckInt(1)
+			msg := l.CheckString(2)
+			_, _ = level, msg
+			// do nothing by default. To see logs uncomment:
+			//   fmt.Printf("%v: %v", level, msg)
+			return 0
 		},
 		"status_reply": func(l *lua.LState) int {
 			v := l.Get(1)
@@ -114,8 +143,7 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 				l.Error(lua.LString("wrong number or type of arguments"), 1)
 				return 0
 			}
-			res := &lua.LTable{}
-			res.RawSetString("ok", lua.LString(msg))
+			res := luaStatusReply(string(msg))
 			l.Push(res)
 			return 1
 		},
@@ -133,7 +161,7 @@ func mkLuaFuncs(srv *server.Server, c *server.Peer) map[string]lua.LGFunction {
 			// ignored
 			return 1
 		},
-	}
+	}, luaRedisConstants
 }
 
 func luaToRedis(l *lua.LState, c *server.Peer, value lua.LValue) {
@@ -155,11 +183,7 @@ func luaToRedis(l *lua.LState, c *server.Peer, value lua.LValue) {
 		c.WriteInt(int(lua.LVAsNumber(value)))
 	case lua.LString:
 		s := lua.LVAsString(value)
-		if s == "OK" {
-			c.WriteInline(s)
-		} else {
-			c.WriteBulk(s)
-		}
+		c.WriteBulk(s)
 	case *lua.LTable:
 		// special case for tables with an 'err' or 'ok' field
 		// note: according to the docs this only counts when 'err' or 'ok' is
@@ -205,6 +229,8 @@ func redisToLua(l *lua.LState, res []interface{}) *lua.LTable {
 			v = lua.LFalse
 		} else {
 			switch et := e.(type) {
+			case int:
+				v = lua.LNumber(et)
 			case int64:
 				v = lua.LNumber(et)
 			case []uint8:
@@ -221,4 +247,10 @@ func redisToLua(l *lua.LState, res []interface{}) *lua.LTable {
 		l.RawSet(rettb, lua.LNumber(rettb.Len()+1), v)
 	}
 	return rettb
+}
+
+func luaStatusReply(msg string) *lua.LTable {
+	tab := &lua.LTable{}
+	tab.RawSetString("ok", lua.LString(msg))
+	return tab
 }

@@ -1,13 +1,10 @@
 {{- with .Values.monitoring.serviceMonitor }}
-{{- if .enabled }}
+{{- if and ($.Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor") .enabled }}
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: {{ include "loki.fullname" $ }}
-  {{- with .namespace }}
-  namespace: {{ . }}
-  {{- end }}
   {{- with .annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -43,11 +40,15 @@ spec:
         - sourceLabels: [job]
           replacement: "{{ $.Release.Namespace }}/$1"
           targetLabel: job
-        - replacement: "{{ include "loki.fullname" $ }}"
+        - replacement: "{{ include "loki.clusterLabel" $ }}"
           targetLabel: cluster
         {{- with .relabelings }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+      {{- with .metricRelabelings }}
+      metricRelabelings:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .scheme }}
       scheme: {{ . }}
       {{- end }}

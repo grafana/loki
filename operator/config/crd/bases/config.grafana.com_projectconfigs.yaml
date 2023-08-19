@@ -72,6 +72,8 @@ spec:
                 type: boolean
               enableRecordingRuleWebhook:
                 type: boolean
+              enableRulerConfigWebhook:
+                type: boolean
               enableServiceMonitors:
                 type: boolean
               enableTlsGrpcServices:

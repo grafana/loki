@@ -79,7 +79,7 @@ func (c *replayController) Cur() int {
 }
 
 func (c *replayController) Flush() {
-	if c.isFlushing.CAS(false, true) {
+	if c.isFlushing.CompareAndSwap(false, true) {
 		c.metrics.recoveryIsFlushing.Set(1)
 		prior := c.currentBytes.Load()
 		level.Debug(util_log.Logger).Log(

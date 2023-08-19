@@ -89,7 +89,12 @@ func (cl *Client) GetServiceTicket(spn string) (messages.Ticket, types.Encryptio
 		return tkt, skey, nil
 	}
 	princ := types.NewPrincipalName(nametype.KRB_NT_PRINCIPAL, spn)
-	realm := cl.Config.ResolveRealm(princ.NameString[len(princ.NameString)-1])
+	realm := cl.spnRealm(princ)
+
+	// if we don't know the SPN's realm, ask the client realm's KDC
+	if realm == "" {
+		realm = cl.Credentials.Realm()
+	}
 
 	tgt, skey, err := cl.sessionTGT(realm)
 	if err != nil {

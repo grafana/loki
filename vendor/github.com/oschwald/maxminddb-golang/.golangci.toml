@@ -1,0 +1,452 @@
+[run]
+  deadline = "10m"
+  tests = true
+
+[linters]
+  disable-all = true
+  enable = [
+    "asasalint",
+    "asciicheck",
+    "bidichk",
+    "bodyclose",
+    "containedctx",
+    "contextcheck",
+    "depguard",
+    "dupword",
+    "durationcheck",
+    "errcheck",
+    "errchkjson",
+    "errname",
+    "errorlint",
+    # "exhaustive",
+    "exportloopref",
+    "forbidigo",
+    "goconst",
+    "gocyclo",
+    "gocritic",
+    "godot",
+    "gofumpt",
+    "gomodguard",
+    "gosec",
+    "gosimple",
+    "govet",
+    "grouper",
+    "ineffassign",
+    "lll",
+    "makezero",
+    "maintidx",
+    "misspell",
+    "nakedret",
+    "nilerr",
+    "noctx",
+    "nolintlint",
+    "nosprintfhostport",
+    "predeclared",
+    "revive",
+    "rowserrcheck",
+    "sqlclosecheck",
+    "staticcheck",
+    "stylecheck",
+    "tenv",
+    "tparallel",
+    "typecheck",
+    "unconvert",
+    "unparam",
+    "unused",
+    "usestdlibvars",
+    "vetshadow",
+    "wastedassign",
+  ]
+
+[[linters-settings.depguard.rules.main.deny]]
+pkg = "io/ioutil"
+desc = "Deprecated. Functions have been moved elsewhere."
+
+[linters-settings.errcheck]
+    check-blank = true
+    # Ignoring Close so that we don't have to have a bunch of
+    # `defer func() { _ = r.Close() }()` constructs when we
+    # don't actually care about the error.
+    ignore = "Close,fmt:.*"
+
+[linters-settings.errorlint]
+    errorf = true
+    asserts = true
+    comparison = true
+
+[linters-settings.exhaustive]
+    default-signifies-exhaustive = true
+
+[linters-settings.forbidigo]
+    # Forbid the following identifiers
+    forbid = [
+        "Geoip", # use "GeoIP"
+        "^geoIP", # use "geoip"
+        "Maxmind", # use "MaxMind"
+        "^maxMind", # use "maxmind"
+    ]
+
+[linters-settings.gocritic]
+    enabled-checks = [
+        "appendAssign",
+        "appendCombine",
+        "argOrder",
+        "assignOp",
+        "badCall",
+        "badCond",
+        "badLock",
+        "badRegexp",
+        "badSorting",
+        "boolExprSimplify",
+        "builtinShadow",
+        "builtinShadowDecl",
+        "captLocal",
+        "caseOrder",
+        "codegenComment",
+        "commentedOutCode",
+        "commentedOutImport",
+        "commentFormatting",
+        "defaultCaseOrder",
+        "deferInLoop",
+        "deferUnlambda",
+        "deprecatedComment",
+        "docStub",
+        "dupArg",
+        "dupBranchBody",
+        "dupCase",
+        "dupImport",
+        "dupSubExpr",
+        "dynamicFmtString",
+        "elseif",
+        "emptyDecl",
+        "emptyFallthrough",
+        "emptyStringTest",
+        "equalFold",
+        "evalOrder",
+        "exitAfterDefer",
+        "exposedSyncMutex",
+        "externalErrorReassign",
+        "filepathJoin",
+        "flagDeref",
+        "flagName",
+        "hexLiteral",
+        "httpNoBody",
+        "hugeParam",
+        "ifElseChain",
+        "importShadow",
+        "indexAlloc",
+        "initClause",
+        "mapKey",
+        "methodExprCall",
+        "nestingReduce",
+        "newDeref",
+        "nilValReturn",
+        "octalLiteral",
+        "offBy1",
+        "paramTypeCombine",
+        "preferDecodeRune",
+        "preferFilepathJoin",
+        "preferFprint",
+        "preferStringWriter",
+        "preferWriteByte",
+        "ptrToRefParam",
+        "rangeExprCopy",
+        "rangeValCopy",
+        "redundantSprint",
+        "regexpMust",
+        "regexpPattern",
+        "regexpSimplify",
+        "returnAfterHttpError",
+        "ruleguard",
+        "singleCaseSwitch",
+        "sliceClear",
+        "sloppyLen",
+        "sloppyReassign",
+        "sloppyTestFuncName",
+        "sloppyTypeAssert",
+        "sortSlice",
+        "sprintfQuotedString",
+        "sqlQuery",
+        "stringsCompare",
+        "stringConcatSimplify",
+        "stringXbytes",
+        "switchTrue",
+        "syncMapLoadAndDelete",
+        "timeExprSimplify",
+        "todoCommentWithoutDetail",
+        "tooManyResultsChecker",
+        "truncateCmp",
+        "typeAssertChain",
+        "typeDefFirst",
+        "typeSwitchVar",
+        "typeUnparen",
+        "underef",
+        "unlabelStmt",
+        "unlambda",
+        # "unnamedResult",
+        "unnecessaryBlock",
+        "unnecessaryDefer",
+        "unslice",
+        "valSwap",
+        "weakCond",
+        # Covered by nolintlint
+        # "whyNoLint"
+        "wrapperFunc",
+        "yodaStyleExpr",
+    ]
+
+[linters-settings.gofumpt]
+    extra-rules = true
+    lang-version = "1.19"
+
+[linters-settings.gosec]
+    excludes = [
+        # G104 - "Audit errors not checked." We use errcheck for this.
+        "G104",
+
+        # G304 - "Potential file inclusion via variable"
+        "G304",
+
+        # G306 - "Expect WriteFile permissions to be 0600 or less".
+        "G306",
+
+        # Prohibits defer (*os.File).Close, which we allow when reading from file.
+        "G307",
+    ]
+
+[linters-settings.govet]
+    "enable-all" = true
+    disable = ["shadow"]
+
+[linters-settings.lll]
+    line-length = 120
+    tab-width = 4
+
+[linters-settings.nolintlint]
+    allow-leading-space = false
+    allow-unused = false
+    allow-no-explanation = ["lll", "misspell"]
+    require-explanation = true
+    require-specific = true
+
+[linters-settings.revive]
+    ignore-generated-header = true
+    severity = "warning"
+
+    # [[linters-settings.revive.rules]]
+    # name = "add-constant"
+
+    # [[linters-settings.revive.rules]]
+    # name = "argument-limit"
+
+    [[linters-settings.revive.rules]]
+    name = "atomic"
+
+    [[linters-settings.revive.rules]]
+    name = "bare-return"
+
+    [[linters-settings.revive.rules]]
+    name = "blank-imports"
+
+    [[linters-settings.revive.rules]]
+    name = "bool-literal-in-expr"
+
+    [[linters-settings.revive.rules]]
+    name = "call-to-gc"
+
+    # [[linters-settings.revive.rules]]
+    # name = "cognitive-complexity"
+
+    [[linters-settings.revive.rules]]
+    name = "comment-spacings"
+    arguments = ["easyjson", "nolint"]
+
+    # [[linters-settings.revive.rules]]
+    # name = "confusing-naming"
+
+    # [[linters-settings.revive.rules]]
+    # name = "confusing-results"
+
+    [[linters-settings.revive.rules]]
+    name = "constant-logical-expr"
+
+    [[linters-settings.revive.rules]]
+    name = "context-as-argument"
+
+    [[linters-settings.revive.rules]]
+    name = "context-keys-type"
+
+    # [[linters-settings.revive.rules]]
+    # name = "cyclomatic"
+
+    [[linters-settings.revive.rules]]
+    name = "datarace"
+
+    # [[linters-settings.revive.rules]]
+    # name = "deep-exit"
+
+    [[linters-settings.revive.rules]]
+    name = "defer"
+
+    [[linters-settings.revive.rules]]
+    name = "dot-imports"
+
+    [[linters-settings.revive.rules]]
+    name = "duplicated-imports"
+
+    [[linters-settings.revive.rules]]
+    name = "early-return"
+
+    [[linters-settings.revive.rules]]
+    name = "empty-block"
+
+    [[linters-settings.revive.rules]]
+    name = "empty-lines"
+
+    [[linters-settings.revive.rules]]
+    name = "errorf"
+
+    [[linters-settings.revive.rules]]
+    name = "error-naming"
+
+    [[linters-settings.revive.rules]]
+    name = "error-return"
+
+    [[linters-settings.revive.rules]]
+    name = "error-strings"
+
+    [[linters-settings.revive.rules]]
+    name = "exported"
+
+    # [[linters-settings.revive.rules]]
+    # name = "file-header"
+
+    # [[linters-settings.revive.rules]]
+    # name = "flag-parameter"
+
+    # [[linters-settings.revive.rules]]
+    # name = "function-result-limit"
+
+    [[linters-settings.revive.rules]]
+    name = "get-return"
+
+    [[linters-settings.revive.rules]]
+    name = "identical-branches"
+
+    [[linters-settings.revive.rules]]
+    name = "if-return"
+
+    [[linters-settings.revive.rules]]
+    name = "imports-blacklist"
+
+    [[linters-settings.revive.rules]]
+    name = "import-shadowing"
+
+    [[linters-settings.revive.rules]]
+    name = "increment-decrement"
+
+    [[linters-settings.revive.rules]]
+    name = "indent-error-flow"
+
+    # [[linters-settings.revive.rules]]
+    # name = "line-length-limit"
+
+    # [[linters-settings.revive.rules]]
+    # name = "max-public-structs"
+
+    [[linters-settings.revive.rules]]
+    name = "modifies-parameter"
+
+    [[linters-settings.revive.rules]]
+    name = "modifies-value-receiver"
+
+    # [[linters-settings.revive.rules]]
+    # name = "nested-structs"
+
+    [[linters-settings.revive.rules]]
+    name = "optimize-operands-order"
+
+    [[linters-settings.revive.rules]]
+    name = "package-comments"
+
+    [[linters-settings.revive.rules]]
+    name = "range"
+
+    [[linters-settings.revive.rules]]
+    name = "range-val-address"
+
+    [[linters-settings.revive.rules]]
+    name = "range-val-in-closure"
+
+    [[linters-settings.revive.rules]]
+    name = "receiver-naming"
+
+    [[linters-settings.revive.rules]]
+    name = "redefines-builtin-id"
+
+    [[linters-settings.revive.rules]]
+    name = "string-of-int"
+
+    [[linters-settings.revive.rules]]
+    name = "struct-tag"
+
+    [[linters-settings.revive.rules]]
+    name = "superfluous-else"
+
+    [[linters-settings.revive.rules]]
+    name = "time-equal"
+
+    [[linters-settings.revive.rules]]
+    name = "time-naming"
+
+    [[linters-settings.revive.rules]]
+    name = "unconditional-recursion"
+
+    [[linters-settings.revive.rules]]
+    name = "unexported-naming"
+
+    [[linters-settings.revive.rules]]
+    name = "unexported-return"
+
+    # [[linters-settings.revive.rules]]
+    # name = "unhandled-error"
+
+    [[linters-settings.revive.rules]]
+    name = "unnecessary-stmt"
+
+    [[linters-settings.revive.rules]]
+    name = "unreachable-code"
+
+    [[linters-settings.revive.rules]]
+    name = "unused-parameter"
+
+    [[linters-settings.revive.rules]]
+    name = "unused-receiver"
+
+    [[linters-settings.revive.rules]]
+    name = "use-any"
+
+    [[linters-settings.revive.rules]]
+    name = "useless-break"
+
+    [[linters-settings.revive.rules]]
+    name = "var-declaration"
+
+    [[linters-settings.revive.rules]]
+    name = "var-naming"
+
+    [[linters-settings.revive.rules]]
+    name = "waitgroup-by-value"
+
+[linters-settings.unparam]
+    check-exported = true
+
+[issues]
+exclude-use-default = false
+
+[[issues.exclude-rules]]
+  linters = [
+    "govet"
+  ]
+  path = "_test.go"
+  text = "^fieldalignment"

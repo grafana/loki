@@ -57,9 +57,12 @@ type Manager struct {
 
 	configLoadSuccess prometheus.Gauge
 	configHash        *prometheus.GaugeVec
+
+	// Maps path to hash. Only used by loadConfig in Starting and Running states, so it doesn't need synchronization.
+	fileHashes map[string]string
 }
 
-// New creates an instance of Manager and starts reload config loop based on config
+// New creates an instance of Manager. Manager is a services.Service, and must be explicitly started to perform any work.
 func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Manager, error) {
 	if len(cfg.LoadPath) == 0 {
 		return nil, errors.New("LoadPath is empty")
@@ -73,7 +76,7 @@ func New(cfg Config, registerer prometheus.Registerer, logger log.Logger) (*Mana
 		}),
 		configHash: promauto.With(registerer).NewGaugeVec(prometheus.GaugeOpts{
 			Name: "runtime_config_hash",
-			Help: "Hash of the currently active runtime config file.",
+			Help: "Hash of the currently active runtime configuration, merged from all configured files.",
 		}, []string{"sha256"}),
 		logger: logger,
 	}
@@ -147,26 +150,52 @@ func (om *Manager) loop(ctx context.Context) error {
 // loadConfig loads all configuration files using the loader function then merges the yaml configuration files into one yaml document.
 // and notifies listeners if successful.
 func (om *Manager) loadConfig() error {
-	mergedConfig := map[string]interface{}{}
+	rawData := map[string][]byte{}
+	hashes := map[string]string{}
+
 	for _, f := range om.cfg.LoadPath {
-		yamlFile := map[string]interface{}{}
 		buf, err := os.ReadFile(f)
 		if err != nil {
 			om.configLoadSuccess.Set(0)
 			return errors.Wrapf(err, "read file %q", f)
 		}
-		err = yaml.Unmarshal(buf, &yamlFile)
+
+		rawData[f] = buf
+		hashes[f] = fmt.Sprintf("%x", sha256.Sum256(buf))
+	}
+
+	// check if new hashes are the same as before
+	sameHashes := true
+	for f, h := range hashes {
+		if om.fileHashes[f] != h {
+			sameHashes = false
+			break
+		}
+	}
+
+	if sameHashes {
+		// No need to rebuild runtime config.
+		om.configLoadSuccess.Set(1)
+		return nil
+	}
+
+	mergedConfig := map[string]interface{}{}
+	for _, f := range om.cfg.LoadPath {
+		yamlFile := map[string]interface{}{}
+		err := yaml.Unmarshal(rawData[f], &yamlFile)
 		if err != nil {
 			om.configLoadSuccess.Set(0)
 			return errors.Wrapf(err, "unmarshal file %q", f)
 		}
 		mergedConfig = mergeConfigMaps(mergedConfig, yamlFile)
 	}
+
 	buf, err := yaml.Marshal(mergedConfig)
 	if err != nil {
 		om.configLoadSuccess.Set(0)
 		return errors.Wrap(err, "marshal file")
 	}
+
 	hash := sha256.Sum256(buf)
 	cfg, err := om.cfg.Loader(bytes.NewReader(buf))
 	if err != nil {
@@ -180,7 +209,10 @@ func (om *Manager) loadConfig() error {
 
 	// expose hash of runtime config
 	om.configHash.Reset()
-	om.configHash.WithLabelValues(fmt.Sprintf("%x", hash[:])).Set(1)
+	om.configHash.WithLabelValues(fmt.Sprintf("%x", hash)).Set(1)
+
+	// preserve hashes for next loop
+	om.fileHashes = hashes
 	return nil
 }
 

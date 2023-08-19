@@ -59,6 +59,18 @@ type ExemplarAdder interface {
 // CounterOpts is an alias for Opts. See there for doc comments.
 type CounterOpts Opts
 
+// CounterVecOpts bundles the options to create a CounterVec metric.
+// It is mandatory to set CounterOpts, see there for mandatory fields. VariableLabels
+// is optional and can safely be left to its default value.
+type CounterVecOpts struct {
+	CounterOpts
+
+	// VariableLabels are used to partition the metric vector by the given set
+	// of labels. Each label value will be constrained with the optional Contraint
+	// function, if provided.
+	VariableLabels ConstrainableLabels
+}
+
 // NewCounter creates a new Counter based on the provided CounterOpts.
 //
 // The returned implementation also implements ExemplarAdder. It is safe to
@@ -140,12 +152,13 @@ func (c *counter) get() float64 {
 }
 
 func (c *counter) Write(out *dto.Metric) error {
-	val := c.get()
-
+	// Read the Exemplar first and the value second. This is to avoid a race condition
+	// where users see an exemplar for a not-yet-existing observation.
 	var exemplar *dto.Exemplar
 	if e := c.exemplar.Load(); e != nil {
 		exemplar = e.(*dto.Exemplar)
 	}
+	val := c.get()
 
 	return populateMetric(CounterValue, val, c.labelPairs, exemplar, out)
 }
@@ -173,16 +186,24 @@ type CounterVec struct {
 // NewCounterVec creates a new CounterVec based on the provided CounterOpts and
 // partitioned by the given label names.
 func NewCounterVec(opts CounterOpts, labelNames []string) *CounterVec {
-	desc := NewDesc(
+	return V2.NewCounterVec(CounterVecOpts{
+		CounterOpts:    opts,
+		VariableLabels: UnconstrainedLabels(labelNames),
+	})
+}
+
+// NewCounterVec creates a new CounterVec based on the provided CounterVecOpts.
+func (v2) NewCounterVec(opts CounterVecOpts) *CounterVec {
+	desc := V2.NewDesc(
 		BuildFQName(opts.Namespace, opts.Subsystem, opts.Name),
 		opts.Help,
-		labelNames,
+		opts.VariableLabels,
 		opts.ConstLabels,
 	)
 	return &CounterVec{
 		MetricVec: NewMetricVec(desc, func(lvs ...string) Metric {
 			if len(lvs) != len(desc.variableLabels) {
-				panic(makeInconsistentCardinalityError(desc.fqName, desc.variableLabels, lvs))
+				panic(makeInconsistentCardinalityError(desc.fqName, desc.variableLabels.labelNames(), lvs))
 			}
 			result := &counter{desc: desc, labelPairs: MakeLabelPairs(desc, lvs), now: time.Now}
 			result.init(result) // Init self-collection.
@@ -245,7 +266,8 @@ func (v *CounterVec) GetMetricWith(labels Labels) (Counter, error) {
 // WithLabelValues works as GetMetricWithLabelValues, but panics where
 // GetMetricWithLabelValues would have returned an error. Not returning an
 // error allows shortcuts like
-//     myVec.WithLabelValues("404", "GET").Add(42)
+//
+//	myVec.WithLabelValues("404", "GET").Add(42)
 func (v *CounterVec) WithLabelValues(lvs ...string) Counter {
 	c, err := v.GetMetricWithLabelValues(lvs...)
 	if err != nil {
@@ -256,7 +278,8 @@ func (v *CounterVec) WithLabelValues(lvs ...string) Counter {
 
 // With works as GetMetricWith, but panics where GetMetricWithLabels would have
 // returned an error. Not returning an error allows shortcuts like
-//     myVec.With(prometheus.Labels{"code": "404", "method": "GET"}).Add(42)
+//
+//	myVec.With(prometheus.Labels{"code": "404", "method": "GET"}).Add(42)
 func (v *CounterVec) With(labels Labels) Counter {
 	c, err := v.GetMetricWith(labels)
 	if err != nil {

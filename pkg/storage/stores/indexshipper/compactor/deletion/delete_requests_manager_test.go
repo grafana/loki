@@ -2,29 +2,31 @@ package deletion
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
-
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 const testUserID = "test-user"
 
 func TestDeleteRequestsManager_Expired(t *testing.T) {
 	type resp struct {
-		isExpired           bool
-		nonDeletedIntervals []retention.IntervalFilter
+		isExpired      bool
+		expectedFilter filter.Func
 	}
 
 	now := model.Now()
 	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
 	require.NoError(t, err)
+	streamSelectorWithLineFilters := lblFoo.String() + `|="fizz"`
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -48,8 +50,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			expectedResp: resp{
-				isExpired:           false,
-				nonDeletedIntervals: nil,
+				isExpired: false,
 			},
 		},
 		{
@@ -65,8 +66,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           false,
-				nonDeletedIntervals: nil,
+				isExpired: false,
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				"different-user": {
@@ -88,8 +88,32 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           true,
-				nonDeletedIntervals: nil,
+				isExpired: true,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-24 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "whole chunk deleted by single request with line filters",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-24 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				expectedFilter: func(ts time.Time, s string) bool {
+					return strings.Contains(s, "fizz")
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -111,8 +135,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           false,
-				nonDeletedIntervals: nil,
+				isExpired: false,
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -140,8 +163,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           false,
-				nonDeletedIntervals: nil,
+				isExpired: false,
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -173,8 +195,38 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           true,
-				nonDeletedIntervals: nil,
+				isExpired: true,
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-48 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "multiple delete requests with line filters and one deleting the whole chunk",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-48 * time.Hour),
+					EndTime:   now.Add(-24 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				expectedFilter: func(ts time.Time, s string) bool {
+					return strings.Contains(s, "fizz")
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -215,25 +267,15 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-11*time.Hour) + 1,
-							End:   now.Add(-10*time.Hour) - 1,
-						},
-					},
-					{
-						Interval: model.Interval{
-							Start: now.Add(-8*time.Hour) + 1,
-							End:   now.Add(-6*time.Hour) - 1,
-						},
-					},
-					{
-						Interval: model.Interval{
-							Start: now.Add(-5*time.Hour) + 1,
-							End:   now.Add(-2*time.Hour) - 1,
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if (now.Add(-13*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-11*time.Hour).UnixNano()) ||
+						(now.Add(-10*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-8*time.Hour).UnixNano()) ||
+						(now.Add(-6*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-5*time.Hour).UnixNano()) ||
+						(now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano()) {
+						return true
+					}
+					return false
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -262,8 +304,41 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           true,
-				nonDeletedIntervals: nil,
+				isExpired: true,
+				expectedFilter: func(ts time.Time, s string) bool {
+					return true
+				},
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-13 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "multiple overlapping requests with line filters deleting the whole chunk",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-13 * time.Hour),
+					EndTime:   now.Add(-6 * time.Hour),
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-8 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				expectedFilter: func(ts time.Time, s string) bool {
+					return strings.Contains(s, "fizz")
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -297,8 +372,47 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           true,
-				nonDeletedIntervals: nil,
+				isExpired: true,
+				expectedFilter: func(ts time.Time, s string) bool {
+					return true
+				},
+			},
+			expectedDeletionRangeByUser: map[string]model.Interval{
+				testUserID: {
+					Start: now.Add(-12 * time.Hour),
+					End:   now,
+				},
+			},
+		},
+		{
+			name:         "multiple non-overlapping requests with line filter deleting the whole chunk",
+			deletionMode: deletionmode.FilterAndDelete,
+			batchSize:    70,
+			deleteRequestsFromStore: []DeleteRequest{
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-12 * time.Hour),
+					EndTime:   now.Add(-6*time.Hour) - 1,
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-6 * time.Hour),
+					EndTime:   now.Add(-4*time.Hour) - 1,
+				},
+				{
+					UserID:    testUserID,
+					Query:     streamSelectorWithLineFilters,
+					StartTime: now.Add(-4 * time.Hour),
+					EndTime:   now,
+				},
+			},
+			expectedResp: resp{
+				isExpired: true,
+				expectedFilter: func(ts time.Time, s string) bool {
+					return strings.Contains(s, "fizz")
+				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
 				testUserID: {
@@ -338,8 +452,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           false,
-				nonDeletedIntervals: nil,
+				isExpired: false,
 			},
 		},
 		{
@@ -373,8 +486,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				},
 			},
 			expectedResp: resp{
-				isExpired:           false,
-				nonDeletedIntervals: nil,
+				isExpired: false,
 			},
 		},
 		{
@@ -409,19 +521,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 			expectedResp: resp{
 				isExpired: true,
-				nonDeletedIntervals: []retention.IntervalFilter{
-					{
-						Interval: model.Interval{
-							Start: now.Add(-11*time.Hour) + 1,
-							End:   now.Add(-10*time.Hour) - 1,
-						},
-					},
-					{
-						Interval: model.Interval{
-							Start: now.Add(-8*time.Hour) + 1,
-							End:   now.Add(-time.Hour),
-						},
-					},
+				expectedFilter: func(ts time.Time, s string) bool {
+					tsUnixNano := ts.UnixNano()
+					if (now.Add(-13*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-11*time.Hour).UnixNano()) ||
+						(now.Add(-10*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-8*time.Hour).UnixNano()) {
+						return true
+					}
+
+					return false
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -442,12 +549,20 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				}
 			}
 
-			isExpired, nonDeletedIntervals := mgr.Expired(chunkEntry, model.Now())
+			isExpired, filterFunc := mgr.Expired(chunkEntry, model.Now())
 			require.Equal(t, tc.expectedResp.isExpired, isExpired)
-			for idx, interval := range nonDeletedIntervals {
-				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.Start, interval.Interval.Start)
-				require.Equal(t, tc.expectedResp.nonDeletedIntervals[idx].Interval.End, interval.Interval.End)
-				require.NotNil(t, interval.Filter)
+			if tc.expectedResp.expectedFilter == nil {
+				require.Nil(t, filterFunc)
+				return
+			}
+			require.NotNil(t, filterFunc)
+
+			for start := chunkEntry.From; start <= chunkEntry.Through; start = start.Add(time.Minute) {
+				line := "foo bar"
+				if start.Time().Minute()%2 == 1 {
+					line = "fizz buzz"
+				}
+				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line), filterFunc(start.Time(), line), "line", line, "time", start.Time(), "now", now.Time())
 			}
 
 			require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.deleteRequestsToProcess))
@@ -485,9 +600,10 @@ func TestDeleteRequestsManager_IntervalMayHaveExpiredChunks(t *testing.T) {
 
 type mockDeleteRequestsStore struct {
 	DeleteRequestsStore
-	deleteRequests []DeleteRequest
-	addReqs        []DeleteRequest
-	addErr         error
+	deleteRequests           []DeleteRequest
+	addReqs                  []DeleteRequest
+	addErr                   error
+	returnZeroDeleteRequests bool
 
 	removeReqs []DeleteRequest
 	removeErr  error
@@ -500,29 +616,38 @@ type mockDeleteRequestsStore struct {
 	getAllUser   string
 	getAllResult []DeleteRequest
 	getAllErr    error
+
+	genNumber string
 }
 
 func (m *mockDeleteRequestsStore) GetDeleteRequestsByStatus(_ context.Context, _ DeleteRequestStatus) ([]DeleteRequest, error) {
 	return m.deleteRequests, nil
 }
 
-func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(ctx context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) AddDeleteRequestGroup(_ context.Context, reqs []DeleteRequest) ([]DeleteRequest, error) {
 	m.addReqs = reqs
-	return nil, m.addErr
+	if m.returnZeroDeleteRequests {
+		return []DeleteRequest{}, m.addErr
+	}
+	return m.addReqs, m.addErr
 }
 
-func (m *mockDeleteRequestsStore) RemoveDeleteRequests(ctx context.Context, reqs []DeleteRequest) error {
+func (m *mockDeleteRequestsStore) RemoveDeleteRequests(_ context.Context, reqs []DeleteRequest) error {
 	m.removeReqs = reqs
 	return m.removeErr
 }
 
-func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(ctx context.Context, userID, requestID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetDeleteRequestGroup(_ context.Context, userID, requestID string) ([]DeleteRequest, error) {
 	m.getUser = userID
 	m.getID = requestID
 	return m.getResult, m.getErr
 }
 
-func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]DeleteRequest, error) {
+func (m *mockDeleteRequestsStore) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]DeleteRequest, error) {
 	m.getAllUser = userID
 	return m.getAllResult, m.getAllErr
+}
+
+func (m *mockDeleteRequestsStore) GetCacheGenerationNumber(_ context.Context, _ string) (string, error) {
+	return m.genNumber, m.getErr
 }

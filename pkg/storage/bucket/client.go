@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/thanos-io/thanos/pkg/objstore"
+	"github.com/thanos-io/objstore"
 
 	"github.com/grafana/loki/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/pkg/storage/bucket/filesystem"

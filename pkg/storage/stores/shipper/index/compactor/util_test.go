@@ -5,15 +5,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/user"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage"
@@ -174,15 +173,7 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 	fetchedChunk := []chunk.Chunk{}
 	for _, f := range fetchers {
 		for _, cs := range chunks {
-			keys := make([]string, 0, len(cs))
-			sort.Slice(chunks, func(i, j int) bool {
-				return schemaCfg.ExternalKey(cs[i].ChunkRef) < schemaCfg.ExternalKey(cs[j].ChunkRef)
-			})
-
-			for _, c := range cs {
-				keys = append(keys, schemaCfg.ExternalKey(c.ChunkRef))
-			}
-			cks, err := f.FetchChunks(ctx, cs, keys)
+			cks, err := f.FetchChunks(ctx, cs)
 			if err != nil {
 				t.t.Fatal(err)
 			}
@@ -205,7 +196,7 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 	t.Helper()
 	servercfg := &ww.Config{}
 	require.Nil(t, servercfg.LogLevel.Set("debug"))
-	util_log.InitLogger(servercfg, nil)
+	util_log.InitLogger(servercfg, nil, true, false)
 	workdir := t.TempDir()
 	filepath.Join(workdir, "index")
 	indexDir := filepath.Join(workdir, "index")

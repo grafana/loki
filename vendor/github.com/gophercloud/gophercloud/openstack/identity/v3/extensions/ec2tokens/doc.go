@@ -36,6 +36,5 @@ Example to auth a client using EC2 access and secret keys
 	if err != nil {
 		panic(err)
 	}
-
 */
 package ec2tokens

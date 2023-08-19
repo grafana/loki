@@ -40,8 +40,10 @@ func (db *RedisDB) flush() {
 	db.hashKeys = map[string]hashKey{}
 	db.listKeys = map[string]listKey{}
 	db.setKeys = map[string]setKey{}
+	db.hllKeys = map[string]*hll{}
 	db.sortedsetKeys = map[string]sortedSet{}
 	db.ttl = map[string]time.Duration{}
+	db.streamKeys = map[string]*streamKey{}
 }
 
 // move something to another db. Will return ok. Or not.
@@ -68,6 +70,8 @@ func (db *RedisDB) move(key string, to *RedisDB) bool {
 		to.sortedsetKeys[key] = db.sortedsetKeys[key]
 	case "stream":
 		to.streamKeys[key] = db.streamKeys[key]
+	case "hll":
+		to.hllKeys[key] = db.hllKeys[key]
 	default:
 		panic("unhandled key type")
 	}
@@ -94,6 +98,8 @@ func (db *RedisDB) rename(from, to string) {
 		db.sortedsetKeys[to] = db.sortedsetKeys[from]
 	case "stream":
 		db.streamKeys[to] = db.streamKeys[from]
+	case "hll":
+		db.hllKeys[to] = db.hllKeys[from]
 	default:
 		panic("missing case")
 	}
@@ -129,6 +135,8 @@ func (db *RedisDB) del(k string, delTTL bool) {
 		delete(db.sortedsetKeys, k)
 	case "stream":
 		delete(db.streamKeys, k)
+	case "hll":
+		delete(db.hllKeys, k)
 	default:
 		panic("Unknown key type: " + t)
 	}
@@ -434,6 +442,14 @@ func (db *RedisDB) ssetElements(key string) ssElems {
 	return ss.byScore(asc)
 }
 
+func (db *RedisDB) ssetRandomMember(key string) string {
+	elems := db.ssetElements(key)
+	if len(elems) == 0 {
+		return ""
+	}
+	return elems[db.master.randIntn(len(elems))].member
+}
+
 // ssetCard is the sorted set cardinality.
 func (db *RedisDB) ssetCard(key string) int {
 	ss := db.sortedsetKeys[key]
@@ -450,6 +466,16 @@ func (db *RedisDB) ssetRank(key, member string, d direction) (int, bool) {
 func (db *RedisDB) ssetScore(key, member string) float64 {
 	ss := db.sortedsetKeys[key]
 	return ss[member]
+}
+
+// ssetMScore returns multiple scores of a list of members in a sorted set.
+func (db *RedisDB) ssetMScore(key string, members []string) []float64 {
+	scores := make([]float64, 0, len(members))
+	ss := db.sortedsetKeys[key]
+	for _, member := range members {
+		scores = append(scores, ss[member])
+	}
+	return scores
 }
 
 // ssetRem is sorted set key delete.
@@ -513,11 +539,19 @@ func (db *RedisDB) setDiff(keys []string) (setKey, error) {
 }
 
 // setInter implements the logic behind SINTER*
+// len keys needs to be > 0
 func (db *RedisDB) setInter(keys []string) (setKey, error) {
+	// all keys must either not exist, or be of type "set".
+	for _, key := range keys {
+		if db.exists(key) && db.t(key) != "set" {
+			return nil, ErrWrongType
+		}
+	}
+
 	key := keys[0]
 	keys = keys[1:]
 	if !db.exists(key) {
-		return setKey{}, nil
+		return nil, nil
 	}
 	if db.t(key) != "set" {
 		return nil, ErrWrongType
@@ -569,234 +603,36 @@ func (db *RedisDB) setUnion(keys []string) (setKey, error) {
 	return s, nil
 }
 
-// stream set returns a stream as a slice. Lowest ID first.
-func (db *RedisDB) stream(key string) []StreamEntry {
-	return db.streamKeys[key]
-}
-
-func (db *RedisDB) streamCreate(key string) {
-	_, ok := db.streamKeys[key]
-	if !ok {
-		db.keys[key] = "stream"
+func (db *RedisDB) newStream(key string) (*streamKey, error) {
+	if s, err := db.stream(key); err != nil {
+		return nil, err
+	} else if s != nil {
+		return nil, fmt.Errorf("ErrAlreadyExists")
 	}
 
-	db.streamKeys[key] = make(streamKey, 0)
+	db.keys[key] = "stream"
+	s := newStreamKey()
+	db.streamKeys[key] = s
 	db.keyVersion[key]++
+	return s, nil
 }
 
-// streamAdd adds an entry to a stream. Returns the new entry ID.
-// If id is empty or "*" the ID will be generated automatically.
-// `values` should have an even length.
-func (db *RedisDB) streamAdd(key, entryID string, values []string) (string, error) {
-	stream, ok := db.streamKeys[key]
-	if !ok {
-		db.keys[key] = "stream"
+// return existing stream, or nil.
+func (db *RedisDB) stream(key string) (*streamKey, error) {
+	if db.exists(key) && db.t(key) != "stream" {
+		return nil, ErrWrongType
 	}
 
-	if entryID == "" || entryID == "*" {
-		entryID = stream.generateID(db.master.effectiveNow())
-	}
-	entryID, err := formatStreamID(entryID)
-	if err != nil {
-		return "", err
-	}
-	if entryID == "0-0" {
-		return "", errZeroStreamValue
-	}
-	if streamCmp(stream.lastID(), entryID) != -1 {
-		return "", errInvalidStreamValue
-	}
-	db.streamKeys[key] = append(stream, StreamEntry{
-		ID:     entryID,
-		Values: values,
-	})
-	db.keyVersion[key]++
-	return entryID, nil
+	return db.streamKeys[key], nil
 }
 
-func (db *RedisDB) streamMaxlen(key string, n int) {
-	stream, ok := db.streamKeys[key]
-	if !ok {
-		return
+// return existing stream group, or nil.
+func (db *RedisDB) streamGroup(key, group string) (*streamGroup, error) {
+	s, err := db.stream(key)
+	if err != nil || s == nil {
+		return nil, err
 	}
-	if len(stream) > n {
-		db.streamKeys[key] = stream[len(stream)-n:]
-	}
-}
-
-func (db *RedisDB) streamLen(key string) (int, error) {
-	stream, ok := db.streamKeys[key]
-	if !ok {
-		return 0, fmt.Errorf("stream %s not exists", key)
-	}
-	return len(stream), nil
-}
-
-func (db *RedisDB) streamGroupCreate(stream, group, id string) error {
-	streamData, ok := db.streamKeys[stream]
-	if !ok {
-		return fmt.Errorf("stream %s not exists", stream)
-	}
-
-	if _, ok := db.streamGroupKeys[stream]; !ok {
-		db.streamGroupKeys[stream] = streamGroupKey{}
-	}
-
-	if _, ok := db.streamGroupKeys[stream][group]; ok {
-		return errors.New("BUSYGROUP")
-	}
-
-	entry := streamGroupEntry{
-		pending: make([]pendingEntry, 0),
-	}
-
-	if id == "$" {
-		entry.lastID = streamData.lastID()
-	} else {
-		entry.lastID = id
-	}
-
-	db.streamGroupKeys[stream][group] = entry
-
-	return nil
-}
-
-func (db *RedisDB) streamRead(stream, group, consumer, id string, count int) ([]StreamEntry, error) {
-	streamData, ok := db.streamKeys[stream]
-	if !ok {
-		return nil, fmt.Errorf("stream %s not exists", stream)
-	}
-
-	if _, ok := db.streamGroupKeys[stream]; !ok {
-		// Error for group because this is key for group
-		return nil, fmt.Errorf("group %s not exists", group)
-	}
-
-	groupData, ok := db.streamGroupKeys[stream][group]
-	if !ok {
-		return nil, fmt.Errorf("group %s not exists", group)
-	}
-
-	res := make([]StreamEntry, 0)
-
-	if id == ">" {
-		next := sort.Search(len(streamData), func(i int) bool {
-			return streamCmp(groupData.lastID, streamData[i].ID) < 0
-		})
-
-		if len(streamData[next:]) == 0 {
-			return nil, nil
-		}
-
-		if count == 0 || count > len(streamData[next:]) {
-			count = len(streamData[next:])
-		}
-
-		res = append(res, streamData[next:count]...)
-
-		for _, en := range res {
-			pending := pendingEntry{
-				consumer: consumer,
-				ID:       en.ID,
-			}
-			groupData.pending = append(groupData.pending, pending)
-		}
-
-		groupData.lastID = res[len(res)-1].ID
-		db.streamGroupKeys[stream][group] = groupData
-	} else {
-		next := sort.Search(len(groupData.pending), func(i int) bool {
-			return streamCmp(id, groupData.pending[i].ID) < 0
-		})
-
-		if len(groupData.pending[next:]) == 0 {
-			return nil, nil
-		}
-
-		for _, e := range groupData.pending[next:] {
-			if e.consumer != consumer {
-				continue
-			}
-
-			pos := sort.Search(len(streamData), func(i int) bool {
-				return streamCmp(e.ID, streamData[i].ID) == 0
-			})
-
-			// Not found
-			if pos == len(streamData) {
-				continue
-			}
-
-			res = append(res, streamData[pos])
-
-			// Truncate to allow faster next search, because next element in pending
-			// is greater, then current, so on for stream
-			streamData = streamData[pos:]
-		}
-	}
-
-	return res, nil
-}
-
-func (db *RedisDB) streamDelete(stream string, ids []string) (int, error) {
-	streamData, ok := db.streamKeys[stream]
-	if !ok {
-		return 0, fmt.Errorf("stream %s not exists", stream)
-	}
-
-	count := 0
-
-	for _, id := range ids {
-		pos := sort.Search(len(streamData), func(i int) bool {
-			return streamCmp(id, streamData[i].ID) == 0
-		})
-
-		if pos == len(streamData) {
-			continue
-		}
-
-		streamData = append(streamData[:pos], streamData[pos+1:]...)
-		count++
-	}
-
-	if count > 0 {
-		db.streamKeys[stream] = streamData
-	}
-
-	return count, nil
-}
-
-func (db *RedisDB) streamAck(stream, group string, ids []string) (int, error) {
-	if _, ok := db.streamGroupKeys[stream]; !ok {
-		// Error for group because this is key for group
-		return 0, fmt.Errorf("group %s not exists", group)
-	}
-
-	groupData, ok := db.streamGroupKeys[stream][group]
-	if !ok {
-		return 0, fmt.Errorf("group %s not exists", group)
-	}
-
-	count := 0
-
-	for _, id := range ids {
-		pos := sort.Search(len(groupData.pending), func(i int) bool {
-			return streamCmp(id, groupData.pending[i].ID) == 0
-		})
-
-		if pos == len(groupData.pending) {
-			continue
-		}
-
-		groupData.pending = append(groupData.pending[:pos], groupData.pending[pos+1:]...)
-		count++
-	}
-
-	if count > 0 {
-		db.streamGroupKeys[stream][group] = groupData
-	}
-
-	return count, nil
+	return s.groups[group], nil
 }
 
 // fastForward proceeds the current timestamp with duration, works as a time machine
@@ -813,4 +649,70 @@ func (db *RedisDB) checkTTL(key string) {
 	if v, ok := db.ttl[key]; ok && v <= 0 {
 		db.del(key, true)
 	}
+}
+
+// hllAdd adds members to a hll. Returns 1 if at least 1 if internal HyperLogLog was altered, otherwise 0
+func (db *RedisDB) hllAdd(k string, elems ...string) int {
+	s, ok := db.hllKeys[k]
+	if !ok {
+		s = newHll()
+		db.keys[k] = "hll"
+	}
+	hllAltered := 0
+	for _, e := range elems {
+		if s.Add([]byte(e)) {
+			hllAltered = 1
+		}
+	}
+	db.hllKeys[k] = s
+	db.keyVersion[k]++
+	return hllAltered
+}
+
+// hllCount estimates the amount of members added to hll by hllAdd. If called with several arguments, hllCount returns a sum of estimations
+func (db *RedisDB) hllCount(keys []string) (int, error) {
+	countOverall := 0
+	for _, key := range keys {
+		if db.exists(key) && db.t(key) != "hll" {
+			return 0, ErrNotValidHllValue
+		}
+		if !db.exists(key) {
+			continue
+		}
+		countOverall += db.hllKeys[key].Count()
+	}
+
+	return countOverall, nil
+}
+
+// hllMerge merges all the hlls provided as keys to the first key. Creates a new hll in the first key if it contains nothing
+func (db *RedisDB) hllMerge(keys []string) error {
+	for _, key := range keys {
+		if db.exists(key) && db.t(key) != "hll" {
+			return ErrNotValidHllValue
+		}
+	}
+
+	destKey := keys[0]
+	restKeys := keys[1:]
+
+	var destHll *hll
+	if db.exists(destKey) {
+		destHll = db.hllKeys[destKey]
+	} else {
+		destHll = newHll()
+	}
+
+	for _, key := range restKeys {
+		if !db.exists(key) {
+			continue
+		}
+		destHll.Merge(db.hllKeys[key])
+	}
+
+	db.hllKeys[destKey] = destHll
+	db.keys[destKey] = "hll"
+	db.keyVersion[destKey]++
+
+	return nil
 }

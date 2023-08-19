@@ -13,6 +13,7 @@ spec:
     - 'emptyDir'
     - 'persistentVolumeClaim'
     - 'secret'
+    - 'projected'
   hostNetwork: false
   hostIPC: false
   hostPID: false

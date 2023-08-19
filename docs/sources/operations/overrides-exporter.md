@@ -1,13 +1,16 @@
 ---
-title: "Overrides Exporter"
+title: "Overrides exporter"
+description: "Overrides Exporter"
 weight: 20
 ---
+
+# Overrides exporter
 
 Loki is a multi-tenant system that supports applying limits to each tenant as a mechanism for resource management. The `overrides-exporter` module exposes these limits as Prometheus metrics in order to help operators better understand tenant behavior.
 
 ## Context
 
-Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`](../configuration/#runtime-configuration-file) feature.
+Configuration updates to tenant limits can be applied to Loki without restart via the [`runtime_config`]({{< relref "../configure#runtime_config" >}}) feature.
 
 ## Example
 

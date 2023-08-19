@@ -28,6 +28,9 @@ func s2Decode(dst, src []byte) int {
 
 	// As long as we can read at least 5 bytes...
 	for s < len(src)-5 {
+		// Removing bounds checks is SLOWER, when if doing
+		// in := src[s:s+5]
+		// Checked on Go 1.18
 		switch src[s] & 0x03 {
 		case tagLiteral:
 			x := uint32(src[s] >> 2)
@@ -38,17 +41,25 @@ func s2Decode(dst, src []byte) int {
 				s += 2
 				x = uint32(src[s-1])
 			case x == 61:
+				in := src[s : s+3]
+				x = uint32(in[1]) | uint32(in[2])<<8
 				s += 3
-				x = uint32(src[s-2]) | uint32(src[s-1])<<8
 			case x == 62:
+				in := src[s : s+4]
+				// Load as 32 bit and shift down.
+				x = uint32(in[0]) | uint32(in[1])<<8 | uint32(in[2])<<16 | uint32(in[3])<<24
+				x >>= 8
 				s += 4
-				x = uint32(src[s-3]) | uint32(src[s-2])<<8 | uint32(src[s-1])<<16
 			case x == 63:
+				in := src[s : s+5]
+				x = uint32(in[1]) | uint32(in[2])<<8 | uint32(in[3])<<16 | uint32(in[4])<<24
 				s += 5
-				x = uint32(src[s-4]) | uint32(src[s-3])<<8 | uint32(src[s-2])<<16 | uint32(src[s-1])<<24
 			}
 			length = int(x) + 1
 			if length > len(dst)-d || length > len(src)-s || (strconv.IntSize == 32 && length <= 0) {
+				if debug {
+					fmt.Println("corrupt: lit size", length)
+				}
 				return decodeErrCodeCorrupt
 			}
 			if debug {
@@ -62,8 +73,8 @@ func s2Decode(dst, src []byte) int {
 
 		case tagCopy1:
 			s += 2
-			length = int(src[s-2]) >> 2 & 0x7
 			toffset := int(uint32(src[s-2])&0xe0<<3 | uint32(src[s-1]))
+			length = int(src[s-2]) >> 2 & 0x7
 			if toffset == 0 {
 				if debug {
 					fmt.Print("(repeat) ")
@@ -71,14 +82,16 @@ func s2Decode(dst, src []byte) int {
 				// keep last offset
 				switch length {
 				case 5:
+					length = int(src[s]) + 4
 					s += 1
-					length = int(uint32(src[s-1])) + 4
 				case 6:
+					in := src[s : s+2]
+					length = int(uint32(in[0])|(uint32(in[1])<<8)) + (1 << 8)
 					s += 2
-					length = int(uint32(src[s-2])|(uint32(src[s-1])<<8)) + (1 << 8)
 				case 7:
+					in := src[s : s+3]
+					length = int((uint32(in[2])<<16)|(uint32(in[1])<<8)|uint32(in[0])) + (1 << 16)
 					s += 3
-					length = int(uint32(src[s-3])|(uint32(src[s-2])<<8)|(uint32(src[s-1])<<16)) + (1 << 16)
 				default: // 0-> 4
 				}
 			} else {
@@ -86,17 +99,23 @@ func s2Decode(dst, src []byte) int {
 			}
 			length += 4
 		case tagCopy2:
+			in := src[s : s+3]
+			offset = int(uint32(in[1]) | uint32(in[2])<<8)
+			length = 1 + int(in[0])>>2
 			s += 3
-			length = 1 + int(src[s-3])>>2
-			offset = int(uint32(src[s-2]) | uint32(src[s-1])<<8)
 
 		case tagCopy4:
+			in := src[s : s+5]
+			offset = int(uint32(in[1]) | uint32(in[2])<<8 | uint32(in[3])<<16 | uint32(in[4])<<24)
+			length = 1 + int(in[0])>>2
 			s += 5
-			length = 1 + int(src[s-5])>>2
-			offset = int(uint32(src[s-4]) | uint32(src[s-3])<<8 | uint32(src[s-2])<<16 | uint32(src[s-1])<<24)
 		}
 
 		if offset <= 0 || d < offset || length > len(dst)-d {
+			if debug {
+				fmt.Println("corrupt: match, length", length, "offset:", offset, "dst avail:", len(dst)-d, "dst pos:", d)
+			}
+
 			return decodeErrCodeCorrupt
 		}
 
@@ -163,6 +182,9 @@ func s2Decode(dst, src []byte) int {
 			}
 			length = int(x) + 1
 			if length > len(dst)-d || length > len(src)-s || (strconv.IntSize == 32 && length <= 0) {
+				if debug {
+					fmt.Println("corrupt: lit size", length)
+				}
 				return decodeErrCodeCorrupt
 			}
 			if debug {
@@ -229,6 +251,9 @@ func s2Decode(dst, src []byte) int {
 		}
 
 		if offset <= 0 || d < offset || length > len(dst)-d {
+			if debug {
+				fmt.Println("corrupt: match, length", length, "offset:", offset, "dst avail:", len(dst)-d, "dst pos:", d)
+			}
 			return decodeErrCodeCorrupt
 		}
 

@@ -2,9 +2,11 @@ package distributor
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/kv"
@@ -28,6 +30,7 @@ type RingConfig struct {
 	InstanceInterfaceNames []string `yaml:"instance_interface_names" doc:"default=[<private network interfaces>]"`
 	InstancePort           int      `yaml:"instance_port" doc:"hidden"`
 	InstanceAddr           string   `yaml:"instance_addr" doc:"hidden"`
+	EnableIPv6             bool     `yaml:"instance_enable_ipv6" doc:"hidden"`
 
 	// Injected internally
 	ListenPort int `yaml:"-"`
@@ -52,40 +55,31 @@ func (cfg *RingConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.InstanceAddr, "distributor.ring.instance-addr", "", "IP address to advertise in the ring.")
 	f.IntVar(&cfg.InstancePort, "distributor.ring.instance-port", 0, "Port to advertise in the ring (defaults to server.grpc-listen-port).")
 	f.StringVar(&cfg.InstanceID, "distributor.ring.instance-id", hostname, "Instance ID to register in the ring.")
+	f.BoolVar(&cfg.EnableIPv6, "distributor.ring.instance-enable-ipv6", false, "Enable using a IPv6 instance address.")
 }
 
-// ToLifecyclerConfig returns a LifecyclerConfig based on the distributor
+// ToBasicLifecyclerConfig returns a BasicLifecyclerConfig based on the distributor
 // ring config.
-func (cfg *RingConfig) ToLifecyclerConfig() ring.LifecyclerConfig {
-	// We have to make sure that the ring.LifecyclerConfig and ring.Config
-	// defaults are preserved
-	lc := ring.LifecyclerConfig{}
-	rc := ring.Config{}
+func (cfg *RingConfig) ToBasicLifecyclerConfig(logger log.Logger) (ring.BasicLifecyclerConfig, error) {
+	instanceAddr, err := ring.GetInstanceAddr(cfg.InstanceAddr, cfg.InstanceInterfaceNames, logger, cfg.EnableIPv6)
+	if err != nil {
+		return ring.BasicLifecyclerConfig{
+			RingTokenGenerator: ring.NewRandomTokenGenerator(),
+		}, err
+	}
 
-	flagext.DefaultValues(&lc)
-	flagext.DefaultValues(&rc)
+	instancePort := ring.GetInstancePort(cfg.InstancePort, cfg.ListenPort)
 
-	// Configure ring
-	rc.KVStore = cfg.KVStore
-	rc.HeartbeatTimeout = cfg.HeartbeatTimeout
-	rc.ReplicationFactor = 1
-
-	// Configure lifecycler
-	lc.RingConfig = rc
-	lc.ListenPort = cfg.ListenPort
-	lc.Addr = cfg.InstanceAddr
-	lc.Port = cfg.InstancePort
-	lc.ID = cfg.InstanceID
-	lc.InfNames = cfg.InstanceInterfaceNames
-	lc.UnregisterOnShutdown = true
-	lc.HeartbeatPeriod = cfg.HeartbeatPeriod
-	lc.ObservePeriod = 0
-	lc.NumTokens = 1
-	lc.JoinAfter = 0
-	lc.MinReadyDuration = 0
-	lc.FinalSleep = 0
-
-	return lc
+	return ring.BasicLifecyclerConfig{
+		ID:                              cfg.InstanceID,
+		Addr:                            fmt.Sprintf("%s:%d", instanceAddr, instancePort),
+		HeartbeatPeriod:                 cfg.HeartbeatPeriod,
+		HeartbeatTimeout:                cfg.HeartbeatTimeout,
+		TokensObservePeriod:             0,
+		NumTokens:                       1,
+		KeepInstanceInTheRingOnShutdown: false,
+		RingTokenGenerator:              ring.NewRandomTokenGenerator(),
+	}, nil
 }
 
 func (cfg *RingConfig) ToRingConfig() ring.Config {

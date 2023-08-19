@@ -19,7 +19,7 @@ import (
 	"time"
 
 	ipubsub "cloud.google.com/go/internal/pubsub"
-	pb "google.golang.org/genproto/googleapis/pubsub/v1"
+	pb "cloud.google.com/go/pubsub/apiv1/pubsubpb"
 )
 
 // Message represents a Pub/Sub message.
@@ -37,8 +37,10 @@ import (
 //
 // If using exactly once delivery, you should call Message.AckWithResult and
 // Message.NackWithResult instead. These methods will return an AckResult,
-// which you should wait on to obtain the status of the Ack/Nack to ensure
-// these were properly processed by the server. If not,
+// which tracks the state of acknowledgement operation. If the AckResult returns
+// successful, the message is guaranteed NOT to be re-delivered. Otherwise,
+// the AckResult will return an error with more details about the failure
+// and the message may be re-delivered.
 type Message = ipubsub.Message
 
 // msgAckHandler performs a safe cast of the message's ack handler to psAckHandler.
@@ -155,20 +157,20 @@ func (ah *psAckHandler) OnNack() {
 }
 
 func (ah *psAckHandler) OnAckWithResult() *AckResult {
+	// call done with true to indicate ack.
+	ah.done(true)
 	if !ah.exactlyOnceDelivery {
 		return newSuccessAckResult()
 	}
-	// call done with true to indicate ack.
-	ah.done(true)
 	return ah.ackResult
 }
 
 func (ah *psAckHandler) OnNackWithResult() *AckResult {
+	// call done with false to indicate nack.
+	ah.done(false)
 	if !ah.exactlyOnceDelivery {
 		return newSuccessAckResult()
 	}
-	// call done with false to indicate nack.
-	ah.done(false)
 	return ah.ackResult
 }
 

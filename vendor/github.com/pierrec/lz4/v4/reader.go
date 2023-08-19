@@ -196,10 +196,8 @@ func (r *Reader) read(buf []byte) (int, error) {
 }
 
 // Reset clears the state of the Reader r such that it is equivalent to its
-// initial state from NewReader, but instead writing to writer.
+// initial state from NewReader, but instead reading from reader.
 // No access to reader is performed.
-//
-// w.Close must be called before Reset.
 func (r *Reader) Reset(reader io.Reader) {
 	if r.data != nil {
 		lz4block.Put(r.data)

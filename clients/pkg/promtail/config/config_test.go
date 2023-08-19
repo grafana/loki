@@ -37,14 +37,30 @@ scrape_configs:
 limits_config:
   readline_rate: 100
   readline_burst: 200
-options:
-  stream_lag_labels: foo
+`
+
+const headersTestFile = `
+clients:
+  - name: custom-headers
+    url: https://1:shh@example.com/loki/api/v1/push
+    headers:
+      name: value
 `
 
 func Test_Load(t *testing.T) {
 	var dst Config
 	err := yaml.Unmarshal([]byte(testFile), &dst)
 	require.Nil(t, err)
+}
+
+func TestHeadersConfigLoad(t *testing.T) {
+	var dst Config
+	err := yaml.Unmarshal([]byte(headersTestFile), &dst)
+	require.Nil(t, err)
+
+	for _, clientConfig := range dst.ClientConfigs {
+		require.Equal(t, map[string]string{"name": "value"}, clientConfig.Headers)
+	}
 }
 
 func Test_RateLimitLoad(t *testing.T) {
@@ -74,9 +90,6 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
 					},
 				},
-				Options: Options{
-					StreamLagLabels: []string{},
-				},
 			},
 			Config{
 				ClientConfig: client.Config{
@@ -89,9 +102,6 @@ func TestConfig_Setup(t *testing.T) {
 					{
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2", "foo": "bar"}},
 					},
-				},
-				Options: Options{
-					StreamLagLabels: []string{},
 				},
 			},
 		},
@@ -108,9 +118,6 @@ func TestConfig_Setup(t *testing.T) {
 					{
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"client2": "2"}},
 					},
-				},
-				Options: Options{
-					StreamLagLabels: []string{},
 				},
 			},
 			Config{
@@ -129,9 +136,6 @@ func TestConfig_Setup(t *testing.T) {
 						ExternalLabels: flagext.LabelSet{LabelSet: model.LabelSet{"foo": "bar"}},
 						URL:            dskitflagext.URLValue{URL: mustURL("http://foo")},
 					},
-				},
-				Options: Options{
-					StreamLagLabels: []string{},
 				},
 			},
 		},

@@ -2,11 +2,14 @@ package gcplog
 
 import (
 	"context"
+	"io"
 	"sync"
+	"time"
 
 	"cloud.google.com/go/pubsub"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/backoff"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/relabel"
 	"google.golang.org/api/option"
@@ -15,6 +18,17 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/scrapeconfig"
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 )
+
+var defaultBackoff = backoff.Config{
+	MinBackoff: 1 * time.Second,
+	MaxBackoff: 10 * time.Second,
+	MaxRetries: 0, // Retry forever
+}
+
+// pubsubSubscription allows us to mock pubsub for testing
+type pubsubSubscription interface {
+	Receive(ctx context.Context, f func(context.Context, *pubsub.Message)) error
+}
 
 // pullTarget represents the target specific to GCP project, with a pull subscription type.
 // It collects logs from GCP and push it to Loki.
@@ -28,12 +42,14 @@ type pullTarget struct {
 	jobName       string
 
 	// lifecycle management
-	ctx    context.Context
-	cancel context.CancelFunc
-	wg     sync.WaitGroup
+	ctx     context.Context
+	cancel  context.CancelFunc
+	wg      sync.WaitGroup
+	backoff *backoff.Backoff
 
 	// pubsub
-	ps   *pubsub.Client
+	ps   io.Closer
+	sub  pubsubSubscription
 	msgs chan *pubsub.Message
 }
 
@@ -53,9 +69,9 @@ func newPullTarget(
 	clientOptions ...option.ClientOption,
 ) (*pullTarget, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-
 	ps, err := pubsub.NewClient(ctx, config.ProjectID, clientOptions...)
 	if err != nil {
+		cancel()
 		return nil, err
 	}
 
@@ -69,6 +85,8 @@ func newPullTarget(
 		ctx:           ctx,
 		cancel:        cancel,
 		ps:            ps,
+		sub:           ps.SubscriptionInProject(config.Subscription, config.ProjectID),
+		backoff:       backoff.New(ctx, defaultBackoff),
 		msgs:          make(chan *pubsub.Message),
 	}
 
@@ -83,38 +101,41 @@ func (t *pullTarget) run() error {
 	t.wg.Add(1)
 	defer t.wg.Done()
 
-	send := t.handler.Chan()
-
-	sub := t.ps.SubscriptionInProject(t.config.Subscription, t.config.ProjectID)
-	go func() {
-		// NOTE(kavi): `cancel` the context as exiting from this goroutine should stop main `run` loop
-		// It makesense as no more messages will be received.
-		defer t.cancel()
-
-		err := sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
-			t.msgs <- m
-		})
-		if err != nil {
-			level.Error(t.logger).Log("msg", "failed to receive pubsub messages", "error", err)
-			t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
-			t.metrics.gcplogTargetLastSuccessScrape.WithLabelValues(t.config.ProjectID, t.config.Subscription).SetToCurrentTime()
-		}
-	}()
+	go t.consumeSubscription()
 
 	for {
 		select {
 		case <-t.ctx.Done():
 			return t.ctx.Err()
 		case m := <-t.msgs:
-			entry, err := parseGCPLogsEntry(m.Data, t.config.Labels, nil, t.config.UseIncomingTimestamp, t.relabelConfig)
+			entry, err := parseGCPLogsEntry(m.Data, t.config.Labels, nil, t.config.UseIncomingTimestamp, t.config.UseFullLine, t.relabelConfig)
 			if err != nil {
 				level.Error(t.logger).Log("event", "error formating log entry", "cause", err)
 				m.Ack()
 				break
 			}
-			send <- entry
+			t.handler.Chan() <- entry
 			m.Ack() // Ack only after log is sent.
 			t.metrics.gcplogEntries.WithLabelValues(t.config.ProjectID).Inc()
+		}
+	}
+}
+
+func (t *pullTarget) consumeSubscription() {
+	// NOTE(kavi): `cancel` the context as exiting from this goroutine should stop main `run` loop
+	// It makesense as no more messages will be received.
+	defer t.cancel()
+
+	for t.backoff.Ongoing() {
+		err := t.sub.Receive(t.ctx, func(ctx context.Context, m *pubsub.Message) {
+			t.msgs <- m
+			t.backoff.Reset()
+		})
+		if err != nil {
+			level.Error(t.logger).Log("msg", "failed to receive pubsub messages", "error", err)
+			t.metrics.gcplogErrors.WithLabelValues(t.config.ProjectID).Inc()
+			t.metrics.gcplogTargetLastSuccessScrape.WithLabelValues(t.config.ProjectID, t.config.Subscription).SetToCurrentTime()
+			t.backoff.Wait()
 		}
 	}
 }
@@ -147,5 +168,6 @@ func (t *pullTarget) Stop() error {
 	t.cancel()
 	t.wg.Wait()
 	t.handler.Stop()
+	t.ps.Close()
 	return nil
 }

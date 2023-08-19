@@ -95,7 +95,7 @@ func newLibDefaults() LibDefaults {
 	opts := asn1.BitString{}
 	opts.Bytes, _ = hex.DecodeString("00000010")
 	opts.BitLength = len(opts.Bytes) * 8
-	return LibDefaults{
+	l := LibDefaults{
 		CCacheType:              4,
 		Clockskew:               time.Duration(300) * time.Second,
 		DefaultClientKeytabName: fmt.Sprintf("/usr/local/var/krb5/user/%s/client.keytab", uid),
@@ -115,6 +115,10 @@ func newLibDefaults() LibDefaults {
 		UDPPreferenceLimit:      1465,
 		PreferredPreauthTypes:   []int{17, 16, 15, 14},
 	}
+	l.DefaultTGSEnctypeIDs = parseETypes(l.DefaultTGSEnctypes, l.AllowWeakCrypto)
+	l.DefaultTktEnctypeIDs = parseETypes(l.DefaultTktEnctypes, l.AllowWeakCrypto)
+	l.PermittedEnctypeIDs = parseETypes(l.PermittedEnctypes, l.AllowWeakCrypto)
+	return l
 }
 
 // Parse the lines of the [libdefaults] section of the configuration into the LibDefaults struct.
@@ -507,7 +511,7 @@ func (c *Config) ResolveRealm(domainName string) string {
 			return r
 		}
 	}
-	return c.LibDefaults.DefaultRealm
+	return ""
 }
 
 // Load the KRB5 configuration from the specified file path.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
 	"github.com/pkg/errors"
-	"github.com/thanos-io/thanos/pkg/objstore"
-	thanos_s3 "github.com/thanos-io/thanos/pkg/objstore/s3"
+	"github.com/thanos-io/objstore"
+	thanos_s3 "github.com/thanos-io/objstore/providers/s3"
 
 	"github.com/grafana/loki/pkg/storage/bucket/s3"
 )

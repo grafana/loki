@@ -112,3 +112,7 @@ func (c MetricsChunkClient) DeleteChunk(ctx context.Context, userID, chunkID str
 func (c MetricsChunkClient) IsChunkNotFoundErr(err error) bool {
 	return c.Client.IsChunkNotFoundErr(err)
 }
+
+func (c MetricsChunkClient) IsRetryableErr(err error) bool {
+	return c.Client.IsRetryableErr(err)
+}

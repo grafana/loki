@@ -12,8 +12,7 @@ linters:
     - govet
     - ineffassign
     - gosimple
-    - deadcode
-    - structcheck
+    - unused
     - gocritic
 
 issues:
@@ -25,3 +24,4 @@ issues:
       - "captLocal:"
       - "ifElseChain:"
       - "elseif:"
+      - "should have a package comment"

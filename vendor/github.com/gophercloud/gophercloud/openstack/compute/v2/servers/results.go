@@ -99,7 +99,8 @@ type GetPasswordResult struct {
 // If privateKey != nil the password is decrypted with the private key.
 // If privateKey == nil the encrypted password is returned and can be decrypted
 // with:
-//   echo '<pwd>' | base64 -D | openssl rsautl -decrypt -inkey <private_key>
+//
+//	echo '<pwd>' | base64 -D | openssl rsautl -decrypt -inkey <private_key>
 func (r GetPasswordResult) ExtractPassword(privateKey *rsa.PrivateKey) (string, error) {
 	var s struct {
 		Password string `json:"password"`

@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package logproto;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "gogoproto/gogo.proto";
 import "pkg/logproto/logproto.proto";
 
 option go_package = "github.com/grafana/loki/pkg/logproto";

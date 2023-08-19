@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -16,8 +17,12 @@ import (
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
 
+	"github.com/grafana/dskit/backoff"
+
+	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/build"
 )
@@ -29,6 +34,9 @@ const (
 	labelValuesPath   = "/loki/api/v1/label/%s/values"
 	seriesPath        = "/loki/api/v1/series"
 	tailPath          = "/loki/api/v1/tail"
+	statsPath         = "/loki/api/v1/index/stats"
+	volumePath        = "/loki/api/v1/index/volume"
+	volumeRangePath   = "/loki/api/v1/index/volume_range"
 	defaultAuthHeader = "Authorization"
 )
 
@@ -43,10 +51,17 @@ type Client interface {
 	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
 	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
+	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
+	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
+	GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error)
 }
 
 // Tripperware can wrap a roundtripper.
 type Tripperware func(http.RoundTripper) http.RoundTripper
+type BackoffConfig struct {
+	MaxBackoff int
+	MinBackoff int
+}
 
 // Client contains fields necessary to query a Loki instance
 type DefaultClient struct {
@@ -62,6 +77,7 @@ type DefaultClient struct {
 	QueryTags       string
 	AuthHeader      string
 	ProxyURL        string
+	BackoffConfig   BackoffConfig
 }
 
 // Query uses the /api/v1/query endpoint to execute an instant query
@@ -157,6 +173,57 @@ func (c *DefaultClient) GetOrgID() string {
 	return c.OrgID
 }
 
+func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error) {
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+
+	var statsResponse logproto.IndexStatsResponse
+	if err := c.doRequest(statsPath, params.Encode(), quiet, &statsResponse); err != nil {
+		return nil, err
+	}
+	return &statsResponse, nil
+}
+
+func (c *DefaultClient) GetVolume(query *volume.Query) (*loghttp.QueryResponse, error) {
+	return c.getVolume(volumePath, query)
+}
+
+func (c *DefaultClient) GetVolumeRange(query *volume.Query) (*loghttp.QueryResponse, error) {
+	return c.getVolume(volumeRangePath, query)
+}
+
+func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.QueryResponse, error) {
+	queryStr, start, end, limit, step, targetLabels, aggregateByLabels, quiet :=
+		query.QueryString, query.Start, query.End, query.Limit, query.Step,
+		query.TargetLabels, query.AggregateByLabels, query.Quiet
+
+	params := util.NewQueryStringBuilder()
+	params.SetInt("start", start.UnixNano())
+	params.SetInt("end", end.UnixNano())
+	params.SetString("query", queryStr)
+	params.SetString("limit", fmt.Sprintf("%d", limit))
+
+	if step != 0 {
+		params.SetString("step", fmt.Sprintf("%d", int(step.Seconds())))
+	}
+
+	if len(targetLabels) > 0 {
+		params.SetString("targetLabels", strings.Join(targetLabels, ","))
+	}
+
+	if aggregateByLabels {
+		params.SetString("aggregateBy", seriesvolume.Labels)
+	}
+
+	var resp loghttp.QueryResponse
+	if err := c.doRequest(path, params.Encode(), quiet, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
@@ -210,30 +277,43 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 	}
 
 	var resp *http.Response
-	attempts := c.Retries + 1
+
 	success := false
 
-	for attempts > 0 {
-		attempts--
+	bkcfg := backoff.Config{
+		MinBackoff: time.Duration(c.BackoffConfig.MinBackoff) * time.Second,
+		MaxBackoff: time.Duration(c.BackoffConfig.MaxBackoff) * time.Second,
+		// 0 max-retries for backoff means infinite number of retries.
+		MaxRetries: c.Retries + 1,
+	}
+	backoff := backoff.New(context.Background(), bkcfg)
 
+	for {
+		if !backoff.Ongoing() {
+			break
+		}
 		resp, err = client.Do(req)
 		if err != nil {
 			log.Println("error sending request", err)
+			backoff.Wait()
 			continue
 		}
 		if resp.StatusCode/100 != 2 {
 			buf, _ := io.ReadAll(resp.Body) // nolint
-			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, attempts)
+			log.Printf("Error response from server: %s (%v) attempts remaining: %d", string(buf), err, c.Retries-backoff.NumRetries())
 			if err := resp.Body.Close(); err != nil {
 				log.Println("error closing body", err)
 			}
+			backoff.Wait()
 			continue
 		}
 		success = true
+
 		break
+
 	}
 	if !success {
-		return fmt.Errorf("Run out of attempts while querying the server")
+		return fmt.Errorf("run out of attempts while querying the server")
 	}
 
 	defer func() {

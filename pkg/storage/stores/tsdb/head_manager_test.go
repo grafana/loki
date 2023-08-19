@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -15,17 +16,26 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/dskit/flagext"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/validation"
 )
 
 type noopTSDBManager struct {
-	dir string
+	name string
+	dir  string
 	*tenantHeads
 }
 
-func newNoopTSDBManager(dir string) noopTSDBManager {
+func newNoopTSDBManager(name, dir string) noopTSDBManager {
 	return noopTSDBManager{
+		name:        name,
 		dir:         dir,
 		tenantHeads: newTenantHeads(time.Now(), defaultHeadManagerStripeSize, NewMetrics(nil), log.NewNopLogger()),
 	}
@@ -35,10 +45,27 @@ func (m noopTSDBManager) BuildFromHead(_ *tenantHeads) error {
 	panic("BuildFromHead not implemented")
 }
 
-func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier) error {
-	return recoverHead(m.dir, m.tenantHeads, wals)
+func (m noopTSDBManager) BuildFromWALs(_ time.Time, wals []WALIdentifier, _ bool) error {
+	return recoverHead(m.name, m.dir, m.tenantHeads, wals, false)
 }
 func (m noopTSDBManager) Start() error { return nil }
+
+type zeroValueLimits struct {
+}
+
+func (m *zeroValueLimits) AllByUserID() map[string]*validation.Limits {
+	return nil
+}
+
+func (m *zeroValueLimits) VolumeMaxSeries(_ string) int {
+	return 0
+}
+
+func (m *zeroValueLimits) DefaultLimits() *validation.Limits {
+	return &validation.Limits{
+		QueryReadyIndexNumDays: 0,
+	}
+}
 
 func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []ChunkRef) {
 	for _, x := range xs {
@@ -47,6 +74,19 @@ func chunkMetasToChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []C
 			Fingerprint: model.Fingerprint(fp),
 			Start:       x.From(),
 			End:         x.Through(),
+			Checksum:    x.Checksum,
+		})
+	}
+	return
+}
+
+func chunkMetasToLogProtoChunkRefs(user string, fp uint64, xs index.ChunkMetas) (res []logproto.ChunkRef) {
+	for _, x := range xs {
+		res = append(res, logproto.ChunkRef{
+			UserID:      user,
+			Fingerprint: fp,
+			From:        model.TimeFromUnix(x.From().Unix()),
+			Through:     model.TimeFromUnix(x.Through().Unix()),
 			Checksum:    x.Checksum,
 		})
 	}
@@ -66,7 +106,7 @@ func Test_TenantHeads_Append(t *testing.T) {
 			Entries:  30,
 		},
 	}
-	_ = h.Append("fake", ls, chks)
+	_ = h.Append("fake", ls, ls.Hash(), chks)
 
 	found, err := h.GetChunkRefs(
 		context.Background(),
@@ -117,7 +157,7 @@ func Test_TenantHeads_MultiRead(t *testing.T) {
 
 	// add data for both tenants
 	for _, tenant := range tenants {
-		_ = h.Append(tenant.user, tenant.ls, chks)
+		_ = h.Append(tenant.user, tenant.ls, tenant.ls.Hash(), chks)
 
 	}
 
@@ -142,13 +182,15 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	now := time.Now()
 	dir := t.TempDir()
 	cases := []struct {
-		Labels labels.Labels
-		Chunks []index.ChunkMeta
-		User   string
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
 	}{
 		{
-			User:   "tenant1",
-			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			User:        "tenant1",
+			Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -158,8 +200,9 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 			},
 		},
 		{
-			User:   "tenant2",
-			Labels: mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			User:        "tenant2",
+			Labels:      mustParseLabels(`{foo="bard", bazz="bozz", bonk="borb"}`),
+			Fingerprint: 1, // Different fingerprint should be preserved
 			Chunks: []index.ChunkMeta{
 				{
 					MinTime:  1,
@@ -170,10 +213,11 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
-	for _, d := range managerRequiredDirs(dir) {
+	for _, d := range managerRequiredDirs(storeName, dir) {
 		require.Nil(t, util.EnsureDirectory(d))
 	}
 
@@ -181,12 +225,13 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	require.Nil(t, mgr.Rotate(now))
 
 	// now build a WAL independently to test recovery
-	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, now), now)
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, now), now)
 	require.Nil(t, err)
 
 	for i, c := range cases {
 		require.Nil(t, w.Log(&WALRecord{
-			UserID: c.User,
+			UserID:      c.User,
+			Fingerprint: c.Fingerprint,
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
 				Labels: c.Labels,
@@ -200,11 +245,11 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 
 	require.Nil(t, w.Stop())
 
-	grp, ok, err := walsForPeriod(mgr.dir, mgr.period, mgr.period.PeriodFor(now))
+	grp, ok, err := walsForPeriod(managerWalDir(mgr.name, mgr.dir), mgr.period, mgr.period.PeriodFor(now))
 	require.Nil(t, err)
 	require.True(t, ok)
 	require.Equal(t, 1, len(grp.wals))
-	require.Nil(t, recoverHead(mgr.dir, mgr.activeHeads, grp.wals))
+	require.Nil(t, recoverHead(mgr.name, mgr.dir, mgr.activeHeads, grp.wals, false))
 
 	for _, c := range cases {
 		refs, err := mgr.GetChunkRefs(
@@ -215,7 +260,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 			labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
 		)
 		require.Nil(t, err)
-		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
+		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Fingerprint, c.Chunks), refs)
 	}
 
 }
@@ -253,14 +298,16 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	mgr := NewHeadManager(log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(dir))
-	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.dir, curPeriod), curPeriod)
+	storeName := "store_2010-10-10"
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
 	// Write old WALs
 	for i, c := range cases {
 		require.Nil(t, w.Log(&WALRecord{
-			UserID: c.User,
+			UserID:      c.User,
+			Fingerprint: c.Labels.Hash(),
 			Series: record.RefSeries{
 				Ref:    chunks.HeadSeriesRef(i),
 				Labels: c.Labels,
@@ -278,8 +325,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	require.Nil(t, mgr.Start())
 
 	// Ensure old WAL data is queryable
-	multiIndex, err := NewMultiIndex(mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads)
-	require.Nil(t, err)
+	multiIndex := NewMultiIndex(IndexSlice{mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads})
 
 	for _, c := range cases {
 		refs, err := multiIndex.GetChunkRefs(
@@ -313,7 +359,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		},
 	}
 
-	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, newCase.Chunks))
+	require.Nil(t, mgr.Append(newCase.User, newCase.Labels, newCase.Labels.Hash(), newCase.Chunks))
 
 	// Ensure old + new data is queryable
 	for _, c := range append(cases, newCase) {
@@ -330,6 +376,136 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 		lbls.Set(TenantLabel, c.User)
 		require.Equal(t, chunkMetasToChunkRefs(c.User, c.Labels.Hash(), c.Chunks), refs)
 	}
+}
+
+func TestBuildLegacyWALs(t *testing.T) {
+	dir := t.TempDir()
+
+	secondStoreDate := parseDate("2023-01-02")
+	schemaCfg := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{
+				IndexType:  config.TSDBType,
+				ObjectType: config.StorageTypeFileSystem,
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+			{
+				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
+				IndexType:  config.TSDBType,
+				ObjectType: config.StorageTypeFileSystem,
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+			},
+		},
+	}
+
+	c := struct {
+		Labels      labels.Labels
+		Fingerprint uint64
+		Chunks      []index.ChunkMeta
+		User        string
+	}{
+		User:        "tenant1",
+		Labels:      mustParseLabels(`{foo="bar", bazz="buzz"}`),
+		Fingerprint: mustParseLabels(`{foo="bar", bazz="buzz"}`).Hash(),
+		Chunks: []index.ChunkMeta{
+			{
+				MinTime:  secondStoreDate.Add(-36 * time.Hour).UnixMilli(),
+				MaxTime:  secondStoreDate.Add(-24 * time.Hour).UnixMilli(),
+				Checksum: 3,
+			},
+			// chunk overlapping the period boundary
+			{
+				MinTime:  secondStoreDate.Add(-1 * time.Hour).UnixMilli(),
+				MaxTime:  secondStoreDate.Add(1 * time.Hour).UnixMilli(),
+				Checksum: 3,
+			},
+			{
+				MinTime:  secondStoreDate.Add(24 * time.Hour).UnixMilli(),
+				MaxTime:  secondStoreDate.Add(36 * time.Hour).UnixMilli(),
+				Checksum: 3,
+			},
+		},
+	}
+
+	// populate WAL file with chunks from two different periods
+	now := time.Now()
+	w, err := newHeadWAL(log.NewNopLogger(), legacyWalPath(dir, now), now)
+	require.Nil(t, err)
+	require.Nil(t, w.Log(&WALRecord{
+		UserID:      c.User,
+		Fingerprint: c.Fingerprint,
+		Series: record.RefSeries{
+			Ref:    chunks.HeadSeriesRef(123),
+			Labels: c.Labels,
+		},
+		Chks: ChunkMetasRecord{
+			Chks: c.Chunks,
+			Ref:  uint64(123),
+		},
+	}))
+	require.Nil(t, w.Stop())
+
+	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: filepath.Join(dir, "fs_store")})
+	require.Nil(t, err)
+
+	shipperCfg := indexshipper.Config{}
+	flagext.DefaultValues(&shipperCfg)
+	shipperCfg.Mode = indexshipper.ModeReadWrite
+	shipperCfg.ActiveIndexDirectory = filepath.Join(dir)
+	shipperCfg.CacheLocation = filepath.Join(dir, "cache")
+
+	for _, tc := range []struct {
+		name, store    string
+		tableRange     config.TableRange
+		expectedChunks []logproto.ChunkRef
+	}{
+		{
+			name:           "query-period-1",
+			store:          "period-1",
+			tableRange:     schemaCfg.Configs[0].GetIndexTableNumberRange(config.DayTime{Time: timeToModelTime(secondStoreDate.Add(-time.Millisecond))}),
+			expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[:2]),
+		},
+		{
+			name:           "query-period-2",
+			store:          "period-2",
+			tableRange:     schemaCfg.Configs[1].GetIndexTableNumberRange(config.DayTime{Time: math.MaxInt64}),
+			expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[1:]),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger(), nil)
+			require.Nil(t, err)
+
+			refs, err := store.GetChunkRefs(
+				context.Background(),
+				c.User,
+				0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
+				labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+			)
+			require.Nil(t, err)
+			require.Equal(t, tc.expectedChunks, refs)
+
+			stop()
+		})
+	}
+}
+
+func parseDate(in string) time.Time {
+	t, err := time.Parse("2006-01-02", in)
+	if err != nil {
+		panic(err)
+	}
+	return t
+}
+
+func timeToModelTime(t time.Time) model.Time {
+	return model.TimeFromUnixNano(t.UnixNano())
 }
 
 func BenchmarkTenantHeads(b *testing.B) {
@@ -353,7 +529,7 @@ func BenchmarkTenantHeads(b *testing.B) {
 			for i := 0; i < 1000; i++ {
 				tenant := i % nTenants
 				ls := mustParseLabels(fmt.Sprintf(`{foo="bar", i="%d"}`, i))
-				heads.Append(fmt.Sprint(tenant), ls, index.ChunkMetas{
+				heads.Append(fmt.Sprint(tenant), ls, ls.Hash(), index.ChunkMetas{
 					{},
 				})
 			}
