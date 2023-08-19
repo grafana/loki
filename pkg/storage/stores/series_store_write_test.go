@@ -85,7 +85,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 	chunkFormat, err := periodConfig.ChunkVersion()
 	require.NoError(t, err)
 
-	memchk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+	memchk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0)
 	chk := chunk.NewChunk("fake", model.Fingerprint(0), []labels.Label{{Name: "foo", Value: "bar"}}, chunkenc.NewFacade(memchk, 0, 0), 100, 400)
 
 	for name, tc := range map[string]struct {

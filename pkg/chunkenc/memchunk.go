@@ -85,7 +85,7 @@ const (
 	UnorderedHeadBlockFmt
 	UnorderedWithNonIndexedLabelsHeadBlockFmt
 
-	DefaultHeadBlockFmt = UnorderedHeadBlockFmt
+	DefaultHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -348,8 +348,19 @@ func NewMemChunk(chunkFormat byte, enc Encoding, head HeadBlockFmt, blockSize, t
 	return newMemChunkWithFormat(chunkFormat, enc, head, blockSize, targetSize)
 }
 
+func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
+	if chunkFmt == chunkFormatV2 && head != OrderedHeadBlockFmt {
+		panic("only OrderedHeadBlockFmt is supported for V2 chunks")
+	}
+	if chunkFmt == chunkFormatV4 && head != UnorderedWithNonIndexedLabelsHeadBlockFmt {
+		panic("only UnorderedWithNonIndexedLabelsHeadBlockFmt is supported for V4 chunks")
+	}
+}
+
 // NewMemChunk returns a new in-mem chunk.
 func newMemChunkWithFormat(format byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	panicIfInvalidFormat(format, head)
+
 	symbolizer := newSymbolizer()
 	return &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.

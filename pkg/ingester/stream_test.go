@@ -182,7 +182,7 @@ func TestStreamIterator(t *testing.T) {
 		new  func() *chunkenc.MemChunk
 	}{
 		{"gzipChunk", func() *chunkenc.MemChunk {
-			return chunkenc.NewMemChunk(defaultChunkFormat(), chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+			return chunkenc.NewMemChunk(defaultChunkFormat(), chunkenc.EncGZIP, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0)
 		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
@@ -521,5 +521,5 @@ func Benchmark_PushStream(b *testing.B) {
 
 func defaultChunkFormat() byte {
 	// NOTE(kavi): Hack. May be base it on schema version? But what schema version?
-	return chunkenc.ChunkFormatV3
+	return chunkenc.ChunkFormatV4
 }

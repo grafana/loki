@@ -99,7 +99,12 @@ func NewReader(writer io.Writer,
 	httpClient := http.DefaultClient
 	if tlsConfig != nil && (certFile != "" || keyFile != "" || caFile != "") {
 		// For the mTLS case, use a http.Client configured with the client side certificates.
-		rt, err := config.NewTLSRoundTripper(tlsConfig, caFile, certFile, keyFile, func(tls *tls.Config) (http.RoundTripper, error) {
+		tlsSettings := config.TLSRoundTripperSettings{
+			CAFile:   caFile,
+			CertFile: certFile,
+			KeyFile:  keyFile,
+		}
+		rt, err := config.NewTLSRoundTripper(tlsConfig, tlsSettings, func(tls *tls.Config) (http.RoundTripper, error) {
 			return &http.Transport{TLSClientConfig: tls}, nil
 		})
 		if err != nil {
