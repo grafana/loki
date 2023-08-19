@@ -18,7 +18,6 @@ import (
 
 const (
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 
 	// SSEKMS config type constant to configure S3 server side encryption using KMS
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
@@ -30,7 +29,7 @@ const (
 )
 
 var (
-	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedSignatureVersions     = []string{SignatureVersionV4}
 	supportedSSETypes              = []string{SSEKMS, SSES3}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
