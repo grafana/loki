@@ -349,10 +349,10 @@ func NewMemChunk(chunkFormat byte, enc Encoding, head HeadBlockFmt, blockSize, t
 }
 
 func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
-	if chunkFmt == chunkFormatV2 && head != OrderedHeadBlockFmt {
+	if chunkFmt == ChunkFormatV2 && head != OrderedHeadBlockFmt {
 		panic("only OrderedHeadBlockFmt is supported for V2 chunks")
 	}
-	if chunkFmt == chunkFormatV4 && head != UnorderedWithNonIndexedLabelsHeadBlockFmt {
+	if chunkFmt == ChunkFormatV4 && head != UnorderedWithNonIndexedLabelsHeadBlockFmt {
 		panic("only UnorderedWithNonIndexedLabelsHeadBlockFmt is supported for V4 chunks")
 	}
 }
