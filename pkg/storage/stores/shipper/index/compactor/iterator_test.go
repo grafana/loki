@@ -29,7 +29,7 @@ func Test_ChunkIterator(t *testing.T) {
 			cm := storage.NewClientMetrics()
 			defer cm.Unregister()
 			store := newTestStore(t, cm)
-			chunkFormat, err := tt.config.ChunkVersion()
+			chunkFormat, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 
 			c1 := createChunk(t, chunkFormat, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
@@ -78,7 +78,7 @@ func Test_ChunkIteratorContextCancelation(t *testing.T) {
 	store := newTestStore(t, cm)
 
 	from := schemaCfg.Configs[0].From.Time
-	chunkFormat, err := schemaCfg.Configs[0].ChunkVersion()
+	chunkFormat, err := schemaCfg.Configs[0].ChunkFormat()
 	require.NoError(t, err)
 
 	c1 := createChunk(t, chunkFormat, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, from, from.Add(1*time.Hour))
@@ -114,7 +114,7 @@ func Test_SeriesCleaner(t *testing.T) {
 			defer cm.Unregister()
 			testSchema := config.SchemaConfig{Configs: []config.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)
-			chunkFormat, err := tt.config.ChunkVersion()
+			chunkFormat, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 
 			c1 := createChunk(t, chunkFormat, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
@@ -236,7 +236,7 @@ func Benchmark_ChunkIterator(b *testing.B) {
 	cm := storage.NewClientMetrics()
 	defer cm.Unregister()
 	store := newTestStore(b, cm)
-	chunkFormat, err := allSchemas[0].config.ChunkVersion()
+	chunkFormat, err := allSchemas[0].config.ChunkFormat()
 	require.NoError(b, err)
 	for i := 0; i < 100; i++ {
 		require.NoError(b, store.Put(context.TODO(),

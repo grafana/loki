@@ -82,7 +82,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 		Configs: []config.PeriodConfig{periodConfig},
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	memchk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0)

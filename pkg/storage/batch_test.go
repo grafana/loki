@@ -44,7 +44,7 @@ func Test_batchIterSafeStart(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	chks := []*LazyChunk{
@@ -76,7 +76,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -998,7 +998,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -1416,7 +1416,7 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	var (
@@ -1507,7 +1507,7 @@ func TestBuildHeapIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	var (
@@ -1680,7 +1680,7 @@ func TestBatchCancel(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	createChunk := func(from time.Time) *LazyChunk {
@@ -1731,7 +1731,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(b, err)
 
 	b.ReportAllocs()

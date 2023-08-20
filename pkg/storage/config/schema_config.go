@@ -373,26 +373,40 @@ func (cfg *PeriodConfig) applyDefaults() {
 	}
 }
 
-// NOTE(kavi): Hack
-func (cfg *PeriodConfig) ChunkVersion() (byte, error) {
-	return chunkenc.ChunkFormatV3, nil
+// ChunkFormat returns chunk format corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) ChunkFormat() (byte, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get chunk format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return chunkenc.ChunkFormatV2, nil
+	case sver == 13:
+		fallthrough
+	default:
+		return chunkenc.ChunkFormatV4, nil
+	}
 }
 
-// NOTE(kavi): Hack
+// TSDBFormat returns index format corresponding to the `schema` version
+// in the given `PeriodConfig`.
 func (cfg *PeriodConfig) TSDBVersion() (int, error) {
 	sver, err := cfg.VersionAsInt()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get index format: %w", err)
 	}
 
 	switch {
 	case sver <= 12:
 		return index.FormatV2, nil
 	case sver == 13:
+		fallthrough
+	default:
 		return index.FormatV3, nil
 	}
-
-	return 0, errors.New("invalid tsdb version for schema")
 }
 
 // Validate the period config.
@@ -455,6 +469,9 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 	v := strings.Trim(cfg.Schema, "v")
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		err = fmt.Errorf("invalid schema version: %w", err)
+	}
 	cfg.schemaInt = &n
 	return n, err
 }

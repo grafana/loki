@@ -889,7 +889,7 @@ func Test_store_GetSeries(t *testing.T) {
 		Schema: "v11",
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -1068,7 +1068,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, periodConfig)
 
-		chunkFormat, err := periodConfig.ChunkVersion()
+		chunkFormat, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
 		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
@@ -1136,7 +1136,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, periodConfig)
 
-		chunkFormat, err := periodConfig.ChunkVersion()
+		chunkFormat, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
 		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
@@ -1260,7 +1260,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			for _, tr := range chunksToBuildForTimeRanges {
 				periodConfig, err := schemaConfig.SchemaForTime(timeToModelTime(tr.from))
 				require.NoError(t, err)
-				chunkFormat, err := periodConfig.ChunkVersion()
+				chunkFormat, err := periodConfig.ChunkFormat()
 				require.NoError(t, err)
 
 				chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
@@ -1346,7 +1346,7 @@ func Test_OverlappingChunks(t *testing.T) {
 		Schema: "v11",
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	chunks := []chunk.Chunk{
@@ -1403,7 +1403,7 @@ func Test_GetSeries(t *testing.T) {
 		Schema: "v11",
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	var (
@@ -1589,7 +1589,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		periodConfig, err := schemaConfig.SchemaForTime(timeToModelTime(tr.from))
 		require.NoError(t, err)
 
-		chunkFormat, err := periodConfig.ChunkVersion()
+		chunkFormat, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
 		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))

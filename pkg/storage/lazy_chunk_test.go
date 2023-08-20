@@ -25,7 +25,7 @@ func TestLazyChunkIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	for i, tc := range []struct {

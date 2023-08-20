@@ -29,7 +29,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 			defer cm.Unregister()
 			testSchema := config.SchemaConfig{Configs: []config.PeriodConfig{tt.config}}
 			store := newTestStore(t, cm)
-			chunkFormat, err := tt.config.ChunkVersion()
+			chunkFormat, err := tt.config.ChunkFormat()
 			require.NoError(t, err)
 			c1 := createChunk(t, chunkFormat, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, tt.from, tt.from.Add(1*time.Hour))
 			c2 := createChunk(t, chunkFormat, "2", labels.Labels{labels.Label{Name: "foo", Value: "bar"}, labels.Label{Name: "fizz", Value: "buzz"}}, tt.from, tt.from.Add(1*time.Hour))

@@ -90,7 +90,7 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 		},
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	for i := 0; i < num; i++ {

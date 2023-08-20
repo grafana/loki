@@ -342,7 +342,7 @@ func (i *instance) LiveChunkFormat() (byte, error) {
 		return 0, err
 	}
 
-	chunkFormat, err := periodConfig.ChunkVersion()
+	chunkFormat, err := periodConfig.ChunkFormat()
 	if err != nil {
 		return 0, err
 	}
