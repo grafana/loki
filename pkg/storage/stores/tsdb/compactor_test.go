@@ -577,7 +577,7 @@ func TestCompactor_Compact(t *testing.T) {
 						defer initializedIndexSetsMtx.Unlock()
 						initializedIndexSets[userID] = idxSet
 						return idxSet, nil
-					}, config.PeriodConfig{})
+					}, periodConfig)
 
 					require.NoError(t, tCompactor.CompactTable())
 
