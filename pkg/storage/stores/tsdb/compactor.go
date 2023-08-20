@@ -47,7 +47,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 		}
 	}()
 
-	indexFormat, err := periodConfig.TSDBVersion()
+	indexFormat, err := periodConfig.TSDBFormat()
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +154,7 @@ func (t *tableCompactor) CompactTable() error {
 			}
 		}
 
-		indexType, err := t.periodConfig.TSDBVersion()
+		indexType, err := t.periodConfig.TSDBFormat()
 		if err != nil {
 			return err
 		}
@@ -179,7 +179,7 @@ func (t *tableCompactor) CompactTable() error {
 			continue
 		}
 
-		indexType, err := t.periodConfig.TSDBVersion()
+		indexType, err := t.periodConfig.TSDBFormat()
 		if err != nil {
 			return err
 		}

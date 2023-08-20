@@ -67,7 +67,7 @@ func main() {
 		panic(err)
 	}
 
-	indexFormat, err := periodConfig.TSDBVersion()
+	indexFormat, err := periodConfig.TSDBFormat()
 	if err != nil {
 		panic(err)
 	}

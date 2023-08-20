@@ -75,7 +75,7 @@ func (m *mockChunksClient) IsChunkNotFoundErr(_ error) bool {
 func TestChunkWriter_PutOne(t *testing.T) {
 	periodConfig := config.PeriodConfig{
 		From:   config.DayTime{Time: 0},
-		Schema: "v11",
+		Schema: "v13",
 	}
 
 	schemaConfig := config.SchemaConfig{

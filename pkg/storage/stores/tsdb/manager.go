@@ -311,7 +311,7 @@ func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
 			// NOTE(kavi): Hack. Ignore errorchecking for now
-			tsdbFormat, _ := cfg.TSDBVersion()
+			tsdbFormat, _ := cfg.TSDBFormat()
 			res = append(res, indexInfo{prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), tsdbFormat: tsdbFormat})
 		}
 	}

@@ -520,7 +520,7 @@ func TestCompactor_Compact(t *testing.T) {
 								userStreams[userID] = append(userStreams[userID], stream)
 							}
 						}
-						indexFormat, err := periodConfig.TSDBVersion()
+						indexFormat, err := periodConfig.TSDBFormat()
 						require.NoError(t, err)
 						setupMultiTenantIndex(t, indexFormat, userStreams, tablePathInStorage, multiTenantIndexConfig.createdAt)
 					}
@@ -540,7 +540,7 @@ func TestCompactor_Compact(t *testing.T) {
 								stream = buildStream(streamConfig.labels, streamConfig.chunkMetas, "")
 								streams = append(streams, stream)
 							}
-							indexFormat, err := periodConfig.TSDBVersion()
+							indexFormat, err := periodConfig.TSDBFormat()
 							require.NoError(t, err)
 							setupPerTenantIndex(t, indexFormat, streams, filepath.Join(tablePathInStorage, userID), perTenantIndexConfig.createdAt)
 						}
@@ -885,7 +885,7 @@ func setupCompactedIndex(t *testing.T) *testContext {
 	userID := buildUserID(0)
 
 	buildCompactedIndex := func() *compactedIndex {
-		indexFormat, err := periodConfig.TSDBVersion()
+		indexFormat, err := periodConfig.TSDBFormat()
 		require.NoError(t, err)
 		builder := NewBuilder(indexFormat)
 		stream := buildStream(lbls1, buildChunkMetas(shiftTableStart(0), shiftTableStart(10)), "")

@@ -428,7 +428,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 }
 
 func TestUnorderedChunkIterators(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
 	for i := 0; i < 100; i++ {
 		// push in reverse order
 		require.Nil(t, c.Append(&logproto.Entry{

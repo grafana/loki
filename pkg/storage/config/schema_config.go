@@ -393,7 +393,7 @@ func (cfg *PeriodConfig) ChunkFormat() (byte, error) {
 
 // TSDBFormat returns index format corresponding to the `schema` version
 // in the given `PeriodConfig`.
-func (cfg *PeriodConfig) TSDBVersion() (int, error) {
+func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	sver, err := cfg.VersionAsInt()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get index format: %w", err)

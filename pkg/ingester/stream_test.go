@@ -520,6 +520,5 @@ func Benchmark_PushStream(b *testing.B) {
 }
 
 func defaultChunkFormat() byte {
-	// NOTE(kavi): Hack. May be base it on schema version? But what schema version?
 	return chunkenc.ChunkFormatV4
 }
