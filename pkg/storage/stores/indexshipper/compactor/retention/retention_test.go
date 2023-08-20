@@ -216,12 +216,13 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.UnorderedHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.DefaultHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{
-			Timestamp: ts.Time(),
-			Line:      ts.String(),
+			Timestamp:        ts.Time(),
+			Line:             ts.String(),
+			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
 		}))
 	}
 
@@ -522,18 +523,15 @@ func TestChunkRewriter(t *testing.T) {
 
 				for _, interval := range expectedChunks[i] {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
-						// Test ready to pass/fail when we change the default chunk and head format.
-						var nonIndexedLabels []logproto.LabelAdapter
-						if chunkenc.DefaultChunkFormat == 4 && chunkenc.DefaultHeadBlockFmt == chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt {
-							nonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", curr.String()))
-						}
+						expectedNonIndexedLabels := labels.FromStrings("foo", curr.String())
 
 						require.True(t, newChunkItr.Next())
 						require.Equal(t, logproto.Entry{
 							Timestamp:        curr.Time(),
 							Line:             curr.String(),
-							NonIndexedLabels: nonIndexedLabels,
+							NonIndexedLabels: logproto.FromLabelsToLabelAdapters(expectedNonIndexedLabels),
 						}, newChunkItr.Entry())
+						require.Equal(t, expectedNonIndexedLabels.String(), newChunkItr.Labels())
 					}
 				}
 
