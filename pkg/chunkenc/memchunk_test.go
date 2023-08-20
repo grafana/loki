@@ -667,7 +667,7 @@ func TestChunkSize(t *testing.T) {
 }
 
 func TestChunkStats(t *testing.T) {
-	c := NewMemChunk(ChunkFormatV3, EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	first := time.Now()
 	entry := &logproto.Entry{
 		Timestamp: first,
