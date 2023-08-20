@@ -6,7 +6,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/ingester/client"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
@@ -983,4 +987,122 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			PeriodConfig: &schemaConfig.Configs[4],
 		},
 	}, GetIndexStoreTableRanges(TSDBType, schemaConfig.Configs))
+}
+
+const (
+	fixedTimestamp = model.Time(1557654321000)
+	userID         = "userID"
+)
+
+var (
+	labelsForDummyChunks = labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
+	}
+)
+
+func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
+	// lets build a new chunk same as what was built using code at commit b1777a50ab19
+	c, err := chunk.NewForEncoding(chunk.Bigchunk)
+	require.NoError(t, err)
+	nc, err := c.Add(model.SamplePair{Timestamp: fixedTimestamp, Value: 0})
+	require.NoError(t, err)
+	require.Equal(t, nil, nc, "returned chunk should be nil")
+
+	chnk := chunk.NewChunk(
+		userID,
+		client.Fingerprint(labelsForDummyChunks),
+		labelsForDummyChunks,
+		c,
+		fixedTimestamp.Add(-time.Hour),
+		fixedTimestamp,
+	)
+	// Force checksum calculation.
+	require.NoError(t, chnk.Encode())
+
+	// Chunk encoded using code at commit b1777a50ab19
+	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\xfcB\xb4\xc9{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"__name__\":\"foo\",\"bar\":\"baz\",\"toms\":\"code\"},\"encoding\":0}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
+	decodeContext := chunk.NewDecodeContext()
+	have, err := chunk.ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:70b431bb")
+	require.NoError(t, err)
+	require.NoError(t, have.Decode(decodeContext, rawData))
+	want := chnk
+	// We can't just compare these two chunks, since the Bigchunk internals are different on construction and read-in.
+	// Compare the serialised version instead
+	require.NoError(t, have.Encode())
+	require.NoError(t, want.Encode())
+	haveEncoded, _ := have.Encoded()
+	wantEncoded, _ := want.Encoded()
+	require.Equal(t, haveEncoded, wantEncoded)
+
+	s := SchemaConfig{
+		Configs: []PeriodConfig{
+			{
+				From:      DayTime{Time: 0},
+				Schema:    "v11",
+				RowShards: 16,
+			},
+		},
+	}
+	require.Equal(t, s.ExternalKey(have.ChunkRef), s.ExternalKey(want.ChunkRef))
+}
+
+func TestChunkKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		chunk     chunk.Chunk
+		schemaCfg SchemaConfig
+	}{
+		{
+			name: "Legacy key (pre-checksum)",
+			chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+		{
+			name: "Newer key (post-v12)",
+			chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := tc.schemaCfg.ExternalKey(tc.chunk.ChunkRef)
+			newChunk, err := chunk.ParseExternalKey("fake", key)
+			require.NoError(t, err)
+			require.Equal(t, tc.chunk, newChunk)
+			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk.ChunkRef))
+		})
+	}
 }
