@@ -385,6 +385,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 	schemaCfg := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
 			{
+				Schema:     "v11",
 				IndexType:  config.TSDBType,
 				ObjectType: config.StorageTypeFileSystem,
 				IndexTables: config.PeriodicTableConfig{
@@ -393,6 +394,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 				},
 			},
 			{
+				Schema:     "v11",
 				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
 				IndexType:  config.TSDBType,
 				ObjectType: config.StorageTypeFileSystem,

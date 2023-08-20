@@ -175,7 +175,6 @@ func (b *Builder) Build(
 
 	reader, err := index.NewFileReader(tmpPath)
 	if err != nil {
-		panic(err)
 		return id, err
 	}
 
