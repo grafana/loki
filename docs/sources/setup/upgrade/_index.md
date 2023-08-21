@@ -96,6 +96,11 @@ If you have a use-case that relies on strict parsing where you expect the parser
 logfmt parser doesn't include standalone keys(keys without a value) in the resulting label set anymore.
 You can use `--keep-empty` flag to retain them.
 
+#### `query_timeout` and engine `timeout` are removed from querier configuration
+`query_timeout` and `engine:timeout`  can no longer be configured in the querier section, these configs were deprecated in 2.7.0 release.
+You can instead configure `query_timeout` in [Limits Config](/docs/loki/latest/configuration/#limits_config) or use the following argument `-querier.query-timeout`.
+CLI flag `-querier.engine.timeout` to configure the engine timeout is also removed.
+
 ### Jsonnet
 
 ##### Deprecated PodDisruptionBudget definition has been removed
