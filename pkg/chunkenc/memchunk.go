@@ -354,6 +354,7 @@ func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
 		panic("only OrderedHeadBlockFmt is supported for V2 chunks")
 	}
 	if chunkFmt == ChunkFormatV4 && head != UnorderedWithNonIndexedLabelsHeadBlockFmt {
+		fmt.Println("received head fmt", head.String())
 		panic("only UnorderedWithNonIndexedLabelsHeadBlockFmt is supported for V4 chunks")
 	}
 }
@@ -414,6 +415,19 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	default:
 		return nil, errors.Errorf("invalid version %d", version)
 	}
+
+	// Set the correct headblock format based on chunk format
+	var headfmt HeadBlockFmt
+	switch {
+	case version < ChunkFormatV3:
+		headfmt = OrderedHeadBlockFmt
+	case version == ChunkFormatV3:
+		headfmt = UnorderedHeadBlockFmt
+	default: // > v3
+		headfmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
+	}
+
+	bc.headFmt = headfmt
 
 	// readSectionLenAndOffset reads len and offset for different sections within the chunk.
 	// Starting from chunk version 4, we have started writing offset and length of various sections within the chunk.
