@@ -1,8 +1,9 @@
 ---
-title: Configuration
+title: Promtail configuration
+menuTitle: Configuration
 description: Configuring Promtaim
 ---
-# Configuration
+# Promtail configuration
 
 Promtail is configured in a YAML file (usually referred to as `config.yaml`)
 which contains information on the Promtail server, where positions are stored,
