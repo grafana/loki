@@ -119,7 +119,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	res, err := syntax.ParseMatchers(matchers)
+	res, err := syntax.ParseMatchers(matchers, true)
 	if err != nil {
 		panic(err)
 	}

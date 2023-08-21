@@ -10,13 +10,23 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 )
 
-func TestParseSeriesQuery(t *testing.T) {
+func TestParseAndValidateSeriesQuery(t *testing.T) {
 	for _, tc := range []struct {
 		desc      string
 		input     *http.Request
 		shouldErr bool
 		expected  *logproto.SeriesRequest
 	}{
+		{
+			"foo",
+			withForm(url.Values{
+				"start": []string{"1000"},
+				"end":   []string{"2000"},
+				"match": []string{`{foo=""}`},
+			}),
+			false,
+			mkSeriesRequest(t, "1000", "2000", []string{`{foo=""}`}),
+		},
 		{
 			"no match",
 			withForm(url.Values{
@@ -80,7 +90,7 @@ func TestParseSeriesQuery(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			out, err := ParseSeriesQuery(tc.input)
+			out, err := ParseAndValidateSeriesQuery(tc.input)
 			if tc.shouldErr {
 				require.Error(t, err)
 			} else {
