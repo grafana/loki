@@ -406,11 +406,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 			querier.WrapQuerySpanAndTimeout("query.RangeQuery", t.querierAPI),
 		).Wrap(http.HandlerFunc(t.querierAPI.RangeQueryHandler)),
 
-		"/loki/api/v1/probabilistic_query": middleware.Merge(
-			httpMiddleware,
-			querier.WrapQuerySpanAndTimeout("query.ProbabilisticQuery", t.querierAPI),
-		).Wrap(http.HandlerFunc(t.querierAPI.ProbabilisticRangeQueryHandler)),
-
 		"/loki/api/v1/query": middleware.Merge(
 			httpMiddleware,
 			querier.WrapQuerySpanAndTimeout("query.InstantQuery", t.querierAPI),
@@ -433,6 +428,13 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		"/api/prom/label":               labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/api/prom/label/{name}/values": labelsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.LabelHandler)),
 		"/api/prom/series":              querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
+	}
+
+	if t.Cfg.QueryRange.ExecuteProbabilisticQueries {
+		queryHandlers["/loki/api/v1/probabilistic_query"] = middleware.Merge(
+			httpMiddleware,
+			querier.WrapQuerySpanAndTimeout("query.ProbabilisticQuery", t.querierAPI),
+		).Wrap(http.HandlerFunc(t.querierAPI.ProbabilisticRangeQueryHandler))
 	}
 
 	// We always want to register tail routes externally, tail requests are different from normal queries, they
