@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 var testEncoding = []Encoding{
@@ -1416,39 +1417,81 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	chkThrough := chkFrom.Add(10 * time.Second)
 	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
 
-	filterFunc := func(_ time.Time, in string) bool {
-		return strings.HasPrefix(in, "matching")
-	}
-
 	for _, tc := range []struct {
-		name                               string
-		matchingSliceFrom, matchingSliceTo *time.Time
-		err                                error
-		nrMatching                         int
-		nrNotMatching                      int
+		name          string
+		testMemChunk  *MemChunk
+		filterFunc    filter.Func
+		err           error
+		nrMatching    int
+		nrNotMatching int
 	}{
 		{
-			name:          "no matches",
+			name:         "no matches",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, nil, nil, false),
+			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+				return strings.HasPrefix(in, "matching")
+			},
 			nrMatching:    0,
 			nrNotMatching: 10,
 		},
 		{
-			name:              "some lines removed",
-			matchingSliceFrom: &chkFrom,
-			matchingSliceTo:   &chkFromPlus5,
-			nrMatching:        5,
-			nrNotMatching:     5,
+			name:         "some lines removed",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, false),
+			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+				return strings.HasPrefix(in, "matching")
+			},
+			nrMatching:    5,
+			nrNotMatching: 5,
 		},
 		{
-			name:              "all lines match",
-			err:               chunk.ErrSliceNoDataInRange,
-			matchingSliceFrom: &chkFrom,
-			matchingSliceTo:   &chkThroughPlus1,
+			name:         "all lines match",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
+			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+				return strings.HasPrefix(in, "matching")
+			},
+			err: chunk.ErrSliceNoDataInRange,
+		},
+
+		// Test cases with non-indexed labels
+		{
+			name:         "no matches - chunk without non-indexed labels",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+			},
+			nrMatching:    0,
+			nrNotMatching: 10,
+		},
+		{
+			name:         "non-indexed labels not matching",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get("ding") == "dong"
+			},
+			nrMatching:    0,
+			nrNotMatching: 10,
+		},
+		{
+			name:         "some lines removed - with non-indexed labels",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+			},
+			nrMatching:    5,
+			nrNotMatching: 5,
+		},
+		{
+			name:         "all lines match -  with non-indexed labels",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get("ping") == "pong" && strings.HasPrefix(in, "matching")
+			},
+			err: chunk.ErrSliceNoDataInRange,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			originalChunk := buildFilterableTestMemChunk(t, chkFrom, chkThrough, tc.matchingSliceFrom, tc.matchingSliceTo)
-			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, filterFunc)
+			originalChunk := tc.testMemChunk
+			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, tc.filterFunc)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
@@ -1476,25 +1519,35 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	}
 }
 
-func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time) *MemChunk {
-	chk := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withNonIndexedLabels bool) *MemChunk {
+	chk := NewMemChunk(ChunkFormatV4, EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
+	var nonIndexedLabels push.LabelsAdapter
+	if withNonIndexedLabels {
+		nonIndexedLabels = push.LabelsAdapter{{Name: "ping", Value: "pong"}}
+	}
 	for from.Before(through) {
 		// If a line is between matchingFrom and matchingTo add the prefix "matching"
 		if matchingFrom != nil && matchingTo != nil &&
 			(from.Equal(*matchingFrom) || (from.After(*matchingFrom) && (from.Before(*matchingTo)))) {
 			t.Logf("%v matching line", from.String())
 			err := chk.Append(&logproto.Entry{
-				Line:      fmt.Sprintf("matching %v", from.String()),
-				Timestamp: from,
+				Line:             fmt.Sprintf("matching %v", from.String()),
+				Timestamp:        from,
+				NonIndexedLabels: nonIndexedLabels,
 			})
 			require.NoError(t, err)
 		} else {
 			t.Logf("%v non-match line", from.String())
+			var nonIndexedLabels push.LabelsAdapter
+			if withNonIndexedLabels {
+				nonIndexedLabels = push.LabelsAdapter{{Name: "ding", Value: "dong"}}
+			}
 			err := chk.Append(&logproto.Entry{
-				Line:      from.String(),
-				Timestamp: from,
+				Line:             from.String(),
+				Timestamp:        from,
+				NonIndexedLabels: nonIndexedLabels,
 			})
 			require.NoError(t, err)
 		}

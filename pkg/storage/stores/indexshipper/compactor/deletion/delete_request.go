@@ -47,7 +47,7 @@ func (d *DeleteRequest) SetQuery(logQL string) error {
 }
 
 // FilterFunction returns a filter function that returns true if the given line should be deleted based on the DeleteRequest
-func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error) {
+func (d *DeleteRequest) FilterFunction(lbls labels.Labels) (filter.Func, error) {
 	// init d.timeInterval used to efficiently check log ts is within the bounds of delete request below in filter func
 	// without having to do conversion of timestamps for each log line we check.
 	if d.timeInterval == nil {
@@ -57,15 +57,15 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 		}
 	}
 
-	if !allMatch(d.matchers, labels) {
-		return func(_ time.Time, s string) bool {
+	if !allMatch(d.matchers, lbls) {
+		return func(_ time.Time, _ string, _ ...labels.Label) bool {
 			return false
 		}, nil
 	}
 
 	// if delete request doesn't have a line filter, just do time based filtering
 	if !d.logSelectorExpr.HasFilter() {
-		return func(ts time.Time, s string) bool {
+		return func(ts time.Time, _ string, _ ...labels.Label) bool {
 			if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 				return false
 			}
@@ -79,13 +79,13 @@ func (d *DeleteRequest) FilterFunction(labels labels.Labels) (filter.Func, error
 		return nil, err
 	}
 
-	f := p.ForStream(labels).ProcessString
-	return func(ts time.Time, s string) bool {
+	f := p.ForStream(lbls).ProcessString
+	return func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
 		if ts.Before(d.timeInterval.start) || ts.After(d.timeInterval.end) {
 			return false
 		}
 
-		result, _, skip := f(0, s)
+		result, _, skip := f(0, s, nonIndexedLabels...)
 		if len(result) != 0 || skip {
 			d.Metrics.deletedLinesTotal.WithLabelValues(d.UserID).Inc()
 			d.DeletedLines++
@@ -122,10 +122,6 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		return false, nil
 	}
 
-	if !labels.Selector(d.matchers).Matches(entry.Labels) {
-		return false, nil
-	}
-
 	if d.logSelectorExpr == nil {
 		err := d.SetQuery(d.Query)
 		if err != nil {
@@ -139,6 +135,10 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 		}
 	}
 
+	if !labels.Selector(d.matchers).Matches(entry.Labels) {
+		return false, nil
+	}
+	
 	if d.StartTime <= entry.From && d.EndTime >= entry.Through && !d.logSelectorExpr.HasFilter() {
 		// Delete request covers the whole chunk and there are no line filters in the logSelectorExpr so the whole chunk will be deleted
 		return true, nil
