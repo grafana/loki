@@ -425,9 +425,9 @@ func TestRangeMappingEquivalence(t *testing.T) {
 
 func TestSketchEquivalence(t *testing.T) {
 	var (
-		shards   = 3
-		nStreams = 60
-		rounds   = 20
+		shards   = 4
+		nStreams = 10_000
+		rounds   = 50
 		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, false)
 		start    = time.Unix(0, 0)
 		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
@@ -512,15 +512,15 @@ func TestSketchEquivalence(t *testing.T) {
 
 			p99, err := stats.Percentile(allMisses, 99)
 			require.NoError(t, err)
+			p90, err := stats.Percentile(allMisses, 90)
+			require.NoError(t, err)
+
 			p40, err := stats.Percentile(allMisses, 40)
 			require.NoError(t, err)
 
-			//p10, err := stats.Percentile(allMisses, 10)
-			//require.NoError(t, err)
-
 			require.LessOrEqual(t, p99, 2.0)
-			require.LessOrEqual(t, p40, 1.0)
-			//require.LessOrEqual(t, p10, 0.0)
+			require.LessOrEqual(t, p90, 1.0)
+			require.LessOrEqual(t, p40, 0.0)
 		})
 	}
 }
