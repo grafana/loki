@@ -45,9 +45,6 @@ const (
 	chunkNonIndexedLabelsSectionIdx = 2
 )
 
-// TODO(kavi): If it ended up not getting used anywhere, remove it.
-var ChunkFormats = []byte{ChunkFormatV1, ChunkFormatV2, ChunkFormatV3, ChunkFormatV4}
-
 var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithNonIndexedLabelsHeadBlockFmt}
 
 type HeadBlockFmt byte

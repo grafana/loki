@@ -310,8 +310,7 @@ func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
-			// NOTE(kavi): Hack. Ignore errorchecking for now
-			tsdbFormat, _ := cfg.TSDBFormat()
+			tsdbFormat, _ := cfg.TSDBFormat() // Ignoring error, as any valid period config should return valid format.
 			res = append(res, indexInfo{prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), tsdbFormat: tsdbFormat})
 		}
 	}

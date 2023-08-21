@@ -110,8 +110,11 @@ type instance struct {
 
 	writeFailures *writefailures.Manager
 
-	// NOTE(kavi): Hack
 	schemaconfig *config.SchemaConfig
+
+	// precomputed `Chunk` and `Head` formats parsed from schemaconfig
+	chunkfmt byte
+	headfmt  chunkenc.HeadBlockFmt
 }
 
 func newInstance(
@@ -159,6 +162,9 @@ func newInstance(
 		schemaconfig:  &c,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
+	chunkfmt, headfmt, err := i.extractChunkformats()
+	i.chunkfmt = chunkfmt
+	i.headfmt = headfmt
 	return i, err
 }
 
@@ -287,12 +293,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
-	chunkfmt, headfmt, err := i.LiveChunkFormat()
-	if err != nil {
-		return nil, err
-	}
-
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(i.chunkfmt, i.headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -324,9 +325,7 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	// TODO(kavi): Handle error somehow.
-	chunkfmt, headfmt, _ := i.LiveChunkFormat()
-	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(i.chunkfmt, i.headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -336,7 +335,7 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 	return s
 }
 
-func (i *instance) LiveChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
+func (i *instance) extractChunkformats() (byte, chunkenc.HeadBlockFmt, error) {
 	periodConfig, err := i.schemaconfig.SchemaForTime(model.Now())
 	if err != nil {
 		return 0, 0, err
