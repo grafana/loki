@@ -112,7 +112,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 	// We only use one aggregation. The topk sketch compresses all
 	// information and thus we don't need to take care of grouping
 	// here.
-	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, e.k, 100000)
+	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, e.k, 1_000_000)
 	if err != nil {
 		e.lastErr = err
 		return false, ts, nil

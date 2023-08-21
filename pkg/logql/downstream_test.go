@@ -512,10 +512,10 @@ func TestSketchEquivalence(t *testing.T) {
 
 			p99, err := stats.Percentile(allMisses, 99)
 			require.NoError(t, err)
-			p40, err := stats.Percentile(allMisses, 30)
+			p40, err := stats.Percentile(allMisses, 40)
 			require.NoError(t, err)
 
-			//p10, err := stats.Percentile(allMisses, 5)
+			//p10, err := stats.Percentile(allMisses, 10)
 			//require.NoError(t, err)
 
 			require.LessOrEqual(t, p99, 2.0)
