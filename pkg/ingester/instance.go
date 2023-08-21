@@ -21,6 +21,7 @@ import (
 	"go.uber.org/atomic"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/ingester/wal"
@@ -286,13 +287,12 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
-	// NOTE(kavi): Hack
-	chunkFormat, err := i.LiveChunkFormat()
+	chunkfmt, headfmt, err := i.LiveChunkFormat()
 	if err != nil {
 		return nil, err
 	}
 
-	s := newStream(chunkFormat, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -324,8 +324,9 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	ck, _ := i.LiveChunkFormat()
-	s := newStream(ck, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	// TODO(kavi): Handle error somehow.
+	chunkfmt, headfmt, _ := i.LiveChunkFormat()
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
@@ -335,19 +336,18 @@ func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *str
 	return s
 }
 
-func (i *instance) LiveChunkFormat() (byte, error) {
-	// NOTE(kavi): Hack
+func (i *instance) LiveChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
 	periodConfig, err := i.schemaconfig.SchemaForTime(model.Now())
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkFormat, headblock, err := periodConfig.ChunkFormat()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
-	return chunkFormat, nil
+	return chunkFormat, headblock, nil
 
 }
 

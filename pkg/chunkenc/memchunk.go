@@ -86,7 +86,7 @@ const (
 	UnorderedHeadBlockFmt
 	UnorderedWithNonIndexedLabelsHeadBlockFmt
 
-	DefaultHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
+	// DefaultHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
 )
 
 var magicNumber = uint32(0x12EE56A)
@@ -1096,12 +1096,12 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 	// as close as possible, respect the block/target sizes specified. However,
 	// if the blockSize is not set, use reasonable defaults.
 	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.format, c.Encoding(), DefaultHeadBlockFmt, c.blockSize, c.targetSize)
+		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
 	} else {
 		// Using defaultBlockSize for target block size.
 		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
 		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.format, c.Encoding(), DefaultHeadBlockFmt, defaultBlockSize, c.CompressedSize())
+		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
 	}
 
 	for itr.Next() {

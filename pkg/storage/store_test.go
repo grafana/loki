@@ -889,7 +889,7 @@ func Test_store_GetSeries(t *testing.T) {
 		Schema: "v11",
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -936,7 +936,7 @@ func Test_store_GetSeries(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &store{
-				Store: newMockChunkStore(chunkFormat, streamsFixture),
+				Store: newMockChunkStore(chunkfmt, headfmt, streamsFixture),
 				cfg: Config{
 					MaxChunkBatchSize: tt.batchSize,
 				},
@@ -1068,10 +1068,10 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, periodConfig)
 
-		chunkFormat, err := periodConfig.ChunkFormat()
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
-		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
+		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
 
 		err = store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
@@ -1136,10 +1136,10 @@ func TestStore_indexPrefixChange(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, periodConfig)
 
-		chunkFormat, err := periodConfig.ChunkFormat()
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
-		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
+		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
 
 		err = store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)
@@ -1260,10 +1260,10 @@ func TestStore_MultiPeriod(t *testing.T) {
 			for _, tr := range chunksToBuildForTimeRanges {
 				periodConfig, err := schemaConfig.SchemaForTime(timeToModelTime(tr.from))
 				require.NoError(t, err)
-				chunkFormat, err := periodConfig.ChunkFormat()
+				chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 				require.NoError(t, err)
 
-				chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
+				chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
 
 				err = store.PutOne(ctx, chk.From, chk.Through, chk)
 				require.NoError(t, err)
@@ -1346,18 +1346,18 @@ func Test_OverlappingChunks(t *testing.T) {
 		Schema: "v11",
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	chunks := []chunk.Chunk{
-		newChunk(chunkFormat, logproto.Stream{
+		newChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 1), Line: "1"},
 				{Timestamp: time.Unix(0, 4), Line: "4"},
 			},
 		}),
-		newChunk(chunkFormat, logproto.Stream{
+		newChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: `{foo="bar"}`,
 			Entries: []logproto.Entry{
 				{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -1403,12 +1403,12 @@ func Test_GetSeries(t *testing.T) {
 		Schema: "v11",
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	var (
 		store = &store{
-			Store: newMockChunkStore(chunkFormat, []*logproto.Stream{
+			Store: newMockChunkStore(chunkfmt, headfmt, []*logproto.Stream{
 				{
 					Labels: `{foo="bar",buzz="boo"}`,
 					Entries: []logproto.Entry{
@@ -1589,10 +1589,10 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		periodConfig, err := schemaConfig.SchemaForTime(timeToModelTime(tr.from))
 		require.NoError(t, err)
 
-		chunkFormat, err := periodConfig.ChunkFormat()
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 		require.NoError(t, err)
 
-		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, tr))
+		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, tr))
 
 		err = store.PutOne(ctx, chk.From, chk.Through, chk)
 		require.NoError(t, err)

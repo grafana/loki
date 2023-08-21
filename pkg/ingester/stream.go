@@ -75,8 +75,8 @@ type stream struct {
 
 	writeFailures *writefailures.Manager
 
-	// NOTE(kavi): Hack
-	chunkFormat byte
+	chunkFormat          byte
+	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 }
 
 type chunkDesc struct {
@@ -94,7 +94,19 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(chunkFormat byte, cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics, writeFailures *writefailures.Manager) *stream {
+func newStream(
+	chunkFormat byte,
+	headBlockFmt chunkenc.HeadBlockFmt,
+	cfg *Config,
+	limits RateLimiterStrategy,
+	tenant string,
+	fp model.Fingerprint,
+	labels labels.Labels,
+	unorderedWrites bool,
+	streamRateCalculator *StreamRateCalculator,
+	metrics *ingesterMetrics,
+	writeFailures *writefailures.Manager,
+) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
@@ -109,9 +121,10 @@ func newStream(chunkFormat byte, cfg *Config, limits RateLimiterStrategy, tenant
 		tenant:               tenant,
 		streamRateCalculator: streamRateCalculator,
 
-		unorderedWrites: unorderedWrites,
-		writeFailures:   writeFailures,
-		chunkFormat:     chunkFormat,
+		unorderedWrites:      unorderedWrites,
+		writeFailures:        writeFailures,
+		chunkFormat:          chunkFormat,
+		chunkHeadBlockFormat: headBlockFmt,
 	}
 }
 
@@ -149,7 +162,7 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, headBlockType(s.unorderedWrites), s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
@@ -598,7 +611,7 @@ func (s *stream) resetCounter() {
 
 func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
 	if unorderedWrites {
-		return chunkenc.DefaultHeadBlockFmt
+		return chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt
 	}
 	return chunkenc.OrderedHeadBlockFmt
 }

@@ -44,11 +44,11 @@ func Test_batchIterSafeStart(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	chks := []*LazyChunk{
-		newLazyChunk(chunkFormat, stream),
+		newLazyChunk(chunkfmt, headfmt, stream),
 	}
 
 	s := config.SchemaConfig{
@@ -76,7 +76,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -89,7 +89,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 	}{
 		"forward with overlap": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -102,7 +102,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -115,7 +115,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -128,7 +128,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -141,7 +141,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -154,7 +154,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -198,7 +198,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"forward all overlap and all chunks have a from time less than query from time": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -211,24 +211,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -245,7 +228,24 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+					Labels: fooLabelsWithName.String(),
+					Entries: []logproto.Entry{
+						{
+							Timestamp: from,
+							Line:      "1",
+						},
+						{
+							Timestamp: from.Add(time.Millisecond),
+							Line:      "2",
+						},
+						{
+							Timestamp: from.Add(2 * time.Millisecond),
+							Line:      "3",
+						},
+					},
+				}),
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -262,7 +262,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -279,7 +279,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -327,7 +327,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"forward with overlapping non-continuous entries": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -344,7 +344,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -357,7 +357,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -370,7 +370,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -410,7 +410,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"backward with overlap": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -423,7 +423,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -436,7 +436,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -449,7 +449,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -462,7 +462,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -475,7 +475,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -519,7 +519,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"backward all overlap and all chunks have a through time greater than query through time": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -536,7 +536,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -553,7 +553,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -570,7 +570,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -587,7 +587,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -604,7 +604,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -648,7 +648,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"backward with overlapping non-continuous entries": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -661,7 +661,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -674,7 +674,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -687,7 +687,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -747,7 +747,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"forward without overlap": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -760,7 +760,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -769,7 +769,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -805,7 +805,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		},
 		"backward without overlap": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -818,7 +818,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -827,7 +827,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -871,7 +871,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 		// the default due to nextChunks with the same start timestamp.
 		"forward identicals": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -880,7 +880,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -889,7 +889,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -902,7 +902,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -911,7 +911,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -920,7 +920,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -929,7 +929,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -998,7 +998,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	tests := map[string]struct {
@@ -1010,7 +1010,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 	}{
 		"forward with overlap": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1023,7 +1023,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1036,7 +1036,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1049,7 +1049,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1062,7 +1062,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1075,7 +1075,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1122,7 +1122,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 		"forward with overlapping non-continuous entries": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1139,7 +1139,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1152,7 +1152,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1165,7 +1165,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1207,7 +1207,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 		"forward last chunk boundaries equal to end": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1220,7 +1220,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1233,7 +1233,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1270,7 +1270,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 		"forward last chunk boundaries equal to end and start": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1283,7 +1283,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1320,7 +1320,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 		},
 		"forward without overlap": {
 			[]*LazyChunk{
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1333,7 +1333,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1342,7 +1342,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 						},
 					},
 				}),
-				newLazyChunk(chunkFormat, logproto.Stream{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 					Labels: fooLabelsWithName.String(),
 					Entries: []logproto.Entry{
 						{
@@ -1416,11 +1416,11 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	var (
-		oneThroughFour = newLazyChunk(chunkFormat, logproto.Stream{
+		oneThroughFour = newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: fooLabelsWithName.String(),
 			Entries: []logproto.Entry{
 				{
@@ -1433,7 +1433,7 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 				},
 			},
 		})
-		two = newLazyChunk(chunkFormat, logproto.Stream{
+		two = newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: fooLabelsWithName.String(),
 			Entries: []logproto.Entry{
 				{
@@ -1442,7 +1442,7 @@ func TestPartitionOverlappingchunks(t *testing.T) {
 				},
 			},
 		})
-		three = newLazyChunk(chunkFormat, logproto.Stream{
+		three = newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: fooLabelsWithName.String(),
 			Entries: []logproto.Entry{
 				{
@@ -1507,11 +1507,11 @@ func TestBuildHeapIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	var (
-		firstChunk = newLazyChunk(chunkFormat, logproto.Stream{
+		firstChunk = newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: "{foo=\"bar\"}",
 			Entries: []logproto.Entry{
 				{
@@ -1528,7 +1528,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				},
 			},
 		})
-		secondChunk = newLazyInvalidChunk(chunkFormat, logproto.Stream{
+		secondChunk = newLazyInvalidChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: "{foo=\"bar\"}",
 			Entries: []logproto.Entry{
 				{
@@ -1541,7 +1541,7 @@ func TestBuildHeapIterator(t *testing.T) {
 				},
 			},
 		})
-		thirdChunk = newLazyChunk(chunkFormat, logproto.Stream{
+		thirdChunk = newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: "{foo=\"bar\"}",
 			Entries: []logproto.Entry{
 				{
@@ -1680,11 +1680,11 @@ func TestBatchCancel(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	createChunk := func(from time.Time) *LazyChunk {
-		return newLazyChunk(chunkFormat, logproto.Stream{
+		return newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 			Labels: fooLabelsWithName.String(),
 			Entries: []logproto.Entry{
 				{
@@ -1731,7 +1731,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(b, err)
 
 	b.ReportAllocs()
@@ -1740,7 +1740,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},
-		Store: newMockChunkStore(chunkFormat, newOverlappingStreams(200, 200)),
+		Store: newMockChunkStore(chunkfmt, headfmt, newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
 	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))

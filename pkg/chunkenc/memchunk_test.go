@@ -74,7 +74,7 @@ var (
 	}
 )
 
-const DefaultTestHeadBlockFmt = DefaultHeadBlockFmt
+const DefaultTestHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
 
 func TestBlocksInclusive(t *testing.T) {
 	chk := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)

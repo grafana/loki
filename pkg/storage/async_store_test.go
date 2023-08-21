@@ -90,11 +90,11 @@ func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 		},
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	for i := 0; i < num; i++ {
-		chk := newChunk(chunkFormat, buildTestStreams(fooLabelsWithName, timeRange{
+		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))

@@ -25,7 +25,7 @@ func TestLazyChunkIterator(t *testing.T) {
 		RowShards: 16,
 	}
 
-	chunkFormat, err := periodConfig.ChunkFormat()
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
 	for i, tc := range []struct {
@@ -34,7 +34,7 @@ func TestLazyChunkIterator(t *testing.T) {
 	}{
 		// TODO: Add tests for metadata labels.
 		{
-			newLazyChunk(chunkFormat, logproto.Stream{
+			newLazyChunk(chunkfmt, headfmt, logproto.Stream{
 				Labels: fooLabelsWithName.String(),
 				Hash:   fooLabelsWithName.Hash(),
 				Entries: []logproto.Entry{

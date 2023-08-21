@@ -78,23 +78,23 @@ func assertSeries(t *testing.T, expected, actual []logproto.Series) {
 	}
 }
 
-func newLazyChunk(chunkFormat byte, stream logproto.Stream) *LazyChunk {
+func newLazyChunk(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, stream logproto.Stream) *LazyChunk {
 	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: true,
-		Chunk:   newChunk(chunkFormat, stream),
+		Chunk:   newChunk(chunkFormat, headfmt, stream),
 	}
 }
 
-func newLazyInvalidChunk(chunkFormat byte, stream logproto.Stream) *LazyChunk {
+func newLazyInvalidChunk(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, stream logproto.Stream) *LazyChunk {
 	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: false,
-		Chunk:   newChunk(chunkFormat, stream),
+		Chunk:   newChunk(chunkFormat, headfmt, stream),
 	}
 }
 
-func newChunk(chunkFormat byte, stream logproto.Stream) chunk.Chunk {
+func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logproto.Stream) chunk.Chunk {
 	lbs, err := syntax.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
@@ -105,7 +105,7 @@ func newChunk(chunkFormat byte, stream logproto.Stream) chunk.Chunk {
 		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
-	chk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, headBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
 		_ = chk.Append(&e)
 	}
@@ -165,10 +165,10 @@ var (
 	_ chunkclient.Client = &mockChunkStoreClient{}
 )
 
-func newMockChunkStore(chunkFormat byte, streams []*logproto.Stream) *mockChunkStore {
+func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
-		chunks = append(chunks, newChunk(chunkFormat, *s))
+		chunks = append(chunks, newChunk(chunkFormat, headfmt, *s))
 	}
 	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
@@ -379,4 +379,4 @@ var streamsFixture = []*logproto.Stream{
 		},
 	},
 }
-var storeFixture = newMockChunkStore(chunkenc.ChunkFormatV3, streamsFixture)
+var storeFixture = newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, streamsFixture)

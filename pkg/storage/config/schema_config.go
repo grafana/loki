@@ -373,21 +373,21 @@ func (cfg *PeriodConfig) applyDefaults() {
 	}
 }
 
-// ChunkFormat returns chunk format corresponding to the `schema` version
+// ChunkFormat returns chunk format including it's headBlockFormat corresponding to the `schema` version
 // in the given `PeriodConfig`.
-func (cfg *PeriodConfig) ChunkFormat() (byte, error) {
+func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
 	sver, err := cfg.VersionAsInt()
 	if err != nil {
-		return 0, fmt.Errorf("failed to get chunk format: %w", err)
+		return 0, 0, fmt.Errorf("failed to get chunk format: %w", err)
 	}
 
 	switch {
 	case sver <= 12:
-		return chunkenc.ChunkFormatV2, nil
+		return chunkenc.ChunkFormatV3, chunkenc.UnorderedHeadBlockFmt, nil
 	case sver == 13:
 		fallthrough
 	default:
-		return chunkenc.ChunkFormatV4, nil
+		return chunkenc.ChunkFormatV4, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, nil
 	}
 }
 
