@@ -305,9 +305,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 
 	flattened := make([]labels.Labels, 0) // Create a new slice to hold the flattened results
 	for _, innerSlice := range results {
-		for _, item := range innerSlice {
-			flattened = append(flattened, item)
-		}
+		flattened = append(flattened, innerSlice...)
 	}
 
 	sort.Slice(flattened, func(i, j int) bool {
