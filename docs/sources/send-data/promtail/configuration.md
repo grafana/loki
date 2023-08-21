@@ -1292,6 +1292,9 @@ zone_id: <string>
 # Supported values: default, minimal, extended, all.
 [fields_type: <string> | default = default]
 
+# The additional list of fields to supplement those provided via `fields_type`.
+[additional_fields: <string> ... ]
+
 # Label map to add to every log message.
 labels:
   [ <labelname>: <labelvalue> ... ]
@@ -1303,16 +1306,22 @@ Here are the different set of fields type available and the fields they include 
 
 - `default` includes `"ClientIP", "ClientRequestHost", "ClientRequestMethod", "ClientRequestURI", "EdgeEndTimestamp", "EdgeResponseBytes",
 "EdgeRequestHost", "EdgeResponseStatus", "EdgeStartTimestamp", "RayID"`
+plus any extra fields provided via `additional_fields` argument.
 
 - `minimal` includes all `default` fields and adds `"ZoneID", "ClientSSLProtocol", "ClientRequestProtocol", "ClientRequestPath", "ClientRequestUserAgent", "ClientRequestReferer",
-"EdgeColoCode", "ClientCountry", "CacheCacheStatus", "CacheResponseStatus", "EdgeResponseContentType`
+"EdgeColoCode", "ClientCountry", "CacheCacheStatus", "CacheResponseStatus", "EdgeResponseContentType"`
+plus any extra fields provided via `additional_fields` argument.
 
 - `extended` includes all `minimal`fields and adds `"ClientSSLCipher", "ClientASN", "ClientIPClass", "CacheResponseBytes", "EdgePathingOp", "EdgePathingSrc", "EdgePathingStatus", "ParentRayID",
 "WorkerCPUTime", "WorkerStatus", "WorkerSubrequest", "WorkerSubrequestCount", "OriginIP", "OriginResponseStatus", "OriginSSLProtocol",
 "OriginResponseHTTPExpires", "OriginResponseHTTPLastModified"`
+plus any extra fields provided via `additional_fields` argument.
 
 - `all` includes all `extended` fields and adds `"BotScore", "BotScoreSrc", "BotTags", "ClientRequestBytes", "ClientSrcPort", "ClientXRequestedWith", "CacheTieredFill", "EdgeResponseCompressionRatio", "EdgeServerIP", "FirewallMatchesSources",
 "FirewallMatchesActions", "FirewallMatchesRuleIDs", "OriginResponseBytes", "OriginResponseTime", "ClientDeviceType", "WAFFlags", "WAFMatchedVar", "EdgeColoID", "RequestHeaders", "ResponseHeaders", "ClientRequestSource"`
+plus any extra fields provided via `additional_fields` argument (this is still relevant in this case if new fields are made available via Cloudflare API but are not yet included in `all`).
+
+- `custom` includes only the fields defined in `additional_fields`.
 
 To learn more about each field and its value, refer to the [Cloudflare documentation](https://developers.cloudflare.com/logs/reference/log-fields/zone/http_requests).
 
