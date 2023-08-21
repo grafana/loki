@@ -406,7 +406,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 	}
 
 	if expr.Grouping == nil {
-		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
+		return nil, errors.Errorf("aggregation operator %q without grouping", expr.Operation)
 	}
 	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
 	if err != nil {
