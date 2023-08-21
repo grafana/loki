@@ -402,7 +402,7 @@ func (p *ProbabilisticEvaluator) newProbabilisticVectorAggEvaluator(
 ) (ProbabilisticStepEvaluator, error) {
 
 	if expr.Operation != syntax.OpTypeTopK {
-		return nil, errors.Errorf("unexpected operation: want 'topk', have '%q'", expr.Operation)
+		return nil, errors.Errorf("unexpected operation: want 'topk', have %q", expr.Operation)
 	}
 
 	if expr.Grouping == nil {
