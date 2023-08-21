@@ -31,6 +31,10 @@ const (
 	TopKVecType
 )
 
+func (t T) String() string {
+	return [...]string{"Vector", "TopKVector"}[t]
+}
+
 type StepResult interface {
 	Type() T
 
@@ -290,7 +294,9 @@ func (q *probabilisticQuery) aggregateSampleVectors(
 	tenantIDs []string,
 ) (promql_parser.Value, error) {
 
-	// Assert stepEvaluator.Type() == VecType
+	if stepEvaluator.Type() != VecType {
+		return promql.Vector{}, fmt.Errorf("unexpected evaluator type: want %s, got %s", VecType, stepEvaluator.Type())
+	}
 
 	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)

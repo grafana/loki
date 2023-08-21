@@ -277,3 +277,11 @@ func TestProbabilisticEngine(t *testing.T) {
 		})
 	}
 }
+
+func TestAggregationError(t *testing.T) {
+
+	query := &probabilisticQuery{}
+	ev := &pTopkStepEvaluator{}
+	_, err := query.aggregateSampleVectors(context.Background(), ev, nil)
+	require.ErrorContains(t, err, "unexpected evaluator type: want Vector, got TopKVector")
+}
