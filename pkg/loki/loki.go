@@ -33,7 +33,6 @@ import (
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
@@ -255,69 +254,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if err := AdjustForTimeoutsMigration(c); err != nil {
-		return err
-	}
-
 	// Honor the legacy scalable deployment topology
 	if c.LegacyReadTarget {
 		if c.isModuleEnabled(Backend) {
 			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
 		}
-	}
-
-	return nil
-}
-
-// AdjustForTimeoutsMigration will adjust Loki timeouts configuration to be in accordance with the next major release.
-//
-// We're preparing to unify the querier:engine:timeout and querier:query_timeout into a single timeout named limits_config:query_timeout.
-// The migration encompasses of:
-// - If limits_config:query_timeout is explicitly configured, use it everywhere as it is a new configuration and by
-// configuring it, users are expressing that they're willing of using it.
-// - If none are explicitly configured, use the default engine:timeout everywhere as it is longer than the default limits_config:query_timeout
-// and otherwise users would start to experience shorter timeouts without expecting it.
-// - If only the querier:engine:timeout was explicitly configured, warn the user and use it everywhere.
-func AdjustForTimeoutsMigration(c *Config) error {
-	engineTimeoutIsDefault := c.Querier.Engine.Timeout == logql.DefaultEngineTimeout
-	globalTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
-	if engineTimeoutIsDefault && globalTimeoutIsDefault {
-		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
-			return fmt.Errorf("couldn't set global query_timeout as the engine timeout value: %w", err)
-		}
-		level.Warn(util_log.Logger).Log("msg",
-			fmt.Sprintf(
-				"global timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default global timeout (%q).",
-				c.Querier.Engine.Timeout.String(),
-				c.LimitsConfig.QueryTimeout.String(),
-			),
-		)
-		return nil
-	}
-
-	if !globalTimeoutIsDefault && !engineTimeoutIsDefault {
-		level.Warn(util_log.Logger).Log("msg",
-			fmt.Sprintf(
-				"using configured global timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
-				c.LimitsConfig.QueryTimeout.String(),
-				c.Querier.Engine.Timeout.String(),
-			),
-		)
-		return nil
-	}
-
-	if globalTimeoutIsDefault && !engineTimeoutIsDefault {
-		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
-			return fmt.Errorf("couldn't set global query_timeout as the engine timeout value: %w", err)
-		}
-		level.Warn(util_log.Logger).Log("msg",
-			fmt.Sprintf(
-				"using configured engine timeout (%q) as the default (can be overridden per-tenant in the limits_config). Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
-				c.Querier.Engine.Timeout.String(),
-				c.LimitsConfig.QueryTimeout.String(),
-			),
-		)
-		return nil
 	}
 
 	return nil
