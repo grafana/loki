@@ -279,8 +279,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		}))
 	}
 
-	//results := make([]labels.Labels, 0, len(chunksBySeries))
-	resultsChan := make(chan []labels.Labels, len(jobs))
+	results := make([][]labels.Labels, len(jobs))
 
 	// Picking an arbitrary bound of 20 numConcurrent jobs.
 	numConcurrent := len(jobs)
@@ -294,26 +293,26 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		numConcurrent,
 		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
-			if err != nil {
-				return err
+			if res != nil {
+				results[idx] = res
 			}
-			resultsChan <- res
-			return nil
+			return err
 		},
 	); err != nil {
 		return nil, err
 	}
-	close(resultsChan)
 
-	results := make([]labels.Labels, 0, len(chunksBySeries))
-	for res := range resultsChan {
-		results = append(results, res...)
+	flattened := make([]labels.Labels, 0) // Create a new slice to hold the flattened results
+	for _, innerSlice := range results {
+		for _, item := range innerSlice {
+			flattened = append(flattened, item)
+		}
 	}
 
-	sort.Slice(results, func(i, j int) bool {
-		return labels.Compare(results[i], results[j]) < 0
+	sort.Slice(flattened, func(i, j int) bool {
+		return labels.Compare(flattened[i], flattened[j]) < 0
 	})
-	return results, nil
+	return flattened, nil
 }
 
 // LabelNamesForMetricName retrieves all label names for a metric name.
