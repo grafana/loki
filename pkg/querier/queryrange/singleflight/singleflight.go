@@ -54,8 +54,9 @@ type RingCfg struct {
 }
 
 type Config struct {
-	Enabled bool    `yaml:"enabled,omitempty"`
-	Ring    RingCfg `yaml:"ring,omitempty"`
+	Enabled  bool    `yaml:"enabled,omitempty"`
+	Ring     RingCfg `yaml:"ring,omitempty"`
+	NameHash string
 }
 
 // RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet

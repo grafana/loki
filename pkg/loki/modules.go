@@ -229,6 +229,7 @@ func (t *Loki) initSingleFlight() (_ services.Service, err error) {
 	}
 
 	t.Cfg.Common.SingleFlightConfig.Ring.ListenPort = t.Cfg.Server.HTTPListenPort
+	t.Cfg.Common.SingleFlightConfig.NameHash = hash(t.Cfg.Frontend.FrontendV2.SchedulerAddress)
 	rm, err := singleflight.NewRingManager(t.Cfg.Common.SingleFlightConfig, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, gerrors.Wrap(err, "new index gateway ring manager")
@@ -756,6 +757,12 @@ func (t *Loki) initQueryFrontendTripperware() (_ services.Service, err error) {
 	t.QueryFrontEndTripperware = tripperware
 
 	return services.NewIdleService(nil, nil), nil
+}
+
+func hash(url string) string {
+	h := fnv.New32()
+	_, _ = h.Write([]byte(url))
+	return fmt.Sprint(h.Sum32())
 }
 
 func (t *Loki) initCacheGenerationLoader() (_ services.Service, err error) {

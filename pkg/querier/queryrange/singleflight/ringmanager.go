@@ -2,6 +2,7 @@ package singleflight
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -61,18 +62,21 @@ func NewRingManager(cfg Config, log log.Logger, registerer prometheus.Registerer
 	}
 
 	ringCfg := rm.cfg.Ring.ToRingConfig(1)
-	rm.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, SingleFlightRingKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
+	ringKey := fmt.Sprintf("%s%s", cfg.NameHash, SingleFlightRingKey)
+
+	level.Debug(log).Log("msg", "initializing singleflight ring", "key", ringKey)
+	rm.ring, err = ring.NewWithStoreClientAndStrategy(ringCfg, ringNameForServer, ringKey, ringStore, ring.NewIgnoreUnhealthyInstancesReplicationStrategy(), prometheus.WrapRegistererWithPrefix("loki_", registerer), rm.log)
 	if err != nil {
 		return nil, errors.Wrap(err, "singleflight ring manager create ring client")
 	}
 
-	if err := rm.startRing(ringStore, registerer); err != nil {
+	if err := rm.startRing(ringStore, ringKey, registerer); err != nil {
 		return nil, err
 	}
 	return rm, nil
 }
 
-func (rm *RingManager) startRing(ringStore kv.Client, registerer prometheus.Registerer) error {
+func (rm *RingManager) startRing(ringStore kv.Client, ringKey string, registerer prometheus.Registerer) error {
 	lifecyclerCfg, err := rm.cfg.Ring.ToLifecyclerConfig(ringNumTokens, rm.log)
 	if err != nil {
 		return errors.Wrap(err, "invalid ring lifecycler config")
@@ -84,7 +88,7 @@ func (rm *RingManager) startRing(ringStore kv.Client, registerer prometheus.Regi
 	delegate = ring.NewTokensPersistencyDelegate(rm.cfg.Ring.TokensFilePath, ring.JOINING, delegate, rm.log)
 	delegate = ring.NewAutoForgetDelegate(ringAutoForgetUnhealthyPeriods*rm.cfg.Ring.HeartbeatTimeout, delegate, rm.log)
 
-	rm.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, SingleFlightRingKey, ringStore, delegate, rm.log, registerer)
+	rm.ringLifecycler, err = ring.NewBasicLifecycler(lifecyclerCfg, ringNameForServer, ringKey, ringStore, delegate, rm.log, registerer)
 	if err != nil {
 		return errors.Wrap(err, "singleflight ring manager create ring lifecycler")
 	}
