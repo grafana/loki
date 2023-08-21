@@ -15,7 +15,7 @@ func TestFields(t *testing.T) {
 	}{
 		{
 			name:             "Default fields",
-			fieldsType:       FieldsTypeDefault,
+			fieldsType:       "default",
 			additionalFields: []string{},
 			expected:         defaultFields,
 		},
