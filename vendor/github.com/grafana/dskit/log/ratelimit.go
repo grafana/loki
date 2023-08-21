@@ -1,20 +1,15 @@
 package log
 
 import (
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"golang.org/x/time/rate"
 )
 
-const (
-	infoLevel  = "info"
-	debugLevel = "debug"
-	warnLevel  = "warning"
-	errorLevel = "error"
-)
-
 type RateLimitedLogger struct {
-	next    Interface
+	next    log.Logger
 	limiter *rate.Limiter
 
 	discardedInfoLogLinesCounter  prometheus.Counter
@@ -23,106 +18,53 @@ type RateLimitedLogger struct {
 	discardedErrorLogLinesCounter prometheus.Counter
 }
 
-// NewRateLimitedLogger returns a logger.Interface that is limited to the given number of logs per second,
+// NewRateLimitedLogger returns a log.Logger that is limited to the given number of logs per second,
 // with the given burst size.
-func NewRateLimitedLogger(logger Interface, logsPerSecond rate.Limit, burstSize int, reg prometheus.Registerer) Interface {
-	discardedLogLinesCounter := promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+func NewRateLimitedLogger(logger log.Logger, logsPerSecond float64, logsPerSecondBurst int, registry prometheus.Registerer) log.Logger {
+	discardedLogLinesCounter := promauto.With(registry).NewCounterVec(prometheus.CounterOpts{
 		Name: "logger_rate_limit_discarded_log_lines_total",
 		Help: "Total number of discarded log lines per level.",
 	}, []string{"level"})
 
 	return &RateLimitedLogger{
 		next:                          logger,
-		limiter:                       rate.NewLimiter(logsPerSecond, burstSize),
-		discardedInfoLogLinesCounter:  discardedLogLinesCounter.WithLabelValues(infoLevel),
-		discardedDebugLogLinesCounter: discardedLogLinesCounter.WithLabelValues(debugLevel),
-		discardedWarnLogLinesCounter:  discardedLogLinesCounter.WithLabelValues(warnLevel),
-		discardedErrorLogLinesCounter: discardedLogLinesCounter.WithLabelValues(errorLevel),
+		limiter:                       rate.NewLimiter(rate.Limit(logsPerSecond), logsPerSecondBurst),
+		discardedInfoLogLinesCounter:  discardedLogLinesCounter.WithLabelValues(level.InfoValue().String()),
+		discardedDebugLogLinesCounter: discardedLogLinesCounter.WithLabelValues(level.DebugValue().String()),
+		discardedWarnLogLinesCounter:  discardedLogLinesCounter.WithLabelValues(level.WarnValue().String()),
+		discardedErrorLogLinesCounter: discardedLogLinesCounter.WithLabelValues(level.ErrorValue().String()),
 	}
 }
 
-func (l *RateLimitedLogger) Debugf(format string, args ...interface{}) {
+func (l *RateLimitedLogger) Log(keyvals ...interface{}) error {
 	if l.limiter.Allow() {
-		l.next.Debugf(format, args...)
-	} else {
-		l.discardedDebugLogLinesCounter.Inc()
+		return l.next.Log(keyvals...)
 	}
+	counter := l.getCounterFromKeyvals(keyvals...)
+	if counter != nil {
+		counter.Inc()
+	}
+	return nil
 }
 
-func (l *RateLimitedLogger) Debugln(args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Debugln(args...)
-	} else {
-		l.discardedDebugLogLinesCounter.Inc()
+func (l *RateLimitedLogger) getCounterFromKeyvals(keyvals ...interface{}) prometheus.Counter {
+	for i := 0; i < len(keyvals); i += 2 {
+		levelKey, ok := keyvals[i].(string)
+		if ok && levelKey == "level" && i+1 < len(keyvals) {
+			levelValue := keyvals[i+1]
+			switch levelValue {
+			case level.InfoValue():
+				return l.discardedInfoLogLinesCounter
+			case level.DebugValue():
+				return l.discardedDebugLogLinesCounter
+			case level.WarnValue():
+				return l.discardedWarnLogLinesCounter
+			case level.ErrorValue():
+				return l.discardedErrorLogLinesCounter
+			default:
+				return nil
+			}
+		}
 	}
-}
-
-func (l *RateLimitedLogger) Infof(format string, args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Infof(format, args...)
-	} else {
-		l.discardedInfoLogLinesCounter.Inc()
-	}
-}
-
-func (l *RateLimitedLogger) Infoln(args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Infoln(args...)
-	} else {
-		l.discardedInfoLogLinesCounter.Inc()
-	}
-}
-
-func (l *RateLimitedLogger) Errorf(format string, args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Errorf(format, args...)
-	} else {
-		l.discardedErrorLogLinesCounter.Inc()
-	}
-}
-
-func (l *RateLimitedLogger) Errorln(args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Errorln(args...)
-	} else {
-		l.discardedErrorLogLinesCounter.Inc()
-	}
-}
-
-func (l *RateLimitedLogger) Warnf(format string, args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Warnf(format, args...)
-	} else {
-		l.discardedWarnLogLinesCounter.Inc()
-	}
-}
-
-func (l *RateLimitedLogger) Warnln(args ...interface{}) {
-	if l.limiter.Allow() {
-		l.next.Warnln(args...)
-	} else {
-		l.discardedWarnLogLinesCounter.Inc()
-	}
-}
-
-func (l *RateLimitedLogger) WithField(key string, value interface{}) Interface {
-	return &RateLimitedLogger{
-		next:                          l.next.WithField(key, value),
-		limiter:                       l.limiter,
-		discardedInfoLogLinesCounter:  l.discardedInfoLogLinesCounter,
-		discardedDebugLogLinesCounter: l.discardedDebugLogLinesCounter,
-		discardedWarnLogLinesCounter:  l.discardedWarnLogLinesCounter,
-		discardedErrorLogLinesCounter: l.discardedErrorLogLinesCounter,
-	}
-}
-
-func (l *RateLimitedLogger) WithFields(f Fields) Interface {
-	return &RateLimitedLogger{
-		next:                          l.next.WithFields(f),
-		limiter:                       l.limiter,
-		discardedInfoLogLinesCounter:  l.discardedInfoLogLinesCounter,
-		discardedDebugLogLinesCounter: l.discardedDebugLogLinesCounter,
-		discardedWarnLogLinesCounter:  l.discardedWarnLogLinesCounter,
-		discardedErrorLogLinesCounter: l.discardedErrorLogLinesCounter,
-	}
+	return nil
 }
