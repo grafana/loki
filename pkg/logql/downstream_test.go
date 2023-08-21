@@ -146,7 +146,6 @@ func TestShardCounter(t *testing.T) {
 			)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			// TODO: test with probabilistic true
 			mapper := NewShardMapper(ConstantShards(shards), false, nilShardMetrics)
 			noop, _, mapped, err := mapper.Parse(tc.query)
 			require.NoError(t, err)
@@ -362,8 +361,6 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		{`sum(min by (a)(max(sum by (b) (count_over_time({a=~".+"} [2s])))))`, time.Second},
 
 		// Non-splittable vector aggregators
-		// TODO: Fix topk
-		//{`topk(2, count_over_time({a=~".+"}[2s]))`, time.Second},
 		{`avg(count_over_time({a=~".+"}[2s]))`, time.Second},
 
 		// Uneven split times
