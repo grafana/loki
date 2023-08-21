@@ -131,8 +131,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 			groupingKey, buf = metric.HashForLabels(buf, e.expr.Grouping.Groups...)
 		}
 
-		// TODO(karsten): support floats.
-		topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), uint32(s.F))
+		topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), s.F)
 	}
 
 	r := sketch.TopKVector{

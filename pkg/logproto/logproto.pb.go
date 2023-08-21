@@ -4329,7 +4329,7 @@ func (this *SeriesIdentifier) GoString() string {
 	s := make([]string, 0, 5)
 	s = append(s, "&logproto.SeriesIdentifier{")
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)
@@ -8385,7 +8385,7 @@ func (this *SeriesIdentifier) String() string {
 		return "nil"
 	}
 	keysForLabels := make([]string, 0, len(this.Labels))
-	for k, _ := range this.Labels {
+	for k := range this.Labels {
 		keysForLabels = append(keysForLabels, k)
 	}
 	github_com_gogo_protobuf_sortkeys.Strings(keysForLabels)

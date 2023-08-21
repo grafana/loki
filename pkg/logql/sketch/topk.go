@@ -15,7 +15,7 @@ import (
 
 type element struct {
 	Event string
-	Count int64
+	Count float64
 }
 
 type TopKResult struct {
@@ -156,7 +156,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 		Depth: t.sketch.depth,
 		Width: t.sketch.width,
 	}
-	cms.Counters = make([]uint32, 0, cms.Depth*cms.Width)
+	cms.Counters = make([]float64, 0, cms.Depth*cms.Width)
 	for row := uint32(0); row < cms.Depth; row++ {
 		cms.Counters = append(cms.Counters, t.sketch.counters[row]...)
 	}
@@ -189,7 +189,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 
 // wrapper to bundle together updating of the bf portion of the sketch and pushing of a new element
 // to the heap
-func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
+func (t *Topk) heapPush(h *MinHeap, event string, estimate float64, h1, h2 uint32) {
 	var pos uint32
 	for i := range t.bf {
 		pos = t.sketch.getPos(h1, h2, uint32(i))
@@ -200,7 +200,7 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate, h1, h2 uint32) {
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
 // as well as replacing the min heap element with the new event and it's count
-func (t *Topk) heapMinReplace(event, groupingKey string, estimate uint32, removed string) {
+func (t *Topk) heapMinReplace(event, groupingKey string, estimate float64, removed string) {
 	t.updateBF(removed, event)
 	(*t.Heaps[groupingKey])[0].Event = event
 	(*t.Heaps[groupingKey])[0].count = estimate
@@ -249,7 +249,7 @@ func unsafeGetBytes(s string) []byte {
 // new estimate is greater than the thing that's the current minimum value heap element. At that point, we update the values
 // for each node in the heap and rebalance the heap, and then if the event we're observing has an estimate that is still
 // greater than the minimum heap element count, we should put this event into the heap and remove the other one.
-func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count uint32) {
+func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count float64) {
 	estimate, h1, h2 := t.sketch.ConservativeAdd(event, count)
 	t.hll.Insert(unsafeGetBytes(event))
 
@@ -302,7 +302,7 @@ func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count uint32) {
 }
 
 // Observe should only be used when there is no grouping key present for the overall query
-func (t *Topk) Observe(event string, count uint32) {
+func (t *Topk) Observe(event string, count float64) {
 	t.ObserveForGroupingKey(event, "", count)
 }
 
@@ -342,11 +342,11 @@ func (t *Topk) Merge(from *Topk) error {
 		all.Result = all.Result[:0]
 		all.groupingKey = key
 		for _, e := range *t.Heaps[key] {
-			all.Result = append(all.Result, element{Event: e.Event, Count: int64(t.sketch.Count(e.Event))})
+			all.Result = append(all.Result, element{Event: e.Event, Count: t.sketch.Count(e.Event)})
 		}
 
 		for _, e := range *from.Heaps[key] {
-			all.Result = append(all.Result, element{Event: e.Event, Count: int64(t.sketch.Count(e.Event))})
+			all.Result = append(all.Result, element{Event: e.Event, Count: t.sketch.Count(e.Event)})
 		}
 
 		all = removeDuplicates(all)
@@ -356,7 +356,7 @@ func (t *Topk) Merge(from *Topk) error {
 		// TODO: merging should also potentially replace it's bloomfilter? or 0 everything in the bloomfilter
 		for _, e := range all.Result[:t.max] {
 			h1, h2 = hashn(e.Event)
-			t.heapPush(temp, e.Event, uint32(e.Count), h1, h2)
+			t.heapPush(temp, e.Event, e.Count, h1, h2)
 		}
 		t.Heaps[key] = temp
 	}
@@ -400,7 +400,7 @@ func (t *Topk) Topk() []TopKResult {
 		for _, e := range *t.Heaps[key] {
 			keyRes.Result = append(keyRes.Result, element{
 				Event: e.Event,
-				Count: int64(t.sketch.Count(e.Event)),
+				Count: t.sketch.Count(e.Event),
 			})
 		}
 		sort.Sort(keyRes)
@@ -424,7 +424,7 @@ func (t *Topk) TopkForGroupingKey(groupingKey string) TopKResult {
 	for _, e := range *t.Heaps[groupingKey] {
 		res.Result = append(res.Result, element{
 			Event: e.Event,
-			Count: int64(t.sketch.Count(e.Event)),
+			Count: t.sketch.Count(e.Event),
 		})
 	}
 	sort.Sort(res)

@@ -402,7 +402,7 @@ func TestInstanceDownstreamProbabilistic(t *testing.T) {
 				Values: []*logproto.TopKMatrix_Vector{
 					{
 						Topk: &logproto.TopK{
-							Cms: &logproto.CountMinSketch{Depth: 2, Width: 12, Counters: make([]uint32, 2*12)},
+							Cms: &logproto.CountMinSketch{Depth: 2, Width: 12, Counters: make([]float64, 2*12)},
 							Results: []*logproto.TopK_Result{
 								{
 									Key: "",

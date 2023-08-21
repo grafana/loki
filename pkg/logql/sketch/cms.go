@@ -7,7 +7,7 @@ import (
 
 type CountMinSketch struct {
 	depth, width uint32
-	counters     [][]uint32
+	counters     [][]float64
 }
 
 // NewCountMinSketch creates a new CMS for a given width and depth.
@@ -19,10 +19,10 @@ func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 	}, nil
 }
 
-func make2dslice(col, row uint32) [][]uint32 {
-	ret := make([][]uint32, row)
+func make2dslice(col, row uint32) [][]float64 {
+	ret := make([][]float64, row)
 	for i := range ret {
-		ret[i] = make([]uint32, col)
+		ret[i] = make([]float64, col)
 	}
 	return ret
 }
@@ -33,14 +33,14 @@ func (s *CountMinSketch) getPos(h1, h2, row uint32) uint32 {
 }
 
 // Add 'count' occurrences of the given input.
-func (s *CountMinSketch) Add(event string, count int) {
+func (s *CountMinSketch) Add(event string, count float64) {
 	// see the comments in the hashn function for how using only 2
 	// hash functions rather than a function per row still fullfils
 	// the pairwise indendent hash functions requirement for CMS
 	h1, h2 := hashn(event)
 	for i := uint32(0); i < s.depth; i++ {
 		pos := s.getPos(h1, h2, i)
-		s.counters[i][pos] += uint32(count)
+		s.counters[i][pos] += count
 	}
 }
 
@@ -55,8 +55,8 @@ func (s *CountMinSketch) Increment(event string) {
 // value that's less than Count(h) + count rather than all counters that h hashed to.
 // Returns the new estimate for the event as well as the both hashes which can be used
 // to identify the event for other things that need a hash.
-func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, uint32, uint32) {
-	min := uint32(math.MaxUint32)
+func (s *CountMinSketch) ConservativeAdd(event string, count float64) (float64, uint32, uint32) {
+	min := math.MaxFloat64
 
 	h1, h2 := hashn(event)
 	// inline Count to save time/memory
@@ -78,13 +78,13 @@ func (s *CountMinSketch) ConservativeAdd(event string, count uint32) (uint32, ui
 	return min, h1, h2
 }
 
-func (s *CountMinSketch) ConservativeIncrement(event string) (uint32, uint32, uint32) {
-	return s.ConservativeAdd(event, 1)
+func (s *CountMinSketch) ConservativeIncrement(event string) (float64, uint32, uint32) {
+	return s.ConservativeAdd(event, 1.0)
 }
 
 // Count returns the approximate min count for the given input.
-func (s *CountMinSketch) Count(event string) uint32 {
-	min := uint32(math.MaxUint32)
+func (s *CountMinSketch) Count(event string) float64 {
+	min := math.MaxFloat64
 	h1, h2 := hashn(event)
 
 	var pos uint32

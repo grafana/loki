@@ -9,7 +9,7 @@ message CountMinSketch {
   uint32 width = 2;
 
   // counters is a matrix of depth * width as a single slice.
-  repeated uint32 counters = 3;
+  repeated double counters = 3;
 }
 
 message TopK {
@@ -17,7 +17,7 @@ message TopK {
 
   message Pair {
     string event = 1;
-    uint32 count = 2;
+    double count = 2;
   }
 
   message Result {
