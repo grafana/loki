@@ -180,6 +180,10 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	return nil
 }
 
+func compareTopkVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) error {
+	return nil
+}
+
 func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) error {
 	var expected, actual model.Scalar
 	err := json.Unmarshal(expectedRaw, &expected)

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"regexp"
 	"time"
 
 	"github.com/pkg/errors"
@@ -22,6 +23,8 @@ type ProxyBackend struct {
 	// Whether this is the preferred backend from which picking up
 	// the response and sending it back to the client.
 	preferred bool
+
+	skipMatch *regexp.Regexp
 }
 
 // NewProxyBackend makes a new ProxyBackend

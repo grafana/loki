@@ -117,6 +117,10 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
+			if b.skipMatch != nil && b.skipMatch.Match([]byte(r.URL.String())) {
+				return
+			}
+
 			status, body, err := b.ForwardRequest(r, bodyReader)
 			elapsed := time.Since(start)
 
