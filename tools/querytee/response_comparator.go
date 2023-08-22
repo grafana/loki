@@ -161,15 +161,15 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		metricFingerprintToIndexMap[actualMetric.Metric.Fingerprint()] = i
 	}
 
-	missingMetrics := 0
+	missingMetrics := make([]model.Metric, 0)
 	for _, expectedMetric := range expected {
 		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
 		if !ok {
-			missingMetrics++
+			missingMetrics = append(missingMetrics, expectedMetric.Metric)
 			continue
-			//TODO: return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
 		}
 
+		// TODO: collect errors instead of returning.
 		actualMetric := actual[actualMetricIndex]
 		err := compareSamplePair(model.SamplePair{
 			Timestamp: expectedMetric.Timestamp,
@@ -183,7 +183,11 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		}
 	}
 
-	return &ComparisonSummary{missingMetrics: missingMetrics}, nil
+	if len(missingMetrics) > 0 {
+		err = fmt.Errorf("expected metric %s missing from actual response", missingMetrics[0])
+	}
+
+	return &ComparisonSummary{missingMetrics: len(missingMetrics)}, err
 }
 
 func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
