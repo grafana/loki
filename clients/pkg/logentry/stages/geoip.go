@@ -252,7 +252,7 @@ func (g *geoIPStage) populateLabelsWithASNData(labels model.LabelSet, extracted 
 		extracted[key] = asn
 	}
 	if autonomousSystemOrganization != "" {
-		key := fmt.Sprint("geoip_autonomous_system_organization")
+		key := "geoip_autonomous_system_organization"
 		labels[model.LabelName(key)] = model.LabelValue(autonomousSystemOrganization)
 		extracted[key] = autonomousSystemOrganization
 	}
