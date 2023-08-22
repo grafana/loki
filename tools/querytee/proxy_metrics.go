@@ -17,6 +17,7 @@ type ProxyMetrics struct {
 	requestDuration        *prometheus.HistogramVec
 	responsesTotal         *prometheus.CounterVec
 	responsesComparedTotal *prometheus.CounterVec
+	missingMetrics         *prometheus.HistogramVec
 }
 
 func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
@@ -37,6 +38,11 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Name:      "responses_compared_total",
 			Help:      "Total number of responses compared per route and backend name by result.",
 		}, []string{"backend", "route", "result", "issuer"}),
+		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "cortex_querytee",
+			Name:      "missing_metrics",
+			Help:      "Number of missing metrics (series) in a vector response.",
+		}, []string{"backend", "method", "route", "status_code", "issuer"}),
 	}
 
 	return m

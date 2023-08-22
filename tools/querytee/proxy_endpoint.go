@@ -18,6 +18,7 @@ import (
 
 type ResponsesComparator interface {
 	Compare(expected, actual []byte) error
+	WithMetrics(*ProxyMetrics) ResponsesComparator
 }
 
 type ProxyEndpoint struct {

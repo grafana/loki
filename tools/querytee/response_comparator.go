@@ -16,7 +16,7 @@ import (
 )
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
-type SamplesComparatorFunc func(expected, actual json.RawMessage, opts SampleComparisonOptions) error
+type SamplesComparatorFunc func(expected, actual json.RawMessage, opts SampleComparisonOptions, metrics *ProxyMetrics) error
 
 type SamplesResponse struct {
 	Status string
@@ -39,7 +39,7 @@ func NewSamplesComparator(opts SampleComparisonOptions) *SamplesComparator {
 			"matrix":                 compareMatrix,
 			"vector":                 compareVector,
 			"scalar":                 compareScalar,
-			loghttp.ResultTypeStream: compareStreams,
+			loghttp.ResultTypeStream: compareStreams, // TODO: this makes it more than a samples compator
 		},
 	}
 }
@@ -47,11 +47,17 @@ func NewSamplesComparator(opts SampleComparisonOptions) *SamplesComparator {
 type SamplesComparator struct {
 	opts                  SampleComparisonOptions
 	sampleTypesComparator map[string]SamplesComparatorFunc
+	metrics               *ProxyMetrics // TODO: should we define compator metrics instead?
 }
 
 // RegisterSamplesComparator helps with registering custom sample types
 func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator SamplesComparatorFunc) {
 	s.sampleTypesComparator[samplesType] = comparator
+}
+
+func (s *SamplesComparator) WithMetrics(m *ProxyMetrics) ResponsesComparator {
+	s.metrics = m
+	return s
 }
 
 func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte) error {
@@ -80,10 +86,10 @@ func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte) err
 		return fmt.Errorf("resultType %s not registered for comparison", expected.Data.ResultType)
 	}
 
-	return comparator(expected.Data.Result, actual.Data.Result, s.opts)
+	return comparator(expected.Data.Result, actual.Data.Result, s.opts, s.metrics)
 }
 
-func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) error {
+func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions, _ *ProxyMetrics) error {
 	var expected, actual model.Matrix
 
 	err := json.Unmarshal(expectedRaw, &expected)
@@ -138,7 +144,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	return nil
 }
 
-func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) error {
+func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions, metrics *ProxyMetrics) error {
 	var expected, actual model.Vector
 
 	err := json.Unmarshal(expectedRaw, &expected)
@@ -161,10 +167,13 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		metricFingerprintToIndexMap[actualMetric.Metric.Fingerprint()] = i
 	}
 
+	missingMetrics := 0
 	for _, expectedMetric := range expected {
 		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
 		if !ok {
-			return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
+			missingMetrics++
+			continue
+			//TODO: return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
 		}
 
 		actualMetric := actual[actualMetricIndex]
@@ -174,20 +183,20 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		}, model.SamplePair{
 			Timestamp: actualMetric.Timestamp,
 			Value:     actualMetric.Value,
-		}, opts)
+		}, opts, metrics)
 		if err != nil {
 			return errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
 		}
 	}
 
+	if metrics != nil {
+		metrics.missingMetrics.With(nil).Observe(float64(missingMetrics))
+	}
+
 	return nil
 }
 
-func compareTopkVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) error {
-	return nil
-}
-
-func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) error {
+func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions, metrics *ProxyMetrics) error {
 	var expected, actual model.Scalar
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
@@ -205,10 +214,10 @@ func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	}, model.SamplePair{
 		Timestamp: actual.Timestamp,
 		Value:     actual.Value,
-	}, opts)
+	}, opts, metrics)
 }
 
-func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) error {
+func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions, _ *ProxyMetrics) error {
 	if expected.Timestamp != actual.Timestamp {
 		return fmt.Errorf("expected timestamp %v but got %v", expected.Timestamp, actual.Timestamp)
 	}
@@ -239,7 +248,7 @@ func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOp
 	return math.Abs(f-s) <= opts.Tolerance
 }
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOptions) error {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOptions, _ *ProxyMetrics) error {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)

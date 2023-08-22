@@ -35,6 +35,7 @@ type ProxyConfig struct {
 	PassThroughNonRegisteredRoutes bool
 	SkipRecentSamples              time.Duration
 	RequestURLFilter               *regexp.Regexp
+	InstrumentCompares             bool
 }
 
 func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
@@ -53,6 +54,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		cfg.RequestURLFilter, err = regexp.Compile(raw)	
 		return err
 	})
+	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and secondary endpoints for supported routes.")
 }
 
 type Route struct {
@@ -85,6 +87,10 @@ func NewProxy(cfg ProxyConfig, logger log.Logger, readRoutes, writeRoutes []Rout
 
 	if cfg.PassThroughNonRegisteredRoutes && cfg.PreferredBackend == "" {
 		return nil, fmt.Errorf("when enabling passthrough for non-registered routes -backend.preferred flag must be set to hostname of backend where those requests needs to be passed")
+	}
+
+	if cfg.InstrumentCompares && !cfg.CompareResponses {
+		return nil, fmt.Errorf("when enabling instrumentation of comparisons of results -proxy.compare-responses flag must be set")
 	}
 
 	p := &Proxy{
@@ -184,6 +190,9 @@ func (p *Proxy) Start() error {
 		var comparator ResponsesComparator
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
+		}
+		if p.cfg.InstrumentCompares {
+			comparator = comparator.WithMetrics(p.metrics)
 		}
 		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator))
 	}
