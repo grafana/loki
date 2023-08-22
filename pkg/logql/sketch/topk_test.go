@@ -3,6 +3,7 @@ package sketch
 import (
 	"bufio"
 	"container/heap"
+	"fmt"
 	"io"
 	"math/rand"
 	"os"
@@ -351,4 +352,189 @@ func TestRealTop_MergeProto(t *testing.T) {
 	mCardinality, _ := mergedCMS.Cardinality()
 	dCardinality, _ := dMerged.Cardinality()
 	require.Equal(t, mCardinality, dCardinality, "hll cardinality estimate was not correct after deserializing and merging")
+}
+
+// Test the accuracy of our topk sketch against zipf distribution datasets.
+func TestTopkZipf(t *testing.T) {
+	cases := []struct {
+		s               float64
+		max             uint64
+		k               int
+		expectedMissing int
+	}{
+		{
+			s:               1.1,
+			max:             100000,
+			k:               100,
+			expectedMissing: 0,
+		},
+		{
+			s:               2.0,
+			max:             100000,
+			k:               100,
+			expectedMissing: 0,
+		},
+		{
+			s:               3.0,
+			max:             100000,
+			k:               100,
+			expectedMissing: 4,
+		},
+		{
+			s:               4.0,
+			max:             100000,
+			k:               100,
+			expectedMissing: 4,
+		},
+	}
+
+	for i, tc := range cases {
+		m := make(map[string]uint32)
+		h := MinHeap{}
+		hll := hyperloglog.New16()
+		// use a constant source so the results are deterministic:
+		r := rand.New(rand.NewSource(int64(99 + i)))
+		topk, _ := NewCMSTopkForCardinality(nil, tc.k, int(tc.max))
+
+		z := rand.NewZipf(r, tc.s, 1.0, tc.max)
+		for i := 0; uint64(i) < tc.max; i++ {
+			val := z.Uint64()
+			s := strconv.Itoa(i)
+
+			// observe the event into the real topk
+			if m[s] == 0 {
+				hll.Insert([]byte(s))
+			}
+			m[s] = uint32(val)
+			if _, ok := h.Find(s); ok {
+				h.update(s, m[s])
+				continue
+			}
+			if len(h) < tc.k {
+				heap.Push(&h, &node{event: s, count: m[s]})
+				continue
+			}
+			if m[s] > (h.Peek().(*node).count) {
+				heap.Pop(&h)
+				heap.Push(&h, &node{event: s, count: m[s]})
+			}
+
+			// observe the event into a cms topk
+			for j := 0; j < int(val); j++ {
+				topk.Observe(s)
+			}
+		}
+		//fmt.Println("topk: ", topk.Topk())
+		res := make(TopKResult, 0, len(h))
+		for i := 0; i < len(h); i++ {
+			res = append(res, element{h[i].event, int64(h[i].count)})
+		}
+		sort.Sort(res)
+		missing := 0
+	outer:
+		for _, e := range res {
+			for _, tk := range topk.Topk() {
+				if e.Event == tk.Event {
+					continue outer
+				}
+			}
+			missing++
+		}
+		//fmt.Println("heap res: ", res)
+		//fmt.Println("missing: ", missing)
+		assert.LessOrEqualf(t, missing, tc.expectedMissing, "more than expected # of missing elements from topk")
+	}
+}
+
+// Test the accuracy of our topk sketch against normal distribution datasets.
+// we should add in multiplication by a stddev.
+func TestTopkNormalDistribution(t *testing.T) {
+	cases := []struct {
+		max             uint64
+		k               int
+		expectedMissing int
+	}{
+		{
+			max:             1000,
+			k:               5,
+			expectedMissing: 0,
+		},
+		//{
+		//	max:             100000,
+		//	k:               100,
+		//	expectedMissing: 0,
+		//},
+		//{
+		//	max:             100000,
+		//	k:               100,
+		//	expectedMissing: 4,
+		//},
+		//{
+		//	max:             100000,
+		//	k:               100,
+		//	expectedMissing: 4,
+		//},
+	}
+
+	for i, tc := range cases {
+		m := make(map[string]uint32)
+		h := MinHeap{}
+		hll := hyperloglog.New16()
+		// use a constant source so the results are deterministic:
+		r := rand.New(rand.NewSource(int64(99 + i)))
+		topk, _ := NewCMSTopkForCardinality(nil, tc.k, int(tc.max))
+
+		var s string
+		var val uint32
+		for i := 0; uint64(i) < tc.max; i++ {
+			//if i%10 == 0 {
+			fmt.Println("i: ", i)
+			//}
+			// will this work properly? it could generate negative values
+			val = uint32(r.NormFloat64())
+			s = strconv.Itoa(i)
+
+			// observe the event into the real topk
+			if m[s] == 0 {
+				hll.Insert([]byte(s))
+			}
+			m[s] = uint32(val)
+			if _, ok := h.Find(s); ok {
+				h.update(s, m[s])
+				continue
+			}
+			if len(h) < tc.k {
+				heap.Push(&h, &node{event: s, count: m[s]})
+				continue
+			}
+			if m[s] > (h.Peek().(*node).count) {
+				heap.Pop(&h)
+				heap.Push(&h, &node{event: s, count: m[s]})
+			}
+
+			// observe the event into a cms topk
+			for j := 0; j < int(val); j++ {
+				topk.Observe(s)
+			}
+		}
+		fmt.Println("topk: ", topk.Topk())
+		res := make(TopKResult, 0, len(h))
+		for i := 0; i < len(h); i++ {
+			res = append(res, element{h[i].event, int64(h[i].count)})
+		}
+		sort.Sort(res)
+		missing := 0
+	outer:
+		for _, e := range res {
+			for _, tk := range topk.Topk() {
+				if e.Event == tk.Event {
+					continue outer
+				}
+			}
+			missing++
+		}
+		fmt.Println("heap res: ", res)
+		fmt.Println("missing: ", missing)
+		assert.LessOrEqualf(t, missing, tc.expectedMissing, "more than expected # of missing elements from topk")
+	}
 }
