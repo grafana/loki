@@ -539,7 +539,7 @@ func (i *instance) Label(ctx context.Context, req *logproto.LabelRequest, matche
 }
 
 func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-	groups, err := logql.Match(req.GetGroups())
+	groups, err := logql.MatchForSeriesRequest(req.GetGroups())
 	if err != nil {
 		return nil, err
 	}
@@ -604,7 +604,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "instance.GetStats")
 	defer sp.Finish()
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -657,7 +657,7 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 }
 
 func (i *instance) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}

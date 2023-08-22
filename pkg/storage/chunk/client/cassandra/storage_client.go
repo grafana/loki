@@ -670,6 +670,10 @@ func (s *ObjectClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
+func (s *ObjectClient) IsRetryableErr(_ error) bool {
+	return false
+}
+
 // Stop implement chunk.ObjectClient.
 func (s *ObjectClient) Stop() {
 	s.readSession.Close()

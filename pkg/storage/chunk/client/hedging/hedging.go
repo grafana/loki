@@ -16,6 +16,7 @@ var (
 	ErrTooManyHedgeRequests       = errors.New("too many hedge requests")
 	totalHedgeRequests            prometheus.Counter
 	totalRateLimitedHedgeRequests prometheus.Counter
+	requestsWon                   *prometheus.CounterVec
 	once                          sync.Once
 )
 
@@ -34,6 +35,11 @@ func initMetrics() {
 		Name: "hedged_requests_rate_limited_total",
 		Help: "The total number of hedged requests rejected via rate limiting.",
 	})
+
+	requestsWon = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "hedged_requests_won_total",
+		Help: "The total number of requests which completed before their hedged or original counterpart.",
+	}, []string{"type"})
 }
 
 // Config is the configuration for hedging requests.
@@ -99,11 +105,12 @@ func (cfg *Config) RoundTripperWithRegisterer(next http.RoundTripper, reg promet
 	once.Do(func() {
 		reg.MustRegister(totalHedgeRequests)
 		reg.MustRegister(totalRateLimitedHedgeRequests)
+		reg.MustRegister(requestsWon)
 	})
 	return hedgedhttp.NewRoundTripper(
 		cfg.At,
 		cfg.UpTo,
-		newLimitedHedgingRoundTripper(cfg.MaxPerSecond, next),
+		newWinnerTrackingRoundTripper(newLimitedHedgingRoundTripper(cfg.MaxPerSecond, next)),
 	)
 }
 
@@ -125,12 +132,36 @@ func newLimitedHedgingRoundTripper(max int, next http.RoundTripper) *limitedHedg
 }
 
 func (rt *limitedHedgingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	if hedgedhttp.IsHedgedRequest(req) {
+	isHedged := hedgedhttp.IsHedgedRequest(req)
+	if isHedged {
 		if !rt.limiter.Allow() {
 			totalRateLimitedHedgeRequests.Inc()
 			return nil, ErrTooManyHedgeRequests
 		}
 		totalHedgeRequests.Inc()
 	}
+
 	return rt.next.RoundTrip(req)
+}
+
+type winnerTrackingRoundTripper struct {
+	next http.RoundTripper
+}
+
+func newWinnerTrackingRoundTripper(next http.RoundTripper) *winnerTrackingRoundTripper {
+	return &winnerTrackingRoundTripper{next: next}
+}
+
+func (rt *winnerTrackingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	isHedged := hedgedhttp.IsHedgedRequest(req)
+	resp, err := rt.next.RoundTrip(req)
+	if err == nil {
+		if isHedged {
+			requestsWon.WithLabelValues("hedged").Inc()
+		} else {
+			requestsWon.WithLabelValues("original").Inc()
+		}
+	}
+
+	return resp, err
 }

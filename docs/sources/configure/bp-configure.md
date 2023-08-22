@@ -46,7 +46,7 @@ What can we do about this? What if this was because the sources of these logs we
 {job="syslog", instance="host2"} 00:00:02 i'm a syslog!  <- Accepted, still in order for stream 2
 ```
 
-But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](/docs/loki/latest/clients/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
+But what if the application itself generated logs that were out of order? Well, I'm afraid this is a problem. If you are extracting the timestamp from the log line with something like [the Promtail pipeline stage](/docs/loki/latest/send-data/promtail/stages/timestamp/), you could instead _not_ do this and let Promtail assign a timestamp to the log lines. Or you can hopefully fix it in the application itself.
 
 It's also worth noting that the batching nature of the Loki push API can lead to some instances of out of order errors being received which are really false positives. (Perhaps a batch partially succeeded and was present; or anything that previously succeeded would return an out of order entry; or anything new would be accepted.)
 

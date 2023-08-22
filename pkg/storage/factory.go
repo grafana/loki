@@ -21,6 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
+	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -279,6 +280,7 @@ type Config struct {
 	NamedStores            NamedStores               `yaml:"named_stores"`
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
 	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
+	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
@@ -308,6 +310,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Swift.RegisterFlags(f)
 	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
+	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
 	cfg.IndexQueriesCacheConfig.RegisterFlagsWithPrefix("store.index-cache-read.", "", f)
 	f.DurationVar(&cfg.IndexCacheValidity, "store.index-cache-validity", 5*time.Minute, "Cache validity for active index entries. Should be no higher than -ingester.max-chunk-idle.")
@@ -422,7 +425,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
-func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clientMetrics ClientMetrics, registerer prometheus.Registerer) (client.Client, error) {
+func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc congestion.Controller, registerer prometheus.Registerer, clientMetrics ClientMetrics) (client.Client, error) {
 	var (
 		storeType = name
 	)
@@ -477,6 +480,13 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		if err != nil {
 			return nil, err
 		}
+
+		// TODO(dannyk): expand congestion control to all other object clients
+		// this switch statement can be simplified; all the branches like this one are alike
+		if cfg.CongestionControl.Enabled {
+			c = cc.Wrap(c)
+		}
+
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeSwift:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
@@ -621,6 +631,13 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 			}
 
 			gcsCfg = (gcp.GCSConfig)(nsCfg)
+		}
+
+		// ensure the GCS client's internal retry mechanism is disabled if we're using congestion control,
+		// which has its own retry mechanism
+		// TODO(dannyk): implement hedging in controller
+		if cfg.CongestionControl.Enabled {
+			gcsCfg.EnableRetries = false
 		}
 
 		return gcp.NewGCSObjectClient(context.Background(), gcsCfg, cfg.Hedging)

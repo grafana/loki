@@ -578,6 +578,10 @@ func (a dynamoDBStorageClient) IsChunkNotFoundErr(_ error) bool {
 	return false
 }
 
+func (a dynamoDBStorageClient) IsRetryableErr(_ error) bool {
+	return false
+}
+
 func (a dynamoDBStorageClient) writesForChunks(chunks []chunk.Chunk) (dynamoDBWriteBatch, error) {
 	dynamoDBWrites := dynamoDBWriteBatch{}
 
