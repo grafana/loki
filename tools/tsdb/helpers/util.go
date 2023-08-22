@@ -1,4 +1,4 @@
-package main
+package helpers
 
 import (
 	"context"
@@ -49,7 +49,7 @@ func getTableNumberForTime(t model.Time) int64 {
 }
 
 // copied from storage/store.go
-func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
+func GetIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodConfig) config.TableRanges {
 	var ranges config.TableRanges
 	for i := range periodicConfigs {
 		if periodicConfigs[i].IndexType != indexType {
@@ -67,7 +67,7 @@ func getIndexStoreTableRanges(indexType string, periodicConfigs []config.PeriodC
 	return ranges
 }
 
-func resolveTenants(objectClient client.ObjectClient, bucket string, tableRanges config.TableRanges) ([]string, string, error) {
+func ResolveTenants(objectClient client.ObjectClient, bucket string, tableRanges config.TableRanges) ([]string, string, error) {
 	if bucket == "" {
 		return nil, "", errors.New("empty bucket")
 	}
