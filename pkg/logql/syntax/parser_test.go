@@ -3184,7 +3184,7 @@ func TestParseMatchers(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseMatchers(tt.input)
+			got, err := ParseMatchers(tt.input, true)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ParseMatchers() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -3311,7 +3311,7 @@ func Benchmark_ParseMatchers(b *testing.B) {
 	s := `{cpu="10",endpoint="https",instance="10.253.57.87:9100",job="node-exporter",mode="idle",namespace="observability",pod="node-exporter-l454v",service="node-exporter"}`
 	var err error
 	for n := 0; n < b.N; n++ {
-		c, err = ParseMatchers(s)
+		c, err = ParseMatchers(s, true)
 		require.NoError(b, err)
 	}
 }
@@ -3323,7 +3323,7 @@ func Benchmark_CompareParseLabels(b *testing.B) {
 	var err error
 	b.Run("logql", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			c, err = ParseMatchers(s)
+			c, err = ParseMatchers(s, true)
 			require.NoError(b, err)
 		}
 	})

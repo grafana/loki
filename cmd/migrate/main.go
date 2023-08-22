@@ -153,7 +153,7 @@ func main() {
 	matchers := []*labels.Matcher{nameLabelMatcher}
 
 	if *match != "" {
-		m, err := syntax.ParseMatchers(*match)
+		m, err := syntax.ParseMatchers(*match, true)
 		if err != nil {
 			log.Println("Failed to parse log matcher:", err)
 			os.Exit(1)

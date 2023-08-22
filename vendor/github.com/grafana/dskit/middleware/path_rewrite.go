@@ -9,7 +9,9 @@ import (
 	"net/url"
 	"regexp"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/go-kit/log/level"
+
+	"github.com/grafana/dskit/log"
 )
 
 // PathRewrite supports regex matching and replace on Request URIs
@@ -31,7 +33,7 @@ func (p pathRewrite) Wrap(next http.Handler) http.Handler {
 		r.URL.RawPath = p.regexp.ReplaceAllString(r.URL.EscapedPath(), p.replacement)
 		path, err := url.PathUnescape(r.URL.RawPath)
 		if err != nil {
-			log.Errorf("Got invalid url-encoded path %v after applying path rewrite %v: %v", r.URL.RawPath, p, err)
+			level.Error(log.Global()).Log("msg", log.LazySprintf("got invalid url-encoded path %v after applying path rewrite %v", r.URL.RawPath, p), "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}

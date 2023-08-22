@@ -56,6 +56,7 @@
 * [10281](https://github.com/grafana/loki/pull/10281) **dannykopping**: Track effectiveness of hedged requests.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
 * [10302](https://github.com/grafana/loki/pull/10302) **ashwanthgoli**: Remove query_timeout and engine timeout from querier configuration
+* [10301](https://github.com/grafana/loki/pull/10301) **wildum**: Promtail: users can now define `additional_fields` in cloudflare configuration.
 
 ##### Fixes
 
