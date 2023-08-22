@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -137,7 +138,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 
 	backends := []*ProxyBackend{
 		NewProxyBackend("backend-1", backendURL1, time.Second, true),
-		NewProxyBackend("backend-2", backendURL2, time.Second, false),
+		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/test/api")),
 	}
 	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil)
 
@@ -145,6 +146,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 		name    string
 		request func(*testing.T) *http.Request
 		handler func(*testing.T) http.HandlerFunc
+		counts  int
 	}{
 		{
 			name: "GET-request",
@@ -160,6 +162,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 					_, _ = w.Write([]byte("ok"))
 				}
 			},
+			counts: 2,
 		},
 		{
 			name: "GET-filter-accept-encoding",
@@ -175,6 +178,21 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 					_, _ = w.Write([]byte("ok"))
 				}
 			},
+			counts: 2,
+		},
+		{
+			name: "GET-filtered",
+			request: func(t *testing.T) *http.Request {
+				r, err := http.NewRequest("GET", "http://will/not/pass/api/v1/test", nil)
+				require.NoError(t, err)
+				return r
+			},
+			handler: func(t *testing.T) http.HandlerFunc {
+				return func(w http.ResponseWriter, r *http.Request) {
+					_, _ = w.Write([]byte("ok"))
+				}
+			},
+			counts: 1,
 		},
 		{
 			name: "POST-request-with-body",
@@ -195,12 +213,13 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 					_, _ = w.Write([]byte("ok"))
 				}
 			},
+			counts: 2,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			// reset request count
 			requestCount.Store(0)
-			wg.Add(2)
+			wg.Add(tc.counts)
 
 			if tc.handler == nil {
 				testHandler = func(w http.ResponseWriter, r *http.Request) {
@@ -217,7 +236,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 			require.Equal(t, 200, w.Code)
 
 			wg.Wait()
-			require.Equal(t, uint64(2), requestCount.Load())
+			require.Equal(t, uint64(tc.counts), requestCount.Load())
 		})
 	}
 }

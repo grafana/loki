@@ -117,7 +117,7 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
-			if b.skipMatch != nil && b.skipMatch.Match([]byte(r.URL.String())) {
+			if b.filter != nil && !b.filter.Match([]byte(r.URL.String())) {
 				return
 			}
 

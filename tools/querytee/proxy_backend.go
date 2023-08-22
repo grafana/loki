@@ -24,7 +24,8 @@ type ProxyBackend struct {
 	// the response and sending it back to the client.
 	preferred bool
 
-	skipMatch *regexp.Regexp
+	// Only process requests that match the filter.
+	filter *regexp.Regexp
 }
 
 // NewProxyBackend makes a new ProxyBackend
@@ -51,6 +52,11 @@ func NewProxyBackend(name string, endpoint *url.URL, timeout time.Duration, pref
 			},
 		},
 	}
+}
+
+func (b *ProxyBackend) WithFilter(f *regexp.Regexp) *ProxyBackend {
+	b.filter = f
+	return b
 }
 
 func (b *ProxyBackend) ForwardRequest(orig *http.Request, body io.ReadCloser) (int, []byte, error) {
