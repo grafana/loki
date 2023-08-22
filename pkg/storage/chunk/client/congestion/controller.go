@@ -142,7 +142,9 @@ func (a *AIMDController) IsObjectNotFoundErr(err error) bool {
 func (a *AIMDController) IsRetryableErr(err error) bool {
 	retryable := a.inner.IsRetryableErr(err)
 	if !retryable {
-		a.metrics.nonRetryableErrors.Inc()
+		if !errors.Is(err, context.Canceled) {
+			a.metrics.nonRetryableErrors.Inc()
+		}
 	}
 
 	return retryable

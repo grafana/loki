@@ -1,6 +1,7 @@
 package congestion
 
 import (
+	"context"
 	"errors"
 	"io"
 
@@ -42,7 +43,9 @@ func (l *LimitedRetrier) Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, on
 
 		if err != nil {
 			if !isRetryable(err) {
-				level.Debug(l.logger).Log("msg", "store error is not retryable", "err", err)
+				if !errors.Is(err, context.Canceled) {
+					level.Debug(l.logger).Log("msg", "store error is not retryable", "err", err)
+				}
 				return rc, sz, err
 			}
 
