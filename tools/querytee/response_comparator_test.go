@@ -93,7 +93,7 @@ func TestCompareMatrix(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareMatrix(tc.expected, tc.actual, SampleComparisonOptions{})
+			_, err := compareMatrix(tc.expected, tc.actual, SampleComparisonOptions{})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -176,7 +176,7 @@ func TestCompareVector(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareVector(tc.expected, tc.actual, SampleComparisonOptions{})
+			_, err := compareVector(tc.expected, tc.actual, SampleComparisonOptions{})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -213,7 +213,7 @@ func TestCompareScalar(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareScalar(tc.expected, tc.actual, SampleComparisonOptions{})
+			_, err := compareScalar(tc.expected, tc.actual, SampleComparisonOptions{})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -408,7 +408,7 @@ func TestCompareSamplesResponse(t *testing.T) {
 				UseRelativeError:  tc.useRelativeError,
 				SkipRecentSamples: tc.skipRecentSamples,
 			})
-			err := samplesComparator.Compare(tc.expected, tc.actual)
+			_, err := samplesComparator.Compare(tc.expected, tc.actual)
 			if tc.err == nil {
 				require.NoError(t, err)
 				return
@@ -501,7 +501,7 @@ func TestCompareStreams(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := compareStreams(tc.expected, tc.actual, SampleComparisonOptions{Tolerance: 0})
+			_, err := compareStreams(tc.expected, tc.actual, SampleComparisonOptions{Tolerance: 0})
 			if tc.err == nil {
 				require.NoError(t, err)
 				return

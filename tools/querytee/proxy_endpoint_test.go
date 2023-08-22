@@ -96,7 +96,7 @@ func Test_ProxyEndpoint_waitBackendResponseForDownstream(t *testing.T) {
 		testData := testData
 
 		t.Run(testName, func(t *testing.T) {
-			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil)
+			endpoint := NewProxyEndpoint(testData.backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
 
 			// Send the responses from a dedicated goroutine.
 			resCh := make(chan *backendResponse)
@@ -140,7 +140,7 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 		NewProxyBackend("backend-1", backendURL1, time.Second, true),
 		NewProxyBackend("backend-2", backendURL2, time.Second, false).WithFilter(regexp.MustCompile("/test/api")),
 	}
-	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil)
+	endpoint := NewProxyEndpoint(backends, "test", NewProxyMetrics(nil), log.NewNopLogger(), nil, false)
 
 	for _, tc := range []struct {
 		name    string

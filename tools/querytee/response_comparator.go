@@ -16,7 +16,7 @@ import (
 )
 
 // SamplesComparatorFunc helps with comparing different types of samples coming from /api/v1/query and /api/v1/query_range routes.
-type SamplesComparatorFunc func(expected, actual json.RawMessage, opts SampleComparisonOptions, metrics *ProxyMetrics) error
+type SamplesComparatorFunc func(expected, actual json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error)
 
 type SamplesResponse struct {
 	Status string
@@ -47,7 +47,6 @@ func NewSamplesComparator(opts SampleComparisonOptions) *SamplesComparator {
 type SamplesComparator struct {
 	opts                  SampleComparisonOptions
 	sampleTypesComparator map[string]SamplesComparatorFunc
-	metrics               *ProxyMetrics // TODO: should we define compator metrics instead?
 }
 
 // RegisterSamplesComparator helps with registering custom sample types
@@ -55,54 +54,49 @@ func (s *SamplesComparator) RegisterSamplesType(samplesType string, comparator S
 	s.sampleTypesComparator[samplesType] = comparator
 }
 
-func (s *SamplesComparator) WithMetrics(m *ProxyMetrics) ResponsesComparator {
-	s.metrics = m
-	return s
-}
-
-func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte) error {
+func (s *SamplesComparator) Compare(expectedResponse, actualResponse []byte) (*ComparisonSummary, error) {
 	var expected, actual SamplesResponse
 
 	err := json.Unmarshal(expectedResponse, &expected)
 	if err != nil {
-		return errors.Wrap(err, "unable to unmarshal expected response")
+		return nil, errors.Wrap(err, "unable to unmarshal expected response")
 	}
 
 	err = json.Unmarshal(actualResponse, &actual)
 	if err != nil {
-		return errors.Wrap(err, "unable to unmarshal actual response")
+		return nil, errors.Wrap(err, "unable to unmarshal actual response")
 	}
 
 	if expected.Status != actual.Status {
-		return fmt.Errorf("expected status %s but got %s", expected.Status, actual.Status)
+		return nil, fmt.Errorf("expected status %s but got %s", expected.Status, actual.Status)
 	}
 
 	if expected.Data.ResultType != actual.Data.ResultType {
-		return fmt.Errorf("expected resultType %s but got %s", expected.Data.ResultType, actual.Data.ResultType)
+		return nil, fmt.Errorf("expected resultType %s but got %s", expected.Data.ResultType, actual.Data.ResultType)
 	}
 
 	comparator, ok := s.sampleTypesComparator[expected.Data.ResultType]
 	if !ok {
-		return fmt.Errorf("resultType %s not registered for comparison", expected.Data.ResultType)
+		return nil, fmt.Errorf("resultType %s not registered for comparison", expected.Data.ResultType)
 	}
 
-	return comparator(expected.Data.Result, actual.Data.Result, s.opts, s.metrics)
+	return comparator(expected.Data.Result, actual.Data.Result, s.opts)
 }
 
-func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions, _ *ProxyMetrics) error {
+func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
 	var expected, actual model.Matrix
 
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal expected matrix")
 	}
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal actual matrix")
 	}
 
 	if len(expected) != len(actual) {
-		return fmt.Errorf("expected %d metrics but got %d", len(expected),
+		return nil, fmt.Errorf("expected %d metrics but got %d", len(expected),
 			len(actual))
 	}
 
@@ -114,7 +108,7 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	for _, expectedMetric := range expected {
 		actualMetricIndex, ok := metricFingerprintToIndexMap[expectedMetric.Metric.Fingerprint()]
 		if !ok {
-			return fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
+			return nil, fmt.Errorf("expected metric %s missing from actual response", expectedMetric.Metric)
 		}
 
 		actualMetric := actual[actualMetricIndex]
@@ -129,36 +123,36 @@ func compareMatrix(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 					"newest-expected-ts", expectedMetric.Values[expectedMetricLen-1].Timestamp,
 					"oldest-actual-ts", actualMetric.Values[0].Timestamp, "newest-actual-ts", actualMetric.Values[actualMetricLen-1].Timestamp)
 			}
-			return err
+			return nil, err
 		}
 
 		for i, expectedSamplePair := range expectedMetric.Values {
 			actualSamplePair := actualMetric.Values[i]
 			err := compareSamplePair(expectedSamplePair, actualSamplePair, opts)
 			if err != nil {
-				return errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
+				return nil, errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
 			}
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
-func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions, metrics *ProxyMetrics) error {
+func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
 	var expected, actual model.Vector
 
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal expected vector")
 	}
 
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal actual vector")
 	}
 
 	if len(expected) != len(actual) {
-		return fmt.Errorf("expected %d metrics but got %d", len(expected),
+		return nil, fmt.Errorf("expected %d metrics but got %d", len(expected),
 			len(actual))
 	}
 
@@ -183,41 +177,37 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 		}, model.SamplePair{
 			Timestamp: actualMetric.Timestamp,
 			Value:     actualMetric.Value,
-		}, opts, metrics)
+		}, opts)
 		if err != nil {
-			return errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
+			return nil, errors.Wrapf(err, "sample pair not matching for metric %s", expectedMetric.Metric)
 		}
 	}
 
-	if metrics != nil {
-		metrics.missingMetrics.With(nil).Observe(float64(missingMetrics))
-	}
-
-	return nil
+	return &ComparisonSummary{missingMetrics: missingMetrics}, nil
 }
 
-func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions, metrics *ProxyMetrics) error {
+func compareScalar(expectedRaw, actualRaw json.RawMessage, opts SampleComparisonOptions) (*ComparisonSummary, error) {
 	var expected, actual model.Scalar
 	err := json.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal expected scalar")
 	}
 
 	err = json.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to actual expected scalar")
 	}
 
-	return compareSamplePair(model.SamplePair{
+	return nil, compareSamplePair(model.SamplePair{
 		Timestamp: expected.Timestamp,
 		Value:     expected.Value,
 	}, model.SamplePair{
 		Timestamp: actual.Timestamp,
 		Value:     actual.Value,
-	}, opts, metrics)
+	}, opts)
 }
 
-func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions, _ *ProxyMetrics) error {
+func compareSamplePair(expected, actual model.SamplePair, opts SampleComparisonOptions) error {
 	if expected.Timestamp != actual.Timestamp {
 		return fmt.Errorf("expected timestamp %v but got %v", expected.Timestamp, actual.Timestamp)
 	}
@@ -248,20 +238,20 @@ func compareSampleValue(first, second model.SampleValue, opts SampleComparisonOp
 	return math.Abs(f-s) <= opts.Tolerance
 }
 
-func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOptions, _ *ProxyMetrics) error {
+func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOptions) (*ComparisonSummary, error) {
 	var expected, actual loghttp.Streams
 
 	err := jsoniter.Unmarshal(expectedRaw, &expected)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal expected streams")
 	}
 	err = jsoniter.Unmarshal(actualRaw, &actual)
 	if err != nil {
-		return err
+		return nil, errors.Wrap(err, "unable to unmarshal actual streams")
 	}
 
 	if len(expected) != len(actual) {
-		return fmt.Errorf("expected %d streams but got %d", len(expected), len(actual))
+		return nil, fmt.Errorf("expected %d streams but got %d", len(expected), len(actual))
 	}
 
 	streamLabelsToIndexMap := make(map[string]int, len(expected))
@@ -272,7 +262,7 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOp
 	for _, expectedStream := range expected {
 		actualStreamIndex, ok := streamLabelsToIndexMap[expectedStream.Labels.String()]
 		if !ok {
-			return fmt.Errorf("expected stream %s missing from actual response", expectedStream.Labels)
+			return nil, fmt.Errorf("expected stream %s missing from actual response", expectedStream.Labels)
 		}
 
 		actualStream := actual[actualStreamIndex]
@@ -287,21 +277,21 @@ func compareStreams(expectedRaw, actualRaw json.RawMessage, _ SampleComparisonOp
 					"newest-expected-ts", expectedStream.Entries[expectedValuesLen-1].Timestamp.UnixNano(),
 					"oldest-actual-ts", actualStream.Entries[0].Timestamp.UnixNano(), "newest-actual-ts", actualStream.Entries[actualValuesLen-1].Timestamp.UnixNano())
 			}
-			return err
+			return nil, err
 		}
 
 		for i, expectedSamplePair := range expectedStream.Entries {
 			actualSamplePair := actualStream.Entries[i]
 			if !expectedSamplePair.Timestamp.Equal(actualSamplePair.Timestamp) {
-				return fmt.Errorf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
+				return nil, fmt.Errorf("expected timestamp %v but got %v for stream %s", expectedSamplePair.Timestamp.UnixNano(),
 					actualSamplePair.Timestamp.UnixNano(), expectedStream.Labels)
 			}
 			if expectedSamplePair.Line != actualSamplePair.Line {
-				return fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s", expectedSamplePair.Line,
+				return nil, fmt.Errorf("expected line %s for timestamp %v but got %s for stream %s", expectedSamplePair.Line,
 					expectedSamplePair.Timestamp.UnixNano(), actualSamplePair.Line, expectedStream.Labels)
 			}
 		}
 	}
 
-	return nil
+	return nil, nil
 }

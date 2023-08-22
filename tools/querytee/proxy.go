@@ -191,14 +191,11 @@ func (p *Proxy) Start() error {
 		if p.cfg.CompareResponses {
 			comparator = route.ResponseComparator
 		}
-		if p.cfg.InstrumentCompares {
-			comparator = comparator.WithMetrics(p.metrics)
-		}
-		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator))
+		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(filterReadDisabledBackends(p.backends, p.cfg.DisableBackendReadProxy), route.RouteName, p.metrics, p.logger, comparator, p.cfg.InstrumentCompares))
 	}
 
 	for _, route := range p.writeRoutes {
-		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil))
+		router.Path(route.Path).Methods(route.Methods...).Handler(NewProxyEndpoint(p.backends, route.RouteName, p.metrics, p.logger, nil, p.cfg.InstrumentCompares))
 	}
 
 	if p.cfg.PassThroughNonRegisteredRoutes {
