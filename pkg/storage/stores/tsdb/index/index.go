@@ -61,10 +61,6 @@ const (
 	fingerprintInterval = 1 << 10
 
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
-
-	// latestFormat is a pointer to lastest TSDB format. Only be used within packages for testing lastest formats.
-	// Shouldn't be exposed, as outside the TSDB packages, index format is determined only by corresponding schema version.
-	latestFormat = FormatV3
 )
 
 type indexWriterStage uint8
