@@ -372,7 +372,7 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 
 	var matchers []*labels.Matcher
 	if req.Query != "" {
-		matchers, err = syntax.ParseMatchers(req.Query)
+		matchers, err = syntax.ParseMatchers(req.Query, true)
 		if err != nil {
 			return nil, err
 		}
@@ -745,7 +745,7 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Query)
+	matchers, err := syntax.ParseMatchers(req.Query, true)
 	if err != nil {
 		return nil, err
 	}
@@ -778,7 +778,7 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}

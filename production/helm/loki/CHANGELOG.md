@@ -17,6 +17,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Added parameter to override images in GrafanaAgent
  
+## 5.14.1
+
+- [BUGFIX] Use the correct name of the service inside the ingress.
+
+## 5.14.0
+
+- [ENHANCEMENT] Make table_manager configuration toggle.
+
 ## 5.13.0
 
 - [ENHANCEMENT] Use "loki.clusterLabel" template for PodLogs cluster label

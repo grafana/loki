@@ -34,6 +34,7 @@ type ObjectClient interface {
 	List(ctx context.Context, prefix string, delimiter string) ([]StorageObject, []StorageCommonPrefix, error)
 	DeleteObject(ctx context.Context, objectKey string) error
 	IsObjectNotFoundErr(err error) bool
+	IsRetryableErr(err error) bool
 	Stop()
 }
 
@@ -202,4 +203,8 @@ func (o *client) DeleteChunk(ctx context.Context, userID, chunkID string) error 
 
 func (o *client) IsChunkNotFoundErr(err error) bool {
 	return o.store.IsObjectNotFoundErr(err)
+}
+
+func (o *client) IsRetryableErr(err error) bool {
+	return o.store.IsRetryableErr(err)
 }

@@ -31,7 +31,7 @@ One solution if you're seeing samples dropped due to `rate_limited` is simply to
 
 Note that you'll want to make sure your Loki cluster has sufficient resources provisioned to be able to accommodate these higher limits. Otherwise your cluster may experience performance degradation as it tries to handle this higher volume of log lines to ingest.
 
- Another option to address samples being dropped due to `rate_limits` is simply to decrease the rate of log lines being sent to your Loki cluster. Consider collecting logs from fewer targets or setting up `drop` stages in Promtail to filter out certain log lines. Promtail's [limits configuration](/docs/loki/latest/clients/promtail/configuration/#limits_config) also gives you the ability to control the volume of logs Promtail remote writes to your Loki cluster.  
+ Another option to address samples being dropped due to `rate_limits` is simply to decrease the rate of log lines being sent to your Loki cluster. Consider collecting logs from fewer targets or setting up `drop` stages in Promtail to filter out certain log lines. Promtail's [limits configuration](/docs/loki/latest/send-data/promtail/configuration/#limits_config) also gives you the ability to control the volume of logs Promtail remote writes to your Loki cluster.  
 
 
 | Property                | Value                   |
@@ -51,7 +51,7 @@ Each stream has a rate-limit applied to it to prevent individual streams from ov
 
 This value can be modified globally in the [`limits_config`](/docs/loki/latest/configuration/#limits_config) block, or on a per-tenant basis in the [runtime overrides](/docs/loki/latest/configuration/#runtime-configuration-file) file. The config options to adjust are `per_stream_rate_limit` and `per_stream_rate_limit_burst`.
 
-Another option you could consider to decrease the rate of samples dropped due to `per_stream_rate_limit` is to split the stream that is getting rate limited into several smaller streams. A third option is to use Promtail's [limit stage](/docs/loki/latest/clients/promtail/stages/limit/#limit-stage) to limit the rate of samples sent to the stream hitting the `per_stream_rate_limit`. 
+Another option you could consider to decrease the rate of samples dropped due to `per_stream_rate_limit` is to split the stream that is getting rate limited into several smaller streams. A third option is to use Promtail's [limit stage](/docs/loki/latest/send-data/promtail/stages/limit/#limit-stage) to limit the rate of samples sent to the stream hitting the `per_stream_rate_limit`. 
 
 We typically recommend setting `per_stream_rate_limit` no higher than 5MB, and `per_stream_rate_limit_burst` no higher than 20MB.
 

@@ -89,6 +89,7 @@ func New(cfg Config, log log.Logger, tms *targets.TargetManagers, promtailCfg st
 	registerMetrics := cfg.RegisterInstrumentation && !cfg.ProfilingEnabled
 	cfg.RegisterInstrumentation = cfg.ProfilingEnabled
 
+	cfg.Config.Log = log
 	wws, err := serverww.New(cfg.Config)
 	if err != nil {
 		return nil, err

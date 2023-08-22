@@ -119,7 +119,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	res, err := syntax.ParseMatchers(matchers)
+	res, err := syntax.ParseMatchers(matchers, true)
 	if err != nil {
 		panic(err)
 	}
@@ -294,6 +294,10 @@ func (m mockChunkStoreClient) DeleteChunk(_ context.Context, _, _ string) error 
 }
 
 func (m mockChunkStoreClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (m mockChunkStoreClient) IsRetryableErr(_ error) bool {
 	return false
 }
 
