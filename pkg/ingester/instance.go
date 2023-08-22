@@ -572,9 +572,6 @@ func (i *instance) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "instance.GetStats")
-	defer sp.Finish()
-
 	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
@@ -614,15 +611,18 @@ func (i *instance) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	sp.LogKV(
-		"from", from,
-		"through", through,
-		"matchers", syntax.MatchersString(matchers),
-		"streams", res.Streams,
-		"chunks", res.Chunks,
-		"bytes", res.Bytes,
-		"entries", res.Entries,
-	)
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV(
+			"function", "instance.GetStats",
+			"from", from,
+			"through", through,
+			"matchers", syntax.MatchersString(matchers),
+			"streams", res.Streams,
+			"chunks", res.Chunks,
+			"bytes", res.Bytes,
+			"entries", res.Entries,
+		)
+	}
 
 	return res, nil
 }

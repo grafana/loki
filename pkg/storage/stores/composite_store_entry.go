@@ -119,9 +119,6 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 }
 
 func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Stats")
-	defer sp.Finish()
-
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err
