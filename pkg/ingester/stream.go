@@ -149,7 +149,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
-	chks, err := fromWireChunks(s.cfg, chunks)
+	chks, err := fromWireChunks(s.cfg, s.chunkHeadBlockFormat, chunks)
 	if err != nil {
 		return 0, 0, err
 	}

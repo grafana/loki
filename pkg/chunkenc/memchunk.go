@@ -82,9 +82,21 @@ const (
 	OrderedHeadBlockFmt
 	UnorderedHeadBlockFmt
 	UnorderedWithNonIndexedLabelsHeadBlockFmt
-
-	// DefaultHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
 )
+
+// ChunkHeadFormatFor returns corresponding head block format for the given `chunkfmt`.
+func ChunkHeadFormatFor(chunkfmt byte) HeadBlockFmt {
+	if chunkfmt < ChunkFormatV3 {
+		return OrderedHeadBlockFmt
+	}
+
+	if chunkfmt == ChunkFormatV3 {
+		return UnorderedHeadBlockFmt
+	}
+
+	// return the latest head format for all chunkformat >v3
+	return UnorderedWithNonIndexedLabelsHeadBlockFmt
+}
 
 var magicNumber = uint32(0x12EE56A)
 
@@ -414,17 +426,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	}
 
 	// Set the correct headblock format based on chunk format
-	var headfmt HeadBlockFmt
-	switch {
-	case version < ChunkFormatV3:
-		headfmt = OrderedHeadBlockFmt
-	case version == ChunkFormatV3:
-		headfmt = UnorderedHeadBlockFmt
-	default: // > v3
-		headfmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
-	}
-
-	bc.headFmt = headfmt
+	bc.headFmt = ChunkHeadFormatFor(version)
 
 	// readSectionLenAndOffset reads len and offset for different sections within the chunk.
 	// Starting from chunk version 4, we have started writing offset and length of various sections within the chunk.

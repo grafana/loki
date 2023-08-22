@@ -383,11 +383,11 @@ func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
 
 	switch {
 	case sver <= 12:
-		return chunkenc.ChunkFormatV3, chunkenc.UnorderedHeadBlockFmt, nil
+		return chunkenc.ChunkFormatV3, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3), nil
 	case sver == 13:
 		fallthrough
 	default:
-		return chunkenc.ChunkFormatV4, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, nil
+		return chunkenc.ChunkFormatV4, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), nil
 	}
 }
 
