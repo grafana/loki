@@ -90,7 +90,7 @@ func Test_EncodingChunks(t *testing.T) {
 					}
 				}
 
-				_, headfmt := defaultChunkFormat()
+				_, headfmt := defaultChunkFormat(t)
 
 				backAgain, err := fromWireChunks(&conf, headfmt, chunks)
 				require.Nil(t, err)

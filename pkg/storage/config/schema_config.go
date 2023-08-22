@@ -384,9 +384,7 @@ func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
 	switch {
 	case sver <= 12:
 		return chunkenc.ChunkFormatV3, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3), nil
-	case sver == 13:
-		fallthrough
-	default:
+	default: // for v13 and above
 		return chunkenc.ChunkFormatV4, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), nil
 	}
 }
@@ -402,9 +400,7 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 	switch {
 	case sver <= 12:
 		return index.FormatV2, nil
-	case sver == 13:
-		fallthrough
-	default:
+	default: // for v13 and above
 		return index.FormatV3, nil
 	}
 }

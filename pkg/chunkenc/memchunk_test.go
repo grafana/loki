@@ -77,15 +77,22 @@ var (
 const DefaultTestHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
 
 func TestBlocksInclusive(t *testing.T) {
-	chk := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
-	err := chk.Append(logprotoEntry(1, "1"))
-	require.Nil(t, err)
-	err = chk.cut()
-	require.Nil(t, err)
+	for _, enc := range testEncoding {
+		enc := enc
+		for _, format := range allPossibleFormats {
+			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
+			chk := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
+			err := chk.Append(logprotoEntry(1, "1"))
+			require.Nil(t, err)
+			err = chk.cut()
+			require.Nil(t, err)
 
-	blocks := chk.Blocks(time.Unix(0, 1), time.Unix(0, 1))
-	require.Equal(t, 1, len(blocks))
-	require.Equal(t, 1, blocks[0].Entries())
+			blocks := chk.Blocks(time.Unix(0, 1), time.Unix(0, 1))
+			require.Equal(t, 1, len(blocks))
+			require.Equal(t, 1, blocks[0].Entries())
+		}
+	}
+
 }
 
 func TestBlock(t *testing.T) {
@@ -240,33 +247,37 @@ func TestBlock(t *testing.T) {
 func TestCorruptChunk(t *testing.T) {
 	for _, enc := range testEncoding {
 		enc := enc
-		t.Run(enc.String(), func(t *testing.T) {
-			t.Parallel()
+		for _, format := range allPossibleFormats {
+			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 
-			chk := NewMemChunk(ChunkFormatV3, enc, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
-			cases := []struct {
-				data []byte
-			}{
-				// Data that should not decode as lines from a chunk in any encoding.
-				{data: []byte{0}},
-				{data: []byte{1}},
-				{data: []byte("asdfasdfasdfqwyteqwtyeq")},
-			}
+			t.Run(enc.String(), func(t *testing.T) {
+				t.Parallel()
 
-			ctx, start, end := context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64)
-			for i, c := range cases {
-				chk.blocks = []block{{b: c.data}}
-				it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
-				require.NoError(t, err, "case %d", i)
-
-				idx := 0
-				for it.Next() {
-					idx++
+				chk := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
+				cases := []struct {
+					data []byte
+				}{
+					// Data that should not decode as lines from a chunk in any encoding.
+					{data: []byte{0}},
+					{data: []byte{1}},
+					{data: []byte("asdfasdfasdfqwyteqwtyeq")},
 				}
-				require.Error(t, it.Error(), "case %d", i)
-				require.NoError(t, it.Close())
-			}
-		})
+
+				ctx, start, end := context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64)
+				for i, c := range cases {
+					chk.blocks = []block{{b: c.data}}
+					it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
+					require.NoError(t, err, "case %d", i)
+
+					idx := 0
+					for it.Next() {
+						idx++
+					}
+					require.Error(t, it.Error(), "case %d", i)
+					require.NoError(t, it.Close())
+				}
+			})
+		}
 	}
 }
 
@@ -275,7 +286,7 @@ func TestReadFormatV1(t *testing.T) {
 
 	c := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
-	// overrides default v2 format
+	// overrides to v1 for testing that specific version.
 	c.format = ChunkFormatV1
 
 	b, err := c.Bytes()
@@ -369,14 +380,14 @@ func testNameWithFormats(enc Encoding, chunkFormat byte, headBlockFmt HeadBlockF
 }
 
 func TestRoundtripV3(t *testing.T) {
-	for _, f := range HeadBlockFmts {
-		for _, enc := range testEncoding {
-			enc := enc
-			t.Run(fmt.Sprintf("%v-%v", f, enc), func(t *testing.T) {
+	for _, enc := range testEncoding {
+		enc := enc
+		for _, format := range allPossibleFormats {
+			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
+			t.Run(fmt.Sprintf("%v-%v", format, enc), func(t *testing.T) {
 				t.Parallel()
 
-				c := NewMemChunk(ChunkFormatV3, enc, f, testBlockSize, testTargetSize)
-				c.format = ChunkFormatV3
+				c := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
 				_ = fillChunk(c)
 
 				b, err := c.Bytes()

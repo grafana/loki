@@ -70,924 +70,949 @@ func Test_batchIterSafeStart(t *testing.T) {
 }
 
 func Test_newLogBatchChunkIterator(t *testing.T) {
-	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+	periodConfigs := []config.PeriodConfig{
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v11",
+			RowShards: 16,
+		},
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v12",
+			RowShards: 16,
+		},
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v13",
+			RowShards: 16,
+		},
 	}
 
-	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
-	require.NoError(t, err)
-
-	tests := map[string]struct {
+	type testCase struct {
 		chunks     []*LazyChunk
 		expected   []logproto.Stream
 		matchers   string
 		start, end time.Time
 		direction  logproto.Direction
 		batchSize  int
-	}{
-		"forward with overlap": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
+	}
+
+	var tests map[string]testCase
+
+	for _, periodConfig := range periodConfigs {
+		periodConfig := periodConfig
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+		require.NoError(t, err)
+
+		tests = map[string]testCase{
+			"forward with overlap": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
 						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
 						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
 						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
 						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
 						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
 						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
 						},
 					},
 				},
+				fooLabelsWithName.String(),
+				from, from.Add(4 * time.Millisecond),
+				logproto.FORWARD,
+				2,
 			},
-			fooLabelsWithName.String(),
-			from, from.Add(4 * time.Millisecond),
-			logproto.FORWARD,
-			2,
+			"forward all overlap and all chunks have a from time less than query from time": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from.Add(1 * time.Millisecond), from.Add(5 * time.Millisecond),
+				logproto.FORWARD,
+				2,
+			},
+			"forward with overlapping non-continuous entries": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(3 * time.Millisecond),
+				logproto.FORWARD,
+				2,
+			},
+			"backward with overlap": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(4 * time.Millisecond),
+				logproto.BACKWARD,
+				2,
+			},
+			"backward all overlap and all chunks have a through time greater than query through time": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(4 * time.Millisecond),
+				logproto.BACKWARD,
+				2,
+			},
+			"backward with overlapping non-continuous entries": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(0 * time.Millisecond),
+								Line:      "0",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(1 * time.Millisecond),
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(6 * time.Millisecond),
+								Line:      "6",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(5 * time.Millisecond),
+								Line:      "5",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(7 * time.Millisecond),
+								Line:      "7",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(7 * time.Millisecond),
+								Line:      "7",
+							},
+							{
+								Timestamp: from.Add(6 * time.Millisecond),
+								Line:      "6",
+							},
+							{
+								Timestamp: from.Add(5 * time.Millisecond),
+								Line:      "5",
+							},
+							{
+								Timestamp: from.Add(4 * time.Millisecond),
+								Line:      "4",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(1 * time.Millisecond),
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(0 * time.Millisecond),
+								Line:      "0",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(8 * time.Millisecond),
+				logproto.BACKWARD,
+				2,
+			},
+			"forward without overlap": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(3 * time.Millisecond),
+				logproto.FORWARD,
+				2,
+			},
+			"backward without overlap": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(2 * time.Millisecond),
+								Line:      "3",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(3 * time.Millisecond),
+				logproto.BACKWARD,
+				2,
+			},
+			// This test is rather complex under the hood.
+			// It should cause three sub batches in the iterator.
+			// The first batch has no overlap -- it cannot as the first. It has bounds [1,2)
+			// The second batch has one chunk overlap, but it includes no entries in the overlap.
+			// It has bounds [2,4).
+			// The third batch finally consumes the overlap, with bounds [4,max).
+			// Notably it also ends up testing the code paths for increasing batch sizes past
+			// the default due to nextChunks with the same start timestamp.
+			"forward identicals": {
+				[]*LazyChunk{
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+						},
+					}),
+					newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+						Labels: fooLabelsWithName.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					}),
+				},
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+							{
+								Timestamp: from.Add(time.Millisecond),
+								Line:      "2",
+							},
+							{
+								Timestamp: from.Add(3 * time.Millisecond),
+								Line:      "4",
+							},
+						},
+					},
+				},
+				fooLabelsWithName.String(),
+				from, from.Add(4 * time.Millisecond),
+				logproto.FORWARD,
+				1,
+			},
+		}
+
+	}
+
+	schemaConfigs := []config.SchemaConfig{
+		{
+			Configs: []config.PeriodConfig{periodConfigs[0]},
 		},
-		"forward all overlap and all chunks have a from time less than query from time": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from.Add(1 * time.Millisecond), from.Add(5 * time.Millisecond),
-			logproto.FORWARD,
-			2,
+		{
+			Configs: []config.PeriodConfig{periodConfigs[1]},
 		},
-		"forward with overlapping non-continuous entries": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(3 * time.Millisecond),
-			logproto.FORWARD,
-			2,
-		},
-		"backward with overlap": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(4 * time.Millisecond),
-			logproto.BACKWARD,
-			2,
-		},
-		"backward all overlap and all chunks have a through time greater than query through time": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(4 * time.Millisecond),
-			logproto.BACKWARD,
-			2,
-		},
-		"backward with overlapping non-continuous entries": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(0 * time.Millisecond),
-							Line:      "0",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(1 * time.Millisecond),
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(6 * time.Millisecond),
-							Line:      "6",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(5 * time.Millisecond),
-							Line:      "5",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(7 * time.Millisecond),
-							Line:      "7",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(7 * time.Millisecond),
-							Line:      "7",
-						},
-						{
-							Timestamp: from.Add(6 * time.Millisecond),
-							Line:      "6",
-						},
-						{
-							Timestamp: from.Add(5 * time.Millisecond),
-							Line:      "5",
-						},
-						{
-							Timestamp: from.Add(4 * time.Millisecond),
-							Line:      "4",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(1 * time.Millisecond),
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(0 * time.Millisecond),
-							Line:      "0",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(8 * time.Millisecond),
-			logproto.BACKWARD,
-			2,
-		},
-		"forward without overlap": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(3 * time.Millisecond),
-			logproto.FORWARD,
-			2,
-		},
-		"backward without overlap": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(2 * time.Millisecond),
-							Line:      "3",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(3 * time.Millisecond),
-			logproto.BACKWARD,
-			2,
-		},
-		// This test is rather complex under the hood.
-		// It should cause three sub batches in the iterator.
-		// The first batch has no overlap -- it cannot as the first. It has bounds [1,2)
-		// The second batch has one chunk overlap, but it includes no entries in the overlap.
-		// It has bounds [2,4).
-		// The third batch finally consumes the overlap, with bounds [4,max).
-		// Notably it also ends up testing the code paths for increasing batch sizes past
-		// the default due to nextChunks with the same start timestamp.
-		"forward identicals": {
-			[]*LazyChunk{
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-					},
-				}),
-				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-					Labels: fooLabelsWithName.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				}),
-			},
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Entries: []logproto.Entry{
-						{
-							Timestamp: from,
-							Line:      "1",
-						},
-						{
-							Timestamp: from.Add(time.Millisecond),
-							Line:      "2",
-						},
-						{
-							Timestamp: from.Add(3 * time.Millisecond),
-							Line:      "4",
-						},
-					},
-				},
-			},
-			fooLabelsWithName.String(),
-			from, from.Add(4 * time.Millisecond),
-			logproto.FORWARD,
-			1,
+		{
+			Configs: []config.PeriodConfig{periodConfigs[2]},
 		},
 	}
 
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
-	}
+	for _, schemaConfig := range schemaConfigs {
+		s := schemaConfig
+		for name, tt := range tests {
+			tt := tt
+			t.Run(name, func(t *testing.T) {
+				it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
+				require.NoError(t, err)
+				streams, _, err := iter.ReadBatch(it, 1000)
+				_ = it.Close()
+				if err != nil {
+					t.Fatalf("error reading batch %s", err)
+				}
 
-	for name, tt := range tests {
-		tt := tt
-		t.Run(name, func(t *testing.T) {
-			it, err := newLogBatchIterator(context.Background(), s, NilMetrics, tt.chunks, tt.batchSize, newMatchers(tt.matchers), log.NewNoopPipeline(), tt.direction, tt.start, tt.end, nil)
-			require.NoError(t, err)
-			streams, _, err := iter.ReadBatch(it, 1000)
-			_ = it.Close()
-			if err != nil {
-				t.Fatalf("error reading batch %s", err)
-			}
-
-			assertStream(t, tt.expected, streams.Streams)
-		})
+				assertStream(t, tt.expected, streams.Streams)
+			})
+		}
 	}
 }
 

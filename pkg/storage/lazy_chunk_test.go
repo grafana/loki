@@ -19,53 +19,69 @@ import (
 )
 
 func TestLazyChunkIterator(t *testing.T) {
-	periodConfig := config.PeriodConfig{
-		From:      config.DayTime{Time: 0},
-		Schema:    "v11",
-		RowShards: 16,
+	periodConfigs := []config.PeriodConfig{
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v11",
+			RowShards: 16,
+		},
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v12",
+			RowShards: 16,
+		},
+		{
+			From:      config.DayTime{Time: 0},
+			Schema:    "v13",
+			RowShards: 16,
+		},
 	}
 
-	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
-	require.NoError(t, err)
+	for _, periodConfig := range periodConfigs {
+		periodConfig := periodConfig
 
-	for i, tc := range []struct {
-		chunk    *LazyChunk
-		expected []logproto.Stream
-	}{
-		// TODO: Add tests for metadata labels.
-		{
-			newLazyChunk(chunkfmt, headfmt, logproto.Stream{
-				Labels: fooLabelsWithName.String(),
-				Hash:   fooLabelsWithName.Hash(),
-				Entries: []logproto.Entry{
-					{
-						Timestamp: from,
-						Line:      "1",
-					},
-				},
-			}),
-			[]logproto.Stream{
-				{
-					Labels: fooLabels.String(),
-					Hash:   fooLabels.Hash(),
+		chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+		require.NoError(t, err)
+
+		for i, tc := range []struct {
+			chunk    *LazyChunk
+			expected []logproto.Stream
+		}{
+			// TODO: Add tests for metadata labels.
+			{
+				newLazyChunk(chunkfmt, headfmt, logproto.Stream{
+					Labels: fooLabelsWithName.String(),
+					Hash:   fooLabelsWithName.Hash(),
 					Entries: []logproto.Entry{
 						{
 							Timestamp: from,
 							Line:      "1",
 						},
 					},
+				}),
+				[]logproto.Stream{
+					{
+						Labels: fooLabels.String(),
+						Hash:   fooLabels.Hash(),
+						Entries: []logproto.Entry{
+							{
+								Timestamp: from,
+								Line:      "1",
+							},
+						},
+					},
 				},
 			},
-		},
-	} {
-		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
-			require.Nil(t, err)
-			streams, _, err := iter.ReadBatch(it, 1000)
-			require.Nil(t, err)
-			_ = it.Close()
-			require.Equal(t, tc.expected, streams.Streams)
-		})
+		} {
+			t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+				it, err := tc.chunk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(1000, 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{labels.Label{Name: "foo", Value: "bar"}}), nil)
+				require.Nil(t, err)
+				streams, _, err := iter.ReadBatch(it, 1000)
+				require.Nil(t, err)
+				_ = it.Close()
+				require.Equal(t, tc.expected, streams.Streams)
+			})
+		}
 	}
 }
 

@@ -609,9 +609,11 @@ func (s *stream) resetCounter() {
 	s.entryCt = 0
 }
 
-func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
+func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
 	if unorderedWrites {
-		return chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt
+		if chunkfmt >= chunkenc.ChunkFormatV3 {
+			return chunkenc.ChunkHeadFormatFor(chunkfmt)
+		}
 	}
 	return chunkenc.OrderedHeadBlockFmt
 }

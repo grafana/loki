@@ -43,7 +43,7 @@ func main() {
 	}
 }
 
-func getStore(cm storage.ClientMetrics) (storage.Store, error) {
+func getStore(cm storage.ClientMetrics) (storage.Store, *config.SchemaConfig, error) {
 	storeConfig := storage.Config{
 		BoltDBConfig: local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
 		FSConfig:     local.FSConfig{Directory: "/tmp/benchmark/chunks"},
@@ -55,7 +55,7 @@ func getStore(cm storage.ClientMetrics) (storage.Store, error) {
 				From:       config.DayTime{Time: start},
 				IndexType:  "boltdb",
 				ObjectType: "filesystem",
-				Schema:     "v9",
+				Schema:     "v13",
 				IndexTables: config.PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 168,
@@ -64,15 +64,26 @@ func getStore(cm storage.ClientMetrics) (storage.Store, error) {
 		},
 	}
 
-	return storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	store, err := storage.NewStore(storeConfig, config.ChunkStoreConfig{}, schemaCfg, &validation.Overrides{}, cm, prometheus.DefaultRegisterer, util_log.Logger)
+	return store, &schemaCfg, err
 }
 
 func fillStore(cm storage.ClientMetrics) error {
-	store, err := getStore(cm)
+	store, schemacfg, err := getStore(cm)
 	if err != nil {
 		return err
 	}
 	defer store.Stop()
+
+	periodcfg, err := schemacfg.SchemaForTime(start)
+	if err != nil {
+		return err
+	}
+
+	chunkfmt, headfmt, err := periodcfg.ChunkFormat()
+	if err != nil {
+		return err
+	}
 
 	var wgPush sync.WaitGroup
 	var flushCount int
@@ -91,7 +102,7 @@ func fillStore(cm storage.ClientMetrics) error {
 			labelsBuilder.Set(labels.MetricName, "logs")
 			metric := labelsBuilder.Labels()
 			fp := client.Fingerprint(lbs)
-			chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncLZ4_4M, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 262144, 1572864)
+			chunkEnc := chunkenc.NewMemChunk(chunkfmt, chunkenc.EncLZ4_4M, headfmt, 262144, 1572864)
 			for ts := start.UnixNano(); ts < start.UnixNano()+time.Hour.Nanoseconds(); ts = ts + time.Millisecond.Nanoseconds() {
 				entry := &logproto.Entry{
 					Timestamp: time.Unix(0, ts),

@@ -53,7 +53,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			cfg := defaultConfig()
 			cfg.MaxReturnedErrors = tc.limit
 
-			chunkfmt, headfmt := defaultChunkFormat()
+			chunkfmt, headfmt := defaultChunkFormat(t)
 			s := newStream(
 				chunkfmt,
 				headfmt,
@@ -104,7 +104,7 @@ func TestPushDeduplication(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -139,7 +139,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -191,7 +191,7 @@ func TestStreamIterator(t *testing.T) {
 		new  func() *chunkenc.MemChunk
 	}{
 		{"gzipChunk", func() *chunkenc.MemChunk {
-			chunkfmt, headfmt := defaultChunkFormat()
+			chunkfmt, headfmt := defaultChunkFormat(t)
 
 			return chunkenc.NewMemChunk(chunkfmt, chunkenc.EncGZIP, headfmt, 256*1024, 0)
 		}},
@@ -245,7 +245,7 @@ func TestEntryErrorCorrectlyReported(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -280,7 +280,7 @@ func TestUnorderedPush(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -382,7 +382,7 @@ func TestPushRateLimit(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -420,7 +420,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
 	cfg := defaultConfig()
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -457,7 +457,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 
 	cfg := defaultConfig()
 	cfg.MaxChunkAge = time.Minute
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	s := newStream(
 		chunkfmt,
@@ -521,7 +521,7 @@ func Benchmark_PushStream(b *testing.B) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
-	chunkfmt, headfmt := defaultChunkFormat()
+	chunkfmt, headfmt := defaultChunkFormat(b)
 
 	s := newStream(chunkfmt, headfmt, &Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
@@ -544,6 +544,14 @@ func Benchmark_PushStream(b *testing.B) {
 	}
 }
 
-func defaultChunkFormat() (byte, chunkenc.HeadBlockFmt) {
-	return chunkenc.ChunkFormatV4, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt
+func defaultChunkFormat(t testing.TB) (byte, chunkenc.HeadBlockFmt) {
+	t.Helper()
+
+	cfg := defaultPeriodConfigs[0]
+
+	chunkfmt, headfmt, err := cfg.ChunkFormat()
+
+	require.NoError(t, err)
+
+	return chunkfmt, headfmt
 }
