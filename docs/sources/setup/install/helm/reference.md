@@ -1996,18 +1996,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>loki.grafanaAgentImage</td>
+			<td>loki.grafanaAgentConfigReloaderImage</td>
 			<td>string</td>
-			<td>Lets you specify an override for the default Grafana Agent image. For example, if security settings don't allow pulls from the public Docker registry, and you want to use your own.</td>
+			<td>Lets you specify an override for the config-reloader image used in the Grafana Agent. For example, if security settings don't allow pulls from the public Docker registry, and you want to use your own.</td>
 			<td><pre lang="json">
 {}
 </pre>
 </td>
 		</tr>
 		<tr>
-			<td>loki.grafanaAgentConfigReloaderImage</td>
+			<td>loki.grafanaAgentImage</td>
 			<td>string</td>
-			<td>Lets you specify an override for the config-reloader image used in the Grafana Agent. For example, if security settings don't allow pulls from the public Docker registry, and you want to use your own.</td>
+			<td>Lets you specify an override for the default Grafana Agent image. For example, if security settings don't allow pulls from the public Docker registry, and you want to use your own.</td>
 			<td><pre lang="json">
 {}
 </pre>
