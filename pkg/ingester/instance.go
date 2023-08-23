@@ -292,6 +292,9 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
 	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(&pushReqStream))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream: %w", err)
+	}
 
 	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
