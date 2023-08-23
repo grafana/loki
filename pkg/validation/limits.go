@@ -567,7 +567,7 @@ func (o *Overrides) MaxQueryLookback(_ context.Context, userID string) time.Dura
 // Deprecated, can be removed in next major version
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
-	return time.Duration(0)
+	return time.Duration(o.getOverridesForUser(userID).RulerEvaluationDelay)
 }
 
 // RulerTenantShardSize returns shard size (number of rulers) used by this tenant when using shuffle-sharding strategy.
