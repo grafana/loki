@@ -99,7 +99,8 @@ func TestRuler_RingLifecyclerShouldAutoForgetUnhealthyInstances(t *testing.T) {
 }
 
 func generateSortedTokens(numTokens int) ring.Tokens {
-	tokens := ring.NewRandomTokenGenerator().GenerateTokens(numTokens, nil)
+	gen := ring.NewRandomTokenGenerator()
+	tokens := gen.GenerateTokens(numTokens, nil)
 
 	// Ensure generated tokens are sorted.
 	sort.Slice(tokens, func(i, j int) bool {
