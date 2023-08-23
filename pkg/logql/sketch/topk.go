@@ -2,6 +2,7 @@ package sketch
 
 import (
 	"container/heap"
+	"fmt"
 	"reflect"
 	"sort"
 	"unsafe"
@@ -16,6 +17,10 @@ import (
 type element struct {
 	Event string
 	Count int64
+}
+
+func (e element) String() string {
+	return fmt.Sprintf("{event: %s, count: %d}", e.Event, e.Count)
 }
 
 type TopKResult []element
