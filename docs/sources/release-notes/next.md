@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 ---
 title: V?.?
 description: Version ?.? release notes
