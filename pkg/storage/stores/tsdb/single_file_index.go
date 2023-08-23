@@ -409,10 +409,18 @@ func (i *TSDBIndex) Volume(
 						}
 					}
 				} else {
+					// when aggregating by labels, capture sizes for target labels if provided,
+					// otherwise for all intersecting labels
 					labelVolumes = make(map[string]uint64, len(ls))
 					for _, l := range ls {
-						if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
-							labelVolumes[l.Name] += stats.KB << 10
+						if len(targetLabels) > 0 {
+							if _, ok := labelsToMatch[l.Name]; l.Name != TenantLabel && includeAll || ok {
+								labelVolumes[l.Name] += stats.KB << 10
+							}
+						} else {
+							if l.Name != TenantLabel {
+								labelVolumes[l.Name] += stats.KB << 10
+							}
 						}
 					}
 				}
