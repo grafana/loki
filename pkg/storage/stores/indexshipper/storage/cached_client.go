@@ -59,11 +59,10 @@ func newCachedObjectClient(downstreamClient client.ObjectClient) *cachedObjectCl
 	}
 }
 
-func (c *cachedObjectClient) RefreshIndexTableNamesCache(ctx context.Context) error {
-	_, err, _ := c.buildCacheGroup.Do(refreshKey, func() (interface{}, error) {
+func (c *cachedObjectClient) RefreshIndexTableNamesCache(ctx context.Context) {
+	_, _, _ = c.buildCacheGroup.Do(refreshKey, func() (interface{}, error) {
 		return nil, c.buildTableNamesCache(ctx)
 	})
-	return err
 }
 
 func (c *cachedObjectClient) RefreshIndexTableCache(ctx context.Context, tableName string) {
