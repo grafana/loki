@@ -584,6 +584,8 @@ ingester:
     enabled: true
 ```
 
+Using the write ahead log (WAL) is recommended and is now the default. However using the WAL is incompatible with chunk transfers, if you have explicitly configured `ingester.max-transfer-retries` to a non-zero value, you must set it to 0 to disable transfers.
+
 #### Memberlist config now automatically applies to all non-configured rings
 * [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
 
