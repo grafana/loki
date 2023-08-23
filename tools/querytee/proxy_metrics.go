@@ -40,7 +40,7 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 		}, []string{"backend", "route", "result", "issuer"}),
 		missingMetrics: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "cortex_querytee",
-			Name:      "missing_metrics",
+			Name:      "missing_metrics_series",
 			Help:      "Number of missing metrics (series) in a vector response.",
 		}, []string{"backend", "method", "route", "status_code", "issuer"}),
 	}

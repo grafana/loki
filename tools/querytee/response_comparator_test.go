@@ -143,7 +143,7 @@ func TestCompareVector(t *testing.T) {
 			actual: json.RawMessage(`[
 							{"metric":{"foo1":"bar1"},"value":[1,"1"]}
 						]`),
-			err: errors.New("expected metric {foo=\"bar\"} missing from actual response"),
+			err: errors.New("expected metric(s) [{foo=\"bar\"}] missing from actual response"),
 		},
 		{
 			name: "difference in sample timestamp",

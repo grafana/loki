@@ -119,12 +119,14 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			var (
 				bodyReader io.ReadCloser
 				start      = time.Now()
+				lvl        = level.Debug
 			)
 			if len(body) > 0 {
 				bodyReader = io.NopCloser(bytes.NewReader(body))
 			}
 
 			if b.filter != nil && !b.filter.Match([]byte(r.URL.String())) {
+				lvl(p.logger).Log("msg", "Skipping non-preferred backend", "path", r.URL.Path, "query", query, "backend", b.name)
 				return
 			}
 
@@ -139,7 +141,6 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 			}
 
 			// Log with a level based on the backend response.
-			lvl := level.Debug
 			if !res.succeeded() {
 				lvl = level.Warn
 			}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -184,7 +185,14 @@ func compareVector(expectedRaw, actualRaw json.RawMessage, opts SampleComparison
 	}
 
 	if len(missingMetrics) > 0 {
-		err = fmt.Errorf("expected metric %s missing from actual response", missingMetrics[0])
+		var b strings.Builder
+		for i, m := range missingMetrics {
+			if i > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(m.String())
+		}
+		err = fmt.Errorf("expected metric(s) [%s] missing from actual response", b.String())
 	}
 
 	return &ComparisonSummary{missingMetrics: len(missingMetrics)}, err

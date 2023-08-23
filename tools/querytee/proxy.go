@@ -54,7 +54,7 @@ func (cfg *ProxyConfig) RegisterFlags(f *flag.FlagSet) {
 		cfg.RequestURLFilter, err = regexp.Compile(raw)	
 		return err
 	})
-	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and secondary endpoints for supported routes.")
+	f.BoolVar(&cfg.InstrumentCompares, "proxy.compare-instrument", false, "Reports metrics on comparisons of responses between preferred and non-preferred endpoints for supported routes.")
 }
 
 type Route struct {
