@@ -38,6 +38,7 @@ func commandsList(m *Miniredis) {
 	m.srv.Register("RPUSH", m.cmdRpush)
 	m.srv.Register("RPUSHX", m.cmdRpushx)
 	m.srv.Register("LMOVE", m.cmdLmove)
+	m.srv.Register("BLMOVE", m.cmdBlmove)
 }
 
 // BLPOP
@@ -974,4 +975,80 @@ func (m *Miniredis) cmdLmove(c *server.Peer, cmd string, args []string) {
 		}
 		c.WriteBulk(elem)
 	})
+}
+
+// BLMOVE
+func (m *Miniredis) cmdBlmove(c *server.Peer, cmd string, args []string) {
+	if len(args) != 5 {
+		setDirty(c)
+		c.WriteError(errWrongNumber(cmd))
+		return
+	}
+	if !m.handleAuth(c) {
+		return
+	}
+	if m.checkPubsub(c, cmd) {
+		return
+	}
+
+	opts := struct {
+		src     string
+		dst     string
+		srcDir  string
+		dstDir  string
+		timeout time.Duration
+	}{
+		src:    args[0],
+		dst:    args[1],
+		srcDir: strings.ToLower(args[2]),
+		dstDir: strings.ToLower(args[3]),
+	}
+	if ok := optDuration(c, args[len(args)-1], &opts.timeout); !ok {
+		return
+	}
+
+	blocking(
+		m,
+		c,
+		opts.timeout,
+		func(c *server.Peer, ctx *connCtx) bool {
+			db := m.db(ctx.selectedDB)
+
+			if !db.exists(opts.src) {
+				return false
+			}
+			if db.t(opts.src) != "list" || (db.exists(opts.dst) && db.t(opts.dst) != "list") {
+				c.WriteError(msgWrongType)
+				return true
+			}
+
+			var elem string
+			switch opts.srcDir {
+			case "left":
+				elem = db.listLpop(opts.src)
+			case "right":
+				elem = db.listPop(opts.src)
+			default:
+				c.WriteError(msgSyntaxError)
+				return true
+			}
+
+			switch opts.dstDir {
+			case "left":
+				db.listLpush(opts.dst, elem)
+			case "right":
+				db.listPush(opts.dst, elem)
+			default:
+				c.WriteError(msgSyntaxError)
+				return true
+			}
+
+			c.WriteBulk(elem)
+			return true
+		},
+		func(c *server.Peer) {
+			// timeout
+			c.WriteLen(-1)
+		},
+	)
 }

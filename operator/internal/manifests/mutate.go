@@ -10,19 +10,30 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
-// MutateFuncFor returns a mutate function based on the
-// existing resource's concrete type. It supports currently
-// only the following types or else panics:
-// - ConfigMap
-// - Service
-// - Deployment
-// - StatefulSet
-// - ServiceMonitor
+// MutateFuncFor returns a mutate function based on the existing resource's concrete type.
+// It currently supports the following types and will return an error for other types:
+//
+//   - ConfigMap
+//   - Secret
+//   - Service
+//   - ServiceAccount
+//   - ClusterRole
+//   - ClusterRoleBinding
+//   - Role
+//   - RoleBinding
+//   - Deployment
+//   - StatefulSet
+//   - ServiceMonitor
+//   - Ingress
+//   - Route
+//   - PrometheusRule
+//   - PodDisruptionBudget
 func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]string) controllerutil.MutateFn {
 	return func() error {
 		existingAnnotations := existing.GetAnnotations()
@@ -60,7 +71,7 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 		case *corev1.Service:
 			svc := existing.(*corev1.Service)
 			wantSvc := desired.(*corev1.Service)
-			return mutateService(svc, wantSvc)
+			mutateService(svc, wantSvc)
 
 		case *corev1.ServiceAccount:
 			sa := existing.(*corev1.ServiceAccount)
@@ -90,12 +101,12 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 		case *appsv1.Deployment:
 			dpl := existing.(*appsv1.Deployment)
 			wantDpl := desired.(*appsv1.Deployment)
-			return mutateDeployment(dpl, wantDpl)
+			mutateDeployment(dpl, wantDpl)
 
 		case *appsv1.StatefulSet:
 			sts := existing.(*appsv1.StatefulSet)
 			wantSts := desired.(*appsv1.StatefulSet)
-			return mutateStatefulSet(sts, wantSts)
+			mutateStatefulSet(sts, wantSts)
 
 		case *monitoringv1.ServiceMonitor:
 			svcMonitor := existing.(*monitoringv1.ServiceMonitor)
@@ -116,6 +127,10 @@ func MutateFuncFor(existing, desired client.Object, depAnnotations map[string]st
 			pr := existing.(*monitoringv1.PrometheusRule)
 			wantPr := desired.(*monitoringv1.PrometheusRule)
 			mutatePrometheusRule(pr, wantPr)
+		case *policyv1.PodDisruptionBudget:
+			pdb := existing.(*policyv1.PodDisruptionBudget)
+			wantPdb := desired.(*policyv1.PodDisruptionBudget)
+			mutatePodDisruptionBudget(pdb, wantPdb)
 
 		default:
 			t := reflect.TypeOf(existing).String()
@@ -204,45 +219,50 @@ func mutatePrometheusRule(existing, desired *monitoringv1.PrometheusRule) {
 	existing.Spec = desired.Spec
 }
 
-func mutateService(existing, desired *corev1.Service) error {
+func mutateService(existing, desired *corev1.Service) {
 	existing.Spec.Ports = desired.Spec.Ports
-	if err := mergeWithOverride(&existing.Spec.Selector, desired.Spec.Selector); err != nil {
-		return err
-	}
-	return nil
+	existing.Spec.Selector = desired.Spec.Selector
 }
 
-func mutateDeployment(existing, desired *appsv1.Deployment) error {
+func mutateDeployment(existing, desired *appsv1.Deployment) {
 	// Deployment selector is immutable so we set this value only if
 	// a new object is going to be created
 	if existing.CreationTimestamp.IsZero() {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
 	existing.Spec.Replicas = desired.Spec.Replicas
-	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
-		return err
-	}
-	if err := mergeWithOverride(&existing.Spec.Strategy, desired.Spec.Strategy); err != nil {
-		return err
-	}
-	return nil
+	existing.Spec.Strategy = desired.Spec.Strategy
+	mutatePodTemplate(&existing.Spec.Template, &desired.Spec.Template)
 }
 
-func mutateStatefulSet(existing, desired *appsv1.StatefulSet) error {
+func mutateStatefulSet(existing, desired *appsv1.StatefulSet) {
 	// StatefulSet selector is immutable so we set this value only if
 	// a new object is going to be created
 	if existing.CreationTimestamp.IsZero() {
 		existing.Spec.Selector = desired.Spec.Selector
 	}
-	existing.Spec.PodManagementPolicy = desired.Spec.PodManagementPolicy
 	existing.Spec.Replicas = desired.Spec.Replicas
-	for i := range existing.Spec.VolumeClaimTemplates {
-		existing.Spec.VolumeClaimTemplates[i].TypeMeta = desired.Spec.VolumeClaimTemplates[i].TypeMeta
-		existing.Spec.VolumeClaimTemplates[i].ObjectMeta = desired.Spec.VolumeClaimTemplates[i].ObjectMeta
-		existing.Spec.VolumeClaimTemplates[i].Spec = desired.Spec.VolumeClaimTemplates[i].Spec
-	}
-	if err := mergeWithOverride(&existing.Spec.Template, desired.Spec.Template); err != nil {
-		return err
-	}
-	return nil
+	mutatePodTemplate(&existing.Spec.Template, &desired.Spec.Template)
+}
+
+func mutatePodDisruptionBudget(existing, desired *policyv1.PodDisruptionBudget) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	existing.Spec = desired.Spec
+}
+
+func mutatePodTemplate(existing, desired *corev1.PodTemplateSpec) {
+	existing.Annotations = desired.Annotations
+	existing.Labels = desired.Labels
+	mutatePodSpec(&existing.Spec, &desired.Spec)
+}
+
+func mutatePodSpec(existing *corev1.PodSpec, desired *corev1.PodSpec) {
+	existing.Affinity = desired.Affinity
+	existing.Containers = desired.Containers
+	existing.InitContainers = desired.InitContainers
+	existing.NodeSelector = desired.NodeSelector
+	existing.Tolerations = desired.Tolerations
+	existing.TopologySpreadConstraints = desired.TopologySpreadConstraints
+	existing.Volumes = desired.Volumes
 }

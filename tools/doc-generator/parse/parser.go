@@ -15,12 +15,12 @@ import (
 	"unicode"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/log"
 	"github.com/grafana/regexp"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	prometheus_config "github.com/prometheus/prometheus/config"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/logging"
 
 	"github.com/grafana/loki/pkg/ruler/util"
 	storage_config "github.com/grafana/loki/pkg/storage/config"
@@ -97,9 +97,11 @@ func (e ConfigEntry) Description() string {
 }
 
 type RootBlock struct {
-	Name       string
-	Desc       string
-	StructType reflect.Type
+	Name string
+	Desc string
+	// multiple entries are useful if the root blocks share the same
+	// underlying type
+	StructType []reflect.Type
 }
 
 func Flags(cfg flagext.Registerer) map[uintptr]*flag.Flag {
@@ -490,7 +492,7 @@ func getFieldExample(fieldKey string, fieldType reflect.Type) *FieldExample {
 }
 
 func getCustomFieldEntry(cfg interface{}, field reflect.StructField, fieldValue reflect.Value, flags map[uintptr]*flag.Flag) (*ConfigEntry, error) {
-	if field.Type == reflect.TypeOf(logging.Level{}) || field.Type == reflect.TypeOf(logging.Format{}) {
+	if field.Type == reflect.TypeOf(log.Level{}) {
 		fieldFlag, err := getFieldFlag(field, fieldValue, flags)
 		if err != nil || fieldFlag == nil {
 			return nil, err
@@ -629,8 +631,10 @@ func getFieldDescription(cfg interface{}, field reflect.StructField, fallback st
 
 func isRootBlock(t reflect.Type, rootBlocks []RootBlock) (string, string, bool) {
 	for _, rootBlock := range rootBlocks {
-		if t == rootBlock.StructType {
-			return rootBlock.Name, rootBlock.Desc, true
+		for _, structType := range rootBlock.StructType {
+			if t == structType {
+				return rootBlock.Name, rootBlock.Desc, true
+			}
 		}
 	}
 

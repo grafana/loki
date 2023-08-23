@@ -7,6 +7,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/exemplar"
@@ -18,8 +20,6 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/ruler/config"
@@ -225,7 +225,7 @@ type RulesManager interface {
 	Stop()
 
 	// Updates rules manager state.
-	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error
+	Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.GroupEvalIterationFunc) error
 
 	// Returns current rules groups.
 	RuleGroups() []*rules.Group
@@ -277,7 +277,7 @@ func DefaultTenantManagerFactory(cfg Config, p Pusher, q storage.Queryable, engi
 			QueryFunc:       RecordAndReportRuleQueryMetrics(MetricsQueryFunc(EngineQueryFunc(engine, q, overrides, userID), totalQueries, failedQueries), queryTime, logger),
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			NotifyFunc:      SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
 			Logger:          log.With(logger, "user", userID),
 			Registerer:      reg,
 			OutageTolerance: cfg.OutageTolerance,

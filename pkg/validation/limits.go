@@ -1,6 +1,7 @@
 package validation
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -46,8 +47,9 @@ const (
 
 	bytesInMB = 1048576
 
-	defaultPerStreamRateLimit  = 3 << 20 // 3MB
-	defaultPerStreamBurstLimit = 5 * defaultPerStreamRateLimit
+	defaultPerStreamRateLimit   = 3 << 20   // 3MB
+	DefaultTSDBMaxBytesPerShard = 600 << 20 // 600MB
+	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
 )
@@ -80,26 +82,35 @@ type Limits struct {
 	PerStreamRateLimitBurst flagext.ByteSize `yaml:"per_stream_rate_limit_burst" json:"per_stream_rate_limit_burst"`
 
 	// Querier enforced limits.
-	MaxChunksPerQuery          int            `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
-	MaxQuerySeries             int            `yaml:"max_query_series" json:"max_query_series"`
-	MaxQueryLookback           model.Duration `yaml:"max_query_lookback" json:"max_query_lookback"`
-	MaxQueryLength             model.Duration `yaml:"max_query_length" json:"max_query_length"`
-	MaxQueryParallelism        int            `yaml:"max_query_parallelism" json:"max_query_parallelism"`
-	TSDBMaxQueryParallelism    int            `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
-	CardinalityLimit           int            `yaml:"cardinality_limit" json:"cardinality_limit"`
-	MaxStreamsMatchersPerQuery int            `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
-	MaxConcurrentTailRequests  int            `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
-	MaxEntriesLimitPerQuery    int            `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
-	MaxCacheFreshness          model.Duration `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
-	MaxQueriersPerTenant       int            `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
-	QueryReadyIndexNumDays     int            `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
-	QueryTimeout               model.Duration `yaml:"query_timeout" json:"query_timeout"`
+	MaxChunksPerQuery          int              `yaml:"max_chunks_per_query" json:"max_chunks_per_query"`
+	MaxQuerySeries             int              `yaml:"max_query_series" json:"max_query_series"`
+	MaxQueryLookback           model.Duration   `yaml:"max_query_lookback" json:"max_query_lookback"`
+	MaxQueryLength             model.Duration   `yaml:"max_query_length" json:"max_query_length"`
+	MaxQueryRange              model.Duration   `yaml:"max_query_range" json:"max_query_range"`
+	MaxQueryParallelism        int              `yaml:"max_query_parallelism" json:"max_query_parallelism"`
+	TSDBMaxQueryParallelism    int              `yaml:"tsdb_max_query_parallelism" json:"tsdb_max_query_parallelism"`
+	TSDBMaxBytesPerShard       flagext.ByteSize `yaml:"tsdb_max_bytes_per_shard" json:"tsdb_max_bytes_per_shard"`
+	CardinalityLimit           int              `yaml:"cardinality_limit" json:"cardinality_limit"`
+	MaxStreamsMatchersPerQuery int              `yaml:"max_streams_matchers_per_query" json:"max_streams_matchers_per_query"`
+	MaxConcurrentTailRequests  int              `yaml:"max_concurrent_tail_requests" json:"max_concurrent_tail_requests"`
+	MaxEntriesLimitPerQuery    int              `yaml:"max_entries_limit_per_query" json:"max_entries_limit_per_query"`
+	MaxCacheFreshness          model.Duration   `yaml:"max_cache_freshness_per_query" json:"max_cache_freshness_per_query"`
+	MaxStatsCacheFreshness     model.Duration   `yaml:"max_stats_cache_freshness" json:"max_stats_cache_freshness"`
+	MaxQueriersPerTenant       int              `yaml:"max_queriers_per_tenant" json:"max_queriers_per_tenant"`
+	QueryReadyIndexNumDays     int              `yaml:"query_ready_index_num_days" json:"query_ready_index_num_days"`
+	QueryTimeout               model.Duration   `yaml:"query_timeout" json:"query_timeout"`
 
 	// Query frontend enforced limits. The default is actually parameterized by the queryrange config.
-	QuerySplitDuration  model.Duration `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
-	MinShardingLookback model.Duration `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	QuerySplitDuration  model.Duration   `yaml:"split_queries_by_interval" json:"split_queries_by_interval"`
+	MinShardingLookback model.Duration   `yaml:"min_sharding_lookback" json:"min_sharding_lookback"`
+	MaxQueryBytesRead   flagext.ByteSize `yaml:"max_query_bytes_read" json:"max_query_bytes_read"`
+	MaxQuerierBytesRead flagext.ByteSize `yaml:"max_querier_bytes_read" json:"max_querier_bytes_read"`
+	VolumeEnabled       bool             `yaml:"volume_enabled" json:"volume_enabled" doc:"description=Enable log-volume endpoints."`
+	VolumeMaxSeries     int              `yaml:"volume_max_series" json:"volume_max_series" doc:"description=The maximum number of aggregated series in a log-volume response"`
 
 	// Ruler defaults and limits.
+
+	// TODO(dannyk): this setting is misnamed and probably deprecatable.
 	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
@@ -142,6 +153,10 @@ type Limits struct {
 
 	RulerRemoteWriteConfig map[string]config.RemoteWriteConfig `yaml:"ruler_remote_write_config,omitempty" json:"ruler_remote_write_config,omitempty" doc:"description=Configures global and per-tenant limits for remote write clients. A map with remote client id as key."`
 
+	// TODO(dannyk): possible enhancement is to align this with rule group interval
+	RulerRemoteEvaluationTimeout         time.Duration `yaml:"ruler_remote_evaluation_timeout" json:"ruler_remote_evaluation_timeout" doc:"description=Timeout for a remote rule evaluation. Defaults to the value of 'querier.query-timeout'."`
+	RulerRemoteEvaluationMaxResponseSize int64         `yaml:"ruler_remote_evaluation_max_response_size" json:"ruler_remote_evaluation_max_response_size" doc:"description=Maximum size (in bytes) of the allowable response size from a remote rule evaluation. Set to 0 to allow any response size (default)."`
+
 	// Global and per tenant deletion mode
 	DeletionMode string `yaml:"deletion_mode" json:"deletion_mode"`
 
@@ -159,6 +174,11 @@ type Limits struct {
 	ShardStreams *shardstreams.Config `yaml:"shard_streams" json:"shard_streams"`
 
 	BlockedQueries []*validation.BlockedQuery `yaml:"blocked_queries,omitempty" json:"blocked_queries,omitempty"`
+
+	RequiredLabels       []string `yaml:"required_labels,omitempty" json:"required_labels,omitempty" doc:"description=Define a list of required selector labels."`
+	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
+
+	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 }
 
 type StreamRetention struct {
@@ -209,13 +229,17 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MaxQueryLength.Set("721h")
 	f.Var(&l.MaxQueryLength, "store.max-query-length", "The limit to length of chunk store queries. 0 to disable.")
 	f.IntVar(&l.MaxQuerySeries, "querier.max-query-series", 500, "Limit the maximum of unique series that is returned by a metric query. When the limit is reached an error is returned.")
+	_ = l.MaxQueryRange.Set("0s")
+	f.Var(&l.MaxQueryRange, "querier.max-query-range", "Limit the length of the [range] inside a range query. Default is 0 or unlimited")
 	_ = l.QueryTimeout.Set(DefaultPerTenantQueryTimeout)
-	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. If a specific per-tenant timeout is used, this timeout is ignored.")
+	f.Var(&l.QueryTimeout, "querier.query-timeout", "Timeout when querying backends (ingesters or storage) during the execution of a query request. When a specific per-tenant timeout is used, the global timeout is ignored.")
 
 	_ = l.MaxQueryLookback.Set("0s")
 	f.Var(&l.MaxQueryLookback, "querier.max-query-lookback", "Limit how far back in time series data and metadata can be queried, up until lookback duration ago. This limit is enforced in the query frontend, the querier and the ruler. If the requested time range is outside the allowed range, the request will not fail, but will be modified to only query data within the allowed time range. The default value of 0 does not set a limit.")
 	f.IntVar(&l.MaxQueryParallelism, "querier.max-query-parallelism", 32, "Maximum number of queries that will be scheduled in parallel by the frontend.")
 	f.IntVar(&l.TSDBMaxQueryParallelism, "querier.tsdb-max-query-parallelism", 512, "Maximum number of queries will be scheduled in parallel by the frontend for TSDB schemas.")
+	_ = l.TSDBMaxBytesPerShard.Set(strconv.Itoa(DefaultTSDBMaxBytesPerShard))
+	f.Var(&l.TSDBMaxBytesPerShard, "querier.tsdb-max-bytes-per-shard", "Maximum number of bytes assigned to a single sharded query. Also expressible in human readable forms (1GB, etc).")
 	f.IntVar(&l.CardinalityLimit, "store.cardinality-limit", 1e5, "Cardinality limit for index queries.")
 	f.IntVar(&l.MaxStreamsMatchersPerQuery, "querier.max-streams-matcher-per-query", 1000, "Maximum number of stream matchers per query.")
 	f.IntVar(&l.MaxConcurrentTailRequests, "querier.max-concurrent-tail-requests", 10, "Maximum number of concurrent tail requests.")
@@ -223,8 +247,13 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	_ = l.MinShardingLookback.Set("0s")
 	f.Var(&l.MinShardingLookback, "frontend.min-sharding-lookback", "Limit queries that can be sharded. Queries within the time range of now and now minus this sharding lookback are not sharded. The default value of 0s disables the lookback, causing sharding of all queries at all times.")
 
+	f.Var(&l.MaxQueryBytesRead, "frontend.max-query-bytes-read", "Max number of bytes a query can fetch. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
+	f.Var(&l.MaxQuerierBytesRead, "frontend.max-querier-bytes-read", "Max number of bytes a query can fetch after splitting and sharding. Enforced in log and metric queries only when TSDB is used. The default value of 0 disables this limit.")
+
 	_ = l.MaxCacheFreshness.Set("1m")
 	f.Var(&l.MaxCacheFreshness, "frontend.max-cache-freshness", "Most recent allowed cacheable result per-tenant, to prevent caching very recent results that might still be in flux.")
+
+	f.Var(&l.MaxStatsCacheFreshness, "frontend.max-stats-cache-freshness", "Do not cache requests with an end time that falls within Now minus this duration. 0 disables this feature (default).")
 
 	f.IntVar(&l.MaxQueriersPerTenant, "frontend.max-queriers-per-tenant", 0, "Maximum number of queriers that can handle requests for a single tenant. If set to 0 or value higher than number of available queriers, *all* queriers will handle requests for the tenant. Each frontend (or query-scheduler, if used) will select the same set of queriers for the same tenant (given that all queriers are connected to all frontends / query-schedulers). This option only works with queriers connecting to the query-frontend / query-scheduler, not when using downstream URL.")
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
@@ -237,8 +266,8 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.RulerTenantShardSize, "ruler.tenant-shard-size", 0, "The default tenant's shard size when shuffle-sharding is enabled in the ruler. When this setting is specified in the per-tenant overrides, a value of 0 disables shuffle sharding for the tenant.")
 
 	f.StringVar(&l.PerTenantOverrideConfig, "limits.per-user-override-config", "", "Feature renamed to 'runtime configuration', flag deprecated in favor of -runtime-config.file (runtime_config.file in YAML).")
-	_ = l.RetentionPeriod.Set("744h")
-	f.Var(&l.RetentionPeriod, "store.retention", "Retention to apply for the store, if the retention is enabled on the compactor side.")
+	_ = l.RetentionPeriod.Set("0s")
+	f.Var(&l.RetentionPeriod, "store.retention", "Retention period to apply to stored data, only applies if retention_enabled is true in the compactor config. As of version 2.8.0, a zero value of 0 or 0s disables retention. In previous releases, Loki did not properly honor a zero value to disable retention and a really large value should be used instead.")
 
 	_ = l.PerTenantOverridePeriod.Set("10s")
 	f.Var(&l.PerTenantOverridePeriod, "limits.per-user-override-period", "Feature renamed to 'runtime configuration'; flag deprecated in favor of -runtime-config.reload-period (runtime_config.period in YAML).")
@@ -251,8 +280,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	// Deprecated
 	dskit_flagext.DeprecatedFlag(f, "compactor.allow-deletes", "Deprecated. Instead, see compactor.deletion-mode which is another per tenant configuration", util_log.Logger)
 
+	f.IntVar(&l.IndexGatewayShardSize, "index-gateway.shard-size", 0, "The shard size defines how many index gateways should be used by a tenant for querying. If the global shard factor is 0, the global shard factor is set to the deprecated -replication-factor for backwards compatibility reasons.")
+
 	l.ShardStreams = &shardstreams.Config{}
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
+
+	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -279,7 +312,7 @@ func (l *Limits) UnmarshalYAML(unmarshal func(interface{}) error) error {
 func (l *Limits) Validate() error {
 	if l.StreamRetention != nil {
 		for i, rule := range l.StreamRetention {
-			matchers, err := syntax.ParseMatchers(rule.Selector)
+			matchers, err := syntax.ParseMatchers(rule.Selector, true)
 			if err != nil {
 				return fmt.Errorf("invalid labels matchers: %w", err)
 			}
@@ -414,17 +447,22 @@ func (o *Overrides) MaxChunksPerQuery(userID string) int {
 }
 
 // MaxQueryLength returns the limit of the length (in time) of a query.
-func (o *Overrides) MaxQueryLength(userID string) time.Duration {
+func (o *Overrides) MaxQueryLength(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLength)
 }
 
 // Compatibility with Cortex interface, this method is set to be removed in 1.12,
 // so nooping in Loki until then.
-func (o *Overrides) MaxChunksPerQueryFromStore(userID string) int { return 0 }
+func (o *Overrides) MaxChunksPerQueryFromStore(_ string) int { return 0 }
 
 // MaxQueryLength returns the limit of the series of metric queries.
-func (o *Overrides) MaxQuerySeries(userID string) int {
+func (o *Overrides) MaxQuerySeries(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQuerySeries
+}
+
+// MaxQueryRange returns the limit for the max [range] value that can be in a range query
+func (o *Overrides) MaxQueryRange(_ context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxQueryRange)
 }
 
 // MaxQueriersPerUser returns the maximum number of queriers that can handle requests for this user.
@@ -439,13 +477,18 @@ func (o *Overrides) QueryReadyIndexNumDays(userID string) int {
 
 // TSDBMaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel for TSDB schemas.
-func (o *Overrides) TSDBMaxQueryParallelism(userID string) int {
+func (o *Overrides) TSDBMaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).TSDBMaxQueryParallelism
+}
+
+// TSDBMaxBytesPerShard returns the maximum number of bytes assigned to a specific shard in a tsdb query
+func (o *Overrides) TSDBMaxBytesPerShard(userID string) int {
+	return o.getOverridesForUser(userID).TSDBMaxBytesPerShard.Val()
 }
 
 // MaxQueryParallelism returns the limit to the number of sub-queries the
 // frontend will process in parallel.
-func (o *Overrides) MaxQueryParallelism(userID string) int {
+func (o *Overrides) MaxQueryParallelism(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxQueryParallelism
 }
 
@@ -460,7 +503,7 @@ func (o *Overrides) CardinalityLimit(userID string) int {
 }
 
 // MaxStreamsMatchersPerQuery returns the limit to number of streams matchers per query.
-func (o *Overrides) MaxStreamsMatchersPerQuery(userID string) int {
+func (o *Overrides) MaxStreamsMatchersPerQuery(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxStreamsMatchersPerQuery
 }
 
@@ -474,8 +517,18 @@ func (o *Overrides) QuerySplitDuration(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QuerySplitDuration)
 }
 
+// MaxQueryBytesRead returns the maximum bytes a query can read.
+func (o *Overrides) MaxQueryBytesRead(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxQueryBytesRead.Val()
+}
+
+// MaxQuerierBytesRead returns the maximum bytes a sub query can read after splitting and sharding.
+func (o *Overrides) MaxQuerierBytesRead(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).MaxQuerierBytesRead.Val()
+}
+
 // MaxConcurrentTailRequests returns the limit to number of concurrent tail requests.
-func (o *Overrides) MaxConcurrentTailRequests(userID string) int {
+func (o *Overrides) MaxConcurrentTailRequests(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxConcurrentTailRequests
 }
 
@@ -490,20 +543,24 @@ func (o *Overrides) MaxLineSizeTruncate(userID string) bool {
 }
 
 // MaxEntriesLimitPerQuery returns the limit to number of entries the querier should return per query.
-func (o *Overrides) MaxEntriesLimitPerQuery(userID string) int {
+func (o *Overrides) MaxEntriesLimitPerQuery(_ context.Context, userID string) int {
 	return o.getOverridesForUser(userID).MaxEntriesLimitPerQuery
 }
 
-func (o *Overrides) QueryTimeout(userID string) time.Duration {
+func (o *Overrides) QueryTimeout(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
 }
 
-func (o *Overrides) MaxCacheFreshness(userID string) time.Duration {
+func (o *Overrides) MaxCacheFreshness(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxCacheFreshness)
 }
 
+func (o *Overrides) MaxStatsCacheFreshness(_ context.Context, userID string) time.Duration {
+	return time.Duration(o.getOverridesForUser(userID).MaxStatsCacheFreshness)
+}
+
 // MaxQueryLookback returns the max lookback period of queries.
-func (o *Overrides) MaxQueryLookback(userID string) time.Duration {
+func (o *Overrides) MaxQueryLookback(_ context.Context, userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
 }
 
@@ -623,6 +680,22 @@ func (o *Overrides) RulerRemoteWriteConfig(userID string, id string) *config.Rem
 	return nil
 }
 
+// RulerRemoteEvaluationTimeout returns the duration after which to timeout a remote rule evaluation request for a given user.
+func (o *Overrides) RulerRemoteEvaluationTimeout(userID string) time.Duration {
+	// if not defined, use the base query timeout
+	timeout := o.getOverridesForUser(userID).RulerRemoteEvaluationTimeout
+	if timeout <= 0 {
+		return time.Duration(o.getOverridesForUser(userID).QueryTimeout)
+	}
+
+	return timeout
+}
+
+// RulerRemoteEvaluationMaxResponseSize returns the maximum allowable response size from a remote rule evaluation for a given user.
+func (o *Overrides) RulerRemoteEvaluationMaxResponseSize(userID string) int64 {
+	return o.getOverridesForUser(userID).RulerRemoteEvaluationMaxResponseSize
+}
+
 // RetentionPeriod returns the retention period for a given user.
 func (o *Overrides) RetentionPeriod(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RetentionPeriod)
@@ -645,8 +718,16 @@ func (o *Overrides) ShardStreams(userID string) *shardstreams.Config {
 	return o.getOverridesForUser(userID).ShardStreams
 }
 
-func (o *Overrides) BlockedQueries(userID string) []*validation.BlockedQuery {
+func (o *Overrides) BlockedQueries(_ context.Context, userID string) []*validation.BlockedQuery {
 	return o.getOverridesForUser(userID).BlockedQueries
+}
+
+func (o *Overrides) RequiredLabels(_ context.Context, userID string) []string {
+	return o.getOverridesForUser(userID).RequiredLabels
+}
+
+func (o *Overrides) RequiredNumberLabels(_ context.Context, userID string) int {
+	return o.getOverridesForUser(userID).RequiredNumberLabels
 }
 
 func (o *Overrides) DefaultLimits() *Limits {
@@ -664,6 +745,19 @@ func (o *Overrides) PerStreamRateLimit(userID string) RateLimit {
 
 func (o *Overrides) IncrementDuplicateTimestamps(userID string) bool {
 	return o.getOverridesForUser(userID).IncrementDuplicateTimestamp
+}
+
+// VolumeEnabled returns whether volume endpoints are enabled for a user.
+func (o *Overrides) VolumeEnabled(userID string) bool {
+	return o.getOverridesForUser(userID).VolumeEnabled
+}
+
+func (o *Overrides) VolumeMaxSeries(userID string) int {
+	return o.getOverridesForUser(userID).VolumeMaxSeries
+}
+
+func (o *Overrides) IndexGatewayShardSize(userID string) int {
+	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

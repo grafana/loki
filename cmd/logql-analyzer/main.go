@@ -7,8 +7,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/logqlanalyzer"
 	"github.com/grafana/loki/pkg/sizing"

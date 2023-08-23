@@ -4,18 +4,19 @@ import (
 	"fmt"
 	"path"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/openshift"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/openshift"
 )
 
 // BuildRuler returns a list of k8s objects for Loki Stack Ruler
@@ -49,7 +50,21 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		objs = configureRulerObjsForMode(opts)
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&statefulSet.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelRulerComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -57,13 +72,29 @@ func BuildRuler(opts Options) ([]client.Object, error) {
 		statefulSet,
 		NewRulerGRPCService(opts),
 		NewRulerHTTPService(opts),
+		NewRulerPodDisruptionBudget(opts),
 	), nil
 }
 
-// NewRulerStatefulSet creates a statefulset object for a ruler
+// NewRulerStatefulSet creates a StatefulSet object for a ruler
 func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
+	var volumeProjections []corev1.VolumeProjection
+
+	for _, name := range opts.RulesConfigMapNames {
+		volumeProjections = append(volumeProjections, corev1.VolumeProjection{
+			ConfigMap: &corev1.ConfigMapProjection{
+				LocalObjectReference: corev1.LocalObjectReference{
+					Name: name,
+				},
+				Items: ruleVolumeItems(name, opts.Tenants.Configs),
+			},
+		})
+	}
+
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelRulerComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ruler),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -79,12 +110,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			{
 				Name: rulesStorageVolumeName,
 				VolumeSource: corev1.VolumeSource{
-					ConfigMap: &corev1.ConfigMapVolumeSource{
-						DefaultMode: &defaultConfigMapMode,
-						LocalObjectReference: corev1.LocalObjectReference{
-							Name: RulesConfigMapName(opts.Name),
-						},
-						Items: ruleVolumeItems(opts.Tenants.Configs),
+					Projected: &corev1.ProjectedVolumeSource{
+						Sources: volumeProjections,
 					},
 				},
 			},
@@ -101,6 +128,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=ruler",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -128,11 +156,6 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						MountPath: config.LokiConfigMountDir,
 					},
 					{
-						Name:      rulesStorageVolumeName,
-						ReadOnly:  false,
-						MountPath: rulesStorageDirectory,
-					},
-					{
 						Name:      walVolumeName,
 						ReadOnly:  false,
 						MountPath: walDirectory,
@@ -142,23 +165,23 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 						ReadOnly:  false,
 						MountPath: dataDirectory,
 					},
+					{
+						Name:      rulesStorageVolumeName,
+						ReadOnly:  false,
+						MountPath: rulesStorageDirectory,
+					},
 				},
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ruler != nil {
 		podSpec.Tolerations = opts.Stack.Template.Ruler.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.Ruler.NodeSelector
 	}
-
-	l := ComponentLabels(LabelRulerComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
@@ -174,8 +197,8 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
 				Type: appsv1.RollingUpdateStatefulSetStrategyType,
 			},
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Ruler.Replicas),
+			RevisionHistoryLimit: pointer.Int32(10),
+			Replicas:             pointer.Int32(opts.Stack.Template.Ruler.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -203,7 +226,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.Ruler.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -222,7 +245,7 @@ func NewRulerStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -332,17 +355,46 @@ func configureRulerObjsForMode(opts Options) []client.Object {
 	return openShiftObjs
 }
 
-func ruleVolumeItems(tenants map[string]TenantConfig) []corev1.KeyToPath {
+func ruleVolumeItems(configMapName string, tenants map[string]TenantConfig) []corev1.KeyToPath {
 	var items []corev1.KeyToPath
 
-	for id, tenant := range tenants {
+	for tenantID, tenant := range tenants {
 		for _, rule := range tenant.RuleFiles {
-			items = append(items, corev1.KeyToPath{
-				Key:  rule,
-				Path: fmt.Sprintf("%s/%s", id, rule),
-			})
+			shardName := extractRuleNameComponents(rule).cmName
+			if shardName == configMapName {
+				filename := extractRuleNameComponents(rule).filename
+				items = append(items, corev1.KeyToPath{
+					Key:  filename,
+					Path: fmt.Sprintf("%s/%s", tenantID, filename),
+				})
+			}
 		}
 	}
 
 	return items
+}
+
+// NewRulerPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack ruler pods.
+func NewRulerPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelRulerComponent, opts.Name)
+
+	ma := intstr.FromInt(1)
+
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      RulerName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
+		},
+	}
 }

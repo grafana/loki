@@ -3,22 +3,27 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
+	"github.com/grafana/loki/pkg/storage/stores/index"
+	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
 const (
@@ -26,46 +31,53 @@ const (
 )
 
 type IndexQuerier interface {
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error)
-	LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error)
-	LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error)
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error)
+	stores.ChunkFetcher
+	index.BaseReader
 	Stop()
 }
 
 type IndexClient interface {
-	QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error
+	seriesindex.ReadClient
 	Stop()
+}
+
+type IndexClientWithRange struct {
+	IndexClient
+	TableRange config.TableRange
 }
 
 type Gateway struct {
 	services.Service
 
 	indexQuerier IndexQuerier
-	indexClient  IndexClient
+	indexClients []IndexClientWithRange
 
 	cfg Config
 	log log.Logger
-
-	shipper IndexQuerier
 }
 
 // NewIndexGateway instantiates a new Index Gateway and start its services.
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registerer, indexQuerier IndexQuerier, indexClient IndexClient) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
 		cfg:          cfg,
 		log:          log,
-		indexClient:  indexClient,
+		indexClients: indexClients,
 	}
 
-	g.Service = services.NewIdleService(nil, func(failureCase error) error {
+	// query newer periods first
+	sort.Slice(g.indexClients, func(i, j int) bool {
+		return g.indexClients[i].TableRange.Start > g.indexClients[j].TableRange.Start
+	})
+
+	g.Service = services.NewIdleService(nil, func(_ error) error {
 		g.indexQuerier.Stop()
-		g.indexClient.Stop()
+		for _, indexClient := range g.indexClients {
+			indexClient.Stop()
+		}
 		return nil
 	})
 
@@ -73,12 +85,19 @@ func NewIndexGateway(cfg Config, log log.Logger, registerer prometheus.Registere
 }
 
 func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logproto.IndexGateway_QueryIndexServer) error {
-	var outerErr error
-	var innerErr error
+	log, _ := spanlogger.New(context.Background(), "IndexGateway.QueryIndex")
+	defer log.Finish()
 
-	queries := make([]index.Query, 0, len(request.Queries))
+	var outerErr, innerErr error
+
+	queries := make([]seriesindex.Query, 0, len(request.Queries))
 	for _, query := range request.Queries {
-		queries = append(queries, index.Query{
+		if _, err := config.ExtractTableNumberFromName(query.TableName); err != nil {
+			level.Error(log).Log("msg", "skip querying table", "table", query.TableName, "err", err)
+			continue
+		}
+
+		queries = append(queries, seriesindex.Query{
 			TableName:        query.TableName,
 			HashValue:        query.HashValue,
 			RangeValuePrefix: query.RangeValuePrefix,
@@ -87,31 +106,52 @@ func (g *Gateway) QueryIndex(request *logproto.QueryIndexRequest, server logprot
 		})
 	}
 
-	sendBatchMtx := sync.Mutex{}
-	outerErr = g.indexClient.QueryPages(server.Context(), queries, func(query index.Query, batch index.ReadBatchResult) bool {
-		innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
-			// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
-			sendBatchMtx.Lock()
-			defer sendBatchMtx.Unlock()
+	sort.Slice(queries, func(i, j int) bool {
+		ta, _ := config.ExtractTableNumberFromName(queries[i].TableName)
+		tb, _ := config.ExtractTableNumberFromName(queries[j].TableName)
+		return ta < tb
+	})
 
-			return server.Send(response)
+	sendBatchMtx := sync.Mutex{}
+	for _, indexClient := range g.indexClients {
+		// find queries that can be handled by this index client.
+		start := sort.Search(len(queries), func(i int) bool {
+			tableNumber, _ := config.ExtractTableNumberFromName(queries[i].TableName)
+			return tableNumber >= indexClient.TableRange.Start
+		})
+		end := sort.Search(len(queries), func(j int) bool {
+			tableNumber, _ := config.ExtractTableNumberFromName(queries[j].TableName)
+			return tableNumber > indexClient.TableRange.End
+		})
+		if end-start <= 0 {
+			continue
+		}
+
+		outerErr = indexClient.QueryPages(server.Context(), queries[start:end], func(query seriesindex.Query, batch seriesindex.ReadBatchResult) bool {
+			innerErr = buildResponses(query, batch, func(response *logproto.QueryIndexResponse) error {
+				// do not send grpc responses concurrently. See https://github.com/grpc/grpc-go/blob/master/stream.go#L120-L123.
+				sendBatchMtx.Lock()
+				defer sendBatchMtx.Unlock()
+
+				return server.Send(response)
+			})
+
+			return innerErr == nil
 		})
 
 		if innerErr != nil {
-			return false
+			return innerErr
 		}
 
-		return true
-	})
-
-	if innerErr != nil {
-		return innerErr
+		if outerErr != nil {
+			return outerErr
+		}
 	}
 
-	return outerErr
+	return nil
 }
 
-func buildResponses(query index.Query, batch index.ReadBatchResult, callback func(*logproto.QueryIndexResponse) error) error {
+func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, callback func(*logproto.QueryIndexResponse) error) error {
 	itr := batch.Iterator()
 	var resp []*logproto.Row
 
@@ -151,7 +191,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +216,7 @@ func (g *Gateway) GetSeries(ctx context.Context, req *logproto.GetSeriesRequest)
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -244,10 +284,32 @@ func (g *Gateway) GetStats(ctx context.Context, req *logproto.IndexStatsRequest)
 	if err != nil {
 		return nil, err
 	}
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
 
 	return g.indexQuerier.Stats(ctx, instanceID, req.From, req.Through, matchers...)
 }
+
+func (g *Gateway) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	instanceID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	return g.indexQuerier.Volume(ctx, instanceID, req.From, req.Through, req.GetLimit(), req.TargetLabels, req.AggregateBy, matchers...)
+}
+
+type failingIndexClient struct{}
+
+func (f failingIndexClient) QueryPages(_ context.Context, _ []seriesindex.Query, _ seriesindex.QueryPagesCallback) error {
+	return errors.New("index client is not initialized likely due to boltdb-shipper not being used")
+}
+
+func (f failingIndexClient) Stop() {}

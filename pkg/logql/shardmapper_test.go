@@ -105,7 +105,7 @@ func TestMapSampleExpr(t *testing.T) {
 		},
 	} {
 		t.Run(tc.in.String(), func(t *testing.T) {
-			mapped, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.mapSampleExpr(tc.in, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 			require.Equal(t, tc.out, mapped)
 		})
@@ -154,30 +154,91 @@ func TestMappingStrings(t *testing.T) {
 		{
 			in: `sum(max(rate({foo="bar"}[5m])))`,
 			out: `sum(max(
-				downstream<rate({foo="bar"}[5m]), shard=0_of_2>
-				++ downstream<rate({foo="bar"}[5m]), shard=1_of_2>
+				downstream<max(rate({foo="bar"}[5m])), shard=0_of_2>
+				++ downstream<max(rate({foo="bar"}[5m])), shard=1_of_2>
 			))`,
 		},
 		{
-			in:  `sum(max(rate({foo="bar"} | json | label_format foo=bar [5m])))`,
-			out: `sum(max(rate({foo="bar"} | json | label_format foo=bar [5m])))`,
+			in: `max without (env) (rate({foo="bar"}[5m]))`,
+			out: `max without (env) (
+				downstream<max without (env)(rate({foo="bar"}[5m])), shard=0_of_2> ++ downstream<max without (env)(rate({foo="bar"}[5m])), shard=1_of_2>
+			)`,
 		},
 		{
-			in:  `rate({foo="bar"} | json | label_format foo=bar [5m])`,
-			out: `rate({foo="bar"} | json | label_format foo=bar [5m])`,
+			in: `sum(max(rate({foo="bar"} | json | label_format foo=bar [5m])))`,
+			out: `sum(
+				max(
+					sum without() (
+						downstream<rate({foo="bar"}|json|label_formatfoo=bar[5m]),shard=0_of_2>
+						++
+						downstream<rate({foo="bar"}|json|label_formatfoo=bar[5m]),shard=1_of_2>
+					)
+				)
+			)`,
+		},
+		{
+			in: `max(sum by (abc) (rate({foo="bar"} | json | label_format bazz=buzz [5m])))`,
+			out: `max(
+				sum by (abc) (
+					downstream<sumby(abc)(rate({foo="bar"}|json|label_formatbazz=buzz[5m])),shard=0_of_2>
+					++
+					downstream<sumby(abc)(rate({foo="bar"}|json|label_formatbazz=buzz[5m])),shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `rate({foo="bar"} | json | label_format foo=bar [5m])`,
+			out: `sum without()(
+				downstream<rate({foo="bar"}|json|label_formatfoo=bar[5m]),shard=0_of_2>
+				++
+				downstream<rate({foo="bar"}|json|label_formatfoo=bar[5m]),shard=1_of_2>
+			)`,
 		},
 		{
 			in: `count(rate({foo="bar"} | json [5m]))`,
-			out: `count(
-				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2>
-				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
+			out: `sum(
+				downstream<count(rate({foo="bar"}|json[5m])),shard=0_of_2>
+				++
+				downstream<count(rate({foo="bar"}|json[5m])),shard=1_of_2>
 			)`,
 		},
 		{
 			in: `avg(rate({foo="bar"} | json [5m]))`,
-			out: `avg(
-				downstream<rate({foo="bar"} | json [5m]), shard=0_of_2>
-				++ downstream<rate({foo="bar"} | json [5m]), shard=1_of_2>
+			out: `(
+				sum(
+					downstream<sum(rate({foo="bar"}|json[5m])),shard=0_of_2>++downstream<sum(rate({foo="bar"}|json[5m])),shard=1_of_2>
+				)
+				/
+				sum(
+					downstream<count(rate({foo="bar"}|json[5m])),shard=0_of_2>++downstream<count(rate({foo="bar"}|json[5m])),shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `count(rate({foo="bar"} | json | keep foo [5m]))`,
+			out: `count(
+				sum without()(
+					downstream<rate({foo="bar"}|json|keepfoo[5m]),shard=0_of_2>
+					++
+					downstream<rate({foo="bar"}|json|keepfoo[5m]),shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			// renaming reduces the labelset and must be reaggregated before counting
+			in: `count(rate({foo="bar"} | json | label_format foo=bar [5m]))`,
+			out: `count(
+				sum without() (
+					downstream<rate({foo="bar"}|json|label_formatfoo=bar[5m]),shard=0_of_2>
+					++
+					downstream<rate({foo="bar"}|json|label_formatfoo=bar[5m]),shard=1_of_2>
+				)
+			)`,
+		},
+		{
+			in: `sum without () (rate({job="foo"}[5m]))`,
+			out: `sumwithout()(
+				downstream<sumwithout()(rate({job="foo"}[5m])),shard=0_of_2>++downstream<sumwithout()(rate({job="foo"}[5m])),shard=1_of_2>
 			)`,
 		},
 		{
@@ -223,9 +284,12 @@ func TestMappingStrings(t *testing.T) {
 				)`,
 		},
 		{
-			// Ensure we don't try to shard expressions that include label reformatting.
-			in:  `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m]))`,
-			out: `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m]))`,
+			in: `sum(count_over_time({foo="bar"} | logfmt | label_format bar=baz | bar="buz" [5m])) by (bar)`,
+			out: `sum by (bar) (
+				downstream<sum by (bar) (count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m])),shard=0_of_2>
+				++
+				downstream<sum by (bar) (count_over_time({foo="bar"}|logfmt|label_formatbar=baz|bar="buz"[5m])),shard=1_of_2>
+			)`,
 		},
 		{
 			in: `sum by (cluster) (rate({foo="bar"} [5m])) + ignoring(machine) sum by (cluster,machine) (rate({foo="bar"} [5m]))`,
@@ -253,6 +317,14 @@ func TestMappingStrings(t *testing.T) {
 						++ downstream<sum by (cluster, machine) (rate({foo="bar"}[5m])), shard=1_of_2>
 					)
 				)
+			)`,
+		},
+		{
+			in: `max_over_time({foo="ugh"} | unwrap baz [1m]) by ()`,
+			out: `max(
+				downstream<max_over_time({foo="ugh"}|unwrapbaz[1m])by(),shard=0_of_2>
+				++
+				downstream<max_over_time({foo="ugh"}|unwrapbaz[1m])by(),shard=1_of_2>
 			)`,
 		},
 		{
@@ -299,7 +371,7 @@ func TestMappingStrings(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Nil(t, err)
 
-			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 			require.Nil(t, err)
 
 			require.Equal(t, removeWhiteSpace(tc.out), removeWhiteSpace(mapped.String()))
@@ -517,51 +589,6 @@ func TestMapping(t *testing.T) {
 				Grouping:  &syntax.Grouping{},
 				Params:    3,
 				Operation: syntax.OpTypeTopK,
-				Left: &ConcatSampleExpr{
-					DownstreamSampleExpr: DownstreamSampleExpr{
-						shard: &astmapper.ShardAnnotation{
-							Shard: 0,
-							Of:    2,
-						},
-						SampleExpr: &syntax.RangeAggregationExpr{
-							Operation: syntax.OpRangeTypeRate,
-							Left: &syntax.LogRange{
-								Left: &syntax.MatchersExpr{
-									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
-								},
-								Interval: 5 * time.Minute,
-							},
-						},
-					},
-					next: &ConcatSampleExpr{
-						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
-								Shard: 1,
-								Of:    2,
-							},
-							SampleExpr: &syntax.RangeAggregationExpr{
-								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
-									Left: &syntax.MatchersExpr{
-										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
-									},
-									Interval: 5 * time.Minute,
-								},
-							},
-						},
-						next: nil,
-					},
-				},
-			},
-		},
-		{
-			in: `max without (env) (rate({foo="bar"}[5m]))`,
-			expr: &syntax.VectorAggregationExpr{
-				Grouping: &syntax.Grouping{
-					Without: true,
-					Groups:  []string{"env"},
-				},
-				Operation: syntax.OpTypeMax,
 				Left: &ConcatSampleExpr{
 					DownstreamSampleExpr: DownstreamSampleExpr{
 						shard: &astmapper.ShardAnnotation{
@@ -871,53 +898,6 @@ func TestMapping(t *testing.T) {
 				},
 			},
 		},
-		// sum(max) should not shard the maxes
-		{
-			in: `sum(max(rate({foo="bar"}[5m])))`,
-			expr: &syntax.VectorAggregationExpr{
-				Grouping:  &syntax.Grouping{},
-				Operation: syntax.OpTypeSum,
-				Left: &syntax.VectorAggregationExpr{
-					Grouping:  &syntax.Grouping{},
-					Operation: syntax.OpTypeMax,
-					Left: &ConcatSampleExpr{
-						DownstreamSampleExpr: DownstreamSampleExpr{
-							shard: &astmapper.ShardAnnotation{
-								Shard: 0,
-								Of:    2,
-							},
-							SampleExpr: &syntax.RangeAggregationExpr{
-								Operation: syntax.OpRangeTypeRate,
-								Left: &syntax.LogRange{
-									Left: &syntax.MatchersExpr{
-										Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
-									},
-									Interval: 5 * time.Minute,
-								},
-							},
-						},
-						next: &ConcatSampleExpr{
-							DownstreamSampleExpr: DownstreamSampleExpr{
-								shard: &astmapper.ShardAnnotation{
-									Shard: 1,
-									Of:    2,
-								},
-								SampleExpr: &syntax.RangeAggregationExpr{
-									Operation: syntax.OpRangeTypeRate,
-									Left: &syntax.LogRange{
-										Left: &syntax.MatchersExpr{
-											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
-										},
-										Interval: 5 * time.Minute,
-									},
-								},
-							},
-							next: nil,
-						},
-					},
-				},
-			},
-		},
 		// max(count) should shard the count, but not the max
 		{
 			in: `max(count(rate({foo="bar"}[5m])))`,
@@ -1205,7 +1185,7 @@ func TestMapping(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
 			require.Equal(t, tc.err, err)
 
-			mapped, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
+			mapped, _, err := m.Map(ast, nilShardMetrics.downstreamRecorder())
 
 			require.Equal(t, tc.err, err)
 			require.Equal(t, tc.expr.String(), mapped.String())
@@ -1274,7 +1254,7 @@ func TestStringTrimming(t *testing.T) {
 	} {
 		t.Run(tc.expr, func(t *testing.T) {
 			m := NewShardMapper(ConstantShards(tc.shards), nilShardMetrics)
-			_, mappedExpr, err := m.Parse(tc.expr)
+			_, _, mappedExpr, err := m.Parse(tc.expr)
 			require.Nil(t, err)
 			require.Equal(t, removeWhiteSpace(tc.expected), removeWhiteSpace(mappedExpr.String()))
 		})

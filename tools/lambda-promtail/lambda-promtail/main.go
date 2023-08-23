@@ -138,8 +138,9 @@ func checkEventType(ev map[string]interface{}) (interface{}, error) {
 	var cwEvent events.CloudwatchLogsEvent
 	var kinesisEvent events.KinesisEvent
 	var sqsEvent events.SQSEvent
+	var snsEvent events.SNSEvent
 
-	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent}
+	types := [...]interface{}{&s3Event, &s3TestEvent, &cwEvent, &kinesisEvent, &sqsEvent, &snsEvent}
 
 	j, _ := json.Marshal(ev)
 	reader := strings.NewReader(string(j))
@@ -185,16 +186,22 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 
 	switch evt := event.(type) {
 	case *events.S3Event:
-		return processS3Event(ctx, evt, pClient, pClient.log)
+		err = processS3Event(ctx, evt, pClient, pClient.log)
 	case *events.CloudwatchLogsEvent:
-		return processCWEvent(ctx, evt, pClient)
+		err = processCWEvent(ctx, evt, pClient)
 	case *events.KinesisEvent:
-		return processKinesisEvent(ctx, evt, pClient)
+		err = processKinesisEvent(ctx, evt, pClient)
 	case *events.SQSEvent:
-		return processSQSEvent(ctx, evt)
+		err = processSQSEvent(ctx, evt, handler)
+	case *events.SNSEvent:
+		err = processSNSEvent(ctx, evt, handler)
 	// When setting up S3 Notification on a bucket, a test event is first sent, see: https://docs.aws.amazon.com/AmazonS3/latest/userguide/notification-content-structure.html
 	case *events.S3TestEvent:
 		return nil
+	}
+
+	if err != nil {
+		level.Error(*pClient.log).Log("err", fmt.Errorf("error processing event: %v", err))
 	}
 	return err
 }

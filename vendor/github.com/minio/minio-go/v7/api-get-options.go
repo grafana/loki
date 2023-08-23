@@ -20,6 +20,8 @@ package minio
 import (
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/minio/minio-go/v7/pkg/encrypt"
@@ -36,6 +38,7 @@ type AdvancedGetOptions struct {
 // during GET requests.
 type GetObjectOptions struct {
 	headers              map[string]string
+	reqParams            url.Values
 	ServerSideEncryption encrypt.ServerSide
 	VersionID            string
 	PartNumber           int
@@ -81,6 +84,34 @@ func (o *GetObjectOptions) Set(key, value string) {
 		o.headers = make(map[string]string)
 	}
 	o.headers[http.CanonicalHeaderKey(key)] = value
+}
+
+// SetReqParam - set request query string parameter
+// supported key: see supportedQueryValues.
+// If an unsupported key is passed in, it will be ignored and nothing will be done.
+func (o *GetObjectOptions) SetReqParam(key, value string) {
+	if !isStandardQueryValue(key) {
+		// do nothing
+		return
+	}
+	if o.reqParams == nil {
+		o.reqParams = make(url.Values)
+	}
+	o.reqParams.Set(key, value)
+}
+
+// AddReqParam - add request query string parameter
+// supported key: see supportedQueryValues.
+// If an unsupported key is passed in, it will be ignored and nothing will be done.
+func (o *GetObjectOptions) AddReqParam(key, value string) {
+	if !isStandardQueryValue(key) {
+		// do nothing
+		return
+	}
+	if o.reqParams == nil {
+		o.reqParams = make(url.Values)
+	}
+	o.reqParams.Add(key, value)
 }
 
 // SetMatchETag - set match etag.
@@ -148,4 +179,25 @@ func (o *GetObjectOptions) SetRange(start, end int64) error {
 				start, end))
 	}
 	return nil
+}
+
+// toQueryValues - Convert the versionId, partNumber, and reqParams in Options to query string parameters.
+func (o *GetObjectOptions) toQueryValues() url.Values {
+	urlValues := make(url.Values)
+	if o.VersionID != "" {
+		urlValues.Set("versionId", o.VersionID)
+	}
+	if o.PartNumber > 0 {
+		urlValues.Set("partNumber", strconv.Itoa(o.PartNumber))
+	}
+
+	if o.reqParams != nil {
+		for key, values := range o.reqParams {
+			for _, value := range values {
+				urlValues.Add(key, value)
+			}
+		}
+	}
+
+	return urlValues
 }

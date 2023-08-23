@@ -1,3 +1,9 @@
+variable "name" {
+  type        = string
+  description = "Name used for created AWS resources."
+  default     = "lambda_promtail"
+}
+
 variable "write_address" {
   type        = string
   description = "This is the Loki Write API compatible endpoint that you want to write logs to, either promtail or Loki."
@@ -106,4 +112,16 @@ variable "kinesis_stream_name" {
   type        = set(string)
   description = "Enter kinesis name if kinesis stream is configured as event source in lambda."
   default     = []
+}
+
+variable "sqs_enabled" {
+  type        = bool
+  description = "Enables sending S3 logs to an SQS queue which will trigger lambda-promtail, unsuccessfully processed message are sent to a dead-letter-queue"
+  default     = false
+}
+
+variable "sqs_queue_name_prefix" {
+  type        = string
+  description = "Name prefix for SQS queues"
+  default     = "s3-to-lambda-promtail"
 }

@@ -6,7 +6,7 @@ networks:
 
 services:
   read:
-    image: grafana/loki:2.7.1
+    image: grafana/loki:2.8.3
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3101:3100
@@ -27,7 +27,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:2.7.1
+    image: grafana/loki:2.8.3
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -46,7 +46,7 @@ services:
       <<: *loki-dns
 
   promtail:
-    image: grafana/promtail:2.7.1
+    image: grafana/promtail:2.8.3
     volumes:
       - ./promtail-local-config.yaml:/etc/promtail/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
@@ -66,8 +66,8 @@ services:
         mkdir -p /data/loki-ruler && \
         minio server /data
     environment:
-      - MINIO_ACCESS_KEY=loki
-      - MINIO_SECRET_KEY=supersecret
+      - MINIO_ROOT_USER=loki
+      - MINIO_ROOT_PASSWORD=supersecret
       - MINIO_PROMETHEUS_AUTH_TYPE=public
       - MINIO_UPDATE=off
     ports:

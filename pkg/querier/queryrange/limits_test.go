@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
@@ -22,6 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 func TestLimits(t *testing.T) {
@@ -52,9 +53,10 @@ func TestLimits(t *testing.T) {
 func Test_seriesLimiter(t *testing.T) {
 	cfg := testConfig
 	cfg.CacheResults = false
+	cfg.CacheIndexStatsResults = false
 	// split in 7 with 2 in // max.
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, time.Hour)
-	tpw, stopper, err := NewTripperware(cfg, util_log.Logger, l, config.SchemaConfig{
+	tpw, stopper, err := NewTripperware(cfg, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
 		Configs: testSchemas,
 	}, nil, false, nil)
 	if stopper != nil {
@@ -73,7 +75,7 @@ func Test_seriesLimiter(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -111,10 +113,10 @@ func Test_seriesLimiter(t *testing.T) {
 		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{
 			Data: promql.Matrix{
 				{
-					Points: []promql.Point{
+					Floats: []promql.FPoint{
 						{
 							T: toMs(testTime.Add(-4 * time.Hour)),
-							V: 0.013333333333333334,
+							F: 0.013333333333333334,
 						},
 					},
 					Metric: []labels.Label{
@@ -160,7 +162,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
 	require.Nil(t, err)
 
-	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, _ = NewLimitedRoundTripper(f, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -195,7 +197,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
 	require.Nil(t, err)
 
-	_, _ = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, _ = NewLimitedRoundTripper(f, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -224,7 +226,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 	r, err := http.NewRequestWithContext(ctx, "GET", "/query_range", http.NoBody)
 	require.Nil(t, err)
 
-	_, err = NewLimitedRoundTripper(f, LokiCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
+	_, err = NewLimitedRoundTripper(f, DefaultCodec, fakeLimits{maxQueryParallelism: maxQueryParallelism},
 		testSchemas,
 		queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 			return queryrangebase.HandlerFunc(func(c context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
@@ -241,7 +243,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 }
 
 func Test_MaxQueryLookBack(t *testing.T) {
-	tpw, stopper, err := NewTripperware(testConfig, util_log.Logger, fakeLimits{
+	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{
 		maxQueryLookback:    1 * time.Hour,
 		maxQueryParallelism: 1,
 	}, config.SchemaConfig{
@@ -265,7 +267,7 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := LokiCodec.EncodeRequest(ctx, lreq)
+	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
 	req = req.WithContext(ctx)
@@ -431,4 +433,241 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 		result := WeightedParallelism(context.Background(), confs, "fake", &fakeLimits{maxQueryParallelism: 50}, confs[0].From.Add(-24*time.Hour), confs[0].From.Add(-12*time.Hour))
 		require.Equal(t, 1, result)
 	})
+}
+
+func getFakeStatsHandler(retBytes uint64) (queryrangebase.Handler, *int, error) {
+	fakeRT, err := newfakeRoundTripper()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	count, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: retBytes})
+
+	fakeRT.setHandler(statsHandler)
+
+	return queryrangebase.NewRoundTripperHandler(fakeRT, DefaultCodec), count, nil
+}
+
+func Test_MaxQuerySize(t *testing.T) {
+	const statsBytes = 1000
+
+	schemas := []config.PeriodConfig{
+		{
+			// BoltDB -> Time -4 days
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-96 * time.Hour).Unix())},
+			IndexType: config.BoltDBShipperType,
+		},
+		{
+			// TSDB -> Time -2 days
+			From:      config.DayTime{Time: model.TimeFromUnix(testTime.Add(-48 * time.Hour).Unix())},
+			IndexType: config.TSDBType,
+		},
+	}
+
+	for _, tc := range []struct {
+		desc       string
+		schema     string
+		query      string
+		queryRange time.Duration
+		queryStart time.Time
+		queryEnd   time.Time
+		limits     Limits
+
+		shouldErr                bool
+		expectedQueryStatsHits   int
+		expectedQuerierStatsHits int
+	}{
+		{
+			desc:       "No TSDB",
+			schema:     config.BoltDBShipperType,
+			query:      `{app="foo"} |= "foo"`,
+			queryRange: 1 * time.Hour,
+
+			queryStart: testTime.Add(-96 * time.Hour),
+			queryEnd:   testTime.Add(-90 * time.Hour),
+			limits: fakeLimits{
+				maxQueryBytesRead:   1,
+				maxQuerierBytesRead: 1,
+			},
+
+			shouldErr:                false,
+			expectedQueryStatsHits:   0,
+			expectedQuerierStatsHits: 0,
+		},
+		{
+			desc:       "Unlimited",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-48 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   0,
+				maxQuerierBytesRead: 0,
+			},
+
+			shouldErr:                false,
+			expectedQueryStatsHits:   0,
+			expectedQuerierStatsHits: 0,
+		},
+		{
+			desc:       "1 hour range",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr: false,
+			// [testTime-1h, testTime)
+			expectedQueryStatsHits:   1,
+			expectedQuerierStatsHits: 1,
+		},
+		{
+			desc:       "Query size too big",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes - 1,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr:                true,
+			expectedQueryStatsHits:   1,
+			expectedQuerierStatsHits: 0,
+		},
+		{
+			desc:       "Querier size too big",
+			query:      `{app="foo"} |= "foo"`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes - 1,
+			},
+
+			shouldErr:                true,
+			expectedQueryStatsHits:   1,
+			expectedQuerierStatsHits: 1,
+		},
+		{
+			desc:       "Multi-matchers with offset",
+			query:      `sum_over_time ({app="foo"} |= "foo" | unwrap foo [5m] ) / sum_over_time ({app="bar"} |= "bar" | unwrap bar [5m] offset 1h)`,
+			queryStart: testTime.Add(-1 * time.Hour),
+			queryEnd:   testTime,
+			limits: fakeLimits{
+				maxQueryBytesRead:   statsBytes,
+				maxQuerierBytesRead: statsBytes,
+			},
+
+			shouldErr: false,
+			// *2 since we have two matcher groups
+			expectedQueryStatsHits:   1 * 2,
+			expectedQuerierStatsHits: 1 * 2,
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			queryStatsHandler, queryStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1)))
+			require.NoError(t, err)
+
+			querierStatsHandler, querierStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1)))
+			require.NoError(t, err)
+
+			fakeRT, err := newfakeRoundTripper()
+			require.NoError(t, err)
+
+			_, promHandler := promqlResult(matrix)
+			fakeRT.setHandler(promHandler)
+
+			lokiReq := &LokiRequest{
+				Query:     tc.query,
+				Limit:     1000,
+				StartTs:   tc.queryStart,
+				EndTs:     tc.queryEnd,
+				Direction: logproto.FORWARD,
+				Path:      "/query_range",
+			}
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			req, err := DefaultCodec.EncodeRequest(ctx, lokiReq)
+			require.NoError(t, err)
+
+			req = req.WithContext(ctx)
+			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+			require.NoError(t, err)
+
+			middlewares := []queryrangebase.Middleware{
+				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
+				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
+			}
+
+			_, err = queryrangebase.NewRoundTripper(fakeRT, DefaultCodec, nil, middlewares...).RoundTrip(req)
+
+			if tc.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tc.expectedQueryStatsHits, *queryStatsHits)
+			require.Equal(t, tc.expectedQuerierStatsHits, *querierStatsHits)
+		})
+	}
+
+}
+
+func Test_MaxQuerySize_MaxLookBackPeriod(t *testing.T) {
+	engineOpts := testEngineOpts
+	engineOpts.MaxLookBackPeriod = 1 * time.Hour
+
+	lim := fakeLimits{
+		maxQueryBytesRead:   1 << 10,
+		maxQuerierBytesRead: 1 << 10,
+	}
+
+	statsHandler := queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+		// This is the actual check that we're testing.
+		require.Equal(t, testTime.Add(-engineOpts.MaxLookBackPeriod).UnixMilli(), req.GetStart())
+
+		return &IndexStatsResponse{
+			Response: &logproto.IndexStatsResponse{
+				Bytes: 1 << 10,
+			},
+		}, nil
+	})
+
+	for _, tc := range []struct {
+		desc       string
+		middleware queryrangebase.Middleware
+	}{
+		{
+			desc:       "QuerySizeLimiter",
+			middleware: NewQuerySizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+		},
+		{
+			desc:       "QuerierSizeLimiter",
+			middleware: NewQuerierSizeLimiterMiddleware(testSchemasTSDB, engineOpts, util_log.Logger, lim, statsHandler),
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			lokiReq := &LokiInstantRequest{
+				Query:     `{cluster="dev-us-central-0"}`,
+				Limit:     1000,
+				TimeTs:    testTime,
+				Direction: logproto.FORWARD,
+				Path:      "/loki/api/v1/query",
+			}
+
+			handler := tc.middleware.Wrap(
+				queryrangebase.HandlerFunc(func(_ context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+					return &LokiResponse{}, nil
+				}),
+			)
+
+			ctx := user.InjectOrgID(context.Background(), "foo")
+			_, err := handler.Do(ctx, lokiReq)
+			require.NoError(t, err)
+		})
+	}
 }

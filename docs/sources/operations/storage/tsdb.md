@@ -6,7 +6,7 @@ weight: 1000
 
 # TSDB
 
-Starting with Loki v2.8, TSDB is the Loki index. It is heavily inspired by the Prometheus's TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). For a deeper explanation you can read Owen's [blog post](https://lokidex.com/posts/tsdb/). The short version is that this new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) index which preceded it.
+Starting with Loki v2.8, TSDB is the recommended Loki index. It is heavily inspired by the Prometheus's TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). For a deeper explanation you can read Loki maintainer Owen's [blog post](https://lokidex.com/posts/tsdb/). The short version is that this new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) index which preceded it.
 
 ## Example Configuration
 
@@ -75,12 +75,12 @@ We've added a user per-tenant limit called `tsdb_max_query_parallelism` in the `
 
 ### Dynamic Query Sharding
 
-Previously we would statically shard queries based on the index row shards configured [here]({{< relref "../../configuration/#period_config" >}}).
+Previously we would statically shard queries based on the index row shards configured [here]({{< relref "../../configure#period_config" >}}).
 TSDB does Dynamic Query Sharding based on how much data a query is going to be processing.
-We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../fundamentals/architecture/components#query-frontend" >}}) for planning the query.
+We additionally store size(KB) and number of lines for each chunk in the TSDB index which is then used by the [Query Frontend]({{< relref "../../get-started/components#query-frontend" >}}) for planning the query.
 Based on our experience from operating many Loki clusters, we have configured TSDB to aim for processing 300-600 MBs of data per query shard.
 This means with TSDB we will be running more, smaller queries.
 
 ### Index Caching not required
 
-TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention]({{< relref "./retention" >}}) or your configured `max_query_lookback` under [limits_config]({{< relref "../../configuration/#limits_config" >}}). After that, we suggest running without an index cache (it isn't used in TSDB).
+TSDB is a compact and optimized format. Loki does not currently use an index cache for TSDB. If you are already using Loki with other index types, it is recommended to keep the index caching until all of your existing data falls out of [retention]({{< relref "./retention" >}}) or your configured `max_query_lookback` under [limits_config]({{< relref "../../configure#limits_config" >}}). After that, we suggest running without an index cache (it isn't used in TSDB).

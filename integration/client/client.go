@@ -13,7 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/prometheus/model/labels"
 )
 
 const requestTimeout = 30 * time.Second
@@ -35,8 +36,6 @@ func (r *roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 		for _, v := range values {
 			req.Header.Add(key, v)
 		}
-
-		fmt.Println(req.Header.Values(key))
 	}
 
 	return r.next.RoundTrip(req)
@@ -88,13 +87,28 @@ func New(instanceID, token, baseURL string, opts ...Option) *Client {
 
 // PushLogLine creates a new logline with the current time as timestamp
 func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) error {
-	return c.pushLogLine(line, c.Now, extraLabels...)
+	return c.pushLogLine(line, c.Now, nil, extraLabels...)
+}
+
+func (c *Client) PushLogLineWithNonIndexedLabels(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
+	return c.PushLogLineWithTimestampAndNonIndexedLabels(line, c.Now, logLabels, extraLabels...)
 }
 
 // PushLogLineWithTimestamp creates a new logline at the given timestamp
 // The timestamp has to be a Unix timestamp (epoch seconds)
-func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
-	return c.pushLogLine(line, timestamp, extraLabelList...)
+func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extraLabels ...map[string]string) error {
+	return c.pushLogLine(line, timestamp, nil, extraLabels...)
+}
+
+func (c *Client) PushLogLineWithTimestampAndNonIndexedLabels(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
+	// If the logLabels map is empty, labels.FromMap will allocate some empty slices.
+	// Since this code is executed for every log line we receive, as an optimization
+	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.
+	var lbls labels.Labels
+	if len(logLabels) > 0 {
+		lbls = labels.FromMap(logLabels)
+	}
+	return c.pushLogLine(line, timestamp, lbls, extraLabelList...)
 }
 
 func formatTS(ts time.Time) string {
@@ -103,21 +117,22 @@ func formatTS(ts time.Time) string {
 
 type stream struct {
 	Stream map[string]string `json:"stream"`
-	Values [][]string        `json:"values"`
+	Values [][]any           `json:"values"`
 }
 
 // pushLogLine creates a new logline
-func (c *Client) pushLogLine(line string, timestamp time.Time, extraLabelList ...map[string]string) error {
+func (c *Client) pushLogLine(line string, timestamp time.Time, logLabels labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
 	s := stream{
 		Stream: map[string]string{
 			"job": "varlog",
 		},
-		Values: [][]string{
+		Values: [][]any{
 			{
 				formatTS(timestamp),
 				line,
+				logLabels,
 			},
 		},
 	}
@@ -436,29 +451,29 @@ func (c *Client) GetRules(ctx context.Context) (*RulesResponse, error) {
 	resp := RulesResponse{}
 	err = json.Unmarshal(buf, &resp)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response data: %w", err)
+		return nil, fmt.Errorf("error parsing response data %q: %w", buf, err)
 	}
 
 	return &resp, err
 }
 
 func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	}
 	lokiResp := Response{}
 	err := json.Unmarshal(buf, &lokiResp)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing response data: %w", err)
+		return nil, fmt.Errorf("error parsing response data '%s': %w", string(buf), err)
 	}
 
-	if statusCode/100 == 2 {
-		return &lokiResp, nil
-	}
-	return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
+	return &lokiResp, nil
 }
 
 func (c *Client) rangeQueryURL(query string) string {
 	v := url.Values{}
 	v.Set("query", query)
-	v.Set("start", formatTS(c.Now.Add(-2*time.Hour)))
+	v.Set("start", formatTS(c.Now.Add(-7*24*time.Hour)))
 	v.Set("end", formatTS(c.Now.Add(time.Second)))
 
 	u, err := url.Parse(c.baseURL)
@@ -477,25 +492,19 @@ func (c *Client) LabelNames(ctx context.Context) ([]string, error) {
 
 	url := fmt.Sprintf("%s/loki/api/v1/labels", c.baseURL)
 
-	req, err := c.request(ctx, "GET", url)
+	buf, statusCode, err := c.run(ctx, url)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("unexpected status code of %d", res.StatusCode)
+	if statusCode/100 != 2 {
+		return nil, fmt.Errorf("request failed with status code %d: %w", statusCode, errors.New(string(buf)))
 	}
 
 	var values struct {
 		Data []string `json:"data"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&values); err != nil {
+	if err := json.Unmarshal(buf, &values); err != nil {
 		return nil, err
 	}
 

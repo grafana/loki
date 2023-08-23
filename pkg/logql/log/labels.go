@@ -1,6 +1,7 @@
 package log
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -93,6 +94,10 @@ type LabelsBuilder struct {
 
 // NewBaseLabelsBuilderWithGrouping creates a new base labels builder with grouping to compute results.
 func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint, without, noLabels bool) *BaseLabelsBuilder {
+	if parserKeyHints == nil {
+		parserKeyHints = noParserHints
+	}
+
 	return &BaseLabelsBuilder{
 		del:            make([]string, 0, 5),
 		add:            make([]labels.Label, 0, 16),
@@ -132,11 +137,12 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 }
 
 // Reset clears all current state for the builder.
-func (b *LabelsBuilder) Reset() {
+func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
 	b.add = b.add[:0]
 	b.err = ""
 	b.errDetails = ""
+	b.parserKeyHints.Reset()
 }
 
 // ParserLabelHints returns a limited list of expected labels to extract for metric queries.
@@ -233,6 +239,22 @@ func (b *LabelsBuilder) Set(n, v string) *LabelsBuilder {
 	}
 	b.add = append(b.add, labels.Label{Name: n, Value: v})
 
+	// Sometimes labels are set and later modified. Only record
+	// each label once
+	b.parserKeyHints.RecordExtracted(n)
+	return b
+}
+
+// Add the labels to the builder. If a label with the same name
+// already exists in the base labels, a suffix is added to the name.
+func (b *LabelsBuilder) Add(labels ...labels.Label) *LabelsBuilder {
+	for _, l := range labels {
+		name := l.Name
+		if b.BaseHas(name) {
+			name = fmt.Sprintf("%s%s", name, duplicateSuffix)
+		}
+		b.Set(name, l.Value)
+	}
 	return b
 }
 
@@ -432,9 +454,9 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	}
 	var lbs labels.Labels
 	if b.without {
-		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels(nil)
+		lbs = labels.NewBuilder(b.base).Del(b.groups...).Labels()
 	} else {
-		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels(nil)
+		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
 	}
 	res := NewLabelsResult(lbs, lbs.Hash())
 	b.groupedResult = res
@@ -451,13 +473,13 @@ func (i internedStringSet) Get(data []byte, createNew func() (string, bool)) (st
 	if ok {
 		return s.s, s.ok
 	}
-	new, ok := createNew()
+	newStr, ok := createNew()
 	if len(i) >= MaxInternedStrings {
-		return new, ok
+		return newStr, ok
 	}
 	i[string(data)] = struct {
 		s  string
 		ok bool
-	}{s: new, ok: ok}
-	return new, ok
+	}{s: newStr, ok: ok}
+	return newStr, ok
 }

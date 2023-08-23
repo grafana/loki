@@ -14,17 +14,17 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/kv/consul"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
@@ -52,29 +52,46 @@ func TestDistributor(t *testing.T) {
 	for i, tc := range []struct {
 		lines            int
 		maxLineSize      uint64
-		mangleLabels     bool
+		streams          int
+		mangleLabels     int
 		expectedResponse *logproto.PushResponse
-		expectedError    error
+		expectedErrors   []error
 	}{
 		{
 			lines:            10,
+			streams:          1,
 			expectedResponse: success,
 		},
 		{
-			lines:         100,
-			expectedError: httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000),
+			lines:          100,
+			streams:        1,
+			expectedErrors: []error{httpgrpc.Errorf(http.StatusTooManyRequests, validation.RateLimitedErrorMsg, "test", 100, 100, 1000)},
 		},
 		{
 			lines:            100,
+			streams:          1,
 			maxLineSize:      1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10),
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, "100 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10))},
 		},
 		{
 			lines:            100,
-			mangleLabels:     true,
+			streams:          1,
+			mangleLabels:     1,
 			expectedResponse: success,
-			expectedError:    httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string"),
+			expectedErrors:   []error{httpgrpc.Errorf(http.StatusBadRequest, validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")},
+		},
+		{
+			lines:            10,
+			streams:          2,
+			mangleLabels:     1,
+			maxLineSize:      1,
+			expectedResponse: success,
+			expectedErrors: []error{
+				httpgrpc.Errorf(http.StatusBadRequest, ""),
+				fmt.Errorf("1 errors like: %s", fmt.Sprintf(validation.InvalidLabelsErrorMsg, "{ab\"", "1:4: parse error: unterminated quoted string")),
+				fmt.Errorf("10 errors like: %s", fmt.Sprintf(validation.LineTooLongErrorMsg, 1, "{foo=\"bar\"}", 10)),
+			},
 		},
 	} {
 		t.Run(fmt.Sprintf("[%d](lines=%v)", i, tc.lines), func(t *testing.T) {
@@ -87,15 +104,29 @@ func TestDistributor(t *testing.T) {
 
 			distributors, _ := prepare(t, 1, 5, limits, nil)
 
-			request := makeWriteRequest(tc.lines, 10)
-
-			if tc.mangleLabels {
-				request.Streams[0].Labels = `{ab"`
+			var request logproto.PushRequest
+			for i := 0; i < tc.streams; i++ {
+				req := makeWriteRequest(tc.lines, 10)
+				request.Streams = append(request.Streams, req.Streams[0])
 			}
 
-			response, err := distributors[i%len(distributors)].Push(ctx, request)
+			for i := 0; i < tc.mangleLabels; i++ {
+				request.Streams[i].Labels = `{ab"`
+			}
+
+			response, err := distributors[i%len(distributors)].Push(ctx, &request)
 			assert.Equal(t, tc.expectedResponse, response)
-			assert.Equal(t, tc.expectedError, err)
+			if len(tc.expectedErrors) > 0 {
+				for _, expectedError := range tc.expectedErrors {
+					if len(tc.expectedErrors) == 1 {
+						assert.Equal(t, err, expectedError)
+					} else {
+						assert.Contains(t, err.Error(), expectedError.Error())
+					}
+				}
+			} else {
+				assert.NoError(t, err)
+			}
 		})
 	}
 }
@@ -327,6 +358,34 @@ func Test_IncrementTimestamp(t *testing.T) {
 				},
 			},
 		},
+		"incrementing enabled, no dupes, out of order": {
+			limits: incrementingEnabled,
+			push: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+			expectedPush: &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: "{job=\"foo\"}",
+						Hash:   0x8eeb87f5eb220480,
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(123456, 0), Line: "hey1"},
+							{Timestamp: time.Unix(123458, 0), Line: "hey3"},
+							{Timestamp: time.Unix(123457, 0), Line: "hey2"},
+						},
+					},
+				},
+			},
+		},
 	}
 
 	for testName, testData := range tests {
@@ -553,7 +612,7 @@ func TestStreamShard(t *testing.T) {
 			require.NoError(t, err)
 
 			d := Distributor{
-				rateStore:        &fakeRateStore{},
+				rateStore:        &fakeRateStore{pushRate: 1},
 				validator:        validator,
 				streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 				shardTracker:     NewShardTracker(),
@@ -598,7 +657,7 @@ func TestStreamShardAcrossCalls(t *testing.T) {
 
 	t.Run("it generates 4 shards across 2 calls when calculated shards = 2 * entries per call", func(t *testing.T) {
 		d := Distributor{
-			rateStore:        &fakeRateStore{},
+			rateStore:        &fakeRateStore{pushRate: 1},
 			validator:        validator,
 			streamShardCount: prometheus.NewCounter(prometheus.CounterOpts{}),
 			shardTracker:     NewShardTracker(),
@@ -806,70 +865,107 @@ func TestShardCountFor(t *testing.T) {
 		name        string
 		stream      *logproto.Stream
 		rate        int64
+		pushRate    float64
 		desiredRate loki_flagext.ByteSize
 
-		wantStreamSize int // used for sanity check.
-		wantShards     int
-		wantErr        bool
+		pushSize   int // used for sanity check.
+		wantShards int
+		wantErr    bool
 	}{
 		{
-			name:           "2 entries with zero rate and desired rate == 0, return 1 shard",
-			stream:         &logproto.Stream{Hash: 1},
-			rate:           0,
-			desiredRate:    0, // in bytes
-			wantStreamSize: 2, // in bytes
-			wantShards:     1,
-			wantErr:        false,
+			name:        "2 entries with zero rate and desired rate == 0, return 1 shard",
+			stream:      &logproto.Stream{Hash: 1},
+			rate:        0,
+			desiredRate: 0, // in bytes
+			pushSize:    2, // in bytes
+			pushRate:    1,
+			wantShards:  1,
+			wantErr:     false,
 		},
 		{
 			// although in this scenario we have enough size to be sharded, we can't divide the number of entries between the ingesters
 			// because the number of entries is lower than the number of shards.
-			name:           "not enough entries to be sharded, stream size (2b) + ingested rate (0b) < 3b = 1 shard but 0 entries",
-			stream:         &logproto.Stream{Hash: 1, Entries: []logproto.Entry{{Line: "abcde"}}},
-			rate:           0,
-			desiredRate:    3, // in bytes
-			wantStreamSize: 2, // in bytes
-			wantShards:     1,
-			wantErr:        true,
+			name:        "not enough entries to be sharded, stream size (2b) + ingested rate (0b) < 3b = 1 shard but 0 entries",
+			stream:      &logproto.Stream{Hash: 1, Entries: []logproto.Entry{{Line: "abcde"}}},
+			rate:        0,
+			desiredRate: 3, // in bytes
+			pushSize:    2, // in bytes
+			pushRate:    1,
+			wantShards:  1,
+			wantErr:     true,
 		},
 		{
-			name:           "not enough data to be sharded, stream size (18b) + ingested rate (0b) < 20b",
-			stream:         &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}}},
-			rate:           0,
-			desiredRate:    20, // in bytes
-			wantStreamSize: 18, // in bytes
-			wantShards:     1,
-			wantErr:        false,
+			name:        "not enough data to be sharded, stream size (18b) + ingested rate (0b) < 20b",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}}},
+			rate:        0,
+			desiredRate: 20, // in bytes
+			pushSize:    18, // in bytes
+			pushRate:    1,
+			wantShards:  1,
+			wantErr:     false,
 		},
 		{
-			name:           "enough data to have two shards, stream size (36b) + ingested rate (24b) > 40b",
-			stream:         &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
-			rate:           24, // in bytes
-			desiredRate:    40, // in bytes
-			wantStreamSize: 36, // in bytes
-			wantShards:     2,
-			wantErr:        false,
+			name:        "enough data to have two shards, stream size (36b) + ingested rate (24b) > 40b",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        24, // in bytes
+			desiredRate: 40, // in bytes
+			pushSize:    36, // in bytes
+			pushRate:    1,
+			wantShards:  2,
+			wantErr:     false,
 		},
 		{
 			// although the ingested rate by an ingester is 0, the stream is big enough to be sharded.
-			name:           "enough data to have two shards, stream size (36b) + ingested rate (0b) > 22b",
-			stream:         &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
-			rate:           0,  // in bytes
-			desiredRate:    22, // in bytes
-			wantStreamSize: 36, // in bytes
-			wantShards:     2,
-			wantErr:        false,
+			name:        "enough data to have two shards, stream size (36b) + ingested rate (0b) > 22b",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        0,  // in bytes
+			desiredRate: 22, // in bytes
+			pushSize:    36, // in bytes
+			pushRate:    1,
+			wantShards:  2,
+			wantErr:     false,
 		},
 		{
-			name: "a lot of shards, stream size (1mb) + ingested rate (300mb) > 3mb",
+			name: "a lot of shards, stream size (90b) + ingested rate (300mb) > 3mb",
 			stream: &logproto.Stream{Entries: []logproto.Entry{
 				{Line: "a"}, {Line: "b"}, {Line: "c"}, {Line: "d"}, {Line: "e"},
 			}},
-			rate:           0,  // in bytes
-			desiredRate:    22, // in bytes
-			wantStreamSize: 90, // in bytes
-			wantShards:     5,
-			wantErr:        false,
+			rate:        0,  // in bytes
+			desiredRate: 22, // in bytes
+			pushSize:    90, // in bytes
+			pushRate:    1,
+			wantShards:  5,
+			wantErr:     false,
+		},
+		{
+			name:        "take push rate into account. Only generate two shards even though this push is quite large",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        24,        // in bytes
+			pushRate:    1.0 / 6.0, // one push every 6 seconds
+			desiredRate: 40,        // in bytes
+			pushSize:    200,       // in bytes
+			wantShards:  2,
+			wantErr:     false,
+		},
+		{
+			name:        "If the push rate is 0, it's the first push of this stream. Don't shard",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        24, // in bytes
+			pushRate:    0,
+			desiredRate: 40,  // in bytes
+			pushSize:    200, // in bytes
+			wantShards:  1,
+			wantErr:     false,
+		},
+		{
+			name:        "If the push rate is greater than 1, use the payload size",
+			stream:      &logproto.Stream{Entries: []logproto.Entry{{Line: "a"}, {Line: "b"}}},
+			rate:        24, // in bytes
+			pushRate:    3,
+			desiredRate: 40,  // in bytes
+			pushSize:    200, // in bytes
+			wantShards:  6,
+			wantErr:     false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -879,9 +975,9 @@ func TestShardCountFor(t *testing.T) {
 			limits.ShardStreams.DesiredRate = tc.desiredRate
 
 			d := &Distributor{
-				rateStore: &fakeRateStore{tc.rate},
+				rateStore: &fakeRateStore{tc.rate, tc.pushRate},
 			}
-			got := d.shardCountFor(util_log.Logger, tc.stream, tc.wantStreamSize, "fake", limits.ShardStreams)
+			got := d.shardCountFor(util_log.Logger, tc.stream, tc.pushSize, "fake", limits.ShardStreams)
 			require.Equal(t, tc.wantShards, got)
 		})
 	}
@@ -1070,7 +1166,7 @@ func prepare(t *testing.T, numDistributors, numIngesters int, limits *validation
 
 	if distributors[0].distributorsLifecycler != nil {
 		test.Poll(t, time.Second, numDistributors, func() interface{} {
-			return distributors[0].distributorsLifecycler.HealthyInstancesCount()
+			return distributors[0].HealthyInstancesCount()
 		})
 	}
 
@@ -1124,7 +1220,7 @@ type mockIngester struct {
 	pushed       []*logproto.PushRequest
 }
 
-func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+func (i *mockIngester) Push(_ context.Context, in *logproto.PushRequest, _ ...grpc.CallOption) (*logproto.PushResponse, error) {
 	if i.failAfter > 0 {
 		time.Sleep(i.failAfter)
 		return nil, fmt.Errorf("push request failed")
@@ -1140,7 +1236,7 @@ func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts 
 	return nil, nil
 }
 
-func (i *mockIngester) GetStreamRates(ctx context.Context, in *logproto.StreamRatesRequest, opts ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
+func (i *mockIngester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest, _ ...grpc.CallOption) (*logproto.StreamRatesResponse, error) {
 	return &logproto.StreamRatesResponse{}, nil
 }
 
@@ -1149,9 +1245,10 @@ func (i *mockIngester) Close() error {
 }
 
 type fakeRateStore struct {
-	rate int64
+	rate     int64
+	pushRate float64
 }
 
-func (s *fakeRateStore) RateFor(_ string, _ uint64) int64 {
-	return s.rate
+func (s *fakeRateStore) RateFor(_ string, _ uint64) (int64, float64) {
+	return s.rate, s.pushRate
 }

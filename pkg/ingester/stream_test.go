@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
@@ -63,6 +63,7 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 				true,
 				NewStreamRateCalculator(),
 				NilMetrics,
+				nil,
 			)
 
 			_, err := s.Push(context.Background(), []logproto.Entry{
@@ -78,13 +79,13 @@ func TestMaxReturnedStreamsErrors(t *testing.T) {
 			var expected bytes.Buffer
 			for i := 0; i < tc.expectErrs; i++ {
 				fmt.Fprintf(&expected,
-					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s' for stream: {foo=\"bar\"},\n",
+					"entry with timestamp %s ignored, reason: 'entry too far behind, oldest acceptable timestamp is: %s',\n",
 					time.Unix(int64(i), 0).String(),
 					time.Unix(int64(numLogs), 0).Format(time.RFC3339),
 				)
 			}
 
-			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d", numLogs, numLogs)
+			fmt.Fprintf(&expected, "user 'fake', total ignored: %d out of %d for stream: {foo=\"bar\"}", numLogs, numLogs)
 			expectErr := httpgrpc.Errorf(http.StatusBadRequest, expected.String())
 
 			_, err = s.Push(context.Background(), newLines, recordPool.GetRecord(), 0, true, false)
@@ -110,6 +111,7 @@ func TestPushDeduplication(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	written, err := s.Push(context.Background(), []logproto.Entry{
@@ -140,6 +142,7 @@ func TestPushRejectOldCounter(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	// counter should be 2 now since the first line will be deduped
@@ -176,7 +179,7 @@ func TestStreamIterator(t *testing.T) {
 		new  func() *chunkenc.MemChunk
 	}{
 		{"gzipChunk", func() *chunkenc.MemChunk {
-			return chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+			return chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.DefaultHeadBlockFmt, 256*1024, 0)
 		}},
 	} {
 		t.Run(chk.name, func(t *testing.T) {
@@ -196,25 +199,60 @@ func TestStreamIterator(t *testing.T) {
 
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(chunks*entries - 1)
-				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
+				length := rand.Intn(chunks*entries-from) + 1
+				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.FORWARD, log.NewNoopPipeline().ForStream(s.labels))
 				require.NotNil(t, iter)
 				require.NoError(t, err)
-				testIteratorForward(t, iter, int64(from), int64(from+len))
+				testIteratorForward(t, iter, int64(from), int64(from+length))
 				_ = iter.Close()
 			}
 
 			for i := 0; i < 100; i++ {
 				from := rand.Intn(entries - 1)
-				len := rand.Intn(chunks*entries-from) + 1
-				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+len), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
+				length := rand.Intn(chunks*entries-from) + 1
+				iter, err := s.Iterator(context.TODO(), nil, time.Unix(int64(from), 0), time.Unix(int64(from+length), 0), logproto.BACKWARD, log.NewNoopPipeline().ForStream(s.labels))
 				require.NotNil(t, iter)
 				require.NoError(t, err)
-				testIteratorBackward(t, iter, int64(from), int64(from+len))
+				testIteratorBackward(t, iter, int64(from), int64(from+length))
 				_ = iter.Close()
 			}
 		})
 	}
+}
+
+func TestEntryErrorCorrectlyReported(t *testing.T) {
+	cfg := defaultIngesterTestConfig(t)
+	cfg.MaxChunkAge = time.Minute
+	l := validation.Limits{
+		PerStreamRateLimit:      15,
+		PerStreamRateLimitBurst: 15,
+	}
+	limits, err := validation.NewOverrides(l, nil)
+	require.NoError(t, err)
+	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+
+	s := newStream(
+		&cfg,
+		limiter,
+		"fake",
+		model.Fingerprint(0),
+		labels.Labels{
+			{Name: "foo", Value: "bar"},
+		},
+		true,
+		NewStreamRateCalculator(),
+		NilMetrics,
+		nil,
+	)
+	s.highestTs = time.Now()
+
+	entries := []logproto.Entry{
+		{Line: "observability", Timestamp: time.Now().AddDate(-1 /* year */, 0 /* month */, 0 /* day */)},
+		{Line: "short", Timestamp: time.Now()},
+	}
+	_, failed := s.validateEntries(entries, false, true)
+	require.NotEmpty(t, failed)
+	require.False(t, hasRateLimitErr(failed))
 }
 
 func TestUnorderedPush(t *testing.T) {
@@ -235,6 +273,7 @@ func TestUnorderedPush(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	for _, x := range []struct {
@@ -332,6 +371,7 @@ func TestPushRateLimit(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -366,6 +406,7 @@ func TestPushRateLimitAllOrNothing(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	entries := []logproto.Entry{
@@ -399,6 +440,7 @@ func TestReplayAppendIgnoresValidityWindow(t *testing.T) {
 		true,
 		NewStreamRateCalculator(),
 		NilMetrics,
+		nil,
 	)
 
 	base := time.Now()
@@ -448,7 +490,7 @@ func Benchmark_PushStream(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics)
+	s := newStream(&Config{MaxChunkAge: 24 * time.Hour}, limiter, "fake", model.Fingerprint(0), ls, true, NewStreamRateCalculator(), NilMetrics, nil)
 	t, err := newTailer("foo", `{namespace="loki-dev"}`, &fakeTailServer{}, 10)
 	require.NoError(b, err)
 

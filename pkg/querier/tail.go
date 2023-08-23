@@ -243,7 +243,7 @@ func (t *Tailer) next() bool {
 	t.streamMtx.Lock()
 	defer t.streamMtx.Unlock()
 
-	if t.openStreamIterator.Len() == 0 || !time.Now().After(t.openStreamIterator.Peek().Add(t.delayFor)) || !t.openStreamIterator.Next() {
+	if t.openStreamIterator.IsEmpty() || !time.Now().After(t.openStreamIterator.Peek().Add(t.delayFor)) || !t.openStreamIterator.Next() {
 		return false
 	}
 

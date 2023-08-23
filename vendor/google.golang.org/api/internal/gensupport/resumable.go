@@ -43,8 +43,8 @@ type ResumableUpload struct {
 	// retries should happen.
 	ChunkRetryDeadline time.Duration
 
-	// Track current request invocation ID and attempt count for retry metric
-	// headers.
+	// Track current request invocation ID and attempt count for retry metrics
+	// and idempotency headers.
 	invocationID string
 	attempts     int
 }
@@ -81,9 +81,14 @@ func (rx *ResumableUpload) doUploadRequest(ctx context.Context, data io.Reader, 
 	req.Header.Set("Content-Type", rx.MediaType)
 	req.Header.Set("User-Agent", rx.UserAgent)
 
+	// TODO(b/274504690): Consider dropping gccl-invocation-id key since it
+	// duplicates the X-Goog-Gcs-Idempotency-Token header (added in v0.115.0).
 	baseXGoogHeader := "gl-go/" + GoVersion() + " gdcl/" + internal.Version
 	invocationHeader := fmt.Sprintf("gccl-invocation-id/%s gccl-attempt-count/%d", rx.invocationID, rx.attempts)
 	req.Header.Set("X-Goog-Api-Client", strings.Join([]string{baseXGoogHeader, invocationHeader}, " "))
+
+	// Set idempotency token header which is used by GCS uploads.
+	req.Header.Set("X-Goog-Gcs-Idempotency-Token", rx.invocationID)
 
 	// Google's upload endpoint uses status code 308 for a
 	// different purpose than the "308 Permanent Redirect"
@@ -209,7 +214,6 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 				}
 				return prepareReturn(resp, err)
 			case <-pauseTimer.C:
-				quitAfterTimer.Stop()
 			case <-quitAfterTimer.C:
 				pauseTimer.Stop()
 				return prepareReturn(resp, err)
@@ -231,7 +235,6 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 			case <-quitAfterTimer.C:
 				return prepareReturn(resp, err)
 			default:
-				quitAfterTimer.Stop()
 			}
 
 			resp, err = rx.transferChunk(ctx)
@@ -243,6 +246,7 @@ func (rx *ResumableUpload) Upload(ctx context.Context) (resp *http.Response, err
 
 			// Check if we should retry the request.
 			if !errorFunc(status, err) {
+				quitAfterTimer.Stop()
 				break
 			}
 

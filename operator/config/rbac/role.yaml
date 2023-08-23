@@ -36,14 +36,6 @@ rules:
   - list
   - watch
 - apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
   - apps
   resources:
   - deployments
@@ -200,6 +192,16 @@ rules:
   - networking.k8s.io
   resources:
   - ingresses
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - watch
+- apiGroups:
+  - policy
+  resources:
+  - poddisruptionbudgets
   verbs:
   - create
   - get

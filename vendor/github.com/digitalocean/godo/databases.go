@@ -9,28 +9,29 @@ import (
 )
 
 const (
-	databaseBasePath                = "/v2/databases"
-	databaseSinglePath              = databaseBasePath + "/%s"
-	databaseCAPath                  = databaseBasePath + "/%s/ca"
-	databaseConfigPath              = databaseBasePath + "/%s/config"
-	databaseResizePath              = databaseBasePath + "/%s/resize"
-	databaseMigratePath             = databaseBasePath + "/%s/migrate"
-	databaseMaintenancePath         = databaseBasePath + "/%s/maintenance"
-	databaseBackupsPath             = databaseBasePath + "/%s/backups"
-	databaseUsersPath               = databaseBasePath + "/%s/users"
-	databaseUserPath                = databaseBasePath + "/%s/users/%s"
-	databaseResetUserAuthPath       = databaseUserPath + "/reset_auth"
-	databaseDBPath                  = databaseBasePath + "/%s/dbs/%s"
-	databaseDBsPath                 = databaseBasePath + "/%s/dbs"
-	databasePoolPath                = databaseBasePath + "/%s/pools/%s"
-	databasePoolsPath               = databaseBasePath + "/%s/pools"
-	databaseReplicaPath             = databaseBasePath + "/%s/replicas/%s"
-	databaseReplicasPath            = databaseBasePath + "/%s/replicas"
-	databaseEvictionPolicyPath      = databaseBasePath + "/%s/eviction_policy"
-	databaseSQLModePath             = databaseBasePath + "/%s/sql_mode"
-	databaseFirewallRulesPath       = databaseBasePath + "/%s/firewall"
-	databaseOptionsPath             = databaseBasePath + "/options"
-	databaseUpgradeMajorVersionPath = databaseBasePath + "/%s/upgrade"
+	databaseBasePath                    = "/v2/databases"
+	databaseSinglePath                  = databaseBasePath + "/%s"
+	databaseCAPath                      = databaseBasePath + "/%s/ca"
+	databaseConfigPath                  = databaseBasePath + "/%s/config"
+	databaseResizePath                  = databaseBasePath + "/%s/resize"
+	databaseMigratePath                 = databaseBasePath + "/%s/migrate"
+	databaseMaintenancePath             = databaseBasePath + "/%s/maintenance"
+	databaseBackupsPath                 = databaseBasePath + "/%s/backups"
+	databaseUsersPath                   = databaseBasePath + "/%s/users"
+	databaseUserPath                    = databaseBasePath + "/%s/users/%s"
+	databaseResetUserAuthPath           = databaseUserPath + "/reset_auth"
+	databaseDBPath                      = databaseBasePath + "/%s/dbs/%s"
+	databaseDBsPath                     = databaseBasePath + "/%s/dbs"
+	databasePoolPath                    = databaseBasePath + "/%s/pools/%s"
+	databasePoolsPath                   = databaseBasePath + "/%s/pools"
+	databaseReplicaPath                 = databaseBasePath + "/%s/replicas/%s"
+	databaseReplicasPath                = databaseBasePath + "/%s/replicas"
+	databaseEvictionPolicyPath          = databaseBasePath + "/%s/eviction_policy"
+	databaseSQLModePath                 = databaseBasePath + "/%s/sql_mode"
+	databaseFirewallRulesPath           = databaseBasePath + "/%s/firewall"
+	databaseOptionsPath                 = databaseBasePath + "/options"
+	databaseUpgradeMajorVersionPath     = databaseBasePath + "/%s/upgrade"
+	databasePromoteReplicaToPrimaryPath = databaseReplicaPath + "/promote"
 )
 
 // SQL Mode constants allow for MySQL-specific SQL flavor configuration.
@@ -130,6 +131,7 @@ type DatabasesService interface {
 	ListReplicas(context.Context, string, *ListOptions) ([]DatabaseReplica, *Response, error)
 	CreateReplica(context.Context, string, *DatabaseCreateReplicaRequest) (*DatabaseReplica, *Response, error)
 	DeleteReplica(context.Context, string, string) (*Response, error)
+	PromoteReplicaToPrimary(context.Context, string, string) (*Response, error)
 	GetEvictionPolicy(context.Context, string) (string, *Response, error)
 	SetEvictionPolicy(context.Context, string, string) (*Response, error)
 	GetSQLMode(context.Context, string) (string, *Response, error)
@@ -1003,6 +1005,20 @@ func (svc *DatabasesServiceOp) CreateReplica(ctx context.Context, databaseID str
 func (svc *DatabasesServiceOp) DeleteReplica(ctx context.Context, databaseID, name string) (*Response, error) {
 	path := fmt.Sprintf(databaseReplicaPath, databaseID, name)
 	req, err := svc.client.NewRequest(ctx, http.MethodDelete, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := svc.client.Do(ctx, req, nil)
+	if err != nil {
+		return resp, err
+	}
+	return resp, nil
+}
+
+// PromoteReplicaToPrimary will sever the read replica integration and then promote the replica cluster to be a R/W cluster
+func (svc *DatabasesServiceOp) PromoteReplicaToPrimary(ctx context.Context, databaseID, name string) (*Response, error) {
+	path := fmt.Sprintf(databasePromoteReplicaToPrimaryPath, databaseID, name)
+	req, err := svc.client.NewRequest(ctx, http.MethodPut, path, nil)
 	if err != nil {
 		return nil, err
 	}

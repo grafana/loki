@@ -7,12 +7,8 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/syntax"
-	ruler "github.com/grafana/loki/pkg/ruler/base"
-	"github.com/grafana/loki/pkg/ruler/rulespb"
-	"github.com/grafana/loki/pkg/ruler/util"
+	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
@@ -26,7 +22,12 @@ import (
 	"github.com/prometheus/prometheus/promql/parser"
 	"github.com/prometheus/prometheus/rules"
 	"github.com/prometheus/prometheus/template"
-	"github.com/weaveworks/common/user"
+
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	ruler "github.com/grafana/loki/pkg/ruler/base"
+	"github.com/grafana/loki/pkg/ruler/rulespb"
+	"github.com/grafana/loki/pkg/ruler/util"
 )
 
 // RulesLimits is the one function we need from limits.Overrides, and
@@ -49,12 +50,21 @@ type RulesLimits interface {
 	RulerRemoteWriteQueueMaxBackoff(userID string) time.Duration
 	RulerRemoteWriteQueueRetryOnRateLimit(userID string) bool
 	RulerRemoteWriteSigV4Config(userID string) *sigv4.SigV4Config
+
+	RulerRemoteEvaluationTimeout(userID string) time.Duration
+	RulerRemoteEvaluationMaxResponseSize(userID string) int64
 }
 
-// engineQueryFunc returns a new query function using the rules.EngineQueryFunc function
+// queryFunc returns a new query function using the rules.EngineQueryFunc function
 // and passing an altered timestamp.
-func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyChecker, userID string) rules.QueryFunc {
-	return rules.QueryFunc(func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+func queryFunc(evaluator Evaluator, overrides RulesLimits, checker readyChecker, userID string, logger log.Logger) rules.QueryFunc {
+	return func(ctx context.Context, qs string, t time.Time) (promql.Vector, error) {
+		hash := logql.HashedQuery(qs)
+		detail := rules.FromOriginContext(ctx)
+		detailLog := log.With(logger, "rule_name", detail.Name, "rule_type", detail.Kind, "query", qs, "query_hash", hash)
+
+		level.Info(detailLog).Log("msg", "evaluating rule")
+
 		// check if storage instance is ready; if not, fail the rule evaluation;
 		// we do this to prevent an attempt to append new samples before the WAL appender is ready
 		if !checker.isReady(userID) {
@@ -62,34 +72,25 @@ func engineQueryFunc(engine *logql.Engine, overrides RulesLimits, checker readyC
 		}
 
 		adjusted := t.Add(-overrides.EvaluationDelay(userID))
-		params := logql.NewLiteralParams(
-			qs,
-			adjusted,
-			adjusted,
-			0,
-			0,
-			logproto.FORWARD,
-			0,
-			nil,
-		)
-		q := engine.Query(params)
+		res, err := evaluator.Eval(ctx, qs, adjusted)
 
-		res, err := q.Exec(ctx)
 		if err != nil {
-			return nil, err
+			level.Error(detailLog).Log("msg", "rule evaluation failed", "err", err)
+			return nil, fmt.Errorf("rule evaluation failed: %w", err)
 		}
 		switch v := res.Data.(type) {
 		case promql.Vector:
 			return v, nil
 		case promql.Scalar:
 			return promql.Vector{promql.Sample{
-				Point:  promql.Point{T: v.T, V: v.V},
+				T: v.T, F: v.V,
 				Metric: labels.Labels{},
 			}}, nil
 		default:
+			level.Error(detailLog).Log("msg", "rule result is not a vector or scalar", "err", err)
 			return nil, errors.New("rule result is not a vector or scalar")
 		}
-	})
+	}
 }
 
 // MultiTenantManagerAdapter will wrap a MultiTenantManager which validates loki rules
@@ -128,7 +129,7 @@ const MetricsPrefix = "loki_ruler_wal_"
 
 var registry storageRegistry
 
-func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
+func MultiTenantRuleManager(cfg Config, evaluator Evaluator, overrides RulesLimits, logger log.Logger, reg prometheus.Registerer) ruler.ManagerFactory {
 	reg = prometheus.WrapRegistererWithPrefix(MetricsPrefix, reg)
 
 	registry = newWALRegistry(log.With(logger, "storage", "registry"), reg, cfg, overrides)
@@ -143,8 +144,8 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		registry.configureTenantStorage(userID)
 
 		logger = log.With(logger, "user", userID)
-		queryFunc := engineQueryFunc(engine, overrides, registry, userID)
-		memStore := NewMemStore(userID, queryFunc, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
+		queryFn := queryFunc(evaluator, overrides, registry, userID, logger)
+		memStore := NewMemStore(userID, queryFn, newMemstoreMetrics(reg), 5*time.Minute, log.With(logger, "subcomponent", "MemStore"))
 
 		// GroupLoader builds a cache of the rules as they're loaded by the
 		// manager.This is used to back the memstore
@@ -153,10 +154,10 @@ func MultiTenantRuleManager(cfg Config, engine *logql.Engine, overrides RulesLim
 		mgr := rules.NewManager(&rules.ManagerOptions{
 			Appendable:      registry,
 			Queryable:       memStore,
-			QueryFunc:       queryFunc,
+			QueryFunc:       queryFn,
 			Context:         user.InjectOrgID(ctx, userID),
 			ExternalURL:     cfg.ExternalURL.URL,
-			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String()),
+			NotifyFunc:      ruler.SendAlerts(notifier, cfg.ExternalURL.URL.String(), cfg.DatasourceUID),
 			Logger:          logger,
 			Registerer:      reg,
 			OutageTolerance: cfg.OutageTolerance,
@@ -187,7 +188,7 @@ type CachingRulesManager struct {
 // Update reconciles the state of the CachingGroupLoader after a manager.Update.
 // The GroupLoader is mutated as part of a call to Update but it might still
 // contain removed files. Update tells the loader which files to keep
-func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.RuleGroupPostProcessFunc) error {
+func (m *CachingRulesManager) Update(interval time.Duration, files []string, externalLabels labels.Labels, externalURL string, ruleGroupPostProcessFunc rules.GroupEvalIterationFunc) error {
 	err := m.manager.Update(interval, files, externalLabels, externalURL, ruleGroupPostProcessFunc)
 	if err != nil {
 		return err
@@ -248,7 +249,10 @@ func validateRuleNode(r *rulefmt.RuleNode, groupName string) error {
 	if r.Expr.Value == "" {
 		return errors.Errorf("field 'expr' must be set in rule")
 	} else if _, err := syntax.ParseExpr(r.Expr.Value); err != nil {
-		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName))
+		if r.Record.Value != "" {
+			return errors.Wrapf(err, fmt.Sprintf("could not parse expression for record '%s' in group '%s'", r.Record.Value, groupName))
+		}
+		return errors.Wrapf(err, fmt.Sprintf("could not parse expression for alert '%s' in group '%s'", r.Alert.Value, groupName))
 	}
 
 	if r.Record.Value != "" {
@@ -342,4 +346,4 @@ type exprAdapter struct {
 func (exprAdapter) PositionRange() parser.PositionRange { return parser.PositionRange{} }
 func (exprAdapter) PromQLExpr()                         {}
 func (exprAdapter) Type() parser.ValueType              { return parser.ValueType("unimplemented") }
-func (exprAdapter) Pretty(level int) string             { return "" }
+func (exprAdapter) Pretty(_ int) string                 { return "" }

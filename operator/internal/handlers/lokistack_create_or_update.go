@@ -6,9 +6,18 @@ import (
 	"os"
 	"time"
 
+	"github.com/ViaQ/logerr/v2/kverrors"
+	"github.com/go-logr/logr"
+	corev1 "k8s.io/api/core/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
 	"github.com/grafana/loki/operator/internal/external/k8s"
 	"github.com/grafana/loki/operator/internal/handlers/internal/gateway"
 	"github.com/grafana/loki/operator/internal/handlers/internal/openshift"
@@ -21,16 +30,6 @@ import (
 	storageoptions "github.com/grafana/loki/operator/internal/manifests/storage"
 	"github.com/grafana/loki/operator/internal/metrics"
 	"github.com/grafana/loki/operator/internal/status"
-
-	"github.com/ViaQ/logerr/v2/kverrors"
-	"github.com/go-logr/logr"
-	corev1 "k8s.io/api/core/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	ctrlutil "sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 const (
@@ -197,9 +196,9 @@ func CreateOrUpdateLokiStack(
 	}
 
 	var (
-		alertingRules  []lokiv1beta1.AlertingRule
-		recordingRules []lokiv1beta1.RecordingRule
-		rulerConfig    *lokiv1beta1.RulerConfigSpec
+		alertingRules  []lokiv1.AlertingRule
+		recordingRules []lokiv1.RecordingRule
+		rulerConfig    *lokiv1.RulerConfigSpec
 		rulerSecret    *manifests.RulerSecret
 		ocpAmEnabled   bool
 		ocpUWAmEnabled bool
@@ -254,13 +253,13 @@ func CreateOrUpdateLokiStack(
 		// Clean up ruler resources
 		err = rules.RemoveRulesConfigMap(ctx, req, k)
 		if err != nil {
-			ll.Error(err, "failed to remove rules configmap")
+			ll.Error(err, "failed to remove rules ConfigMap")
 			return err
 		}
 
 		err = rules.RemoveRuler(ctx, req, k)
 		if err != nil {
-			ll.Error(err, "failed to remove ruler statefulset")
+			ll.Error(err, "failed to remove ruler StatefulSet")
 			return err
 		}
 	}
@@ -268,6 +267,16 @@ func CreateOrUpdateLokiStack(
 	certRotationRequiredAt := ""
 	if stack.Annotations != nil {
 		certRotationRequiredAt = stack.Annotations[manifests.AnnotationCertRotationRequiredAt]
+	}
+
+	timeoutConfig, err := manifests.NewTimeoutConfig(stack.Spec.Limits)
+	if err != nil {
+		ll.Error(err, "failed to parse query timeout")
+		return &status.DegradedError{
+			Message: fmt.Sprintf("Error parsing query timeout: %s", err),
+			Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+			Requeue: false,
+		}
 	}
 
 	// Here we will translate the lokiv1.LokiStack options into manifest options
@@ -287,6 +296,7 @@ func CreateOrUpdateLokiStack(
 			Spec:   rulerConfig,
 			Secret: rulerSecret,
 		},
+		Timeouts: timeoutConfig,
 		Tenants: manifests.Tenants{
 			Secrets: tenantSecrets,
 			Configs: tenantConfigs,
@@ -356,7 +366,7 @@ func CreateOrUpdateLokiStack(
 			"object_kind", obj.GetObjectKind(),
 		)
 
-		if isNamespaceScoped(obj) {
+		if isNamespacedResource(obj) {
 			obj.SetNamespace(req.Namespace)
 
 			if err := ctrl.SetControllerReference(&stack, obj, s); err != nil {
@@ -368,6 +378,7 @@ func CreateOrUpdateLokiStack(
 
 		depAnnotations, err := dependentAnnotations(ctx, k, obj)
 		if err != nil {
+			l.Error(err, "failed to set dependent annotations")
 			return err
 		}
 
@@ -396,7 +407,7 @@ func CreateOrUpdateLokiStack(
 
 	// 1x.extra-small is used only for development, so the metrics will not
 	// be collected.
-	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall {
+	if opts.Stack.Size != lokiv1.SizeOneXExtraSmall && opts.Stack.Size != lokiv1.SizeOneXDemo {
 		metrics.Collect(&opts.Stack, opts.Name)
 	}
 
@@ -421,7 +432,8 @@ func dependentAnnotations(ctx context.Context, k k8s.Client, obj client.Object) 
 	}, nil
 }
 
-func isNamespaceScoped(obj client.Object) bool {
+// isNamespacedResource determines if an object should be managed or not by a LokiStack
+func isNamespacedResource(obj client.Object) bool {
 	switch obj.(type) {
 	case *rbacv1.ClusterRole, *rbacv1.ClusterRoleBinding:
 		return false

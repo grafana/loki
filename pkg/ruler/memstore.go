@@ -3,9 +3,10 @@ package ruler
 import (
 	"context"
 	"errors"
-	"github.com/prometheus/prometheus/model/rulefmt"
 	"sync"
 	"time"
+
+	"github.com/prometheus/prometheus/model/rulefmt"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -31,7 +32,7 @@ func ForStateMetric(base labels.Labels, alertName string) labels.Labels {
 	b := labels.NewBuilder(base)
 	b.Set(labels.MetricName, AlertForStateMetricName)
 	b.Set(labels.AlertName, alertName)
-	return b.Labels(nil)
+	return b.Labels()
 }
 
 type memstoreMetrics struct {
@@ -165,7 +166,7 @@ func (m *MemStore) run() {
 // implement storage.Queryable. It is only called with the desired ts as maxtime. Mint is
 // parameterized via the outage tolerance, but since we're synthetically generating these,
 // we only care about the desired time.
-func (m *MemStore) Querier(ctx context.Context, mint, maxt int64) (storage.Querier, error) {
+func (m *MemStore) Querier(ctx context.Context, _, maxt int64) (storage.Querier, error) {
 	<-m.initiated
 	return &memStoreQuerier{
 		ts:       util.TimeFromMillis(maxt),
@@ -183,7 +184,7 @@ type memStoreQuerier struct {
 
 // Select implements storage.Querier but takes advantage of the fact that it's only called when restoring for state
 // in order to lookup & cache previous rule evaluations. This results in a sort of synthetic metric store.
-func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
+func (m *memStoreQuerier) Select(_ bool, _ *storage.SelectHints, matchers ...*labels.Matcher) storage.SeriesSet {
 	b := labels.NewBuilder(nil)
 	var ruleKey string
 	for _, matcher := range matchers {
@@ -195,7 +196,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 			ruleKey = matcher.Value
 		}
 	}
-	ls := b.Labels(nil)
+	ls := b.Labels()
 	if ruleKey == "" {
 		level.Error(m.logger).Log("msg", "Select called in an unexpected fashion without alertname or ALERTS_FOR_STATE labels")
 		return storage.NoopSeriesSet()
@@ -232,7 +233,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 		return series.NewConcreteSeriesSet(
 			[]storage.Series{
 				series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
-					{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+					{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.F)},
 				}),
 			},
 		)
@@ -260,10 +261,8 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 
 		forStateVec = append(forStateVec, promql.Sample{
 			Metric: ForStateMetric(smpl.Metric, rule.Alert),
-			Point: promql.Point{
-				T: ts,
-				V: float64(checkTime.Unix()),
-			},
+			T:      ts,
+			F:      float64(checkTime.Unix()),
 		})
 
 	}
@@ -281,7 +280,7 @@ func (m *memStoreQuerier) Select(sortSeries bool, params *storage.SelectHints, m
 	return series.NewConcreteSeriesSet(
 		[]storage.Series{
 			series.NewConcreteSeries(smpl.Metric, []model.SamplePair{
-				{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.V)},
+				{Timestamp: model.Time(util.TimeToMillis(m.ts)), Value: model.SampleValue(smpl.F)},
 			}),
 		},
 	)
@@ -298,12 +297,12 @@ func (m *memStoreQuerier) findRule(name string) (rulefmt.Rule, bool) {
 }
 
 // LabelValues returns all potential values for a label name.
-func (*memStoreQuerier) LabelValues(name string, matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelValues(_ string, _ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 
 // LabelNames returns all the unique label names present in the block in sorted order.
-func (*memStoreQuerier) LabelNames(matchers ...*labels.Matcher) ([]string, storage.Warnings, error) {
+func (*memStoreQuerier) LabelNames(_ ...*labels.Matcher) ([]string, storage.Warnings, error) {
 	return nil, nil, errors.New("unimplemented")
 }
 

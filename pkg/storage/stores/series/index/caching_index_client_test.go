@@ -10,9 +10,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -29,7 +29,7 @@ type mockStore struct {
 	results index.ReadBatchResult
 }
 
-func (m *mockStore) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (m *mockStore) QueryPages(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
 		callback(query, m.results)
 	}
@@ -89,7 +89,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 		{TableName: "table", HashValue: "baz"},
 	}
 	results := 0
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -102,7 +102,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -116,7 +116,7 @@ func TestTempCachingStorageClient(t *testing.T) {
 	// If we do the query after validity, it should see the queries.
 	time.Sleep(100 * time.Millisecond)
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -148,7 +148,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 		{TableName: "table", HashValue: "baz", Immutable: true},
 	}
 	results := 0
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -161,7 +161,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -175,7 +175,7 @@ func TestPermCachingStorageClient(t *testing.T) {
 	// If we do the query after validity, it still shouldn't see the queries.
 	time.Sleep(200 * time.Millisecond)
 	results = 0
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results++
@@ -199,7 +199,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	cache := cache.NewFifoCache("test", cache.FifoCacheConfig{MaxSizeItems: 10, TTL: 10 * time.Second}, nil, logger, "test")
 	client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, false)
 	queries := []index.Query{{TableName: "table", HashValue: "foo"}}
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -207,7 +207,7 @@ func TestCachingStorageClientEmptyResponse(t *testing.T) {
 	assert.EqualValues(t, 1, len(store.queries))
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		assert.False(t, batch.Iterator().Next())
 		return true
 	})
@@ -243,7 +243,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 	}
 
 	var results index.ReadBatch
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results.Entries = append(results.Entries, index.CacheEntry{
@@ -259,7 +259,7 @@ func TestCachingStorageClientCollision(t *testing.T) {
 
 	// If we do the query to the cache again, the underlying store shouldn't see it.
 	results = index.ReadBatch{}
-	err = client.QueryPages(ctx, queries, func(query index.Query, batch index.ReadBatchResult) bool {
+	err = client.QueryPages(ctx, queries, func(_ index.Query, batch index.ReadBatchResult) bool {
 		iter := batch.Iterator()
 		for iter.Next() {
 			results.Entries = append(results.Entries, index.CacheEntry{
@@ -420,7 +420,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 				client := index.NewCachingIndexClient(store, cache, 1*time.Second, limits, logger, disableBroadQueries)
 				var callbackQueries []index.Query
 
-				err = client.QueryPages(ctx, tc.queries, func(query index.Query, batch index.ReadBatchResult) bool {
+				err = client.QueryPages(ctx, tc.queries, func(query index.Query, _ index.ReadBatchResult) bool {
 					callbackQueries = append(callbackQueries, query)
 					return true
 				})
@@ -446,7 +446,7 @@ func TestCachingStorageClientStoreQueries(t *testing.T) {
 
 				callbackQueries = callbackQueries[:0]
 				// If we do the query to the cache again, the underlying store shouldn't see it.
-				err = client.QueryPages(ctx, tc.queries, func(query index.Query, batch index.ReadBatchResult) bool {
+				err = client.QueryPages(ctx, tc.queries, func(query index.Query, _ index.ReadBatchResult) bool {
 					callbackQueries = append(callbackQueries, query)
 					return true
 				})

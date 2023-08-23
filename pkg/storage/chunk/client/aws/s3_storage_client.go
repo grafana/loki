@@ -17,35 +17,31 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
+	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
-	"github.com/minio/minio-go/v7/pkg/signer"
+	"github.com/grafana/dskit/instrument"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	awscommon "github.com/weaveworks/common/aws"
-	"github.com/weaveworks/common/instrument"
 
 	bucket_s3 "github.com/grafana/loki/pkg/storage/bucket/s3"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	storageawscommon "github.com/grafana/loki/pkg/storage/common/aws"
 	"github.com/grafana/loki/pkg/util"
+	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
 const (
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 )
 
 var (
-	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedSignatureVersions     = []string{SignatureVersionV4}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
-	errUnsupportedStorageClass     = errors.New("unsupported S3 storage class")
 )
 
 var s3RequestDuration = instrument.NewHistogramCollector(prometheus.NewHistogramVec(prometheus.HistogramOpts{
@@ -73,6 +69,7 @@ type S3Config struct {
 	Region           string              `yaml:"region"`
 	AccessKeyID      string              `yaml:"access_key_id"`
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
+	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
 	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
@@ -86,6 +83,7 @@ type S3Config struct {
 
 // HTTPConfig stores the http.Transport configuration
 type HTTPConfig struct {
+	Timeout               time.Duration `yaml:"timeout"`
 	IdleConnTimeout       time.Duration `yaml:"idle_conn_timeout"`
 	ResponseHeaderTimeout time.Duration `yaml:"response_header_timeout"`
 	InsecureSkipVerify    bool          `yaml:"insecure_skip_verify"`
@@ -108,6 +106,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "AWS region to use.")
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "AWS Access Key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
+	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
 
 	// TODO Remove in Cortex 1.10.0
@@ -116,6 +115,7 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
 	f.DurationVar(&cfg.HTTPConfig.IdleConnTimeout, prefix+"s3.http.idle-conn-timeout", 90*time.Second, "The maximum amount of time an idle connection will be held open.")
+	f.DurationVar(&cfg.HTTPConfig.Timeout, prefix+"s3.http.timeout", 0, "Timeout specifies a time limit for requests made by s3 Client.")
 	f.DurationVar(&cfg.HTTPConfig.ResponseHeaderTimeout, prefix+"s3.http.response-header-timeout", 0, "If non-zero, specifies the amount of time to wait for a server's response headers after fully writing the request.")
 	f.BoolVar(&cfg.HTTPConfig.InsecureSkipVerify, prefix+"s3.http.insecure-skip-verify", false, "Set to true to skip verifying the certificate chain and hostname.")
 	f.StringVar(&cfg.HTTPConfig.CAFile, prefix+"s3.http.ca-file", "", "Path to the trusted CA file that signed the SSL certificate of the S3 endpoint.")
@@ -190,28 +190,6 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	return nil, nil
 }
 
-func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
-	return request.NamedHandler{
-		Name: "v2.SignRequestHandler",
-		Fn: func(req *request.Request) {
-			credentials, err := req.Config.Credentials.GetWithContext(req.Context())
-			if err != nil {
-				if err != nil {
-					req.Error = err
-					return
-				}
-			}
-
-			req.HTTPRequest = signer.SignV2(
-				*req.HTTPRequest,
-				credentials.AccessKeyID,
-				credentials.SecretAccessKey,
-				!cfg.S3ForcePathStyle,
-			)
-		},
-	}
-}
-
 func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
 	var s3Config *aws.Config
 	var err error
@@ -248,7 +226,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	if cfg.AccessKeyID != "" && cfg.SecretAccessKey.String() != "" {
-		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), "")
+		creds := credentials.NewStaticCredentials(cfg.AccessKeyID, cfg.SecretAccessKey.String(), cfg.SessionToken.String())
 		s3Config = s3Config.WithCredentials(creds)
 	}
 
@@ -290,6 +268,7 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 	httpClient := &http.Client{
 		Transport: transport,
+		Timeout:   cfg.HTTPConfig.Timeout,
 	}
 
 	if hedging {
@@ -307,10 +286,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	s3Client := s3.New(sess)
-
-	if cfg.SignatureVersion == SignatureVersionV2 {
-		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
-	}
 
 	return s3Client, nil
 }
@@ -368,13 +343,15 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 	// Map the key into a bucket
 	bucket := a.bucketFromKey(objectKey)
 
+	var lastErr error
+
 	retries := backoff.New(ctx, a.cfg.BackoffConfig)
-	err := ctx.Err()
 	for retries.Ongoing() {
 		if ctx.Err() != nil {
 			return nil, 0, errors.Wrap(ctx.Err(), "ctx related error during s3 getObject")
 		}
-		err = instrument.CollectedRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+
+		lastErr = loki_instrument.TimeRequest(ctx, "S3.GetObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			var requestErr error
 			resp, requestErr = a.hedgedS3.GetObjectWithContext(ctx, &s3.GetObjectInput{
 				Bucket: aws.String(bucket),
@@ -382,21 +359,23 @@ func (a *S3ObjectClient) GetObject(ctx context.Context, objectKey string) (io.Re
 			})
 			return requestErr
 		})
+
 		var size int64
 		if resp.ContentLength != nil {
 			size = *resp.ContentLength
 		}
-		if err == nil && resp.Body != nil {
+		if lastErr == nil && resp.Body != nil {
 			return resp.Body, size, nil
 		}
 		retries.Wait()
 	}
-	return nil, 0, errors.Wrap(err, "failed to get s3 object")
+
+	return nil, 0, errors.Wrap(lastErr, "failed to get s3 object")
 }
 
 // PutObject into the store
 func (a *S3ObjectClient) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "S3.PutObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 		putObjectInput := &s3.PutObjectInput{
 			Body:         object,
 			Bucket:       aws.String(a.bucketFromKey(objectKey)),
@@ -421,7 +400,7 @@ func (a *S3ObjectClient) List(ctx context.Context, prefix, delimiter string) ([]
 	var commonPrefixes []client.StorageCommonPrefix
 
 	for i := range a.bucketNames {
-		err := instrument.CollectedRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		err := loki_instrument.TimeRequest(ctx, "S3.List", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
 			input := s3.ListObjectsV2Input{
 				Bucket:    aws.String(a.bucketNames[i]),
 				Prefix:    aws.String(prefix),
@@ -474,3 +453,6 @@ func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }

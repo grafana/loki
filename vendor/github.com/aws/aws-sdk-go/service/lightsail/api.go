@@ -2430,6 +2430,108 @@ func (c *Lightsail) CreateDomainEntryWithContext(ctx aws.Context, input *CreateD
 	return out, req.Send()
 }
 
+const opCreateGUISessionAccessDetails = "CreateGUISessionAccessDetails"
+
+// CreateGUISessionAccessDetailsRequest generates a "aws/request.Request" representing the
+// client's request for the CreateGUISessionAccessDetails operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See CreateGUISessionAccessDetails for more information on using the CreateGUISessionAccessDetails
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the CreateGUISessionAccessDetailsRequest method.
+//	req, resp := client.CreateGUISessionAccessDetailsRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateGUISessionAccessDetails
+func (c *Lightsail) CreateGUISessionAccessDetailsRequest(input *CreateGUISessionAccessDetailsInput) (req *request.Request, output *CreateGUISessionAccessDetailsOutput) {
+	op := &request.Operation{
+		Name:       opCreateGUISessionAccessDetails,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &CreateGUISessionAccessDetailsInput{}
+	}
+
+	output = &CreateGUISessionAccessDetailsOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// CreateGUISessionAccessDetails API operation for Amazon Lightsail.
+//
+// Creates two URLs that are used to access a virtual computer’s graphical
+// user interface (GUI) session. The primary URL initiates a web-based NICE
+// DCV session to the virtual computer's application. The secondary URL initiates
+// a web-based NICE DCV session to the virtual computer's operating session.
+//
+// Use StartGUISession to open the session.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation CreateGUISessionAccessDetails for usage and error information.
+//
+// Returned Error Types:
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/CreateGUISessionAccessDetails
+func (c *Lightsail) CreateGUISessionAccessDetails(input *CreateGUISessionAccessDetailsInput) (*CreateGUISessionAccessDetailsOutput, error) {
+	req, out := c.CreateGUISessionAccessDetailsRequest(input)
+	return out, req.Send()
+}
+
+// CreateGUISessionAccessDetailsWithContext is the same as CreateGUISessionAccessDetails with the addition of
+// the ability to pass a context and additional request options.
+//
+// See CreateGUISessionAccessDetails for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) CreateGUISessionAccessDetailsWithContext(ctx aws.Context, input *CreateGUISessionAccessDetailsInput, opts ...request.Option) (*CreateGUISessionAccessDetailsOutput, error) {
+	req, out := c.CreateGUISessionAccessDetailsRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opCreateInstanceSnapshot = "CreateInstanceSnapshot"
 
 // CreateInstanceSnapshotRequest generates a "aws/request.Request" representing the
@@ -7501,7 +7603,7 @@ func (c *Lightsail) GetCertificatesRequest(input *GetCertificatesInput) (req *re
 //
 // Returns information about one or more Amazon Lightsail SSL/TLS certificates.
 //
-// To get a summary of a certificate, ommit includeCertificateDetails from your
+// To get a summary of a certificate, omit includeCertificateDetails from your
 // request. The response will include only the certificate Amazon Resource Name
 // (ARN), certificate name, domain name, and tags.
 //
@@ -8473,6 +8575,104 @@ func (c *Lightsail) GetContainerServices(input *GetContainerServicesInput) (*Get
 // for more information on using Contexts.
 func (c *Lightsail) GetContainerServicesWithContext(ctx aws.Context, input *GetContainerServicesInput, opts ...request.Option) (*GetContainerServicesOutput, error) {
 	req, out := c.GetContainerServicesRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opGetCostEstimate = "GetCostEstimate"
+
+// GetCostEstimateRequest generates a "aws/request.Request" representing the
+// client's request for the GetCostEstimate operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See GetCostEstimate for more information on using the GetCostEstimate
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the GetCostEstimateRequest method.
+//	req, resp := client.GetCostEstimateRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetCostEstimate
+func (c *Lightsail) GetCostEstimateRequest(input *GetCostEstimateInput) (req *request.Request, output *GetCostEstimateOutput) {
+	op := &request.Operation{
+		Name:       opGetCostEstimate,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &GetCostEstimateInput{}
+	}
+
+	output = &GetCostEstimateOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// GetCostEstimate API operation for Amazon Lightsail.
+//
+// Retrieves information about the cost estimate for a specified resource. A
+// cost estimate will not generate for a resource that has been deleted.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation GetCostEstimate for usage and error information.
+//
+// Returned Error Types:
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/GetCostEstimate
+func (c *Lightsail) GetCostEstimate(input *GetCostEstimateInput) (*GetCostEstimateOutput, error) {
+	req, out := c.GetCostEstimateRequest(input)
+	return out, req.Send()
+}
+
+// GetCostEstimateWithContext is the same as GetCostEstimate with the addition of
+// the ability to pass a context and additional request options.
+//
+// See GetCostEstimate for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) GetCostEstimateWithContext(ctx aws.Context, input *GetCostEstimateInput, opts ...request.Option) (*GetCostEstimateOutput, error) {
+	req, out := c.GetCostEstimateRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -14608,6 +14808,105 @@ func (c *Lightsail) SetResourceAccessForBucketWithContext(ctx aws.Context, input
 	return out, req.Send()
 }
 
+const opStartGUISession = "StartGUISession"
+
+// StartGUISessionRequest generates a "aws/request.Request" representing the
+// client's request for the StartGUISession operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See StartGUISession for more information on using the StartGUISession
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the StartGUISessionRequest method.
+//	req, resp := client.StartGUISessionRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StartGUISession
+func (c *Lightsail) StartGUISessionRequest(input *StartGUISessionInput) (req *request.Request, output *StartGUISessionOutput) {
+	op := &request.Operation{
+		Name:       opStartGUISession,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &StartGUISessionInput{}
+	}
+
+	output = &StartGUISessionOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// StartGUISession API operation for Amazon Lightsail.
+//
+// Initiates a graphical user interface (GUI) session that’s used to access
+// a virtual computer’s operating system and application. The session will
+// be active for 1 hour. Use this action to resume the session after it expires.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation StartGUISession for usage and error information.
+//
+// Returned Error Types:
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StartGUISession
+func (c *Lightsail) StartGUISession(input *StartGUISessionInput) (*StartGUISessionOutput, error) {
+	req, out := c.StartGUISessionRequest(input)
+	return out, req.Send()
+}
+
+// StartGUISessionWithContext is the same as StartGUISession with the addition of
+// the ability to pass a context and additional request options.
+//
+// See StartGUISession for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) StartGUISessionWithContext(ctx aws.Context, input *StartGUISessionInput, opts ...request.Option) (*StartGUISessionOutput, error) {
+	req, out := c.StartGUISessionRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
 const opStartInstance = "StartInstance"
 
 // StartInstanceRequest generates a "aws/request.Request" representing the
@@ -14826,6 +15125,105 @@ func (c *Lightsail) StartRelationalDatabase(input *StartRelationalDatabaseInput)
 // for more information on using Contexts.
 func (c *Lightsail) StartRelationalDatabaseWithContext(ctx aws.Context, input *StartRelationalDatabaseInput, opts ...request.Option) (*StartRelationalDatabaseOutput, error) {
 	req, out := c.StartRelationalDatabaseRequest(input)
+	req.SetContext(ctx)
+	req.ApplyOptions(opts...)
+	return out, req.Send()
+}
+
+const opStopGUISession = "StopGUISession"
+
+// StopGUISessionRequest generates a "aws/request.Request" representing the
+// client's request for the StopGUISession operation. The "output" return
+// value will be populated with the request's response once the request completes
+// successfully.
+//
+// Use "Send" method on the returned Request to send the API call to the service.
+// the "output" return value is not valid until after Send returns without error.
+//
+// See StopGUISession for more information on using the StopGUISession
+// API call, and error handling.
+//
+// This method is useful when you want to inject custom logic or configuration
+// into the SDK's request lifecycle. Such as custom headers, or retry logic.
+//
+//	// Example sending a request using the StopGUISessionRequest method.
+//	req, resp := client.StopGUISessionRequest(params)
+//
+//	err := req.Send()
+//	if err == nil { // resp is now filled
+//	    fmt.Println(resp)
+//	}
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StopGUISession
+func (c *Lightsail) StopGUISessionRequest(input *StopGUISessionInput) (req *request.Request, output *StopGUISessionOutput) {
+	op := &request.Operation{
+		Name:       opStopGUISession,
+		HTTPMethod: "POST",
+		HTTPPath:   "/",
+	}
+
+	if input == nil {
+		input = &StopGUISessionInput{}
+	}
+
+	output = &StopGUISessionOutput{}
+	req = c.newRequest(op, input, output)
+	return
+}
+
+// StopGUISession API operation for Amazon Lightsail.
+//
+// Terminates a web-based NICE DCV session that’s used to access a virtual
+// computer’s operating system or application. The session will close and
+// any unsaved data will be lost.
+//
+// Returns awserr.Error for service API and SDK errors. Use runtime type assertions
+// with awserr.Error's Code and Message methods to get detailed information about
+// the error.
+//
+// See the AWS API reference guide for Amazon Lightsail's
+// API operation StopGUISession for usage and error information.
+//
+// Returned Error Types:
+//
+//   - AccessDeniedException
+//     Lightsail throws this exception when the user cannot be authenticated or
+//     uses invalid credentials to access a resource.
+//
+//   - InvalidInputException
+//     Lightsail throws this exception when user input does not conform to the validation
+//     rules of an input field.
+//
+//     Domain and distribution APIs are only available in the N. Virginia (us-east-1)
+//     Amazon Web Services Region. Please set your Amazon Web Services Region configuration
+//     to us-east-1 to create, view, or edit these resources.
+//
+//   - NotFoundException
+//     Lightsail throws this exception when it cannot find a resource.
+//
+//   - ServiceException
+//     A general service exception.
+//
+//   - UnauthenticatedException
+//     Lightsail throws this exception when the user has not been authenticated.
+//
+// See also, https://docs.aws.amazon.com/goto/WebAPI/lightsail-2016-11-28/StopGUISession
+func (c *Lightsail) StopGUISession(input *StopGUISessionInput) (*StopGUISessionOutput, error) {
+	req, out := c.StopGUISessionRequest(input)
+	return out, req.Send()
+}
+
+// StopGUISessionWithContext is the same as StopGUISession with the addition of
+// the ability to pass a context and additional request options.
+//
+// See StopGUISession for details on how to use this API operation.
+//
+// The context must be non-nil and will be used for request cancellation. If
+// the context is nil a panic will occur. In the future the SDK may create
+// sub-contexts for http.Requests. See https://golang.org/pkg/context/
+// for more information on using Contexts.
+func (c *Lightsail) StopGUISessionWithContext(ctx aws.Context, input *StopGUISessionInput, opts ...request.Option) (*StopGUISessionOutput, error) {
+	req, out := c.StopGUISessionRequest(input)
 	req.SetContext(ctx)
 	req.ApplyOptions(opts...)
 	return out, req.Send()
@@ -17058,6 +17456,12 @@ func (s *AccountSetupInProgressException) RequestID() string {
 type AddOn struct {
 	_ struct{} `type:"structure"`
 
+	// The amount of idle time in minutes after which your virtual computer will
+	// automatically stop.
+	//
+	// This add-on only applies to Lightsail for Research resources.
+	Duration *string `locationName:"duration" type:"string"`
+
 	// The name of the add-on.
 	Name *string `locationName:"name" type:"string"`
 
@@ -17079,6 +17483,11 @@ type AddOn struct {
 
 	// The status of the add-on.
 	Status *string `locationName:"status" type:"string"`
+
+	// The trigger threshold of the action.
+	//
+	// This add-on only applies to Lightsail for Research resources.
+	Threshold *string `locationName:"threshold" type:"string"`
 }
 
 // String returns the string representation.
@@ -17097,6 +17506,12 @@ func (s AddOn) String() string {
 // value will be replaced with "sensitive".
 func (s AddOn) GoString() string {
 	return s.String()
+}
+
+// SetDuration sets the Duration field's value.
+func (s *AddOn) SetDuration(v string) *AddOn {
+	s.Duration = &v
+	return s
 }
 
 // SetName sets the Name field's value.
@@ -17123,6 +17538,12 @@ func (s *AddOn) SetStatus(v string) *AddOn {
 	return s
 }
 
+// SetThreshold sets the Threshold field's value.
+func (s *AddOn) SetThreshold(v string) *AddOn {
+	s.Threshold = &v
+	return s
+}
+
 // Describes a request to enable, modify, or disable an add-on for an Amazon
 // Lightsail resource.
 //
@@ -17139,6 +17560,12 @@ type AddOnRequest struct {
 	// An object that represents additional parameters when enabling or modifying
 	// the automatic snapshot add-on.
 	AutoSnapshotAddOnRequest *AutoSnapshotAddOnRequest `locationName:"autoSnapshotAddOnRequest" type:"structure"`
+
+	// An object that represents additional parameters when enabling or modifying
+	// the StopInstanceOnIdle add-on.
+	//
+	// This object only applies to Lightsail for Research resources.
+	StopInstanceOnIdleRequest *StopInstanceOnIdleRequest `locationName:"stopInstanceOnIdleRequest" type:"structure"`
 }
 
 // String returns the string representation.
@@ -17181,6 +17608,12 @@ func (s *AddOnRequest) SetAddOnType(v string) *AddOnRequest {
 // SetAutoSnapshotAddOnRequest sets the AutoSnapshotAddOnRequest field's value.
 func (s *AddOnRequest) SetAutoSnapshotAddOnRequest(v *AutoSnapshotAddOnRequest) *AddOnRequest {
 	s.AutoSnapshotAddOnRequest = v
+	return s
+}
+
+// SetStopInstanceOnIdleRequest sets the StopInstanceOnIdleRequest field's value.
+func (s *AddOnRequest) SetStopInstanceOnIdleRequest(v *StopInstanceOnIdleRequest) *AddOnRequest {
+	s.StopInstanceOnIdleRequest = v
 	return s
 }
 
@@ -17626,6 +18059,12 @@ func (s *AttachCertificateToDistributionOutput) SetOperation(v *Operation) *Atta
 type AttachDiskInput struct {
 	_ struct{} `type:"structure"`
 
+	// A Boolean value used to determine the automatic mounting of a storage volume
+	// to a virtual computer. The default value is False.
+	//
+	// This value only applies to Lightsail for Research resources.
+	AutoMounting *bool `locationName:"autoMounting" type:"boolean"`
+
 	// The unique Lightsail disk name (e.g., my-disk).
 	//
 	// DiskName is a required field
@@ -17678,6 +18117,12 @@ func (s *AttachDiskInput) Validate() error {
 		return invalidParams
 	}
 	return nil
+}
+
+// SetAutoMounting sets the AutoMounting field's value.
+func (s *AttachDiskInput) SetAutoMounting(v bool) *AttachDiskInput {
+	s.AutoMounting = &v
+	return s
 }
 
 // SetDiskName sets the DiskName field's value.
@@ -18194,7 +18639,8 @@ func (s *AutoSnapshotDetails) SetStatus(v string) *AutoSnapshotDetails {
 	return s
 }
 
-// Describes an Availability Zone.
+// Describes an Availability Zone. This is returned only as part of a GetRegions
+// request.
 type AvailabilityZone struct {
 	_ struct{} `type:"structure"`
 
@@ -18238,6 +18684,11 @@ func (s *AvailabilityZone) SetZoneName(v string) *AvailabilityZone {
 // Describes a blueprint (a virtual private server image).
 type Blueprint struct {
 	_ struct{} `type:"structure"`
+
+	// Virtual computer blueprints that are supported by Lightsail for Research.
+	//
+	// This parameter only applies to Lightsail for Research resources.
+	AppCategory *string `locationName:"appCategory" type:"string" enum:"AppCategory"`
 
 	// The ID for the virtual private server image (e.g., app_wordpress_4_4 or app_lamp_7_0).
 	BlueprintId *string `locationName:"blueprintId" type:"string"`
@@ -18300,6 +18751,12 @@ func (s Blueprint) String() string {
 // value will be replaced with "sensitive".
 func (s Blueprint) GoString() string {
 	return s.String()
+}
+
+// SetAppCategory sets the AppCategory field's value.
+func (s *Blueprint) SetAppCategory(v string) *Blueprint {
+	s.AppCategory = &v
+	return s
 }
 
 // SetBlueprintId sets the BlueprintId field's value.
@@ -18828,6 +19285,12 @@ type Bundle struct {
 	// The amount of RAM in GB (e.g., 2.0).
 	RamSizeInGb *float64 `locationName:"ramSizeInGb" type:"float"`
 
+	// Virtual computer blueprints that are supported by a Lightsail for Research
+	// bundle.
+	//
+	// This parameter only applies to Lightsail for Research resources.
+	SupportedAppCategories []*string `locationName:"supportedAppCategories" type:"list" enum:"AppCategory"`
+
 	// The operating system platform (Linux/Unix-based or Windows Server-based)
 	// that the bundle supports. You can only launch a WINDOWS bundle on a blueprint
 	// that supports the WINDOWS platform. LINUX_UNIX blueprints require a LINUX_UNIX
@@ -18907,6 +19370,12 @@ func (s *Bundle) SetPrice(v float64) *Bundle {
 // SetRamSizeInGb sets the RamSizeInGb field's value.
 func (s *Bundle) SetRamSizeInGb(v float64) *Bundle {
 	s.RamSizeInGb = &v
+	return s
+}
+
+// SetSupportedAppCategories sets the SupportedAppCategories field's value.
+func (s *Bundle) SetSupportedAppCategories(v []*string) *Bundle {
+	s.SupportedAppCategories = v
 	return s
 }
 
@@ -19186,7 +19655,7 @@ func (s *CacheSettings) SetMinimumTTL(v int64) *CacheSettings {
 
 // Describes the full details of an Amazon Lightsail SSL/TLS certificate.
 //
-// To get a summary of a certificate, use the GetCertificates action and ommit
+// To get a summary of a certificate, use the GetCertificates action and omit
 // includeCertificateDetails from your request. The response will include only
 // the certificate Amazon Resource Name (ARN), certificate name, domain name,
 // and tags.
@@ -20780,13 +21249,12 @@ func (s *ContainerServicePower) SetRamSizeInGb(v float64) *ContainerServicePower
 	return s
 }
 
-// Describes the login information for the container image registry of an Amazon
-// Lightsail account.
+// Describes the sign-in credentials for the container image registry of an
+// Amazon Lightsail account.
 type ContainerServiceRegistryLogin struct {
 	_ struct{} `type:"structure"`
 
-	// The timestamp of when the container image registry username and password
-	// expire.
+	// The timestamp of when the container image registry sign-in credentials expire.
 	//
 	// The log in credentials expire 12 hours after they are created, at which point
 	// you will need to create a new set of log in credentials using the CreateContainerServiceRegistryLogin
@@ -21121,6 +21589,49 @@ func (s CopySnapshotOutput) GoString() string {
 // SetOperations sets the Operations field's value.
 func (s *CopySnapshotOutput) SetOperations(v []*Operation) *CopySnapshotOutput {
 	s.Operations = v
+	return s
+}
+
+// Describes the estimated cost for resources in your Lightsail for Research
+// account.
+type CostEstimate struct {
+	_ struct{} `type:"structure"`
+
+	// The cost estimate result that's associated with a time period.
+	ResultsByTime []*EstimateByTime `locationName:"resultsByTime" type:"list"`
+
+	// The types of usage that are included in the estimate, such as costs, usage,
+	// or data transfer.
+	UsageType *string `locationName:"usageType" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CostEstimate) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CostEstimate) GoString() string {
+	return s.String()
+}
+
+// SetResultsByTime sets the ResultsByTime field's value.
+func (s *CostEstimate) SetResultsByTime(v []*EstimateByTime) *CostEstimate {
+	s.ResultsByTime = v
+	return s
+}
+
+// SetUsageType sets the UsageType field's value.
+func (s *CostEstimate) SetUsageType(v string) *CostEstimate {
+	s.UsageType = &v
 	return s
 }
 
@@ -22924,6 +23435,119 @@ func (s CreateDomainOutput) GoString() string {
 // SetOperation sets the Operation field's value.
 func (s *CreateDomainOutput) SetOperation(v *Operation) *CreateDomainOutput {
 	s.Operation = v
+	return s
+}
+
+type CreateGUISessionAccessDetailsInput struct {
+	_ struct{} `type:"structure"`
+
+	// The resource name.
+	//
+	// ResourceName is a required field
+	ResourceName *string `locationName:"resourceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateGUISessionAccessDetailsInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateGUISessionAccessDetailsInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *CreateGUISessionAccessDetailsInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "CreateGUISessionAccessDetailsInput"}
+	if s.ResourceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *CreateGUISessionAccessDetailsInput) SetResourceName(v string) *CreateGUISessionAccessDetailsInput {
+	s.ResourceName = &v
+	return s
+}
+
+type CreateGUISessionAccessDetailsOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The reason the operation failed.
+	FailureReason *string `locationName:"failureReason" type:"string"`
+
+	// The percentage of completion for the operation.
+	PercentageComplete *int64 `locationName:"percentageComplete" type:"integer"`
+
+	// The resource name.
+	ResourceName *string `locationName:"resourceName" type:"string"`
+
+	// Returns information about the specified NICE DCV GUI session.
+	Sessions []*Session `locationName:"sessions" type:"list"`
+
+	// The status of the operation.
+	Status *string `locationName:"status" type:"string" enum:"Status"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateGUISessionAccessDetailsOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s CreateGUISessionAccessDetailsOutput) GoString() string {
+	return s.String()
+}
+
+// SetFailureReason sets the FailureReason field's value.
+func (s *CreateGUISessionAccessDetailsOutput) SetFailureReason(v string) *CreateGUISessionAccessDetailsOutput {
+	s.FailureReason = &v
+	return s
+}
+
+// SetPercentageComplete sets the PercentageComplete field's value.
+func (s *CreateGUISessionAccessDetailsOutput) SetPercentageComplete(v int64) *CreateGUISessionAccessDetailsOutput {
+	s.PercentageComplete = &v
+	return s
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *CreateGUISessionAccessDetailsOutput) SetResourceName(v string) *CreateGUISessionAccessDetailsOutput {
+	s.ResourceName = &v
+	return s
+}
+
+// SetSessions sets the Sessions field's value.
+func (s *CreateGUISessionAccessDetailsOutput) SetSessions(v []*Session) *CreateGUISessionAccessDetailsOutput {
+	s.Sessions = v
+	return s
+}
+
+// SetStatus sets the Status field's value.
+func (s *CreateGUISessionAccessDetailsOutput) SetStatus(v string) *CreateGUISessionAccessDetailsOutput {
+	s.Status = &v
 	return s
 }
 
@@ -26910,6 +27534,11 @@ type Disk struct {
 	// Deprecated: AttachmentState has been deprecated
 	AttachmentState *string `locationName:"attachmentState" deprecated:"true" type:"string"`
 
+	// The status of automatically mounting a storage disk to a virtual computer.
+	//
+	// This parameter only applies to Lightsail for Research resources.
+	AutoMountStatus *string `locationName:"autoMountStatus" type:"string" enum:"AutoMountStatus"`
+
 	// The date when the disk was created.
 	CreatedAt *time.Time `locationName:"createdAt" type:"timestamp"`
 
@@ -26998,6 +27627,12 @@ func (s *Disk) SetAttachedTo(v string) *Disk {
 // SetAttachmentState sets the AttachmentState field's value.
 func (s *Disk) SetAttachmentState(v string) *Disk {
 	s.AttachmentState = &v
+	return s
+}
+
+// SetAutoMountStatus sets the AutoMountStatus field's value.
+func (s *Disk) SetAutoMountStatus(v string) *Disk {
+	s.AutoMountStatus = &v
 	return s
 }
 
@@ -27623,9 +28258,11 @@ type DomainEntry struct {
 	Id *string `locationName:"id" type:"string"`
 
 	// When true, specifies whether the domain entry is an alias used by the Lightsail
-	// load balancer. You can include an alias (A type) record in your request,
-	// which points to a load balancer DNS name and routes traffic to your load
-	// balancer.
+	// load balancer, Lightsail container service, Lightsail content delivery network
+	// (CDN) distribution, or another Amazon Web Services resource. You can include
+	// an alias (A type) record in your request, which points to the DNS name of
+	// a load balancer, container service, CDN distribution, or other Amazon Web
+	// Services resource and routes traffic to that resource.
 	IsAlias *bool `locationName:"isAlias" type:"boolean"`
 
 	// The name of the domain.
@@ -28028,6 +28665,76 @@ func (s *EndpointRequest) SetContainerPort(v int64) *EndpointRequest {
 // SetHealthCheck sets the HealthCheck field's value.
 func (s *EndpointRequest) SetHealthCheck(v *ContainerServiceHealthCheckConfig) *EndpointRequest {
 	s.HealthCheck = v
+	return s
+}
+
+// An estimate that's associated with a time period.
+type EstimateByTime struct {
+	_ struct{} `type:"structure"`
+
+	// The currency of the estimate in USD.
+	Currency *string `locationName:"currency" type:"string" enum:"Currency"`
+
+	// The unit of measurement that's used for the cost estimate.
+	PricingUnit *string `locationName:"pricingUnit" type:"string" enum:"PricingUnit"`
+
+	// The period of time, in days, that an estimate covers. The period has a start
+	// date and an end date. The start date must come before the end date.
+	TimePeriod *TimePeriod `locationName:"timePeriod" type:"structure"`
+
+	// The number of pricing units used to calculate the total number of hours.
+	// For example, 1 unit equals 1 hour.
+	Unit *float64 `locationName:"unit" type:"double"`
+
+	// The amount of cost or usage that's measured for the cost estimate.
+	UsageCost *float64 `locationName:"usageCost" type:"double"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s EstimateByTime) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s EstimateByTime) GoString() string {
+	return s.String()
+}
+
+// SetCurrency sets the Currency field's value.
+func (s *EstimateByTime) SetCurrency(v string) *EstimateByTime {
+	s.Currency = &v
+	return s
+}
+
+// SetPricingUnit sets the PricingUnit field's value.
+func (s *EstimateByTime) SetPricingUnit(v string) *EstimateByTime {
+	s.PricingUnit = &v
+	return s
+}
+
+// SetTimePeriod sets the TimePeriod field's value.
+func (s *EstimateByTime) SetTimePeriod(v *TimePeriod) *EstimateByTime {
+	s.TimePeriod = v
+	return s
+}
+
+// SetUnit sets the Unit field's value.
+func (s *EstimateByTime) SetUnit(v float64) *EstimateByTime {
+	s.Unit = &v
+	return s
+}
+
+// SetUsageCost sets the UsageCost field's value.
+func (s *EstimateByTime) SetUsageCost(v float64) *EstimateByTime {
+	s.UsageCost = &v
 	return s
 }
 
@@ -28584,6 +29291,11 @@ func (s *GetAutoSnapshotsOutput) SetResourceType(v string) *GetAutoSnapshotsOutp
 type GetBlueprintsInput struct {
 	_ struct{} `type:"structure"`
 
+	// Returns a list of blueprints that are specific to Lightsail for Research.
+	//
+	// You must use this parameter to view Lightsail for Research blueprints.
+	AppCategory *string `locationName:"appCategory" type:"string" enum:"AppCategory"`
+
 	// A Boolean value that indicates whether to include inactive (unavailable)
 	// blueprints in the response of your request.
 	IncludeInactive *bool `locationName:"includeInactive" type:"boolean"`
@@ -28612,6 +29324,12 @@ func (s GetBlueprintsInput) String() string {
 // value will be replaced with "sensitive".
 func (s GetBlueprintsInput) GoString() string {
 	return s.String()
+}
+
+// SetAppCategory sets the AppCategory field's value.
+func (s *GetBlueprintsInput) SetAppCategory(v string) *GetBlueprintsInput {
+	s.AppCategory = &v
+	return s
 }
 
 // SetIncludeInactive sets the IncludeInactive field's value.
@@ -29166,6 +29884,11 @@ func (s *GetBucketsOutput) SetNextPageToken(v string) *GetBucketsOutput {
 type GetBundlesInput struct {
 	_ struct{} `type:"structure"`
 
+	// Returns a list of bundles that are specific to Lightsail for Research.
+	//
+	// You must use this parameter to view Lightsail for Research bundles.
+	AppCategory *string `locationName:"appCategory" type:"string" enum:"AppCategory"`
+
 	// A Boolean value that indicates whether to include inactive (unavailable)
 	// bundles in the response of your request.
 	IncludeInactive *bool `locationName:"includeInactive" type:"boolean"`
@@ -29194,6 +29917,12 @@ func (s GetBundlesInput) String() string {
 // value will be replaced with "sensitive".
 func (s GetBundlesInput) GoString() string {
 	return s.String()
+}
+
+// SetAppCategory sets the AppCategory field's value.
+func (s *GetBundlesInput) SetAppCategory(v string) *GetBundlesInput {
+	s.AppCategory = &v
+	return s
 }
 
 // SetIncludeInactive sets the IncludeInactive field's value.
@@ -29278,6 +30007,13 @@ type GetCertificatesInput struct {
 	// When omitted, the response includes only the certificate names, Amazon Resource
 	// Names (ARNs), domain names, and tags.
 	IncludeCertificateDetails *bool `locationName:"includeCertificateDetails" type:"boolean"`
+
+	// The token to advance to the next page of results from your request.
+	//
+	// To get a page token, perform an initial GetCertificates request. If your
+	// results are paginated, the response will return a next page token that you
+	// can specify as the page token in a subsequent request.
+	PageToken *string `locationName:"pageToken" type:"string"`
 }
 
 // String returns the string representation.
@@ -29316,11 +30052,23 @@ func (s *GetCertificatesInput) SetIncludeCertificateDetails(v bool) *GetCertific
 	return s
 }
 
+// SetPageToken sets the PageToken field's value.
+func (s *GetCertificatesInput) SetPageToken(v string) *GetCertificatesInput {
+	s.PageToken = &v
+	return s
+}
+
 type GetCertificatesOutput struct {
 	_ struct{} `type:"structure"`
 
 	// An object that describes certificates.
 	Certificates []*CertificateSummary `locationName:"certificates" type:"list"`
+
+	// If NextPageToken is returned there are more results available. The value
+	// of NextPageToken is a unique pagination token for each page. Make the call
+	// again using the returned token to retrieve the next page. Keep all other
+	// arguments unchanged.
+	NextPageToken *string `locationName:"nextPageToken" type:"string"`
 }
 
 // String returns the string representation.
@@ -29344,6 +30092,12 @@ func (s GetCertificatesOutput) GoString() string {
 // SetCertificates sets the Certificates field's value.
 func (s *GetCertificatesOutput) SetCertificates(v []*CertificateSummary) *GetCertificatesOutput {
 	s.Certificates = v
+	return s
+}
+
+// SetNextPageToken sets the NextPageToken field's value.
+func (s *GetCertificatesOutput) SetNextPageToken(v string) *GetCertificatesOutput {
+	s.NextPageToken = &v
 	return s
 }
 
@@ -30224,6 +30978,133 @@ func (s GetContainerServicesOutput) GoString() string {
 // SetContainerServices sets the ContainerServices field's value.
 func (s *GetContainerServicesOutput) SetContainerServices(v []*ContainerService) *GetContainerServicesOutput {
 	s.ContainerServices = v
+	return s
+}
+
+type GetCostEstimateInput struct {
+	_ struct{} `type:"structure"`
+
+	// The cost estimate end time.
+	//
+	// Constraints:
+	//
+	//    * Specified in Coordinated Universal Time (UTC).
+	//
+	//    * Specified in the Unix time format. For example, if you want to use an
+	//    end time of October 1, 2018, at 9 PM UTC, specify 1538427600 as the end
+	//    time.
+	//
+	// You can convert a human-friendly time to Unix time format using a converter
+	// like Epoch converter (https://www.epochconverter.com/).
+	//
+	// EndTime is a required field
+	EndTime *time.Time `locationName:"endTime" type:"timestamp" required:"true"`
+
+	// The resource name.
+	//
+	// ResourceName is a required field
+	ResourceName *string `locationName:"resourceName" type:"string" required:"true"`
+
+	// The cost estimate start time.
+	//
+	// Constraints:
+	//
+	//    * Specified in Coordinated Universal Time (UTC).
+	//
+	//    * Specified in the Unix time format. For example, if you want to use a
+	//    start time of October 1, 2018, at 8 PM UTC, specify 1538424000 as the
+	//    start time.
+	//
+	// You can convert a human-friendly time to Unix time format using a converter
+	// like Epoch converter (https://www.epochconverter.com/).
+	//
+	// StartTime is a required field
+	StartTime *time.Time `locationName:"startTime" type:"timestamp" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetCostEstimateInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetCostEstimateInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *GetCostEstimateInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "GetCostEstimateInput"}
+	if s.EndTime == nil {
+		invalidParams.Add(request.NewErrParamRequired("EndTime"))
+	}
+	if s.ResourceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceName"))
+	}
+	if s.StartTime == nil {
+		invalidParams.Add(request.NewErrParamRequired("StartTime"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetEndTime sets the EndTime field's value.
+func (s *GetCostEstimateInput) SetEndTime(v time.Time) *GetCostEstimateInput {
+	s.EndTime = &v
+	return s
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *GetCostEstimateInput) SetResourceName(v string) *GetCostEstimateInput {
+	s.ResourceName = &v
+	return s
+}
+
+// SetStartTime sets the StartTime field's value.
+func (s *GetCostEstimateInput) SetStartTime(v time.Time) *GetCostEstimateInput {
+	s.StartTime = &v
+	return s
+}
+
+type GetCostEstimateOutput struct {
+	_ struct{} `type:"structure"`
+
+	// Returns the estimate's forecasted cost or usage.
+	ResourcesBudgetEstimate []*ResourceBudgetEstimate `locationName:"resourcesBudgetEstimate" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetCostEstimateOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s GetCostEstimateOutput) GoString() string {
+	return s.String()
+}
+
+// SetResourcesBudgetEstimate sets the ResourcesBudgetEstimate field's value.
+func (s *GetCostEstimateOutput) SetResourcesBudgetEstimate(v []*ResourceBudgetEstimate) *GetCostEstimateOutput {
+	s.ResourcesBudgetEstimate = v
 	return s
 }
 
@@ -40936,6 +41817,74 @@ func (s *ResetDistributionCacheOutput) SetStatus(v string) *ResetDistributionCac
 	return s
 }
 
+// Describes the estimated cost or usage that a budget tracks.
+type ResourceBudgetEstimate struct {
+	_ struct{} `type:"structure"`
+
+	// The cost estimate for the specified budget.
+	CostEstimates []*CostEstimate `locationName:"costEstimates" type:"list"`
+
+	// The estimate end time.
+	EndTime *time.Time `locationName:"endTime" type:"timestamp"`
+
+	// The resource name.
+	ResourceName *string `locationName:"resourceName" type:"string"`
+
+	// The type of resource the budget will track.
+	ResourceType *string `locationName:"resourceType" type:"string" enum:"ResourceType"`
+
+	// The estimate start time.
+	StartTime *time.Time `locationName:"startTime" type:"timestamp"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ResourceBudgetEstimate) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s ResourceBudgetEstimate) GoString() string {
+	return s.String()
+}
+
+// SetCostEstimates sets the CostEstimates field's value.
+func (s *ResourceBudgetEstimate) SetCostEstimates(v []*CostEstimate) *ResourceBudgetEstimate {
+	s.CostEstimates = v
+	return s
+}
+
+// SetEndTime sets the EndTime field's value.
+func (s *ResourceBudgetEstimate) SetEndTime(v time.Time) *ResourceBudgetEstimate {
+	s.EndTime = &v
+	return s
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *ResourceBudgetEstimate) SetResourceName(v string) *ResourceBudgetEstimate {
+	s.ResourceName = &v
+	return s
+}
+
+// SetResourceType sets the ResourceType field's value.
+func (s *ResourceBudgetEstimate) SetResourceType(v string) *ResourceBudgetEstimate {
+	s.ResourceType = &v
+	return s
+}
+
+// SetStartTime sets the StartTime field's value.
+func (s *ResourceBudgetEstimate) SetStartTime(v time.Time) *ResourceBudgetEstimate {
+	s.StartTime = &v
+	return s
+}
+
 // Describes the resource location.
 type ResourceLocation struct {
 	_ struct{} `type:"structure"`
@@ -41218,6 +42167,63 @@ func (s *ServiceException) RequestID() string {
 	return s.RespMetadata.RequestID
 }
 
+// Describes a web-based, remote graphical user interface (GUI), NICE DCV session.
+// The session is used to access a virtual computer’s operating system or
+// application.
+type Session struct {
+	_ struct{} `type:"structure"`
+
+	// When true, this Boolean value indicates the primary session for the specified
+	// resource.
+	IsPrimary *bool `locationName:"isPrimary" type:"boolean"`
+
+	// The session name.
+	Name *string `locationName:"name" type:"string"`
+
+	// The session URL.
+	//
+	// Url is a sensitive parameter and its value will be
+	// replaced with "sensitive" in string returned by Session's
+	// String and GoString methods.
+	Url *string `locationName:"url" type:"string" sensitive:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s Session) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s Session) GoString() string {
+	return s.String()
+}
+
+// SetIsPrimary sets the IsPrimary field's value.
+func (s *Session) SetIsPrimary(v bool) *Session {
+	s.IsPrimary = &v
+	return s
+}
+
+// SetName sets the Name field's value.
+func (s *Session) SetName(v string) *Session {
+	s.Name = &v
+	return s
+}
+
+// SetUrl sets the Url field's value.
+func (s *Session) SetUrl(v string) *Session {
+	s.Url = &v
+	return s
+}
+
 type SetIpAddressTypeInput struct {
 	_ struct{} `type:"structure"`
 
@@ -41447,6 +42453,83 @@ func (s SetResourceAccessForBucketOutput) GoString() string {
 
 // SetOperations sets the Operations field's value.
 func (s *SetResourceAccessForBucketOutput) SetOperations(v []*Operation) *SetResourceAccessForBucketOutput {
+	s.Operations = v
+	return s
+}
+
+type StartGUISessionInput struct {
+	_ struct{} `type:"structure"`
+
+	// The resource name.
+	//
+	// ResourceName is a required field
+	ResourceName *string `locationName:"resourceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StartGUISessionInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StartGUISessionInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *StartGUISessionInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "StartGUISessionInput"}
+	if s.ResourceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *StartGUISessionInput) SetResourceName(v string) *StartGUISessionInput {
+	s.ResourceName = &v
+	return s
+}
+
+type StartGUISessionOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The available API operations.
+	Operations []*Operation `locationName:"operations" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StartGUISessionOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StartGUISessionOutput) GoString() string {
+	return s.String()
+}
+
+// SetOperations sets the Operations field's value.
+func (s *StartGUISessionOutput) SetOperations(v []*Operation) *StartGUISessionOutput {
 	s.Operations = v
 	return s
 }
@@ -41715,6 +42798,83 @@ func (s *StaticIp) SetSupportCode(v string) *StaticIp {
 	return s
 }
 
+type StopGUISessionInput struct {
+	_ struct{} `type:"structure"`
+
+	// The resource name.
+	//
+	// ResourceName is a required field
+	ResourceName *string `locationName:"resourceName" type:"string" required:"true"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StopGUISessionInput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StopGUISessionInput) GoString() string {
+	return s.String()
+}
+
+// Validate inspects the fields of the type to determine if they are valid.
+func (s *StopGUISessionInput) Validate() error {
+	invalidParams := request.ErrInvalidParams{Context: "StopGUISessionInput"}
+	if s.ResourceName == nil {
+		invalidParams.Add(request.NewErrParamRequired("ResourceName"))
+	}
+
+	if invalidParams.Len() > 0 {
+		return invalidParams
+	}
+	return nil
+}
+
+// SetResourceName sets the ResourceName field's value.
+func (s *StopGUISessionInput) SetResourceName(v string) *StopGUISessionInput {
+	s.ResourceName = &v
+	return s
+}
+
+type StopGUISessionOutput struct {
+	_ struct{} `type:"structure"`
+
+	// The available API operations.
+	Operations []*Operation `locationName:"operations" type:"list"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StopGUISessionOutput) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StopGUISessionOutput) GoString() string {
+	return s.String()
+}
+
+// SetOperations sets the Operations field's value.
+func (s *StopGUISessionOutput) SetOperations(v []*Operation) *StopGUISessionOutput {
+	s.Operations = v
+	return s
+}
+
 type StopInstanceInput struct {
 	_ struct{} `type:"structure"`
 
@@ -41772,6 +42932,50 @@ func (s *StopInstanceInput) SetForce(v bool) *StopInstanceInput {
 // SetInstanceName sets the InstanceName field's value.
 func (s *StopInstanceInput) SetInstanceName(v string) *StopInstanceInput {
 	s.InstanceName = &v
+	return s
+}
+
+// Describes a request to create or edit the StopInstanceOnIdle add-on.
+//
+// This add-on only applies to Lightsail for Research resources.
+type StopInstanceOnIdleRequest struct {
+	_ struct{} `type:"structure"`
+
+	// The amount of idle time in minutes after which your virtual computer will
+	// automatically stop.
+	Duration *string `locationName:"duration" type:"string"`
+
+	// The value to compare with the duration.
+	Threshold *string `locationName:"threshold" type:"string"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StopInstanceOnIdleRequest) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s StopInstanceOnIdleRequest) GoString() string {
+	return s.String()
+}
+
+// SetDuration sets the Duration field's value.
+func (s *StopInstanceOnIdleRequest) SetDuration(v string) *StopInstanceOnIdleRequest {
+	s.Duration = &v
+	return s
+}
+
+// SetThreshold sets the Threshold field's value.
+func (s *StopInstanceOnIdleRequest) SetThreshold(v string) *StopInstanceOnIdleRequest {
+	s.Threshold = &v
 	return s
 }
 
@@ -42150,6 +43354,55 @@ func (s TestAlarmOutput) GoString() string {
 // SetOperations sets the Operations field's value.
 func (s *TestAlarmOutput) SetOperations(v []*Operation) *TestAlarmOutput {
 	s.Operations = v
+	return s
+}
+
+// Sets the start date and end date for retrieving a cost estimate. The start
+// date is inclusive, but the end date is exclusive. For example, if start is
+// 2017-01-01 and end is 2017-05-01, then the cost and usage data is retrieved
+// from 2017-01-01 up to and including 2017-04-30 but not including 2017-05-01.
+type TimePeriod struct {
+	_ struct{} `type:"structure"`
+
+	// The end of the time period. The end date is exclusive. For example, if end
+	// is 2017-05-01, Lightsail for Research retrieves cost and usage data from
+	// the start date up to, but not including, 2017-05-01.
+	End *time.Time `locationName:"end" type:"timestamp"`
+
+	// The beginning of the time period. The start date is inclusive. For example,
+	// if start is 2017-01-01, Lightsail for Research retrieves cost and usage data
+	// starting at 2017-01-01 up to the end date. The start date must be equal to
+	// or no later than the current date to avoid a validation error.
+	Start *time.Time `locationName:"start" type:"timestamp"`
+}
+
+// String returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s TimePeriod) String() string {
+	return awsutil.Prettify(s)
+}
+
+// GoString returns the string representation.
+//
+// API parameter values that are decorated as "sensitive" in the API will not
+// be included in the string output. The member name will be present, but the
+// value will be replaced with "sensitive".
+func (s TimePeriod) GoString() string {
+	return s.String()
+}
+
+// SetEnd sets the End field's value.
+func (s *TimePeriod) SetEnd(v time.Time) *TimePeriod {
+	s.End = &v
+	return s
+}
+
+// SetStart sets the Start field's value.
+func (s *TimePeriod) SetStart(v time.Time) *TimePeriod {
+	s.Start = &v
 	return s
 }
 
@@ -43198,7 +44451,9 @@ func (s *UpdateInstanceMetadataOptionsInput) SetInstanceName(v string) *UpdateIn
 type UpdateInstanceMetadataOptionsOutput struct {
 	_ struct{} `type:"structure"`
 
-	// Describes the API operation.
+	// An array of objects that describe the result of the action, such as the status
+	// of the request, the timestamp of the request, and the resources affected
+	// by the request.
 	Operation *Operation `locationName:"operation" type:"structure"`
 }
 
@@ -43732,12 +44987,16 @@ func AccountLevelBpaSyncStatus_Values() []string {
 const (
 	// AddOnTypeAutoSnapshot is a AddOnType enum value
 	AddOnTypeAutoSnapshot = "AutoSnapshot"
+
+	// AddOnTypeStopInstanceOnIdle is a AddOnType enum value
+	AddOnTypeStopInstanceOnIdle = "StopInstanceOnIdle"
 )
 
 // AddOnType_Values returns all elements of the AddOnType enum
 func AddOnType_Values() []string {
 	return []string{
 		AddOnTypeAutoSnapshot,
+		AddOnTypeStopInstanceOnIdle,
 	}
 }
 
@@ -43758,6 +45017,42 @@ func AlarmState_Values() []string {
 		AlarmStateOk,
 		AlarmStateAlarm,
 		AlarmStateInsufficientData,
+	}
+}
+
+const (
+	// AppCategoryLfR is a AppCategory enum value
+	AppCategoryLfR = "LfR"
+)
+
+// AppCategory_Values returns all elements of the AppCategory enum
+func AppCategory_Values() []string {
+	return []string{
+		AppCategoryLfR,
+	}
+}
+
+const (
+	// AutoMountStatusFailed is a AutoMountStatus enum value
+	AutoMountStatusFailed = "Failed"
+
+	// AutoMountStatusPending is a AutoMountStatus enum value
+	AutoMountStatusPending = "Pending"
+
+	// AutoMountStatusMounted is a AutoMountStatus enum value
+	AutoMountStatusMounted = "Mounted"
+
+	// AutoMountStatusNotMounted is a AutoMountStatus enum value
+	AutoMountStatusNotMounted = "NotMounted"
+)
+
+// AutoMountStatus_Values returns all elements of the AutoMountStatus enum
+func AutoMountStatus_Values() []string {
+	return []string{
+		AutoMountStatusFailed,
+		AutoMountStatusPending,
+		AutoMountStatusMounted,
+		AutoMountStatusNotMounted,
 	}
 }
 
@@ -44170,6 +45465,18 @@ func ContainerServiceStateDetailCode_Values() []string {
 		ContainerServiceStateDetailCodeActivatingDeployment,
 		ContainerServiceStateDetailCodeCertificateLimitExceeded,
 		ContainerServiceStateDetailCodeUnknownError,
+	}
+}
+
+const (
+	// CurrencyUsd is a Currency enum value
+	CurrencyUsd = "USD"
+)
+
+// Currency_Values returns all elements of the Currency enum
+func Currency_Values() []string {
+	return []string{
+		CurrencyUsd,
 	}
 }
 
@@ -45517,6 +46824,12 @@ const (
 
 	// OperationTypeUpdateInstanceMetadataOptions is a OperationType enum value
 	OperationTypeUpdateInstanceMetadataOptions = "UpdateInstanceMetadataOptions"
+
+	// OperationTypeStartGuisession is a OperationType enum value
+	OperationTypeStartGuisession = "StartGUISession"
+
+	// OperationTypeStopGuisession is a OperationType enum value
+	OperationTypeStopGuisession = "StopGUISession"
 )
 
 // OperationType_Values returns all elements of the OperationType enum
@@ -45602,6 +46915,8 @@ func OperationType_Values() []string {
 		OperationTypeUpdateBucket,
 		OperationTypeSetResourceAccessForBucket,
 		OperationTypeUpdateInstanceMetadataOptions,
+		OperationTypeStartGuisession,
+		OperationTypeStopGuisession,
 	}
 }
 
@@ -45674,6 +46989,34 @@ func PortState_Values() []string {
 	return []string{
 		PortStateOpen,
 		PortStateClosed,
+	}
+}
+
+const (
+	// PricingUnitGb is a PricingUnit enum value
+	PricingUnitGb = "GB"
+
+	// PricingUnitHrs is a PricingUnit enum value
+	PricingUnitHrs = "Hrs"
+
+	// PricingUnitGbMo is a PricingUnit enum value
+	PricingUnitGbMo = "GB-Mo"
+
+	// PricingUnitBundles is a PricingUnit enum value
+	PricingUnitBundles = "Bundles"
+
+	// PricingUnitQueries is a PricingUnit enum value
+	PricingUnitQueries = "Queries"
+)
+
+// PricingUnit_Values returns all elements of the PricingUnit enum
+func PricingUnit_Values() []string {
+	return []string{
+		PricingUnitGb,
+		PricingUnitHrs,
+		PricingUnitGbMo,
+		PricingUnitBundles,
+		PricingUnitQueries,
 	}
 }
 
@@ -45978,6 +47321,54 @@ func ResourceType_Values() []string {
 		ResourceTypeDistribution,
 		ResourceTypeCertificate,
 		ResourceTypeBucket,
+	}
+}
+
+const (
+	// StatusStartExpired is a Status enum value
+	StatusStartExpired = "startExpired"
+
+	// StatusNotStarted is a Status enum value
+	StatusNotStarted = "notStarted"
+
+	// StatusStarted is a Status enum value
+	StatusStarted = "started"
+
+	// StatusStarting is a Status enum value
+	StatusStarting = "starting"
+
+	// StatusStopped is a Status enum value
+	StatusStopped = "stopped"
+
+	// StatusStopping is a Status enum value
+	StatusStopping = "stopping"
+
+	// StatusSettingUpInstance is a Status enum value
+	StatusSettingUpInstance = "settingUpInstance"
+
+	// StatusFailedInstanceCreation is a Status enum value
+	StatusFailedInstanceCreation = "failedInstanceCreation"
+
+	// StatusFailedStartingGuisession is a Status enum value
+	StatusFailedStartingGuisession = "failedStartingGUISession"
+
+	// StatusFailedStoppingGuisession is a Status enum value
+	StatusFailedStoppingGuisession = "failedStoppingGUISession"
+)
+
+// Status_Values returns all elements of the Status enum
+func Status_Values() []string {
+	return []string{
+		StatusStartExpired,
+		StatusNotStarted,
+		StatusStarted,
+		StatusStarting,
+		StatusStopped,
+		StatusStopping,
+		StatusSettingUpInstance,
+		StatusFailedInstanceCreation,
+		StatusFailedStartingGuisession,
+		StatusFailedStoppingGuisession,
 	}
 }
 

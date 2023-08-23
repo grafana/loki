@@ -24,6 +24,7 @@ import (
 	loki_runtime "github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -61,7 +62,7 @@ func TestLabelsCollisions(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	i, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	require.Nil(t, err)
 
 	// avoid entries from the future.
@@ -89,7 +90,7 @@ func TestConcurrentPushes(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	require.Nil(t, err)
 
 	const (
@@ -141,7 +142,7 @@ func TestGetStreamRates(t *testing.T) {
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	require.NoError(t, err)
 
 	const (
@@ -235,7 +236,7 @@ func TestSyncPeriod(t *testing.T) {
 		minUtil    = 0.20
 	)
 
-	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	inst, err := newInstance(defaultConfig(), defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	require.Nil(t, err)
 
 	lbls := makeRandomLabels()
@@ -280,7 +281,7 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	cfg.SyncMinUtilization = 0.20
 	cfg.IndexShards = indexShards
 
-	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	instance, err := newInstance(cfg, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	require.Nil(t, err)
 
 	currentTime := time.Now()
@@ -288,12 +289,13 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	testStreams := []logproto.Stream{
 		{Labels: "{app=\"test\",job=\"varlogs\"}", Entries: entries(5, currentTime)},
 		{Labels: "{app=\"test2\",job=\"varlogs\"}", Entries: entries(5, currentTime.Add(6*time.Nanosecond))},
+		{Labels: "{app=\"test\",job=\"varlogs2\"}", Entries: entries(5, currentTime.Add(12*time.Nanosecond))},
 	}
 
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics).NewChunk()
+		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -478,7 +480,7 @@ func makeRandomLabels() labels.Labels {
 	for _, ln := range labelNames {
 		ls.Set(ln, fmt.Sprintf("%d", rand.Int31()))
 	}
-	return ls.Labels(nil)
+	return ls.Labels()
 }
 
 func Benchmark_PushInstance(b *testing.B) {
@@ -486,7 +488,7 @@ func Benchmark_PushInstance(b *testing.B) {
 	require.NoError(b, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
 
-	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	ctx := context.Background()
 
 	for n := 0; n < b.N; n++ {
@@ -530,7 +532,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 
 	ctx := context.Background()
 
-	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+	inst, _ := newInstance(&Config{}, defaultPeriodConfigs, "test", limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 	t, err := newTailer("foo", `{namespace="foo",pod="bar",instance=~"10.*"}`, nil, 10)
 	require.NoError(b, err)
 	for i := 0; i < 10000; i++ {
@@ -546,7 +548,7 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	lbs := makeRandomLabels()
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics))
+			inst.addTailersToNewStream(newStream(nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
 		}
 	})
 }
@@ -612,13 +614,13 @@ func Test_Iterator(t *testing.T) {
 	sort.Slice(res.Streams, func(i, j int) bool {
 		return res.Streams[i].Entries[0].Timestamp.UnixNano() > res.Streams[j].Entries[0].Timestamp.UnixNano()
 	})
-	require.Equal(t, int64(9), res.Streams[0].Entries[0].Timestamp.UnixNano())
-	require.Equal(t, int64(8), res.Streams[1].Entries[0].Timestamp.UnixNano())
+	require.Equal(t, int64(9*1e6), res.Streams[0].Entries[0].Timestamp.UnixNano())
+	require.Equal(t, int64(8*1e6), res.Streams[1].Entries[0].Timestamp.UnixNano())
 }
 
 type testFilter struct{}
 
-func (t *testFilter) ForRequest(ctx context.Context) chunk.Filterer {
+func (t *testFilter) ForRequest(_ context.Context) chunk.Filterer {
 	return t
 }
 
@@ -667,17 +669,17 @@ func Test_QueryWithDelete(t *testing.T) {
 					{
 						Selector: `{log_stream="worker"}`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"}`,
 						Start:    0,
-						End:      5,
+						End:      5 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"} |= "9"`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 				},
 			},
@@ -702,22 +704,22 @@ func Test_QuerySampleWithDelete(t *testing.T) {
 			SampleQueryRequest: &logproto.SampleQueryRequest{
 				Selector: `count_over_time({job="3"}[5m])`,
 				Start:    time.Unix(0, 0),
-				End:      time.Unix(0, 100000000),
+				End:      time.Unix(0, 110000000),
 				Deletes: []*logproto.Delete{
 					{
 						Selector: `{log_stream="worker"}`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"}`,
 						Start:    0,
-						End:      5,
+						End:      5 * 1e6,
 					},
 					{
 						Selector: `{log_stream="dispatcher"} |= "9"`,
 						Start:    0,
-						End:      10,
+						End:      10 * 1e6,
 					},
 				},
 			},
@@ -799,7 +801,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("invalid push returns error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant1, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -818,7 +820,7 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 
 	t.Run("valid push returns no error", func(t *testing.T) {
-		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator())
+		i, _ := newInstance(&Config{IndexShards: 1}, defaultPeriodConfigs, customTenant2, limiter, loki_runtime.DefaultTenantConfigs(), noopWAL{}, NilMetrics, &OnceSwitch{}, nil, NewStreamRateCalculator(), nil)
 		ctx := context.Background()
 
 		err = i.Push(ctx, &logproto.PushRequest{
@@ -837,6 +839,303 @@ func TestStreamShardingUsage(t *testing.T) {
 	})
 }
 
+func TestInstance_Volume(t *testing.T) {
+	prepareInstance := func(t *testing.T) *instance {
+		instance := defaultInstance(t)
+		err := instance.Push(context.TODO(), &logproto.PushRequest{
+			Streams: []logproto.Stream{
+				{
+					Labels: `{fizz="buzz", host="other"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1e6), Line: `msg="other"`},
+					},
+				},
+				{
+					Labels: `{foo="bar", host="other", log_stream="worker"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1e6), Line: `msg="other worker"`},
+					},
+				},
+			},
+		})
+		require.NoError(t, err)
+		return instance
+	}
+
+	t.Run("aggregate by series", func(t *testing.T) {
+		t.Run("no matchers", func(t *testing.T) {
+			instance := prepareInstance(t)
+
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 70},
+				{Name: `{foo="bar", host="other", log_stream="worker"}`, Volume: 18},
+				{Name: `{fizz="buzz", host="other"}`, Volume: 11},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with matchers", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    `{log_stream="dispatcher"}`,
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{log_stream="dispatcher"}`, Volume: 90},
+			}, volumes.Volumes)
+		})
+
+		t.Run("excludes streams outside of time bounds", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        5,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 45},
+				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 26},
+			}, volumes.Volumes)
+		})
+
+		t.Run("enforces the limit", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     11000,
+				Matchers:    "{}",
+				Limit:       1,
+				AggregateBy: seriesvolume.Series,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with targetLabels", func(t *testing.T) {
+			t.Run("all targetLabels are added to matchers", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{}`,
+					Limit:        5,
+					TargetLabels: []string{"log_stream"},
+					AggregateBy:  seriesvolume.Series,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `{log_stream="dispatcher"}`, Volume: 90},
+					{Name: `{log_stream="worker"}`, Volume: 88},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific equals matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream="dispatcher"}`,
+					Limit:        5,
+					TargetLabels: []string{"host"},
+					AggregateBy:  seriesvolume.Series,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `{host="agent"}`, Volume: 90},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific regexp matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream=~".+"}`,
+					Limit:        5,
+					TargetLabels: []string{"host", "job"},
+					AggregateBy:  seriesvolume.Series,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `{host="agent", job="3"}`, Volume: 160},
+				}, volumes.Volumes)
+			})
+		})
+	})
+
+	t.Run("aggregate by labels", func(t *testing.T) {
+		t.Run("no matchers", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 189},
+				{Name: `log_stream`, Volume: 178},
+				{Name: `job`, Volume: 160},
+				{Name: `foo`, Volume: 18},
+				{Name: `fizz`, Volume: 11},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with matchers it returns intersecting labels", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    `{log_stream="worker"}`,
+				Limit:       5,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 88},
+				{Name: `log_stream`, Volume: 88},
+				{Name: `job`, Volume: 70},
+				{Name: `foo`, Volume: 18},
+			}, volumes.Volumes)
+
+			require.NotContains(t, volumes.Volumes, logproto.Volume{Name: `fizz`, Volume: 11})
+		})
+
+		t.Run("excludes streams outside of time bounds", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        5,
+				Through:     1.1 * 1e3, //milliseconds
+				Matchers:    "{}",
+				Limit:       5,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 71},
+				{Name: `job`, Volume: 71},
+				{Name: `log_stream`, Volume: 71},
+			}, volumes.Volumes)
+		})
+
+		t.Run("enforces the limit", func(t *testing.T) {
+			instance := prepareInstance(t)
+			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+				From:        0,
+				Through:     11000,
+				Matchers:    "{}",
+				Limit:       1,
+				AggregateBy: seriesvolume.Labels,
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, []logproto.Volume{
+				{Name: `host`, Volume: 189},
+			}, volumes.Volumes)
+		})
+
+		t.Run("with targetLabels", func(t *testing.T) {
+			t.Run("all targetLabels are added to matchers", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{}`,
+					Limit:        5,
+					TargetLabels: []string{"host"},
+					AggregateBy:  seriesvolume.Labels,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `host`, Volume: 189},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific equals matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream="dispatcher"}`,
+					Limit:        5,
+					TargetLabels: []string{"host"},
+					AggregateBy:  seriesvolume.Labels,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `host`, Volume: 90},
+				}, volumes.Volumes)
+			})
+
+			t.Run("with a specific regexp matcher", func(t *testing.T) {
+				instance := prepareInstance(t)
+				volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
+					From:         0,
+					Through:      1.1 * 1e3, //milliseconds
+					Matchers:     `{log_stream=~".+"}`,
+					Limit:        5,
+					TargetLabels: []string{"host", "job"},
+					AggregateBy:  seriesvolume.Labels,
+				})
+				require.NoError(t, err)
+
+				require.Equal(t, []logproto.Volume{
+					{Name: `host`, Volume: 160},
+					{Name: `job`, Volume: 160},
+				}, volumes.Volumes)
+			})
+		})
+	})
+}
+
+func TestGetStats(t *testing.T) {
+	instance := defaultInstance(t)
+	resp, err := instance.GetStats(context.Background(), &logproto.IndexStatsRequest{
+		From:     0,
+		Through:  11000,
+		Matchers: `{host="agent"}`,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.IndexStatsResponse{
+		Streams: 2,
+		Chunks:  2,
+		Bytes:   160,
+		Entries: 10,
+	}, resp)
+}
+
 func defaultInstance(t *testing.T) *instance {
 	ingesterConfig := defaultIngesterTestConfig(t)
 	defaultLimits := defaultLimitsTestConfig()
@@ -853,6 +1152,7 @@ func defaultInstance(t *testing.T) *instance {
 		nil,
 		nil,
 		NewStreamRateCalculator(),
+		nil,
 	)
 	require.Nil(t, err)
 	insertData(t, instance)
@@ -860,6 +1160,7 @@ func defaultInstance(t *testing.T) *instance {
 	return instance
 }
 
+// inserts 160 bytes into the instance. 90 for the dispatcher label and 70 for the worker label
 func insertData(t *testing.T, instance *instance) {
 	for i := 0; i < 10; i++ {
 		// nolint
@@ -867,13 +1168,14 @@ func insertData(t *testing.T, instance *instance) {
 		if i%2 == 0 {
 			stream = "worker"
 		}
+
 		require.NoError(t,
 			instance.Push(context.TODO(), &logproto.PushRequest{
 				Streams: []logproto.Stream{
 					{
 						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
 						Entries: []logproto.Entry{
-							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+							{Timestamp: time.Unix(0, int64(i)*1e6), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
 						},
 					},
 				},

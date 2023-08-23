@@ -203,6 +203,10 @@ func (tags *tagSet) set(key, value string, failOnExist bool) error {
 	return nil
 }
 
+func (tags tagSet) count() int {
+	return len(tags.tagMap)
+}
+
 func (tags tagSet) toMap() map[string]string {
 	m := make(map[string]string, len(tags.tagMap))
 	for key, value := range tags.tagMap {
@@ -277,6 +281,11 @@ func (tags *Tags) Remove(key string) {
 // Set sets new tag.
 func (tags *Tags) Set(key, value string) error {
 	return tags.TagSet.set(key, value, false)
+}
+
+// Count - return number of tags accounted for
+func (tags Tags) Count() int {
+	return tags.TagSet.count()
 }
 
 // ToMap returns copy of tags.

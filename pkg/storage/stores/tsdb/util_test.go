@@ -17,8 +17,8 @@ type LoadableSeries struct {
 	Chunks index.ChunkMetas
 }
 
-func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
-	b := NewBuilder()
+func BuildIndex(t testing.TB, dir string, cases []LoadableSeries, opts IndexOpts) *TSDBFile {
+	b := NewBuilder(index.LiveFormat)
 
 	for _, s := range cases {
 		b.AddSeries(s.Labels, model.Fingerprint(s.Labels.Hash()), s.Chunks)
@@ -31,11 +31,11 @@ func BuildIndex(t testing.TB, dir string, cases []LoadableSeries) *TSDBFile {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, dir, dir)
+		return NewPrefixedIdentifier(id, dir, dir)
 	})
 	require.Nil(t, err)
 
-	idx, err := NewShippableTSDBFile(dst)
+	idx, err := NewShippableTSDBFile(dst, opts)
 	require.Nil(t, err)
 	return idx
 }

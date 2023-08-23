@@ -4,8 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math/rand"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"sync"
 	"time"
@@ -13,9 +15,11 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/modules"
+	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
+	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -23,7 +27,9 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/distributor/writefailures"
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/ingester/index"
 	"github.com/grafana/loki/pkg/iter"
@@ -36,18 +42,18 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
-	errUtil "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/wal"
-	"github.com/grafana/loki/pkg/validation"
 )
 
 const (
 	// RingKey is the key under which we store the ingesters ring in the KVStore.
 	RingKey = "ring"
+
+	shutdownMarkerFilename = "shutdown-requested.txt"
 )
 
 // ErrReadOnly is returned when the ingester is shutting down and a push was
@@ -59,10 +65,10 @@ var (
 		Name: "cortex_ingester_flush_queue_length",
 		Help: "The total number of series pending in the flush queue.",
 	})
-	compressionStats   = usagestats.NewString("ingester_compression")
-	targetSizeStats    = usagestats.NewInt("ingester_target_size_bytes")
-	walStats           = usagestats.NewString("ingester_wal")
-	activeTenantsStats = usagestats.NewInt("ingester_active_tenants")
+	compressionStats   = analytics.NewString("ingester_compression")
+	targetSizeStats    = analytics.NewInt("ingester_target_size_bytes")
+	walStats           = analytics.NewString("ingester_wal")
+	activeTenantsStats = analytics.NewInt("ingester_active_tenants")
 )
 
 // Config for an ingester.
@@ -105,6 +111,8 @@ type Config struct {
 	IndexShards int `yaml:"index_shards"`
 
 	MaxDroppedStreams int `yaml:"max_dropped_streams"`
+
+	ShutdownMarkerPath string `yaml:"shutdown_marker_path"`
 }
 
 // RegisterFlags registers the flags.
@@ -114,7 +122,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&cfg.MaxTransferRetries, "ingester.max-transfer-retries", 0, "Number of times to try and transfer chunks before falling back to flushing. If set to 0 or negative value, transfers are disabled.")
 	f.IntVar(&cfg.ConcurrentFlushes, "ingester.concurrent-flushes", 32, "How many flushes can happen concurrently from each stream.")
-	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush.")
+	f.DurationVar(&cfg.FlushCheckPeriod, "ingester.flush-check-period", 30*time.Second, "How often should the ingester see if there are any blocks to flush. The first flush check is delayed by a random time up to 0.8x the flush check period. Additionally, there is +/- 1% jitter added to the interval.")
 	f.DurationVar(&cfg.FlushOpTimeout, "ingester.flush-op-timeout", 10*time.Minute, "The timeout before a flush is cancelled.")
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 0, "How long chunks should be retained in-memory after they've been flushed.")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "How long chunks should sit in-memory with no updates before being flushed if they don't hit the max block size. This means that half-empty chunks will still be flushed after a certain period as long as they receive no further activity.")
@@ -129,6 +137,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.AutoForgetUnhealthy, "ingester.autoforget-unhealthy", false, "Forget about ingesters having heartbeat timestamps older than `ring.kvstore.heartbeat_timeout`. This is equivalent to clicking on the `/ring` `forget` button in the UI: the ingester is removed from the ring. This is a useful setting when you are sure that an unhealthy node won't return. An example is when not using stateful sets or the equivalent. Use `memberlist.rejoin_interval` > 0 to handle network partition cases when using a memberlist.")
 	f.IntVar(&cfg.IndexShards, "ingester.index-shards", index.DefaultIndexShards, "Shard factor used in the ingesters for the in process reverse index. This MUST be evenly divisible by ALL schema shard factors or Loki will not start.")
 	f.IntVar(&cfg.MaxDroppedStreams, "ingester.tailer.max-dropped-streams", 10, "Maximum number of dropped streams to keep in memory during tailing.")
+	f.StringVar(&cfg.ShutdownMarkerPath, "ingester.shutdown-marker-path", "", "Path where the shutdown marker file is stored. If not set and common.path_prefix is set then common.path_prefix will be used.")
 }
 
 func (cfg *Config) Validate() error {
@@ -165,6 +174,7 @@ type ChunkStore interface {
 	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
 	GetSchemaConfigs() []config.PeriodConfig
 	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
+	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
 }
 
 // Interface is an interface for the Ingester
@@ -182,6 +192,7 @@ type Interface interface {
 	// deprecated
 	LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
+	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -232,10 +243,12 @@ type Ingester struct {
 	chunkFilter chunk.RequestChunkFilterer
 
 	streamRateCalculator *StreamRateCalculator
+
+	writeLogManager *writefailures.Manager
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *validation.Overrides, configs *runtime.TenantConfigs, registerer prometheus.Registerer) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -261,6 +274,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits *valid
 		flushOnShutdownSwitch: &OnceSwitch{},
 		terminateOnShutdown:   false,
 		streamRateCalculator:  NewStreamRateCalculator(),
+		writeLogManager:       writefailures.NewManager(util_log.Logger, registerer, writeFailuresCfg, configs, "ingester"),
 	}
 	i.replayController = newReplayController(metrics, cfg.WAL, &replayFlusher{i})
 
@@ -476,6 +490,17 @@ func (i *Ingester) starting(ctx context.Context) error {
 		return err
 	}
 
+	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
+	if err != nil {
+		return errors.Wrap(err, "failed to check ingester shutdown marker")
+	}
+
+	if shutdownMarker {
+		level.Info(util_log.Logger).Log("msg", "detected existing shutdown marker, setting unregister and flush on shutdown", "path", shutdownMarkerPath)
+		i.setPrepareShutdown()
+	}
+
 	// start our loop
 	i.loopDone.Add(1)
 	go i.loop()
@@ -503,11 +528,12 @@ func (i *Ingester) running(ctx context.Context) error {
 	return serviceError
 }
 
-// Called after running exits, when Ingester transitions to Stopping state.
+// stopping is called when Ingester transitions to Stopping state.
+//
 // At this point, loop no longer runs, but flushers are still running.
 func (i *Ingester) stopping(_ error) error {
 	i.stopIncomingRequests()
-	var errs errUtil.MultiError
+	var errs util.MultiError
 	errs.Add(i.wal.Stop())
 
 	if i.flushOnShutdownSwitch.Get() {
@@ -524,19 +550,56 @@ func (i *Ingester) stopping(_ error) error {
 
 	i.streamRateCalculator.Stop()
 
-	// In case the flag to terminate on shutdown is set we need to mark the
-	// ingester service as "failed", so Loki will shut down entirely.
+	// In case the flag to terminate on shutdown is set or this instance is marked to release its resources,
+	// we need to mark the ingester service as "failed", so Loki will shut down entirely.
 	// The module manager logs the failure `modules.ErrStopProcess` in a special way.
 	if i.terminateOnShutdown && errs.Err() == nil {
+		i.removeShutdownMarkerFile()
 		return modules.ErrStopProcess
 	}
 	return errs.Err()
 }
 
+// removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
+func (i *Ingester) removeShutdownMarkerFile() {
+	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+	exists, err := shutdownMarkerExists(shutdownMarkerPath)
+	if err != nil {
+		level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
+	}
+	if exists {
+		err = removeShutdownMarker(shutdownMarkerPath)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "error removing shutdown marker file", "err", err)
+		}
+	}
+}
+
 func (i *Ingester) loop() {
 	defer i.loopDone.Done()
 
-	flushTicker := time.NewTicker(i.cfg.FlushCheckPeriod)
+	// Delay the first flush operation by up to 0.8x the flush time period.
+	// This will ensure that multiple ingesters started at the same time do not
+	// flush at the same time. Flushing at the same time can cause concurrently
+	// writing the same chunk to object storage, which in AWS S3 leads to being
+	// rate limited.
+	jitter := time.Duration(rand.Int63n(int64(float64(i.cfg.FlushCheckPeriod.Nanoseconds()) * 0.8)))
+	initialDelay := time.NewTimer(jitter)
+	defer initialDelay.Stop()
+
+	level.Debug(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+
+	select {
+	case <-initialDelay.C:
+		// do nothing and continue with flush loop
+	case <-i.loopQuit:
+		// ingester stopped while waiting for initial delay
+		return
+	}
+
+	// Add +/- 1% of flush interval as jitter
+	j := i.cfg.FlushCheckPeriod / 100
+	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
 	for {
@@ -559,7 +622,7 @@ func (i *Ingester) loop() {
 // source can trigger a safe termination through a signal to the process.
 // The handler is deprecated and usage is discouraged. Use ShutdownHandler
 // instead.
-func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request) {
+func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, _ *http.Request) {
 	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
 	originalState := i.lifecycler.FlushOnShutdown()
 	// We want to flush the chunks if transfer fails irrespective of original flag.
@@ -567,6 +630,150 @@ func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	_ = services.StopAndAwaitTerminated(context.Background(), i)
 	i.lifecycler.SetFlushOnShutdown(originalState)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
+//
+// Internally, when triggered, this handler will configure the ingester service to release their resources whenever a SIGTERM is received.
+// Releasing resources meaning flushing data, deleting tokens, and removing itself from the ring.
+//
+// It also creates a file on disk which is used to re-apply the configuration if the
+// ingester crashes and restarts before being permanently shutdown.
+//
+// * `GET` shows the status of this configuration
+// * `POST` enables this configuration
+// * `DELETE` disables this configuration
+func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
+	if i.cfg.ShutdownMarkerPath == "" {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
+
+	switch r.Method {
+	case http.MethodGet:
+		exists, err := shutdownMarkerExists(shutdownMarkerPath)
+		if err != nil {
+			level.Error(util_log.Logger).Log("msg", "unable to check for prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		if exists {
+			util.WriteTextResponse(w, "set")
+		} else {
+			util.WriteTextResponse(w, "unset")
+		}
+	case http.MethodPost:
+		if err := createShutdownMarker(shutdownMarkerPath); err != nil {
+			level.Error(util_log.Logger).Log("msg", "unable to create prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		i.setPrepareShutdown()
+		level.Info(util_log.Logger).Log("msg", "created prepare-shutdown marker file", "path", shutdownMarkerPath)
+
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodDelete:
+		if err := removeShutdownMarker(shutdownMarkerPath); err != nil {
+			level.Error(util_log.Logger).Log("msg", "unable to remove prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+
+		i.unsetPrepareShutdown()
+		level.Info(util_log.Logger).Log("msg", "removed prepare-shutdown marker file", "path", shutdownMarkerPath)
+
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	}
+}
+
+// setPrepareShutdown toggles ingester lifecycler config to prepare for shutdown
+func (i *Ingester) setPrepareShutdown() {
+	level.Info(util_log.Logger).Log("msg", "preparing full ingester shutdown, resources will be released on SIGTERM")
+	i.lifecycler.SetFlushOnShutdown(true)
+	i.lifecycler.SetUnregisterOnShutdown(true)
+	i.terminateOnShutdown = true
+	i.metrics.shutdownMarker.Set(1)
+}
+
+func (i *Ingester) unsetPrepareShutdown() {
+	level.Info(util_log.Logger).Log("msg", "undoing preparation for full ingester shutdown")
+	i.lifecycler.SetFlushOnShutdown(!i.cfg.WAL.Enabled || i.cfg.WAL.FlushOnShutdown)
+	i.lifecycler.SetUnregisterOnShutdown(i.cfg.LifecyclerConfig.UnregisterOnShutdown)
+	i.terminateOnShutdown = false
+	i.metrics.shutdownMarker.Set(0)
+}
+
+// createShutdownMarker writes a marker file to disk to indicate that an ingester is
+// going to be scaled down in the future. The presence of this file means that an ingester
+// should flush and upload all data when stopping.
+func createShutdownMarker(p string) error {
+	// Write the file, fsync it, then fsync the containing directory in order to guarantee
+	// it is persisted to disk. From https://man7.org/linux/man-pages/man2/fsync.2.html
+	//
+	// > Calling fsync() does not necessarily ensure that the entry in the
+	// > directory containing the file has also reached disk.  For that an
+	// > explicit fsync() on a file descriptor for the directory is also
+	// > needed.
+	file, err := os.Create(p)
+	if err != nil {
+		return err
+	}
+
+	merr := multierror.New()
+	_, err = file.WriteString(time.Now().UTC().Format(time.RFC3339))
+	merr.Add(err)
+	merr.Add(file.Sync())
+	merr.Add(file.Close())
+
+	if err := merr.Err(); err != nil {
+		return err
+	}
+
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	if err != nil {
+		return err
+	}
+
+	merr.Add(dir.Sync())
+	merr.Add(dir.Close())
+	return merr.Err()
+}
+
+// removeShutdownMarker removes the shutdown marker file if it exists.
+func removeShutdownMarker(p string) error {
+	err := os.Remove(p)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	dir, err := os.OpenFile(path.Dir(p), os.O_RDONLY, 0777)
+	if err != nil {
+		return err
+	}
+
+	merr := multierror.New()
+	merr.Add(dir.Sync())
+	merr.Add(dir.Close())
+	return merr.Err()
+}
+
+// shutdownMarkerExists returns true if the shutdown marker file exists, false otherwise
+func shutdownMarkerExists(p string) (bool, error) {
+	s, err := os.Stat(p)
+	if err != nil && os.IsNotExist(err) {
+		return false, nil
+	}
+
+	if err != nil {
+		return false, err
+	}
+
+	return s.Mode().IsRegular(), nil
 }
 
 // ShutdownHandler handles a graceful shutdown of the ingester service and
@@ -621,25 +828,22 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	if err != nil {
 		return &logproto.PushResponse{}, err
 	}
-	err = instance.Push(ctx, req)
-	return &logproto.PushResponse{}, err
+	return &logproto.PushResponse{}, instance.Push(ctx, req)
 }
 
 // GetStreamRates returns a response containing all streams and their current rate
 // TODO: It might be nice for this to be human readable, eventually: Sort output and return labels, too?
-func (i *Ingester) GetStreamRates(_ context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
-	allRates := i.streamRateCalculator.Rates()
-
-	rates := make([]*logproto.StreamRate, 0, len(allRates))
-	for _, r := range allRates {
-		rates = append(rates, &logproto.StreamRate{
-			Tenant:            r.Tenant,
-			StreamHash:        r.StreamHash,
-			StreamHashNoShard: r.StreamHashNoShard,
-			Rate:              r.Rate,
-		})
+func (i *Ingester) GetStreamRates(ctx context.Context, _ *logproto.StreamRatesRequest) (*logproto.StreamRatesResponse, error) {
+	if sp := opentracing.SpanFromContext(ctx); sp != nil {
+		sp.LogKV("event", "ingester started to handle GetStreamRates")
+		defer sp.LogKV("event", "ingester finished handling GetStreamRates")
 	}
 
+	allRates := i.streamRateCalculator.Rates()
+	rates := make([]*logproto.StreamRate, len(allRates))
+	for idx := range allRates {
+		rates[idx] = &allRates[idx]
+	}
 	return &logproto.StreamRatesResponse{StreamRates: rates}, nil
 }
 
@@ -654,7 +858,7 @@ func (i *Ingester) GetOrCreateInstance(instanceID string) (*instance, error) { /
 	inst, ok = i.instances[instanceID]
 	if !ok {
 		var err error
-		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator)
+		inst, err = newInstance(&i.cfg, i.periodicConfigs, instanceID, i.limiter, i.tenantConfigs, i.wal, i.metrics, i.flushOnShutdownSwitch, i.chunkFilter, i.streamRateCalculator, i.writeLogManager)
 		if err != nil {
 			return nil, err
 		}
@@ -695,13 +899,13 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 		}}
 		storeItr, err := i.store.SelectLogs(ctx, storeReq)
 		if err != nil {
-			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 		it = iter.NewMergeEntryIterator(ctx, []iter.EntryIterator{it, storeItr}, req.Direction)
 	}
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
 	// sendBatches uses -1 to specify no limit.
 	batchLimit := int32(req.Limit)
@@ -716,6 +920,7 @@ func (i *Ingester) Query(req *logproto.QueryRequest, queryServer logproto.Querie
 func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer logproto.Querier_QuerySampleServer) error {
 	// initialize stats collection for ingester queries.
 	_, ctx := stats.NewContext(queryServer.Context())
+	sp := opentracing.SpanFromContext(ctx)
 
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
@@ -726,9 +931,13 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 	if err != nil {
 		return err
 	}
+
 	it, err := instance.QuerySample(ctx, logql.SelectSampleParams{SampleQueryRequest: req})
 	if err != nil {
 		return err
+	}
+	if sp != nil {
+		sp.LogKV("event", "finished instance query sample", "selector", req.Selector, "start", req.Start, "end", req.End)
 	}
 
 	if start, end, ok := buildStoreRequest(i.cfg, req.Start, req.End, time.Now()); ok {
@@ -741,14 +950,14 @@ func (i *Ingester) QuerySample(req *logproto.SampleQueryRequest, queryServer log
 		}}
 		storeItr, err := i.store.SelectSamples(ctx, storeReq)
 		if err != nil {
-			errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+			util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 			return err
 		}
 
 		it = iter.NewMergeSampleIterator(ctx, []iter.SampleIterator{it, storeItr})
 	}
 
-	defer errUtil.LogErrorWithContext(ctx, "closing iterator", it.Close)
+	defer util.LogErrorWithContext(ctx, "closing iterator", it.Close)
 
 	return sendSampleBatches(ctx, it, queryServer)
 }
@@ -790,8 +999,8 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	reqStart = adjustQueryStartTime(asyncStoreMaxLookBack, reqStart, time.Now())
 
 	// parse the request
-	start, end := errUtil.RoundToMilliseconds(reqStart, req.End)
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	start, end := util.RoundToMilliseconds(reqStart, req.End)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -829,7 +1038,16 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	if err != nil {
 		return nil, err
 	}
-	resp, err := instance.Label(ctx, req)
+
+	var matchers []*labels.Matcher
+	if req.Query != "" {
+		matchers, err = syntax.ParseMatchers(req.Query, true)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	resp, err := instance.Label(ctx, req, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -875,7 +1093,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	}
 
 	return &logproto.LabelResponse{
-		Values: errUtil.MergeStringLists(resp.Values, storeValues),
+		Values: util.MergeStringLists(resp.Values, storeValues),
 	}, nil
 }
 
@@ -894,6 +1112,8 @@ func (i *Ingester) Series(ctx context.Context, req *logproto.SeriesRequest) (*lo
 }
 
 func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest) (*logproto.IndexStatsResponse, error) {
+	sp := opentracing.SpanFromContext(ctx)
+
 	user, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -904,7 +1124,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -924,7 +1144,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		ctx,
 		len(jobs),
 		2,
-		func(ctx context.Context, idx int) error {
+		func(_ context.Context, idx int) error {
 			res, err := jobs[idx]()
 			resps[idx] = res
 			return err
@@ -934,7 +1154,64 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 	}
 
 	merged := index_stats.MergeStats(resps...)
+	if sp != nil {
+		sp.LogKV(
+			"user", user,
+			"from", req.From.Time(),
+			"through", req.Through.Time(),
+			"matchers", syntax.MatchersString(matchers),
+			"streams", merged.Streams,
+			"chunks", merged.Chunks,
+			"bytes", merged.Bytes,
+			"entries", merged.Entries,
+		)
+	}
+
 	return &merged, nil
+}
+
+func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (*logproto.VolumeResponse, error) {
+	user, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	instance, err := i.GetOrCreateInstance(user)
+	if err != nil {
+		return nil, err
+	}
+
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
+	if err != nil && req.Matchers != seriesvolume.MatchAny {
+		return nil, err
+	}
+
+	type f func() (*logproto.VolumeResponse, error)
+	jobs := []f{
+		f(func() (*logproto.VolumeResponse, error) {
+			return instance.GetVolume(ctx, req)
+		}),
+		f(func() (*logproto.VolumeResponse, error) {
+			return i.store.Volume(ctx, user, req.From, req.Through, req.Limit, req.TargetLabels, req.AggregateBy, matchers...)
+		}),
+	}
+	resps := make([]*logproto.VolumeResponse, len(jobs))
+
+	if err := concurrency.ForEachJob(
+		ctx,
+		len(jobs),
+		2,
+		func(_ context.Context, idx int) error {
+			res, err := jobs[idx]()
+			resps[idx] = res
+			return err
+		},
+	); err != nil {
+		return nil, err
+	}
+
+	merged := seriesvolume.Merge(resps, req.Limit)
+	return merged, nil
 }
 
 // Watch implements grpc_health_v1.HealthCheck.
@@ -1001,7 +1278,7 @@ func (i *Ingester) Tail(req *logproto.TailRequest, queryServer logproto.Querier_
 }
 
 // TailersCount returns count of active tail requests from a user
-func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
+func (i *Ingester) TailersCount(ctx context.Context, _ *logproto.TailersCountRequest) (*logproto.TailersCountResponse, error) {
 	instanceID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -1017,9 +1294,9 @@ func (i *Ingester) TailersCount(ctx context.Context, in *logproto.TailersCountRe
 	return &resp, nil
 }
 
-// buildStoreRequest returns a store request from an ingester request, returns nit if QueryStore is set to false in configuration.
+// buildStoreRequest returns a store request from an ingester request, returns nil if QueryStore is set to false in configuration.
 // The request may be truncated due to QueryStoreMaxLookBackPeriod which limits the range of request to make sure
-// we only query enough to not miss any data and not add too to many duplicates by covering the who time range in query.
+// we only query enough to not miss any data and not add too many duplicates by covering the whole time range in query.
 func buildStoreRequest(cfg Config, start, end, now time.Time) (time.Time, time.Time, bool) {
 	if !cfg.QueryStore {
 		return time.Time{}, time.Time{}, false

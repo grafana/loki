@@ -26,43 +26,52 @@ func newQueryBlocker(ctx context.Context, q *query) *queryBlocker {
 	}
 }
 
-func (qb *queryBlocker) isBlocked(tenant string) bool {
-	patterns := qb.q.limits.BlockedQueries(tenant)
-	if len(patterns) <= 0 {
+func (qb *queryBlocker) isBlocked(ctx context.Context, tenant string) bool {
+	blocks := qb.q.limits.BlockedQueries(ctx, tenant)
+	if len(blocks) <= 0 {
 		return false
 	}
 
-	typ, err := QueryType(qb.q.params.Query())
+	query := qb.q.params.Query()
+	typ, err := QueryType(query)
 	if err != nil {
 		typ = "unknown"
 	}
 
 	logger := log.With(qb.logger, "user", tenant, "type", typ)
 
-	query := qb.q.params.Query()
-	for _, p := range patterns {
+	for _, b := range blocks {
+
+		if b.Hash > 0 {
+			if b.Hash == HashedQuery(query) {
+				level.Warn(logger).Log("msg", "query blocker matched with hash policy", "hash", b.Hash, "query", query)
+				return qb.block(b, typ, logger)
+			}
+
+			return false
+		}
 
 		// if no pattern is given, assume we want to match all queries
-		if p.Pattern == "" {
-			p.Pattern = ".*"
-			p.Regex = true
+		if b.Pattern == "" {
+			b.Pattern = ".*"
+			b.Regex = true
 		}
 
-		if strings.TrimSpace(p.Pattern) == strings.TrimSpace(query) {
+		if strings.TrimSpace(b.Pattern) == strings.TrimSpace(query) {
 			level.Warn(logger).Log("msg", "query blocker matched with exact match policy", "query", query)
-			return qb.block(p, typ, logger)
+			return qb.block(b, typ, logger)
 		}
 
-		if p.Regex {
-			r, err := regexp.Compile(p.Pattern)
+		if b.Regex {
+			r, err := regexp.Compile(b.Pattern)
 			if err != nil {
-				level.Error(logger).Log("msg", "query blocker regex does not compile", "pattern", p.Pattern, "err", err)
+				level.Error(logger).Log("msg", "query blocker regex does not compile", "pattern", b.Pattern, "err", err)
 				continue
 			}
 
 			if r.MatchString(query) {
-				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", p.Pattern, "query", query)
-				return qb.block(p, typ, logger)
+				level.Warn(logger).Log("msg", "query blocker matched with regex policy", "pattern", b.Pattern, "query", query)
+				return qb.block(b, typ, logger)
 			}
 		}
 	}
@@ -86,7 +95,7 @@ func (qb *queryBlocker) block(q *validation.BlockedQuery, typ string, logger log
 
 	// query would be blocked, but it didn't match specified types
 	if !matched {
-		level.Debug(logger).Log("msg", "query blocker matched pattern, but not specified types", "pattern", q.Pattern, "types", q.Types.String(), "queryType", typ)
+		level.Debug(logger).Log("msg", "query blocker matched pattern, but not specified types", "pattern", q.Pattern, "regex", q.Regex, "hash", q.Hash, "types", q.Types.String(), "queryType", typ)
 		return false
 	}
 

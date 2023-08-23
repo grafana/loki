@@ -18,8 +18,9 @@ import (
 )
 
 const (
+	// Signature Version 2 is being turned off (deprecated) in Amazon S3. Amazon S3 will then only accept API requests that are signed using Signature Version 4.
+	// https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingAWSSDK.html#UsingAWSSDK-sig2-deprecation
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 
 	// SSEKMS config type constant to configure S3 server side encryption using KMS
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
@@ -31,9 +32,8 @@ const (
 )
 
 var (
-	supportedSignatureVersions = []string{SignatureVersionV4, SignatureVersionV2}
-	supportedSSETypes          = []string{SSEKMS, SSES3}
-
+	supportedSignatureVersions     = []string{SignatureVersionV4}
+	supportedSSETypes              = []string{SSEKMS, SSES3}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")
@@ -58,6 +58,7 @@ type Config struct {
 	Region           string         `yaml:"region"`
 	BucketName       string         `yaml:"bucket_name"`
 	SecretAccessKey  flagext.Secret `yaml:"secret_access_key"`
+	SessionToken     flagext.Secret `yaml:"session_token"`
 	AccessKeyID      string         `yaml:"access_key_id"`
 	Insecure         bool           `yaml:"insecure"`
 	SignatureVersion string         `yaml:"signature_version"`
@@ -76,6 +77,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.StringVar(&cfg.AccessKeyID, prefix+"s3.access-key-id", "", "S3 access key ID")
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "S3 secret access key")
+	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "S3 session token")
 	f.StringVar(&cfg.BucketName, prefix+"s3.bucket-name", "", "S3 bucket name")
 	f.StringVar(&cfg.Region, prefix+"s3.region", "", "S3 region. If unset, the client will issue a S3 GetBucketLocation API call to autodetect it.")
 	f.StringVar(&cfg.Endpoint, prefix+"s3.endpoint", "", "The S3 bucket endpoint. It could be an AWS S3 endpoint listed at https://docs.aws.amazon.com/general/latest/gr/s3.html or the address of an S3-compatible service in hostname:port format.")

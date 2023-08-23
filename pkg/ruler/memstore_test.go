@@ -2,10 +2,11 @@ package ruler
 
 import (
 	"context"
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/rulefmt"
 	"testing"
 	"time"
+
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/rulefmt"
 
 	"github.com/go-kit/log"
 	"github.com/prometheus/prometheus/model/labels"
@@ -56,10 +57,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "buzz", // an extra label
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 			promql.Sample{
 				Metric: labels.FromMap(map[string]string{
@@ -67,10 +66,8 @@ func TestSelectRestores(t *testing.T) {
 					"foo":             "bar",  // from the AlertingRule.labels spec
 					"bazz":            "bork", // an extra label (second variant)
 				}),
-				Point: promql.Point{
-					T: util.TimeToMillis(t),
-					V: 1,
-				},
+				T: util.TimeToMillis(t),
+				F: 1,
 			},
 		}, nil
 	})
@@ -131,7 +128,7 @@ func TestSelectRestores(t *testing.T) {
 	require.Equal(t, 1, callCount)
 }
 
-func TestMemstoreStart(t *testing.T) {
+func TestMemstoreStart(_ *testing.T) {
 	ars := []rulefmt.Rule{
 		{
 			Alert:  ruleName,

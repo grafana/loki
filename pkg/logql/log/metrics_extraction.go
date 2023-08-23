@@ -34,8 +34,8 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutate the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	Process(ts int64, line []byte) (float64, LabelsResult, bool)
-	ProcessString(ts int64, line string) (float64, LabelsResult, bool)
+	Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool)
+	ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool)
 }
 
 type lineSampleExtractor struct {
@@ -50,7 +50,7 @@ type lineSampleExtractor struct {
 // Multiple log stages are run before converting the log line.
 func NewLineSampleExtractor(ex LineExtractor, stages []Stage, groups []string, without, noLabels bool) (SampleExtractor, error) {
 	s := ReduceStages(stages)
-	hints := newParserHint(s.RequiredLabelNames(), groups, without, noLabels, "")
+	hints := NewParserHint(s.RequiredLabelNames(), groups, without, noLabels, "", stages)
 	return &lineSampleExtractor{
 		Stage:            s,
 		LineExtractor:    ex,
@@ -80,12 +80,15 @@ type streamLineSampleExtractor struct {
 	builder *LabelsBuilder
 }
 
-func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
+	l.builder.Reset()
+	l.builder.Add(nonIndexedLabels...)
+
 	// short circuit.
 	if l.Stage == NoopStage {
 		return l.LineExtractor(line), l.builder.GroupedLabels(), true
 	}
-	l.builder.Reset()
+
 	line, ok := l.Stage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
@@ -93,9 +96,9 @@ func (l *streamLineSampleExtractor) Process(ts int64, line []byte) (float64, Lab
 	return l.LineExtractor(line), l.builder.GroupedLabels(), true
 }
 
-func (l *streamLineSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (l *streamLineSampleExtractor) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line))
+	return l.Process(ts, unsafeGetBytes(line), nonIndexedLabels...)
 }
 
 func (l *streamLineSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -138,7 +141,7 @@ func LabelExtractorWithStages(
 		sort.Strings(groups)
 	}
 	preStage := ReduceStages(preStages)
-	hints := newParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName)
+	hints := NewParserHint(append(preStage.RequiredLabelNames(), postFilter.RequiredLabelNames()...), groups, without, noLabels, labelName, append(preStages, postFilter))
 	return &labelSampleExtractor{
 		preStage:         preStage,
 		conversionFn:     convFn,
@@ -168,9 +171,10 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 	return res
 }
 
-func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
+	l.builder.Add(nonIndexedLabels...)
 	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false
@@ -198,9 +202,9 @@ func (l *streamLabelSampleExtractor) Process(ts int64, line []byte) (float64, La
 	return v, l.builder.GroupedLabels(), true
 }
 
-func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (l *streamLabelSampleExtractor) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	// unsafe get bytes since we have the guarantee that the line won't be mutated.
-	return l.Process(ts, unsafeGetBytes(line))
+	return l.Process(ts, unsafeGetBytes(line), nonIndexedLabels...)
 }
 
 func (l *streamLabelSampleExtractor) BaseLabels() LabelsResult { return l.builder.currentResult }
@@ -247,14 +251,14 @@ func (sp *filteringStreamExtractor) BaseLabels() LabelsResult {
 	return sp.extractor.BaseLabels()
 }
 
-func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.Process(ts, line)
-		if matches { //When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.Process(ts, line, nonIndexedLabels...)
+		if matches { // When the filter matches, don't run the next step
 			return 0, nil, false
 		}
 	}
@@ -262,14 +266,14 @@ func (sp *filteringStreamExtractor) Process(ts int64, line []byte) (float64, Lab
 	return sp.extractor.Process(ts, line)
 }
 
-func (sp *filteringStreamExtractor) ProcessString(ts int64, line string) (float64, LabelsResult, bool) {
+func (sp *filteringStreamExtractor) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
 		}
 
-		_, _, matches := filter.pipeline.ProcessString(ts, line)
-		if matches { //When the filter matches, don't run the next step
+		_, _, matches := filter.pipeline.ProcessString(ts, line, nonIndexedLabels...)
+		if matches { // When the filter matches, don't run the next step
 			return 0, nil, false
 		}
 	}

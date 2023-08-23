@@ -1,11 +1,12 @@
 package distributor
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/go-kit/log/level"
-	"github.com/weaveworks/common/httpgrpc"
+	"github.com/grafana/dskit/httpgrpc"
 
 	"github.com/grafana/loki/pkg/util"
 
@@ -34,6 +35,8 @@ func (d *Distributor) PushHandler(w http.ResponseWriter, r *http.Request) {
 				"err", err,
 			)
 		}
+		d.writeFailuresManager.Log(tenantID, fmt.Errorf("couldn't parse push request: %w", err))
+
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

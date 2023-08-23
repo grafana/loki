@@ -809,9 +809,105 @@ func (m *Bootstrap) validate(all bool) error {
 		}
 	}
 
-	switch m.StatsFlush.(type) {
+	if all {
+		switch v := interface{}(m.GetXdsDelegateExtension()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, BootstrapValidationError{
+					field:  "XdsDelegateExtension",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, BootstrapValidationError{
+					field:  "XdsDelegateExtension",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetXdsDelegateExtension()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return BootstrapValidationError{
+				field:  "XdsDelegateExtension",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
 
+	if all {
+		switch v := interface{}(m.GetXdsConfigTrackerExtension()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, BootstrapValidationError{
+					field:  "XdsConfigTrackerExtension",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, BootstrapValidationError{
+					field:  "XdsConfigTrackerExtension",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetXdsConfigTrackerExtension()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return BootstrapValidationError{
+				field:  "XdsConfigTrackerExtension",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	if all {
+		switch v := interface{}(m.GetListenerManager()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, BootstrapValidationError{
+					field:  "ListenerManager",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, BootstrapValidationError{
+					field:  "ListenerManager",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetListenerManager()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return BootstrapValidationError{
+				field:  "ListenerManager",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
+	switch v := m.StatsFlush.(type) {
 	case *Bootstrap_StatsFlushOnAdmin:
+		if v == nil {
+			err := BootstrapValidationError{
+				field:  "StatsFlush",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if m.GetStatsFlushOnAdmin() != true {
 			err := BootstrapValidationError{
@@ -824,6 +920,8 @@ func (m *Bootstrap) validate(all bool) error {
 			errors = append(errors, err)
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -2052,9 +2150,20 @@ func (m *RuntimeLayer) validate(all bool) error {
 		errors = append(errors, err)
 	}
 
-	switch m.LayerSpecifier.(type) {
-
+	oneofLayerSpecifierPresent := false
+	switch v := m.LayerSpecifier.(type) {
 	case *RuntimeLayer_StaticLayer:
+		if v == nil {
+			err := RuntimeLayerValidationError{
+				field:  "LayerSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofLayerSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetStaticLayer()).(type) {
@@ -2086,6 +2195,17 @@ func (m *RuntimeLayer) validate(all bool) error {
 		}
 
 	case *RuntimeLayer_DiskLayer_:
+		if v == nil {
+			err := RuntimeLayerValidationError{
+				field:  "LayerSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofLayerSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetDiskLayer()).(type) {
@@ -2117,6 +2237,17 @@ func (m *RuntimeLayer) validate(all bool) error {
 		}
 
 	case *RuntimeLayer_AdminLayer_:
+		if v == nil {
+			err := RuntimeLayerValidationError{
+				field:  "LayerSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofLayerSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetAdminLayer()).(type) {
@@ -2148,6 +2279,17 @@ func (m *RuntimeLayer) validate(all bool) error {
 		}
 
 	case *RuntimeLayer_RtdsLayer_:
+		if v == nil {
+			err := RuntimeLayerValidationError{
+				field:  "LayerSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofLayerSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetRtdsLayer()).(type) {
@@ -2179,6 +2321,9 @@ func (m *RuntimeLayer) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofLayerSpecifierPresent {
 		err := RuntimeLayerValidationError{
 			field:  "LayerSpecifier",
 			reason: "value is required",
@@ -2187,7 +2332,6 @@ func (m *RuntimeLayer) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

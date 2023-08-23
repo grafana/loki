@@ -1,0 +1,1911 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  annotations:
+    alm-examples: |-
+      [
+        {
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "AlertingRule",
+          "metadata": {
+            "name": "alertingrule-sample"
+          },
+          "spec": {
+            "groups": [
+              {
+                "interval": "10m",
+                "name": "alerting-rules-group",
+                "rules": [
+                  {
+                    "alert": "HighPercentageError",
+                    "annotations": {
+                      "summary": "High request latency"
+                    },
+                    "expr": "sum(rate({app=\"foo\", env=\"production\"} |= \"error\" [5m])) by (job)\n  /\nsum(rate({app=\"foo\", env=\"production\"}[5m])) by (job)\n  \u003e 0.05\n",
+                    "for": "10m",
+                    "labels": {
+                      "severity": "page"
+                    }
+                  },
+                  {
+                    "alert": "HttpCredentialsLeaked",
+                    "annotations": {
+                      "message": "{{ $labels.job }} is leaking http basic auth credentials."
+                    },
+                    "expr": "sum by (cluster, job, pod) (count_over_time({namespace=\"prod\"} |~ \"http(s?)://(\\\\w+):(\\\\w+)@\" [5m]) \u003e 0)",
+                    "for": "10m",
+                    "labels": {
+                      "severity": "critical"
+                    }
+                  }
+                ]
+              }
+            ],
+            "tenantID": "test-tenant"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "LokiStack",
+          "metadata": {
+            "name": "lokistack-sample"
+          },
+          "spec": {
+            "size": "1x.small",
+            "storage": {
+              "secret": {
+                "name": "test"
+              }
+            },
+            "storageClassName": "standard"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "RecordingRule",
+          "metadata": {
+            "name": "recordingrule-sample"
+          },
+          "spec": {
+            "groups": [
+              {
+                "interval": "10m",
+                "name": "recording-rules-group",
+                "rules": [
+                  {
+                    "expr": "sum(rate({container=\"myservice\"}[10m]))\n",
+                    "record": "myservice:requests:rate10m"
+                  },
+                  {
+                    "expr": "sum(rate({container=\"otherservice\"}[1m]))\n",
+                    "record": "otherservice:requests:rate1m"
+                  }
+                ]
+              }
+            ],
+            "tenantID": "test-tenant"
+          }
+        },
+        {
+          "apiVersion": "loki.grafana.com/v1",
+          "kind": "RulerConfig",
+          "metadata": {
+            "name": "rulerconfig-sample"
+          },
+          "spec": {
+            "alertmanager": {
+              "discovery": {
+                "enableSRV": true,
+                "refreshInterval": "1m"
+              },
+              "enableV2": true,
+              "endpoints": [
+                "http://alertmanager-host1.mycompany.org",
+                "http://alertmanager-host2.mycompany.org"
+              ],
+              "externalLabels": {
+                "environment": "production",
+                "region": "us-east-2"
+              },
+              "externalUrl": "http://www.mycompany.org/alerts",
+              "notificationQueue": {
+                "capacity": 1000,
+                "forGracePeriod": "10m",
+                "forOutageTolerance": "1h",
+                "resendDelay": "1m",
+                "timeout": "30s"
+              }
+            },
+            "evaluationInterval": "1m",
+            "pollInterval": "1m",
+            "remoteWrite": {
+              "client": {
+                "authorization": "basic",
+                "authorizationSecretName": "my-secret-resource",
+                "name": "remote-write-log-metrics",
+                "proxyUrl": "http://proxy-host.mycompany.org",
+                "relabelConfigs": [
+                  {
+                    "action": "replace",
+                    "regex": "ALERTS.*",
+                    "replacement": "$1",
+                    "separator": "",
+                    "sourceLabels": [
+                      "labelc",
+                      "labeld"
+                    ],
+                    "targetLabel": "labelnew"
+                  }
+                ],
+                "timeout": "30s",
+                "url": "http://remote-write-host.mycompany.org"
+              },
+              "enabled": true,
+              "refreshPeriod": "10s"
+            }
+          }
+        }
+      ]
+    capabilities: Full Lifecycle
+    categories: OpenShift Optional, Logging & Tracing
+    certified: "false"
+    containerImage: docker.io/grafana/loki-operator:0.4.0
+    createdAt: "2023-08-02T07:55:26Z"
+    description: The Community Loki Operator provides Kubernetes native deployment
+      and management of Loki and related logging components.
+    operators.operatorframework.io/builder: operator-sdk-unknown
+    operators.operatorframework.io/project_layout: go.kubebuilder.io/v3
+    repository: https://github.com/grafana/loki/tree/main/operator
+    support: Grafana Loki SIG Operator
+  labels:
+    operatorframework.io/arch.amd64: supported
+    operatorframework.io/arch.arm64: supported
+  name: loki-operator.v0.4.0
+  namespace: placeholder
+spec:
+  apiservicedefinitions: {}
+  customresourcedefinitions:
+    owned:
+    - description: AlertingRule is the Schema for the alertingrules API
+      displayName: AlertingRule
+      kind: AlertingRule
+      name: alertingrules.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: List of groups for alerting rules.
+        displayName: Groups
+        path: groups
+      - description: Interval defines the time interval between evaluation of the
+          given alerting rule.
+        displayName: Evaluation Interval
+        path: groups[0].interval
+      - description: Limit defines the number of alerts an alerting rule can produce.
+          0 is no limit.
+        displayName: Limit of firing alerts
+        path: groups[0].limit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Name of the alerting rule group. Must be unique within all alerting
+          rules.
+        displayName: Name
+        path: groups[0].name
+      - description: Rules defines a list of alerting rules
+        displayName: Rules
+        path: groups[0].rules
+      - description: The name of the alert. Must be a valid label value.
+        displayName: Name
+        path: groups[0].rules[0].alert
+      - description: Annotations to add to each alert.
+        displayName: Annotations
+        path: groups[0].rules[0].annotations
+      - description: The LogQL expression to evaluate. Every evaluation cycle this
+          is evaluated at the current time, and all resultant time series become pending/firing
+          alerts.
+        displayName: LogQL Expression
+        path: groups[0].rules[0].expr
+      - description: Alerts are considered firing once they have been returned for
+          this long. Alerts which have not yet fired for long enough are considered
+          pending.
+        displayName: Firing Threshold
+        path: groups[0].rules[0].for
+      - description: Labels to add to each alert.
+        displayName: Labels
+        path: groups[0].rules[0].labels
+      - description: TenantID of tenant where the alerting rules are evaluated in.
+        displayName: Tenant ID
+        path: tenantID
+      statusDescriptors:
+      - description: Conditions of the AlertingRule generation health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
+    - description: LokiStack is the Schema for the lokistacks API
+      displayName: LokiStack
+      kind: LokiStack
+      name: lokistacks.loki.grafana.com
+      resources:
+      - kind: ConfigMap
+        name: ""
+        version: v1
+      - kind: Deployment
+        name: ""
+        version: v1
+      - kind: Ingress
+        name: ""
+        version: v1
+      - kind: PersistentVolumeClaims
+        name: ""
+        version: v1
+      - kind: Route
+        name: ""
+        version: v1
+      - kind: Service
+        name: ""
+        version: v1
+      - kind: ServiceAccount
+        name: ""
+        version: v1
+      - kind: ServiceMonitor
+        name: ""
+        version: v1
+      - kind: StatefulSet
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: HashRing defines the spec for the distributed hash ring configuration.
+        displayName: Hash Ring
+        path: hashRing
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: MemberList configuration spec
+        displayName: Memberlist Config
+        path: hashRing.memberlist
+      - description: InstanceAddrType defines the type of address to use to advertise
+          to the ring. Defaults to the first address from any private network interfaces
+          of the current pod. Alternatively the public pod IP can be used in case
+          private networks (RFC 1918 and RFC 6598) are not available.
+        displayName: Instance Address
+        path: hashRing.memberlist.instanceAddrType
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:default
+        - urn:alm:descriptor:com.tectonic.ui:select:podIP
+      - description: Type of hash ring implementation that should be used
+        displayName: Type
+        path: hashRing.type
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:memberlist
+      - description: Limits defines the limits to be applied to log stream processing.
+        displayName: Rate Limiting
+        path: limits
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Global defines the limits applied globally across the cluster.
+        displayName: Global Limits
+        path: limits.global
+      - description: IngestionBurstSize defines the local rate-limited sample size
+          per distributor replica. It should be set to the set at least to the maximum
+          logs size expected in a single push request.
+        displayName: Ingestion Burst Size (in MB)
+        path: limits.global.ingestion.ingestionBurstSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: IngestionRate defines the sample size per second. Units MB.
+        displayName: Ingestion Rate (in MB)
+        path: limits.global.ingestion.ingestionRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxGlobalStreamsPerTenant defines the maximum number of active
+          streams per tenant, across the cluster.
+        displayName: Max Global Streams per  Tenant
+        path: limits.global.ingestion.maxGlobalStreamsPerTenant
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLabelNameLength defines the maximum number of characters allowed
+          for label keys in log streams.
+        displayName: Max Label Name Length
+        path: limits.global.ingestion.maxLabelNameLength
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLabelNamesPerSeries defines the maximum number of label names
+          per series in each log stream.
+        displayName: Max Labels Names per Series
+        path: limits.global.ingestion.maxLabelNamesPerSeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLabelValueLength defines the maximum number of characters
+          allowed for label values in log streams.
+        displayName: Max Label Value Length
+        path: limits.global.ingestion.maxLabelValueLength
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLineSize defines the maximum line size on ingestion path.
+          Units in Bytes.
+        displayName: Max Line Size
+        path: limits.global.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.global.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxChunksPerQuery defines the maximum number of chunks that can
+          be fetched by a single query.
+        displayName: Max Chunk per Query
+        path: limits.global.queries.maxChunksPerQuery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          that will be returned for a query.
+        displayName: Max Entries Limit per Query
+        path: limits.global.queries.maxEntriesLimitPerQuery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
+        displayName: Max Query Series
+        path: limits.global.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Timeout when querying ingesters or storage during the execution
+          of a query request.
+        displayName: Query Timeout
+        path: limits.global.queries.queryTimeout
+      - description: Tenants defines the limits applied per tenant.
+        displayName: Limits per Tenant
+        path: limits.tenants
+      - description: IngestionBurstSize defines the local rate-limited sample size
+          per distributor replica. It should be set to the set at least to the maximum
+          logs size expected in a single push request.
+        displayName: Ingestion Burst Size (in MB)
+        path: limits.tenants.ingestion.ingestionBurstSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: IngestionRate defines the sample size per second. Units MB.
+        displayName: Ingestion Rate (in MB)
+        path: limits.tenants.ingestion.ingestionRate
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxGlobalStreamsPerTenant defines the maximum number of active
+          streams per tenant, across the cluster.
+        displayName: Max Global Streams per  Tenant
+        path: limits.tenants.ingestion.maxGlobalStreamsPerTenant
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLabelNameLength defines the maximum number of characters allowed
+          for label keys in log streams.
+        displayName: Max Label Name Length
+        path: limits.tenants.ingestion.maxLabelNameLength
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLabelNamesPerSeries defines the maximum number of label names
+          per series in each log stream.
+        displayName: Max Labels Names per Series
+        path: limits.tenants.ingestion.maxLabelNamesPerSeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLabelValueLength defines the maximum number of characters
+          allowed for label values in log streams.
+        displayName: Max Label Value Length
+        path: limits.tenants.ingestion.maxLabelValueLength
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxLineSize defines the maximum line size on ingestion path.
+          Units in Bytes.
+        displayName: Max Line Size
+        path: limits.tenants.ingestion.maxLineSize
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.tenants.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxChunksPerQuery defines the maximum number of chunks that can
+          be fetched by a single query.
+        displayName: Max Chunk per Query
+        path: limits.tenants.queries.maxChunksPerQuery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxEntriesLimitsPerQuery defines the maximum number of log entries
+          that will be returned for a query.
+        displayName: Max Entries Limit per Query
+        path: limits.tenants.queries.maxEntriesLimitPerQuery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
+        displayName: Max Query Series
+        path: limits.tenants.queries.maxQuerySeries
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Timeout when querying ingesters or storage during the execution
+          of a query request.
+        displayName: Query Timeout
+        path: limits.tenants.queries.queryTimeout
+      - description: ManagementState defines if the CR should be managed by the operator
+          or not. Default is managed.
+        displayName: Management State
+        path: managementState
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:Managed
+        - urn:alm:descriptor:com.tectonic.ui:select:Unmanaged
+      - description: Proxy defines the spec for the object proxy to configure cluster
+          proxy information.
+        displayName: Cluster Proxy
+        path: proxy
+      - description: HTTPProxy configures the HTTP_PROXY/http_proxy env variable.
+        displayName: HTTPProxy
+        path: proxy.httpProxy
+      - description: HTTPSProxy configures the HTTPS_PROXY/https_proxy env variable.
+        displayName: HTTPSProxy
+        path: proxy.httpsProxy
+      - description: NoProxy configures the NO_PROXY/no_proxy env variable.
+        displayName: NoProxy
+        path: proxy.noProxy
+      - description: Replication defines the configuration for Loki data replication.
+        displayName: Replication Spec
+        path: replication
+      - description: Factor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replication.factor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
+        displayName: Zones Spec
+        path: replication.zones
+      - description: MaxSkew describes the maximum degree to which Pods can be unevenly
+          distributed.
+        displayName: Max Skew
+        path: replication.zones[0].maxSkew
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: TopologyKey is the key that defines a topology in the Nodes'
+          labels.
+        displayName: Topology Key
+        path: replication.zones[0].topologyKey
+      - description: 'Deprecated: Please use replication.factor instead. This field
+          will be removed in future versions of this CRD. ReplicationFactor defines
+          the policy for log stream replication.'
+        displayName: Replication Factor
+        path: replicationFactor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Rules defines the spec for the ruler component.
+        displayName: Rules
+        path: rules
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Enabled defines a flag to enable/disable the ruler component
+        displayName: Enable
+        path: rules.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Namespaces to be selected for PrometheusRules discovery. If unspecified,
+          only the same namespace as the LokiStack object is in is used.
+        displayName: Namespace Selector
+        path: rules.namespaceSelector
+      - description: A selector to select which LokiRules to mount for loading alerting/recording
+          rules from.
+        displayName: Selector
+        path: rules.selector
+      - description: Size defines one of the support Loki deployment scale out sizes.
+        displayName: LokiStack Size
+        path: size
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:1x.extra-small
+        - urn:alm:descriptor:com.tectonic.ui:select:1x.small
+        - urn:alm:descriptor:com.tectonic.ui:select:1x.medium
+      - description: Storage defines the spec for the object storage endpoint to store
+          logs.
+        displayName: Object Storage
+        path: storage
+      - description: Version for writing and reading logs.
+        displayName: Version
+        path: storage.schemas[0].version
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:v11
+        - urn:alm:descriptor:com.tectonic.ui:select:v12
+      - description: Name of a secret in the namespace configured for object storage
+          secrets.
+        displayName: Object Storage Secret Name
+        path: storage.secret.name
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - description: Type of object storage that should be used
+        displayName: Object Storage Secret Type
+        path: storage.secret.type
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:azure
+        - urn:alm:descriptor:com.tectonic.ui:select:gcs
+        - urn:alm:descriptor:com.tectonic.ui:select:s3
+        - urn:alm:descriptor:com.tectonic.ui:select:swift
+        - urn:alm:descriptor:com.tectonic.ui:select:alibabacloud
+      - description: TLS configuration for reaching the object storage endpoint.
+        displayName: TLS Config
+        path: storage.tls
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: storage.tls.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: storage.tls.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
+      - description: Storage class name defines the storage class for ingester/querier
+          PVCs.
+        displayName: Storage Class Name
+        path: storageClassName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:StorageClass
+      - description: Template defines the resource/limits/tolerations/nodeselectors
+          per component.
+        displayName: Node Placement
+        path: template
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Compactor defines the compaction component spec.
+        displayName: Compactor pods
+        path: template.compactor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.compactor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.compactor.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Distributor defines the distributor component spec.
+        displayName: Distributor pods
+        path: template.distributor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.distributor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.distributor.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Gateway defines the lokistack gateway component spec.
+        displayName: Gateway pods
+        path: template.gateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.gateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.gateway.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: IndexGateway defines the index gateway component spec.
+        displayName: Index Gateway pods
+        path: template.indexGateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.indexGateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.indexGateway.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Ingester defines the ingester component spec.
+        displayName: Ingester pods
+        path: template.ingester
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ingester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.ingester.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Querier defines the querier component spec.
+        displayName: Querier pods
+        path: template.querier
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.querier.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.querier.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: QueryFrontend defines the query frontend component spec.
+        displayName: Query Frontend pods
+        path: template.queryFrontend
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.queryFrontend.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.queryFrontend.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Ruler defines the ruler component spec.
+        displayName: Ruler pods
+        path: template.ruler
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ruler.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
+      - description: Replicas defines the number of replica pods of the component.
+        displayName: Replicas
+        path: template.ruler.replicas
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:hidden
+      - description: Tenants defines the per-tenant authentication and authorization
+          spec for the lokistack-gateway component.
+        displayName: Tenants Configuration
+        path: tenants
+      - description: Authentication defines the lokistack-gateway component authentication
+          configuration spec per tenant.
+        displayName: Authentication
+        path: tenants.authentication
+      - description: TLSConfig defines the spec for the mTLS tenant's authentication.
+        displayName: mTLS Configuration
+        path: tenants.authentication[0].mTLS
+      - description: CA defines the spec for the custom CA for tenant's authentication.
+        displayName: CA ConfigMap
+        path: tenants.authentication[0].mTLS.ca
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].mTLS.ca.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].mTLS.ca.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
+      - description: OIDC defines the spec for the OIDC tenant's authentication.
+        displayName: OIDC Configuration
+        path: tenants.authentication[0].oidc
+      - description: IssuerCA defines the spec for the issuer CA for tenant's authentication.
+        displayName: IssuerCA ConfigMap
+        path: tenants.authentication[0].oidc.issuerCA
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].oidc.issuerCA.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].oidc.issuerCA.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
+      - description: IssuerURL defines the URL for issuer.
+        displayName: Issuer URL
+        path: tenants.authentication[0].oidc.issuerURL
+      - description: RedirectURL defines the URL for redirect.
+        displayName: Redirect URL
+        path: tenants.authentication[0].oidc.redirectURL
+      - description: Secret defines the spec for the clientID and clientSecret for
+          tenant's authentication.
+        displayName: Tenant Secret
+        path: tenants.authentication[0].oidc.secret
+      - description: Name of a secret in the namespace configured for tenant secrets.
+        displayName: Tenant Secret Name
+        path: tenants.authentication[0].oidc.secret.name
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - description: TenantID defines the id of the tenant.
+        displayName: Tenant ID
+        path: tenants.authentication[0].tenantId
+      - description: TenantName defines the name of the tenant.
+        displayName: Tenant Name
+        path: tenants.authentication[0].tenantName
+      - description: Authorization defines the lokistack-gateway component authorization
+          configuration spec per tenant.
+        displayName: Authorization
+        path: tenants.authorization
+      - description: OPA defines the spec for the third-party endpoint for tenant's
+          authorization.
+        displayName: OPA Configuration
+        path: tenants.authorization.opa
+      - description: URL defines the third-party endpoint for authorization.
+        displayName: OpenPolicyAgent URL
+        path: tenants.authorization.opa.url
+      - description: RoleBindings defines configuration to bind a set of roles to
+          a set of subjects.
+        displayName: Static Role Bindings
+        path: tenants.authorization.roleBindings
+      - description: Roles defines a set of permissions to interact with a tenant.
+        displayName: Static Roles
+        path: tenants.authorization.roles
+      - description: Mode defines the mode in which lokistack-gateway component will
+          be configured.
+        displayName: Mode
+        path: tenants.mode
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:static
+        - urn:alm:descriptor:com.tectonic.ui:select:dynamic
+        - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
+        - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: Openshift defines the configuration specific to Openshift modes.
+        displayName: Openshift
+        path: tenants.openshift
+      - description: "AdminGroups defines a list of groups, whose members are considered
+          to have admin-privileges by the Loki Operator. Setting this to an empty
+          array disables admin groups. \n By default the following groups are considered
+          admin-groups: - system:cluster-admins - cluster-admin - dedicated-admin"
+        displayName: Admin Groups
+        path: tenants.openshift.adminGroups
+      statusDescriptors:
+      - description: Distributor is a map to the per pod status of the distributor
+          deployment
+        displayName: Distributor
+        path: components.distributor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Ingester is a map to the per pod status of the ingester statefulset
+        displayName: Ingester
+        path: components.ingester
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Querier is a map to the per pod status of the querier deployment
+        displayName: Querier
+        path: components.querier
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: QueryFrontend is a map to the per pod status of the query frontend
+          deployment
+        displayName: Query Frontend
+        path: components.queryFrontend
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Compactor is a map to the pod status of the compactor pod.
+        displayName: Compactor
+        path: components.compactor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Gateway is a map to the per pod status of the lokistack gateway
+          deployment.
+        displayName: Gateway
+        path: components.gateway
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: IndexGateway is a map to the per pod status of the index gateway
+          statefulset
+        displayName: IndexGateway
+        path: components.indexGateway
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Ruler is a map to the per pod status of the lokistack ruler statefulset.
+        displayName: Ruler
+        path: components.ruler
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podStatuses
+      - description: Conditions of the Loki deployment health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
+    - description: RecordingRule is the Schema for the recordingrules API
+      displayName: RecordingRule
+      kind: RecordingRule
+      name: recordingrules.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: List of groups for recording rules.
+        displayName: Groups
+        path: groups
+      - description: Interval defines the time interval between evaluation of the
+          given recoding rule.
+        displayName: Evaluation Interval
+        path: groups[0].interval
+      - description: Limit defines the number of series a recording rule can produce.
+          0 is no limit.
+        displayName: Limit of produced series
+        path: groups[0].limit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Name of the recording rule group. Must be unique within all recording
+          rules.
+        displayName: Name
+        path: groups[0].name
+      - description: Rules defines a list of recording rules
+        displayName: Rules
+        path: groups[0].rules
+      - description: The LogQL expression to evaluate. Every evaluation cycle this
+          is evaluated at the current time, and all resultant time series become pending/firing
+          alerts.
+        displayName: LogQL Expression
+        path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
+      - description: The name of the time series to output to. Must be a valid metric
+          name.
+        displayName: Metric Name
+        path: groups[0].rules[0].record
+      - description: TenantID of tenant where the recording rules are evaluated in.
+        displayName: Tenant ID
+        path: tenantID
+      statusDescriptors:
+      - description: Conditions of the RecordingRule generation health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
+    - description: RulerConfig is the Schema for the rulerconfigs API
+      displayName: RulerConfig
+      kind: RulerConfig
+      name: rulerconfigs.loki.grafana.com
+      resources:
+      - kind: LokiStack
+        name: ""
+        version: v1
+      specDescriptors:
+      - description: Defines alert manager configuration to notify on firing alerts.
+        displayName: Alert Manager Configuration
+        path: alertmanager
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: alertmanager.client
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Basic Authentication
+        path: alertmanager.client.basicAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The subject's password for the basic authentication configuration.
+        displayName: Password
+        path: alertmanager.client.basicAuth.password
+      - description: The subject's username for the basic authentication configuration.
+        displayName: Username
+        path: alertmanager.client.basicAuth.username
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
+        path: alertmanager.client.headerAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The credentials for the header authentication configuration.
+        displayName: Credentials
+        path: alertmanager.client.headerAuth.credentials
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
+        displayName: Credentials File
+        path: alertmanager.client.headerAuth.credentialsFile
+      - description: The authentication type for the header authentication configuration.
+        displayName: Type
+        path: alertmanager.client.headerAuth.type
+      - description: TLS configuration for reaching the alertmanager endpoints.
+        displayName: TLS
+        path: alertmanager.client.tls
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The CA certificate file path for the TLS configuration.
+        displayName: CA Path
+        path: alertmanager.client.tls.caPath
+      - description: The client-side certificate file path for the TLS configuration.
+        displayName: Cert Path
+        path: alertmanager.client.tls.certPath
+      - description: The client-side key file path for the TLS configuration.
+        displayName: Key Path
+        path: alertmanager.client.tls.keyPath
+      - description: The server name to validate in the alertmanager server certificates.
+        displayName: Server Name
+        path: alertmanager.client.tls.serverName
+      - description: Defines the configuration for DNS-based discovery of AlertManager
+          hosts.
+        displayName: DNS Discovery
+        path: alertmanager.discovery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Use DNS SRV records to discover Alertmanager hosts.
+        displayName: Enable SRV
+        path: alertmanager.discovery.enableSRV
+      - description: How long to wait between refreshing DNS resolutions of Alertmanager
+          hosts.
+        displayName: Refresh Interval
+        path: alertmanager.discovery.refreshInterval
+      - description: If enabled, then requests to Alertmanager use the v2 API.
+        displayName: Enable AlertManager V2 API
+        path: alertmanager.enableV2
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
+          URL is treated as a separate group in the configuration. Multiple Alertmanagers
+          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+        displayName: AlertManager Endpoints
+        path: alertmanager.endpoints
+      - description: Additional labels to add to all alerts.
+        displayName: Extra Alert Labels
+        path: alertmanager.externalLabels
+      - description: URL for alerts return path.
+        displayName: Alert External URL
+        path: alertmanager.externalUrl
+      - description: Defines the configuration for the notification queue to AlertManager
+          hosts.
+        displayName: Notification Queue
+        path: alertmanager.notificationQueue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Capacity of the queue for notifications to be sent to the Alertmanager.
+        displayName: Notification Queue Capacity
+        path: alertmanager.notificationQueue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum duration between alert and restored "for" state. This
+          is maintained only for alerts with configured "for" time greater than the
+          grace period.
+        displayName: Firing Grace Period
+        path: alertmanager.notificationQueue.forGracePeriod
+      - description: Max time to tolerate outage for restoring "for" state of alert.
+        displayName: Outage Tolerance
+        path: alertmanager.notificationQueue.forOutageTolerance
+      - description: Minimum amount of time to wait before resending an alert to Alertmanager.
+        displayName: Resend Delay
+        path: alertmanager.notificationQueue.resendDelay
+      - description: HTTP timeout duration when sending notifications to the Alertmanager.
+        displayName: Timeout
+        path: alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: alertmanager.relabelConfigs[0].targetLabel
+      - description: Interval on how frequently to evaluate rules.
+        displayName: Evaluation Interval
+        path: evaluationInterval
+      - description: Overrides defines the config overrides to be applied per-tenant.
+        displayName: Rate Limiting
+        path: overrides
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Client configuration for reaching the alertmanager endpoint.
+        displayName: TLS Config
+        path: overrides.alertmanager.client
+      - description: Basic authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Basic Authentication
+        path: overrides.alertmanager.client.basicAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The subject's password for the basic authentication configuration.
+        displayName: Password
+        path: overrides.alertmanager.client.basicAuth.password
+      - description: The subject's username for the basic authentication configuration.
+        displayName: Username
+        path: overrides.alertmanager.client.basicAuth.username
+      - description: Header authentication configuration for reaching the alertmanager
+          endpoints.
+        displayName: Header Authentication
+        path: overrides.alertmanager.client.headerAuth
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The credentials for the header authentication configuration.
+        displayName: Credentials
+        path: overrides.alertmanager.client.headerAuth.credentials
+      - description: The credentials file for the Header authentication configuration.
+          It is mutually exclusive with `credentials`.
+        displayName: Credentials File
+        path: overrides.alertmanager.client.headerAuth.credentialsFile
+      - description: The authentication type for the header authentication configuration.
+        displayName: Type
+        path: overrides.alertmanager.client.headerAuth.type
+      - description: TLS configuration for reaching the alertmanager endpoints.
+        displayName: TLS
+        path: overrides.alertmanager.client.tls
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: The CA certificate file path for the TLS configuration.
+        displayName: CA Path
+        path: overrides.alertmanager.client.tls.caPath
+      - description: The client-side certificate file path for the TLS configuration.
+        displayName: Cert Path
+        path: overrides.alertmanager.client.tls.certPath
+      - description: The client-side key file path for the TLS configuration.
+        displayName: Key Path
+        path: overrides.alertmanager.client.tls.keyPath
+      - description: The server name to validate in the alertmanager server certificates.
+        displayName: Server Name
+        path: overrides.alertmanager.client.tls.serverName
+      - description: Defines the configuration for DNS-based discovery of AlertManager
+          hosts.
+        displayName: DNS Discovery
+        path: overrides.alertmanager.discovery
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Use DNS SRV records to discover Alertmanager hosts.
+        displayName: Enable SRV
+        path: overrides.alertmanager.discovery.enableSRV
+      - description: How long to wait between refreshing DNS resolutions of Alertmanager
+          hosts.
+        displayName: Refresh Interval
+        path: overrides.alertmanager.discovery.refreshInterval
+      - description: If enabled, then requests to Alertmanager use the v2 API.
+        displayName: Enable AlertManager V2 API
+        path: overrides.alertmanager.enableV2
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: List of AlertManager URLs to send notifications to. Each Alertmanager
+          URL is treated as a separate group in the configuration. Multiple Alertmanagers
+          in HA per group can be supported by using DNS resolution (See EnableDNSDiscovery).
+        displayName: AlertManager Endpoints
+        path: overrides.alertmanager.endpoints
+      - description: Additional labels to add to all alerts.
+        displayName: Extra Alert Labels
+        path: overrides.alertmanager.externalLabels
+      - description: URL for alerts return path.
+        displayName: Alert External URL
+        path: overrides.alertmanager.externalUrl
+      - description: Defines the configuration for the notification queue to AlertManager
+          hosts.
+        displayName: Notification Queue
+        path: overrides.alertmanager.notificationQueue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Capacity of the queue for notifications to be sent to the Alertmanager.
+        displayName: Notification Queue Capacity
+        path: overrides.alertmanager.notificationQueue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum duration between alert and restored "for" state. This
+          is maintained only for alerts with configured "for" time greater than the
+          grace period.
+        displayName: Firing Grace Period
+        path: overrides.alertmanager.notificationQueue.forGracePeriod
+      - description: Max time to tolerate outage for restoring "for" state of alert.
+        displayName: Outage Tolerance
+        path: overrides.alertmanager.notificationQueue.forOutageTolerance
+      - description: Minimum amount of time to wait before resending an alert to Alertmanager.
+        displayName: Resend Delay
+        path: overrides.alertmanager.notificationQueue.resendDelay
+      - description: HTTP timeout duration when sending notifications to the Alertmanager.
+        displayName: Timeout
+        path: overrides.alertmanager.notificationQueue.timeout
+      - description: List of alert relabel configurations.
+        displayName: Alert Relabel Configuration
+        path: overrides.alertmanager.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: overrides.alertmanager.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: overrides.alertmanager.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: overrides.alertmanager.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: overrides.alertmanager.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: overrides.alertmanager.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: overrides.alertmanager.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: overrides.alertmanager.relabelConfigs[0].targetLabel
+      - description: Interval on how frequently to poll for new rule definitions.
+        displayName: Poll Interval
+        path: pollInterval
+      - description: Defines a remote write endpoint to write recording rule metrics.
+        displayName: Remote Write Configuration
+        path: remoteWrite
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Defines the configuration for remote write client.
+        displayName: Client
+        path: remoteWrite.client
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Type of authorzation to use to access the remote write endpoint
+        displayName: Authorization Type
+        path: remoteWrite.client.authorization
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:basic
+        - urn:alm:descriptor:com.tectonic.ui:select:header
+      - description: Name of a secret in the namespace configured for authorization
+          secrets.
+        displayName: Authorization Secret Name
+        path: remoteWrite.client.authorizationSecretName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:Secret
+      - description: Configure whether HTTP requests follow HTTP 3xx redirects.
+        displayName: Follow HTTP Redirects
+        path: remoteWrite.client.followRedirects
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Name of the remote write config, which if specified must be unique
+          among remote write configs.
+        displayName: Name
+        path: remoteWrite.client.name
+      - description: Optional proxy URL.
+        displayName: HTTP Proxy URL
+        path: remoteWrite.client.proxyUrl
+      - description: List of remote write relabel configurations.
+        displayName: Metric Relabel Configuration
+        path: remoteWrite.client.relabelConfigs
+      - description: Action to perform based on regex matching. Default is 'replace'
+        displayName: Action
+        path: remoteWrite.client.relabelConfigs[0].action
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:select:drop
+        - urn:alm:descriptor:com.tectonic.ui:select:hashmod
+        - urn:alm:descriptor:com.tectonic.ui:select:keep
+        - urn:alm:descriptor:com.tectonic.ui:select:labeldrop
+        - urn:alm:descriptor:com.tectonic.ui:select:labelkeep
+        - urn:alm:descriptor:com.tectonic.ui:select:labelmap
+        - urn:alm:descriptor:com.tectonic.ui:select:replace
+      - description: Modulus to take of the hash of the source label values.
+        displayName: Modulus
+        path: remoteWrite.client.relabelConfigs[0].modulus
+      - description: Regular expression against which the extracted value is matched.
+          Default is '(.*)'
+        displayName: Regex
+        path: remoteWrite.client.relabelConfigs[0].regex
+      - description: Replacement value against which a regex replace is performed
+          if the regular expression matches. Regex capture groups are available. Default
+          is '$1'
+        displayName: Replacement
+        path: remoteWrite.client.relabelConfigs[0].replacement
+      - description: Separator placed between concatenated source label values. default
+          is ';'.
+        displayName: Separator
+        path: remoteWrite.client.relabelConfigs[0].separator
+      - description: The source labels select values from existing labels. Their content
+          is concatenated using the configured separator and matched against the configured
+          regular expression for the replace, keep, and drop actions.
+        displayName: Source Labels
+        path: remoteWrite.client.relabelConfigs[0].sourceLabels
+      - description: Label to which the resulting value is written in a replace action.
+          It is mandatory for replace actions. Regex capture groups are available.
+        displayName: Target Label
+        path: remoteWrite.client.relabelConfigs[0].targetLabel
+      - description: Timeout for requests to the remote write endpoint.
+        displayName: Remote Write Timeout
+        path: remoteWrite.client.timeout
+      - description: The URL of the endpoint to send samples to.
+        displayName: Endpoint
+        path: remoteWrite.client.url
+      - description: Enable remote-write functionality.
+        displayName: Enabled
+        path: remoteWrite.enabled
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:booleanSwitch
+      - description: Defines the configuration for remote write client queue.
+        displayName: Client Queue
+        path: remoteWrite.queue
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:advanced
+      - description: Maximum time a sample will wait in buffer.
+        displayName: Batch Send Deadline
+        path: remoteWrite.queue.batchSendDeadline
+      - description: Number of samples to buffer per shard before we block reading
+          of more
+        displayName: Queue Capacity
+        path: remoteWrite.queue.capacity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Maximum retry delay.
+        displayName: Max BackOff Period
+        path: remoteWrite.queue.maxBackOffPeriod
+      - description: Maximum number of samples per send.
+        displayName: Maximum Shards per Send
+        path: remoteWrite.queue.maxSamplesPerSend
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Maximum number of shards, i.e. amount of concurrency.
+        displayName: Maximum Shards
+        path: remoteWrite.queue.maxShards
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Initial retry delay. Gets doubled for every retry.
+        displayName: Min BackOff Period
+        path: remoteWrite.queue.minBackOffPeriod
+      - description: Minimum number of shards, i.e. amount of concurrency.
+        displayName: Minimum Shards
+        path: remoteWrite.queue.minShards
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: Minimum period to wait between refreshing remote-write reconfigurations.
+        displayName: Min Refresh Period
+        path: remoteWrite.refreshPeriod
+      statusDescriptors:
+      - description: Conditions of the RulerConfig health.
+        displayName: Conditions
+        path: conditions
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes.conditions
+      version: v1
+  description: |-
+    The Community Loki Operator provides Kubernetes native deployment and management of Loki and related logging components.
+    The purpose of this project is to simplify and automate the configuration of a Loki based logging stack for Kubernetes clusters.
+
+    ### Operator features
+
+    The Loki Operator includes, but is not limited to, the following features:
+
+    * Kubernetes Custom Resources: Use Kubernetes custom resources to deploy and manage Loki, Alerting rules, Recording rules, and related components.
+    * Simplified Deployment Configuration: Configure the fundamentals of Loki like tenants, limits, replication factor and storage from a native Kubernetes resource.
+
+    ### Feature Gates
+
+    The Loki Operator Bundle provides a set of feature gates that enable/disable specific feature depending on the target Kubernetes distribution. The following feature gates are enabled by default:
+    * `serviceMonitors`: Enables creating a Prometheus-Operator managed ServiceMonitor resource per LokiStack component.
+    * `serviceMonitorTlsEndpoints`: Enables TLS for the ServiceMonitor endpoints.
+    * `lokiStackAlerts`: Enables creating PrometheusRules for common Loki alerts.
+    * `httpEncryption`: Enables TLS encryption for all HTTP LokiStack services.
+    * `grpcEncryption`: Enables TLS encryption for all GRPC LokiStack services.
+    * `builtInCertManagement`: Enables the built-in facility for generating and rotating TLS client and serving certificates for all LokiStack services and internal clients
+    * `lokiStackGateway`: Enables reconciling the reverse-proxy lokistack-gateway component for multi-tenant authentication/authorization traffic control to Loki.
+    * `runtimeSeccompProfile`: Enables the restricted seccomp profile on all Lokistack components.
+    * `defaultNodeAffinity`: Enable the operator will set a default node affinity on all pods. This will limit scheduling of the pods to Nodes with Linux.
+    * `lokiStackWebhook`: Enables the LokiStack CR validation and conversion webhooks.
+    * `alertingRuleWebhook`: Enables the AlertingRule CR validation webhook.
+    * `recordingRuleWebhook`: Enables the RecordingRule CR validation webhook.
+    * `rulerConfigWebhook`: Enables the RulerConfig CR validation webhook.
+
+    In addition it enables the following OpenShift-only related feature gates:
+    * `servingCertsService`: Enables OpenShift ServiceCA annotations on the lokistack-gateway service only.
+    * `ruleExtendedValidation`: Enables extended validation of AlertingRule and RecordingRule to enforce tenancy in an OpenShift context.
+    * `clusterTLSPolicy`: Enables usage of TLS policies set in the API Server.
+    * `clusterProxy`: Enables usage of the proxy variables set in the proxy resource.
+
+    ### Before you start
+
+    1. Ensure that the appropriate object storage solution, that will be used by Loki, is avaliable and configured.
+  displayName: Community Loki Operator
+  icon:
+  - base64data: PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjwhLS0gQ3JlYXRlZCB3aXRoIElua3NjYXBlIChodHRwOi8vd3d3Lmlua3NjYXBlLm9yZy8pIC0tPgoKPHN2ZwogICB2ZXJzaW9uPSIxLjEiCiAgIGlkPSJzdmc0OCIKICAgd2lkdGg9IjUwMCIKICAgaGVpZ2h0PSI1MDAiCiAgIHZpZXdCb3g9IjAgMCA1MDAgNTAwIgogICB4bWxuczp4bGluaz0iaHR0cDovL3d3dy53My5vcmcvMTk5OS94bGluayIKICAgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIgogICB4bWxuczpzdmc9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcwogICAgIGlkPSJkZWZzNTIiIC8+CiAgPGcKICAgICBpZD0iZzU0Ij4KICAgIDxpbWFnZQogICAgICAgd2lkdGg9IjUwMCIKICAgICAgIGhlaWdodD0iNTAwIgogICAgICAgcHJlc2VydmVBc3BlY3RSYXRpbz0ibm9uZSIKICAgICAgIHhsaW5rOmhyZWY9ImRhdGE6aW1hZ2UvcG5nO2Jhc2U2NCxpVkJPUncwS0dnb0FBQUFOU1VoRVVnQUFBZlFBQUFIMENBWUFBQURMMXQrS0FBQUFHWFJGV0hSVGIyWjBkMkZ5WlFCQlpHOWlaU0JKCmJXRm5aVkpsWVdSNWNjbGxQQUFBVFpGSlJFRlVlTnJzdlZtWEpGZDVyNS9oNVpzZXFpdS9RVVUzZzRhejdDcXc0ZXBBaHppMmJ3eTIKN0FVY3c4RWdiREZQRWtJQ2dhQUZDQ1NRckFFRUVraEdBbXlNRFFaaDRadkRvQ2p3alptVUNldW8xUzJwbGYwTmFxN0xPaEUxZE9VUQp3OTc3M1c4TW1jK3pWcUx6LzdzNk1pSWpjei83amZqRnU0TU9URFVyYi93ZllmS2Y3eWV2cjNlLzlmL3U1Uk1CQUFCb3Q5aVgrQlFBCkFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFNQ0FnSStnR2F4ZWUyWDZuSGo2V3R6LzcvTDh3MC9keWljREFBQW0KL0Q0ZlFTUGtIVEhOQWdBQWhENmQ4cWF6R3dBQUdFTXRxQ3Z5SjRXZjlzbjVoNTRhOEdrQ0FFQVp2OGRIb01QOHcwLzFkZ1UrL0xLSApLaDBBQUJCNkErZ0ovejFDQndBQWhONXFvZTlWOWFmNUNBRUF3QVJDY2JyMGplVk5oUTRBQUZUb0xhclFnNHhYUHQzVmQxd1o4akVDCkFBQkNyNUg1aDU2S3JZTnhrMzlQbFE0QUFBaTlrVlc2WGJXTzBBRUFBS0UzUnVoMmw5cUhJUmdIQUFDbEVJclRKakFNeHVWRGhRNEEKQUZUb2phblEzU0VZQndBQUNMMXU1ci95Vk94WTJRKy9xTklCQUFDaE43NUtMNysvanRBQkFBQ2hOMHJvYnVFNGduRUFBRkFJb2JncQpJQmdIQUFCVTZGTldvYnZSWFgwbndUZ0FBRURvdFRML29DUVl0M1B3b2tvSEFBQ0UzdmdxZlZUZWU2L096dkJmSUhRQUFFRG9qUko2CnVieXpJQmdIQUFDNUVJcXJpbUNIWUJ3QUFGQ2hUMVdGN2taMzlWMVhoSHlNQUFDQTBHdGsvb0d6c1h0MTM2RmpIQUFBRk1JbDkrcXIKOUtWU2VlZVQvdHZIZk96STZyVlhSdnZiVzB4ZS9mbUhuN3FYMHdNQWdOREJSZWlCOWI5M0NzYU55WHNwWXgvU3F3Y0lIUUFBb1lNUgp0aDNqSEhxNkc4ZzdpNGlUQXdEUWRzVkFaYXkrKzRwVW5FOEl6OFRKK1MrZEhZeEpQRXorODMxaDlmK1MrWWVlNm5HV0FBRGFDYUc0CkNwbi84bjR3em0yQmx0d3FmZjdocHdhN2dUbTM3UmxYL3dBQWdORGhzSEtXVnNGNTRvMkYyMTNrNUFBQUlIUXdSeXIwMDk2Mk8zcVYKZ0FvZEFLREZFSXFySHZ1T2NZRlJoZDYzMkVZV0VhY0dBSUFLSFh4VjZPWDMxN3VyNzgzc0dOZXoyRWJtKzY2KzQwcXFkQUFBaEE0bQp6SDlwcUdPY2V6aHVNaGlYSnRRdDVKM3p2Z2dkQUFDaGd6RnBNRTcyd0tCNU1NNXUwa0F3RGdBQW9ZTUZPc0c0ZzRtQysrTnJWT2dBCkFDMkZVRnc5MUJPTUt5ZmkxQUFBVUtHRHJ3cmRKQmozdnBKZ25PMWtZZisxK2s2Q2NRQUFDQjJNbUw5ZktSajNGWVBXcmVYdmg5QUIKQUJBNldGVEYrc0U0dDhrQ3dUZ0FBSVFPRnVnSDQveE9GQUFBb01FUWlxc1B0d0JiK1RQakJPTUFBS2pRb1ZFVmV2RWw4KzdxK3owRQo0M2EzdXpQeVduM1hGVlRwQUFBSUhVeVkvK0pRTUs1YzNua3luZ3pHUFZnUWpNdVFkNmV6ay9XWENCMEFBS0dEUlhVc2JkZWFINHd6CmwzY1dCT01BQUJBNldOQ3prSGNXT2NHNG5aNkZ2S25RQVFDbUFFSng5ZEpYZW5STkZvd0xDTVlCQUZDaGc0MDRwWSt1ZFZjL0lBekcKNVZ3TldIMDN3VGdBQUlRT1JzemZOeGFNYzVzVVRBYmpIamdydlpTZnVWMEFBRURva0krMG1sN0srZHZZS2pVLytiY0U0d0FBRURxSQpoUzROeGhWTkZNeTJUWVVPQU5BaUNNWGxzSHJ0N3FwalMvdVZhdnJmS0hsZE5mL3dVN0hudDlJTnhybHZPK0piQUFDQTBLZEIzcDBNCklhYi8vLzBLM1Vjdzdyb3J3dmw3enc0OGI3ZXorcDRybHVhL2RMYkhOd1FBQUtHM1dkNVplTCt2bklnNFRvUXMzVXg2SENOQ1QwV2MKQ0ZreTBUallMa0lIQUVEb2paUDVyY2wvemhqS08wK2NHdlNzdHAyOWh2bGpHWDhaZDB3dW5RZlZUV0FBQUVDSDJRckZEU2UvM1FoWAozM1psVjBubytiSXREN0NaQitQc2VzWVRqQU1BUU9pTlJIYjVlRStBR3BMck84aTJYTHpCZnVET2Zuc0hSUHhFQUFBUWV1T1lmK2lwCmxjN1l2V2FIeXRpLzVBNFdhWEdudTNxOWg2VlVNMWg5THgzakFBQVFlbHVxZEx2SzJIOHc3aDRQSGVNeXF2VDUreDBUNnFPZkJVSUgKQUVEb0RjVDJNblJRbWVCNmxzZGh1bCt4NDVVSXRRa01BQUFnZEIvRUFybWxoS3Z2YUdrd3p1MGVQUlU2QUFCQ2J5UTlnZHcwSmVjYwpqQXVDOUxWVEhveHpJK0puQWdDQTBCdkgvRmVmV2tua05oQnV4ci9rRElOeCsvSWVlWFU2NmF2VFhidmg4dENxOGpkazlYM1RHNHhiCnZmYktLSGxkbDd3ZVNWNVBwdjl2aGdVQWFDT3oydm8xbFZ6b0lOMEQvQWZqN2o0YnIzN3dpZ2w1Nzh2YTVzckJ5R1JsL290bmU0bVEKWFk5emVMdXQ3eGlYeXJzejJpVndLZU9ZNll3SEFBaTlSYVNYdDYrMmxOcTQ0UHdYNmNGT1Q3aHQrNDV4WnBmaVd4ZU1NNVIzWmVjVwpBQUNoNjVBSzdveWwxSVlKVjk5NVpYZit3ZDNuMm4xZk9aQUlwU2dZRjFrZlo5QSt5ZTJML0FuQnVVWG9BTkJLWm5VOTlKNmdlNXJtCndOK1hsZmdsSGVQSzVKMGZ4b3RhYzJiVGZJVHczSzYrN2NxSW9RRUFFSG9MbVArS1JjZTRmSEZvRFBvOWkvZlBFbkIzN1VNR3dUaUgKSlAzcUI5b1JqSnQvNktuMHZLNDRuRSthNlFBQVFtOXRsVzQxMk8rTXZqbzczdThybi9pSHAyT0g2cm4weXNIOEY4NDI5WXBFUGVlVwpaam9BZ05DbmlyNkZ2S3NUWERCMk84RGZQZUJZdUdkdGt0eXkwMlNJQ2gwQUVIb3JpUzNrblVXNCtxNHJxdTBZWjhacEw5dXRydVd0CjdxVElyVXBINkFDQTBOc3o2S2VQaU8xSXQ5S2VZRnpSZHMycTJLaEZaMWVlR1hnSHdUZ0FRT2l0WVA2QnMrN0J1RU14YUF6NjhtRGMKalFYQk9FSEwyOVhyV2hLTSsrcFRhZEo5WllZeUF3QUFNMzNKM1V5ZXhRTDBINHk3U3lrWWQ5OVo2WnJyYlpPYy9hMkwwYytYWUJ3QQpJUFFXMFhlV3B2WlNxazBMeHJWUGNzdUNpUm9WT2dBZzlGWVJIQVRqT3E0QnFuRDFQUXJCdUtEbVlGeis4YmF6UW1mWldBQkE2TlBCCjZyVlhMaVd2cnBIZzdBZi81Z1hqT2hiQk9MdmpqUnAyWHJ2N3E2VjFNeWRGc252b25kVjNFb3dEZ1BZd2RiM2NVM2wzUmhmbE9CaVUKcjA5ZTl3Ny83ZnlYejY0a0ZmYWc0N0x5MnFqa1lyWHEwclNpSHFXN2R0UGw0WW5QUHoyWTJLN3dQdnJxOVZjc3pkOXp0bGZEZWUwTwpuYytEY3h2dUgvOWJrLzk5ZE9UY1B2alVJQkZ5R255MHU0SVM3SXhQakdLR0NRQkE2UFhKMjZiN2w5dFNxdVhiZGViRW5VL0hhemRlCmJpcnZvaXA5Uk9qejk1N3RKVUtXN3A3NlVxb2w4clk1QjczQ3F3ckJUdVhuRmdCZzVvV2VEUExoMkFBZldVcXU2REwwMVlKcVdETVkKWjcvdDBmdmRka3VwbW0xM1VlbmNYbU1vYjV0enUzenBXQU9ubmdQY1J3ZUExdENtZStqcDRQcElNc2hmdC92OHQzMEMzRDc1YlhaLwpPVng5YjAzQnVPTDljdy9HVmQ5RkxUMmZaNUxYMWNrcmRMajNIZVZVNEwzRERvRE8zemtBQUlUdVhYRFMrNy9aeTJLS0c2NTBxZ2pHCitRdnJpYlliQkR1UnlybVYvZnZPNnR1dlhIS2F2SlJNYUZiZmZVWEVNQUVBQ04waldzdGl6bi9wN01ydUd0clNDbE5yQXVPZTFPNnUKZlRpalk1ekZkaE41VDd4UzFtNjRmTW56dVpWMng4dWN3TXcvY0xiOE84UHo2QUNBMEd0QmExbE1hU1huUHhqM3VaeU9jWFpNU3U3dQo3SVI2bnJ3cnZDSVJPNXpQNGI4clA3ZDIyNk5qSEFBZ2RFWHNsOFUwV3pHcy9MbnZlbGJuY3I4VVhYQzhpYXhqQzNsbnNhaHlyUGJuCnM3enBUWkI4Wjl5MlI0VU9BQWhkamJKbUllNkRjK3hVR1I0U3JyNnZ4cVZVOC9mWHoxS3FWVlRvZ1ZyVEd6ckdBUUJDYnlEU3dUbHYKV1V6cC9XcXRnVjhxT2ZjckVzVVRoNmkyQ3IzNDNDNVpUd0pOdHZzZWduRUFnTkM5TXJJc3BzZnFjdjUrd1ZLcTVSV2lueXNTYmxMcQpybjJrWUNsVnQ2cC9sN1VQZVE3R2ZmVXA2ZTJGdk5CamVsNjloeWtCQUJDNnp5cmRiWUQyRTR5YkZKNy9ZTndkT3NHNEUvL3dkRTlRCjlXdGVrWWdkUHZkaDNNNnRlNWdTQUFDaEMxZ1dEdnIybDZITmhOZXFZTnpJU25OdUxLb2ZxNzluNzVjRjI5UTh0d0FBVk9nS2czNXMKdmIzUnZ3dFhQMEF3VGtRYWpKTmxHYUtjN2ZZYW1JOEFBSmh4b2NzYnJtUXZpMW5XaWE2K0tyMFp3YmpKOTR3YWN6WGlvTDFyOGxwOQoxeFYrT3NhTkhlL3Erd2pHQVFCQzkwcTZMR2JISmVSMGFaRGVIZmdudzFOZkdBckd1YmVCOVQvbyt3akczV3daakRNOC9yVWJQUWZqCkhqUUl4ZzNKTzZkUGUxYm9zZmc3VSs4dEZRQ0FHYTNRVFN1dUlHUHc3MXdhL0JjTDVlbU8vMkRjN1VyQnVMdWVibW9QKzloQzNqYm4KUUhxOEJPTUFBS0Vyc0d3aGJ4c1I5WjMzU1BmeEpyMWduSXpUL3E5SUtLMlFkdEF4enVPa0NBQUFvZnNjOU12bGJUTTRtd2t1djhvTApWNitib1dCY1VGRm13TzY0STIvSHlyUG9BSURRMVpFdnQ1bTlMR2JQUXBKVlZuSmF3YmhsbTg4czQvMldLaiszQnNlZG5Oc2xsZTIrCm4yQWNBQ0IwcnhndGkxaytVRStHcCs3YlgwcFY0OUVwMlFURUxSaDMrUGZkdFk5WkJPTXNKZ3RyTjEwZWVUNjMwdFhSc2p2R2ZYSG8KTytOeHV3QUFDRjJqa3JON2h0enZVcXFIK0EvR2ZkWWdHT2V3TU0ySk81OCtiS1ZyT2xtb1FuSUhUVy9jSnh2Mm9VZkpkZ0VBRUxwbwowRjkyYkFCVGRybFllZzlYUHhqbnQ5dVo5UEUxdlk1eDdvbjA0bHNNL3JjTEFJRFF2VmJvZG9PMVd6Q3VmUHZoNnZVS3dUaDV0N1BUCnJaSGNRY2M0ZHlMckNoMmhBd0JDcjFIb3NtZW84NWJGRkMvUjJ1azBKUDF0c2svTmxKeDBvWnpPNm51Vk9zWmRSekFPQUJDNlYrYS8KN0xnczV1aGdQUm1ldW5jb0dPZTdRcXhTY3BOQzZxN2Q0cmlVYXNuMjF6N2lPUmozcGJQaUxuYWQ3TkJqOFhlR2puRUFnTkJyck5JRgpWVnlub3hDTTAxcEs5VE5Ld2JqUFBXMCtNYko0WWtETThHcHdibGRnNkJnSEFBaTlSU3o3cnVMMk1idThYYVhneGljYTJzRTR1KzNyCkw2VnFQNm1pWXh3QUlQUldWZWc2dmNoamllQ0NvQk91M1hCNUE0SnhPK092MDRXU2MzLyt2cjdNUVA1NWlieE5GSGdXSFFBUXVqS0IKK0pueE5Ed1ZHVTBVOHVXZHZIWkdYdnV0YUN1VzNFN0dTMUNoMXk5MGNkZSsxZmNwZFl5N25tQWNBQ0IwcjVRdWkyazJZRStHcCs0WgpXa3JWVE41WmFBejZQUXQ1WngxM2QrM2psNFhlaEQ3ME9hN2Q3RGtZZC85WjZiS3htUk9OK1hzZE9zWlZNNEVCQUpqaENyMU1SckxHCktEMExlZHRzMTVrVHQ2WEJPR041NXgzM1pERHVEb05nbkVQZ3pnT3hjS0xSbW1WeUFRQVF1bEpqbEVUZ09zOTkrNTdBK0ZzOFJocTQKcXljWVp6bDVHZm5PT0Z5SjRENDZBQ0IwTGZRYW8waXJ3M0R0UThyQk9MZmpMZy9HTldjQzAzZWF2RWlXVXVWWmRBQkE2TFVodnYrYgpzeXltdERxc1JuTCt4TnU4WUp6SjVLWGtIS3grb0NBWVovWGt3dWp0bDdVYi9HWUdBQUJtWHVnankySjZGTytKZjNoNk5Cam5kaGxhClk5Q1hQcC9kWGZ1RXAyRGMyT2V4OWxIUHdiZ3ZuSlhlWHNnOHQvUDNuTjFiWmM1UTNudjVDYXAwQUVEbzFWYnBibXRkTDVaV2lHNzQKRDhaOStsenNJdHZTWU56dEpjRzR1aTVGRDNlTTgzc09laGJ5cnVUY0FnQWc5TEw3dis2WHh2dkMvV3BuTU01MmUyVVRvNnF2U0JnRQoyQkp4TDF2SW13b2RBQkI2WXl0MHM4RTVOdDZEN1BjTjEyNXNRREJ1Y3QrS2czRWVLMzhQOUFYN2t4SjVtU2lRZEFjQWhGNUpoUzY5Ck5KNkdweUxqUWQ5dTBsQ3Q1R1NYeHJVcS96b25hK21TcDNZZDR3emZaKzFEQk9NQUFLRjdwWFJaVExQS2EvSys4bDFQSHk2bDZ2Nm8KbU1hZ0wxMHhyTHQySmlNWUozOGtyclAyTWMvQnVQdk9paWRybmV6UTQ5NTNSbWN0QUFBQWhPNmxrbk9ydlB3dnBWcThYV2RPZk9wYwpMQlJjdHVRK1k3R1VhcldTaXgwbmFlV2h4NGFkV3dBQWhEN2UvY3ZmNVdMN1lGdzE5MXExbmh1WDNsdXVOaGdudThWQXh6Z0FRT2lOClEzNjUyQzBZVnk2VWNPMG1oV0NjUFAxOTJscHk5WFZSNnp0TzBnNklLcDRvQUFBZzlOb3ExaUIzV1V5M1VKWitKU2ROZi90OWRHMlgKM1FWczlEckdDVmo5b0orT2NlT3MzVWd3RGdBUXVsZEdsc1cwcTFTSEIvREorOHAzRGdYajNPV3BNZWhMMDkvZHRWc0xnbkZtOHU1awpMZUc2ZHN0bFhvOTMvcDZ6MHRzQTJlZjJycWNMTzhZWnZoZFZPZ0FnOUVxcWREdlpsUWZqR3JJUzJZbFBub3M5cEw4bnhIdml0cXhnCm5NWDY2M3BYSkdMSHlkVGVud1U3ZmtLUGsrOTFtbUVFQUJDNmI0WTd4cm5KYmlsbnUvMEdya1NXTHpsemNpUzMwN09RZDlibnJST00KTTVkM1ZqdFgrMkFjOTlFQkFLRTNxRUszbXhENFhVcjFrSER0STQwTXhwbExydTVtT2tGMlpzQ2lGM3RVZUc3ZDFnRFlXeWIzd3lybgpGZ0FBb1R1STdkSUF2dnBCeDZWVXk3ZmRycmFvR2xjNmhPZFdzSkRLTG1zM1hMNlU4Um4xQkdzQVVLVURBRUxYWUhkWnpLeGduTjI2CjE1UGhxYytOTGFYcXR1MUlkUUxqbU5SZSs5UmwyWklUc3ZaeHo4RzR1OCtLbjJMSTdBYjQrZjF6SytzWUZ6R1VBQUJDOTAxZ1hsM20KVkh5THhsV3IzYUR2UHhoMzZ6bTd0cWltNmU5UG44dWVHTm05UjMwZDQyenY3UWZpV3pWMGpBTUFoSzdBc29XOHM4Z1B4c21vTmhobgpQdmx3VDMrN3RkTDFjMFhDN2NxRXZCdGdkYmRUQUFCbVh1alNlNjErZzNIRDRhbWJsWUp4T2d1TXlGcnBCa3JCT0oyRmNtSmpnV2VqCkZYb0VBSmhkb1NmeWx0Ly92U0d6KzVlMFl0V3A1T1JYRHFLYzdmWXM1RjFWMWRvVGZFNjdyN1ViTDFmcEdFZVZEZ0FJM1RPWGxzVjAKcTZMencxTjNqQVhqM0FiL3FGR1MyMmY5MDVlWnJ4ZHVjZHhyWi93RzQwN2M5WFRQOFh3V2luYzM5QmpraEI3TnYwTVJ3d2tBSVBRcQpKV2NtcE1YU3F0VU4vOEc0VDV5ekVub1FUTDR5SmZlcGMzdHRVWnYzK0Zyc09zRW9PUWZTUng0SnhnRUFRbGRnV1ZCRkY0bElkbms3CnFEWVlseU52SGNsVk5JRlJYRld2TDd3aXdTVjNBRURvYW9PK08vSmdYTFlJd3JXUDZnVGpMT1J0Yzd6TGpwOS9mYXZNbGU5VGxQTi8KajRYMzBMVkNqd0FBTTEyaFMxdWk1aTJMS2I2dnJGSEpCVnJCT0hrUXNKNWdYTW41V0x2cDhpVXYzNW5KOTZWS0J3Q0U3cFBkWlRHTApnbkdPaTI2Y3VIMW9LVlgzQkhqVWlBbk1HT3UzR1FUakhDcll0VnM5QitQdWZOcHRuOHBDajdjWGRBTTAvdzVGRENrQWdOQzFKT2QrCkdkWCt2cklrY0NkZzd1UG5kTllMLytSWU1NNE5qVWYxWXNzRlZHVG4xbnpTUURBT0FCQzZ3cUMvckhRZnZTK2NLRXhmeHppM2laR2YKS3hKdTU2RjhtVno3VmRjMHp5MEFBQlc2dzBTZ09OQjFVQjI2RTY1OXJNVWQ0K3l2QU9oMmpITWpVcG9VYVoxYkFBQ0ViaUdlclBCVQo1TFZpMVphY2pNanBjNnlqTzU2UDBPTkhjb0p4c2trUlZUb0FJSFRmbkxoekxCaG5NMUFYaGFjK1l4aWVLbjYvcURGWEpJWW9EY2JaCjkzUGZrK2VuUEFmalB2ZTBkSktSS2Q0VG43VU14bVcvZDhTd0FnQUkzWC9WMnJPUXQ4MktZY0wwOTQ3L1lOd3Q1OFJWYStZRTV0YWgKWUp5N1JQVTZ4bFVaZWpRN1pvSnhBSURRRlpDdEdHWWFuaXFXZDhhcjRtQ2MrYkVyVFdBVU84YTUvM3Vsam5FN1hISUhBSVN1V3FINwpiUk1hVzhnN2kzRHQ0NWZwQk9OY3E5YmlJT0N5MHVjb1FicUdlWlR6dDVZZDR5Yk9kN2gyeTJVRTR3QUFvYXNJem0weWNCQ2VpckszCmF5enY2aDV4T3JoeTRDYTRmTW5KNzg5WEY0eXpXUTN1WnR1T2NRYm5YSy9sTFFEQTdBcjl4T2NNbDFLMVhXN3p0b0x3bExsUW9rb2sKWjFtdHIzLzJNaTl0VWNmN3lxOS8ybk13N282blZSTHBoK2ZXV040MkV5TUFBSVR1VFhJK2w5dVVDY1YvTU81ajUzcHUrek1pcmtuSgpmZUpjNGNUSWNHRVkvYVZVN2EvQTVKeURIZW5FaUdBY0FDQjA3MmpkLzVVLzkxMTlNRzVTM2xtVloyRXdUckNxbTI3SHVISjVaOG5ZCnZHTmNNODR0QUFBVnVtQkNJRjlLTlZzdTRkb25GSU54WnZJMlB0NUUzTXVCVGl0ZENYM25TcnA0b1p4WStKM1JPcmNBQUFoZFVzbXQKM2V6WU1hNldMbW83ZlF0NTI2d1lwalV4a3AxYjk3N3JlK2YyWThLbFZHMnJmd0FBaE83R2lUdHlnbkhDTmN4UGZQcmNhRERPcll0YQpWTmtFeG1MLzFtOS9zWXJrMW0vekhJeTcvV2x4Q0RCckFqTnhidjFXL3dBQUNGMVFIZmFFOTBRWFM3ZnJWc1g1RDhaOTlMeEsrbnZ1CjQrZFVKa1llem0wc3pFaVloeDVyUHJjQUFBamRaY1d3MFVIYnZLdFkzWUxiSXhiKysvSUpqTStKVVIzbnRueFZ2YWFlV3dDQW1SYTYKOUhMeGtsRjFhQys0Y08yTWRqRE82d1JtV2JoZjlheTg1dEpudnJubkZnQUFvVXNxcnJXUGVWNUtWVmR5T20xUjVaMzM5SVh1MExaMQo3WmJML0o5Yk9zWUJBRUwzejRuYjk0Tng5c3VuRmxicEp6NTV6bjY1emNsdFIwMmN3S3pmSVFqR0ZielArbWM4QitNKzgvVGhhbkJXClBkZDNDaWRWVnVlV2puRUFnTkFySkJCTHpuNjVUZGtLWjg3TTNhd1VqTHNsSXhobm4rNnY0TEs3ZGR0VzgzTkx4emdBUU9pMXN5eVUKWEhFd3puM2I3UTdHMlZldUNwTGJXWGJzdVY1OER1Z1lCd0FJdlVVVnVuUndQZ2hQdVJPdTNkckFZRnpITWhoblBxSFJyZERkSmxaKwp1d0VlN2t1NDlrbUNjUUNBME9zWDNKZ1kxbTd4SEl3cmUzUktSbDl5ckFYMzloMHU1eGN2L3VKbHN1YitIUG91YXg4WEJ1UG9HQWNBCkNMMGFkc05UUlV1cG1rbHFNangxcTJGNHFuajdVYVVUR0VNaHIzOHVJeGhYZXFXai9QNzErbWRmN1BWNFQzeTZlRFU0dzgvQS9OelMKTVE0QUVIcERxblNIUjV2MlgyYmhLZnVnMkduZkJ6cjNrZk05cDMwcHVYSXc5OUZoZVZvdS9xSjdSVUlubkJqUU1RNEFFSHJ6T0ZoSwoxYjI2WENyY3JudFFiRW5wZUdQaGxZT0M5Y0ozRkxZcll0bWhlamFaWk5BeERnQVFlbU1yZEp2cTBtelFsejRTMTEzNzFHV2hldFZxClg2MmJCZVA4YlZjeWVlbTVyTFptTUZtVGQ0ejdGTUU0QUVEb25qbW9MSTNrblRsNFo0V25UcHc1RjJzODkrMUJjbjNod2lWUm9UemQKdDZ0M3lWMXdIdGJPK084WWw2NGhIOUF4RGdBUXVsOU8zRFowLzlmL2MrTmFqNG41cTlBZFdQKzhjQ25Wdk8zZTdqa1k5Nmx6ZXgzagpaQk9neVdEY0o4dzd4dTNMZStSVk9ERUNBRURvb2tHN0ozeHUzTDVqbkprQS9BZmpianF2OGtqZDNNM25EeWRHOXR1ckp4aFh2ajlXCjU3WkEzamJmR1FBQWhDNUFaN25Oa3VlK0RRUlFYOGM0dHdCYjQxcmVkcFNhM2lUbnFtOGhiK1B0QWdBZ2RPMHF6bVc1emFIdFdsWnYKQjNUWFA5M0NZRnl6V3Q3MmxOcjd4czU3dExjUDRmcHRCT01BQUtFM1IzQUhIZU15d2xNblBuRXVkcXplZENXbkhZeHIxckdLbHp4ZAorNlFnR09jMkVRUUFRT2d1N0hZVk0xbHVVMWlsTzFaeXpRekczYWtValB1YzUyRGNyUllkNHl4YXRjNTlQQ01ZWjM4bElHSzRBUUNFCjNxUXFmUTlaTUM3Ly9md0g0MjQ4TDY1YU00TnhIN0VNeGxYWFVNZDl5ZE9pcFZUbGorb1JqQU1BaE80ZG04NXUyYlN0cTFnc25HalkKVFdEa2E4ejdPN2YyeldhY1FvOHVreUlBQUlTdVVjWDVHSnhOKzM3bjAxMi9yWUpnbksrSlJ1Q3d4bndkajY3NW1WUkpKMFhoK21jSQp4Z0VBUXE5SDZBVWlXTHQxTWp3MWQ4dTUyTU8rNlFmajdDY2FrZFBuV0M1UzNhVlVIYS9BckgzS01CaG4zemVlS2gwQUVMcFBUbnd5Ckl6emw3M0V1dStxL2FRMVhjbGkvcXlRWTUvaTQyUHJuUFFmalB1R3dsT3JCSVFUNXJWcVR5Vm9hcEJ3SUx1VVhUWXdBQUJDNnQwck8KSHEyR0svNkRjUjlTQ3NaOStQemhFd05OdWlKaE1JRXA2Uldnc0V4dTRmSzdBQUFJWGNDeTZGK1hkWXh6djdjOEhjRTQ4ODlSdldPYwpRNk9mdk14QTMwTGVuWXlWL0xqa0RnQUl2WTRxcmtSeXhjRTROMm1tZE5jLzI2SmduTTNFcUtKSDF4Smg5d1J0V292MktiYVFkOWF4CmgrdTN2NWhnSEFBZzlFcUViaUc1clBEVTNNZkdnbkhXOTVaM3BhQlJ5ZGtINDBiL1BsTDZISnVSR1JqYjEvWGI4b0p4eHZLbVl4d0EKSVBRcTJPMHFOdHd4enExelhQbmphK1h5N2xSeWFUWVFKOUk3NjNmbkJPT0VhOEd2MytrM0dEZjM4Wkpnbk5uK1RtWUdQa3JIT0FCQQo2Tk5hcFZ2Y1Z6YThOTHYzL3Y2RGNUZWNGeWZTTXlWM2s4TlNxbFZXNmU3SFNzYzRBRURvcmNHbE1ZcVJpSGI2RnZLdXFpVnF1dTI0CktXdkJqeDI3WHNjNC81TU1Pc1lCQUVKdlRZVXVIL1NsbFg5My9mWVhoeTA2M3ZKZ1hQWDNsYlg2QWNTTzJ6c2dYTCtEWUJ3QUlQUmEKQi8yc3g1L1dQNTBSalB2bytWaDZYMWxKY203VnBXMHd6bCtUSHAxemE3aC82NS8xM0RGTzkzZ0JBS0hQTGtWZHhTeWVYZmEvbEdxZApWV3VKbk5idnlRakd5ZThycDUzb0lwOEhPbmZML3JtMWI4OWFlT3RqN3VielpoM2ppb2tZZWdBQW9TdEl6cUh4eUREKzdpdVBDc1YvCk1PNkQ1NldWZExia1B0VFFZRndndmZXeDA1N01BQUFnOUZuL0FJSkEyREhPTlR4Vng4SWxlKzhiU3lwcHhRbU1Uc2M0Ky9hc1F5OUIKTUk1bjBRRUFvVmRmb1F0RlZIN0ozYTBTN3E3Zk1VWEJ1THBXWGpPVzkwN1d2emNMeHRtYzM0T09jWjhuR0FjQUNMMWF3WmswWE1ubwpLalozODNscEpheFZ5UW1DY1R2cEsvSStnVkZmWmM1STNwbjd2SDU3NXIzOW5xQVpFVlU2QUNCMERVYTZpcmtuMDhzbDUzWVZvTVpnCjNNN29hMGlDNi9lK3FEZ1k1emhCV3IvYmN6RHVvK201M1ZseG1hUVZpWGZ1SStmcEdBY0FDTDJSMU4xd0pWOEcvb054MTJjRjQvTGwKYlN5NUd6S0NjVTE0bkN2SWFFM3I0OXpTTVE0QUVIb2pzYjhNYlhZZnZlKzdPdlFqdVozWVF0NXRsNXg3Nk5IMjNOcDliN2prRGdBSQpYWUhZc1lJK0lGei96R1ZkY1hVNCtUN2Q5YzlQV2NlNHFpdDArVlVTOTQ1eHhkK2JjUDFPZ25FQWdORDFCbjM3eEhKdXhUWDM0Zk94CllKS2dLVGxwUC9MSTIwVEI3RXFIWDZGYjNncFl2eU1uR0NmWXB1SzVCUUNFUHJ2TTNYTHVzUHVYdTREekphZXlBRXl0Vld0bi9iNFgKTFZsdjErU0pnWHM4QitOdVBqKzVUSzZIS3dkek40MTFqSE1qNHRjSEFBaTlLVlg2NGFOUStmZVZaZmdQeGwzM2pFby84cmtQRGdYagpQQzdSV3RrRUp2OHpvV01jQUNEMDFoQjArdmFkeEhaTVJOVE04TlJ3eDdqQWFuK0taWFNRRzNDbm5tQ2MyelBqZEl3REFJVGVRR0lMCmVXY04ydUg2N1praEorbUNLTjMxT3lzT3hwbFYxenJCdUdCSHYwSzNYN0RGZjhlNFBjTDF1d2pHQVFCQ1Z4ajBqZVZ0WEhITjNYUmUKT3VoclZYSjl3ZjZrUk5ZVGhjelBjdndaK0FxZVJYZVl4S3gvWHRBeHJ2cHpDd0FJZlhhWisrZzV2ZTVmcGwzVXFoejA1WmZHTyt0ZgpzQWpHV1RTd1diLzNSWkhYYy92aHNhWTN2bGFadXpHalk1elZaS1pUOU1RQUFBQkNWNjNraXZFYm5qcmNMLy9CdVBjLzAvT3dtVW5KClhiOHZUL3Z1YzlWTVlPcFlaYTU0QWtFd0RnQVF1Z0xTNTdQbHdianN3Vi9yc213c3FDd0xnbkU3MHNsQ016ckd1WFFEOUhkL0hnQUEKb2FzTExuL1FEdGZ2c0FqR21WLzY3YTdmVlVQSE9QY2xUN1hhclRidldFMmVGaWpyR0hjM3dUZ0FRT2o2Zzc2UDU3TnZQQjhMbTh0bwpWZWw5d1hHbWZ4STV5YlA4UFhXRjduZ3UxdStrWXh3QUlQUldNSGZ6V1BjdnQvdXRNc2xWT2VoYjNGZk84OVRHRncyRGNiYnRWci9nCk9SaDMwMURIT0kvbllPNEdPc1lCQUVKdlQ1VnVKMGwvd2JoUkFmb1B4cjB2T3hobjZkNUp5VjMzakYyNzFlcHlBejNCNTAvSE9BQkEKNkMxREs4RFdkeXFCTlN2MHZiZUpyYThRU3lSblBsdW9OaGduYTZaRHh6Z0FRT2dOSkJhS0tGei9mRWt3enZZKzY4RlNxbmUzS0JnWApKUEpzNnFJMC92dk14NUpMSEx2Zm1Yc0l4Z0VBUXZjLzZMc3ZvWnBicGM5OWFDZ1kxNnhLVGhTTTY3UXhNeUJnL1Ivb0dBY0FDTDBWCnpIMmtvUHVYdWZETUpPY2hRZTlOY2dMUmJkenZzSlNxd2FSbS9ZdWVnM0VmR3VzWVo3Z2ZwWk8xRHpwMmpCdnRuaGZ4NndNQWhGNTMKbFQ3SllxazgzUVRxUFJoMy9MMUtIZVBlLzR5WlBLdS9JaUc3dCs4YWpDdHZmVXN3RGdBUXVrTFYyaGR1d2U5U3FycUNTNGtsbGJTeAo1Q3duU1lHRzVHenU3YnVHSGkzNjFsZHdiZ0VBb2M4MGRvS2JIUGpEOVRzZGwxSXQzbTUzL1o0YWduR3VsZlM0UE8wMzM3d0tQZmRZCmQyTEh2dlVIaE92M3ZvaGdIQUFnOU1vRUp4ajQ1ejU0UHRiWXJnZjZqdnR5UUdUek9WcHNYa2Zvd3E1OTYzY2JkSXh6bTdSUnBRTUEKUXZmSjNFMzdJU2Zad0I4cENhV2U5Y0pMakx6eDVleGduUFdoam0vM2ZzL0J1QnNzZzNIWis1ZlZUS2M4R0ZmK1lVVDgrZ0FBb1d0SQpUc2FpMG5iOUIrUGU4NHpPRlluM2xRVGpaTTFjWkZXNmZmVTh2SC9sbVFHMysvUUU0d0FBb1N0Z0gyQnpXVzdUYXR1NzkyajFnbkVhCnlYNTVNNWRxT3NiWjdWOWVacUF2V0hWTmEvSUNBQWg5NW9rZHE3Y0R3dlc3SElOeHhTbnA3dnE5THdvYmVFV2lPQmpuZTd2U1k5VloKK1M1Mm5DQWNmbWUrUURBT0FCQzZiOFRMYldZTi9IUFhqd1hqbXZPSWsvU1J1cWowYzJ5SzBFVUJ0cjF6bEV5cW9zS0pRck9PRndBUQordXd5ZCtQUXNwaStKUmZzOUlTUE9EVnhKYkxPeGdNZU9zWmxiZmRMbm9OeDF4c0U0OG9uV2xuTmRBUWQ0eTY5SW41OUFJRFFtMURKCmFTNjNlZmdlL29OeDc5WUp4aDEvYjBFd3J0NUg5WG9XOHM1QzBER3U4SmdKeGdFQVFsZEFhOGxUclNWYXBlZ0Y0OXhXbU5OTGZ3YzcKeTBwWFNhd1h1eG43RXk2NUF3QkNWeEdjZlRVNTJqSHVic3Rnbk5sN2ROZS8wTEpnbk03RXlFK0Y3amE1eWp2VzJFTGVXWDhXYnR4UApNQTRBRUxwL3dia3RuMW9vbzducm5va0Zrd1ROS2wwL0dPZDJCYUI2b1J2czUvcDltZmYyZTA2SFdzMFZHQUJBNkxQSjNBMWp5Mkw2ClhDODhFTGVYYldMVjJ0bDRNQ01ZNTJPSjFpOTdEc1pkTjNSdjMzMnhscXhtT2l2Si8ya1FXSHhtZEl3REFJVGVsQ3E5R0syR0svNkQKY2U5NlJseTFaazAwanIvYmNDblY0dmZXZXg3ZC9WajlkWXd6Mnk0QUFFSVg0SDRadXZoZWE3K2h6eXZId29tR1BObWYvZDU2SGVNOAo5aGtZT2JkQjQ4NHRBQ0QwbVNZV1NDZ2xYTC9IdzFLcWsrL1ZYZitpVWpCT1o2S3hMS2lFZFNTbmQ2eXg0em05RktiYytCTEJPQUJBCjZMN3BDU1NVTy9EUHZmOFo2VVJCcTVMVEM4WTFiWlU1RDAxdmtrbFZaTDNkK2pJU0FJRFFaNWU1RHc1MWpITy9qQm9aQ2NWU2VFRlQKZzNGZnlRbkdDZGw0d0hNdzd2M3lwamRCZGpPZHd6Q2wrNU1NRWI4K0FFRG9UWkRjeUNDOWs3K1Vxcm04czd6Z1B4ajNUcVZnM0x1RQp3YmppRmV4azU5YXRBY3pCbnhXZlcvZlBrV0FjQUNCMEJjd3VRK2UzRUxYcUdHZFIxRFV2R0ZjMGdkRmJoOXlkbktZM3hvY2UrT3NZClY5RzVCUUNFUHRQRUZ2TE9JbHkvZHpMa2xHeWk1OXg4WkQ4WXQzRi9qY0U0K3dtTXpqcmt3Z3JkUXQ3bURYNUtPc1laRUc0OFFEQU8KQUJDNjkwSGZZZkdPVWhrZGYxOUJNSzdlaFV2NndnbE1WRGhSOEw4T3VXRHVrblBWd0dLaWtVeXFJdWVyRVVYdlNaVU9BQWpkTDNQWApuM2RiRm5OMHNJN3lKd3VkNXFXL2hST1lqYSsrVUw2VWF0WjJIL1FiakVzbVZlbDVYZkU5MFRqKzdwS2xWTTNPZWNTdkR3QVF1b2JrClhDdXRvc1lvOHZTMy8yRGNPNTdwZWRqTXBPVGU2UmlNTTFrVVJUYlprdllFME9vR1NEQU9BQkM2QW4xQnBWVlVTZXQwb3BNVEN5WFoKcHZYQ2x3VVR0Znh6Mjl4dWdBQ0EwR2VZd0hLdDhNbS9EZGUvOENMM2puSDU3OTNkK0pKQ01FNStSYUk4R0dlOVJ2cnU1ZjlxbnIyMwpXN0JGcjJQY2d3VGpBQUNoVnljNFFaVisvTDBad1RqN2lVTjFIZVBNOXkzSytmYzlDM21QM2NkWHFscE53M29GeDU2ekdod2Q0d0FBCm9UZU51US9zaDV4a0FiWnl5YmsxSTZtMTRVb2VHdzhaQnVQeTVaMjkzYSsrTVBKNW9NZmZrM0Z2MzBONzMrUHZjdXdZWi9LZEFRQkEKNk1KS1RvYjVmV1U3QWZnUHhyMzlXWjFnM0RzU2VRWTdLNmJ5TnQydTl5cmQxN21WTHdCRE1BNEFFTG9DZGdHMlNTbm5CK01hOW56MgpQckZRa3ZLbFZLdVQzTExqTVphZlcvZHRhb1llQVFDaHp6U3hoYnl6Q0RlK21CRnlrbGYrM1kwSFdocU1hNDdrZW83SFdEYXBpZ1hiCjNQdk9mUFdGQk9NQUFLR3JEUG9XbDhNei9peXJDWWw5SlZ4TlZ6R2RZSnc4TEtZdmRJZDczam1yd2ZXc3R6bmVsWTlnSEFBZ2RML00KdmYrWnZhVlVSVVc2ZytUcVMwUExnM0VQbHdUakhMZS84WkRuWU55NzAzdjdReDNqM01ocXBuTzQvSzZKdkxPNzhrWDgrZ0FBb1N0Vgpjb0pGVmJTNml2a1B4cjFOS1JqMzltY1A1ZWx4dTk2cmRQc3JKUWJuMXFtbExzRTRBRURvdmtuRzVMN2xpbWhtSW1wdVY3RlkrTzkxCmduRkJEY0U0NTNPNzAzZGMwRWY3M0FJQVFwOXBZb3NCUG90dzQzNUJ4N2g4MlhRM0hxdzVHSmY5bWZnSnhsV1RHWkRlQ3REckdQY1EKd1RnQVFPaStTL1NlOEQ1cjVzQi8vRjBXd2JocUc4ejBCUlZyU21ROVVhZ3JNK0RoM09hc0JrZkhPQUJBNkUzaitIdWZjVjlLOVhEQQpOcGVjWGFXb1Y3VzZWS3o3ZjdmeHRZSmduQ0IwdC9HdzUyQ2N5MnB3Qmxja2pyLzlXVHJHQVFCQ2J5alNaNVlYU3l0RXQwclJmekR1CjJtZDdOdkkyZlViNytOdjJnM0V5cWczR21jZzRvR01jQUNEME50RjNxcUkxdW9ycEN5NGxGbHcxS0pLUjFqcmtFcGJ0enVsRWF0M1AKdVRYUElnQUFJSFNCVEdMSnlseWROQmozWlUvQnVOSDM2RzU4UlNFWUorOXpMZ3ZHVlprWktLcWt6UmFSc1EvR21YWVpmSmhnSEFBZwpkTitJdTRwMXNwdVF4STVpMDY3U3BWY09JdU1LdlRHWkFic1Y0SWJKV1ExT25Cbm9FSXdEQUlUdWwrUHZHZXIrNVg1ZnRGaHkxbXVpClh4SlBNeHF1ak8zZnhpTVp3VGpiekVER1o3THhOYy9CdUlQVjRBVEhtaG1NZTl1emhWMEdoZDhaQUFDRVhvdmtpdTcvbG9XbnlydU4KK1EvRy9kMnowa1Zhc3E5SS9QMnpxZUJXQkZjamRLdDA5MlAxa3htWTNEN0JPQUJBNkFxWVhZYTJ2Ly9idDVCM1ZZSkxpUVhTTFphYwo3REowTlIzai9Od0trRDdUenlWM0FFRG9EUlJjdVBGQTFsS3FPejNMUHQvamREZSsrc0xRKzlIS0g2bkxhM203TE55emFoYWw4Yk5QCnNkWDNaUEx2d28ydkVZd0RBSVRldEVFL2MrQS8vdlpuWTZGNHRSNXhxaTRZVi9leEJ1Sjl5bTU2VTVpZzc5UjVpd0VBRVByc2N2emQKZ281eGg0TzRUSExWdG9DVkIrTWVMVmxLMWUxWTA4QmQ1UFhjdnEzZzNyNjVoTE15QTN2Zkdka3Rob2hmSHdBZzlEb2xsejJJbTRlbgo3Q1RnUHhqM1ZxVmczTjlseU5OZWVQb1RHRi9OZElLT2RFbGFnbkVBZ05BVjZEdFViaVlpNml2ZHc1VVNDeWNhWmkxdm15QzU5TjYrClRqTWRPc1lCQUVKdkhPTWQ0K3dILzNEandheGduTGlLNjI0ODNLSmdYS2Vod1RpM3o2aE12TEhEbFkzUjc4d2pCT01BQUtFM1k5QWYKSGNTem1wREVRcGxvU2E1WndUamRxbFc2QUU5bjR4L3BHQWNBQ0wwVkhIK25aVEF1ZXhCM2sxeTVFSm9aalB1Nll6Q3VUSjZQZWc3RwpYVHQyYjkvdFViT3N6QUFkNHdBQW9iZXFTamV2d01xRGNXN1ZuUDlnM0RWS3diaTNPc3BUZXdJemZJdkI3UnpUTVE0QUVIcUw2TnYxClhaOVk5Q092NFVwZjJDdStiY0c0V0hpOHB4V09kVmxwa2tISE9BQkE2STBqS0FvNUdhM1lGVzU4OVlWK2xsSWQzYS91eGo4cUJPTmMKRytxMGNTMzRzZ3JkZlo5aXdTUmg3enZ6S01FNEFFRG8vZ1ZuTG0vamdmLzR0UmJCdUdyWEMrOEw5aWNsTXE3ODdkNGozUGk2ZDhsSgoxNmZQYm5wVHRnQ1AyZnRRcFFNQVF2Zko4WGVrUzZudURJU2JpWXlGWXJlc2FoTWJyblEydm1FWmpLdXBMV3BtMHh2Ny9acWNyRjN6CnJHYVlFZ0FRT2xSV3labUduR3llKzg0ZTlQMEg0OTd5ckxRSlRMSGtiQ2NJbzM4YnFaMWI5OHZqZHNFNGVaZ1NBQkE2Q05BS09XbDEKb3BNU0MvKzlXMXRVOTFTNU93Y2Q0OXd4N3dab04ySGpranNBSUhRMXdVbENUZy9sQk9Oa0RVaTZHMTlUQ3NhNXlkRThHTmVVUjlmawpWMS95bm1LSWhaUEFjT01iQk9NQUFLSDdydUxrSWFmczFibGlEM3RYVDhjNGwyQ2MvTkUxRGNtSjcrM25OTDJoWXh3QUlQU21jZnh0Cno3b3RwV3AyLzdmNWJWRWRwTFQ1elJjc2VUdlcwWDN4RzR3N2FIcmpXYnpIMytLaFkxeEFNQTRBRUxvR1d2ZC9wVzFSL1FmajNtd1gKak52N3M1MlJWNmJrM3R6UTlIY2c3Z2tnN3hobnQvd3VBQ0IwRUtCMS83Y3ZySVlyRGNabHl6dnptZncycGIvTlY0UEwzaytWMEdQQQpKWGNBUU9nSytMai8rL0FMczVkU2xUMG0xdDE0UkNjWVp5SHZMR0g1U1g5ZjJ1U2xmYWd1R0dlK1lFdCt4emlMWTgzNHJNUE5iNzZBCllCd0FJUFJLQm4yN3FpNXI0WkxZdzJURHUrUVNvZlF0NUowbHJDaDNZbVF1NytGTCtKY21SZ3FTNnptdXRuYnA3emEra2RNeHp1MFkKVmM4dEFDRDBtZWI0dFliM2Y5M2Fva3J2dFZaVHRWcFcxcHYvVkI2TU14YWJXZlh2ZG02dnlla1laM2U4azVPMXY5Mzd6bGpJbTQ1eApBSURRYTZuUzdhczZyZnZLM29OeHgvNzJ1WjRnOVYwb3VVUm9Bd3Q1bTFmL3Nrc1MwdU5kektuRTZSZ0hBQWk5Y1FSajkzL3RCMnF2Cjk1VU50aXNsRnY1Nzh3bU1qeVZhWlN3THZoZmVNd01WbkZzQVFPZ3pUU3lRVUVxNDhiV2NZSnlNN3NhakRlb1lWeWE1SUVOeXdzcS8Kc21PMVhma3VFRStLd3MxL0poZ0hBQWpkLzZDdnMzQ0oyNkN2My91Nzc3QWZKcGZHNVpMN3B4Zm9kNHd6ZnJ4czcvYkI1amRmRUlrbgpSZFZsSkFBQW9jOHV4Ly9lc1dQYzZHQWRPVldJNVhKcFpqRHVuejEyakZPY3dCeC84N1BwU25BcnB2TE9DYmhON05PeE56MlgvNTB4CnoyQkUvUG9BQUtGWElUbTd3YnI4dnJMYkVxUCtnM0Z2Y2dqR0dTeGVVaWc1ODg4ZzBqNjNEdW4wL0hNcmV5eU9ZQndBSUhRRitzS3EKdGZ5K3Nwdm9xZy9HbVIyMzFnVEd1K1FTWVM4N1BscFdmbTRsRlRxWDNBRUFvU3NRWkhUL3NpUGNlQ1JuS1ZYWlJLRzc4UTNGWUp4NwpVcnRORXhqcG9qUkx4dDhadSs5TnVQa3RnbkVBQ0IxMEIzMjNTVUhXNmx5eHhuUGZIdmExTDF3Nk5qS3UvTzJrNTE5eThqYThhVE9kCnFLcnZEQUFnZEJCdy9LMnFLNFpKQi83Nkh1Y3FrdHkzY29KeERadkFISHZUYytsNVhYR1FiWEZtNEkzUE5YT1ZPUUJBNktDMllwajAKRVNmL3diZzNQcWVTU0QvMmY1NlRQVEhRVVpOY3RjdmswakVPQUJCNmpRUnEzYi82QXBGb1ZlZ3BjYVdTTTM4djNZNXhic24wcFlxLwpNd0NBMEVGTmNPV0VHMTh2Q01aWkxiazU4bmhWZC9PYkx3aFZxMWJOdGVEdEp3b2FtWUdlb0xWdjBUN0Z3djBLTjc5Tk1BNEFvWU9lCjRPeXJ5dHp1WDhmZnZCK01NNU4zM3Zya2VzRTQ5M0JjVkNvNXQ0bEN1UGt2aWgzakhDdnF6VzhKZzNIVlA1b0lBQWg5TmpsK3piUHkKN2w4bHdUaERlV2U5YnpPRGNmK1NJYm15YXRnTXY4RzQvL1BjWWNjNDl3blFaR2JnRFRtWkFidEpROFN2RHdDaGc0YmtiQWJqeWIvTgpYVzdUUXQ1Wjcrcy9HUGVHM1dDYy8vVDNHMW9hakNzL0YrWWQ0K3c0emM4T0FLR0Rid0sxQUZ0ZlVNRjVyMWlOSlZkVk1NNXdZaVJrCldYQmU4ODlCSUZpaU5hZnlCd0NFRG5KaVIrRWVFRzU4STJjcFZkbXoyZDNOZjFJSnh0bW52MTBtTVA0bVJyTEppMDRpWFZyNWR6Zi8KVmVYY0FnQkNuK2tLdlNlODk1czU4Qjk3MDNPeGgzMnJQdjN0TGpueHhNaDcrbHU2UG4yeTc4aytSUlBuOW05eXpxM2Q0M0ZVNlFBSQpIWHh5L00yT1M2bU9EdHlSVWlYWHpHRGN0d3VDY1o0blJoS092Y0dpWTV4OUlyMG5XSFZONjl3Q0FFS2ZlWnJhVmN4L01PNXZITnVpCmp1NzNVc1oyTmRlWTkzdHU3YTRpTEJwWC8zYmJKUmdIZ05CQmdiN3RvRHoyT0ZyK2ZXVzNKVVcxTDh1V1YrbkYreTBMeHRtdk1lOU8KR21DVEpkTE56MjJOVnlNQUFLSEQzcUFmVzhnNzYxbnljUE9iTCtnYVZYRjJGVjEzODF2S3dUajd5ckpZY3JLcXRWbTNHSXBid0Vydgp6M2MzdjBNd0RnQ2hnOXFnYjlVSXBuemhrbGdnVFQzSjJTYndnNDVwbi9OWWNEVmlyeTNxdnlsMmpIT2NYRzMrYTBZdzd2VVdvVWZ1Cm93TUFRcStHNDMvNzdFb2k3b0dGdkxOa0ZSWEswNTFxcTFiRGlVY2kza2hqdTc2UE56TXpZTDlZaS9uamEvVmZrUUFBaEU2VkxxeW0KL2ExRU5yb2Yvb054LzN0ZmNwNmYwVTYydXhlTWsyMDNxdVdLaEd0bWdJNXhBSURRRzRaODRSSzNsY2pLaGJLa2RMelN4OWNXSzkydQpESjNNUUdCNGJ2UFBBUlU2QUVJSEJXSmhKUjF1L3ZNTHVrWVZ1cDFRdXB2L1VrRXdydW9KVFA3bldIOW13UHhZNVIzanZrc3dEZ0NoCmcyL0U0YW1zZ2YvWUc1K0xoWmRsdGFwMGFlOTEyWHJoK1o5anVQbWRtb0p4QmZ1WTdGTTBjVzVmSit3WXAzZHVBUUNoenk3SDNwVFIKR01WK0ZiYklxMURxRXJwcE1PNDdoc0c0bWhlbU9mWjZnMlk2NWZ1NFpGVDk4enc2QUNEMEJtQjZhZGErTVlxMEd2WWZqSHU5VWpEdQo5YytsMnh3SXIwaEVxaE9ZUm9VZWR3akdBU0IwVUVDck1Vb1RWeUxURExBMUx4ZzMzREhPRFEraHg1M1IxOTRqa2xUb0FBZ2RGQVo5CjZmM3VjUE5iQmNFNDkycTR1L250R1FqRzZiYTg3UW4yeCtGWjlFeDVaNzFIZC9ON3AwSitmQUFJSGVvZTlDY0ZNSGtaK2czN3dUZ2QKZVRaUmNySGxkc1luTitIbWR5c094aGxNdHBKOWlpYk83V3ZUYzJzc2J6ckdBUUJDcjRKamI3UllNU3gvY0k2OFRoYnFyRm9kSlRleApYYmNyRTM2RGNhOGJDc2I1YjhOTHh6Z0FRT2l0cU5KOUxMY3BYK0hNZnpCT1NYTEpka2VEY1c1RTNzK3N2QTN2WXVGMjZSZ0hBQWk5ClFRUnF5MkwyUlZWcm9CaU0wNUJjcHdVZDQwby9tNTN4VjN1YTZRQUFRZ2RCeDdnOXdzMXY1eXlsNnI0S1dVcDM4OSttT0JnM0dTU3IKK05uN25Zd2dtL0d4U3BzU2RUZS9UekFPQUtGRGRZTysrU0NkdFhCSmJEbkkyd2lsdXVPZGxLOTlNTTRzQlI1dS92c3BuV0NjbWJ3egp6ODNtOTA1RkUrZjJyeS9Fd3ZPcWRXNEJBS0hQTHNmZVVCQ01NeCtrbzV4LzM4U3VZZ2JCdUdMNUp1S044dVhaTVgrRWEvSXo5aHVNCmUrMXpnK1Q5VjRUbjFxeGpYS2NSNXhZQUVEcFZ1ckNEbXRaOVpmL0J1TmVPQitNczVIc29zNldNN2E0ay8zNWdJVy96TmVhbjdkd3EKZFFNRUFJUU8wbVV4ZlRaY1VheFlEOTlqcDJjaDd5d1psa3ZPYjd0VnlibGRGdjc3ZGkyVEN3QUlmY2FKQmRMZFcwcjFYdzJYVXJXcgpXTHViMzZrd0dDZS9ESzIxeHJ5c1FuYy9yMFg3SkY4bTl6R0NjUUFJSGFvYjlBV1NPL2I2b1dDYy8rWW1zdVAxdkVpTDA4Um9rbkR6Cis2ZXE2UmhuY2Z6SlBrVVQ1L2F2TGpSMW1WeUF4ckQxZjA5R3lldTY1UFZJOG5weTYwY25yMGJvb01xeHY5a1B4dGt2bnpyOGluTCsKVHZyY3QvOUJYNzVJUzJiNnV5TnZMZXY5ZUkvOTlZWEJ4R3B3OXVjakVsZi8yY2VOMEdHYTViMlRmTWVmU0Y3M0pLOXI5ci92TS9tZAovMzIrSGhXeko3a3dkL0F0cCtpKzhwTGpQcVg0RDhZbGtrdUVuRTVpdW9MUGEybThJaysydTVKc2R5RDhIQ01QbFg3V09RZ0Y1MEIyCmJ2T1BtMkFjdEZiZSs5Lzl4ZDMvbWs5T1ovSTdqOUNySncwNVhWM3JjcHRWVmVpSE1vb0UrN1pZS0UvM3ozRlI3ZHo2UHdkOXgwbUwKeXRVSWdJYkp1OHJ4ck5Gd3liMzZDbDI2UWxxNCtSM0RZSnh0ZU9xN0xRekdOZXNISHd2UFFiajUyS255Ym9CQmdienpPc2I5QjhFNAphSmE4RFM2YlMrZ20yNXk1N3p3VmV2VzRyNDQyS3FNUmVSeDczWE54SW1UcHZxWGJIWGcvWGgzeHBzZC9SakN4MnBYbnNhc3ZyRFRvCldMUFA3VjllaURkL2NNcXRRdGM5dHdCVlY5NjI0K1JNZmVlcDBDdm0yT3NObGxKMWI0d2lEYUUxTXhpWGtmN3V5QjhUODM2OHgvN3EKd29yekFHSWFlaVRwRHJOZGVkdU1relAzbmFkQ3I2OUtEeDByclU3SFZ6QnU5NzFIbXI3NEQ4YjkxWVZCSW1SWk1DNnJhazNrbVd4MwowQmtQb2RsOW5sR25qbUJjVU1HNW5Ydy9nbkV3TFpXM0tUUDNuVWZvZFJBWWhxZnNxNjIraGJ5cnJPTE1nM0haUDk3Rmd1by9GT3lYCmZqQXVzRDdldG9VZUFYazNRZDU4NXp0Y2NxK0wyUG1MZnRBeDdyc0Z3VGozaFV1Nm05OVRDVTh0Rzd4MzBlVmsvK3VGYS8zZ0QwS1AKZWNkU2Zyemg1bitjOGhwNjNQOC9kYmNlSnhnSFp2SnUwR1Z6eWJhN1d6ODVPVlBmZVNyMGV1Z1pmZEhMWlRReU1UajIydWZpelg4Lwo1V083QTVYajlmK29YbnI4Wnh4KzZJZnkvTUdwN3JHLzlCeU1rMWNiaytmMkx5N0VtNCtma241dENNYkJORlRlTnR1ZXFlODhGWG9OCkhIdmRXRERPYlpZYWxRckZiYnVuRlg1czR2VDM1bU9uSXVlSlVZWEJtZDNKd1hESE9EZkt6NjNONmRWZWhBZW92S3V0dkcwNmJjN1UKZDU0S3ZTNjA3djhHZ3ZDVWd1QjJKWGYxaFVFaVpQL0J1S3N2ckNUYkhYUmNBNGJCSlhuR0NsY2tRc3Y5S0QyM2dVa3dMcWg0c2daVQozdlZVM3FaL08xUGZlWVJlSCs3QnVOMTc0cmsvMFBSKzlUV0NIMUNrZEx6MUJ1TUN5NG1SMXJrMUc2RE1NZ051ejZJRDhwNVdlYy84CmQ1NUw3dlZoVmhXT2g5dUNTK0cyY1BQZlQ5a3ZwVHIrbzhpNGRMWDUvVk1hUDRMcWduRjJsL3YwT3NiWmhkYUdYK0hXNHdZZDQrenAKYnYyUVlGemI1VDJEbDgwbCs5SGQrdW5KbWZuT1U2SFhSeStuOHJhWm9XWXRYTkxiL040cDZjeDZxU052VXBOOXZJSGpqeisvQld4NgovR2NFKzdXYktqLzJGeDZEY1FYTmRBTHpiVXljMjZPdnZoQW5RcFpXUHdUanFMeW5vZksySGM5bTRqdVAwR3ZpMkd1Zlcwa3E3UFJMCkZncSs1RkVudTM5NDNPbUlMcDB2S3Z5b2U5SWZkQ0xlS0UxN08xK1JLUDdCeDk3TzdXc3VyR3crZm1vUW1ONUhEeXpPcmYxOTlNSCsKdjBtdmtQU08vdm1GbUY4ZjhwNWllV2R0Ty8wc0gwUG9VRVdWSGdxKzVFVmR4U1JDOXgrTSs4c0xnODBmakFYajNPNEJqMTZSU0NycgpSUFJtRTZQOEgzM1U4UnlNQy9LQ2NZR1hjN3RVSXUvKy92R2tBbC9oWjRhOFowamVXY3hNTUE2aDEwa2RIZVBNZmhTUjB2RktKeHFMCnhoTWp1eCs5VGpBdVVEaTN3YVZ6aTd5Uk4vS3VxVUJCNkpCRk9oRExWZ3o3L3FudS9xSWc0NElUL1NnMkh6dTFkT3pxQzc3dm95OHIKWFRtd2I3YzYrbkhvZEl3VG50dXQvenpWelpEMG8ra0xlVGRTM2t0ajhvN1UzZ3g1MjlEZGV1SmtlUFNxNXdjSUhUVHBlZmh5WnkxYwowa3RFTC8xUjZBWGozSC9nNG1CY3pzZXhteW8vK2hyRmpuSG1PelZjZVUrQXlKRTM4bmJhN2t3RTR4QjZqUno3Nndzcm05OVRXakdzCmljRTREeE9ZemNkUFJjZGVZeGFNc3h3anZBYmpqcjc2d3NyV0QwdlA3YkM4MC9mbXNqbnlSdDQ2MjUySllCeENiMEtWSHFpc0dPWisKdjdyb01USEpCT1l2TGd3Mi95T2pZNXo5STNXalZ5U1N5anFwc0NmbGFmZmpqem9hSGVNT3p5M3lSdDdJdTc3dHprUXdEcUhYVGQzQgp1T0pINGpTTzEzcWlFWmhQWUVMQmoxL2pVYjM3a3YrOUQza2piK1JkNVhaM2JNWkpoQTVlU2F1MU00SXZkN2o1MktsdTJ0YzhRM0NpCkgwWlNUUzhsVlhXbHdUaURYU3dPeHZsZjBjMFpudmxHM3NpN0ZubG4wZDFhRHNPanB3Y0RoQTZhOUR4OHViTVdMdWx0L3VDVTlJZWsKR293TDNIN3dhaDNqdG41NHFwdmUrK1lyaWJ5UmQ2dmxYVFNlSVhUUUkzM2tiUFA3cHdiQysraFJKL3YrYjV4WkRjdWJtMGgrdytKZwpYQ0xlS0cyRGFqd3hNbjh2cjhFNFFON0l1elo1NXdsOXFvTnhDTDBKYUMybHVoZktrZ3h3L2k5RHYrYkNZT3R4LzhHNDNGUzUyUUF3ClVMZ1NBY2diZWRjbjc2eS9uL3BnSEVKdkJuYkJ1TUJRdklGRHg3akp5bDlyQWlQWnRua3dMbC9lcE0yUk4vS2VYbmxYVXFBZ2RNZ2kKRmNzWndaYzZiOFd3bnZSSHV2bjRxYVZqcjJsSng3akpKd2FRTi9KRzNyTXA3eXk2V3o4THc2T3ZuTjVnSEVKdkJqMFBBMExXd2lXOQpSUFErWnJYTjZoaVhQOU4rZEdpQ2hMeVJOL0t1Yk51TmszZlIySUhRUVkvMGtiUE5IeFRjL3pYN1FrZWRzbUJjNFBRN3FyZGpYUForCkQ3Yis4OVJTSXV5UjdTVC8zK2xuZUN2ZktPU052SkYzem5hbk9oaUgwSnRWcFllQ0wvUml6aGZaNkg1MVlGOE5PM1AwMVJjR1d6L00KQ01ibHlMdkRaZk8yU2Z3ZTVJMjhHeUR2TEtZNkdJZlFtMEtGSGVNQ3UvMktsSTQzYTZLQnZGdk8wVDk3dnJmMW81T1J4KzhKOGtiZQpQcmM3MWNFNGhONGNVb0dkRVh5aHc4M0hUM1dQamEwWTV1bTU3NldrcXZaOUgvM3J5V3NGZVU4bFBhZUJFM2tqYi8zdGRyZCtIb1pIClh6R2R3VGlFM3F4QlVQcUZubncrK3pVWGVsdVBuNUwrT0x3SDR4SjVQOW81RExIQnJBa2RlU1B2bWo2N0lKamVZTnp2TWZZMGcvMUgKemdZalgranhWOEYzZi84VjVmeEJiTHF0SEJZNVE5TkZlcTg3ZVYyVHZDS0Z6ZmZ6dnFDTzN6K2pMMy9wdHB1eUg2cmIzc2w0ZWRwbgpyV05VL093U2VVKzhPbE44MlowS3ZVa1lkSXdMM01RcmJlU3l4TWxwdDd3NytXbnplenUrMjkwR1NsMzNxTHlwdkV2a25jR2dNNWJMCk9mSS9CMU43YXcraE40dVJZRnhnL3lPUkxhV2F2OTJJVXpNVjhxNWtzbmIwVDU2UHQzNThFbmtqYitTTjBHZTVRRGNJeGhYL1NQSlcKRExPOVB6L3h3K0RzVElXOHM5Q2FySmtINDVBMzhrYmVDSDBLNlhuNGthUUQ5RWpqaERTaG5vamVXTjZremFkVzN0bmIvdEhKcGFOLworcnhHTjhBbDVJMjhrVGRDbjBtT3ZzWml4YkI4c2pzaDdhMFhIaUx2MlpaM3p1Q3MwZDYzajd5Uk4vSkc2TE5PK2lXK1J2RGp5K3lFCmxJajdLajVhNUozRG9zSjc5WkEzOGtiZUNIM1c2VHY4K0laL0dJL3hFVFpXM21Gbjc1WkkwM3FiK3cvRy9hL240NjJmbkVUZXlCdDUKSS9TWnBtY2g3OTBmQnBmTlc4SmVRNHRIR2pnNFIwckg2OVl4RG5ramIwRG8wOERSVjErSXQvN3pGUEtlbGNsYVF3Ym5yUitmWERyNgpKeFVGNDVBMzhnYUVQa05jaGJ5bmNMTDJwODhQdG41ME1udVZ1ZnJGcGhPTVE5N0lHeEQ2VEEvOGYzNGg1bE9ZV3RKemUzVUR4YWEvCjdqM3lSdDZBMEFHMHlVbWIvMVZTVmZzT0dhYVBjMTJ0ZGlEdWo0cjVEOGE5NnZsNDY0bVQ5UjRqOGtiZUNCMWc1dVNkUmZZei9iTEIKT2gwd3ozamFscysvalpRK2Jsa3dEbmtqYjBEb0FKYnl6dUswa3VEcWxuZjJaL1hUazB0SlZWMWZNTTU2djNkMFBnL2tEUWdkb05YeQp6cXZRdlhMMFQ1NWYyZnJ4eVhTZ0RldVVkOEh4VmhPTVE5N0lHeEE2Z0pLOHMrZ204ZzBUQ1E4VXF0YXdabmxuYmJ2YWpuSElHM2tEClFnZmtyU3kyOGFwMTRQazlScGJKclVuZTFWeVJpSjZQdCtLVHlCdDVBMEtIR1pSM3VDK1cwNTFtdEVmMUg0d2JYeWEzT2UxUnRUN3IKL2Z2b3lCdDVBMEtIV1JENU5ja0Flay9IdE9sS2RZT3pUakF1YU5ReEhwNkhKMDR1SGIzS2R6QnVKejhZMXhSNUsyNGJlUU5DaDlsaQpiOURyZXR5V0x6UVdMbG5aK21sSk1LNitxbFF2R0llOGtUY2dkSmdKOUIvbmNweGtiUDNrWkpoSWVLQnd2R0ZEam5HWWVvSnh5QnNxClpQdS93M0IvOHBxKzVvKzhmSEE5UWdmd1ZiWCs2Zk85clIrZGJPcWc3ejhZMThrSnh0VXZOdjlYSkU0UDRxM2xFSGxERStSOWV2Ky8KdzFjRDAzT0cwR0cyR0Fxc0xSMzlzK2R2VlhpTGRGQ01HalhvQjVjazE5eU9jVjdFZGltd0ZpbnRqNytsVkpFM3VNczdpKzcyTHhiQwpJeSsvT0dqNzhTTjBLSlgzN2c4akdQMWhKTlYwbkZUVnNjS2dIM25lcG8rL2JVN0hPTC95emo3M2NiaDBOQm8wWXlsVjVBMSs1WjMzCkc5QzRDb2ZRb1hueXptRnBmN0R6U1YvMHIvV2F0UGkvREgzVjh5dGJUemdFNDZycHNGYlBVcXIxeUh0bC8zdU12R2RIM25tLzhjZmEKL2praGRPUnQ4Y01ZUVgrNXpYcmtuVVYzNjZjbnc2T3ZxamdZVjE5NzFPck9iZlh5VHZkamVmKy9xYndIakFvekorK3M3OTdwYWZqcwpFRHJ5ZGtXanozbHY2OGNuNjVaMzBmSDZIdndQZzNITjZtM3UvOXkrY2hCdi9UeFVPVEhJRzNsNytCMHNUY1BuaWRDUnQ4TUlxdmdECkNJYUNjZlhKTzY4RmJFM0J1TW83ckVWS242bzRHSWU4a2JmU3VORGQvdVZDZU9SbDdRN0dJWFRrN2Z6alNLcnBLS21xWTRWQlA2cFoKM2xsVUZJeHJSbnZVclorRlMwbFZYV3N3RG5rajc0b245YTBQeGlIMGRnZzgycGRjYmZJdStBSDRGbnEvb2M4cGF5eGNzcklWaCtrQQpFdFlwNzRManJTd1loN3lSZDhYeXp0cHU2NE54Q0wwTkJKMjNKUDk3VFVQRU5reERsdHVzWkFEb2JqMXhNang2bFhJd3Jqa0xrNlFECjg2TWFWeVNRTi9KdWdMeXphSDB3RHFHM2crb2U1NnE3YW4zVjg3MnRuNTVzMGpHT3orQUhucmRkdnBScXRjZW9kMjVmTVlpMy95dEUKM3NpN0NmTE8rdnZXQitNUWVqdm8xZjdqeUJuMHQzNXlzcHN1TnVMNW5lSk9VVENyM2hhd3VrdXAxbitNYWtMZjV5VHlSdDROa0hjVwozZTFmTDRSSC9xaTl3VGlFM2dMU2pteVpmYzZiY2E5WjR6NzZZVEN1VWZmVGQ5cXpsS3FINzhqV3o4TW9yYXA5N2c0eVI5NE5rWGZSCmVJYlFvWUlxUFZCN1ZFenl0NUYzb1FmQ1d3eCs1RjFKMVhyMDlHQmw2MmNHd2JoNkJsQ055Um9nNzZiSU8rODczOXBnSEVKdkM3NFcKdC9EZnBLWGVqbkY2OHM2aXU3VWNob21FQndySEcrb2VvK0ZtQS9WekM4aTdLZkxPb3RYQk9JVGVIdnFxUDVBbVBjNTExZk85clNkTwpLdTIzZU9DcWJpblZhdVY5d0hCZ2plcTh5ZkpPdjRzQjh2YThMNjBPeGlIMDl0QnJnTHl6Q0xkK2VySjc5RlVWQk9PcWwzZWUwUFdDCmNmUTJCK1JkbGJ5ejZHNy9aaUU4OHRKMkJ1TVFla3RJTzdKZDZuTWVOTzdINGY5ZXEvVlNxa29EMStUZm5sYjRITDAyY0VIZXlCdDUKZDZSWEhSRTZLRk4ySDcyK0gwZlVxWFFwMWNya25mZGo5enRaZThWZ1pldm5ic0U0NUkyOGtYZEhvd1ZzSzROeENMMWRIQXE5V1Q4Twp4V0JjcmZMT29ydjFzekE4K3NycWczSElHM2tqNzBxT3NiWEJPSVRlcmdxOTM5QWZoMGFmODk1V0hOWXQ3NkxqOVMzTmtXQWM4a2JlCnlMdTJZMnh0TUE2aHQ2OUNiOTZQSXczR3hTZTc2V0lqbnJjYmQ5TEwrYzNNREhpOUpCZE1McVdLdkpGMzg2UTVmZkxPb3J2OTVFSjQKNUNYdEM4WWg5Qlp4OUZYUHg4Wjl6cXYvNFZVZmpLdHZjTkZhU3ZXVHlCdDVJKzlHYkxlVndUaUUzczRxZmFtQlA3eW9veG1NYTliZwo0djJTWENMd3RDSy9sYTgzOGtiZWpkam5WZ2JqRUhvYmhkNkVGckNUQTFlemwxTDFPd2gwdDM0ZWhrZGZRUldOdkpIM0ZNZzdpMVlHCjR4QjYyL0FWalBQZnBNVi9NTzZWZzk3V3o4TEdEUUw3Z2JWV0wrS0F2SkUzOHE1MlBFUG9rRjJoMXkvdnJHMkhXOHRoTjExc3hQUHgKeGgyVEJqUFZkMWpyOGxWRTNzaDdLdVNkOWJmZDdmN0MwcEhGaTcwMmZlY1Jlc3M0ZXRYemNXR2Y4M3JibytvdXBWcWZ2RW1iSTIvawpQYjN5TGhyUEVEcFVVcVV2TmFTMytmRGZScDAyTEtXS3ZKRTM4a2JlNWJSdXRVR0Uza2FNbGxLdHBjTmE4NVpTUmQ3SUcza2piemRhCmR4OGRvYmVUZmdQa1hja1A0T2dyQnIydG40ZklHM2tqYitSZDlYNUVDQjBxWUtmWDBCOUl1UFd6c0h2MGxkVUU0NUQzRkVqOEYrRTEKeVgvZWdyeVJkeFAzWS91M0MwdEgvckE5d1RpRTNrS09Sb040b3M5NWMzNGdLc0c0Uk40UjhwNUtUaGRYUXNnYmVkZDZqSzBLeGlIMAp0bUowSDcyV0gwamtXK2pCWGpBT2VVOG5mZVE5by9KdXh6RzJLaGlIME50TFUxdkFldjhCSk9KK05QblBvNXp5YWNUZzloSHlSdDcxCkhXT3JnbkcveDREUzRzb20yUDh5QjU2LzFFSEd5NXdsVHMzMHNmM2ZZWGY3RjJIa2ZiTDI4b3V4eCsrZXYrOTFVL2FqQ2R0MTJmYjAKSEdQVXB0OHBGWHBiOGRYbjNQL3NOdHorcjdDN3Y5Z0l0RlRlKzVWSk9wZ3Q3ay9TUXJWdmpPbnRJeXB2S20vOWJVL2Mya1Bvb003UgpWdzVpNno3bmlqK1FzY1M1UmpBT3FwZjM1TjhuVmZxUmx3OThuMXVaMEpFMzh2WWs3eU4vMEw0MTBCSDY5SkEvRUZZbjc5YlBhcEczCkNUdWFrelh6Ym9ESUcza2piNFErMVVLdlZ0NmQvUUc5dHo4UXg2VE5wMWJlV1ZUWERSQjVJMi9ramRCbkJzOTl6ZzNrblQ0cVJ2VTkKTy9MT0drQzloeDZQdk94aXZQMnJCZVNOdkpFM1FwLzVDaDE1STI4dGVXZXhwUGhkWGtMZXlCdDVOL08wUUFWcy9Ud3NIYVdSTi9MMgpQQXBjbFZiVlhvLzFWd3VQSlB0eERmSkczcmxqMUI5Y1pJeWlRcCtKS24wSmVVL2xkUHRKTTRGWDNtSE5mekRPNSswajVJMjhFVHEwCmNzeWZmSVlYZVUvWFpDMnNXZDVaMjIzT01ybklHM2tEUXA4aXZ0N1p2NmVFdktlTm5YVEF1N3FCZzdQL1lOd2ZYWXkzZjcyQXZKRTMKSVBUWkpaRjR6S2N3dGFUbjlrd0RCYVFmakp1Rk1CenlCb1FPVUQ4WmdiWEJrWmNQcnZjdXVJWXVUSkpVMDFGYVZYdmVuM3Bid0NKdgo1STNRQVdaTzNsbHA4L1NSR3E5Q1AvTHlpeXZidjF3WWRJeVQ3VHJ5THFqU1k4OGZkYit5WTBUZXlCdWhBeUR2SExyYnYxZ0lFd2tQCnZGZnB0a0t2cHNOYXZjRTQ1STI4QWFFRGpNaDdyM1d1cmJ3N09Xbno5Ti83Rm5weE1LNis5cWorZzNFdnZSaHYvMllCZVNOdlFPZ0EKbGNvN1QzS1BlZDcxZE5BOVU3TzhzN2E5cExUdG5zcTJrVGZ5UnVnQXlOdGlBRDJ0SkxoR1NpS3BwcU8wcXZiOGpuS2hJMi9ramRBQgprTGR3Y1BaL0dmcVBMNjVzLzJvb0dOZXN4N25xRDhZaGIrUU5DQjFhTHZKZmhOL3ZOS2UzK1FIZDdWOHVoRWRlNWprWUZ6Z0U0Nm9SClVMWEJPT1NOdkFHaHcxUnlkYzN5THFwYUI1NjNhZDR4cmxvQitiOGk4WktMOGZhVEM4Z2JlUU5DaHhraUhmQ2lSdlEySDkyMmJqQ3UKV1FLcUp4aUh2QUVRT2t3VE83MDlvVGR1Y0Q2dDhJNjloaDNqSlpKcU9rcXJhb1hqMVcwQmk3d0JvUU9ZTXhSWTZ4eDV1ZmVlOC8wbQppVzNvYnpVV0xsblovbzJuam5IKzVkYnNwVlNSTnlCMEFHZDVwMVh6ZU5yOE1ZVkIzLy9nNk9jNTcrNzJyeGZDUk1JRGhhbzFyUFFZCnpXak9VcXJJR3hBNmdGZDU1MVZ4ZnF2V2wxM3NiZjl5b1c1NUZ4MnZiNkhiQitPcXVWenQvOXd1WG95Myt3djFIUi95Qm9RT3lIdWMKUzRHMWNQc1hDOTEwc1JIUHU1Y09yRkhOOHM0VGVyWEJ1UHJ1TmVzdnBZcThBUkE2MUNMdm9vRS9WaGowbzVybG5ZVnVNSzVodmMyVAphanBLcTJyUCsxSkhDMWprRFFnZGtMZkJBQnAxL045SFgwNys5N3FhNVYzSjQxeEhYbnB4WmZ0Smo4RTR2ODk1TjI4cFZlUU5DQjJRCnR4ZDVaMUZkZUtyKzFIdDMremNMWVNMaGdjTHhoa3I3TFBuODZnL0dJVzhBaEk2OFZlU2RWOFg1clZyLytPSmcrMWNMSzhtK2RHdVUKZDlIeCtoWjZlVEN1bmc1ci9zL3RIMTZNdDMrN2dMd0JFUG9NRSt3T3JrL1VMTzhzd3UxZkxuU1B2TXh6TUM3b0ZEZVlxZllZeHlXbgpHNHhyVG50VXZXQmM4YmFSTndCQ24xN1NCaTdidndqcmxuZlJ3Qjk3M3VxeXRkQ3J1U1N2RTR3TGFqN0duTzBtMVhTVVZ0VUtrN1VsCjVBMkEwR2VZSGJPRWNQWDNtcU9PVHRLOVNjYzRYS0g3bmF5OTVPTEtkaThqR05lTTFMdkdaTzJUeWVzKzVBMWd4dS94RVV3bHZjekIKZWZ6bGMrQTMyN1p1ZUtvWngzaEFkL3ZKaFZCQnNqMlZZNVIvZHQ3UGJTTHlBVElIUU9pelRyOFJZcHY4VzQwKzU0Tmt1eXMxeTd1eQpLcjNqNjNFdS85K1BKWDUyQUFnZE5LcTQrdVdkUmJqOTZ3V05SSHF2a21PMDM2Nkc1R0x4TWVwTWZCQTZBRUlINzFYcnl4ekNTZjdsClhXVWx0OXdBZVdkdHQ3cWxWT3M3eG9OSnhyM2J2MU80eFFBQXhoQ0ttMTd5ZzNIMXRrZU5PbFVFNDVvVEZQTTdXVnU4dUxMZDN3L0cKMVhPTWNZZTBPUUJDaHhxRTNvemU1c1BiWGxUWWRrOTVuMTMvdnB2SU4wd2tQRkE0M3JDQ1kwVGVBQWdkYWljb0NVOU4xK05jZyswbgpGOUtHTlYybGZaYjhmVE9XVWtYZUFBZ2RXbDJoMXkzdkxNTHQzeXgwMDhWR0ZJNDNxbG5lZVVLdmRpbFY1QTJBMEdGNk9QTEhGK1B0Clh5L1VMZThpeWNXZUR6bTdZMXo5N1ZIMWczRkI2ZC8yOWo4ZjVBMkEwS0hGVmJyYkpXN2RxajdxYUFUamdrWWQ0L0RreGU5azdROHYKcm16L0xuTXAxZDVZNVIzekV3QkE2REJMUXEvK2tuejF3Ymo2Ymp0MHQzKzdFQ1lTSG5oKzEvUXlmaGQ1QXdCQ253MzZEUkxiTVA2cgoxcVdMZyszZWZqQ3VXWm1CZytQMUt2UkU0TmZ6OVFhQVlXZ3NNODFvOWYzdWRLUU5UTUx0SnhVNnhnVU9sOTMxamxGMUFnTUFnTkJuCmlDTXY5WFFadGoyOXY1Y2Jkb3dIMnpyTnR4RUFFRHBJc1VzMVY5YzZOS3J0V0t0dmowcUZEZ0RxY0E5OU5vUXVid0ZySzdaeWRKZFMKcmZjWVNac0RBRUlINy9SVnhXYTdiYzNIdVJZdkRyWi9LK3dZaDd3QkFLRkRJL0hkNTl4ZmIvaHd1Ny9RVFJjYlVhalNJK1FOQUFnZApwb29qTDdrWWJ6L3AyREZPZjJHWDZqckdJVzhBUU9nd0JaUTNtS2xuVmJhb1U4VlNxc2diQUJBNlRLWFFtN09rcWs0d0Rua0RBRUtICnFhUnNLZFZxNUoyRlJwL3p3ZmJ2TGdYamtEY0FJSFNZdWdxOWJubG5FVzcvZHFHYkxqYmllUSt1WWxVeEFKaTkyZzFtZ3UzK3drNUQKdjBGWEpVS25jZ1lBRUVLbnVGbXUwbDNrN2IvRFdzU3BBUUJBNktBbDlPcmFveTV5YWdBQTVIQVBmWGJvRjBwV0E3TzArVEtuQmdBQQpvWU50aFU1dmN3Q0FxWVJRM0F5eC9WdFB3VGprRFFCQWhRNjFWK2wyejM0amJ3QUFoQTR0RXpyeUJnQkE2TkFLK3NnYkFBQ2hROXZKClhrb1ZlUU1BVE1VUUR6UEY5dThXSGtIZUFBQUFBQUFBQUFBQUFBQUFBQUNaL0g4QkJnQWdDWmFqRnNtWlJ3QUFBQUJKUlU1RXJrSmcKZ2c9PQoiCiAgICAgICBpZD0iaW1hZ2U1NiIgLz4KICA8L2c+Cjwvc3ZnPgo=
+    mediatype: image/svg+xml
+  install:
+    spec:
+      clusterPermissions:
+      - rules:
+        - nonResourceURLs:
+          - /api/v2/alerts
+          verbs:
+          - create
+        - apiGroups:
+          - ""
+          resources:
+          - configmaps
+          - endpoints
+          - nodes
+          - pods
+          - secrets
+          - serviceaccounts
+          - services
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - ""
+          resources:
+          - namespaces
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - apps
+          resources:
+          - deployments
+          - statefulsets
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - config.openshift.io
+          resources:
+          - apiservers
+          - dnses
+          - proxies
+          verbs:
+          - get
+          - list
+          - watch
+        - apiGroups:
+          - coordination.k8s.io
+          resources:
+          - leases
+          verbs:
+          - create
+          - get
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - alertingrules
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - alertingrules/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - alertingrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - lokistacks
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - lokistacks/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - lokistacks/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - recordingrules
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - recordingrules/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - recordingrules/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - rulerconfigs
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - rulerconfigs/finalizers
+          verbs:
+          - update
+        - apiGroups:
+          - loki.grafana.com
+          resources:
+          - rulerconfigs/status
+          verbs:
+          - get
+          - patch
+          - update
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - alertmanagers
+          verbs:
+          - patch
+        - apiGroups:
+          - monitoring.coreos.com
+          resources:
+          - prometheusrules
+          - servicemonitors
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
+          - networking.k8s.io
+          resources:
+          - ingresses
+          verbs:
+          - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
+          - policy
+          resources:
+          - poddisruptionbudgets
+          verbs:
+          - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
+          - rbac.authorization.k8s.io
+          resources:
+          - clusterrolebindings
+          - clusterroles
+          - rolebindings
+          - roles
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - patch
+          - update
+          - watch
+        - apiGroups:
+          - route.openshift.io
+          resources:
+          - routes
+          verbs:
+          - create
+          - delete
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
+          - authentication.k8s.io
+          resources:
+          - tokenreviews
+          verbs:
+          - create
+        - apiGroups:
+          - authorization.k8s.io
+          resources:
+          - subjectaccessreviews
+          verbs:
+          - create
+        serviceAccountName: default
+      deployments:
+      - label:
+          app.kubernetes.io/instance: loki-operator-v0.4.0
+          app.kubernetes.io/managed-by: operator-lifecycle-manager
+          app.kubernetes.io/name: loki-operator
+          app.kubernetes.io/part-of: loki-operator
+          app.kubernetes.io/version: 0.4.0
+          control-plane: controller-manager
+        name: loki-operator-controller-manager
+        spec:
+          replicas: 1
+          selector:
+            matchLabels:
+              app.kubernetes.io/managed-by: operator-lifecycle-manager
+              app.kubernetes.io/name: loki-operator
+              app.kubernetes.io/part-of: loki-operator
+              name: loki-operator-controller-manager
+          strategy: {}
+          template:
+            metadata:
+              annotations:
+                kubectl.kubernetes.io/default-container: manager
+              labels:
+                app.kubernetes.io/managed-by: operator-lifecycle-manager
+                app.kubernetes.io/name: loki-operator
+                app.kubernetes.io/part-of: loki-operator
+                name: loki-operator-controller-manager
+            spec:
+              containers:
+              - args:
+                - --config=controller_manager_config.yaml
+                command:
+                - /manager
+                env:
+                - name: RELATED_IMAGE_LOKI
+                  value: docker.io/grafana/loki:2.8.3
+                - name: RELATED_IMAGE_GATEWAY
+                  value: quay.io/observatorium/api:latest
+                - name: RELATED_IMAGE_OPA
+                  value: quay.io/observatorium/opa-openshift:latest
+                image: docker.io/grafana/loki-operator:0.4.0
+                imagePullPolicy: IfNotPresent
+                livenessProbe:
+                  httpGet:
+                    path: /healthz
+                    port: 8081
+                  initialDelaySeconds: 15
+                  periodSeconds: 20
+                name: manager
+                ports:
+                - containerPort: 9443
+                  name: webhook-server
+                  protocol: TCP
+                - containerPort: 8080
+                  name: metrics
+                readinessProbe:
+                  httpGet:
+                    path: /readyz
+                    port: 8081
+                  initialDelaySeconds: 5
+                  periodSeconds: 10
+                resources: {}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - mountPath: /controller_manager_config.yaml
+                  name: manager-config
+                  subPath: controller_manager_config.yaml
+              - args:
+                - --secure-listen-address=0.0.0.0:8443
+                - --upstream=http://127.0.0.1:8080/
+                - --logtostderr=true
+                - --tls-cert-file=/var/run/secrets/serving-cert/tls.crt
+                - --tls-private-key-file=/var/run/secrets/serving-cert/tls.key
+                - --tls-cipher-suites=TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA256,TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA256,TLS_RSA_WITH_AES_128_GCM_SHA256,TLS_RSA_WITH_AES_256_GCM_SHA384,TLS_RSA_WITH_AES_128_CBC_SHA256
+                - --tls-min-version=VersionTLS12
+                - --v=0
+                image: quay.io/openshift/origin-kube-rbac-proxy:latest
+                name: kube-rbac-proxy
+                ports:
+                - containerPort: 8443
+                  name: https
+                resources: {}
+                securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop:
+                    - ALL
+                volumeMounts:
+                - mountPath: /var/run/secrets/serving-cert
+                  name: loki-operator-metrics-cert
+              nodeSelector:
+                kubernetes.io/os: linux
+              securityContext:
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+              terminationGracePeriodSeconds: 10
+              volumes:
+              - configMap:
+                  name: loki-operator-manager-config
+                name: manager-config
+              - name: loki-operator-metrics-cert
+                secret:
+                  defaultMode: 420
+                  optional: true
+                  secretName: loki-operator-metrics
+      permissions:
+      - rules:
+        - apiGroups:
+          - ""
+          - coordination.k8s.io
+          resources:
+          - configmaps
+          - leases
+          verbs:
+          - get
+          - list
+          - watch
+          - create
+          - update
+          - patch
+          - delete
+        - apiGroups:
+          - ""
+          resources:
+          - events
+          verbs:
+          - create
+          - patch
+        serviceAccountName: default
+    strategy: deployment
+  installModes:
+  - supported: false
+    type: OwnNamespace
+  - supported: false
+    type: SingleNamespace
+  - supported: false
+    type: MultiNamespace
+  - supported: true
+    type: AllNamespaces
+  keywords:
+  - logging
+  - loki
+  links:
+  - name: Documentation
+    url: https://loki-operator.dev/
+  maintainers:
+  - email: loki-operator-team@googlegroups.com
+    name: Grafana Loki SIG Operator
+  maturity: alpha
+  minKubeVersion: 1.21.1
+  provider:
+    name: Grafana Loki SIG Operator
+  relatedImages:
+  - image: docker.io/grafana/loki:2.8.3
+    name: loki
+  - image: quay.io/observatorium/api:latest
+    name: gateway
+  - image: quay.io/observatorium/opa-openshift:latest
+    name: opa
+  replaces: loki-operator.v0.3.0
+  version: 0.4.0
+  webhookdefinitions:
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - alertingrules.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: calertingrules.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - lokistacks.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: clokistacks.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - recordingrules.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: crecordingrules.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    - v1beta1
+    containerPort: 443
+    conversionCRDs:
+    - rulerconfigs.loki.grafana.com
+    deploymentName: loki-operator-controller-manager
+    generateName: crulerconfigs.kb.io
+    sideEffects: None
+    targetPort: 9443
+    type: ConversionWebhook
+    webhookPath: /convert
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: valertingrule.loki.grafana.com
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - alertingrules
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-alertingrule
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vlokistack.loki.grafana.com
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - lokistacks
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-lokistack
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vrecordingrule.loki.grafana.com
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - recordingrules
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-recordingrule
+  - admissionReviewVersions:
+    - v1
+    containerPort: 443
+    deploymentName: loki-operator-controller-manager
+    failurePolicy: Fail
+    generateName: vrulerconfig.loki.grafana.com
+    rules:
+    - apiGroups:
+      - loki.grafana.com
+      apiVersions:
+      - v1
+      operations:
+      - CREATE
+      - UPDATE
+      resources:
+      - rulerconfigs
+    sideEffects: None
+    targetPort: 9443
+    type: ValidatingAdmissionWebhook
+    webhookPath: /validate-loki-grafana-com-v1-rulerconfig

@@ -4,17 +4,18 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // BuildIngester builds the k8s objects required to run Loki Ingester
@@ -43,7 +44,21 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&statefulSet.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := configureHashRingEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
 	if err := configureProxyEnv(&statefulSet.Spec.Template.Spec, opts); err != nil {
+		return nil, err
+	}
+
+	if err := configureReplication(&statefulSet.Spec.Template, opts.Stack.Replication, LabelIngesterComponent, opts.Name); err != nil {
 		return nil, err
 	}
 
@@ -51,13 +66,16 @@ func BuildIngester(opts Options) ([]client.Object, error) {
 		statefulSet,
 		NewIngesterGRPCService(opts),
 		NewIngesterHTTPService(opts),
+		newIngesterPodDisruptionBudget(opts),
 	}, nil
 }
 
 // NewIngesterStatefulSet creates a deployment object for an ingester
 func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelIngesterComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.Ingester),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -83,6 +101,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 					"-target=ingester",
 					fmt.Sprintf("-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiConfigFileName)),
 					fmt.Sprintf("-runtime-config.file=%s", path.Join(config.LokiConfigMountDir, config.LokiRuntimeConfigFileName)),
+					"-config.expand-env=true",
 				},
 				ReadinessProbe: lokiReadinessProbe(),
 				LivenessProbe:  lokiLivenessProbe(),
@@ -123,10 +142,8 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.Ingester != nil {
@@ -134,8 +151,6 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		podSpec.NodeSelector = opts.Stack.Template.Ingester.NodeSelector
 	}
 
-	l := ComponentLabels(LabelIngesterComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	return &appsv1.StatefulSet{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "StatefulSet",
@@ -147,8 +162,8 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 		},
 		Spec: appsv1.StatefulSetSpec{
 			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
-			RevisionHistoryLimit: pointer.Int32Ptr(10),
-			Replicas:             pointer.Int32Ptr(opts.Stack.Template.Ingester.Replicas),
+			RevisionHistoryLimit: pointer.Int32(10),
+			Replicas:             pointer.Int32(opts.Stack.Template.Ingester.Replicas),
 			Selector: &metav1.LabelSelector{
 				MatchLabels: labels.Merge(l, GossipLabels()),
 			},
@@ -176,7 +191,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.Ingester.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -195,7 +210,7 @@ func NewIngesterStatefulSet(opts Options) *appsv1.StatefulSet {
 								corev1.ResourceStorage: opts.ResourceRequirements.WALStorage.PVCSize,
 							},
 						},
-						StorageClassName: pointer.StringPtr(opts.Stack.StorageClassName),
+						StorageClassName: pointer.String(opts.Stack.StorageClassName),
 						VolumeMode:       &volumeFileSystemMode,
 					},
 				},
@@ -268,4 +283,32 @@ func configureIngesterHTTPServicePKI(statefulSet *appsv1.StatefulSet, opts Optio
 func configureIngesterGRPCServicePKI(sts *appsv1.StatefulSet, opts Options) error {
 	serviceName := serviceNameIngesterGRPC(opts.Name)
 	return configureGRPCServicePKI(&sts.Spec.Template.Spec, serviceName)
+}
+
+// newIngesterPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// Ingester pods.
+func newIngesterPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelIngesterComponent, opts.Name)
+	// Default to 1 if not defined in ResourceRequirementsTable for a given size
+	mu := intstr.FromInt(1)
+	if opts.ResourceRequirements.Ingester.PDBMinAvailable > 0 {
+		mu = intstr.FromInt(opts.ResourceRequirements.Ingester.PDBMinAvailable)
+	}
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      IngesterName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &mu,
+		},
+	}
 }
