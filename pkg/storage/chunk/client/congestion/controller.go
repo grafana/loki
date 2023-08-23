@@ -7,6 +7,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/go-kit/log"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -24,6 +25,8 @@ type AIMDController struct {
 	limiter       *rate.Limiter
 	backoffFactor float64
 	upperBound    rate.Limit
+
+	logger log.Logger
 }
 
 func NewAIMDController(cfg Config) *AIMDController {
@@ -71,6 +74,11 @@ func (a *AIMDController) withMetrics(m *Metrics) Controller {
 	a.metrics = m
 
 	a.updateLimitMetric()
+	return a
+}
+
+func (a *AIMDController) withLogger(logger log.Logger) Controller {
+	a.logger = logger
 	return a
 }
 
@@ -134,7 +142,9 @@ func (a *AIMDController) IsObjectNotFoundErr(err error) bool {
 func (a *AIMDController) IsRetryableErr(err error) bool {
 	retryable := a.inner.IsRetryableErr(err)
 	if !retryable {
-		a.metrics.nonRetryableErrors.Inc()
+		if !errors.Is(err, context.Canceled) {
+			a.metrics.nonRetryableErrors.Inc()
+		}
 	}
 
 	return retryable
@@ -181,6 +191,7 @@ type NoopController struct {
 	retrier Retrier
 	hedger  Hedger
 	metrics *Metrics
+	logger  log.Logger
 }
 
 func NewNoopController(Config) *NoopController {
@@ -199,6 +210,11 @@ func (n *NoopController) IsObjectNotFoundErr(error) bool                 { retur
 func (n *NoopController) IsRetryableErr(error) bool                      { return false }
 func (n *NoopController) Stop()                                          {}
 func (n *NoopController) Wrap(c client.ObjectClient) client.ObjectClient { return c }
+
+func (n *NoopController) withLogger(logger log.Logger) Controller {
+	n.logger = logger
+	return n
+}
 func (n *NoopController) withRetrier(r Retrier) Controller {
 	n.retrier = r
 	return n
