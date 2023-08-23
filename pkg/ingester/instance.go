@@ -2,6 +2,8 @@ package ingester
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"sync"
@@ -38,7 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	"github.com/grafana/loki/pkg/util/math"
+	mathutil "github.com/grafana/loki/pkg/util/math"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -111,10 +113,6 @@ type instance struct {
 	writeFailures *writefailures.Manager
 
 	schemaconfig *config.SchemaConfig
-
-	// precomputed `Chunk` and `Head` formats parsed from schemaconfig
-	chunkfmt byte
-	headfmt  chunkenc.HeadBlockFmt
 }
 
 func newInstance(
@@ -162,9 +160,6 @@ func newInstance(
 		schemaconfig:  &c,
 	}
 	i.mapper = newFPMapper(i.getLabelsFromFingerprint)
-	chunkfmt, headfmt, err := i.extractChunkformats()
-	i.chunkfmt = chunkfmt
-	i.headfmt = headfmt
 	return i, err
 }
 
@@ -175,8 +170,11 @@ func (i *instance) consumeChunk(ctx context.Context, ls labels.Labels, chunk *lo
 
 	s, _, _ := i.streams.LoadOrStoreNewByFP(fp,
 		func() (*stream, error) {
-			s := i.createStreamByFP(ls, fp)
-			s.chunkMtx.Lock()
+			s, err := i.createStreamByFP(ls, fp)
+			s.chunkMtx.Lock() // Lock before return, because we have defer that unlocks it.
+			if err != nil {
+				return nil, err
+			}
 			return s, nil
 		},
 		func(s *stream) error {
@@ -293,7 +291,9 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(labels), fp)
 
-	s := newStream(i.chunkfmt, i.headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+	chunkfmt, headfmt, err := i.chunkFormatAt(minTs(&pushReqStream))
+
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	// record will be nil when replaying the wal (we don't want to rewrite wal entries as we replay them).
 	if record != nil {
@@ -323,20 +323,32 @@ func (i *instance) createStream(pushReqStream logproto.Stream, record *wal.Recor
 	return s, nil
 }
 
-func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) *stream {
+func (i *instance) createStreamByFP(ls labels.Labels, fp model.Fingerprint) (*stream, error) {
 	sortedLabels := i.index.Add(logproto.FromLabelsToLabelAdapters(ls), fp)
-	s := newStream(i.chunkfmt, i.headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
+
+	chunkfmt, headfmt, err := i.chunkFormatAt(model.Now())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create stream for fingerprint: %w", err)
+	}
+
+	s := newStream(chunkfmt, headfmt, i.cfg, i.limiter, i.instanceID, fp, sortedLabels, i.limiter.UnorderedWrites(i.instanceID), i.streamRateCalculator, i.metrics, i.writeFailures)
 
 	i.streamsCreatedTotal.Inc()
 	memoryStreams.WithLabelValues(i.instanceID).Inc()
 	memoryStreamsLabelsBytes.Add(float64(len(s.labels.String())))
 	i.addTailersToNewStream(s)
 
-	return s
+	return s, nil
 }
 
-func (i *instance) extractChunkformats() (byte, chunkenc.HeadBlockFmt, error) {
-	periodConfig, err := i.schemaconfig.SchemaForTime(model.Now())
+// chunkFormatAt returns chunk formats to use at given period of time.
+func (i *instance) chunkFormatAt(at model.Time) (byte, chunkenc.HeadBlockFmt, error) {
+	// NOTE: We choose chunk formats for stream based on it's entries timestamp.
+	// Rationale being, a single (ingester) instance can be running across multiple schema period
+	// and choosing correct periodConfig during creation of stream is more accurate rather
+	// than choosing it during starting of instance itself.
+
+	periodConfig, err := i.schemaconfig.SchemaForTime(at)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -917,7 +929,7 @@ func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer QuerierQ
 	for limit != 0 && !isDone(ctx) {
 		fetchSize := uint32(queryBatchSize)
 		if limit > 0 {
-			fetchSize = math.MinUint32(queryBatchSize, uint32(limit))
+			fetchSize = mathutil.MinUint32(queryBatchSize, uint32(limit))
 		}
 		batch, batchSize, err := iter.ReadBatch(i, fetchSize)
 		if err != nil {
@@ -1010,4 +1022,21 @@ func (o *OnceSwitch) TriggerAnd(fn func()) {
 	if !triggeredPrior && fn != nil {
 		fn()
 	}
+}
+
+// minTs is a helper to return minimum Unix timestamp (as `model.Time`)
+// across all the entries in a given `stream`.
+func minTs(stream *logproto.Stream) model.Time {
+	// NOTE: We choose `min` timestamp because, the chunk is written once then
+	// added to the index buckets for may be different days. It would better rather to have
+	// some latest(say v13) indices reference older (say v12) compatible chunks than vice versa.
+
+	streamMinTs := int64(math.MaxInt64)
+	for _, entry := range stream.Entries {
+		ts := entry.Timestamp.UnixNano()
+		if streamMinTs > ts {
+			streamMinTs = ts
+		}
+	}
+	return model.TimeFromUnixNano(streamMinTs)
 }

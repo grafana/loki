@@ -296,7 +296,9 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(instance.chunkfmt, instance.headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
+		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
+		require.NoError(t, err)
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -548,9 +550,12 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 	})
 	lbs := makeRandomLabels()
 
+	chunkfmt, headfmt, err := inst.chunkFormatAt(model.Now())
+	require.NoError(b, err)
+
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(inst.chunkfmt, inst.headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
 		}
 	})
 }
