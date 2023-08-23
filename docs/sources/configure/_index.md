@@ -4320,7 +4320,7 @@ http_config:
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
-# are: v4, v2.
+# are: v4.
 # CLI flag: -s3.signature-version
 [signature_version: <string> | default = "v4"]
 
@@ -4602,7 +4602,7 @@ http_config:
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
-# are: v4, v2.
+# are: v4.
 # CLI flag: -<prefix>.storage.s3.signature-version
 [signature_version: <string> | default = "v4"]
 
