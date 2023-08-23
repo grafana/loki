@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 
+	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -60,13 +62,17 @@ func execute() {
 	sampler, err := NewProbabilisticSampler(0.001)
 	helpers.ExitErr("creating sampler", err)
 
-	err = analyze(sampler, shipper, chunkClient, tableName, tenants)
+	metrics := NewMetrics(prometheus.DefaultRegisterer)
+
+	err = analyze(metrics, sampler, shipper, chunkClient, tableName, tenants)
 	helpers.ExitErr("analyzing", err)
 }
 
-func analyze(sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
+func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
+	tokenizer := newLogfmtTokenizer()
+	metrics.tenants.Add(float64(len(tenants)))
 	for _, tenant := range tenants {
-		shipper.ForEach(
+		err := shipper.ForEach(
 			context.Background(),
 			tableName,
 			tenant,
@@ -80,9 +86,17 @@ func analyze(sampler Sampler, shipper indexshipper.IndexShipper, client client.C
 					context.Background(),
 					nil, model.Earliest, model.Latest,
 					func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+
+						metrics.series.Inc()
+						metrics.chunks.Add(float64(len(chks)))
+
 						if !sampler.Sample() {
 							return
 						}
+						metrics.seriesKept.Inc()
+						metrics.chunksKept.Add(float64(len(chks)))
+
+						sbf := boom.NewDefaultScalableBloomFilter(0.01)
 
 						transformed := make([]chunk.Chunk, 0, len(chks))
 						for _, chk := range chks {
@@ -112,9 +126,33 @@ func analyze(sampler Sampler, shipper indexshipper.IndexShipper, client client.C
 							helpers.ExitErr("getting iterator", err)
 
 							for itr.Next() {
-								itr.Entry()
+								toks := tokenizer.Tokens(itr.Entry().Line)
+								for _, tok := range toks {
+									if tok.Key != "" {
+										if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
+											metrics.collisions.Inc()
+											metrics.keyCollisions.Inc()
+										}
+										metrics.inserts.Inc()
+										metrics.keysInserted.Inc()
+									}
+
+									if tok.Value != "" {
+										if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
+											metrics.collisions.Inc()
+											metrics.valueCollisions.Inc()
+										}
+										metrics.inserts.Inc()
+										metrics.valuesInserted.Inc()
+									}
+								}
 							}
 						}
+
+						metrics.bloomSize.Observe(float64(sbf.Capacity()))
+						metrics.hammingWeightRatio.Observe(sbf.FillRatio())
+
+						//TODO: estimated count & estimated error rate
 
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
@@ -124,6 +162,41 @@ func analyze(sampler Sampler, shipper indexshipper.IndexShipper, client client.C
 
 			}),
 		)
-	}
+		helpers.ExitErr(fmt.Sprintf("iterating tenant %s", tenant), err)
 
+	}
+	return nil
+}
+
+type Tokenizer interface {
+	Tokens(line string) []Token
+}
+
+type logfmtTokenizer struct {
+	parser *log.LogfmtParser
+	lbls   *log.LabelsBuilder
+}
+
+func (t *logfmtTokenizer) Tokens(line string) []Token {
+	t.lbls.Reset()
+	t.parser.Process(0, []byte(line), t.lbls)
+	ls := t.lbls.LabelsResult().Labels()
+	res := make([]Token, 0, len(ls))
+	for _, l := range ls {
+		res = append(res, Token{Key: l.Name, Value: l.Value})
+	}
+	return res
+}
+
+func newLogfmtTokenizer() *logfmtTokenizer {
+	return &logfmtTokenizer{
+		// non strict, allow empty values
+		parser: log.NewLogfmtParser(false, true),
+		lbls:   log.NewBaseLabelsBuilder().ForLabels(nil, 0),
+	}
+}
+
+type Token struct {
+	// Either key or value may be empty
+	Key, Value string
 }
