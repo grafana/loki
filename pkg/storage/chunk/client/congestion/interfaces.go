@@ -4,6 +4,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/go-kit/log"
+
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
@@ -18,6 +20,7 @@ type Controller interface {
 	// Wrap wraps a given object store client and handles congestion against its backend service
 	Wrap(client client.ObjectClient) client.ObjectClient
 
+	withLogger(log.Logger) Controller
 	withRetrier(Retrier) Controller
 	withHedger(Hedger) Controller
 	withMetrics(*Metrics) Controller
@@ -38,6 +41,8 @@ type Retrier interface {
 	//
 	// count is the current request count; any positive number indicates retries, 0 indicates first attempt.
 	Do(fn DoRequestFunc, isRetryable IsRetryableErrFunc, onSuccess func(), onError func()) (io.ReadCloser, int64, error)
+
+	withLogger(log.Logger) Retrier
 }
 
 // Hedger orchestrates request "hedging", which is the process of sending a new request when the old request is
@@ -47,4 +52,6 @@ type Hedger interface {
 	// It is recommended that retries are not hedged.
 	// Bear in mind this function can be called several times, and should return the same client each time.
 	HTTPClient(cfg hedging.Config) (*http.Client, error)
+
+	withLogger(log.Logger) Hedger
 }
