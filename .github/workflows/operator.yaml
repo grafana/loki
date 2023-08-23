@@ -49,7 +49,7 @@ jobs:
       id: go
     - uses: actions/checkout@v3
     - name: Lint
-      uses: golangci/golangci-lint-action@v3.5.0
+      uses: golangci/golangci-lint-action@v3.7.0
       with:
         version: v1.53.3
         args: --timeout=4m
