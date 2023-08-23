@@ -45,7 +45,7 @@ drop, and the final metadata to attach to the log line. Refer to the docs for
 Promtail now has native support for ingesting compressed files.
 If a discovered target has decompression configured, Promtail will
 **lazily** decompress the compressed file and push the parsed data to Loki.
-The Promtail configuration below examplifies how to to set up decompression:
+The Promtail configuration example below shows how to to set up decompression:
 
 ```yaml
 server:

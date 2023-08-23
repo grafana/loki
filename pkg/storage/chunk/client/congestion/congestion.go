@@ -20,10 +20,10 @@ func newController(cfg Config, logger log.Logger) Controller {
 	strat := strings.ToLower(cfg.Controller.Strategy)
 	switch strat {
 	case "aimd":
-		return NewAIMDController(cfg)
+		return NewAIMDController(cfg).withLogger(logger)
 	default:
 		level.Warn(logger).Log("msg", "unrecognized congestion control strategy in config, using noop", "strategy", strat)
-		return NewNoopController(cfg)
+		return NewNoopController(cfg).withLogger(logger)
 	}
 }
 
@@ -31,10 +31,10 @@ func newRetrier(cfg Config, logger log.Logger) Retrier {
 	strat := strings.ToLower(cfg.Retry.Strategy)
 	switch strat {
 	case "limited":
-		return NewLimitedRetrier(cfg)
+		return NewLimitedRetrier(cfg).withLogger(logger)
 	default:
 		level.Warn(logger).Log("msg", "unrecognized retried strategy in config, using noop", "strategy", strat)
-		return NewNoopRetrier(cfg)
+		return NewNoopRetrier(cfg).withLogger(logger)
 	}
 }
 
@@ -43,6 +43,6 @@ func newHedger(cfg Config, logger log.Logger) Hedger {
 	switch strat {
 	default:
 		level.Warn(logger).Log("msg", "unrecognized hedging strategy in config, using noop", "strategy", strat)
-		return NewNoopHedger(cfg)
+		return NewNoopHedger(cfg).withLogger(logger)
 	}
 }
