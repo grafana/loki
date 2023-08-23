@@ -2003,6 +2003,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 596d7f8c249a11fba80c763630b228c6a0e2989ac7238d513d08642be076b15d
+hmac: fb384b17b46ac77869765efc735c4d389ba33e37d5c584ec93da7b4c6b0387da
 
 ...
