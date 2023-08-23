@@ -98,7 +98,7 @@ You can use `--keep-empty` flag to retain them.
 
 #### deprecated query and engine timeout configs are now removed
 Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. Also removes the `query_timeout` from the querier YAML section.
-You can instead configure `query_timeout` in [Limits Config](/docs/loki/latest/configuration/#limits_config)
+You can instead configure `query_timeout` in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 
 ### Jsonnet
 
