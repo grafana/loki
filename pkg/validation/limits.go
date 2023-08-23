@@ -110,7 +110,7 @@ type Limits struct {
 
 	// Ruler defaults and limits.
 
-	// TODO(dannyk): this setting is misnamed and probably deprecatable.
+	// TODO(chaudum): Remove deprecated setting in next major version
 	RulerEvaluationDelay        model.Duration                   `yaml:"ruler_evaluation_delay_duration" json:"ruler_evaluation_delay_duration"`
 	RulerMaxRulesPerRuleGroup   int                              `yaml:"ruler_max_rules_per_rule_group" json:"ruler_max_rules_per_rule_group"`
 	RulerMaxRuleGroupsPerTenant int                              `yaml:"ruler_max_rule_groups_per_tenant" json:"ruler_max_rule_groups_per_tenant"`
@@ -259,7 +259,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.QueryReadyIndexNumDays, "store.query-ready-index-num-days", 0, "Number of days of index to be kept always downloaded for queries. Applies only to per user index in boltdb-shipper index store. 0 to disable.")
 
 	_ = l.RulerEvaluationDelay.Set("0s")
-	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
+	f.Var(&l.RulerEvaluationDelay, "ruler.evaluation-delay-duration", "Deprecated. Duration to delay the evaluation of rules to ensure the underlying metrics have been pushed to Cortex.")
 
 	f.IntVar(&l.RulerMaxRulesPerRuleGroup, "ruler.max-rules-per-rule-group", 0, "Maximum number of rules per rule group per-tenant. 0 to disable.")
 	f.IntVar(&l.RulerMaxRuleGroupsPerTenant, "ruler.max-rule-groups-per-tenant", 0, "Maximum number of rule groups per-tenant. 0 to disable.")
@@ -564,6 +564,7 @@ func (o *Overrides) MaxQueryLookback(_ context.Context, userID string) time.Dura
 	return time.Duration(o.getOverridesForUser(userID).MaxQueryLookback)
 }
 
+// Deprecated, can be removed in next major version
 // EvaluationDelay returns the rules evaluation delay for a given user.
 func (o *Overrides) EvaluationDelay(userID string) time.Duration {
 	return time.Duration(o.getOverridesForUser(userID).RulerEvaluationDelay)
