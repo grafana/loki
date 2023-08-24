@@ -74,6 +74,9 @@ type stream struct {
 	streamRateCalculator *StreamRateCalculator
 
 	writeFailures *writefailures.Manager
+
+	chunkFormat          byte
+	chunkHeadBlockFormat chunkenc.HeadBlockFmt
 }
 
 type chunkDesc struct {
@@ -91,7 +94,19 @@ type entryWithError struct {
 	e     error
 }
 
-func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.Fingerprint, labels labels.Labels, unorderedWrites bool, streamRateCalculator *StreamRateCalculator, metrics *ingesterMetrics, writeFailures *writefailures.Manager) *stream {
+func newStream(
+	chunkFormat byte,
+	headBlockFmt chunkenc.HeadBlockFmt,
+	cfg *Config,
+	limits RateLimiterStrategy,
+	tenant string,
+	fp model.Fingerprint,
+	labels labels.Labels,
+	unorderedWrites bool,
+	streamRateCalculator *StreamRateCalculator,
+	metrics *ingesterMetrics,
+	writeFailures *writefailures.Manager,
+) *stream {
 	hashNoShard, _ := labels.HashWithoutLabels(make([]byte, 0, 1024), ShardLbName)
 	return &stream{
 		limiter:              NewStreamRateLimiter(limits, tenant, 10*time.Second),
@@ -106,8 +121,10 @@ func newStream(cfg *Config, limits RateLimiterStrategy, tenant string, fp model.
 		tenant:               tenant,
 		streamRateCalculator: streamRateCalculator,
 
-		unorderedWrites: unorderedWrites,
-		writeFailures:   writeFailures,
+		unorderedWrites:      unorderedWrites,
+		writeFailures:        writeFailures,
+		chunkFormat:          chunkFormat,
+		chunkHeadBlockFormat: headBlockFmt,
 	}
 }
 
@@ -132,7 +149,7 @@ func (s *stream) consumeChunk(_ context.Context, chunk *logproto.Chunk) error {
 func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err error) {
 	s.chunkMtx.Lock()
 	defer s.chunkMtx.Unlock()
-	chks, err := fromWireChunks(s.cfg, chunks)
+	chks, err := fromWireChunks(s.cfg, s.chunkHeadBlockFormat, chunks)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -145,7 +162,7 @@ func (s *stream) setChunks(chunks []Chunk) (bytesAdded, entriesAdded int, err er
 }
 
 func (s *stream) NewChunk() *chunkenc.MemChunk {
-	return chunkenc.NewMemChunk(s.cfg.parsedEncoding, headBlockType(s.unorderedWrites), s.cfg.BlockSize, s.cfg.TargetChunkSize)
+	return chunkenc.NewMemChunk(s.chunkFormat, s.cfg.parsedEncoding, s.chunkHeadBlockFormat, s.cfg.BlockSize, s.cfg.TargetChunkSize)
 }
 
 func (s *stream) Push(
@@ -592,9 +609,11 @@ func (s *stream) resetCounter() {
 	s.entryCt = 0
 }
 
-func headBlockType(unorderedWrites bool) chunkenc.HeadBlockFmt {
+func headBlockType(chunkfmt byte, unorderedWrites bool) chunkenc.HeadBlockFmt {
 	if unorderedWrites {
-		return chunkenc.DefaultHeadBlockFmt
+		if chunkfmt >= chunkenc.ChunkFormatV3 {
+			return chunkenc.ChunkHeadFormatFor(chunkfmt)
+		}
 	}
 	return chunkenc.OrderedHeadBlockFmt
 }

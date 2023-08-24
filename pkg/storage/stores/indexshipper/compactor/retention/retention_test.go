@@ -216,7 +216,7 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.DefaultHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{
@@ -278,7 +278,7 @@ func labelsString(ls labels.Labels) string {
 func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()
-	schema := allSchemas[3]
+	schema := allSchemas[3] // v12
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 	type tableResp struct {
 		mustDeleteLines  bool
