@@ -40,6 +40,7 @@ import (
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/remote"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
@@ -103,7 +104,8 @@ type Config struct {
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
 
-	Common common.Config `yaml:"common,omitempty"`
+	RemoteReadConfigs []remote.ReadConfig `yaml:"remote_read,omitempty"`
+	Common            common.Config       `yaml:"common,omitempty"`
 
 	ShutdownDelay time.Duration `yaml:"shutdown_delay" category:"experimental"`
 }

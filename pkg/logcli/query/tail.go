@@ -22,7 +22,7 @@ import (
 
 // TailQuery connects to the Loki websocket endpoint and tails logs
 func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.LogOutput) {
-	conn, err := c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
+	conn, err := c.LiveTailQueryConn(context.Background(), q.QueryString, delayFor, q.Limit, q.Start, q.Quiet)
 	if err != nil {
 		log.Fatalf("Tailing logs failed: %+v", err)
 	}
@@ -71,7 +71,7 @@ func (q *Query) TailQuery(delayFor time.Duration, c client.Client, out output.Lo
 				})
 
 				for backoff.Ongoing() {
-					conn, err = c.LiveTailQueryConn(q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
+					conn, err = c.LiveTailQueryConn(context.Background(), q.QueryString, delayFor, q.Limit, lastReceivedTimestamp, q.Quiet)
 					if err == nil {
 						break
 					}

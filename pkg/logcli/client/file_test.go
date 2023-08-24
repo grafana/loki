@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"sort"
@@ -70,6 +71,7 @@ func TestFileClient_QueryRangeLogQueries(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			client := NewFileClient(io.NopCloser(strings.NewReader(strings.Join(input, "\n"))))
 			resp, err := client.QueryRange(
+				context.Background(),
 				`{foo="bar"}`, // label matcher doesn't matter.
 				c.limit,
 				c.start,
@@ -135,6 +137,7 @@ func TestFileClient_Query(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			client := NewFileClient(io.NopCloser(strings.NewReader(strings.Join(input, "\n"))))
 			resp, err := client.Query(
+				context.Background(),
 				`{foo="bar"}`, // label matcher doesn't matter.
 				c.limit,
 				c.ts,
@@ -152,7 +155,7 @@ func TestFileClient_Query(t *testing.T) {
 
 func TestFileClient_ListLabelNames(t *testing.T) {
 	c := newEmptyClient(t)
-	values, err := c.ListLabelNames(true, time.Now(), time.Now())
+	values, err := c.ListLabelNames(context.Background(), true, time.Now(), time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, &loghttp.LabelResponse{
 		Data:   []string{defaultLabelKey},
@@ -162,7 +165,7 @@ func TestFileClient_ListLabelNames(t *testing.T) {
 
 func TestFileClient_ListLabelValues(t *testing.T) {
 	c := newEmptyClient(t)
-	values, err := c.ListLabelValues(defaultLabelKey, true, time.Now(), time.Now())
+	values, err := c.ListLabelValues(context.Background(), defaultLabelKey, true, time.Now(), time.Now())
 	require.NoError(t, err)
 	assert.Equal(t, &loghttp.LabelResponse{
 		Data:   []string{defaultLabelValue},
@@ -173,7 +176,7 @@ func TestFileClient_ListLabelValues(t *testing.T) {
 
 func TestFileClient_Series(t *testing.T) {
 	c := newEmptyClient(t)
-	got, err := c.Series(nil, time.Now(), time.Now(), true)
+	got, err := c.Series(context.Background(), nil, time.Now(), time.Now(), true)
 	require.NoError(t, err)
 
 	exp := &loghttp.SeriesResponse{
@@ -188,7 +191,7 @@ func TestFileClient_Series(t *testing.T) {
 
 func TestFileClient_LiveTail(t *testing.T) {
 	c := newEmptyClient(t)
-	x, err := c.LiveTailQueryConn("", time.Second, 0, time.Now(), true)
+	x, err := c.LiveTailQueryConn(context.Background(), "", time.Second, 0, time.Now(), true)
 	require.Error(t, err)
 	require.Nil(t, x)
 	assert.True(t, errors.Is(err, ErrNotSupported))

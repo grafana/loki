@@ -420,11 +420,11 @@ func newTestQueryClient(testStreams ...logproto.Stream) *testQueryClient {
 	}
 }
 
-func (t *testQueryClient) Query(_ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) Query(_ context.Context, _ string, _ int, _ time.Time, _ logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
+func (t *testQueryClient) QueryRange(_ context.Context, queryStr string, limit int, from, through time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
@@ -451,19 +451,19 @@ func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through t
 	return q, nil
 }
 
-func (t *testQueryClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelNames(_ context.Context, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) ListLabelValues(_ string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+func (t *testQueryClient) ListLabelValues(_ context.Context, _ string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
+func (t *testQueryClient) Series(_ context.Context, _ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	panic("implement me")
 }
 
-func (t *testQueryClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
+func (t *testQueryClient) LiveTailQueryConn(_ context.Context, _ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	panic("implement me")
 }
 

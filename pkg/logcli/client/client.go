@@ -14,10 +14,11 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/tenant"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/config"
-
-	"github.com/grafana/dskit/backoff"
+	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logcli/volume"
 	"github.com/grafana/loki/pkg/loghttp"
@@ -44,12 +45,12 @@ var userAgent = fmt.Sprintf("loki-logcli/%s", build.Version)
 
 // Client contains all the methods to query a Loki instance, it's an interface to allow multiple implementations.
 type Client interface {
-	Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error)
-	QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
-	ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
-	ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
-	Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
-	LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
+	Query(ctx context.Context, queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error)
+	QueryRange(ctx context.Context, queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error)
+	ListLabelNames(ctx context.Context, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
+	ListLabelValues(ctx context.Context, name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error)
+	Series(ctx context.Context, matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error)
+	LiveTailQueryConn(ctx context.Context, queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error)
 	GetOrgID() string
 	GetStats(queryStr string, start, end time.Time, quiet bool) (*logproto.IndexStatsResponse, error)
 	GetVolume(query *volume.Query) (*loghttp.QueryResponse, error)
@@ -83,20 +84,20 @@ type DefaultClient struct {
 // Query uses the /api/v1/query endpoint to execute an instant query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *DefaultClient) Query(queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) Query(ctx context.Context, queryStr string, limit int, time time.Time, direction logproto.Direction, quiet bool) (*loghttp.QueryResponse, error) {
 	qsb := util.NewQueryStringBuilder()
 	qsb.SetString("query", queryStr)
 	qsb.SetInt("limit", int64(limit))
 	qsb.SetInt("time", time.UnixNano())
 	qsb.SetString("direction", direction.String())
 
-	return c.doQuery(queryPath, qsb.Encode(), quiet)
+	return c.doQuery(ctx, queryPath, qsb.Encode(), quiet)
 }
 
 // QueryRange uses the /api/v1/query_range endpoint to execute a range query
 // excluding interfacer b/c it suggests taking the interface promql.Node instead of logproto.Direction b/c it happens to have a String() method
 // nolint:interfacer
-func (c *DefaultClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) QueryRange(ctx context.Context, queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, quiet bool) (*loghttp.QueryResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	params.SetInt32("limit", limit)
@@ -114,50 +115,50 @@ func (c *DefaultClient) QueryRange(queryStr string, limit int, start, end time.T
 		params.SetFloat("interval", interval.Seconds())
 	}
 
-	return c.doQuery(queryRangePath, params.Encode(), quiet)
+	return c.doQuery(ctx, queryRangePath, params.Encode(), quiet)
 }
 
 // ListLabelNames uses the /api/v1/label endpoint to list label names
-func (c *DefaultClient) ListLabelNames(quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+func (c *DefaultClient) ListLabelNames(ctx context.Context, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
 	var labelResponse loghttp.LabelResponse
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", start.UnixNano())
 	params.SetInt("end", end.UnixNano())
 
-	if err := c.doRequest(labelsPath, params.Encode(), quiet, &labelResponse); err != nil {
+	if err := c.doRequest(ctx, labelsPath, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
 // ListLabelValues uses the /api/v1/label endpoint to list label values
-func (c *DefaultClient) ListLabelValues(name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
+func (c *DefaultClient) ListLabelValues(ctx context.Context, name string, quiet bool, start, end time.Time) (*loghttp.LabelResponse, error) {
 	path := fmt.Sprintf(labelValuesPath, url.PathEscape(name))
 	var labelResponse loghttp.LabelResponse
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", start.UnixNano())
 	params.SetInt("end", end.UnixNano())
-	if err := c.doRequest(path, params.Encode(), quiet, &labelResponse); err != nil {
+	if err := c.doRequest(ctx, path, params.Encode(), quiet, &labelResponse); err != nil {
 		return nil, err
 	}
 	return &labelResponse, nil
 }
 
-func (c *DefaultClient) Series(matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
+func (c *DefaultClient) Series(ctx context.Context, matchers []string, start, end time.Time, quiet bool) (*loghttp.SeriesResponse, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetInt("start", start.UnixNano())
 	params.SetInt("end", end.UnixNano())
 	params.SetStringArray("match", matchers)
 
 	var seriesResponse loghttp.SeriesResponse
-	if err := c.doRequest(seriesPath, params.Encode(), quiet, &seriesResponse); err != nil {
+	if err := c.doRequest(ctx, seriesPath, params.Encode(), quiet, &seriesResponse); err != nil {
 		return nil, err
 	}
 	return &seriesResponse, nil
 }
 
 // LiveTailQueryConn uses /api/prom/tail to set up a websocket connection and returns it
-func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
+func (c *DefaultClient) LiveTailQueryConn(ctx context.Context, queryStr string, delayFor time.Duration, limit int, start time.Time, quiet bool) (*websocket.Conn, error) {
 	params := util.NewQueryStringBuilder()
 	params.SetString("query", queryStr)
 	if delayFor != 0 {
@@ -166,7 +167,7 @@ func (c *DefaultClient) LiveTailQueryConn(queryStr string, delayFor time.Duratio
 	params.SetInt("limit", int64(limit))
 	params.SetInt("start", start.UnixNano())
 
-	return c.wsConnect(tailPath, params.Encode(), quiet)
+	return c.wsConnect(ctx, tailPath, params.Encode(), quiet)
 }
 
 func (c *DefaultClient) GetOrgID() string {
@@ -180,7 +181,7 @@ func (c *DefaultClient) GetStats(queryStr string, start, end time.Time, quiet bo
 	params.SetString("query", queryStr)
 
 	var statsResponse logproto.IndexStatsResponse
-	if err := c.doRequest(statsPath, params.Encode(), quiet, &statsResponse); err != nil {
+	if err := c.doRequest(context.Background(), statsPath, params.Encode(), quiet, &statsResponse); err != nil {
 		return nil, err
 	}
 	return &statsResponse, nil
@@ -218,24 +219,24 @@ func (c *DefaultClient) getVolume(path string, query *volume.Query) (*loghttp.Qu
 	}
 
 	var resp loghttp.QueryResponse
-	if err := c.doRequest(path, params.Encode(), quiet, &resp); err != nil {
+	if err := c.doRequest(context.Background(), path, params.Encode(), quiet, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
-func (c *DefaultClient) doQuery(path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
+func (c *DefaultClient) doQuery(ctx context.Context, path string, query string, quiet bool) (*loghttp.QueryResponse, error) {
 	var err error
 	var r loghttp.QueryResponse
 
-	if err = c.doRequest(path, query, quiet, &r); err != nil {
+	if err = c.doRequest(ctx, path, query, quiet, &r); err != nil {
 		return nil, err
 	}
 
 	return &r, nil
 }
 
-func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{}) error {
+func (c *DefaultClient) doRequest(ctx context.Context, path, query string, quiet bool, out interface{}) error {
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return err
@@ -249,7 +250,7 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 		return err
 	}
 
-	h, err := c.getHTTPRequestHeader()
+	h, err := c.getHTTPRequestHeader(ctx)
 	if err != nil {
 		return err
 	}
@@ -321,10 +322,11 @@ func (c *DefaultClient) doRequest(path, query string, quiet bool, out interface{
 			log.Println("error closing body", err)
 		}
 	}()
+
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
+func (c *DefaultClient) getHTTPRequestHeader(ctx context.Context) (http.Header, error) {
 	h := make(http.Header)
 
 	if c.Username != "" && c.Password != "" {
@@ -341,6 +343,20 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 
 	if c.OrgID != "" {
 		h.Set("X-Scope-OrgID", c.OrgID)
+	}
+	//do not check error here
+	//       If err !=nil, len(tenantIDs) == 0
+	// this case has been processed below
+	//       fakeTenant := len(tenantIDs) == 1 And len(tenantIDs) > 0
+	//So there is no need to handle this err
+	tenantIDs, _ := tenant.TenantIDs(ctx)
+	fakeTenant := len(tenantIDs) == 1 && tenantIDs[0] == "fake"
+	if len(tenantIDs) > 0 && !fakeTenant {
+		orgID, err := user.ExtractOrgID(ctx)
+		if err != nil {
+			return nil, err
+		}
+		h.Set("X-Scope-OrgID", orgID)
 	}
 
 	if c.QueryTags != "" {
@@ -377,7 +393,7 @@ func (c *DefaultClient) getHTTPRequestHeader() (http.Header, error) {
 	return h, nil
 }
 
-func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Conn, error) {
+func (c *DefaultClient) wsConnect(ctx context.Context, path, query string, quiet bool) (*websocket.Conn, error) {
 	us, err := buildURL(c.Address, path, query)
 	if err != nil {
 		return nil, err
@@ -396,7 +412,7 @@ func (c *DefaultClient) wsConnect(path, query string, quiet bool) (*websocket.Co
 		log.Println(us)
 	}
 
-	h, err := c.getHTTPRequestHeader()
+	h, err := c.getHTTPRequestHeader(ctx)
 	if err != nil {
 		return nil, err
 	}

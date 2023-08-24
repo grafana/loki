@@ -43,8 +43,10 @@ import (
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/querier/fanout"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/remote"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
 	"github.com/grafana/loki/pkg/runtime"
@@ -344,7 +346,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(t.Cfg.RemoteReadConfigs) > 0 {
 
+		remoteStorage := &remote.Storage{}
+		err := remoteStorage.ApplyConf(t.Cfg.RemoteReadConfigs)
+		if err != nil {
+			return nil, err
+		}
+		fanoutQuerier := fanout.NewQuerier(q, t.Cfg.Querier.MaxRemoteReadConcurrent, t.Cfg.Querier.RemoteReadBatch, remoteStorage.Queriers()...)
+		q = fanoutQuerier
+	}
 	if t.Cfg.Querier.MultiTenantQueriesEnabled {
 		t.Querier = querier.NewMultiTenantQuerier(q, util_log.Logger)
 		tenant.WithDefaultResolver(tenant.NewMultiResolver())

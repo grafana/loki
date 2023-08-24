@@ -119,7 +119,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 	result := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
 
 	if q.isInstant() {
-		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
+		resp, err = c.Query(context.Background(), q.QueryString, q.Limit, q.Start, d, q.Quiet)
 		if err != nil {
 			log.Fatalf("Query failed: %+v", err)
 		}
@@ -149,7 +149,7 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 				// correct amount of new logs knowing there will be some overlapping logs returned.
 				bs = q.Limit - total + len(lastEntry)
 			}
-			resp, err = c.QueryRange(q.QueryString, bs, start, end, d, q.Step, q.Interval, q.Quiet)
+			resp, err = c.QueryRange(context.Background(), q.QueryString, bs, start, end, d, q.Step, q.Interval, q.Quiet)
 			if err != nil {
 				log.Fatalf("Query failed: %+v", err)
 			}

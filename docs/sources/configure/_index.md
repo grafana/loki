@@ -206,6 +206,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 # Configuration for analytics.
 [analytics: <analytics>]
 
+[remote_read: <list of ReadConfigs>]
+
 # Common configuration to be shared between multiple modules. If a more specific
 # configuration is given in other sections, the related configuration within
 # this section will be ignored.
@@ -564,6 +566,15 @@ engine:
 # When true, allow queries to span multiple tenants.
 # CLI flag: -querier.multi-tenant-queries-enabled
 [multi_tenant_queries_enabled: <boolean> | default = false]
+
+# The maximum number of concurrent remote read queries allowed.
+# CLI flag: -querier.max-remote-read-concurrent
+[max_remote_read_concurrent: <int> | default = 5]
+
+# remote read query batch size to use until 'limit' is reached.If equal to 0,
+# the batch feature will be disable.
+# CLI flag: -querier.remote-read-batch
+[remote_read_batch: <int> | default = 0]
 
 # When true, querier limits sent via a header are enforced.
 # CLI flag: -querier.per-request-limits-enabled

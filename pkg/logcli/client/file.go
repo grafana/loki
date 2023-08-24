@@ -64,7 +64,7 @@ func NewFileClient(r io.ReadCloser) *FileClient {
 	}
 }
 
-func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
+func (f *FileClient) Query(_ context.Context, q string, limit int, t time.Time, direction logproto.Direction, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := context.Background()
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
@@ -101,7 +101,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 	}, nil
 }
 
-func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
+func (f *FileClient) QueryRange(_ context.Context, queryStr string, limit int, start, end time.Time, direction logproto.Direction, step, interval time.Duration, _ bool) (*loghttp.QueryResponse, error) {
 	ctx := context.Background()
 
 	ctx = user.InjectOrgID(ctx, f.orgID)
@@ -139,14 +139,14 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 	}, nil
 }
 
-func (f *FileClient) ListLabelNames(_ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+func (f *FileClient) ListLabelNames(_ context.Context, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	return &loghttp.LabelResponse{
 		Status: loghttp.QueryStatusSuccess,
 		Data:   f.labels,
 	}, nil
 }
 
-func (f *FileClient) ListLabelValues(name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
+func (f *FileClient) ListLabelValues(_ context.Context, name string, _ bool, _, _ time.Time) (*loghttp.LabelResponse, error) {
 	i := sort.SearchStrings(f.labels, name)
 	if i < 0 {
 		return &loghttp.LabelResponse{}, nil
@@ -158,7 +158,7 @@ func (f *FileClient) ListLabelValues(name string, _ bool, _, _ time.Time) (*logh
 	}, nil
 }
 
-func (f *FileClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
+func (f *FileClient) Series(_ context.Context, _ []string, _, _ time.Time, _ bool) (*loghttp.SeriesResponse, error) {
 	m := len(f.labels)
 	if m > len(f.labelValues) {
 		m = len(f.labelValues)
@@ -175,7 +175,7 @@ func (f *FileClient) Series(_ []string, _, _ time.Time, _ bool) (*loghttp.Series
 	}, nil
 }
 
-func (f *FileClient) LiveTailQueryConn(_ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
+func (f *FileClient) LiveTailQueryConn(_ context.Context, _ string, _ time.Duration, _ int, _ time.Time, _ bool) (*websocket.Conn, error) {
 	return nil, fmt.Errorf("LiveTailQuery: %w", ErrNotSupported)
 }
 
