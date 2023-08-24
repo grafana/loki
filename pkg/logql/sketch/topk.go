@@ -3,6 +3,7 @@ package sketch
 import (
 	"container/heap"
 	"fmt"
+	"math"
 	"reflect"
 	"sort"
 	"unsafe"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/axiomhq/hyperloglog"
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 )
 
 const DefaultGroupKey = "default_group"
@@ -53,31 +53,6 @@ type Topk struct {
 	eventBytes []byte
 }
 
-// get the correct sketch width based on the expected cardinality of the set
-// we might need to do something smarter here to round up to next order of magnitude if we're say more than 10%
-// over a given size that currently exists, or have some more intermediate sizes
-func getCMSWidth(l log.Logger, c int) uint32 {
-	// default to something reasonable for low cardinality
-	width := 32
-	switch {
-	case c >= 1000001:
-		if l != nil {
-			level.Warn(l).Log("cardinality is greater than 1M but we don't currently have predefined sketch sizes for cardinalities that large")
-		}
-	case c >= 1000000:
-		width = 409600
-	case c >= 100000:
-		width = 65536
-	case c >= 10000:
-		width = 5120
-	case c >= 1000:
-		width = 640
-	case c >= 100:
-		width = 48
-	}
-	return uint32(width)
-}
-
 func makeBF(col, row uint32) [][]bool {
 	bf := make([][]bool, row)
 	for i := range bf {
@@ -89,10 +64,10 @@ func makeBF(col, row uint32) [][]bool {
 // NewCMSTopkForCardinality creates a new topk sketch where k is the amount of topk we want, and c is the expected
 // total cardinality of the dataset the sketch should be able to handle, including other sketches that we may merge in.
 func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
-	// TODO: fix this function and get width function based on new testing data
-	// a depth of > 4 didn't seem to make things siginificantly more accurate during testing
-	w := getCMSWidth(l, c)
-	d := uint32(4)
+	epsilon := 0.00001
+	delta := 0.00001
+	w := uint32(math.Ceil(math.E / epsilon))
+	d := uint32(math.Ceil(math.Log(1 / delta)))
 
 	sk, err := newCMSTopK(k, w, d)
 	if err != nil {

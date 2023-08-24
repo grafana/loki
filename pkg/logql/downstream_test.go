@@ -441,6 +441,7 @@ func TestSketchEquivalence(t *testing.T) {
 		approximate bool
 	}{
 		{`topk(5, rate({a=~".+"}[1s]))`, false},
+		//{`topk(2, rate({a=~".+"} | json | unwrap bytes [1s]))`, false},
 	} {
 		q := NewMockQuerier(
 			shards,
@@ -512,14 +513,11 @@ func TestSketchEquivalence(t *testing.T) {
 
 			p99, err := stats.Percentile(allMisses, 99)
 			require.NoError(t, err)
-			p90, err := stats.Percentile(allMisses, 90)
-			require.NoError(t, err)
 
 			p40, err := stats.Percentile(allMisses, 40)
 			require.NoError(t, err)
 
-			require.LessOrEqual(t, p99, 2.0)
-			require.LessOrEqual(t, p90, 1.0)
+			require.LessOrEqual(t, p99, 1.0)
 			require.LessOrEqual(t, p40, 0.0)
 		})
 	}
