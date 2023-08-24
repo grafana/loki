@@ -552,7 +552,6 @@ func TestTopkZipf(t *testing.T) {
 				// use a constant source so the results are deterministic:
 				r := rand.New(rand.NewSource(int64(s)))
 				topk, _ := NewCMSTopkForCardinality(nil, tc.k, int(tc.max))
-				hist := gohistogram.NewHistogram(10)
 
 				z := rand.NewZipf(r, tc.s, tc.v, tc.max)
 				for i := 0; uint64(i) < tc.max; i++ {
@@ -644,19 +643,21 @@ func TestTopkNormalDistribution(t *testing.T) {
 
 		var s string
 		var val uint32
-		for i := 0; uint64(i) < tc.max; i++ {
+		for i := uint64(0); i < tc.max; i++ {
 			//if i%10 == 0 {
-			fmt.Println("i: ", i)
+			if i >= 13 {
+				fmt.Println("i: ", i)
+			}
 			//}
 			// will this work properly? it could generate negative values
 			val = uint32(r.NormFloat64())
-			s = strconv.Itoa(i)
+			s = strconv.FormatUint(i, 10)
 
 			// observe the event into the real topk
 			if m[s] == 0 {
 				hll.Insert([]byte(s))
 			}
-			m[s] = uint32(val)
+			m[s] = val
 			if _, ok := h.Find(s); ok {
 				h.update(s, m[s])
 				continue
@@ -675,7 +676,7 @@ func TestTopkNormalDistribution(t *testing.T) {
 				topk.Observe(s)
 			}
 		}
-		fmt.Println("topk: ", topk.Topk())
+		t.Log("topk: ", topk.Topk())
 		res := make(TopKResult, 0, len(h))
 		for i := 0; i < len(h); i++ {
 			res = append(res, element{h[i].event, int64(h[i].count)})
@@ -691,8 +692,8 @@ func TestTopkNormalDistribution(t *testing.T) {
 			}
 			missing++
 		}
-		fmt.Println("heap res: ", res)
-		fmt.Println("missing: ", missing)
+		t.Log("heap res: ", res)
+		t.Log("missing: ", missing)
 		assert.LessOrEqualf(t, missing, tc.expectedMissing, "more than expected # of missing elements from topk")
 	}
 }
