@@ -5,6 +5,10 @@ description: Attaching metadata to logs.
 ---
 # What are non-indexed labels
 
+{{% admonition type="warning" %}}
+Non-indexed labels is an experimental feature and is subject to change in future releases of Grafana Loki.
+{{% /admonition %}}
+
 One of the powerful features of Loki is parsing logs at query time to extract metadata and build labels out of it.
 However, the parsing of logs at query time comes with a cost which can be significantly high for, as an example,
 large json blobs or a poorly written query using complex regex patterns.
@@ -22,7 +26,7 @@ You have the option to attach non-indexed labels to log lines in the push payloa
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
 
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach non-indexed labels to your log lines.
-See the [Promtail: Non-indexed labels stage]({{< relref "../../clients/promtail/stages/non_indexed_labels" >}}) for more information.
+See the [Promtail: Non-indexed labels stage]({{< relref "../../send-data/promtail/stages/non_indexed_labels" >}}) for more information.
 
 ## Querying non-indexed labels
 
