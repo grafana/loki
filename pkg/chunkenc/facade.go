@@ -10,17 +10,10 @@ import (
 	"github.com/grafana/loki/pkg/util/filter"
 )
 
-// GzipLogChunk is a cortex encoding type for our chunks.
-// Deprecated: the chunk encoding/compression format is inside the chunk data.
-const GzipLogChunk = chunk.Encoding(128)
-
 // LogChunk is a cortex encoding type for our chunks.
 const LogChunk = chunk.Encoding(129)
 
 func init() {
-	chunk.MustRegisterEncoding(GzipLogChunk, "GzipLogChunk", func() chunk.Data {
-		return &Facade{}
-	})
 	chunk.MustRegisterEncoding(LogChunk, "LogChunk", func() chunk.Data {
 		return &Facade{}
 	})
