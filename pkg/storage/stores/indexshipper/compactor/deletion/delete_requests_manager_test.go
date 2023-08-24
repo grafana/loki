@@ -184,7 +184,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -209,7 +209,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get("ping") == "pong" && strings.Contains(s, "fizz")
+					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && strings.Contains(s, "fizz")
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -353,7 +353,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -496,7 +496,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -607,7 +607,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			expectedResp: resp{
 				isExpired: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -761,7 +761,7 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				// mix of empty, ding=dong and ping=pong as non-indexed labels
 				var nonIndexedLabels []labels.Label
 				if start.Time().Minute()%3 == 0 {
-					nonIndexedLabels = []labels.Label{{Name: "ping", Value: "pong"}}
+					nonIndexedLabels = []labels.Label{{Name: lblPing, Value: lblPong}}
 				} else if start.Time().Minute()%2 == 0 {
 					nonIndexedLabels = []labels.Label{{Name: "ting", Value: "tong"}}
 				}
