@@ -16,3 +16,4 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 -  **Multi-store Index support**: Loki now supports reading/writing indexes to multiple object stores which enables the use of different storage buckets across periods for storing index. [PR #7754](https://github.com/grafana/loki/pull/7754)], [PR #7447](https://github.com/grafana/loki/pull/7447)
 
+- **Track effectiveness of hedged requests** [PR #10281](https://github.com/grafana/loki/pull/10281)]
