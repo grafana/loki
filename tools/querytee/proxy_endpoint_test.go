@@ -13,6 +13,8 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
+	prom_testutil "github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/atomic"
@@ -241,6 +243,101 @@ func Test_ProxyEndpoint_Requests(t *testing.T) {
 	}
 }
 
+func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
+	var (
+		requestCount atomic.Uint64
+		wg           sync.WaitGroup
+		testHandler  http.HandlerFunc
+	)
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer wg.Done()
+		defer requestCount.Add(1)
+		testHandler(w, r)
+	})
+	backend1 := httptest.NewServer(handler)
+	defer backend1.Close()
+	backendURL1, err := url.Parse(backend1.URL)
+	require.NoError(t, err)
+
+	backend2 := httptest.NewServer(handler)
+	defer backend2.Close()
+	backendURL2, err := url.Parse(backend2.URL)
+	require.NoError(t, err)
+
+	backends := []*ProxyBackend{
+		NewProxyBackend("backend-1", backendURL1, time.Second, true),
+		NewProxyBackend("backend-2", backendURL2, time.Second, false),
+	}
+	
+	comparator := &mockComparator{}
+	proxyMetrics := NewProxyMetrics(prometheus.NewRegistry())
+	endpoint := NewProxyEndpoint(backends, "test", proxyMetrics, log.NewNopLogger(), comparator, true)
+
+	for _, tc := range []struct {
+		name            string
+		request         func(*testing.T) *http.Request
+		counts          int
+		expectedMetrics string
+	}{
+		{
+			name: "missing-metrics-series",
+			request: func(t *testing.T) *http.Request {
+				r, err := http.NewRequest("GET", "http://test/api/v1/test", nil)
+				require.NoError(t, err)
+				return r
+			},
+			counts: 2,
+			expectedMetrics: `
+			    # HELP cortex_querytee_missing_metrics_series Number of missing metrics (series) in a vector response.
+				# TYPE cortex_querytee_missing_metrics_series histogram
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.005"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.01"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.025"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.05"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.1"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.25"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="0.75"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="1"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="1.5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="2"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="3"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="4"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="5"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="10"} 0
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="25"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="50"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="100"} 1
+				cortex_querytee_missing_metrics_series_bucket{backend="backend-2",issuer="unknown",route="test",status_code="success",le="+Inf"} 1
+				cortex_querytee_missing_metrics_series_sum{backend="backend-2",issuer="unknown",route="test",status_code="success"} 12
+				cortex_querytee_missing_metrics_series_count{backend="backend-2",issuer="unknown",route="test",status_code="success"} 1
+			`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// reset request count
+			requestCount.Store(0)
+			wg.Add(tc.counts)
+
+			testHandler = func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte("ok"))
+			}
+
+			w := httptest.NewRecorder()
+			endpoint.ServeHTTP(w, tc.request(t))
+			require.Equal(t, "ok", w.Body.String())
+			require.Equal(t, 200, w.Code)
+
+			wg.Wait()
+			require.Equal(t, uint64(tc.counts), requestCount.Load())
+
+			err := prom_testutil.CollectAndCompare(proxyMetrics.missingMetrics, strings.NewReader(tc.expectedMetrics))
+			require.NoError(t, err)
+		})
+	}
+}
+
 func Test_backendResponse_succeeded(t *testing.T) {
 	tests := map[string]struct {
 		resStatus int
@@ -319,4 +416,10 @@ func Test_backendResponse_statusCode(t *testing.T) {
 			assert.Equal(t, testData.expected, res.statusCode())
 		})
 	}
+}
+
+type mockComparator struct{}
+
+func (c *mockComparator) Compare(expected, actual []byte) (*ComparisonSummary, error) {
+	return &ComparisonSummary{missingMetrics: 12}, nil
 }

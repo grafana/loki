@@ -42,7 +42,8 @@ func NewProxyMetrics(registerer prometheus.Registerer) *ProxyMetrics {
 			Namespace: "cortex_querytee",
 			Name:      "missing_metrics_series",
 			Help:      "Number of missing metrics (series) in a vector response.",
-		}, []string{"backend", "method", "route", "status_code", "issuer"}),
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 0.75, 1, 1.5, 2, 3, 4, 5, 10, 25, 50, 100},
+		}, []string{"backend", "route", "status_code", "issuer"}),
 	}
 
 	return m
