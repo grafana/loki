@@ -610,7 +610,7 @@ func TestTopkZipf(t *testing.T) {
 		{
 			s:          3.0,
 			v:          100.0,
-			events:        10000,
+			events:     10000,
 			k:          100,
 			maxMissing: 4,
 		},
