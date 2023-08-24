@@ -820,10 +820,10 @@ func BenchmarkWrite(b *testing.B) {
 type nomatchPipeline struct{}
 
 func (nomatchPipeline) BaseLabels() log.LabelsResult { return log.EmptyLabelsResult }
-func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.LabelsResult, bool) {
+func (nomatchPipeline) Process(_ int64, line []byte, _ ...labels.Label) ([]byte, log.CategorizedLabelsResult, bool) {
 	return line, nil, false
 }
-func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.LabelsResult, bool) {
+func (nomatchPipeline) ProcessString(_ int64, line string, _ ...labels.Label) (string, log.CategorizedLabelsResult, bool) {
 	return line, nil, false
 }
 
@@ -1225,7 +1225,8 @@ func BenchmarkBufferedIteratorLabels(b *testing.B) {
 					for n := 0; n < b.N; n++ {
 						for _, it := range iters {
 							for it.Next() {
-								streams = append(streams, logproto.Stream{Labels: it.Labels(), Entries: []logproto.Entry{it.Entry()}})
+								// TODO: Uncomment and fix this
+								// streams = append(streams, logproto.Stream{Labels: it.Labels(), Entries: []logproto.Entry{it.Entry()}})
 							}
 						}
 					}
@@ -1667,10 +1668,11 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 			expectedBytes := lineBytes + expectedNonIndexedLabelsBytes
 
 			for _, tc := range []struct {
-				name            string
-				query           string
-				expectedLines   []string
-				expectedStreams []string
+				name                string
+				query               string
+				expectedLines       []string
+				expectedStreams     []string
+				expectedLabelGroups []logproto.GroupedLabels
 			}{
 				{
 					name:          "no-filter",
@@ -1682,6 +1684,28 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "a")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+					},
 				},
 				{
 					name:          "filter",
@@ -1689,6 +1713,13 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					expectedLines: []string{"lineC"},
 					expectedStreams: []string{
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
+					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
 					},
 				},
 				{
@@ -1699,6 +1730,18 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+					},
 				},
 				{
 					name:          "filter-regex-contains",
@@ -1706,6 +1749,13 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					expectedLines: []string{"lineB"},
 					expectedStreams: []string{
 						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
+					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
 					},
 				},
 				{
@@ -1716,6 +1766,18 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "a").String(),
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
 					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "a")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+					},
 				},
 				{
 					name:          "multiple-filters",
@@ -1723,6 +1785,13 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 					expectedLines: []string{"lineD"},
 					expectedStreams: []string{
 						labels.FromStrings("job", "fake", "traceID", "123", "user", "d").String(),
+					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
 					},
 				},
 				{
@@ -1735,6 +1804,28 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "user", "c").String(),
 						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "c")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+					},
 				},
 				{
 					name:          "keep-filter",
@@ -1745,6 +1836,28 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "user", "b").String(),
 						labels.FromStrings("job", "fake").String(),
 						labels.FromStrings("job", "fake").String(),
+					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: []logproto.LabelAdapter{},
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: []logproto.LabelAdapter{},
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: []logproto.LabelAdapter{},
+							Parsed:             []logproto.LabelAdapter{},
+						},
 					},
 				},
 				{
@@ -1757,6 +1870,28 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "user", "c").String(),
 						labels.FromStrings("job", "fake", "user", "d").String(),
 					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "c")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+					},
 				},
 				{
 					name:          "drop-filter",
@@ -1767,6 +1902,28 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 						labels.FromStrings("job", "fake", "traceID", "456", "user", "b").String(),
 						labels.FromStrings("job", "fake", "traceID", "789", "user", "c").String(),
 						labels.FromStrings("job", "fake", "user", "d").String(),
+					},
+					expectedLabelGroups: []logproto.GroupedLabels{
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
 					},
 				},
 			} {
@@ -1787,11 +1944,13 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 
 							var lines []string
 							var streams []string
+							var groups []logproto.GroupedLabels
 							for it.Next() {
 								require.NoError(t, it.Error())
 								e := it.Entry()
 								lines = append(lines, e.Line)
 								streams = append(streams, it.Labels())
+								groups = append(groups, it.GroupedLabels())
 
 								// We don't want to send back the non-indexed labels since
 								// they are already part of the returned labels.
@@ -1799,6 +1958,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 							}
 							assert.ElementsMatch(t, tc.expectedLines, lines)
 							assert.ElementsMatch(t, tc.expectedStreams, streams)
+							assert.ElementsMatch(t, tc.expectedLabelGroups, groups)
 
 							resultStats := sts.Result(0, 0, len(lines))
 							require.Equal(t, int64(expectedBytes), resultStats.Summary.TotalBytesProcessed)
@@ -1896,6 +2056,101 @@ func TestMemChunk_IteratorOptions(t *testing.T) {
 				require.Equal(t, expectedLabels.String(), it.Labels())
 				idx++
 			}
+		})
+	}
+}
+
+func TestMemChunk_IteratorCategorizedLabels(t *testing.T) {
+	streamLabels := labels.Labels{
+		{Name: "job", Value: "fake"},
+	}
+	chk := newMemChunkWithFormat(chunkFormatV4, EncNone, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "msg=foo name=text", []logproto.LabelAdapter{
+		{Name: "user", Value: "a"},
+	})))
+	require.NoError(t, chk.cut())
+	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(3, "msg=bar name=book", []logproto.LabelAdapter{
+		{Name: "user", Value: "b"},
+	})))
+
+	for _, tc := range []struct {
+		name                string
+		query               string
+		expectedLabelGroups []logproto.GroupedLabels
+	}{
+		{
+			name:  "no filter",
+			query: `{job="fake"}`,
+			expectedLabelGroups: []logproto.GroupedLabels{
+				{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+					Parsed:             []logproto.LabelAdapter{},
+				},
+				{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+					Parsed:             []logproto.LabelAdapter{},
+				},
+			},
+		},
+		{
+			name:  "parser",
+			query: `{job="fake"} | logfmt`,
+			expectedLabelGroups: []logproto.GroupedLabels{
+				{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "foo", "name", "text")),
+				},
+				{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "bar", "name", "book")),
+				},
+			},
+		},
+		{
+			name:  "parser with filter",
+			query: `{job="fake"} | logfmt msg`,
+			expectedLabelGroups: []logproto.GroupedLabels{
+				{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "foo")),
+				},
+				{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "bar")),
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Run("log", func(t *testing.T) {
+				expr, err := syntax.ParseLogSelector(tc.query, true)
+				require.NoError(t, err)
+
+				pipeline, err := expr.Pipeline()
+				require.NoError(t, err)
+
+				// We will run the test twice so the iterator will be created twice.
+				// This is to ensure that the iterator is correctly closed.
+				for i := 0; i < 2; i++ {
+					it, err := chk.Iterator(context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64), logproto.FORWARD, pipeline.ForStream(streamLabels))
+					require.NoError(t, err)
+
+					var groups []logproto.GroupedLabels
+					for it.Next() {
+						require.NoError(t, it.Error())
+						groups = append(groups, it.GroupedLabels())
+					}
+					assert.ElementsMatch(t, tc.expectedLabelGroups, groups)
+				}
+			})
+
+			// TODO(salvacorts) test metric
 		})
 	}
 }

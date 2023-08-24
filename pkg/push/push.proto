@@ -20,6 +20,21 @@ message PushRequest {
 
 message PushResponse {}
 
+message GroupedLabelsAdapter {
+  repeated LabelPairAdapter stream = 1 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "stream"
+  ];
+  repeated LabelPairAdapter structuredMetadata = 2 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "structuredMetadata"
+  ];
+  repeated LabelPairAdapter parsed = 3 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "parsed"
+  ];
+}
+
 message StreamAdapter {
   string labels = 1 [(gogoproto.jsontag) = "labels"];
   repeated EntryAdapter entries = 2 [
@@ -28,6 +43,11 @@ message StreamAdapter {
   ];
   // hash contains the original hash of the stream.
   uint64 hash = 3 [(gogoproto.jsontag) = "-"];
+  // group contains the grouped labels of the stream.
+  GroupedLabelsAdapter groupedLabels = 4 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "groupedLabels,omitempty"
+  ];
 }
 
 message LabelPairAdapter {

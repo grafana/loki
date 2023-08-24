@@ -154,6 +154,10 @@ func (i *dumbChunkIterator) Labels() string {
 	return ""
 }
 
+func (i *dumbChunkIterator) GroupedLabels() logproto.GroupedLabels {
+	return logproto.GroupedLabels{}
+}
+
 func (i *dumbChunkIterator) StreamHash() uint64 {
 	return 0
 }

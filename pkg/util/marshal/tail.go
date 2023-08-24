@@ -6,7 +6,7 @@ import (
 )
 
 // NewTailResponse constructs a TailResponse from a legacy.TailResponse
-func NewTailResponse(r legacy.TailResponse) (loghttp.TailResponse, error) {
+func NewTailResponse(r legacy.TailResponse, encodeFlags ...loghttp.EncodingFlag) (loghttp.TailResponse, error) {
 	var err error
 	ret := loghttp.TailResponse{
 		Streams:        make([]loghttp.Stream, len(r.Streams)),
@@ -14,7 +14,7 @@ func NewTailResponse(r legacy.TailResponse) (loghttp.TailResponse, error) {
 	}
 
 	for i, s := range r.Streams {
-		ret.Streams[i], err = NewStream(s)
+		ret.Streams[i], err = NewStream(s, encodeFlags...)
 
 		if err != nil {
 			return loghttp.TailResponse{}, err

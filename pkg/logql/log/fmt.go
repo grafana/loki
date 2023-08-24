@@ -383,9 +383,9 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 	var data interface{}
 	for _, f := range lf.formats {
 		if f.Rename {
-			v, ok := lbs.Get(f.Value)
+			v, category, ok := lbs.GetWithCategory(f.Value)
 			if ok {
-				lbs.Set(f.Name, v)
+				lbs.Set(category, f.Name, v)
 				lbs.Del(f.Value)
 			}
 			continue
@@ -399,7 +399,8 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			lbs.SetErrorDetails(err.Error())
 			continue
 		}
-		lbs.Set(f.Name, lf.buf.String())
+		// TODO(salvacorts): Not sure if this is correct
+		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true
 }

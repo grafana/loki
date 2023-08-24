@@ -394,12 +394,16 @@ type Rules struct {
 	Rules []interface{}
 }
 
+type queryParam struct {
+	name, value string
+}
+
 // RunRangeQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, error) {
+func (c *Client) RunRangeQuery(ctx context.Context, query string, extraParams ...queryParam) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
-	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query))
+	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query, extraParams...))
 	if err != nil {
 		return nil, err
 	}
@@ -408,13 +412,16 @@ func (c *Client) RunRangeQuery(ctx context.Context, query string) (*Response, er
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunQuery(ctx context.Context, query string) (*Response, error) {
+func (c *Client) RunQuery(ctx context.Context, query string, extraParams ...queryParam) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	v := url.Values{}
 	v.Set("query", query)
 	v.Set("time", formatTS(c.Now.Add(time.Second)))
+	for _, p := range extraParams {
+		v.Set(p.name, p.value)
+	}
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -470,11 +477,14 @@ func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
 	return &lokiResp, nil
 }
 
-func (c *Client) rangeQueryURL(query string) string {
+func (c *Client) rangeQueryURL(query string, extraParams ...queryParam) string {
 	v := url.Values{}
 	v.Set("query", query)
 	v.Set("start", formatTS(c.Now.Add(-7*24*time.Hour)))
 	v.Set("end", formatTS(c.Now.Add(time.Second)))
+	for _, p := range extraParams {
+		v.Set(p.name, p.value)
+	}
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {

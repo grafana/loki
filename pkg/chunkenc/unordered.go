@@ -262,7 +262,8 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, nonIndexedLabelsSymbols symbols) error {
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(nonIndexedLabelsSymbols)...)
+			nonIndexedLabels := hb.symbolizer.Lookup(nonIndexedLabelsSymbols)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, nonIndexedLabels...)
 			if !matches {
 				return nil
 			}
@@ -274,6 +275,11 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 				stream = &logproto.Stream{
 					Labels: labels,
 					Hash:   baseHash,
+					GroupedLabels: logproto.GroupedLabels{
+						Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream().Labels()),
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata().Labels()),
+						Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed().Labels()),
+					},
 				}
 				streams[labels] = stream
 			}
@@ -286,7 +292,7 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 			// Most of the time, there is no need to send back the non-indexed labels, as they are already part of the labels results.
 			// Still it might be needed for example when appending entries from one chunk into another one.
 			if iterOptions.KeepNonIndexedLabels {
-				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(hb.symbolizer.Lookup(nonIndexedLabelsSymbols))
+				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(nonIndexedLabels)
 			}
 
 			stream.Entries = append(stream.Entries, entry)

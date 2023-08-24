@@ -8,6 +8,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
+	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -85,4 +86,22 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 
 	req.Query = query(r)
 	return req, nil
+}
+
+type CategorizedLabelSet struct {
+	Stream             LabelSet `json:"stream,omitempty"`
+	StructuredMetadata LabelSet `json:"structuredMetadata,omitempty"`
+	Parsed             LabelSet `json:"parsed,omitempty"`
+}
+
+func (c CategorizedLabelSet) Empty() bool {
+	return len(c.Stream) == 0 && len(c.StructuredMetadata) == 0 && len(c.Parsed) == 0
+}
+
+func (c CategorizedLabelSet) ToProto() logproto.GroupedLabels {
+	return logproto.GroupedLabels{
+		Stream:             logproto.FromLabelsToLabelAdapters(labels.FromMap(c.Stream.Map())),
+		StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromMap(c.StructuredMetadata.Map())),
+		Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromMap(c.Parsed.Map())),
+	}
 }

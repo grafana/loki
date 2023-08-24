@@ -28,6 +28,9 @@ type Streams []logproto.Stream
 func (streams Streams) Len() int      { return len(streams) }
 func (streams Streams) Swap(i, j int) { streams[i], streams[j] = streams[j], streams[i] }
 func (streams Streams) Less(i, j int) bool {
+	// TODO: Fix this. It's quite innefcient because we are creating a string from the groups
+	// whereas we used to have the string already.
+	// return logproto.FromLabelAdaptersToLabels(logproto.FromGroupedLabelsToUngroupedLabels(streams[i].Labels)).String() <= logproto.FromLabelAdaptersToLabels(logproto.FromGroupedLabelsToUngroupedLabels(streams[j].Labels)).String()
 	return streams[i].Labels <= streams[j].Labels
 }
 

@@ -15,9 +15,10 @@ import (
 // We are not using the proto generated version but this custom one so that we
 // can improve serialization see benchmark.
 type Stream struct {
-	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
-	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
-	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	Labels        string        `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
+	Entries       []Entry       `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
+	Hash          uint64        `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	GroupedLabels GroupedLabels `protobuf:"bytes,4,opt,name=groupedLabels,proto3" json:"groupedLabels"`
 }
 
 // Entry is a log entry with a timestamp.
@@ -27,10 +28,20 @@ type Entry struct {
 	NonIndexedLabels LabelsAdapter `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
 }
 
+// GroupedLabels is a set of labels grouped by their type.
+// We are not using the proto generated version but this custom one so that we
+// can use LabelsAdapter instead of LabelsPairAdapter.
+// This type should be kept in sync with the proto generated version so we safely cast it.
+type GroupedLabels struct {
+	Stream             LabelsAdapter `protobuf:"bytes,1,rep,name=stream,proto3" json:"stream"`
+	StructuredMetadata LabelsAdapter `protobuf:"bytes,2,rep,name=structuredMetadata,proto3" json:"structuredMetadata"`
+	Parsed             LabelsAdapter `protobuf:"bytes,3,rep,name=parsed,proto3" json:"parsed"`
+}
+
 // LabelAdapter should be a copy of the Prometheus labels.Label type.
 // We cannot import Prometheus in this package because it would create many dependencies
 // in other projects importing this package. Instead, we copy the definition here, which should
-// be kept in sync with the original so it can be casted to the prometheus type.
+// be kept in sync with the original, so it can be cast to the prometheus type.
 type LabelAdapter struct {
 	Name, Value string
 }
@@ -123,6 +134,16 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	{
+		size, err := (*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.Labels))).MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintPush(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
 	if m.Hash != 0 {
 		i = encodeVarintPush(dAtA, i, m.Hash)
 		i--
@@ -318,6 +339,39 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupedLabels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := (*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.Labels))).Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])
@@ -640,6 +694,8 @@ func (m *Stream) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(m.Hash)
 	}
+	l = (*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.GroupedLabels))).Size()
+	n += 1 + l + sovPush(uint64(l))
 	return n
 }
 
@@ -711,7 +767,13 @@ func (m *Stream) Equal(that interface{}) bool {
 			return false
 		}
 	}
-	return m.Hash == that1.Hash
+	if m.Hash != that1.Hash {
+		return false
+	}
+	if !(*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.Labels))).Equal(that1.Labels) {
+		return false
+	}
+	return true
 }
 
 func (m *Entry) Equal(that interface{}) bool {

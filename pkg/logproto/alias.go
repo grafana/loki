@@ -10,6 +10,7 @@ import (
 
 type Entry = push.Entry
 type Stream = push.Stream
+type GroupedLabels = push.GroupedLabels
 type LabelAdapter = push.LabelAdapter
 type PushRequest = push.PushRequest
 type PushResponse = push.PushResponse

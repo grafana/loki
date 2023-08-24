@@ -242,15 +242,20 @@ func (s Streams) ToProto() []logproto.Stream {
 	result := make([]logproto.Stream, 0, len(s))
 	for _, s := range s {
 		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
-		result = append(result, logproto.Stream{Labels: s.Labels.String(), Entries: entries})
+		result = append(result, logproto.Stream{
+			Labels:        s.Labels.String(),
+			GroupedLabels: s.CategorizedLabels.ToProto(),
+			Entries:       entries,
+		})
 	}
 	return result
 }
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
-	Labels  LabelSet `json:"stream"`
-	Entries []Entry  `json:"values"`
+	Labels            LabelSet            `json:"stream"`
+	CategorizedLabels CategorizedLabelSet `json:"categorizedLabels,omitempty"`
+	Entries           []Entry             `json:"values"`
 }
 
 func (s *Stream) UnmarshalJSON(data []byte) error {
@@ -263,6 +268,8 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
+			// TODO(salvacorts): Deserialize the stream as a CategorizedLabelSet if the
+			// 					 there are multiple nested objects.
 			if err := s.Labels.UnmarshalJSON(value); err != nil {
 				return err
 			}
@@ -288,6 +295,27 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 			return err
 		}
 		return nil
+	})
+}
+
+// MarshalJSON implements the json.Marshaler interface.
+// It will serialize only the Labels field if the CategorizedLabels field is nilm and vice-versa.
+func (s *Stream) MarshalJSON() ([]byte, error) {
+	if s.CategorizedLabels.Empty() {
+		return json.Marshal(struct {
+			Labels  LabelSet `json:"stream"`
+			Entries []Entry  `json:"values"`
+		}{
+			Labels:  s.Labels,
+			Entries: s.Entries,
+		})
+	}
+	return json.Marshal(struct {
+		CategorizedLabels CategorizedLabelSet `json:"stream"`
+		Entries           []Entry             `json:"values"`
+	}{
+		CategorizedLabels: s.CategorizedLabels,
+		Entries:           s.Entries,
 	})
 }
 

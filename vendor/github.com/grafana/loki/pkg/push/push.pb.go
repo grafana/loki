@@ -104,17 +104,78 @@ func (m *PushResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_PushResponse proto.InternalMessageInfo
 
+type GroupedLabelsAdapter struct {
+	Stream             []LabelPairAdapter `protobuf:"bytes,1,rep,name=stream,proto3" json:"stream"`
+	StructuredMetadata []LabelPairAdapter `protobuf:"bytes,2,rep,name=structuredMetadata,proto3" json:"structuredMetadata"`
+	Parsed             []LabelPairAdapter `protobuf:"bytes,3,rep,name=parsed,proto3" json:"parsed"`
+}
+
+func (m *GroupedLabelsAdapter) Reset()      { *m = GroupedLabelsAdapter{} }
+func (*GroupedLabelsAdapter) ProtoMessage() {}
+func (*GroupedLabelsAdapter) Descriptor() ([]byte, []int) {
+	return fileDescriptor_35ec442956852c9e, []int{2}
+}
+func (m *GroupedLabelsAdapter) XXX_Unmarshal(b []byte) error {
+	return m.Unmarshal(b)
+}
+func (m *GroupedLabelsAdapter) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+	if deterministic {
+		return xxx_messageInfo_GroupedLabelsAdapter.Marshal(b, m, deterministic)
+	} else {
+		b = b[:cap(b)]
+		n, err := m.MarshalToSizedBuffer(b)
+		if err != nil {
+			return nil, err
+		}
+		return b[:n], nil
+	}
+}
+func (m *GroupedLabelsAdapter) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_GroupedLabelsAdapter.Merge(m, src)
+}
+func (m *GroupedLabelsAdapter) XXX_Size() int {
+	return m.Size()
+}
+func (m *GroupedLabelsAdapter) XXX_DiscardUnknown() {
+	xxx_messageInfo_GroupedLabelsAdapter.DiscardUnknown(m)
+}
+
+var xxx_messageInfo_GroupedLabelsAdapter proto.InternalMessageInfo
+
+func (m *GroupedLabelsAdapter) GetStream() []LabelPairAdapter {
+	if m != nil {
+		return m.Stream
+	}
+	return nil
+}
+
+func (m *GroupedLabelsAdapter) GetStructuredMetadata() []LabelPairAdapter {
+	if m != nil {
+		return m.StructuredMetadata
+	}
+	return nil
+}
+
+func (m *GroupedLabelsAdapter) GetParsed() []LabelPairAdapter {
+	if m != nil {
+		return m.Parsed
+	}
+	return nil
+}
+
 type StreamAdapter struct {
 	Labels  string         `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
 	Entries []EntryAdapter `protobuf:"bytes,2,rep,name=entries,proto3" json:"entries"`
 	// hash contains the original hash of the stream.
 	Hash uint64 `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	// group contains the grouped labels of the stream.
+	GroupedLabels GroupedLabelsAdapter `protobuf:"bytes,4,opt,name=groupedLabels,proto3" json:"groupedLabels"`
 }
 
 func (m *StreamAdapter) Reset()      { *m = StreamAdapter{} }
 func (*StreamAdapter) ProtoMessage() {}
 func (*StreamAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{2}
+	return fileDescriptor_35ec442956852c9e, []int{3}
 }
 func (m *StreamAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -164,6 +225,13 @@ func (m *StreamAdapter) GetHash() uint64 {
 	return 0
 }
 
+func (m *StreamAdapter) GetGroupedLabels() GroupedLabelsAdapter {
+	if m != nil {
+		return m.GroupedLabels
+	}
+	return GroupedLabelsAdapter{}
+}
+
 type LabelPairAdapter struct {
 	Name  string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Value string `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
@@ -172,7 +240,7 @@ type LabelPairAdapter struct {
 func (m *LabelPairAdapter) Reset()      { *m = LabelPairAdapter{} }
 func (*LabelPairAdapter) ProtoMessage() {}
 func (*LabelPairAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{3}
+	return fileDescriptor_35ec442956852c9e, []int{4}
 }
 func (m *LabelPairAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -224,7 +292,7 @@ type EntryAdapter struct {
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
 func (*EntryAdapter) ProtoMessage() {}
 func (*EntryAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{4}
+	return fileDescriptor_35ec442956852c9e, []int{5}
 }
 func (m *EntryAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -277,6 +345,7 @@ func (m *EntryAdapter) GetNonIndexedLabels() []LabelPairAdapter {
 func init() {
 	proto.RegisterType((*PushRequest)(nil), "logproto.PushRequest")
 	proto.RegisterType((*PushResponse)(nil), "logproto.PushResponse")
+	proto.RegisterType((*GroupedLabelsAdapter)(nil), "logproto.GroupedLabelsAdapter")
 	proto.RegisterType((*StreamAdapter)(nil), "logproto.StreamAdapter")
 	proto.RegisterType((*LabelPairAdapter)(nil), "logproto.LabelPairAdapter")
 	proto.RegisterType((*EntryAdapter)(nil), "logproto.EntryAdapter")
@@ -285,39 +354,44 @@ func init() {
 func init() { proto.RegisterFile("pkg/push/push.proto", fileDescriptor_35ec442956852c9e) }
 
 var fileDescriptor_35ec442956852c9e = []byte{
-	// 498 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x64, 0x53, 0xc1, 0x6e, 0xd3, 0x40,
-	0x10, 0xf5, 0x26, 0x6e, 0xda, 0x4e, 0x4a, 0xa9, 0x96, 0xb6, 0x04, 0x0b, 0xad, 0x23, 0x9f, 0x72,
-	0x00, 0x5b, 0x0a, 0x07, 0x2e, 0x5c, 0x62, 0x09, 0xa9, 0x48, 0x3d, 0x54, 0x06, 0x81, 0xc4, 0x6d,
-	0x43, 0xb6, 0xb6, 0xa9, 0xed, 0x35, 0xde, 0x35, 0xa2, 0x37, 0x3e, 0xa1, 0xfc, 0x05, 0x9f, 0xd2,
-	0x63, 0x8e, 0x15, 0x07, 0x43, 0x9c, 0x0b, 0xca, 0xa9, 0x9f, 0x80, 0xbc, 0xb6, 0x49, 0x09, 0x97,
-	0xf5, 0x9b, 0xb7, 0x33, 0xf3, 0x9e, 0x67, 0x6c, 0x78, 0x90, 0x5e, 0xf8, 0x4e, 0x9a, 0x8b, 0x40,
-	0x1d, 0x76, 0x9a, 0x71, 0xc9, 0xf1, 0x4e, 0xc4, 0x7d, 0x85, 0x8c, 0x43, 0x9f, 0xfb, 0x5c, 0x41,
-	0xa7, 0x42, 0xf5, 0xbd, 0x61, 0xfa, 0x9c, 0xfb, 0x11, 0x73, 0x54, 0x34, 0xcd, 0xcf, 0x1d, 0x19,
-	0xc6, 0x4c, 0x48, 0x1a, 0xa7, 0x75, 0x82, 0xf5, 0x0e, 0xfa, 0x67, 0xb9, 0x08, 0x3c, 0xf6, 0x29,
-	0x67, 0x42, 0xe2, 0x13, 0xd8, 0x16, 0x32, 0x63, 0x34, 0x16, 0x03, 0x34, 0xec, 0x8e, 0xfa, 0xe3,
-	0x87, 0x76, 0xab, 0x60, 0xbf, 0x56, 0x17, 0x93, 0x19, 0x4d, 0x25, 0xcb, 0xdc, 0xa3, 0x1f, 0x85,
-	0xd9, 0xab, 0xa9, 0x55, 0x61, 0xb6, 0x55, 0x5e, 0x0b, 0xac, 0x7d, 0xd8, 0xab, 0x1b, 0x8b, 0x94,
-	0x27, 0x82, 0x59, 0xdf, 0x10, 0xdc, 0xfb, 0xa7, 0x03, 0xb6, 0xa0, 0x17, 0xd1, 0x29, 0x8b, 0x2a,
-	0x29, 0x34, 0xda, 0x75, 0x61, 0x55, 0x98, 0x0d, 0xe3, 0x35, 0x4f, 0x3c, 0x81, 0x6d, 0x96, 0xc8,
-	0x2c, 0x64, 0x62, 0xd0, 0x51, 0x7e, 0x8e, 0xd7, 0x7e, 0x5e, 0x26, 0x32, 0xbb, 0x6c, 0xed, 0xdc,
-	0xbf, 0x2e, 0x4c, 0xad, 0x32, 0xd2, 0xa4, 0x7b, 0x2d, 0xc0, 0x8f, 0x40, 0x0f, 0xa8, 0x08, 0x06,
-	0xdd, 0x21, 0x1a, 0xe9, 0xee, 0xd6, 0xaa, 0x30, 0xd1, 0x53, 0x4f, 0x51, 0xd6, 0x0b, 0x38, 0x38,
-	0xad, 0x74, 0xce, 0x68, 0x98, 0xb5, 0xae, 0x30, 0xe8, 0x09, 0x8d, 0x59, 0xed, 0xc9, 0x53, 0x18,
-	0x1f, 0xc2, 0xd6, 0x67, 0x1a, 0xe5, 0x6c, 0xd0, 0x51, 0x64, 0x1d, 0x58, 0x25, 0x82, 0xbd, 0xbb,
-	0x1e, 0xf0, 0x09, 0xec, 0xfe, 0x1d, 0xaf, 0xaa, 0xef, 0x8f, 0x0d, 0xbb, 0x5e, 0x80, 0xdd, 0x2e,
-	0xc0, 0x7e, 0xd3, 0x66, 0xb8, 0xfb, 0x8d, 0xe5, 0x8e, 0x14, 0x57, 0x3f, 0x4d, 0xe4, 0xad, 0x8b,
-	0xf1, 0x63, 0xd0, 0xa3, 0x30, 0x69, 0xf4, 0xdc, 0x9d, 0x55, 0x61, 0xaa, 0xd8, 0x53, 0x27, 0xfe,
-	0x08, 0x07, 0x09, 0x4f, 0x5e, 0x25, 0x33, 0xf6, 0x85, 0xcd, 0x4e, 0xeb, 0x11, 0x76, 0xd5, 0x74,
-	0x8c, 0xf5, 0x74, 0x36, 0x5f, 0xcc, 0xb5, 0x1a, 0x39, 0x63, 0xb3, 0xf6, 0x09, 0x8f, 0x43, 0xc9,
-	0xe2, 0x54, 0x5e, 0x7a, 0xff, 0xf5, 0x1d, 0x4f, 0xa0, 0x57, 0xad, 0x91, 0x65, 0xf8, 0x39, 0xe8,
-	0x15, 0xc2, 0x47, 0x6b, 0x8d, 0x3b, 0x5f, 0x8e, 0x71, 0xbc, 0x49, 0x37, 0x7b, 0xd7, 0xdc, 0xb7,
-	0xf3, 0x05, 0xd1, 0x6e, 0x16, 0x44, 0xbb, 0x5d, 0x10, 0xf4, 0xb5, 0x24, 0xe8, 0x7b, 0x49, 0xd0,
-	0x75, 0x49, 0xd0, 0xbc, 0x24, 0xe8, 0x57, 0x49, 0xd0, 0xef, 0x92, 0x68, 0xb7, 0x25, 0x41, 0x57,
-	0x4b, 0xa2, 0xcd, 0x97, 0x44, 0xbb, 0x59, 0x12, 0xed, 0xfd, 0xd0, 0x0f, 0x65, 0x90, 0x4f, 0xed,
-	0x0f, 0x3c, 0x76, 0xfc, 0x8c, 0x9e, 0xd3, 0x84, 0x3a, 0x11, 0xbf, 0x08, 0x9d, 0xf6, 0x37, 0x98,
-	0xf6, 0x94, 0xda, 0xb3, 0x3f, 0x01, 0x00, 0x00, 0xff, 0xff, 0x9b, 0x6f, 0x19, 0xc8, 0x19, 0x03,
-	0x00, 0x00,
+	// 592 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0x3f, 0x6f, 0xd4, 0x30,
+	0x14, 0x8f, 0xaf, 0xd7, 0x6b, 0xeb, 0xfe, 0xa1, 0x32, 0x6d, 0x09, 0x27, 0xe4, 0x9c, 0x32, 0xdd,
+	0x00, 0x89, 0x54, 0x06, 0x16, 0x96, 0x46, 0x42, 0x14, 0x09, 0xa4, 0xca, 0x20, 0x90, 0x60, 0xf2,
+	0x35, 0x6e, 0x2e, 0x34, 0x89, 0x83, 0xed, 0x20, 0xba, 0x31, 0x31, 0xf7, 0x63, 0xf0, 0x51, 0x3a,
+	0x76, 0xac, 0x18, 0x02, 0x4d, 0x17, 0x74, 0x03, 0xea, 0x47, 0x40, 0x71, 0x9c, 0x5e, 0x5b, 0x2a,
+	0x95, 0x25, 0xfe, 0xbd, 0xe7, 0xf7, 0x7b, 0x3f, 0xfb, 0x3d, 0xbf, 0xc0, 0xbb, 0xf9, 0x7e, 0xe4,
+	0xe7, 0x85, 0x1c, 0xeb, 0x8f, 0x97, 0x0b, 0xae, 0x38, 0x9a, 0x4f, 0x78, 0xa4, 0x51, 0x7f, 0x2d,
+	0xe2, 0x11, 0xd7, 0xd0, 0xaf, 0x51, 0xb3, 0xdf, 0x77, 0x22, 0xce, 0xa3, 0x84, 0xf9, 0xda, 0x1a,
+	0x15, 0x7b, 0xbe, 0x8a, 0x53, 0x26, 0x15, 0x4d, 0xf3, 0x26, 0xc0, 0x7d, 0x07, 0x17, 0x77, 0x0a,
+	0x39, 0x26, 0xec, 0x53, 0xc1, 0xa4, 0x42, 0xdb, 0x70, 0x4e, 0x2a, 0xc1, 0x68, 0x2a, 0x6d, 0x30,
+	0x98, 0x19, 0x2e, 0x6e, 0xde, 0xf3, 0x5a, 0x05, 0xef, 0xb5, 0xde, 0xd8, 0x0a, 0x69, 0xae, 0x98,
+	0x08, 0xd6, 0x7f, 0x94, 0x4e, 0xaf, 0x71, 0x4d, 0x4a, 0xa7, 0x65, 0x91, 0x16, 0xb8, 0x2b, 0x70,
+	0xa9, 0x49, 0x2c, 0x73, 0x9e, 0x49, 0xe6, 0x7e, 0xeb, 0xc0, 0xb5, 0xe7, 0x82, 0x17, 0x39, 0x0b,
+	0x5f, 0xd2, 0x11, 0x4b, 0xa4, 0x49, 0x84, 0x02, 0xd8, 0x6b, 0x38, 0x46, 0xb1, 0x3f, 0x55, 0xd4,
+	0x81, 0x3b, 0x34, 0x16, 0xad, 0xe8, 0xca, 0x51, 0xe9, 0x58, 0x93, 0xd2, 0x31, 0x0c, 0x62, 0x56,
+	0xb4, 0x07, 0x91, 0x54, 0xa2, 0xd8, 0x55, 0x85, 0x60, 0xe1, 0x2b, 0xa6, 0x68, 0x48, 0x15, 0xb5,
+	0x3b, 0xb7, 0xe6, 0xeb, 0x9b, 0x7c, 0x37, 0xb0, 0xc9, 0x0d, 0xbe, 0xfa, 0xac, 0x39, 0x15, 0x92,
+	0x85, 0xf6, 0xcc, 0xff, 0x9f, 0xb5, 0x61, 0x10, 0xb3, 0xba, 0x7f, 0x00, 0x5c, 0xbe, 0x52, 0x4a,
+	0xe4, 0xc2, 0x5e, 0xa2, 0x4b, 0x62, 0x83, 0x01, 0x18, 0x2e, 0x04, 0xb0, 0x66, 0x35, 0x1e, 0x62,
+	0x56, 0xb4, 0x05, 0xe7, 0x58, 0xa6, 0x44, 0xcc, 0xa4, 0xb9, 0xd6, 0xc6, 0x54, 0xfa, 0x59, 0xa6,
+	0xc4, 0x41, 0x2b, 0x7b, 0xc7, 0xc8, 0xb6, 0xe1, 0xa4, 0x05, 0xe8, 0x3e, 0xec, 0x8e, 0xa9, 0x1c,
+	0xdb, 0x33, 0x03, 0x30, 0xec, 0x06, 0xb3, 0x93, 0xd2, 0x01, 0x8f, 0x88, 0x76, 0xa1, 0x0f, 0x70,
+	0x39, 0xba, 0xdc, 0x1b, 0xbb, 0x3b, 0x00, 0xc3, 0xc5, 0x4d, 0x3c, 0xd5, 0xb8, 0xa9, 0x75, 0xc1,
+	0xba, 0xd1, 0xba, 0x4a, 0x26, 0x57, 0x4d, 0xf7, 0x29, 0x5c, 0xbd, 0x5e, 0x1c, 0x84, 0x60, 0x37,
+	0xa3, 0x29, 0x6b, 0x2e, 0x4c, 0x34, 0x46, 0x6b, 0x70, 0xf6, 0x33, 0x4d, 0x0a, 0x66, 0x77, 0xb4,
+	0xb3, 0x31, 0xdc, 0x0a, 0xc0, 0xa5, 0xcb, 0x17, 0x44, 0xdb, 0x70, 0xe1, 0xe2, 0x11, 0x6b, 0x7e,
+	0xdd, 0x86, 0xe6, 0x99, 0x7b, 0xed, 0x33, 0xf7, 0xde, 0xb4, 0x11, 0x17, 0x6d, 0xe8, 0x28, 0x79,
+	0xf8, 0xd3, 0x01, 0x64, 0x4a, 0x46, 0x0f, 0x60, 0x37, 0x89, 0x33, 0xa3, 0x17, 0xcc, 0x4f, 0x4a,
+	0x47, 0xdb, 0x44, 0x7f, 0xd1, 0x47, 0xb8, 0x9a, 0xf1, 0xec, 0x45, 0x16, 0xb2, 0x2f, 0x17, 0x65,
+	0xb9, 0xbd, 0xeb, 0xae, 0x91, 0xeb, 0x5f, 0xe7, 0x3e, 0xe4, 0x69, 0xac, 0x58, 0x9a, 0xab, 0x03,
+	0xf2, 0x4f, 0xde, 0xcd, 0x2d, 0xd8, 0xab, 0x87, 0x85, 0x09, 0xf4, 0x04, 0x76, 0x6b, 0x84, 0xd6,
+	0xa7, 0x1a, 0x97, 0xe6, 0xb3, 0xbf, 0x71, 0xdd, 0x6d, 0xa6, 0xcb, 0x0a, 0xde, 0x1e, 0x9f, 0x62,
+	0xeb, 0xe4, 0x14, 0x5b, 0xe7, 0xa7, 0x18, 0x7c, 0xad, 0x30, 0xf8, 0x5e, 0x61, 0x70, 0x54, 0x61,
+	0x70, 0x5c, 0x61, 0xf0, 0xab, 0xc2, 0xe0, 0x77, 0x85, 0xad, 0xf3, 0x0a, 0x83, 0xc3, 0x33, 0x6c,
+	0x1d, 0x9f, 0x61, 0xeb, 0xe4, 0x0c, 0x5b, 0xef, 0x07, 0x51, 0xac, 0xc6, 0xc5, 0xc8, 0xdb, 0xe5,
+	0xa9, 0x1f, 0x09, 0xba, 0x47, 0x33, 0xea, 0x27, 0x7c, 0x3f, 0xf6, 0xdb, 0x9f, 0xcd, 0xa8, 0xa7,
+	0xd5, 0x1e, 0xff, 0x0d, 0x00, 0x00, 0xff, 0xff, 0x5c, 0x27, 0x0f, 0x9c, 0x7f, 0x04, 0x00, 0x00,
 }
 
 func (this *PushRequest) Equal(that interface{}) bool {
@@ -370,6 +444,51 @@ func (this *PushResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
+func (this *GroupedLabelsAdapter) Equal(that interface{}) bool {
+	if that == nil {
+		return this == nil
+	}
+
+	that1, ok := that.(*GroupedLabelsAdapter)
+	if !ok {
+		that2, ok := that.(GroupedLabelsAdapter)
+		if ok {
+			that1 = &that2
+		} else {
+			return false
+		}
+	}
+	if that1 == nil {
+		return this == nil
+	} else if this == nil {
+		return false
+	}
+	if len(this.Stream) != len(that1.Stream) {
+		return false
+	}
+	for i := range this.Stream {
+		if !this.Stream[i].Equal(&that1.Stream[i]) {
+			return false
+		}
+	}
+	if len(this.StructuredMetadata) != len(that1.StructuredMetadata) {
+		return false
+	}
+	for i := range this.StructuredMetadata {
+		if !this.StructuredMetadata[i].Equal(&that1.StructuredMetadata[i]) {
+			return false
+		}
+	}
+	if len(this.Parsed) != len(that1.Parsed) {
+		return false
+	}
+	for i := range this.Parsed {
+		if !this.Parsed[i].Equal(&that1.Parsed[i]) {
+			return false
+		}
+	}
+	return true
+}
 func (this *StreamAdapter) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -401,6 +520,9 @@ func (this *StreamAdapter) Equal(that interface{}) bool {
 		}
 	}
 	if this.Hash != that1.Hash {
+		return false
+	}
+	if !this.GroupedLabels.Equal(&that1.GroupedLabels) {
 		return false
 	}
 	return true
@@ -486,11 +608,41 @@ func (this *PushResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *StreamAdapter) GoString() string {
+func (this *GroupedLabelsAdapter) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
+	s = append(s, "&push.GroupedLabelsAdapter{")
+	if this.Stream != nil {
+		vs := make([]*LabelPairAdapter, len(this.Stream))
+		for i := range vs {
+			vs[i] = &this.Stream[i]
+		}
+		s = append(s, "Stream: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	if this.StructuredMetadata != nil {
+		vs := make([]*LabelPairAdapter, len(this.StructuredMetadata))
+		for i := range vs {
+			vs[i] = &this.StructuredMetadata[i]
+		}
+		s = append(s, "StructuredMetadata: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	if this.Parsed != nil {
+		vs := make([]*LabelPairAdapter, len(this.Parsed))
+		for i := range vs {
+			vs[i] = &this.Parsed[i]
+		}
+		s = append(s, "Parsed: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	s = append(s, "}")
+	return strings.Join(s, "")
+}
+func (this *StreamAdapter) GoString() string {
+	if this == nil {
+		return "nil"
+	}
+	s := make([]string, 0, 8)
 	s = append(s, "&push.StreamAdapter{")
 	s = append(s, "Labels: "+fmt.Sprintf("%#v", this.Labels)+",\n")
 	if this.Entries != nil {
@@ -501,6 +653,7 @@ func (this *StreamAdapter) GoString() string {
 		s = append(s, "Entries: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "Hash: "+fmt.Sprintf("%#v", this.Hash)+",\n")
+	s = append(s, "GroupedLabels: "+strings.Replace(this.GroupedLabels.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -682,6 +835,71 @@ func (m *PushResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
+func (m *GroupedLabelsAdapter) Marshal() (dAtA []byte, err error) {
+	size := m.Size()
+	dAtA = make([]byte, size)
+	n, err := m.MarshalToSizedBuffer(dAtA[:size])
+	if err != nil {
+		return nil, err
+	}
+	return dAtA[:n], nil
+}
+
+func (m *GroupedLabelsAdapter) MarshalTo(dAtA []byte) (int, error) {
+	size := m.Size()
+	return m.MarshalToSizedBuffer(dAtA[:size])
+}
+
+func (m *GroupedLabelsAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+	i := len(dAtA)
+	_ = i
+	var l int
+	_ = l
+	if len(m.Parsed) > 0 {
+		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Parsed[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x1a
+		}
+	}
+	if len(m.StructuredMetadata) > 0 {
+		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.StructuredMetadata[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x12
+		}
+	}
+	if len(m.Stream) > 0 {
+		for iNdEx := len(m.Stream) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Stream[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0xa
+		}
+	}
+	return len(dAtA) - i, nil
+}
+
 func (m *StreamAdapter) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -702,6 +920,16 @@ func (m *StreamAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	{
+		size, err := m.GroupedLabels.MarshalToSizedBuffer(dAtA[:i])
+		if err != nil {
+			return 0, err
+		}
+		i -= size
+		i = encodeVarintPush(dAtA, i, uint64(size))
+	}
+	i--
+	dAtA[i] = 0x22
 	if m.Hash != 0 {
 		i = encodeVarintPush(dAtA, i, uint64(m.Hash))
 		i--
@@ -809,12 +1037,12 @@ func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
-	if err1 != nil {
-		return 0, err1
+	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err2 != nil {
+		return 0, err2
 	}
-	i -= n1
-	i = encodeVarintPush(dAtA, i, uint64(n1))
+	i -= n2
+	i = encodeVarintPush(dAtA, i, uint64(n2))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -855,6 +1083,33 @@ func (m *PushResponse) Size() (n int) {
 	return n
 }
 
+func (m *GroupedLabelsAdapter) Size() (n int) {
+	if m == nil {
+		return 0
+	}
+	var l int
+	_ = l
+	if len(m.Stream) > 0 {
+		for _, e := range m.Stream {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	if len(m.StructuredMetadata) > 0 {
+		for _, e := range m.StructuredMetadata {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	if len(m.Parsed) > 0 {
+		for _, e := range m.Parsed {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	return n
+}
+
 func (m *StreamAdapter) Size() (n int) {
 	if m == nil {
 		return 0
@@ -874,6 +1129,8 @@ func (m *StreamAdapter) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(uint64(m.Hash))
 	}
+	l = m.GroupedLabels.Size()
+	n += 1 + l + sovPush(uint64(l))
 	return n
 }
 
@@ -940,6 +1197,33 @@ func (this *PushResponse) String() string {
 	}, "")
 	return s
 }
+func (this *GroupedLabelsAdapter) String() string {
+	if this == nil {
+		return "nil"
+	}
+	repeatedStringForStream := "[]LabelPairAdapter{"
+	for _, f := range this.Stream {
+		repeatedStringForStream += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForStream += "}"
+	repeatedStringForStructuredMetadata := "[]LabelPairAdapter{"
+	for _, f := range this.StructuredMetadata {
+		repeatedStringForStructuredMetadata += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForStructuredMetadata += "}"
+	repeatedStringForParsed := "[]LabelPairAdapter{"
+	for _, f := range this.Parsed {
+		repeatedStringForParsed += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForParsed += "}"
+	s := strings.Join([]string{`&GroupedLabelsAdapter{`,
+		`Stream:` + repeatedStringForStream + `,`,
+		`StructuredMetadata:` + repeatedStringForStructuredMetadata + `,`,
+		`Parsed:` + repeatedStringForParsed + `,`,
+		`}`,
+	}, "")
+	return s
+}
 func (this *StreamAdapter) String() string {
 	if this == nil {
 		return "nil"
@@ -953,6 +1237,7 @@ func (this *StreamAdapter) String() string {
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Entries:` + repeatedStringForEntries + `,`,
 		`Hash:` + fmt.Sprintf("%v", this.Hash) + `,`,
+		`GroupedLabels:` + strings.Replace(strings.Replace(this.GroupedLabels.String(), "GroupedLabelsAdapter", "GroupedLabelsAdapter", 1), `&`, ``, 1) + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1133,6 +1418,161 @@ func (m *PushResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
+func (m *GroupedLabelsAdapter) Unmarshal(dAtA []byte) error {
+	l := len(dAtA)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowPush
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := dAtA[iNdEx]
+			iNdEx++
+			wire |= uint64(b&0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: GroupedLabelsAdapter: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: GroupedLabelsAdapter: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Stream", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Stream = append(m.Stream, LabelPairAdapter{})
+			if err := m.Stream[len(m.Stream)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.StructuredMetadata = append(m.StructuredMetadata, LabelPairAdapter{})
+			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Parsed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Parsed = append(m.Parsed, LabelPairAdapter{})
+			if err := m.Parsed[len(m.Parsed)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipPush(dAtA[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) < 0 {
+				return ErrInvalidLengthPush
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
 func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1247,6 +1687,39 @@ func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field GroupedLabels", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if err := m.GroupedLabels.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])

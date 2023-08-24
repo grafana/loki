@@ -1191,12 +1191,17 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 		}
 		stats.AddPostFilterLines(1)
 		var stream *logproto.Stream
-		labels := parsedLbs.Labels().String()
+		labels := parsedLbs.String()
 		var ok bool
 		if stream, ok = streams[labels]; !ok {
 			stream = &logproto.Stream{
 				Labels: labels,
 				Hash:   baseHash,
+				GroupedLabels: logproto.GroupedLabels{
+					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream().Labels()),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata().Labels()),
+					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed().Labels()),
+				},
 			}
 			streams[labels] = stream
 		}
@@ -1587,26 +1592,36 @@ type entryBufferedIterator struct {
 	iterOptions iter.EntryIteratorOptions
 
 	cur        logproto.Entry
-	currLabels log.LabelsResult
+	currLabels log.CategorizedLabelsResult
 }
 
 func (e *entryBufferedIterator) Entry() logproto.Entry {
 	return e.cur
 }
 
-func (e *entryBufferedIterator) Labels() string { return e.currLabels.String() }
+func (e *entryBufferedIterator) Labels() string {
+	return e.currLabels.String()
+}
+
+func (e *entryBufferedIterator) GroupedLabels() logproto.GroupedLabels {
+	return logproto.GroupedLabels{
+		Stream:             logproto.FromLabelsToLabelAdapters(e.currLabels.Stream().Labels()),
+		StructuredMetadata: logproto.FromLabelsToLabelAdapters(e.currLabels.StructuredMetadata().Labels()),
+		Parsed:             logproto.FromLabelsToLabelAdapters(e.currLabels.Parsed().Labels()),
+	}
+}
 
 func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabels().Hash() }
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
+		newLine, groupedLabels, matches := e.pipeline.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
 		if !matches {
 			continue
 		}
 
 		e.stats.AddPostFilterLines(1)
-		e.currLabels = lbs
+		e.currLabels = groupedLabels
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 
@@ -1653,6 +1668,11 @@ func (e *sampleBufferedIterator) Next() bool {
 	return false
 }
 func (e *sampleBufferedIterator) Labels() string { return e.currLabels.String() }
+
+func (e *sampleBufferedIterator) GroupedLabels() logproto.GroupedLabels {
+	// TODO: Implement this
+	panic("not implemented")
+}
 
 func (e *sampleBufferedIterator) StreamHash() uint64 { return e.extractor.BaseLabels().Hash() }
 

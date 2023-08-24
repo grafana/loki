@@ -129,7 +129,7 @@ type StageAnalysisRecorder struct {
 	records    []StageAnalysisRecord
 }
 
-func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.LabelsBuilder) ([]byte, bool) {
+func (s StageAnalysisRecorder) Process(ts int64, line []byte, lbs *log.GroupedLabelsBuilder) ([]byte, bool) {
 	lineBefore := string(line)
 	labelsBefore := lbs.UnsortedLabels(nil)
 

@@ -34,6 +34,7 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutate the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
+	// TODO(salvacorts): Support categories in metric extraction.
 	Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool)
 	ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool)
 }
@@ -82,7 +83,7 @@ type streamLineSampleExtractor struct {
 
 func (l *streamLineSampleExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	l.builder.Reset()
-	l.builder.Add(nonIndexedLabels...)
+	l.builder.Add(StructuredMetadataLabel, nonIndexedLabels...)
 
 	// short circuit.
 	if l.Stage == NoopStage {
@@ -174,7 +175,7 @@ func (l *labelSampleExtractor) ForStream(labels labels.Labels) StreamSampleExtra
 func (l *streamLabelSampleExtractor) Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool) {
 	// Apply the pipeline first.
 	l.builder.Reset()
-	l.builder.Add(nonIndexedLabels...)
+	l.builder.Add(StructuredMetadataLabel, nonIndexedLabels...)
 	line, ok := l.preStage.Process(ts, line, l.builder)
 	if !ok {
 		return 0, nil, false

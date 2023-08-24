@@ -21,6 +21,101 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
+const emptyStats = `{
+	"ingester" : {
+		"store": {
+			"chunksDownloadTime": 0,
+			"totalChunksRef": 0,
+			"totalChunksDownloaded": 0,
+			"chunk" :{
+				"compressedBytes": 0,
+				"decompressedBytes": 0,
+				"decompressedLines": 0,
+				"decompressedNonIndexedLabelsBytes": 0,
+				"headChunkBytes": 0,
+				"headChunkLines": 0,
+				"headChunkNonIndexedLabelsBytes": 0,
+				"postFilterLines": 0,
+				"totalDuplicates": 0
+			}
+		},
+		"totalBatches": 0,
+		"totalChunksMatched": 0,
+		"totalLinesSent": 0,
+		"totalReached": 0
+	},
+	"querier": {
+		"store": {
+			"chunksDownloadTime": 0,
+			"totalChunksRef": 0,
+			"totalChunksDownloaded": 0,
+			"chunk" :{
+				"compressedBytes": 0,
+				"decompressedBytes": 0,
+				"decompressedLines": 0,
+				"decompressedNonIndexedLabelsBytes": 0,
+				"headChunkBytes": 0,
+				"headChunkLines": 0,
+				"headChunkNonIndexedLabelsBytes": 0,
+				"postFilterLines": 0,
+				"totalDuplicates": 0
+			}
+		}
+	},
+	"cache": {
+		"chunk": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		},
+		"index": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		},
+		"statsResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		},
+		"result": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		}
+	},
+	"summary": {
+		"bytesProcessedPerSecond": 0,
+		"execTime": 0,
+		"linesProcessedPerSecond": 0,
+		"queueTime": 0,
+		"shards": 0,
+		"splits": 0,
+		"subqueries": 0,
+		"totalBytesProcessed": 0,
+		"totalEntriesReturned": 0,
+		"totalLinesProcessed": 0,
+		"totalNonIndexedLabelsBytesProcessed": 0,
+		"totalPostFilterLines": 0
+	}
+}`
+
 // covers responses from /loki/api/v1/query_range and /loki/api/v1/query
 var queryTests = []struct {
 	actual   parser.Value
@@ -46,7 +141,7 @@ var queryTests = []struct {
 				Labels: `{test="test"}`,
 			},
 		},
-		`{
+		fmt.Sprintf(`{
 			"status": "success",
 			"data": {
 				"resultType": "streams",
@@ -61,102 +156,9 @@ var queryTests = []struct {
 						]
 					}
 				],
-				"stats" : {
-					"ingester" : {
-						"store": {
-							"chunksDownloadTime": 0,
-							"totalChunksRef": 0,
-							"totalChunksDownloaded": 0,
-							"chunk" :{
-								"compressedBytes": 0,
-								"decompressedBytes": 0,
-								"decompressedLines": 0,
-								"decompressedNonIndexedLabelsBytes": 0,
-								"headChunkBytes": 0,
-								"headChunkLines": 0,
-								"headChunkNonIndexedLabelsBytes": 0,
-                                "postFilterLines": 0,
-								"totalDuplicates": 0
-							}
-						},
-						"totalBatches": 0,
-						"totalChunksMatched": 0,
-						"totalLinesSent": 0,
-						"totalReached": 0
-					},
-					"querier": {
-						"store": {
-							"chunksDownloadTime": 0,
-							"totalChunksRef": 0,
-							"totalChunksDownloaded": 0,
-							"chunk" :{
-								"compressedBytes": 0,
-								"decompressedBytes": 0,
-								"decompressedLines": 0,
-								"decompressedNonIndexedLabelsBytes": 0,
-								"headChunkBytes": 0,
-								"headChunkLines": 0,
-								"headChunkNonIndexedLabelsBytes": 0,
-                                "postFilterLines": 0,
-								"totalDuplicates": 0
-							}
-						}
-					},
-					"cache": {
-						"chunk": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						},
-						"index": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						},
-						"statsResult": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						},
-						"result": {
-							"entriesFound": 0,
-							"entriesRequested": 0,
-							"entriesStored": 0,
-							"bytesReceived": 0,
-							"bytesSent": 0,
-							"requests": 0,
-							"downloadTime": 0
-						}
-					},
-					"summary": {
-						"bytesProcessedPerSecond": 0,
-						"execTime": 0,
-						"linesProcessedPerSecond": 0,
-						"queueTime": 0,
-                        "shards": 0,
-                        "splits": 0,
-						"subqueries": 0,
-						"totalBytesProcessed": 0,
-                        "totalEntriesReturned": 0,
-						"totalLinesProcessed": 0,
-						"totalNonIndexedLabelsBytesProcessed": 0,
-                        "totalPostFilterLines": 0
-					}
-				}
+				"stats" : %s
 			}
-		}`,
+		}`, emptyStats),
 	},
 	// vector test
 	{
@@ -190,7 +192,7 @@ var queryTests = []struct {
 				},
 			},
 		},
-		`{
+		fmt.Sprintf(`{
 			"data": {
 			  "resultType": "vector",
 			  "result": [
@@ -215,103 +217,10 @@ var queryTests = []struct {
 				  ]
 				}
 			  ],
-			  "stats" : {
-				"ingester" : {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"decompressedNonIndexedLabelsBytes": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"headChunkNonIndexedLabelsBytes": 0,
-                            "postFilterLines": 0,
-							"totalDuplicates": 0
-						}
-					},
-					"totalBatches": 0,
-					"totalChunksMatched": 0,
-					"totalLinesSent": 0,
-					"totalReached": 0
-				},
-				"querier": {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"decompressedNonIndexedLabelsBytes": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"headChunkNonIndexedLabelsBytes": 0,
-                            "postFilterLines": 0,
-							"totalDuplicates": 0
-						}
-					}
-				},
-				"cache": {
-					"chunk": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"index": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"statsResult": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"result": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					}
-				},
-				"summary": {
-					"bytesProcessedPerSecond": 0,
-					"execTime": 0,
-					"linesProcessedPerSecond": 0,
-					"queueTime": 0,
-                    "shards": 0,
-                    "splits": 0,
-					"subqueries": 0,
-					"totalBytesProcessed": 0,
-                    "totalEntriesReturned": 0,
-					"totalLinesProcessed": 0,
-					"totalNonIndexedLabelsBytesProcessed": 0,
-                    "totalPostFilterLines": 0
-				}
-			  }
-			},
+			  "stats" : %s
+            },
 			"status": "success"
-		  }`,
+		  }`, emptyStats),
 	},
 	// matrix test
 	{
@@ -357,7 +266,7 @@ var queryTests = []struct {
 				},
 			},
 		},
-		`{
+		fmt.Sprintf(`{
 			"data": {
 			  "resultType": "matrix",
 			  "result": [
@@ -390,103 +299,10 @@ var queryTests = []struct {
 					]
 				}
 			  ],
-			  "stats" : {
-				"ingester" : {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"decompressedNonIndexedLabelsBytes": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"headChunkNonIndexedLabelsBytes": 0,
-                            "postFilterLines": 0,
-							"totalDuplicates": 0
-						}
-					},
-					"totalBatches": 0,
-					"totalChunksMatched": 0,
-					"totalLinesSent": 0,
-					"totalReached": 0
-				},
-				"querier": {
-					"store": {
-						"chunksDownloadTime": 0,
-						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0,
-						"chunk" :{
-							"compressedBytes": 0,
-							"decompressedBytes": 0,
-							"decompressedLines": 0,
-							"decompressedNonIndexedLabelsBytes": 0,
-							"headChunkBytes": 0,
-							"headChunkLines": 0,
-							"headChunkNonIndexedLabelsBytes": 0,
-                            "postFilterLines": 0,
-							"totalDuplicates": 0
-						}
-					}
-				},
-				"cache": {
-					"chunk": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"index": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"statsResult": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					},
-					"result": {
-						"entriesFound": 0,
-						"entriesRequested": 0,
-						"entriesStored": 0,
-						"bytesReceived": 0,
-						"bytesSent": 0,
-						"requests": 0,
-						"downloadTime": 0
-					}
-				},
-				"summary": {
-					"bytesProcessedPerSecond": 0,
-					"execTime": 0,
-					"linesProcessedPerSecond": 0,
-					"queueTime": 0,
-                    "shards": 0,
-                    "splits": 0,
-					"subqueries": 0,
-					"totalBytesProcessed": 0,
-                    "totalEntriesReturned": 0,
-					"totalLinesProcessed": 0,
-					"totalNonIndexedLabelsBytesProcessed": 0,
-                    "totalPostFilterLines": 0
-				}
-			  }
+			  "stats" : %s
 			},
 			"status": "success"
-		  }`,
+		  }`, emptyStats),
 	},
 }
 
@@ -718,6 +534,405 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			require.NoError(t, err)
 
 			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
+		})
+	}
+}
+
+func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
+	inputStream := logqlmodel.Streams{
+		logproto.Stream{
+			Labels: `{test="test"}`,
+			GroupedLabels: logproto.GroupedLabels{
+				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+				StructuredMetadata: []logproto.LabelAdapter{},
+				Parsed:             []logproto.LabelAdapter{},
+			},
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, 123456789012346),
+					Line:      "super line",
+				},
+			},
+		},
+		logproto.Stream{
+			Labels: `{test="test", foo="a", bar="b"}`,
+			GroupedLabels: logproto.GroupedLabels{
+				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+				Parsed:             []logproto.LabelAdapter{},
+			},
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, 123456789012346),
+					Line:      "super line with labels",
+					NonIndexedLabels: []logproto.LabelAdapter{
+						{Name: "foo", Value: "a"},
+						{Name: "bar", Value: "b"},
+					},
+				},
+			},
+		},
+		logproto.Stream{
+			Labels: `{test="test", foo="a", bar="b", msg="baz"}`,
+			GroupedLabels: logproto.GroupedLabels{
+				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+				Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
+			},
+			Entries: []logproto.Entry{
+				{
+					Timestamp: time.Unix(0, 123456789012346),
+					Line:      "super line with labels msg=baz",
+					NonIndexedLabels: []logproto.LabelAdapter{
+						{Name: "foo", Value: "a"},
+						{Name: "bar", Value: "b"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range []struct {
+		name        string
+		encodeFlags []loghttp.EncodingFlag
+		expected    string
+	}{
+		{
+			name: "uncategorized labels",
+			expected: fmt.Sprintf(`{
+				"status": "success",
+				"data": {
+					"resultType": "streams",
+					"result": [
+						{
+							"stream": {
+								"test": "test"
+							},
+							"values":[
+								[ "123456789012346", "super line"]
+							]
+						},
+						{
+							"stream": {
+								"test": "test",
+								"foo": "a",
+								"bar": "b"
+							},
+							"values":[
+								[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
+							]
+						},
+						{
+							"stream": {
+								"test": "test",
+								"foo": "a",
+								"bar": "b",
+								"msg": "baz"
+							},
+							"values":[
+								[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
+							]
+						}
+					],
+					"stats" : %s
+				}
+			}`, emptyStats),
+		},
+		{
+			name: "categorized labels",
+			encodeFlags: []loghttp.EncodingFlag{
+				loghttp.FlagGroupLabels,
+			},
+			expected: fmt.Sprintf(`{
+				"status": "success",
+				"data": {
+					"resultType": "streams",
+					"result": [
+						{
+							"stream": {
+								"stream": {
+									"test": "test"
+								},
+								"structuredMetadata": {},
+								"parsed": {}
+							},
+							"values":[
+								[ "123456789012346", "super line"]
+							]
+						},
+						{
+							"stream": {
+								"stream": {
+									"test": "test"
+								},
+								"structuredMetadata": {
+									"foo": "a",
+									"bar": "b"
+								},
+								"parsed": {}
+							},
+							"values":[
+								[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
+							]
+						},
+						{
+							"stream": {
+								"stream": {
+									"test": "test"
+								},
+								"structuredMetadata": {
+									"foo": "a",
+									"bar": "b"
+								},
+								"parsed": {	
+									"msg": "baz"
+								}
+							},
+							"values":[
+								[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
+							]
+						}
+					],
+					"stats" : %s
+				}
+			}`, emptyStats),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var b bytes.Buffer
+			err := WriteQueryResponseJSON(logqlmodel.Result{Data: inputStream}, &b, tc.encodeFlags...)
+			require.NoError(t, err)
+			require.JSONEq(t, tc.expected, b.String())
+		})
+	}
+}
+
+func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
+	type withEncFlags struct {
+		name     string
+		flags    []loghttp.EncodingFlag
+		expected string
+	}
+	for _, tc := range []struct {
+		name         string
+		input        legacy.TailResponse
+		withEncFlags []withEncFlags
+	}{
+		{
+			name: "only stream labels",
+			input: legacy.TailResponse{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{test="test"}`,
+						GroupedLabels: logproto.GroupedLabels{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+							StructuredMetadata: []logproto.LabelAdapter{},
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 123456789012345),
+								Line:      "super line",
+							},
+						},
+					},
+				},
+			},
+			withEncFlags: []withEncFlags{
+				{
+					name:  "no flags",
+					flags: nil,
+					expected: `{
+						"streams": [
+							{
+								"stream": {
+									"test": "test"
+								},
+								"values":[
+									[ "123456789012345", "super line"]
+								]
+							}
+						]
+					}`,
+				},
+				{
+					name: "group labels",
+					flags: []loghttp.EncodingFlag{
+						loghttp.FlagGroupLabels,
+					},
+					expected: `{
+						"streams": [
+							{
+								"stream": {
+									"stream": {
+										"test": "test"
+									}
+								},
+								"values":[
+									[ "123456789012345", "super line"]
+								]
+							}
+						]
+					}`,
+				},
+			},
+		},
+		{
+			name: "with non-indexed labels",
+			input: legacy.TailResponse{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{test="test", foo="a", bar="b"}`,
+						GroupedLabels: logproto.GroupedLabels{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+							Parsed:             []logproto.LabelAdapter{},
+						},
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 123456789012346),
+								Line:      "super line with labels",
+								NonIndexedLabels: []logproto.LabelAdapter{
+									{Name: "foo", Value: "a"},
+									{Name: "bar", Value: "b"},
+								},
+							},
+						},
+					},
+				},
+			},
+			withEncFlags: []withEncFlags{
+				{
+					name:  "no flags",
+					flags: nil,
+					expected: `{
+						"streams": [
+							{
+								"stream": {
+									"test": "test",
+									"foo": "a",
+									"bar": "b"
+								},
+								"values":[
+									[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
+								]
+							}
+						]
+					}`,
+				},
+				{
+					name: "group labels",
+					flags: []loghttp.EncodingFlag{
+						loghttp.FlagGroupLabels,
+					},
+					expected: `{
+						"streams": [
+							{
+								"stream": {
+									"stream": {
+										"test": "test"
+									},
+									"structuredMetadata": {
+										"foo": "a",
+										"bar": "b"
+									}
+								},
+								"values":[
+									[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
+								]
+							}
+						]
+					}`,
+				},
+			},
+		},
+		{
+			name: "with parsed labels",
+			input: legacy.TailResponse{
+				Streams: []logproto.Stream{
+					{
+						Labels: `{test="test", foo="a", bar="b", msg="baz"}`,
+						GroupedLabels: logproto.GroupedLabels{
+							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
+						},
+						Entries: []logproto.Entry{
+							{
+								Timestamp: time.Unix(0, 123456789012346),
+								Line:      "super line with labels msg=baz",
+								NonIndexedLabels: []logproto.LabelAdapter{
+									{Name: "foo", Value: "a"},
+									{Name: "bar", Value: "b"},
+								},
+							},
+						},
+					},
+				},
+			},
+			withEncFlags: []withEncFlags{
+				{
+					name:  "no flags",
+					flags: nil,
+					expected: `{
+						"streams": [
+							{
+								"stream": {
+									"test": "test",
+									"foo": "a",
+									"bar": "b",
+									"msg": "baz"
+								},
+								"values":[
+									[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
+								]
+							}
+						]
+					}`,
+				},
+				{
+					name: "group labels",
+					flags: []loghttp.EncodingFlag{
+						loghttp.FlagGroupLabels,
+					},
+					expected: `{
+						"streams": [
+							{
+								"stream": {
+									"stream": {
+										"test": "test"
+									},
+									"structuredMetadata": {
+										"foo": "a",
+										"bar": "b"
+									},
+									"parsed": {
+										"msg": "baz"
+									}
+								},
+								"values":[
+									[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
+								]
+							}
+						]
+					}`,
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, subTc := range tc.withEncFlags {
+				t.Run(subTc.name, func(t *testing.T) {
+					model, err := NewTailResponse(tc.input, subTc.flags...)
+					require.NoError(t, err)
+
+					// marshal model object
+					b, err := json.Marshal(model)
+					require.NoError(t, err)
+
+					require.JSONEq(t, subTc.expected, string(b))
+				})
+			}
 		})
 	}
 }

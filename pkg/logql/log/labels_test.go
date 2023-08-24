@@ -13,22 +13,24 @@ func TestLabelsBuilder_Get(t *testing.T) {
 	lbs := labels.FromStrings("already", "in")
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 	b.Reset()
-	b.Set("foo", "bar")
-	b.Set("bar", "buzz")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(ParsedLabel, "bar", "buzz")
 	b.Del("foo")
-	_, ok := b.Get("foo")
+	_, _, ok := b.GetWithCategory("foo")
 	require.False(t, ok)
-	v, ok := b.Get("bar")
+	v, category, ok := b.GetWithCategory("bar")
 	require.True(t, ok)
 	require.Equal(t, "buzz", v)
-	v, ok = b.Get("already")
+	require.Equal(t, ParsedLabel, category)
+	v, category, ok = b.GetWithCategory("already")
 	require.True(t, ok)
 	require.Equal(t, "in", v)
+	require.Equal(t, StreamLabel, category)
 	b.Del("bar")
-	_, ok = b.Get("bar")
+	_, _, ok = b.GetWithCategory("bar")
 	require.False(t, ok)
 	b.Del("already")
-	_, ok = b.Get("already")
+	_, _, ok = b.GetWithCategory("already")
 	require.False(t, ok)
 }
 
@@ -38,13 +40,17 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	b.Reset()
 	b.SetErr("err")
 	lbsWithErr := b.LabelsResult().Labels()
-	require.Equal(
-		t,
-		labels.FromStrings(logqlmodel.ErrorLabel, "err",
-			"already", "in",
-		),
-		lbsWithErr,
+	lbsCatWithErr := b.CategorizedLabelsResult()
+
+	expectedLbs := labels.FromStrings(
+		logqlmodel.ErrorLabel, "err",
+		"already", "in",
 	)
+	require.Equal(t, expectedLbs, lbsWithErr)
+	require.Equal(t, lbsCatWithErr.Stream().Labels(), labels.FromStrings("already", "in"))
+	require.Equal(t, lbsCatWithErr.StructuredMetadata().Labels(), labels.EmptyLabels())
+	require.Equal(t, lbsCatWithErr.Parsed().Labels(), labels.FromStrings(logqlmodel.ErrorLabel, "err"))
+
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
 }
@@ -61,9 +67,9 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	withErr := labels.FromStrings(append(strs, logqlmodel.ErrorLabel, "err")...)
 	assertLabelResult(t, withErr, b.LabelsResult())
 
-	b.Set("foo", "bar")
-	b.Set("namespace", "tempo")
-	b.Set("buzz", "fuzz")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "namespace", "tempo")
+	b.Set(ParsedLabel, "buzz", "fuzz")
 	b.Del("job")
 	expected := labels.FromStrings(logqlmodel.ErrorLabel, "err",
 		"namespace", "tempo",
@@ -74,6 +80,8 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	assertLabelResult(t, expected, b.LabelsResult())
 	// cached.
 	assertLabelResult(t, expected, b.LabelsResult())
+
+	// TODO: Test categories with CategorizedLabelsResult
 }
 
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
@@ -89,9 +97,9 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, withErr, b.GroupedLabels())
 
 	b.Reset()
-	b.Set("foo", "bar")
-	b.Set("namespace", "tempo")
-	b.Set("buzz", "fuzz")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "namespace", "tempo")
+	b.Set(ParsedLabel, "buzz", "fuzz")
 	b.Del("job")
 	expected := labels.FromStrings("namespace", "tempo")
 	assertLabelResult(t, expected, b.GroupedLabels())
@@ -104,13 +112,13 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	b.Del("job")
 	assertLabelResult(t, labels.EmptyLabels(), b.GroupedLabels())
 	b.Reset()
-	b.Set("namespace", "tempo")
+	b.Set(StreamLabel, "namespace", "tempo")
 	assertLabelResult(t, labels.FromStrings("job", "us-central1/loki"), b.GroupedLabels())
 
 	b = NewBaseLabelsBuilderWithGrouping([]string{"job"}, nil, true, false).ForLabels(lbs, lbs.Hash())
 	b.Del("job")
-	b.Set("foo", "bar")
-	b.Set("job", "something")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "job", "something")
 	expected = labels.FromStrings("namespace", "loki",
 		"cluster", "us-central1",
 		"foo", "bar",
@@ -118,8 +126,8 @@ func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
 	assertLabelResult(t, expected, b.GroupedLabels())
 
 	b = NewBaseLabelsBuilderWithGrouping(nil, nil, false, false).ForLabels(lbs, lbs.Hash())
-	b.Set("foo", "bar")
-	b.Set("job", "something")
+	b.Set(StructuredMetadataLabel, "foo", "bar")
+	b.Set(StreamLabel, "job", "something")
 	expected = labels.FromStrings("namespace", "loki",
 		"job", "something",
 		"cluster", "us-central1",
@@ -143,3 +151,54 @@ func assertLabelResult(t *testing.T, lbs labels.Labels, res LabelsResult) {
 		res.String(),
 	)
 }
+
+// func TestLabelsBuilder_CategorizedLabels(t *testing.T) {
+// 	streamLbls := labels.FromStrings(
+// 		"namespace", "loki",
+// 		"job", "us-central1/loki",
+// 	)
+// 	builder := NewBaseLabelsBuilder().ForLabels(streamLbls, streamLbls.Hash())
+//
+// 	builder.Reset()
+// 	builder.StructuredMetadata.Set("traceID", "123")
+// 	builder.StructuredMetadata.Set("user", "admin")
+// 	builder.Parsed.Set("foo", "a")
+// 	builder.Parsed.Set("bar", "b")
+// 	expected := labels.FromStrings(
+// 		"namespace", "loki",
+// 		"job", "us-central1/loki",
+// 		"traceID", "123",
+// 		"user", "admin",
+// 		"foo", "a",
+// 		"bar", "b",
+// 	)
+// 	assertLabelResult(t, expected, builder.LabelsResult())
+//
+// 	builder.Del("namespace")
+// 	builder.Del("traceID")
+// 	builder.Del("foo")
+//
+// 	expected = labels.FromStrings(
+// 		"job", "us-central1/loki",
+// 		"user", "admin",
+// 		"bar", "b",
+// 	)
+// 	assertLabelResult(t, expected, builder.LabelsResult())
+//
+// 	_, ok := builder.Get("namespace")
+// 	require.False(t, ok)
+// 	v, ok := builder.Get("job")
+// 	require.True(t, ok)
+// 	require.Equal(t, "us-central1/loki", v)
+// 	_, ok = builder.Get("traceID")
+// 	require.False(t, ok)
+// 	v, ok = builder.Get("user")
+// 	require.True(t, ok)
+// 	require.Equal(t, "admin", v)
+// 	_, ok = builder.Get("foo")
+// 	require.False(t, ok)
+// 	v, ok = builder.Get("bar")
+// 	require.True(t, ok)
+// 	require.Equal(t, "b", v)
+//
+// }

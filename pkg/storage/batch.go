@@ -340,6 +340,10 @@ func (it *logBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
+func (it *logBatchIterator) GroupedLabels() logproto.GroupedLabels {
+	return it.curr.GroupedLabels()
+}
+
 func (it *logBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }
@@ -483,6 +487,10 @@ func newSampleBatchIterator(
 
 func (it *sampleBatchIterator) Labels() string {
 	return it.curr.Labels()
+}
+
+func (it *sampleBatchIterator) GroupedLabels() logproto.GroupedLabels {
+	return it.curr.GroupedLabels()
 }
 
 func (it *sampleBatchIterator) StreamHash() uint64 {
