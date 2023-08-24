@@ -19,6 +19,19 @@ func NewCountMinSketch(w, d uint32) (*CountMinSketch, error) {
 	}, nil
 }
 
+func (cms *CountMinSketch) Sparsity() float32 {
+	zeros := 0
+	for _, row := range cms.counters {
+		for _, v := range row {
+			if v == 0.0 {
+				zeros++
+			}
+		}
+	}
+
+	return float32(zeros) / float32(cms.depth*cms.width)
+}
+
 func make2dslice(col, row uint32) [][]float64 {
 	ret := make([][]float64, row)
 	for i := range ret {

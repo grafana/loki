@@ -715,6 +715,10 @@ func TestTopkNormalDistribution(t *testing.T) {
 			}
 			missing++
 		}
+
+		//sparsity := topk.sketch.Sparsity()
+		//assert.GreaterOrEqual(t, sparsity, float32(0.14))
+
 		assert.LessOrEqualf(t, missing, tc.expectedMissing, "more than expected # of missing elements from topk")
 	}
 }
