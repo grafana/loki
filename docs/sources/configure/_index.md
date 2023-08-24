@@ -1710,8 +1710,8 @@ The `storage_config` block configures one of many possible stores for both the i
 # (BOS) object storage backend.
 [bos: <bos_storage_config>]
 
-# Configures storing indexes in Bigtable. Required fields only required when
-# bigtable is defined in config.
+# Deprecated: Configures storing indexes in Bigtable. Required fields only
+# required when bigtable is defined in config.
 bigtable:
   # Bigtable project ID.
   # CLI flag: -bigtable.project
@@ -1740,7 +1740,7 @@ bigtable:
 # defined in config.
 [gcs: <gcs_storage_config>]
 
-# Configures storing chunks and/or the index in Cassandra.
+# Deprecated: Configures storing chunks and/or the index in Cassandra.
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances.
   # CLI flag: -cassandra.addresses
@@ -1873,6 +1873,7 @@ boltdb:
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
 
+# Deprecated:
 grpc_store:
   # Hostname or IP of the gRPC store instance.
   # CLI flag: -grpc-store.server-address
@@ -4131,8 +4132,9 @@ The `period_config` block configures what index schemas should be used for from 
 [from: <daytime>]
 
 # store and object_store below affect which <storage_config> key is used.
-# Which store to use for the index. Either aws, aws-dynamo, gcp, bigtable,
-# bigtable-hashed, cassandra, boltdb or boltdb-shipper.
+# Which store to use for the index. Either tsdb, boltdb-shipper or boltdb.
+#  Following stores are deprecated: aws, aws-dynamo, gcp, bigtable,
+# bigtable-hashed, cassandra.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs,
@@ -4174,6 +4176,7 @@ chunks:
 The `aws_storage_config` block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.
 
 ```yaml
+# Deprecated: Configures storing indexes in DynamoDB.
 dynamodb:
   # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region is
   # specified as a host, proper endpoint will be deduced. Use
