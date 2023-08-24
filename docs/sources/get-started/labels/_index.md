@@ -23,6 +23,7 @@ If you are familiar with Prometheus, the term used there is series; however, Pro
 Non-indexed labels do not define a stream, but are metadata attached to a log line.
 See [Non-indexed labels]({{< relref "./non-indexed-labels" >}}) for more information.
 {{% /admonition %}}
+
 ## Format
 
 Loki places the same restrictions on label naming as [Prometheus](https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels):
@@ -30,7 +31,6 @@ Loki places the same restrictions on label naming as [Prometheus](https://promet
 > It may contain ASCII letters and digits, as well as underscores and colons. It must match the regex `[a-zA-Z_:][a-zA-Z0-9_:]*`.
 >
 > Note: The colons are reserved for user defined recording rules. They should not be used by exporters or direct instrumentation.
-
 
 ## Loki labels demo
 
@@ -50,13 +50,13 @@ scrape_configs:
       __path__: /var/log/syslog
 ```
 
-This config will tail one file and assign one label: `job=syslog`. You could query it like this:
+This config will tail one file and assign one label: `job=syslog`. This will create one stream in Loki.
+
+You could query it like this:
 
 ```
 {job="syslog"}
 ```
-
-This will create one stream in Loki.
 
 Now let’s expand the example a little:
 
@@ -80,10 +80,9 @@ scrape_configs:
       __path__: /var/log/apache.log
 ```
 
-Now we are tailing two files. Each file gets just one label with one value so Loki will now be storing two streams.
+Now we are tailing two files. Each file gets just one label with one value, so Loki will now be storing two streams.
 
 We can query these streams in a few ways:
-
 
 ```
 {job="apache"} <- show me logs where the job label is apache
@@ -91,7 +90,7 @@ We can query these streams in a few ways:
 {job=~"apache|syslog"} <- show me logs where the job is apache **OR** syslog
 ```
 
-In that last example, we used a regex label matcher to log streams that use the job label with two values. Now consider how an additional label could also be used:
+In that last example, we used a regex label matcher to view log streams that use the job label with one of two possible values. Now consider how an additional label could also be used:
 
 ```yaml
 scrape_configs:
@@ -152,7 +151,7 @@ The two previous examples use statically defined labels with a single value; how
       __path__: /var/log/apache.log
 ```
 
-This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (after processing, the temp data is discarded). More detail about this can be found in the [Promtail pipelines]({{< relref "../../clients/promtail/pipelines" >}}) documentation.
+This regex matches every component of the log line and extracts the value of each component into a capture group. Inside the pipeline code, this data is placed in a temporary data structure that allows using it for several purposes during the processing of that log line (at which point that temp data is discarded). Much more detail about this can be found in the [Promtail pipelines]({{< relref "../../send-data/promtail/pipelines" >}}) documentation.
 
 From that regex, we will be using two of the capture groups to dynamically set two labels based on content from the log line itself:
 
@@ -186,15 +185,15 @@ Imagine now if you set a label for `ip`. Not only does every request from a user
 
 Doing some quick math, if there are maybe four common actions (GET, PUT, POST, DELETE) and maybe four common status codes (although there could be more than four!), this would be 16 streams and 16 separate chunks. Now multiply this by every user if we use a label for `ip`.  You can quickly have thousands or tens of thousands of streams.
 
-This is high cardinality. This can kill Loki.
+This is high cardinality, and it can lead to significant performance degredation.
 
 When we talk about _cardinality_ we are referring to the combination of labels and values and the number of streams they create. High cardinality is using labels with a large range of possible values, such as `ip`, **or** combining many labels, even if they have a small and finite set of values, such as using `status_code` and `action`.
 
-High cardinality causes Loki to build a huge index (read: $$$$) and to flush thousands of tiny chunks to the object store (read: slow). Loki currently performs very poorly in this configuration and will be the least cost-effective and least fun to run and use.
+High cardinality causes Loki to build a huge index and to flush thousands of tiny chunks to the object store. Loki currently performs very poorly in this configuration. If not accounted for, high cardinality will significantly reduce the operability and cost-effectiveness of Loki.
 
 ## Optimal Loki performance with parallelization
 
-Now you may be asking: If using lots of labels or labels with lots of values is bad, how am I supposed to query my logs? If none of the data is indexed, won't queries be really slow?
+Now you may be asking: If using too many labels—or using labels with too many values—is bad, then how am I supposed to query my logs? If none of the data is indexed, won't queries be really slow?
 
 As we see people using Loki who are accustomed to other index-heavy solutions, it seems like they feel obligated to define a lot of labels in order to query their logs effectively. After all, many other logging solutions are all about the index, and this is the common way of thinking.
 

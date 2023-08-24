@@ -462,6 +462,8 @@ func (m *MockStorage) IsChunkNotFoundErr(err error) bool {
 	return m.IsObjectNotFoundErr(err)
 }
 
+func (m *MockStorage) IsRetryableErr(error) bool { return false }
+
 func (m *MockStorage) DeleteObject(_ context.Context, objectKey string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

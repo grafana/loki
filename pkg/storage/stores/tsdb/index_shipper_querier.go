@@ -42,7 +42,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 		// Ensure we query both per tenant and multitenant TSDBs
 		idxBuckets := indexBuckets(from, through, []config.TableRange{i.tableRange})
 		for _, bkt := range idxBuckets {
-			if err := i.shipper.ForEachConcurrent(ctx, bkt, user, func(multitenant bool, idx shipper_index.Index) error {
+			if err := i.shipper.ForEachConcurrent(ctx, bkt.prefix, user, func(multitenant bool, idx shipper_index.Index) error {
 				impl, ok := idx.(Index)
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)

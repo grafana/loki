@@ -382,23 +382,71 @@ func TestBuildLegacyWALs(t *testing.T) {
 	dir := t.TempDir()
 
 	secondStoreDate := parseDate("2023-01-02")
-	schemaCfg := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				IndexType:  config.TSDBType,
-				ObjectType: config.StorageTypeFileSystem,
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
+	schemaCfgs := []config.SchemaConfig{
+		{
+			Configs: []config.PeriodConfig{
+				{
+					Schema:     "v11",
+					IndexType:  config.TSDBType,
+					ObjectType: config.StorageTypeFileSystem,
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
+				},
+				{
+					Schema:     "v11",
+					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
+					IndexType:  config.TSDBType,
+					ObjectType: config.StorageTypeFileSystem,
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
 				},
 			},
-			{
-				From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
-				IndexType:  config.TSDBType,
-				ObjectType: config.StorageTypeFileSystem,
-				IndexTables: config.PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
+		}, {
+			Configs: []config.PeriodConfig{
+				{
+					Schema:     "v12",
+					IndexType:  config.TSDBType,
+					ObjectType: config.StorageTypeFileSystem,
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
+				},
+				{
+					Schema:     "v12",
+					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
+					IndexType:  config.TSDBType,
+					ObjectType: config.StorageTypeFileSystem,
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
+				},
+			},
+		}, {
+			Configs: []config.PeriodConfig{
+				{
+					Schema:     "v13",
+					IndexType:  config.TSDBType,
+					ObjectType: config.StorageTypeFileSystem,
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
+				},
+				{
+					Schema:     "v13",
+					From:       config.DayTime{Time: timeToModelTime(secondStoreDate)},
+					IndexType:  config.TSDBType,
+					ObjectType: config.StorageTypeFileSystem,
+					IndexTables: config.PeriodicTableConfig{
+						Prefix: "index_",
+						Period: time.Hour * 24,
+					},
 				},
 			},
 		},
@@ -460,39 +508,41 @@ func TestBuildLegacyWALs(t *testing.T) {
 	shipperCfg.ActiveIndexDirectory = filepath.Join(dir)
 	shipperCfg.CacheLocation = filepath.Join(dir, "cache")
 
-	for _, tc := range []struct {
-		name, store    string
-		tableRange     config.TableRange
-		expectedChunks []logproto.ChunkRef
-	}{
-		{
-			name:           "query-period-1",
-			store:          "period-1",
-			tableRange:     schemaCfg.Configs[0].GetIndexTableNumberRange(config.DayTime{Time: timeToModelTime(secondStoreDate.Add(-time.Millisecond))}),
-			expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[:2]),
-		},
-		{
-			name:           "query-period-2",
-			store:          "period-2",
-			tableRange:     schemaCfg.Configs[1].GetIndexTableNumberRange(config.DayTime{Time: math.MaxInt64}),
-			expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[1:]),
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger(), nil)
-			require.Nil(t, err)
+	for _, schema := range schemaCfgs {
+		schemaCfg := schema
+		for _, tc := range []struct {
+			name, store    string
+			tableRange     config.TableRange
+			expectedChunks []logproto.ChunkRef
+		}{
+			{
+				name:           "query-period-1",
+				store:          "period-1",
+				tableRange:     schemaCfg.Configs[0].GetIndexTableNumberRange(config.DayTime{Time: timeToModelTime(secondStoreDate.Add(-time.Millisecond))}),
+				expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[:2]),
+			},
+			{
+				name:           "query-period-2",
+				store:          "period-2",
+				tableRange:     schemaCfg.Configs[1].GetIndexTableNumberRange(config.DayTime{Time: math.MaxInt64}),
+				expectedChunks: chunkMetasToLogProtoChunkRefs(c.User, c.Labels.Hash(), c.Chunks[1:]),
+			},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, nil, log.NewNopLogger(), nil)
+				require.Nil(t, err)
+				refs, err := store.GetChunkRefs(
+					context.Background(),
+					c.User,
+					0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
+					labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
+				)
+				require.Nil(t, err)
+				require.Equal(t, tc.expectedChunks, refs)
 
-			refs, err := store.GetChunkRefs(
-				context.Background(),
-				c.User,
-				0, timeToModelTime(secondStoreDate.Add(48*time.Hour)),
-				labels.MustNewMatcher(labels.MatchRegexp, "foo", ".+"),
-			)
-			require.Nil(t, err)
-			require.Equal(t, tc.expectedChunks, refs)
-
-			stop()
-		})
+				stop()
+			})
+		}
 	}
 }
 

@@ -47,7 +47,7 @@ helm upgrade --install loki-stack grafana/loki-stack \
 ### AWS Elastic Container Service (ECS)
 
 You can use fluent-bit Loki Docker image as a Firelens log router in AWS ECS.
-For more information about this see our [AWS documentation]({{< relref "../aws/ecs" >}})
+For more information about this see our [AWS documentation]({{< relref "../promtail/cloud/ecs" >}})
 
 ### Local
 

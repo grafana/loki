@@ -41,7 +41,7 @@ Try to keep values bounded to as small a set as possible. We don't have perfect 
 
 ## Be aware of dynamic labels applied by clients
 
-Loki has several client options: [Promtail](/grafana/loki/blob/main/docs/sources/clients/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/clients/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/clients/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
+Loki has several client options: [Promtail](/grafana/loki/blob/main/docs/sources/send-data/promtail) (which also supports systemd journal ingestion and TCP-based syslog ingestion), [Fluentd](https://github.com/grafana/loki/tree/main/send-data/cmd/fluentd), [Fluent Bit](https://github.com/grafana/loki/tree/main/send-data/cmd/fluent-bit), a [Docker plugin](/blog/2019/07/15/lokis-path-to-ga-docker-logging-driver-plugin-support-for-systemd/), and more!
 
 Each of these come with ways to configure what labels are applied to create log streams. But be aware of what dynamic labels might be applied.
 Use the Loki series API to get an idea of what your log streams look like and see if there might be ways to reduce streams and cardinality.

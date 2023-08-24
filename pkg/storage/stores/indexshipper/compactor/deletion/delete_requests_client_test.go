@@ -2,6 +2,7 @@ package deletion
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,11 +47,11 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 		require.Nil(t, err)
 		require.Equal(t, "test-request", deleteRequests[0].RequestID)
 
-		compactorClient.delRequests = []DeleteRequest{
+		compactorClient.SetDeleteRequests([]DeleteRequest{
 			{
 				RequestID: "different",
 			},
-		}
+		})
 
 		deleteRequests, err = client.GetAllDeleteRequestsForUser(context.Background(), "userID")
 		require.Nil(t, err)
@@ -67,11 +68,20 @@ func TestGetCacheGenNumberForUser(t *testing.T) {
 }
 
 type mockCompactorClient struct {
+	mx          sync.Mutex
 	delRequests []DeleteRequest
 	cacheGenNum string
 }
 
+func (m *mockCompactorClient) SetDeleteRequests(d []DeleteRequest) {
+	m.mx.Lock()
+	m.delRequests = d
+	m.mx.Unlock()
+}
+
 func (m *mockCompactorClient) GetAllDeleteRequestsForUser(_ context.Context, _ string) ([]DeleteRequest, error) {
+	m.mx.Lock()
+	defer m.mx.Unlock()
 	return m.delRequests, nil
 }
 

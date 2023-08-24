@@ -29,7 +29,6 @@ import (
 	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/util"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
-	"github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -190,7 +189,6 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingCfg hedging.Config) (*BlobStorage, error) {
-	log.WarnExperimentalUse("Azure Blob Storage", log.Logger)
 	blobStorage := &BlobStorage{
 		cfg:     cfg,
 		metrics: metrics,
@@ -558,3 +556,6 @@ func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (b *BlobStorage) IsRetryableErr(error) bool { return false }

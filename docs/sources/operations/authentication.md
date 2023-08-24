@@ -20,4 +20,4 @@ of populating this value should be handled by the authenticating reverse proxy.
 Read the [multi-tenancy]({{< relref "./multi-tenancy" >}}) documentation for more information.
 
 For information on authenticating Promtail, please see the docs for [how to
-configure Promtail]({{< relref "../clients/promtail/configuration" >}}).
+configure Promtail]({{< relref "../send-data/promtail/configuration" >}}).

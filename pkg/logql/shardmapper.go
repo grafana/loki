@@ -333,7 +333,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// These functions require a different merge strategy than the default
-		// concatentation.
+		// concatenation.
 		// This is because the same label sets may exist on multiple shards when label-reducing parsing is applied or when
 		// grouping by some subset of the labels. In this case, the resulting vector may have multiple values for the same
 		// series and we need to combine them appropriately given a particular operation.

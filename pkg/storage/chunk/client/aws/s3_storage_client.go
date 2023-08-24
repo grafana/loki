@@ -17,16 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -40,11 +37,10 @@ import (
 
 const (
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 )
 
 var (
-	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedSignatureVersions     = []string{SignatureVersionV4}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
 
@@ -194,28 +190,6 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	return nil, nil
 }
 
-func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
-	return request.NamedHandler{
-		Name: "v2.SignRequestHandler",
-		Fn: func(req *request.Request) {
-			credentials, err := req.Config.Credentials.GetWithContext(req.Context())
-			if err != nil {
-				if err != nil {
-					req.Error = err
-					return
-				}
-			}
-
-			req.HTTPRequest = signer.SignV2(
-				*req.HTTPRequest,
-				credentials.AccessKeyID,
-				credentials.SecretAccessKey,
-				!cfg.S3ForcePathStyle,
-			)
-		},
-	}
-}
-
 func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
 	var s3Config *aws.Config
 	var err error
@@ -312,10 +286,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 	}
 
 	s3Client := s3.New(sess)
-
-	if cfg.SignatureVersion == SignatureVersionV2 {
-		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
-	}
 
 	return s3Client, nil
 }
@@ -483,3 +453,6 @@ func (a *S3ObjectClient) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (a *S3ObjectClient) IsRetryableErr(error) bool { return false }

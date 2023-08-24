@@ -13,9 +13,11 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	google_http "google.golang.org/api/transport/http"
+	amnet "k8s.io/apimachinery/pkg/util/net"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
@@ -40,6 +42,9 @@ type GCSConfig struct {
 	EnableOpenCensus bool           `yaml:"enable_opencensus"`
 	EnableHTTP2      bool           `yaml:"enable_http2"`
 
+	// TODO(dannyk): remove this and disable GCS client retries; move a layer higher instead.
+	EnableRetries bool `yaml:"enable_retries"`
+
 	Insecure bool `yaml:"-"`
 }
 
@@ -56,6 +61,7 @@ func (cfg *GCSConfig) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RequestTimeout, prefix+"gcs.request-timeout", 0, "The duration after which the requests to GCS should be timed out.")
 	f.BoolVar(&cfg.EnableOpenCensus, prefix+"gcs.enable-opencensus", true, "Enable OpenCensus (OC) instrumentation for all requests.")
 	f.BoolVar(&cfg.EnableHTTP2, prefix+"gcs.enable-http2", true, "Enable HTTP2 connections.")
+	f.BoolVar(&cfg.EnableRetries, prefix+"gcs.enable-retries", true, "Enable automatic retries of failed idempotent requests.")
 }
 
 // NewGCSObjectClient makes a new chunk.Client that writes chunks to GCS.
@@ -107,7 +113,13 @@ func newBucketHandle(ctx context.Context, cfg GCSConfig, hedgingCfg hedging.Conf
 		return nil, err
 	}
 
-	return client.Bucket(cfg.BucketName), nil
+	bucket := client.Bucket(cfg.BucketName)
+
+	if !cfg.EnableRetries {
+		bucket = bucket.Retryer(storage.WithPolicy(storage.RetryNever))
+	}
+
+	return bucket, nil
 }
 
 func (s *GCSObjectClient) Stop() {
@@ -213,6 +225,66 @@ func (s *GCSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 // IsObjectNotFoundErr returns true if error means that object is not found. Relevant to GetObject and DeleteObject operations.
 func (s *GCSObjectClient) IsObjectNotFoundErr(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
+}
+
+func isTimeoutError(err error) bool {
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
+}
+
+func isContextErr(err error) bool {
+	return errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, context.Canceled)
+}
+
+// IsStorageTimeoutErr returns true if error means that object cannot be retrieved right now due to server-side timeouts.
+func (s *GCSObjectClient) IsStorageTimeoutErr(err error) bool {
+	// TODO(dannyk): move these out to be generic
+	// context errors are all client-side
+	if isContextErr(err) {
+		return false
+	}
+
+	// connection misconfiguration, or writing on a closed connection
+	// do NOT retry; this is not a server-side issue
+	if errors.Is(err, net.ErrClosed) || amnet.IsConnectionRefused(err) {
+		return false
+	}
+
+	// this is a server-side timeout
+	if isTimeoutError(err) {
+		return true
+	}
+
+	// connection closed (closed before established) or reset (closed after established)
+	// this is a server-side issue
+	if errors.Is(err, io.EOF) || amnet.IsConnectionReset(err) {
+		return true
+	}
+
+	if gerr, ok := err.(*googleapi.Error); ok {
+		// https://cloud.google.com/storage/docs/retry-strategy
+		return gerr.Code == http.StatusRequestTimeout ||
+			gerr.Code == http.StatusGatewayTimeout
+	}
+
+	return false
+}
+
+// IsStorageThrottledErr returns true if error means that object cannot be retrieved right now due to throttling.
+func (s *GCSObjectClient) IsStorageThrottledErr(err error) bool {
+	if gerr, ok := err.(*googleapi.Error); ok {
+		// https://cloud.google.com/storage/docs/retry-strategy
+		return gerr.Code == http.StatusTooManyRequests ||
+			(gerr.Code/100 == 5) // all 5xx errors are retryable
+	}
+
+	return false
+}
+
+// IsRetryableErr returns true if the request failed due to some retryable server-side scenario
+func (s *GCSObjectClient) IsRetryableErr(err error) bool {
+	return s.IsStorageTimeoutErr(err) || s.IsStorageThrottledErr(err)
 }
 
 func gcsTransport(ctx context.Context, scope string, insecure bool, http2 bool, serviceAccount flagext.Secret) (http.RoundTripper, error) {
