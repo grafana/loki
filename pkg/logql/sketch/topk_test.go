@@ -3,6 +3,7 @@ package sketch
 import (
 	"bufio"
 	"container/heap"
+	"fmt"
 	"io"
 	"math"
 	"math/rand"
@@ -446,4 +447,298 @@ outer:
 	}
 
 	require.LessOrEqualf(t, mergedMissing, 2, "more than acceptable misses: %d > %d", mergedMissing, 2)
+}
+
+// Test the accuracy of our topk sketch against zipf distribution datasets.
+// Zipf's law is an empirical law that often holds, approximately, when a list of
+// measured values is sorted in decreasing order. It states that the value of the nth entry is inversely proportional to n.
+func TestTopkZipf(t *testing.T) {
+	cases := []struct {
+		// s controls the exponential curve of the distribution
+		// the higher the s values the faster the drop off from max value to lesser values
+		// s must be > 1.0
+		s float64
+		// v controls the distribution of values along the curve, a greater v
+		// value means there's a large distance between generated values
+		v          float64
+		events     uint64
+		k          int
+		maxMissing int
+	}{
+		// cardinality of 1k
+		{
+			s:          1.01,
+			v:          1.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 13,
+		},
+		{
+			s:          1.01,
+			v:          10.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		{
+			s:          1.01,
+			v:          100.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		{
+			s:          2.0,
+			v:          1.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		{
+			s:          2.0,
+			v:          10.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 13,
+		},
+		{
+			s:          2.0,
+			v:          100.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		{
+			s:          3.0,
+			v:          1.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 7,
+		},
+		{
+			s:          3.0,
+			v:          10.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 13,
+		},
+		{
+			s:          3.0,
+			v:          100.0,
+			events:      1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		{ // somehow this is worse than s 2.0 v 1.0
+			s:          4.0,
+			v:          1.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 39,
+		},
+		{
+			s:          4.0,
+			v:          10.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		{
+			s:          4.0,
+			v:          100.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 14,
+		},
+		//cardinality of 10k
+		{
+			s:          1.01,
+			v:          1.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{
+			s:          1.01,
+			v:          10.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 13,
+		},
+		{
+			s:          1.01,
+			v:          100.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 35,
+		},
+		{
+			s:          2.0,
+			v:          1.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{
+			s:          2.0,
+			v:          10.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{
+			s:          2.0,
+			v:          100.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{ // somehow this is worse than s 2.0 v 1.0
+			s:          3.0,
+			v:          1.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 19,
+		},
+		{
+			s:          3.0,
+			v:          10.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{
+			s:          3.0,
+			v:          100.0,
+			events:        10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{ // somehow this is worse than s 2.0 v 1.0
+			s:          4.0,
+			v:          1.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 20,
+		},
+		{
+			s:          4.0,
+			v:          10.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{
+			s:          4.0,
+			v:          100.0,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+	}
+	seeds := []int64{10, 100, 1000}
+
+	for _, tc := range cases {
+		for _, s := range seeds {
+			t.Run(fmt.Sprintf("seed_%d,s_%.2f,v_%.2f,max_%d,k_%d", s, tc.s, tc.v, tc.events, tc.k), func(t *testing.T) {
+				// use a constant source so the results are deterministic:
+				r := rand.New(rand.NewSource(s))
+				topk, _ := NewCMSTopkForCardinality(nil, tc.k, int(tc.events))
+
+				z := rand.NewZipf(r, tc.s, tc.v, tc.events)
+
+				expected := make([]element, 0)
+
+				for i := 0; uint64(i) < tc.events; i++ {
+					count := float64(z.Uint64())
+					event := strconv.Itoa(i)
+
+					topk.Observe(event, count)
+					expected = append(expected, element{event, count})
+				}
+
+				// Sort descending
+				sort.Slice(expected, func(i, j int) bool {
+					return expected[i].Count > expected[j].Count
+				})
+				missing := 0
+			outer:
+				for _, e := range expected[:tc.k] {
+					for _, tk := range topk.TopkForGroupingKey(DefaultGroupKey).Result {
+						if e.Event == tk.Event {
+							continue outer
+						}
+					}
+					missing++
+				}
+				assert.LessOrEqualf(t, missing, tc.maxMissing, "more than expected # of missing elements from topk")
+			})
+		}
+
+	}
+}
+
+// Test the accuracy of our topk sketch against normal distribution datasets.
+// we should add in multiplication by a stddev.
+func TestTopkNormalDistribution(t *testing.T) {
+	// use a constant source so the results are deterministic:
+	r := rand.New(rand.NewSource(42))
+
+	cases := []struct {
+		events          int
+		k               int
+		expectedMissing int
+	}{
+		{
+			events:          1000,
+			k:               5,
+			expectedMissing: 1,
+		},
+		{
+			events:          100000,
+			k:               100,
+			expectedMissing: 6,
+		},
+		{
+			events:          100000,
+			k:               100,
+			expectedMissing: 7,
+		},
+		{
+			events:          100000,
+			k:               100,
+			expectedMissing: 6,
+		},
+	}
+
+	for _, tc := range cases {
+		topk, _ := NewCMSTopkForCardinality(nil, tc.k, tc.events)
+
+		expected := make([]element, 0)
+
+		for i := 0; i < tc.events; i++ {
+			event := strconv.Itoa(i)
+			count := r.NormFloat64()
+
+			topk.Observe(event, count)
+
+			expected = append(expected, element{event, count})
+		}
+
+		// Sort descending
+		sort.Slice(expected, func(i, j int) bool {
+			return expected[i].Count > expected[j].Count
+		})
+		missing := 0
+	outer:
+		for _, e := range expected[:tc.k] {
+			for _, tk := range topk.TopkForGroupingKey(DefaultGroupKey).Result {
+				if e.Event == tk.Event {
+					continue outer
+				}
+			}
+			missing++
+		}
+		assert.LessOrEqualf(t, missing, tc.expectedMissing, "more than expected # of missing elements from topk")
+	}
 }

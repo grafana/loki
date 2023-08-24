@@ -2,6 +2,7 @@ package sketch
 
 import (
 	"container/heap"
+	"fmt"
 	"reflect"
 	"sort"
 	"unsafe"
@@ -13,6 +14,8 @@ import (
 	"github.com/go-kit/log/level"
 )
 
+const DefaultGroupKey = "default_group"
+
 type element struct {
 	Event string
 	Count float64
@@ -21,6 +24,10 @@ type element struct {
 type TopKResult struct {
 	groupingKey string
 	Result      []element
+}
+
+func (e element) String() string {
+	return fmt.Sprintf("{event: %s, count: %f}", e.Event, e.Count)
 }
 
 func (t TopKResult) Len() int { return len(t.Result) }
@@ -303,7 +310,7 @@ func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count float64) {
 
 // Observe should only be used when there is no grouping key present for the overall query
 func (t *Topk) Observe(event string, count float64) {
-	t.ObserveForGroupingKey(event, "", count)
+	t.ObserveForGroupingKey(event, DefaultGroupKey, count)
 }
 
 func removeDuplicates(t TopKResult) TopKResult {
