@@ -17,6 +17,12 @@ import (
 	"github.com/grafana/loki/pkg/util/filter"
 )
 
+const (
+	lblFooBar = `{foo="bar"}`
+	lblPing   = "ping"
+	lblPong   = "pong"
+)
+
 func TestDeleteRequest_IsDeleted(t *testing.T) {
 	now := model.Now()
 	user1 := "user1"
@@ -89,7 +95,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				isDeleted: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if labels.Labels(nonIndexedLabels).Get("ping") == "pong" && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+					if labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
 						return true
 					}
 					return false
@@ -108,7 +114,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				isDeleted: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get("ping") == "pong" && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
 						return true
 					}
 					return false
@@ -184,7 +190,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				isDeleted: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if labels.Labels(nonIndexedLabels).Get("ping") == "pong" && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+					if labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
 					}
 					return false
@@ -203,7 +209,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				isDeleted: true,
 				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get("ping") == "pong" && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
 					}
 					return false
@@ -286,7 +292,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				// mix of empty, ding=dong and ping=pong as non-indexed labels
 				var nonIndexedLabels []labels.Label
 				if start.Time().Minute()%3 == 0 {
-					nonIndexedLabels = []labels.Label{{Name: "ping", Value: "pong"}}
+					nonIndexedLabels = []labels.Label{{Name: lblPing, Value: lblPong}}
 				} else if start.Time().Minute()%2 == 0 {
 					nonIndexedLabels = []labels.Label{{Name: "ting", Value: "tong"}}
 				}
@@ -315,7 +321,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 			EndTime:      math.MaxInt64,
 		}
 
-		lblStr := `{foo="bar"}`
+		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
@@ -338,14 +344,14 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 			EndTime:      math.MaxInt64,
 		}
 
-		lblStr := `{foo="bar"}`
+		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
 
-		require.True(t, f(time.Now(), `some line`, labels.Label{Name: "ping", Value: "pong"}))
+		require.True(t, f(time.Now(), `some line`, labels.Label{Name: lblPing, Value: lblPong}))
 		require.False(t, f(time.Now(), ""))
 		require.False(t, f(time.Now(), "some line"))
 		require.Equal(t, int32(1), dr.DeletedLines)
@@ -361,17 +367,17 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 			EndTime:      math.MaxInt64,
 		}
 
-		lblStr := `{foo="bar"}`
+		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
 		f, err := dr.FilterFunction(lbls)
 		require.NoError(t, err)
 
-		require.True(t, f(time.Now(), `some line`, labels.Label{Name: "ping", Value: "pong"}))
+		require.True(t, f(time.Now(), `some line`, labels.Label{Name: lblPing, Value: lblPong}))
 		require.False(t, f(time.Now(), ""))
 		require.False(t, f(time.Now(), "some line"))
-		require.False(t, f(time.Now(), "other line", labels.Label{Name: "ping", Value: "pong"}))
+		require.False(t, f(time.Now(), "other line", labels.Label{Name: lblPing, Value: lblPong}))
 		require.Equal(t, int32(1), dr.DeletedLines)
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
 	})

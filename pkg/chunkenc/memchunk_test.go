@@ -75,7 +75,11 @@ var (
 	}
 )
 
-const DefaultTestHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
+const (
+	DefaultTestHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
+	lblPing                 = "ping"
+	lblPong                 = "pong"
+)
 
 func TestBlocksInclusive(t *testing.T) {
 	for _, enc := range testEncoding {
@@ -1457,7 +1461,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 			name:         "no matches - chunk without non-indexed labels",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
 			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
-				return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+				return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
 			},
 			nrMatching:    0,
 			nrNotMatching: 10,
@@ -1475,7 +1479,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 			name:         "some lines removed - with non-indexed labels",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
 			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
-				return labels.Labels(nonIndexedLabels).Get("ping") == "pong"
+				return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
 			},
 			nrMatching:    5,
 			nrNotMatching: 5,
@@ -1484,7 +1488,7 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 			name:         "all lines match -  with non-indexed labels",
 			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
 			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
-				return labels.Labels(nonIndexedLabels).Get("ping") == "pong" && strings.HasPrefix(in, "matching")
+				return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && strings.HasPrefix(in, "matching")
 			},
 			err: chunk.ErrSliceNoDataInRange,
 		},
@@ -1525,7 +1529,7 @@ func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matching
 	t.Logf("through: %v", through.String())
 	var nonIndexedLabels push.LabelsAdapter
 	if withNonIndexedLabels {
-		nonIndexedLabels = push.LabelsAdapter{{Name: "ping", Value: "pong"}}
+		nonIndexedLabels = push.LabelsAdapter{{Name: lblPing, Value: lblPong}}
 	}
 	for from.Before(through) {
 		// If a line is between matchingFrom and matchingTo add the prefix "matching"
