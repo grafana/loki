@@ -430,7 +430,7 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	switch v {
-	case 10, 11, 12:
+	case 10, 11, 12, 13:
 		if cfg.RowShards == 0 {
 			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
