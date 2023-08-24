@@ -1,11 +1,11 @@
 ---
 title: Grafana Loki configuration parameters
-menuTitle: Configuration parameters
+menuTitle: Configure
 description: Configuration reference for the parameters used to configure Grafana Loki.
 aliases: 
   - ../configuration
   - ../configure
-weight: 500 
+weight: 400 
 ---
 
 # Grafana Loki configuration parameters
@@ -1919,6 +1919,55 @@ hedging:
 # CLI flag: -store.index-cache-validity
 [index_cache_validity: <duration> | default = 5m]
 
+congestion_control:
+  # Use storage congestion control (default: disabled).
+  # CLI flag: -store.enabled
+  [enabled: <boolean> | default = false]
+
+  controller:
+    # Congestion control strategy to use (default: none, options: 'aimd').
+    # CLI flag: -store.congestion-control.strategy
+    [strategy: <string> | default = ""]
+
+    aimd:
+      # AIMD starting throughput window size: how many requests can be sent per
+      # second (default: 2000).
+      # CLI flag: -store.congestion-control.strategy.aimd.start
+      [start: <int> | default = 2000]
+
+      # AIMD maximum throughput window size: upper limit of requests sent per
+      # second (default: 10000).
+      # CLI flag: -store.congestion-control.strategy.aimd.upper-bound
+      [upper_bound: <int> | default = 10000]
+
+      # AIMD backoff factor when upstream service is throttled to decrease
+      # number of requests sent per second (default: 0.5).
+      # CLI flag: -store.congestion-control.strategy.aimd.backoff-factor
+      [backoff_factor: <float> | default = 0.5]
+
+  retry:
+    # Congestion control retry strategy to use (default: none, options:
+    # 'limited').
+    # CLI flag: -store.retry.strategy
+    [strategy: <string> | default = ""]
+
+    # Maximum number of retries allowed.
+    # CLI flag: -store.retry.strategy.limited.limit
+    [limit: <int> | default = 2]
+
+  hedging:
+    config:
+      [at: <duration>]
+
+      [up_to: <int>]
+
+      [max_per_second: <int>]
+
+    # Congestion control hedge strategy to use (default: none, options:
+    # 'limited').
+    # CLI flag: -store.hedge.strategy
+    [strategy: <string> | default = ""]
+
 # The cache block configures the cache backend.
 # The CLI flags prefix for this block configuration is: store.index-cache-read
 [index_queries_cache_config: <cache_config>]
@@ -2514,8 +2563,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -limits.volume-max-series
 [volume_max_series: <int> | default = 1000]
 
-# Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to Cortex.
+# Deprecated. Duration to delay the evaluation of rules to ensure the underlying
+# metrics have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
 [ruler_evaluation_delay_duration: <duration> | default = 0s]
 
@@ -3161,6 +3210,55 @@ storage:
   # Storage (COS) backend.
   # The CLI flags prefix for this block configuration is: common.storage
   [cos: <cos_storage_config>]
+
+  congestion_control:
+    # Use storage congestion control (default: disabled).
+    # CLI flag: -common.storage.enabled
+    [enabled: <boolean> | default = false]
+
+    controller:
+      # Congestion control strategy to use (default: none, options: 'aimd').
+      # CLI flag: -common.storage.congestion-control.strategy
+      [strategy: <string> | default = ""]
+
+      aimd:
+        # AIMD starting throughput window size: how many requests can be sent
+        # per second (default: 2000).
+        # CLI flag: -common.storage.congestion-control.strategy.aimd.start
+        [start: <int> | default = 2000]
+
+        # AIMD maximum throughput window size: upper limit of requests sent per
+        # second (default: 10000).
+        # CLI flag: -common.storage.congestion-control.strategy.aimd.upper-bound
+        [upper_bound: <int> | default = 10000]
+
+        # AIMD backoff factor when upstream service is throttled to decrease
+        # number of requests sent per second (default: 0.5).
+        # CLI flag: -common.storage.congestion-control.strategy.aimd.backoff-factor
+        [backoff_factor: <float> | default = 0.5]
+
+    retry:
+      # Congestion control retry strategy to use (default: none, options:
+      # 'limited').
+      # CLI flag: -common.storage.retry.strategy
+      [strategy: <string> | default = ""]
+
+      # Maximum number of retries allowed.
+      # CLI flag: -common.storage.retry.strategy.limited.limit
+      [limit: <int> | default = 2]
+
+    hedging:
+      config:
+        [at: <duration>]
+
+        [up_to: <int>]
+
+        [max_per_second: <int>]
+
+      # Congestion control hedge strategy to use (default: none, options:
+      # 'limited').
+      # CLI flag: -common.storage.hedge.strategy
+      [strategy: <string> | default = ""]
 
 [persist_tokens: <boolean>]
 
@@ -4227,7 +4325,7 @@ http_config:
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
-# are: v4, v2.
+# are: v4.
 # CLI flag: -s3.signature-version
 [signature_version: <string> | default = "v4"]
 
@@ -4425,6 +4523,10 @@ The `gcs_storage_config` block configures the connection to Google Cloud Storage
 # Enable HTTP2 connections.
 # CLI flag: -<prefix>.gcs.enable-http2
 [enable_http2: <boolean> | default = true]
+
+# Enable automatic retries of failed idempotent requests.
+# CLI flag: -<prefix>.gcs.enable-retries
+[enable_retries: <boolean> | default = true]
 ```
 
 ### s3_storage_config
@@ -4505,7 +4607,7 @@ http_config:
   [ca_file: <string> | default = ""]
 
 # The signature version to use for authenticating against S3. Supported values
-# are: v4, v2.
+# are: v4.
 # CLI flag: -<prefix>.storage.s3.signature-version
 [signature_version: <string> | default = "v4"]
 

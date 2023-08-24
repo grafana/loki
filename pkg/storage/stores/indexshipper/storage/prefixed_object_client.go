@@ -50,6 +50,10 @@ func (p prefixedObjectClient) IsObjectNotFoundErr(err error) bool {
 	return p.downstreamClient.IsObjectNotFoundErr(err)
 }
 
+func (p prefixedObjectClient) IsRetryableErr(err error) bool {
+	return p.downstreamClient.IsRetryableErr(err)
+}
+
 func (p prefixedObjectClient) Stop() {
 	p.downstreamClient.Stop()
 }

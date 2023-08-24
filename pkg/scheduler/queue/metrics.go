@@ -6,9 +6,10 @@ import (
 )
 
 type Metrics struct {
-	queueLength       *prometheus.GaugeVec   // Per tenant
-	discardedRequests *prometheus.CounterVec // Per tenant
-	enqueueCount      *prometheus.CounterVec // Per tenant and level
+	queueLength       *prometheus.GaugeVec     // Per tenant
+	discardedRequests *prometheus.CounterVec   // Per tenant
+	enqueueCount      *prometheus.CounterVec   // Per tenant and level
+	querierWaitTime   *prometheus.HistogramVec // Per querier wait time
 }
 
 func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
@@ -31,6 +32,12 @@ func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 			Name:      "enqueue_count",
 			Help:      "Total number of enqueued (sub-)queries.",
 		}, []string{"user", "level"}),
+		querierWaitTime: promauto.With(registerer).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki",
+			Subsystem: subsystem,
+			Name:      "querier_wait_seconds",
+			Help:      "Time spend waiting for new requests.",
+		}, []string{"querier"}),
 	}
 }
 

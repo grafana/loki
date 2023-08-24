@@ -49,7 +49,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20230814145153-042a71bd637e
+	github.com/grafana/dskit v0.0.0-20230817134647-90d7ee0bed7c
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
@@ -131,6 +131,7 @@ require (
 	golang.org/x/oauth2 v0.10.0
 	golang.org/x/text v0.11.0
 	google.golang.org/protobuf v1.31.0
+	k8s.io/apimachinery v0.26.2
 )
 
 require (
@@ -287,7 +288,6 @@ require (
 	github.com/stretchr/objx v0.5.0 // indirect
 	github.com/uber/jaeger-lib v2.4.1+incompatible // indirect
 	github.com/ugorji/go/codec v1.1.7 // indirect
-	github.com/weaveworks/promrus v1.2.0 // indirect
 	github.com/willf/bitset v1.1.11 // indirect
 	github.com/xdg-go/pbkdf2 v1.0.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
@@ -316,7 +316,6 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/tomb.v1 v1.0.0-20141024135613-dd632973f1e7 // indirect
 	k8s.io/api v0.26.2 // indirect
-	k8s.io/apimachinery v0.26.2 // indirect
 	k8s.io/client-go v0.26.2 // indirect
 	k8s.io/klog/v2 v2.90.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230303024457-afdc3dddf62d // indirect

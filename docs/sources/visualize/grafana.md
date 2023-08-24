@@ -5,7 +5,7 @@ description: Visualize your log data with Grafana
 aliases:
    - ../getting-started/grafana/
    - ../operations/grafana/
-weight: 825
+weight: 725
 keywords:
    - visualize
    - grafana

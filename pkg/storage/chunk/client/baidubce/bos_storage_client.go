@@ -3,7 +3,6 @@ package baidubce
 import (
 	"context"
 	"flag"
-
 	"io"
 	"time"
 
@@ -171,3 +170,6 @@ func (b *BOSObjectStorage) IsObjectNotFoundErr(err error) bool {
 }
 
 func (b *BOSObjectStorage) Stop() {}
+
+// TODO(dannyk): implement for client
+func (b *BOSObjectStorage) IsRetryableErr(error) bool { return false }

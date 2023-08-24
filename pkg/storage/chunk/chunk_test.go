@@ -12,7 +12,6 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const userID = "userID"
@@ -65,6 +64,8 @@ func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
 func TestChunkCodec(t *testing.T) {
 	dummy := dummyChunk(model.Now())
 	decodeContext := NewDecodeContext()
+	key := fmt.Sprintf("%s/%x:%x:%x:%x", dummy.ChunkRef.UserID, dummy.ChunkRef.Fingerprint, int64(dummy.ChunkRef.From), int64(dummy.ChunkRef.Through), dummy.ChunkRef.Checksum)
+
 	for i, c := range []struct {
 		chunk Chunk
 		err   error
@@ -107,17 +108,7 @@ func TestChunkCodec(t *testing.T) {
 			encoded, err := c.chunk.Encoded()
 			require.NoError(t, err)
 
-			s := config.SchemaConfig{
-				Configs: []config.PeriodConfig{
-					{
-						From:      config.DayTime{Time: 0},
-						Schema:    "v11",
-						RowShards: 16,
-					},
-				},
-			}
-
-			have, err := ParseExternalKey(userID, s.ExternalKey(c.chunk.ChunkRef))
+			have, err := ParseExternalKey(userID, key)
 			require.NoError(t, err)
 
 			buf := make([]byte, len(encoded))
@@ -134,53 +125,6 @@ func TestChunkCodec(t *testing.T) {
 			}
 		})
 	}
-}
-
-const fixedTimestamp = model.Time(1557654321000)
-
-func TestChunkDecodeBackwardsCompatibility(t *testing.T) {
-	// lets build a new chunk same as what was built using code at commit b1777a50ab19
-	c, _ := NewForEncoding(Bigchunk)
-	nc, err := c.(*bigchunk).Add(model.SamplePair{Timestamp: fixedTimestamp, Value: 0})
-	require.NoError(t, err)
-	require.Equal(t, nil, nc, "returned chunk should be nil")
-
-	chunk := NewChunk(
-		userID,
-		client.Fingerprint(labelsForDummyChunks),
-		labelsForDummyChunks,
-		c,
-		fixedTimestamp.Add(-time.Hour),
-		fixedTimestamp,
-	)
-	// Force checksum calculation.
-	require.NoError(t, chunk.Encode())
-
-	// Chunk encoded using code at commit b1777a50ab19
-	rawData := []byte("\x00\x00\x00\xb7\xff\x06\x00\x00sNaPpY\x01\xa5\x00\x00\xfcB\xb4\xc9{\"fingerprint\":18245339272195143978,\"userID\":\"userID\",\"from\":1557650721,\"through\":1557654321,\"metric\":{\"__name__\":\"foo\",\"bar\":\"baz\",\"toms\":\"code\"},\"encoding\":0}\n\x00\x00\x00\x15\x01\x00\x11\x00\x00\x01\xd0\xdd\xf5\xb6\xd5Z\x00\x00\x00\x00\x00\x00\x00\x00\x00")
-	decodeContext := NewDecodeContext()
-	have, err := ParseExternalKey(userID, "userID/fd3477666dacf92a:16aab37c8e8:16aab6eb768:70b431bb")
-	require.NoError(t, err)
-	require.NoError(t, have.Decode(decodeContext, rawData))
-	want := chunk
-	// We can't just compare these two chunks, since the Bigchunk internals are different on construction and read-in.
-	// Compare the serialised version instead
-	require.NoError(t, have.Encode())
-	require.NoError(t, want.Encode())
-	haveEncoded, _ := have.Encoded()
-	wantEncoded, _ := want.Encoded()
-	require.Equal(t, haveEncoded, wantEncoded)
-
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
-	}
-	require.Equal(t, s.ExternalKey(have.ChunkRef), s.ExternalKey(want.ChunkRef))
 }
 
 func TestParseExternalKey(t *testing.T) {
@@ -282,65 +226,6 @@ func benchmarkDecode(b *testing.B, batchSize int) {
 			err := chunks[j].Decode(decodeContext, buf)
 			require.NoError(b, err)
 		}
-	}
-}
-
-func TestChunkKeys(t *testing.T) {
-	for _, tc := range []struct {
-		name      string
-		chunk     Chunk
-		schemaCfg config.SchemaConfig
-	}{
-		{
-			name: "Legacy key (pre-checksum)",
-			chunk: Chunk{
-				ChunkRef: logproto.ChunkRef{
-					Fingerprint: 100,
-					UserID:      "fake",
-					From:        model.TimeFromUnix(1000),
-					Through:     model.TimeFromUnix(5000),
-					Checksum:    12345,
-				},
-			},
-			schemaCfg: config.SchemaConfig{
-				Configs: []config.PeriodConfig{
-					{
-						From:      config.DayTime{Time: 0},
-						Schema:    "v11",
-						RowShards: 16,
-					},
-				},
-			},
-		},
-		{
-			name: "Newer key (post-v12)",
-			chunk: Chunk{
-				ChunkRef: logproto.ChunkRef{
-					Fingerprint: 100,
-					UserID:      "fake",
-					From:        model.TimeFromUnix(1000),
-					Through:     model.TimeFromUnix(5000),
-					Checksum:    12345,
-				},
-			},
-			schemaCfg: config.SchemaConfig{
-				Configs: []config.PeriodConfig{
-					{
-						From:      config.DayTime{Time: 0},
-						Schema:    "v12",
-						RowShards: 16,
-					},
-				},
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			key := tc.schemaCfg.ExternalKey(tc.chunk.ChunkRef)
-			newChunk, err := ParseExternalKey("fake", key)
-			require.NoError(t, err)
-			require.Equal(t, tc.chunk, newChunk)
-			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk.ChunkRef))
-		})
 	}
 }
 

@@ -166,9 +166,11 @@ loki:
 
     {{ include "loki.rulerConfig" . }}
 
+    {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
       retention_deletes_enabled: {{ .Values.tableManager.retention_deletes_enabled }}
       retention_period: {{ .Values.tableManager.retention_period }}
+    {{- end }}
 
     {{- with .Values.loki.memcached.results_cache }}
     query_range:
@@ -492,6 +494,12 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+  # -- Specify PSP annotations
+  # Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations
+  pspAnnotations: {}
+  # seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  # seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'
+  # apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
 # -- Section for configuring optional Helm test
 test:
   enabled: true

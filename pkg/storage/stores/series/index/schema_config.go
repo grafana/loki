@@ -44,16 +44,18 @@ func CreateSchema(cfg config.PeriodConfig) (SeriesStoreSchema, error) {
 		}
 
 		v10 := v10Entries{rowShards: cfg.RowShards}
-		if cfg.Schema == "v10" {
+		switch cfg.Schema {
+		case "v10":
 			return newSeriesStoreSchema(buckets, v10), nil
-		} else if cfg.Schema == "v11" {
+		case "v11":
 			return newSeriesStoreSchema(buckets, v11Entries{v10}), nil
-		} else { // v12
+		case "v12":
 			return newSeriesStoreSchema(buckets, v12Entries{v11Entries{v10}}), nil
+		case "v13":
+			return newSeriesStoreSchema(buckets, v13Entries{v12Entries{v11Entries{v10}}}), nil
 		}
-	default:
-		return nil, errInvalidSchemaVersion
 	}
+	return nil, errInvalidSchemaVersion
 }
 
 // Bucket describes a range of time with a tableName and hashKey

@@ -495,7 +495,7 @@ Params:
 */}}
 {{- define "loki.ingress.serviceName" -}}
 {{- if (eq .svcName "singleBinary") }}
-{{- printf "%s" (include "loki.name" .ctx) }}
+{{- printf "%s" (include "loki.singleBinaryFullname" .ctx) }}
 {{- else }}
 {{- printf "%s-%s" (include "loki.name" .ctx) .svcName }}
 {{- end -}}
@@ -728,7 +728,7 @@ http {
     location = /config {
       proxy_pass       {{ $backendUrl }}$request_uri;
     }
-    
+
     {{- if and .Values.enterprise.enabled .Values.enterprise.adminApi.enabled }}
     # Admin API
     location ^~ /admin/api/ {

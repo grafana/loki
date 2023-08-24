@@ -1000,7 +1000,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	// parse the request
 	start, end := util.RoundToMilliseconds(reqStart, req.End)
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1041,7 +1041,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	var matchers []*labels.Matcher
 	if req.Query != "" {
-		matchers, err = syntax.ParseMatchers(req.Query)
+		matchers, err = syntax.ParseMatchers(req.Query, true)
 		if err != nil {
 			return nil, err
 		}
@@ -1124,7 +1124,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,7 +1181,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}
