@@ -76,16 +76,19 @@ func (m *mockChunksClient) IsRetryableErr(_ error) bool {
 }
 
 func TestChunkWriter_PutOne(t *testing.T) {
-	schemaConfig := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:   config.DayTime{Time: 0},
-				Schema: "v11",
-			},
-		},
+	periodConfig := config.PeriodConfig{
+		From:   config.DayTime{Time: 0},
+		Schema: "v13",
 	}
 
-	memchk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.DefaultHeadBlockFmt, 256*1024, 0)
+	schemaConfig := config.SchemaConfig{
+		Configs: []config.PeriodConfig{periodConfig},
+	}
+
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
+	memchk := chunkenc.NewMemChunk(chunkfmt, chunkenc.EncGZIP, headfmt, 256*1024, 0)
 	chk := chunk.NewChunk("fake", model.Fingerprint(0), []labels.Label{{Name: "foo", Value: "bar"}}, chunkenc.NewFacade(memchk, 0, 0), 100, 400)
 
 	for name, tc := range map[string]struct {

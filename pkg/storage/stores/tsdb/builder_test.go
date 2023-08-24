@@ -46,7 +46,7 @@ func Test_Build(t *testing.T) {
 	}
 
 	t.Run("writes index to disk with from/through bounds of series in filename", func(t *testing.T) {
-		ctx, builder, tmpDir := setup(index.LiveFormat)
+		ctx, builder, tmpDir := setup(index.FormatV3)
 
 		_, err := builder.Build(ctx, tmpDir, func(from, through model.Time, checksum uint32) Identifier {
 			return &fakeIdentifier{
@@ -66,7 +66,7 @@ func Test_Build(t *testing.T) {
 	})
 
 	t.Run("sorts symbols before writing to the index", func(t *testing.T) {
-		ctx, builder, tmpDir := setup(index.LiveFormat)
+		ctx, builder, tmpDir := setup(index.FormatV3)
 		_, err := builder.Build(ctx, tmpDir, func(from, through model.Time, checksum uint32) Identifier {
 			return &fakeIdentifier{
 				parentPath: tmpDir,

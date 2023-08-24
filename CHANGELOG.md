@@ -10,6 +10,7 @@
 
 ##### Enhancements
 
+* [10322](https://github.com/grafana/loki/pull/10322) **chaudum**: Deprecate misleading setting `-ruler.evaluation-delay-duration`.
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10109](https://github.com/grafana/loki/pull/10109) **vardhaman-surana**: Ruler: add limit parameter in rulegroup
 * [9621](https://github.com/grafana/loki/pull/9621) **DylanGuedes**: Introduce TSDB postings cache.
