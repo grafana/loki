@@ -132,8 +132,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"The ballast will not consume physical memory, because it is never read from. "+
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
-	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
-	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
+	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Deprecated. Uses a line-buffered logger to improve performance.")
+	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Deprecated. Forces all lines logged to hold a mutex to serialize writes.")
 
 	//TODO(trevorwhitney): flip this to false with Loki 3.0
 	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
