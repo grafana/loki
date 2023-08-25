@@ -115,6 +115,9 @@ message Store {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "chunk"
   ];
+
+  // Time spent fetching chunk refs from index.
+  int64 chunkRefsFetchTime = 5 [(gogoproto.jsontag) = "chunkRefsFetchTime"];
 }
 
 message Chunk {
