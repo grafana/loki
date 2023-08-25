@@ -358,7 +358,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		store := testutils.NewMockStorage()
 		return store, nil
 	case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please migrate to boltdb-shipper or tsdb", periodCfg.IndexType))
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
 
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
@@ -369,22 +369,23 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		}
 		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case config.StorageTypeGCP:
+		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Consider migrating to tsdb")
 		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please migrate to boltdb-shipper or tsdb", periodCfg.IndexType))
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeBigTableHashed:
-		level.Warn(util_log.Logger).Log("msg", "bigtable-hashed is deprecated. Please migrate to boltdb-shipper or tsdb")
+		level.Warn(util_log.Logger).Log("msg", "bigtable-hashed is deprecated. Consider migrating to tsdb")
 		cfg.GCPStorageConfig.DistributeKeys = true
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeCassandra:
-		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Please migrate to boltdb-shipper or tsdb")
+		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Consider migrating to tsdb")
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case config.StorageTypeBoltDB:
-		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Please migrate to boltdb-shipper or tsdb")
+		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case config.StorageTypeGrpc:
-		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Please migrate to boltdb-shipper or tsdb")
+		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Consider migrating to tsdb")
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.BoltDBShipperType:
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
@@ -427,7 +428,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		boltdbIndexClientsWithShipper[periodCfg.From] = shipper
 		return shipper, nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", periodCfg.IndexType, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v", periodCfg.IndexType, config.BoltDBShipperType, config.TSDBType)
 	}
 }
 

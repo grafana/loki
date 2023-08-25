@@ -156,9 +156,9 @@ type PeriodConfig struct {
 	// used when working with config
 	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
 	// type of index client to use.
-	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used.\nWhich store to use for the index. Either tsdb, boltdb-shipper.\n Following stores are deprecated: aws, aws-dynamo, gcp, bigtable, bigtable-hashed, cassandra."`
-	// type of object client to use; if omitted, defaults to store.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs, cassandra, swift, filesystem or a named_store (refer to named_stores_config). If omitted, defaults to the same value as store."`
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used.\nWhich index to use. Either tsdb or boltdb-shipper.\n Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	// type of object client to use.
+	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
 	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v11."`
 	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
