@@ -66,6 +66,7 @@ import (
   OffsetExpr              *OffsetExpr
   DropLabel               log.DropLabel
   DropLabels              []log.DropLabel
+  DropLabelsExpr          *DropLabelsExpr
   KeepLabel               log.KeepLabel
   KeepLabels              []log.KeepLabel
   KeepLabelsExpr          *KeepLabelsExpr
