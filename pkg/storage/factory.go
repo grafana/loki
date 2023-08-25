@@ -489,7 +489,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores:", storeType)+strings.Join(supportedStores, ", "))
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStores, ", ")))
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
