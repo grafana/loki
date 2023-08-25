@@ -659,6 +659,8 @@ monitoring:
     extraEnvFrom: []
     # -- Resource requests and limits for the canary
     resources: {}
+    # -- DNS config for canary pods
+    dnsConfig: {}
     # -- Node selector for canary pods
     nodeSelector: {}
     # -- Tolerations for canary pods
