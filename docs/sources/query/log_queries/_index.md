@@ -272,22 +272,6 @@ To evaluate the logical `and` first, use parenthesis, as in this example:
 
 Label filter expressions have support matching IP addresses. See [Matching IP addresses]({{< relref "../ip" >}}) for details.
 
-### Distinct filter expression
-
-Distinct filter expression allows filtering log lines using their original and extracted labels to filter out duplicate label values. The first line occurrence of a distinct value is returned, and the others are dropped.
-
-For example, for the following log lines:
-```log
-{"event": "access", "id": "1", "time": "2023-02-28 15:12:11"}
-{"event": "access", "id": "1", "time": "2023-02-28 15:13:11"}
-{"event": "access", "id": "2", "time": "2023-02-28 15:14:11"}
-{"event": "access", "id": "2", "time": "2023-02-28 15:15:11"}
-```
-The expression `{app="order"} | json | distinct id` will return the distinct occurrences of `id`:
-```log
-{"event": "access", "id": "1", "time": "2023-02-28 15:13:11"}
-{"event": "access", "id": "2", "time": "2023-02-28 15:15:11"}
-```
 ### Parser expression
 
 Parser expression can parse and extract labels from the log content. Those extracted labels can then be used for filtering using [label filter expressions](#label-filter-expression) or for [metric aggregations]({{< relref "../metric_queries" >}}).
