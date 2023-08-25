@@ -38,7 +38,7 @@ func CreateSchema(cfg config.PeriodConfig) (SeriesStoreSchema, error) {
 	switch cfg.Schema {
 	case "v9":
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11", v12:
+	case "v10", "v11", v12, "v13":
 		if cfg.RowShards == 0 {
 			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}

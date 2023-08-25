@@ -138,7 +138,7 @@ func (d *DeleteRequest) IsDeleted(entry retention.ChunkEntry) (bool, filter.Func
 	if !labels.Selector(d.matchers).Matches(entry.Labels) {
 		return false, nil
 	}
-	
+
 	if d.StartTime <= entry.From && d.EndTime >= entry.Through && !d.logSelectorExpr.HasFilter() {
 		// Delete request covers the whole chunk and there are no line filters in the logSelectorExpr so the whole chunk will be deleted
 		return true, nil
