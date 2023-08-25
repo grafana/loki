@@ -87,7 +87,7 @@ type Config struct {
 	DeleteMaxInterval         time.Duration   `yaml:"delete_max_interval"`
 	MaxCompactionParallelism  int             `yaml:"max_compaction_parallelism"`
 	UploadParallelism         int             `yaml:"upload_parallelism"`
-	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: boltdb.shipper.compactor.ring"`
+	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
 	RunOnce                   bool            `yaml:"_" doc:"hidden"`
 	TablesToCompact           int             `yaml:"tables_to_compact"`
 	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
@@ -111,7 +111,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetentionDeleteDelay, prefix+"compactor.retention-delete-delay", 2*time.Hour, deprecated+"Delay after which chunks will be fully deleted during retention.")
 	f.BoolVar(&cfg.RetentionEnabled, prefix+"compactor.retention-enabled", false, deprecated+"(Experimental) Activate custom (per-stream,per-tenant) retention.")
 	f.IntVar(&cfg.RetentionDeleteWorkCount, prefix+"compactor.retention-delete-worker-count", 150, deprecated+"The total amount of worker to use to delete chunks.")
-	f.StringVar(&cfg.DeleteRequestStore, prefix+"compactor.delete-request-store", "", deprecated+"Store used for managing delete requests. Defaults to -boltdb.shipper.compactor.shared-store.")
+	f.StringVar(&cfg.DeleteRequestStore, prefix+"compactor.delete-request-store", "", deprecated+"Store used for managing delete requests. Defaults to -compactor.shared-store.")
 	f.IntVar(&cfg.DeleteBatchSize, prefix+"compactor.delete-batch-size", 70, deprecated+"The max number of delete requests to run per compaction cycle.")
 	f.DurationVar(&cfg.DeleteRequestCancelPeriod, prefix+"compactor.delete-request-cancel-period", 24*time.Hour, deprecated+"Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
 	f.DurationVar(&cfg.DeleteMaxInterval, prefix+"compactor.delete-max-interval", 0, deprecated+"Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
@@ -122,7 +122,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	cfg.CompactorRing.RegisterFlagsWithPrefix(prefix+"compactor.", "collectors/", f)
 	f.IntVar(&cfg.TablesToCompact, prefix+"compactor.tables-to-compact", 0, deprecated+"Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
-	f.IntVar(&cfg.SkipLatestNTables, prefix+"compactor.skip-latest-n-tables", 0, deprecated+"Do not compact N latest tables. Together with -boltdb.shipper.compactor.run-once and -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
+	f.IntVar(&cfg.SkipLatestNTables, prefix+"compactor.skip-latest-n-tables", 0, deprecated+"Do not compact N latest tables. Together with -compactor.run-once and -compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
 }
 
 // RegisterFlags registers flags.

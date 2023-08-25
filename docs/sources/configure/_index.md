@@ -2195,8 +2195,7 @@ The `compactor` block configures the compactor component, which compacts index s
 # CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. Defaults to
-# -boltdb.shipper.compactor.shared-store.
+# Store used for managing delete requests. Defaults to -compactor.shared-store.
 # CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
 
@@ -2231,7 +2230,7 @@ The `compactor` block configures the compactor component, which compacts index s
 
 # The hash ring configuration used by compactors to elect a single instance for
 # running compactions. The CLI flags prefix for this block config is:
-# boltdb.shipper.compactor.ring
+# compactor.ring
 compactor_ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
@@ -2319,10 +2318,8 @@ compactor_ring:
 # CLI flag: -compactor.tables-to-compact
 [tables_to_compact: <int> | default = 0]
 
-# Do not compact N latest tables. Together with
-# -boltdb.shipper.compactor.run-once and
-# -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing
-# compactor backlogs.
+# Do not compact N latest tables. Together with -compactor.run-once and
+# -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
 # CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
 
