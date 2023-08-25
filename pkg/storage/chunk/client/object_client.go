@@ -17,6 +17,8 @@ import (
 
 // ObjectClient is used to store arbitrary data in Object Store (S3/GCS/Azure/...)
 type ObjectClient interface {
+	TestObject(ctx context.Context, objectKey string) error
+
 	PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error
 	// NOTE: The consumer of GetObject should always call the Close method when it is done reading which otherwise could cause a resource leak.
 	GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error)

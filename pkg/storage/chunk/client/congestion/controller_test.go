@@ -251,6 +251,10 @@ func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, in
 	return io.NopCloser(strings.NewReader("bar")), 3, nil
 }
 
+func (m *mockObjectClient) TestObject(context.Context, string) error {
+	panic("not implemented")
+}
+
 func (m *mockObjectClient) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	panic("not implemented")
 }
