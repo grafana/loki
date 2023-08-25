@@ -846,6 +846,8 @@ tableManager:
               matchLabels:
                 {{- include "loki.tableManagerSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
+  # -- DNS config table-manager pods
+  dnsConfig: {}
   # -- Node selector for table-manager pods
   nodeSelector: {}
   # -- Tolerations for table-manager pods
