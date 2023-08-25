@@ -59,6 +59,7 @@
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: Promtail: users can now define `additional_fields` in cloudflare configuration.
 * [10308](https://github.com/grafana/loki/pull/10308) **bboreham** Tracing: elide small traces for Stats call.
+* [10344](https://github.com/grafana/loki/pull/10344) **ashwanthgoli**  Compactor: deprecate `-boltdb.shipper.compactor.` prefix in favor of `-compactor.`.
 
 ##### Fixes
 
