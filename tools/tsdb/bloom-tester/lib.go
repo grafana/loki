@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"time"
+	"unicode/utf8"
 
 	"github.com/go-kit/log/level"
 	"github.com/owen-d/BoomFilters/boom"
@@ -79,7 +80,7 @@ func execute() {
 }
 
 func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
-	tokenizer := newLogfmtTokenizer()
+	tokenizer := newNGramTokenizer(4, 8)
 	metrics.tenants.Add(float64(len(tenants)))
 
 	var n int          // count iterated series
@@ -112,7 +113,7 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 						metrics.chunksKept.Add(float64(len(chks)))
 						metrics.chunksPerSeries.Observe(float64(len(chks)))
 
-						sbf := boom.NewDefaultScalableBloomFilter(0.01)
+						sbf := boom.NewScalableBloomFilter(100, 0.01, 0.8)
 
 						transformed := make([]chunk.Chunk, 0, len(chks))
 						for _, chk := range chks {
@@ -145,7 +146,10 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								)
 							}
 
-							itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
+							lc := c.Data.(*chunkenc.Facade).LokiChunk()
+							metrics.chunkSize.Observe(float64(lc.UncompressedSize()))
+
+							itr, err := lc.Iterator(
 								context.Background(),
 								time.Unix(0, 0),
 								time.Unix(0, math.MaxInt64),
@@ -180,8 +184,9 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 							helpers.ExitErr("chunk error", itr.Error())
 						}
 
-						metrics.bloomSize.Observe(float64(sbf.Capacity()))
+						metrics.bloomSize.Observe(float64(sbf.Capacity() / 8))
 						metrics.hammingWeightRatio.Observe(sbf.FillRatio())
+						metrics.estimatedCount.Observe(float64(estimatedCount(sbf.Capacity(), sbf.FillRatio(), sbf.K())))
 
 						//TODO: estimated count & estimated error rate
 
@@ -199,6 +204,10 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 	return nil
 }
 
+type Token struct {
+	// Either key or value may be empty
+	Key, Value string
+}
 type Tokenizer interface {
 	Tokens(line string) []Token
 }
@@ -227,11 +236,53 @@ func newLogfmtTokenizer() *logfmtTokenizer {
 	}
 }
 
-type Token struct {
-	// Either key or value may be empty
-	Key, Value string
+type ngramTokenizer struct {
+	// [min,max) exclusivity
+	min, max int
+	buffers  [][]rune // circular buffers used for ngram generation
 }
 
-func report(m *Metrics) {
+func newNGramTokenizer(min, max int) *ngramTokenizer {
+	t := &ngramTokenizer{
+		min: min,
+		max: max,
+	}
+	for i := t.min; i < t.max; i++ {
+		t.buffers = append(t.buffers, make([]rune, i))
+	}
 
+	return t
+
+}
+
+func (t *ngramTokenizer) Tokens(line string) (res []Token) {
+	for i, r := range line {
+		// j is the index of the buffer to use
+		for j := 0; j < (t.max - t.min); j++ {
+			// n is the length of the ngram
+			n := j + t.min
+			// pos is the position in the buffer to overwrite
+			pos := i % n
+			t.buffers[j][pos] = r
+
+			if i >= n-1 {
+				ngram := reassemble(t.buffers[j], (i+1)%n)
+				res = append(res, Token{Key: string(ngram), Value: ""})
+			}
+		}
+	}
+	return
+}
+
+func reassemble(buf []rune, pos int) []byte {
+	res := make([]byte, 0, len(buf)*4) // 4 bytes per rune (i32)
+	for i := 0; i < len(buf); i++ {
+		cur := (pos + i) % len(buf)
+		res = utf8.AppendRune(res, buf[cur])
+	}
+	return res
+}
+
+func estimatedCount(m uint, hammingRatio float64, k uint) int {
+	return int(-float64(m) * math.Log(1-hammingRatio) / float64(k))
 }

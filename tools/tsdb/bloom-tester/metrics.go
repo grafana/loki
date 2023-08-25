@@ -10,8 +10,9 @@ type Metrics struct {
 	series     prometheus.Counter // number of series
 	seriesKept prometheus.Counter // number of series kept
 
-	chunks     prometheus.Counter // number of chunks
-	chunksKept prometheus.Counter // number of chunks kept
+	chunks     prometheus.Counter   // number of chunks
+	chunksKept prometheus.Counter   // number of chunks kept
+	chunkSize  prometheus.Histogram // uncompressed size of chunks
 
 	inserts    prometheus.Counter // number of inserts attempted into bloom filters
 	collisions prometheus.Counter // number of inserts that collided with existing keys
@@ -50,6 +51,11 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		chunksKept: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "bloom_chunks_kept",
 			Help: "Number of chunks kept",
+		}),
+		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "bloom_chunk_size",
+			Help:    "Uncompressed size of chunks",
+			Buckets: prometheus.ExponentialBucketsRange(1<<10, 16<<20, 10),
 		}),
 		inserts: promauto.With(r).NewCounter(prometheus.CounterOpts{
 			Name: "bloom_inserts",
@@ -93,8 +99,8 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		}),
 		bloomSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_size",
-			Help:    "Size of the bloom filter in bits",
-			Buckets: prometheus.ExponentialBucketsRange(1<<10, 16<<20, 8),
+			Help:    "Size of the bloom filter in bytes",
+			Buckets: prometheus.ExponentialBucketsRange(128, 16<<20, 8),
 		}),
 		chunksPerSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_chunks_per_series",
