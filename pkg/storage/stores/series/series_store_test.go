@@ -34,7 +34,7 @@ const userID = "1"
 
 var (
 	ctx     = user.InjectOrgID(context.Background(), userID)
-	schemas = []string{"v9", "v10", "v11", "v12"}
+	schemas = []string{"v9", "v10", "v11", "v12", "v13"}
 	stores  = []struct {
 		name     string
 		configFn configFactory

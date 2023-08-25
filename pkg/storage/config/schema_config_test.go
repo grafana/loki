@@ -427,6 +427,15 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
+		{
+			desc: "v13",
+			in: PeriodConfig{
+				Schema:      "v13",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.err == "" {
@@ -554,6 +563,19 @@ func TestVersionAsInt(t *testing.T) {
 				},
 			},
 			expected: int(12),
+		},
+		{
+			name: "v13",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v13",
+						RowShards: 16,
+					},
+				},
+			},
+			expected: int(13),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
