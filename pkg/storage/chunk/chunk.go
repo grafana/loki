@@ -40,11 +40,10 @@ type Chunk struct {
 	logproto.ChunkRef
 
 	Metric labels.Labels `json:"metric"`
+	Data   Data          `json:"-"`
 
-	// We never use Delta encoding (the zero value), so if this entry is
-	// missing, we default to DoubleDelta.
+	// Deprecated: Always use Encoding(129) -> LogChunk
 	Encoding Encoding `json:"encoding"`
-	Data     Data     `json:"-"`
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
 	encoded []byte
