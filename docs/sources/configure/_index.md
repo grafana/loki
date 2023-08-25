@@ -4022,7 +4022,7 @@ The `period_config` block configures what index schemas should be used for from 
 # If omitted, defaults to the same value as store.
 [object_store: <string> | default = ""]
 
-# The schema version to use, current recommended schema is v11.
+# The schema version to use, current recommended schema is v12.
 [schema: <string> | default = ""]
 
 # Configures how the index is updated and stored.
