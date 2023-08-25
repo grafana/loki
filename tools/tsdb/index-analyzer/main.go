@@ -16,7 +16,7 @@ import (
 
 // go build ./tools/tsdb/index-analyzer && BUCKET=19453 DIR=/tmp/loki-index-analysis ./index-analyzer --config.file=/tmp/loki-config.yaml
 func main() {
-	conf, bucket, err := helpers.Setup()
+	conf, _, bucket, err := helpers.Setup()
 	helpers.ExitErr("setting up", err)
 
 	_, overrides, clientMetrics := helpers.DefaultConfigs()

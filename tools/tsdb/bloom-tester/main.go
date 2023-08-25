@@ -1,6 +1,6 @@
 package main
 
-// go build ./tools/tsdb/index-analyzer && BUCKET=19453 DIR=/tmp/loki-index-analysis ./index-analyzer --config.file=/tmp/loki-config.yaml
+// go build ./tools/tsdb/bloom-tester && BUCKET=19580 DIR=/tmp/loki-bloom-tester ./bloom-tester --config.file=/tmp/loki-config.yaml
 func main() {
 	execute()
 }

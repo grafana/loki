@@ -4,12 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"math"
+	"time"
 
+	"github.com/go-kit/log/level"
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -26,7 +30,7 @@ import (
 )
 
 func execute() {
-	conf, bucket, err := helpers.Setup()
+	conf, svc, bucket, err := helpers.Setup()
 	helpers.ExitErr("setting up", err)
 
 	_, overrides, clientMetrics := helpers.DefaultConfigs()
@@ -64,13 +68,23 @@ func execute() {
 
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
 
+	level.Info(util_log.Logger).Log("msg", "starting server")
+	err = services.StartAndAwaitRunning(context.Background(), svc)
+	helpers.ExitErr("waiting for service to start", err)
+	level.Info(util_log.Logger).Log("msg", "server started")
+
 	err = analyze(metrics, sampler, shipper, chunkClient, tableName, tenants)
 	helpers.ExitErr("analyzing", err)
+	level.Info(util_log.Logger).Log("msg", "finished analyzing")
 }
 
 func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
 	tokenizer := newLogfmtTokenizer()
 	metrics.tenants.Add(float64(len(tenants)))
+
+	var n int          // count iterated series
+	reportEvery := 100 // report every n chunks
+
 	for _, tenant := range tenants {
 		err := shipper.ForEach(
 			context.Background(),
@@ -93,8 +107,10 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 						if !sampler.Sample() {
 							return
 						}
+
 						metrics.seriesKept.Inc()
 						metrics.chunksKept.Add(float64(len(chks)))
+						metrics.chunksPerSeries.Observe(float64(len(chks)))
 
 						sbf := boom.NewDefaultScalableBloomFilter(0.01)
 
@@ -118,14 +134,27 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 						helpers.ExitErr("getting chunks", err)
 
 						for _, c := range got {
+							n++
+							if n%reportEvery == 0 {
+								estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
+								level.Info(util_log.Logger).Log(
+									"msg", "iterated",
+									"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
+									"chunks", len(chks),
+									"series", ls.String(),
+								)
+							}
+
 							itr, err := c.Data.(*chunkenc.Facade).LokiChunk().Iterator(
 								context.Background(),
-								model.Earliest.Time(), model.Latest.Time(), logproto.FORWARD,
+								time.Unix(0, 0),
+								time.Unix(0, math.MaxInt64),
+								logproto.FORWARD,
 								log.NewNoopPipeline().ForStream(ls),
 							)
 							helpers.ExitErr("getting iterator", err)
 
-							for itr.Next() {
+							for itr.Next() && itr.Error() == nil {
 								toks := tokenizer.Tokens(itr.Entry().Line)
 								for _, tok := range toks {
 									if tok.Key != "" {
@@ -147,6 +176,8 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 									}
 								}
 							}
+
+							helpers.ExitErr("chunk error", itr.Error())
 						}
 
 						metrics.bloomSize.Observe(float64(sbf.Capacity()))
@@ -199,4 +230,8 @@ func newLogfmtTokenizer() *logfmtTokenizer {
 type Token struct {
 	// Either key or value may be empty
 	Key, Value string
+}
+
+func report(m *Metrics) {
+
 }

@@ -22,33 +22,33 @@ type Metrics struct {
 	valuesInserted  prometheus.Counter // number of values inserted into bloom filters
 	valueCollisions prometheus.Counter // number of values that collided with existing values
 
-	// TODO
 	hammingWeightRatio prometheus.Histogram // ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter
 	estimatedCount     prometheus.Histogram // estimated number of elements in the bloom filter
 	estimatedErrorRate prometheus.Histogram // estimated error rate of the bloom filter
 	bloomSize          prometheus.Histogram // size of the bloom filter in bytes
+	chunksPerSeries    prometheus.Histogram // number of chunks per series
 }
 
 func NewMetrics(r prometheus.Registerer) *Metrics {
 	return &Metrics{
 		tenants: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "tenants",
+			Name: "bloom_tenants",
 			Help: "Number of tenants",
 		}),
 		series: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "series",
+			Name: "bloom_series",
 			Help: "Number of series",
 		}),
 		seriesKept: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "series_kept",
+			Name: "bloom_series_kept",
 			Help: "Number of series kept",
 		}),
 		chunks: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "chunks",
+			Name: "bloom_chunks",
 			Help: "Number of chunks",
 		}),
 		chunksKept: promauto.With(r).NewCounter(prometheus.CounterOpts{
-			Name: "chunks_kept",
+			Name: "bloom_chunks_kept",
 			Help: "Number of chunks kept",
 		}),
 		inserts: promauto.With(r).NewCounter(prometheus.CounterOpts{
@@ -96,9 +96,10 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Help:    "Size of the bloom filter in bits",
 			Buckets: prometheus.ExponentialBucketsRange(1<<10, 16<<20, 8),
 		}),
+		chunksPerSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
+			Name:    "bloom_chunks_per_series",
+			Help:    "Number of chunks per series",
+			Buckets: prometheus.ExponentialBucketsRange(1, 100e3, 10),
+		}),
 	}
-}
-
-func (m *Metrics) Register(r prometheus.Registerer) {
-	m.hammingWeightRatio.Collect()
 }

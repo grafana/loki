@@ -6,6 +6,12 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/grafana/dskit/server"
+	"github.com/grafana/dskit/services"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/common/version"
+
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
@@ -14,10 +20,9 @@ import (
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
-func Setup() (loki.Config, string, error) {
+func Setup() (loki.Config, services.Service, string, error) {
 	var c loki.ConfigWrapper
 	if err := cfg.DynamicUnmarshal(&c, os.Args[1:], flag.CommandLine); err != nil {
 		fmt.Fprintf(os.Stderr, "failed parsing config: %v\n", err)
@@ -28,15 +33,15 @@ func Setup() (loki.Config, string, error) {
 	dir := os.Getenv("DIR")
 
 	if bucket == "" {
-		return c.Config, "", fmt.Errorf("$BUCKET must be specified")
+		return c.Config, nil, "", fmt.Errorf("$BUCKET must be specified")
 	}
 
 	if dir == "" {
-		return c.Config, "", fmt.Errorf("$DIR must be specified")
+		return c.Config, nil, "", fmt.Errorf("$DIR must be specified")
 	}
 
 	if err := util.EnsureDirectory(dir); err != nil {
-		return c.Config, "", fmt.Errorf("failed to ensure directory %s: %w", dir, err)
+		return c.Config, nil, "", fmt.Errorf("failed to ensure directory %s: %w", dir, err)
 	}
 
 	c.Config.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
@@ -44,7 +49,36 @@ func Setup() (loki.Config, string, error) {
 
 	c.Config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = filepath.Join(dir, "tsdb-active")
 	c.Config.StorageConfig.TSDBShipperConfig.CacheLocation = filepath.Join(dir, "tsdb-cache")
-	return c.Config, bucket, nil
+
+	svc, err := moduleManager(&c.Config.Server)
+	if err != nil {
+		return c.Config, nil, "", err
+	}
+
+	return c.Config, svc, bucket, nil
+}
+
+func moduleManager(cfg *server.Config) (services.Service, error) {
+	prometheus.MustRegister(version.NewCollector("loki"))
+	// unregister default go collector
+	prometheus.Unregister(collectors.NewGoCollector())
+	// register collector with additional metrics
+	prometheus.MustRegister(collectors.NewGoCollector(
+		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
+	))
+
+	if cfg.HTTPListenPort == 0 {
+		cfg.HTTPListenPort = 8080
+	}
+
+	serv, err := server.New(*cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	s := loki.NewServerService(serv, func() []services.Service { return nil })
+
+	return s, nil
 }
 
 func DefaultConfigs() (config.ChunkStoreConfig, *validation.Overrides, storage.ClientMetrics) {
