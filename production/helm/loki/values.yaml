@@ -770,6 +770,8 @@ write:
             matchLabels:
               {{- include "loki.writeSelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for write pods
+  dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Tolerations for write pods
