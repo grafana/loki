@@ -8,31 +8,16 @@ import (
 // Encoding defines which encoding we are using, delta, doubledelta, or varbit
 type Encoding byte
 
+const (
+	Dummy Encoding = iota
+)
+
 // String implements flag.Value.
 func (e Encoding) String() string {
 	if known, found := encodings[e]; found {
 		return known.Name
 	}
 	return fmt.Sprintf("%d", e)
-}
-
-const (
-	// Big chunk encoding.
-	Bigchunk Encoding = iota
-)
-
-type encoding struct {
-	Name string
-	New  func() Data
-}
-
-var encodings = map[Encoding]encoding{
-	Bigchunk: {
-		Name: "Bigchunk",
-		New: func() Data {
-			return newBigchunk()
-		},
-	},
 }
 
 // Set implements flag.Value.
@@ -57,6 +42,18 @@ func (e *Encoding) Set(s string) error {
 
 	*e = Encoding(i)
 	return nil
+}
+
+type encoding struct {
+	Name string
+	New  func() Data
+}
+
+var encodings = map[Encoding]encoding{
+	Dummy: {
+		Name: "dummy",
+		New:  func() Data { return newDummyChunk() },
+	},
 }
 
 // NewForEncoding allows configuring what chunk type you want

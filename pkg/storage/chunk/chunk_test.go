@@ -23,18 +23,13 @@ var labelsForDummyChunks = labels.Labels{
 }
 
 // Deprecated
-func dummyChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, labelsForDummyChunks)
-}
-
-// Deprecated
 func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
 	return dummyChunkForEncoding(now, metric, 1)
 }
 
 // Deprecated
 func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Chunk {
-	c := newBigchunk()
+	c := newDummyChunk()
 	chunkStart := now.Add(-time.Hour)
 
 	for i := 0; i < samples; i++ {
@@ -65,7 +60,7 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 }
 
 func TestChunkCodec(t *testing.T) {
-	dummy := dummyChunk(model.Now())
+	dummy := dummyChunkFor(model.Now(), labelsForDummyChunks)
 	decodeContext := NewDecodeContext()
 	key := fmt.Sprintf("%s/%x:%x:%x:%x", dummy.ChunkRef.UserID, dummy.ChunkRef.Fingerprint, int64(dummy.ChunkRef.From), int64(dummy.ChunkRef.Through), dummy.ChunkRef.Checksum)
 
@@ -185,12 +180,8 @@ var BenchmarkLabels = labels.Labels{
 	{Name: "pod_name", Value: "some-other-name-5j8s8"},
 }
 
-func benchmarkChunk(now model.Time) Chunk {
-	return dummyChunkFor(now, BenchmarkLabels)
-}
-
 func BenchmarkEncode(b *testing.B) {
-	chunk := dummyChunk(model.Now())
+	chunk := dummyChunkFor(model.Now(), labelsForDummyChunks)
 
 	b.ResetTimer()
 
@@ -206,7 +197,7 @@ func BenchmarkDecode100(b *testing.B)   { benchmarkDecode(b, 100) }
 func BenchmarkDecode10000(b *testing.B) { benchmarkDecode(b, 10000) }
 
 func benchmarkDecode(b *testing.B, batchSize int) {
-	chunk := benchmarkChunk(model.Now())
+	chunk := dummyChunkFor(model.Now(), BenchmarkLabels)
 	err := chunk.Encode()
 	require.NoError(b, err)
 	buf, err := chunk.Encoded()
