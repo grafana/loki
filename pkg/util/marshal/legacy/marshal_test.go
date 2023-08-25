@@ -64,7 +64,7 @@ var queryTests = []struct {
 					"store": {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0
+						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"chunk" :{
 							"compressedBytes": 0,
@@ -87,7 +87,7 @@ var queryTests = []struct {
 					"store": {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
-						"totalChunksDownloaded": 0
+						"totalChunksDownloaded": 0,
 						"chunkRefsFetchTime": 0,
 						"chunk" :{
 							"compressedBytes": 0,
