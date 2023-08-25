@@ -18,4 +18,4 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 - **Track effectiveness of hedged requests** [PR #10281](https://github.com/grafana/loki/pull/10281)]
 
--  **Pin `chunk` and `index` format to `schema` version.**: :warning: ADD DESCRIPTION HERE :warning:. [PR #10213](https://github.com/grafana/loki/pull/10213)]
+-  **Pin `chunk` and `index` format to `schema` version.**: Starting from this Loki version, chunk formats and index formats will be pinned to schema version. Current schema `v12` uses `ChunkFormat3` with `TSDBv2` for index, The new experimental `v13` schema uses `ChunkFormat4` with `TSDBv3` for index. [PR #10213](https://github.com/grafana/loki/pull/10213)]
