@@ -17,7 +17,9 @@ import (
 	"github.com/prometheus/common/model"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -371,6 +373,38 @@ func (cfg *PeriodConfig) applyDefaults() {
 	}
 }
 
+// ChunkFormat returns chunk format including it's headBlockFormat corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get chunk format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return chunkenc.ChunkFormatV3, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3), nil
+	default: // for v13 and above
+		return chunkenc.ChunkFormatV4, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), nil
+	}
+}
+
+// TSDBFormat returns index format corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) TSDBFormat() (int, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get index format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return index.FormatV2, nil
+	default: // for v13 and above
+		return index.FormatV3, nil
+	}
+}
+
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
 	validateError := validateChunks(cfg)
@@ -396,7 +430,7 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	switch v {
-	case 10, 11, 12:
+	case 10, 11, 12, 13:
 		if cfg.RowShards == 0 {
 			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
@@ -431,6 +465,9 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 	v := strings.Trim(cfg.Schema, "v")
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		err = fmt.Errorf("invalid schema version: %w", err)
+	}
 	cfg.schemaInt = &n
 	return n, err
 }

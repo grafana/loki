@@ -2559,8 +2559,8 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -limits.volume-max-series
 [volume_max_series: <int> | default = 1000]
 
-# Duration to delay the evaluation of rules to ensure the underlying metrics
-# have been pushed to Cortex.
+# Deprecated. Duration to delay the evaluation of rules to ensure the underlying
+# metrics have been pushed to Cortex.
 # CLI flag: -ruler.evaluation-delay-duration
 [ruler_evaluation_delay_duration: <duration> | default = 0s]
 
