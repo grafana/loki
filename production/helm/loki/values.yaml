@@ -1279,6 +1279,8 @@ gateway:
             matchLabels:
               {{- include "loki.gatewaySelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for gateway pods
+  dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
   # -- Tolerations for gateway pods
