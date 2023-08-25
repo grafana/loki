@@ -1033,6 +1033,8 @@ backend:
             matchLabels:
               {{- include "loki.backendSelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for backend pods
+  dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Tolerations for backend pods
