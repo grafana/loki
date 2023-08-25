@@ -54,7 +54,6 @@
 * [9693](https://github.com/grafana/loki/pull/9693) **salvacorts** Add `keep` stage to LogQL.
 * [7447](https://github.com/grafana/loki/pull/7447) **ashwanthgoli** compactor: multi-store support.
 * [7754](https://github.com/grafana/loki/pull/7754) **ashwanthgoli** index-shipper: add support for multiple stores.
-* [8662](https://github.com/grafana/loki/pull/8662) **liguozhong**: LogQL: Introduce `distinct`
 * [9813](https://github.com/grafana/loki/pull/9813) **jeschkies**: Enable Protobuf encoding via content negotiation between querier and query frontend.
 * [10281](https://github.com/grafana/loki/pull/10281) **dannykopping**: Track effectiveness of hedged requests.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
