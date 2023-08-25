@@ -105,7 +105,7 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 
 	f.StringVar(&cfg.WorkingDirectory, prefix+"compactor.working-directory", "", deprecated+"Directory where files can be downloaded for compaction.")
 	f.StringVar(&cfg.SharedStoreType, prefix+"compactor.shared-store", "", deprecated+"The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos, cos. If not set, compactor will be initialized to operate on all the object stores that contain either boltdb-shipper or tsdb index.")
-	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"compactor.shared-store.key-prefix", deprecated+"index/", "Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
+	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"compactor.shared-store.key-prefix", "index/", deprecated+"Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
 	f.DurationVar(&cfg.CompactionInterval, prefix+"compactor.compaction-interval", 10*time.Minute, deprecated+"Interval at which to re-run the compaction operation.")
 	f.DurationVar(&cfg.ApplyRetentionInterval, prefix+"compactor.apply-retention-interval", 0, deprecated+"Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
 	f.DurationVar(&cfg.RetentionDeleteDelay, prefix+"compactor.retention-delete-delay", 2*time.Hour, deprecated+"Delay after which chunks will be fully deleted during retention.")
