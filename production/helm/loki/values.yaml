@@ -775,6 +775,11 @@ write:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
+    # -- Enable volume claims in pod spec
+    volumeClaimsEnabled: true
+    # -- Parameters used for the `data` volume when volumeClaimEnabled if false
+    dataVolumeParameters:
+      emptyDir: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
     # -- Size of persistent disk
@@ -1032,6 +1037,11 @@ backend:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
+    # -- Enable volume claims in pod spec
+    volumeClaimsEnabled: true
+    # -- Parameters used for the `data` volume when volumeClaimEnabled if false
+    dataVolumeParameters:
+      emptyDir: {}
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
     # -- Size of persistent disk
