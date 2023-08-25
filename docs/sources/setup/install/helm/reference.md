@@ -106,6 +106,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the backend</td>
@@ -971,6 +980,15 @@ null
 			<td></td>
 			<td><pre lang="json">
 "RollingUpdate"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2331,6 +2349,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -3070,6 +3097,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>read.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for read pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the read</td>
@@ -3421,6 +3457,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for single binary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
@@ -3669,6 +3714,15 @@ Hard node and soft zone anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config table-manager pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4085,6 +4139,15 @@ false
 			<td>Target memory utilization percentage for the write.</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for write pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
