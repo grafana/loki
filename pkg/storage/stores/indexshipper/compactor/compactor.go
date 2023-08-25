@@ -97,31 +97,42 @@ type Config struct {
 }
 
 // RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.StringVar(&cfg.WorkingDirectory, "boltdb.shipper.compactor.working-directory", "", "Directory where files can be downloaded for compaction.")
-	f.StringVar(&cfg.SharedStoreType, "boltdb.shipper.compactor.shared-store", "", "The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos, cos. If not set, compactor will be initialized to operate on all the object stores that contain either boltdb-shipper or tsdb index.")
-	f.StringVar(&cfg.SharedStoreKeyPrefix, "boltdb.shipper.compactor.shared-store.key-prefix", "index/", "Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
-	f.DurationVar(&cfg.CompactionInterval, "boltdb.shipper.compactor.compaction-interval", 10*time.Minute, "Interval at which to re-run the compaction operation.")
-	f.DurationVar(&cfg.ApplyRetentionInterval, "boltdb.shipper.compactor.apply-retention-interval", 0, "Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
-	f.DurationVar(&cfg.RetentionDeleteDelay, "boltdb.shipper.compactor.retention-delete-delay", 2*time.Hour, "Delay after which chunks will be fully deleted during retention.")
-	f.BoolVar(&cfg.RetentionEnabled, "boltdb.shipper.compactor.retention-enabled", false, "(Experimental) Activate custom (per-stream,per-tenant) retention.")
-	f.IntVar(&cfg.RetentionDeleteWorkCount, "boltdb.shipper.compactor.retention-delete-worker-count", 150, "The total amount of worker to use to delete chunks.")
-	f.StringVar(&cfg.DeleteRequestStore, "boltdb.shipper.compactor.delete-request-store", "", "Store used for managing delete requests. Defaults to -boltdb.shipper.compactor.shared-store.")
-	f.IntVar(&cfg.DeleteBatchSize, "boltdb.shipper.compactor.delete-batch-size", 70, "The max number of delete requests to run per compaction cycle.")
-	f.DurationVar(&cfg.DeleteRequestCancelPeriod, "boltdb.shipper.compactor.delete-request-cancel-period", 24*time.Hour, "Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
-	f.DurationVar(&cfg.DeleteMaxInterval, "boltdb.shipper.compactor.delete-max-interval", 0, "Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
-	f.DurationVar(&cfg.RetentionTableTimeout, "boltdb.shipper.compactor.retention-table-timeout", 0, "The maximum amount of time to spend running retention and deletion on any given table in the index.")
-	f.IntVar(&cfg.MaxCompactionParallelism, "boltdb.shipper.compactor.max-compaction-parallelism", 1, "Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
-	f.IntVar(&cfg.UploadParallelism, "boltdb.shipper.compactor.upload-parallelism", 10, "Number of upload/remove operations to execute in parallel when finalizing a compaction. NOTE: This setting is per compaction operation, which can be executed in parallel. The upper bound on the number of concurrent uploads is upload_parallelism * max_compaction_parallelism.")
-	f.BoolVar(&cfg.RunOnce, "boltdb.shipper.compactor.run-once", false, "Run the compactor one time to cleanup and compact index files only (no retention applied)")
+func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	var deprecated = ""
+	if prefix != "" {
+		deprecated = "Deprecated: "
+	}
 
+	f.StringVar(&cfg.WorkingDirectory, prefix+"compactor.working-directory", "", deprecated+"Directory where files can be downloaded for compaction.")
+	f.StringVar(&cfg.SharedStoreType, prefix+"compactor.shared-store", "", deprecated+"The shared store used for storing boltdb files. Supported types: gcs, s3, azure, swift, filesystem, bos, cos. If not set, compactor will be initialized to operate on all the object stores that contain either boltdb-shipper or tsdb index.")
+	f.StringVar(&cfg.SharedStoreKeyPrefix, prefix+"compactor.shared-store.key-prefix", deprecated+"index/", "Prefix to add to object keys in shared store. Path separator(if any) should always be a '/'. Prefix should never start with a separator but should always end with it.")
+	f.DurationVar(&cfg.CompactionInterval, prefix+"compactor.compaction-interval", 10*time.Minute, deprecated+"Interval at which to re-run the compaction operation.")
+	f.DurationVar(&cfg.ApplyRetentionInterval, prefix+"compactor.apply-retention-interval", 0, deprecated+"Interval at which to apply/enforce retention. 0 means run at same interval as compaction. If non-zero, it should always be a multiple of compaction interval.")
+	f.DurationVar(&cfg.RetentionDeleteDelay, prefix+"compactor.retention-delete-delay", 2*time.Hour, deprecated+"Delay after which chunks will be fully deleted during retention.")
+	f.BoolVar(&cfg.RetentionEnabled, prefix+"compactor.retention-enabled", false, deprecated+"(Experimental) Activate custom (per-stream,per-tenant) retention.")
+	f.IntVar(&cfg.RetentionDeleteWorkCount, prefix+"compactor.retention-delete-worker-count", 150, deprecated+"The total amount of worker to use to delete chunks.")
+	f.StringVar(&cfg.DeleteRequestStore, prefix+"compactor.delete-request-store", "", deprecated+"Store used for managing delete requests. Defaults to -boltdb.shipper.compactor.shared-store.")
+	f.IntVar(&cfg.DeleteBatchSize, prefix+"compactor.delete-batch-size", 70, deprecated+"The max number of delete requests to run per compaction cycle.")
+	f.DurationVar(&cfg.DeleteRequestCancelPeriod, prefix+"compactor.delete-request-cancel-period", 24*time.Hour, deprecated+"Allow cancellation of delete request until duration after they are created. Data would be deleted only after delete requests have been older than this duration. Ideally this should be set to at least 24h.")
+	f.DurationVar(&cfg.DeleteMaxInterval, prefix+"compactor.delete-max-interval", 0, deprecated+"Constrain the size of any single delete request. When a delete request > delete_max_interval is input, the request is sharded into smaller requests of no more than delete_max_interval")
+	f.DurationVar(&cfg.RetentionTableTimeout, prefix+"compactor.retention-table-timeout", 0, deprecated+"The maximum amount of time to spend running retention and deletion on any given table in the index.")
+	f.IntVar(&cfg.MaxCompactionParallelism, prefix+"compactor.max-compaction-parallelism", 1, deprecated+"Maximum number of tables to compact in parallel. While increasing this value, please make sure compactor has enough disk space allocated to be able to store and compact as many tables.")
+	f.IntVar(&cfg.UploadParallelism, prefix+"compactor.upload-parallelism", 10, deprecated+"Number of upload/remove operations to execute in parallel when finalizing a compaction. NOTE: This setting is per compaction operation, which can be executed in parallel. The upper bound on the number of concurrent uploads is upload_parallelism * max_compaction_parallelism.")
+	f.BoolVar(&cfg.RunOnce, prefix+"compactor.run-once", false, deprecated+"Run the compactor one time to cleanup and compact index files only (no retention applied)")
+
+	cfg.CompactorRing.RegisterFlagsWithPrefix(prefix+"compactor.", "collectors/", f)
+	f.IntVar(&cfg.TablesToCompact, prefix+"compactor.tables-to-compact", 0, deprecated+"Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
+	f.IntVar(&cfg.SkipLatestNTables, prefix+"compactor.skip-latest-n-tables", 0, deprecated+"Do not compact N latest tables. Together with -boltdb.shipper.compactor.run-once and -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
+}
+
+// RegisterFlags registers flags.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.RegisterFlagsWithPrefix("", f)
+
+	// Deprecated. CLI flags with boltdb.shipper. prefix will be removed in the next major version.
+	cfg.RegisterFlagsWithPrefix("boltdb.shipper.", f)
 	// Deprecated
 	flagext.DeprecatedFlag(f, "boltdb.shipper.compactor.deletion-mode", "Deprecated. This has been moved to the deletion_mode per tenant configuration.", util_log.Logger)
-
-	cfg.CompactorRing.RegisterFlagsWithPrefix("boltdb.shipper.compactor.", "collectors/", f)
-	f.IntVar(&cfg.TablesToCompact, "boltdb.shipper.compactor.tables-to-compact", 0, "Number of tables that compactor will try to compact. Newer tables are chosen when this is less than the number of tables available.")
-	f.IntVar(&cfg.SkipLatestNTables, "boltdb.shipper.compactor.skip-latest-n-tables", 0, "Do not compact N latest tables. Together with -boltdb.shipper.compactor.run-once and -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing compactor backlogs.")
-
 }
 
 // Validate verifies the config does not contain inappropriate values
