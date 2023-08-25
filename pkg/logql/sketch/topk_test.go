@@ -471,63 +471,70 @@ func TestTopkZipf(t *testing.T) {
 			v:          1.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 2,
 		},
 		{
 			s:          1.01,
 			v:          10.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 3,
 		},
 		{
 			s:          1.01,
 			v:          100.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 17,
 		},
 		{
 			s:          2.0,
 			v:          1.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 4,
 		},
 		{
 			s:          2.0,
 			v:          10.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 1,
 		},
 		{
 			s:          2.0,
 			v:          100.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 4,
 		},
 		{
 			s:          3.0,
 			v:          1.0,
-			events:     10_000,
+			events:     1000,
 			k:          100,
-			maxMissing: 7,
+			maxMissing: 27,
 		},
 		{
 			s:          3.0,
 			v:          10.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 6,
 		},
 		{
 			s:          3.0,
 			v:          100.0,
 			events:     1000,
 			k:          100,
-			maxMissing: 7,
+			maxMissing: 4,
+		},
+		{
+			s:          4.0,
+			v:          1.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 28,
 		},
 		{
 			s:          4.0,
@@ -536,50 +543,57 @@ func TestTopkZipf(t *testing.T) {
 			k:          100,
 			maxMissing: 5,
 		},
+		{
+			s:          4.0,
+			v:          100.0,
+			events:     1000,
+			k:          100,
+			maxMissing: 5,
+		},
 		//cardinality of 10k
 		{
 			s:          1.01,
 			v:          1.0,
-			events:     10_000,
+			events:     10000,
 			k:          100,
 			maxMissing: 4,
 		},
 		{
 			s:          1.01,
 			v:          10.0,
-			events:     10_000,
+			events:     10000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 4,
 		},
 		{
 			s:          1.01,
 			v:          100.0,
-			events:     10_000,
+			events:     10000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 13,
 		},
 		{
 			s:          2.0,
 			v:          1.0,
-			events:     10_000,
+			events:     10000,
 			k:          100,
-			maxMissing: 5,
+			maxMissing: 2,
 		},
 		{
 			s:          2.0,
 			v:          10.0,
 			events:     10000,
 			k:          100,
-			maxMissing: 4,
+			maxMissing: 0,
 		},
 		{
 			s:          2.0,
 			v:          100.0,
 			events:     10000,
 			k:          100,
-			maxMissing: 4,
+			maxMissing: 1,
 		},
-		{ // somehow this is worse than s 2.0 v 1.0
+		{
 			s:          3.0,
 			v:          1.0,
 			events:     10_000,
@@ -591,16 +605,16 @@ func TestTopkZipf(t *testing.T) {
 			v:          10.0,
 			events:     10000,
 			k:          100,
-			maxMissing: 4,
+			maxMissing: 1,
 		},
 		{
 			s:          3.0,
 			v:          100.0,
 			events:     10000,
 			k:          100,
-			maxMissing: 4,
+			maxMissing: 1,
 		},
-		{ // somehow this is worse than s 2.0 v 1.0
+		{
 			s:          4.0,
 			v:          1.0,
 			events:     10000,
@@ -612,14 +626,14 @@ func TestTopkZipf(t *testing.T) {
 			v:          10.0,
 			events:     10000,
 			k:          100,
-			maxMissing: 4,
+			maxMissing: 2,
 		},
 		{
 			s:          4.0,
 			v:          100.0,
 			events:     10000,
 			k:          100,
-			maxMissing: 4,
+			maxMissing: 1,
 		},
 	}
 	seeds := []int64{10, 100, 1000}
@@ -648,16 +662,27 @@ func TestTopkZipf(t *testing.T) {
 					return expected[i].Count > expected[j].Count
 				})
 				missing := 0
+				top10missing := 0
+				top50missing := 0
 			outer:
-				for _, e := range expected[:tc.k] {
+				for i, e := range expected[:tc.k] {
 					for _, tk := range topk.TopkForGroupingKey(DefaultGroupKey).Result {
 						if e.Event == tk.Event {
 							continue outer
 						}
 					}
 					missing++
+					if i < 10 {
+						top10missing++
+					}
+					if i < 50 {
+						top50missing++
+					}
+
 				}
 				assert.LessOrEqualf(t, missing, tc.maxMissing, "more than expected # of missing elements from topk")
+				assert.LessOrEqualf(t, top10missing, 0, "more than 0 of top 10 missing")
+				assert.LessOrEqualf(t, top50missing, 0, "more than 0 of top 50 missing")
 			})
 		}
 
@@ -668,57 +693,84 @@ func TestTopkZipf(t *testing.T) {
 // we should add in multiplication by a stddev.
 func TestTopkNormalDistribution(t *testing.T) {
 	// use a constant source so the results are deterministic:
-	r := rand.New(rand.NewSource(42))
 
 	cases := []struct {
-		events          int
-		k               int
-		expectedMissing int
+		events     int
+		k          int
+		maxMissing int
 	}{
 		{
-			events:          100_000,
-			k:               100,
-			expectedMissing: 1,
+			events:     1000,
+			k:          100,
+			maxMissing: 1,
 		},
 		{
-			events:          1_000_000,
-			k:               100,
-			expectedMissing: 3,
+			events:     10000,
+			k:          100,
+			maxMissing: 4,
+		},
+		{
+			events:     100000,
+			k:          100,
+			maxMissing: 5,
+		},
+		{
+			events:     1000000,
+			k:          100,
+			maxMissing: 9,
 		},
 	}
 
+	seeds := []int64{10, 100, 1000}
+
 	for _, tc := range cases {
-		topk, _ := NewCMSTopkForCardinality(nil, tc.k, tc.events)
+		for _, s := range seeds {
 
-		expected := make([]element, 0)
+			t.Run(fmt.Sprintf("seed_%d,max_%d,k_%d", s, tc.events, tc.k), func(t *testing.T) {
+				topk, _ := NewCMSTopkForCardinality(nil, tc.k, tc.events)
+				r := rand.New(rand.NewSource(s))
 
-		for i := 0; i < tc.events; i++ {
-			event := strconv.Itoa(i)
-			count := r.NormFloat64()
+				expected := make([]element, 0)
 
-			topk.Observe(event, count)
+				for i := 0; i < tc.events; i++ {
+					event := strconv.Itoa(i)
+					count := r.NormFloat64()
 
-			expected = append(expected, element{event, count})
-		}
+					topk.Observe(event, count)
 
-		// Sort descending
-		sort.Slice(expected, func(i, j int) bool {
-			return expected[i].Count > expected[j].Count
-		})
-		missing := 0
-	outer:
-		for _, e := range expected[:tc.k] {
-			for _, tk := range topk.TopkForGroupingKey(DefaultGroupKey).Result {
-				if e.Event == tk.Event {
-					continue outer
+					expected = append(expected, element{event, count})
 				}
-			}
-			missing++
+
+				// Sort descending
+				sort.Slice(expected, func(i, j int) bool {
+					return expected[i].Count > expected[j].Count
+				})
+				missing := 0
+				top10missing := 0
+				top50missing := 0
+			outer:
+				for i, e := range expected[:tc.k] {
+					for _, tk := range topk.TopkForGroupingKey(DefaultGroupKey).Result {
+						if e.Event == tk.Event {
+							continue outer
+						}
+					}
+					missing++
+					if i < 10 {
+						top10missing++
+					}
+					if i < 50 {
+						top50missing++
+					}
+				}
+
+				//sparsity := topk.sketch.Sparsity()
+				//assert.GreaterOrEqual(t, sparsity, float32(0.14))
+
+				assert.LessOrEqualf(t, missing, tc.maxMissing, "more than expected # of missing elements from topk")
+				assert.LessOrEqualf(t, top10missing, 0, "more than 0 of top 10 missing")
+				assert.LessOrEqualf(t, top50missing, 0, "more than 0 of top 50 missing")
+			})
 		}
-
-		//sparsity := topk.sketch.Sparsity()
-		//assert.GreaterOrEqual(t, sparsity, float32(0.14))
-
-		assert.LessOrEqualf(t, missing, tc.expectedMissing, "more than expected # of missing elements from topk")
 	}
 }

@@ -64,8 +64,8 @@ func makeBF(col, row uint32) [][]bool {
 // NewCMSTopkForCardinality creates a new topk sketch where k is the amount of topk we want, and c is the expected
 // total cardinality of the dataset the sketch should be able to handle, including other sketches that we may merge in.
 func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
-	epsilon := 0.001
-	delta := 0.0001
+	epsilon := 5.0 / float64(c)
+	delta := 0.01
 	w := uint32(math.Ceil(math.E / epsilon))
 	d := uint32(math.Ceil(math.Log(1 / delta)))
 
