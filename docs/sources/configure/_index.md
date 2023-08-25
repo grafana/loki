@@ -1858,8 +1858,8 @@ cassandra:
   # CLI flag: -cassandra.table-options
   [table_options: <string> | default = ""]
 
-# Configures storing index in BoltDB. Required fields only required when boltdb
-# is present in the configuration.
+# Deprecated: Configures storing index in BoltDB. Required fields only required
+# when boltdb is present in the configuration.
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir
