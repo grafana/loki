@@ -67,7 +67,7 @@ func (e *Encoding) Set(s string) error {
 	return nil
 }
 
-// New creates a new chunk according to the encoding set by the
+// Deprecated: New creates a new chunk according to the encoding set by the
 // DefaultEncoding flag.
 func New() Data {
 	chunk, err := NewForEncoding(DefaultEncoding)
@@ -77,7 +77,7 @@ func New() Data {
 	return chunk
 }
 
-// NewForEncoding allows configuring what chunk type you want
+// Deprecated: NewForEncoding allows configuring what chunk type you want
 func NewForEncoding(encoding Encoding) (Data, error) {
 	enc, ok := encodings[encoding]
 	if !ok {

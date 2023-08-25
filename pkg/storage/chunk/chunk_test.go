@@ -22,10 +22,17 @@ var labelsForDummyChunks = labels.Labels{
 	{Name: "toms", Value: "code"},
 }
 
+// Deprecated
 func dummyChunk(now model.Time) Chunk {
 	return dummyChunkFor(now, labelsForDummyChunks)
 }
 
+// Deprecated
+func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
+	return dummyChunkForEncoding(now, metric, 1)
+}
+
+// Deprecated
 func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Chunk {
 	c, _ := NewForEncoding(Bigchunk)
 	chunkStart := now.Add(-time.Hour)
@@ -55,10 +62,6 @@ func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Ch
 		panic(err)
 	}
 	return chunk
-}
-
-func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
-	return dummyChunkForEncoding(now, metric, 1)
 }
 
 func TestChunkCodec(t *testing.T) {
