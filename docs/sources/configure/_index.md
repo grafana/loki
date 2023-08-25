@@ -538,10 +538,6 @@ Configures the `querier`. Only appropriate when running all modules or just the 
 [query_ingesters_within: <duration> | default = 3h]
 
 engine:
-  # Deprecated: Use querier.query-timeout instead. Timeout for query execution.
-  # CLI flag: -querier.engine.timeout
-  [timeout: <duration> | default = 5m]
-
   # The maximum amount of time to look back for log lines. Used only for instant
   # log queries.
   # CLI flag: -querier.engine.max-lookback-period
