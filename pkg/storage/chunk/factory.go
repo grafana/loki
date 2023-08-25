@@ -8,14 +8,6 @@ import (
 // Encoding defines which encoding we are using, delta, doubledelta, or varbit
 type Encoding byte
 
-// Config configures the behaviour of chunk encoding
-type Config struct{}
-
-var (
-	// DefaultEncoding exported for use in unit tests elsewhere
-	DefaultEncoding = Bigchunk
-)
-
 // String implements flag.Value.
 func (e Encoding) String() string {
 	if known, found := encodings[e]; found {
