@@ -72,7 +72,6 @@ var (
 		},
 	}
 	testEngineOpts = logql.EngineOpts{
-		Timeout:           30 * time.Second,
 		MaxLookBackPeriod: 30 * time.Second,
 		LogExecutingQuery: false,
 	}

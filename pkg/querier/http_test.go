@@ -224,6 +224,8 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 
 	t.Run("request timeout is the shortest one", func(t *testing.T) {
 		defaultLimits := defaultLimitsTestConfig()
+		defaultLimits.QueryTimeout = model.Duration(time.Millisecond * 10)
+
 		limits, err := validation.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
 		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
@@ -234,7 +236,6 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 			deadline: shortestTimeout,
 		}
 
-		api.cfg.QueryTimeout = time.Millisecond * 10
 		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
 
 		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
@@ -261,53 +262,7 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 		require.True(t, connSimulator.didTimeout)
 	})
 
-	t.Run("old querier:query_timeout is configured to supersede all others", func(t *testing.T) {
-		defaultLimits := defaultLimitsTestConfig()
-		defaultLimits.QueryTimeout = model.Duration(shortestTimeout)
-		limits, err := validation.NewOverrides(defaultLimits, nil)
-		require.NoError(t, err)
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
-
-		// configure old querier:query_timeout parameter.
-		// although it is longer than the limits timeout, it should supersede it.
-		api.cfg.QueryTimeout = time.Millisecond * 100
-
-		// although limits:query_timeout is shorter than querier:query_timeout,
-		// limits:query_timeout should be ignored.
-		// here we configure it to sleep for 100ms and we want it to timeout at the 100ms.
-		connSimulator := &slowConnectionSimulator{
-			sleepFor: api.cfg.QueryTimeout,
-			deadline: time.Millisecond * 200,
-		}
-
-		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
-
-		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
-		ctx, cancelFunc := context.WithTimeout(user.InjectOrgID(req.Context(), "fake"), time.Millisecond*200)
-		defer cancelFunc()
-		req = req.WithContext(ctx)
-		require.NoError(t, err)
-
-		rr := httptest.NewRecorder()
-		srv := http.HandlerFunc(midl.ServeHTTP)
-
-		srv.ServeHTTP(rr, req)
-		require.Equal(t, http.StatusOK, rr.Code)
-
-		select {
-		case <-ctx.Done():
-			require.FailNow(t, fmt.Sprintf("should timeout in %s", api.cfg.QueryTimeout))
-		case <-time.After(shortestTimeout):
-			// didn't use the limits timeout (i.e: shortest one), exactly what we want.
-			break
-		case <-time.After(api.cfg.QueryTimeout):
-			require.FailNow(t, fmt.Sprintf("should timeout in %s", api.cfg.QueryTimeout))
-		}
-
-		require.True(t, connSimulator.didTimeout)
-	})
-
-	t.Run("new limits query timeout is configured to supersede all others", func(t *testing.T) {
+	t.Run("apply limits query timeout", func(t *testing.T) {
 		defaultLimits := defaultLimitsTestConfig()
 		defaultLimits.QueryTimeout = model.Duration(shortestTimeout)
 

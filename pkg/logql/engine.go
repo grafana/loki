@@ -38,7 +38,6 @@ import (
 )
 
 const (
-	DefaultEngineTimeout       = 5 * time.Minute
 	DefaultBlockedQueryMessage = "blocked by policy"
 )
 
@@ -114,10 +113,6 @@ type Querier interface {
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
-	// TODO: remove this after next release.
-	// Timeout for queries execution
-	Timeout time.Duration `yaml:"timeout" doc:"deprecated"`
-
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
@@ -127,8 +122,6 @@ type EngineOpts struct {
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	// TODO: remove this configuration after next release.
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", DefaultEngineTimeout, "Use querier.query-timeout instead. Timeout for query execution.")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -142,7 +135,6 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
-	Timeout   time.Duration
 	logger    log.Logger
 	evaluator Evaluator
 	limits    Limits
@@ -151,7 +143,6 @@ type Engine struct {
 
 // NewEngine creates a new LogQL Engine.
 func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
-	queryTimeout := opts.Timeout
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
@@ -160,7 +151,6 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 		logger:    logger,
 		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
 		limits:    l,
-		Timeout:   queryTimeout,
 		opts:      opts,
 	}
 }
