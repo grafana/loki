@@ -1115,6 +1115,8 @@ singleBinary:
             matchLabels:
               {{- include "loki.singleBinarySelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for single binary pods
+  dnsConfig: {}
   # -- Node selector for single binary pods
   nodeSelector: {}
   # -- Tolerations for single binary pods
