@@ -322,7 +322,7 @@ func TestRealTop_MergeProto(t *testing.T) {
 
 	// read the first dataset into sketch1
 	r1, err := os.Open("testdata/shakspeare.txt")
-	r1.Close()
+	defer r1.Close()
 	require.NoError(t, err)
 	scanner := bufio.NewScanner(r1)
 	scanner.Split(bufio.ScanWords)
@@ -339,12 +339,16 @@ func TestRealTop_MergeProto(t *testing.T) {
 	scanner = bufio.NewScanner(r2)
 	for scanner.Scan() {
 		s := scanner.Text()
-		cms1.Observe(s, 1)
+		cms2.Observe(s, 1)
 	}
+
 	mergedCMS, _ := newCMSTopK(k, 2048, 5)
 	require.NoError(t, mergedCMS.Merge(cms1), "error merging")
 	require.NoError(t, mergedCMS.Merge(cms2), "error merging")
-
+	c1card, _ := cms1.Cardinality()
+	c2card, _ := cms2.Cardinality()
+	require.Greater(t, c1card, uint64(0))
+	require.Greater(t, c2card, uint64(0))
 	// turn both sketches into proto
 	cms1Proto, err := cms1.ToProto()
 	require.NoError(t, err)
@@ -365,7 +369,12 @@ func TestRealTop_MergeProto(t *testing.T) {
 	require.Equal(t, mergedCMS.Topk(), dMerged.Topk(), "topk was not correct after deserializing and merging")
 	mCardinality, _ := mergedCMS.Cardinality()
 	dCardinality, _ := dMerged.Cardinality()
+
 	require.Equal(t, mCardinality, dCardinality, "hll cardinality estimate was not correct after deserializing and merging")
+	require.Greater(t, mCardinality, c1card, "hll cardinality estimate was not correct after merging")
+	require.Greater(t, mCardinality, c2card, "hll cardinality estimate was not correct after merging")
+	require.Greater(t, dCardinality, c1card, "hll cardinality estimate was not correct after deserializing")
+	require.Greater(t, dCardinality, c2card, "hll cardinality estimate was not correct after deserializing")
 }
 
 func TestTopK_MergeGroupingKeys(t *testing.T) {

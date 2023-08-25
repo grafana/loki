@@ -104,13 +104,11 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 		cms.counters = append(cms.counters, t.Cms.Counters[s:e])
 	}
 
-	/*
 	hll := hyperloglog.New()
 	err := hll.UnmarshalBinary(t.Hyperloglog)
 	if err != nil {
 		return nil, err
 	}
-	*/
 
 	heaps := make(map[string]*MinHeap)
 	for _, res := range t.Results {
@@ -129,7 +127,7 @@ func TopkFromProto(t *logproto.TopK) (*Topk, error) {
 	// TODO(karsten): should we set expected cardinality as well?
 	topk := &Topk{
 		sketch: cms,
-		//hll:    hll,
+		hll:    hll,
 		Heaps:  heaps,
 	}
 	return topk, nil
@@ -145,12 +143,10 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 		cms.Counters = append(cms.Counters, t.sketch.counters[row]...)
 	}
 
-	/*
 	hllBytes, err := t.hll.MarshalBinary()
 	if err != nil {
 		return nil, err
 	}
-	*/
 
 	list := make([]*logproto.TopK_Result, 0, len(t.Heaps))
 	for key := range t.Heaps {
@@ -167,7 +163,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 
 	topk := &logproto.TopK{
 		Cms:         cms,
-		//Hyperloglog: hllBytes,
+		Hyperloglog: hllBytes,
 		Results:     list,
 	}
 	return topk, nil
@@ -353,6 +349,8 @@ func (t *Topk) Merge(from *Topk) error {
 		}
 		t.Heaps[key] = from.Heaps[key]
 	}
+	// merge the hll
+	t.hll.Merge(from.hll)
 
 	return nil
 }
