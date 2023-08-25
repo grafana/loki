@@ -142,6 +142,7 @@ type Cluster struct {
 	initedAt      model.Time
 	periodCfgs    []string
 	overridesFile string
+	schemaVer     string
 }
 
 func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
@@ -166,6 +167,7 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 		sharedPath:    sharedPath,
 		initedAt:      model.Now(),
 		overridesFile: overridesFile,
+		schemaVer:     "v11",
 	}
 
 	for _, opt := range opts {
@@ -173,6 +175,11 @@ func New(logLevel level.Value, opts ...func(*Cluster)) *Cluster {
 	}
 
 	return cluster
+}
+
+// SetSchemaVer sets a schema version for all the schemas
+func (c *Cluster) SetSchemaVer(schemaVer string) {
+	c.schemaVer = schemaVer
 }
 
 func (c *Cluster) Run() error {
@@ -360,6 +367,7 @@ func (c *Component) MergedConfig() ([]byte, error) {
 			Execute(&buf, map[string]interface{}{
 				"curPeriodStart":        periodStart.String(),
 				"additionalPeriodStart": additionalPeriodStart.String(),
+				"schemaVer":             c.cluster.schemaVer,
 			}); err != nil {
 			return nil, errors.New("error building schema_config")
 		}

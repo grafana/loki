@@ -17,12 +17,21 @@ import (
 	"github.com/grafana/loki/pkg/util/filter"
 )
 
+const (
+	lblFooBar = `{foo="bar"}`
+	lblPing   = "ping"
+	lblPong   = "pong"
+)
+
 func TestDeleteRequest_IsDeleted(t *testing.T) {
 	now := model.Now()
 	user1 := "user1"
 
 	lbl := `{foo="bar", fizz="buzz"}`
-	lblWithFilter := `{foo="bar", fizz="buzz"} |= "filter"`
+	lblWithLineFilter := `{foo="bar", fizz="buzz"} |= "filter"`
+
+	lblWithNonIndexedLabelsFilter := `{foo="bar", fizz="buzz"} | ping="pong"`
+	lblWithLineAndNonIndexedLabelsFilter := `{foo="bar", fizz="buzz"} | ping="pong" |= "filter"`
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -56,18 +65,56 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 		},
 		{
-			name: "whole chunk deleted with filter present",
+			name: "whole chunk deleted with line filter present",
 			deleteRequest: DeleteRequest{
 				UserID:    user1,
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-time.Hour),
-				Query:     lblWithFilter,
+				Query:     lblWithLineFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string) bool {
+				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if strings.Contains(s, "filter") && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+						return true
+					}
+					return false
+				},
+			},
+		},
+		{
+			name: "whole chunk deleted with non-indexed labels filter present",
+			deleteRequest: DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lblWithNonIndexedLabelsFilter,
+			},
+			expectedResp: resp{
+				isDeleted: true,
+				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+					tsUnixNano := ts.UnixNano()
+					if labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+						return true
+					}
+					return false
+				},
+			},
+		},
+		{
+			name: "whole chunk deleted with line and non-indexed labels filter present",
+			deleteRequest: DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-3 * time.Hour),
+				EndTime:   now.Add(-time.Hour),
+				Query:     lblWithLineAndNonIndexedLabelsFilter,
+			},
+			expectedResp: resp{
+				isDeleted: true,
+				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+					tsUnixNano := ts.UnixNano()
+					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
 						return true
 					}
 					return false
@@ -84,7 +131,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string) bool {
+				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-2*time.Hour).UnixNano() {
 						return true
@@ -103,7 +150,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string) bool {
+				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
@@ -118,13 +165,51 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				UserID:    user1,
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now,
-				Query:     lblWithFilter,
+				Query:     lblWithLineFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string) bool {
+				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if strings.Contains(s, "filter") && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+						return true
+					}
+					return false
+				},
+			},
+		},
+		{
+			name: "chunk deleted from end with non-indexed labels filter present",
+			deleteRequest: DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lblWithNonIndexedLabelsFilter,
+			},
+			expectedResp: resp{
+				isDeleted: true,
+				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+					tsUnixNano := ts.UnixNano()
+					if labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+						return true
+					}
+					return false
+				},
+			},
+		},
+		{
+			name: "chunk deleted from end with line and non-indexed labels filter present",
+			deleteRequest: DeleteRequest{
+				UserID:    user1,
+				StartTime: now.Add(-2 * time.Hour),
+				EndTime:   now,
+				Query:     lblWithLineAndNonIndexedLabelsFilter,
+			},
+			expectedResp: resp{
+				isDeleted: true,
+				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+					tsUnixNano := ts.UnixNano()
+					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
 					}
 					return false
@@ -141,7 +226,7 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string) bool {
+				expectedFilter: func(ts time.Time, s string, _ ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
 					if now.Add(-(2*time.Hour+30*time.Minute)).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-(time.Hour+30*time.Minute)).UnixNano() {
 						return true
@@ -203,7 +288,15 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 				if start.Time().Minute()%2 == 1 {
 					line = "filter bar"
 				}
-				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line), filterFunc(start.Time(), line), "line", line, "time", start.Time(), "now", now.Time())
+
+				// mix of empty, ding=dong and ping=pong as non-indexed labels
+				var nonIndexedLabels []labels.Label
+				if start.Time().Minute()%3 == 0 {
+					nonIndexedLabels = []labels.Label{{Name: lblPing, Value: lblPong}}
+				} else if start.Time().Minute()%2 == 0 {
+					nonIndexedLabels = []labels.Label{{Name: "ting", Value: "tong"}}
+				}
+				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, nonIndexedLabels...), filterFunc(start.Time(), line, nonIndexedLabels...), "line", line, "time", start.Time(), "now", now.Time())
 			}
 		})
 	}
@@ -219,7 +312,7 @@ func mustParseLabel(input string) labels.Labels {
 }
 
 func TestDeleteRequest_FilterFunction(t *testing.T) {
-	t.Run("one_line_matching", func(t *testing.T) {
+	t.Run("one line matching with line filter", func(t *testing.T) {
 		dr := DeleteRequest{
 			Query:        `{foo="bar"} |= "some"`,
 			DeletedLines: 0,
@@ -228,7 +321,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 			EndTime:      math.MaxInt64,
 		}
 
-		lblStr := `{foo="bar"}`
+		lblStr := lblFooBar
 		lbls := mustParseLabel(lblStr)
 
 		require.NoError(t, dr.SetQuery(dr.Query))
@@ -242,7 +335,54 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
 	})
 
-	t.Run("labels_not_matching", func(t *testing.T) {
+	t.Run("one line matching with non-indexed labels filter", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{foo="bar"} | ping="pong"`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			StartTime:    0,
+			EndTime:      math.MaxInt64,
+		}
+
+		lblStr := lblFooBar
+		lbls := mustParseLabel(lblStr)
+
+		require.NoError(t, dr.SetQuery(dr.Query))
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
+
+		require.True(t, f(time.Now(), `some line`, labels.Label{Name: lblPing, Value: lblPong}))
+		require.False(t, f(time.Now(), ""))
+		require.False(t, f(time.Now(), "some line"))
+		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+	})
+
+	t.Run("one line matching with line and non-indexed labels filter", func(t *testing.T) {
+		dr := DeleteRequest{
+			Query:        `{foo="bar"} | ping="pong" |= "some"`,
+			DeletedLines: 0,
+			Metrics:      newDeleteRequestsManagerMetrics(prometheus.NewPedanticRegistry()),
+			StartTime:    0,
+			EndTime:      math.MaxInt64,
+		}
+
+		lblStr := lblFooBar
+		lbls := mustParseLabel(lblStr)
+
+		require.NoError(t, dr.SetQuery(dr.Query))
+		f, err := dr.FilterFunction(lbls)
+		require.NoError(t, err)
+
+		require.True(t, f(time.Now(), `some line`, labels.Label{Name: lblPing, Value: lblPong}))
+		require.False(t, f(time.Now(), ""))
+		require.False(t, f(time.Now(), "some line"))
+		require.False(t, f(time.Now(), "other line", labels.Label{Name: lblPing, Value: lblPong}))
+		require.Equal(t, int32(1), dr.DeletedLines)
+		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
+	})
+
+	t.Run("labels not matching", func(t *testing.T) {
 		dr := DeleteRequest{
 			Query:        `{foo="bar"} |= "some"`,
 			DeletedLines: 0,
@@ -265,7 +405,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Panics(t, func() { testutil.ToFloat64(dr.Metrics.deletedLinesTotal) })
 	})
 
-	t.Run("no_line_filter", func(t *testing.T) {
+	t.Run("no line filter", func(t *testing.T) {
 		now := model.Now()
 		dr := DeleteRequest{
 			Query:        `{namespace="default"}`,

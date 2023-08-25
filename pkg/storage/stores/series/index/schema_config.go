@@ -14,7 +14,6 @@ import (
 const (
 	secondsInDay      = int64(24 * time.Hour / time.Second)
 	millisecondsInDay = int64(24 * time.Hour / time.Millisecond)
-	v12               = "v12"
 )
 
 var (
@@ -35,14 +34,18 @@ func CreateSchema(cfg config.PeriodConfig) (SeriesStoreSchema, error) {
 		return nil, errInvalidTablePeriod
 	}
 
-	switch cfg.Schema {
-	case "v9":
+	v, err := cfg.VersionAsInt()
+	if err != nil {
+		return nil, err
+	}
+
+	if v == 9 {
 		return newSeriesStoreSchema(buckets, v9Entries{}), nil
-	case "v10", "v11", v12:
+	}
+	if v >= 10 {
 		if cfg.RowShards == 0 {
 			return nil, fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
-
 		v10 := v10Entries{rowShards: cfg.RowShards}
 		switch cfg.Schema {
 		case "v10":
