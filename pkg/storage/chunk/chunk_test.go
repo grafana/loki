@@ -34,12 +34,12 @@ func dummyChunkFor(now model.Time, metric labels.Labels) Chunk {
 
 // Deprecated
 func dummyChunkForEncoding(now model.Time, metric labels.Labels, samples int) Chunk {
-	c, _ := NewForEncoding(Bigchunk)
+	c := newBigchunk()
 	chunkStart := now.Add(-time.Hour)
 
 	for i := 0; i < samples; i++ {
 		t := time.Duration(i) * 15 * time.Second
-		nc, err := c.(*bigchunk).Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
+		nc, err := c.Add(model.SamplePair{Timestamp: chunkStart.Add(t), Value: model.SampleValue(i)})
 		if err != nil {
 			panic(err)
 		}

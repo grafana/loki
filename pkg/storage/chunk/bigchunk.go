@@ -235,8 +235,8 @@ func (r *reader) ReadBytes(count int) ([]byte, error) {
 // chunk, adds the provided sample to it, and returns a chunk slice containing
 // the provided old chunk followed by the new overflow chunk.
 func addToOverflowChunk(s model.SamplePair) (Data, error) {
-	overflowChunk := New()
-	_, err := overflowChunk.(*bigchunk).Add(s)
+	overflowChunk := newBigchunk()
+	_, err := overflowChunk.Add(s)
 	if err != nil {
 		return nil, err
 	}
