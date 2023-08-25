@@ -790,7 +790,8 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
-# List of headers forwarded by the query Frontend to downstream querier.
+# Deprecated. List of headers forwarded by the query Frontend to downstream
+# querier.
 # CLI flag: -frontend.forward-headers-list
 [forward_headers_list: <list of strings> | default = []]
 
@@ -2357,7 +2358,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 5000]
 
-# When true, out-of-order writes are accepted.
+# Deprecated. When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
 [unordered_writes: <boolean> | default = true]
 
