@@ -112,7 +112,9 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 	// We only use one aggregation. The topk sketch compresses all
 	// information and thus we don't need to take care of grouping
 	// here.
-	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, e.k, 1_000_000)
+	// We need to do an index lookup here and guestimate the cardinality OR just keep it at some reasonable size,
+	// like 1-5k, and always cancel and rerun the query as soon as we see the cardinality is over that amount.
+	topkAggregation, err := sketch.NewCMSTopkForCardinality(e.logger, e.k, 5000)
 	if err != nil {
 		e.lastErr = err
 		return false, ts, nil
@@ -131,7 +133,7 @@ func (e *pTopkStepEvaluator) Next() (bool, int64, StepResult) {
 			groupingKey, buf = metric.HashForLabels(buf, e.expr.Grouping.Groups...)
 		}
 
-		topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), s.F)
+		topkAggregation.ObserveForGroupingKey(s.Metric.String(), strconv.FormatUint(groupingKey, 10), float32(s.F))
 	}
 
 	r := sketch.TopKVector{

@@ -18,7 +18,7 @@ const DefaultGroupKey = "default_group"
 
 type element struct {
 	Event string
-	Count float64
+	Count float32
 }
 
 type TopKResult struct {
@@ -64,7 +64,7 @@ func makeBF(col, row uint32) [][]bool {
 // NewCMSTopkForCardinality creates a new topk sketch where k is the amount of topk we want, and c is the expected
 // total cardinality of the dataset the sketch should be able to handle, including other sketches that we may merge in.
 func NewCMSTopkForCardinality(l log.Logger, k, c int) (*Topk, error) {
-	epsilon := 5.0 / float64(c)
+	epsilon := 5 / float64(c)
 	delta := 0.01
 	w := uint32(math.Ceil(math.E / epsilon))
 	d := uint32(math.Ceil(math.Log(1 / delta)))
@@ -138,7 +138,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 		Depth: t.sketch.depth,
 		Width: t.sketch.width,
 	}
-	cms.Counters = make([]float64, 0, cms.Depth*cms.Width)
+	cms.Counters = make([]float32, 0, cms.Depth*cms.Width)
 	for row := uint32(0); row < cms.Depth; row++ {
 		cms.Counters = append(cms.Counters, t.sketch.counters[row]...)
 	}
@@ -171,7 +171,7 @@ func (t *Topk) ToProto() (*logproto.TopK, error) {
 
 // wrapper to bundle together updating of the bf portion of the sketch and pushing of a new element
 // to the heap
-func (t *Topk) heapPush(h *MinHeap, event string, estimate float64, h1, h2 uint32) {
+func (t *Topk) heapPush(h *MinHeap, event string, estimate float32, h1, h2 uint32) {
 	var pos uint32
 	for i := range t.bf {
 		pos = t.sketch.getPos(h1, h2, uint32(i))
@@ -182,7 +182,7 @@ func (t *Topk) heapPush(h *MinHeap, event string, estimate float64, h1, h2 uint3
 
 // wrapper to bundle together updating of the bf portion of the sketch for the removed and added event
 // as well as replacing the min heap element with the new event and it's count
-func (t *Topk) heapMinReplace(event, groupingKey string, estimate float64, removed string) {
+func (t *Topk) heapMinReplace(event, groupingKey string, estimate float32, removed string) {
 	t.updateBF(removed, event)
 	(*t.Heaps[groupingKey])[0].Event = event
 	(*t.Heaps[groupingKey])[0].count = estimate
@@ -231,7 +231,7 @@ func unsafeGetBytes(s string) []byte {
 // new estimate is greater than the thing that's the current minimum value heap element. At that point, we update the values
 // for each node in the heap and rebalance the heap, and then if the event we're observing has an estimate that is still
 // greater than the minimum heap element count, we should put this event into the heap and remove the other one.
-func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count float64) {
+func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count float32) {
 	estimate, h1, h2 := t.sketch.ConservativeAdd(event, count)
 	t.hll.Insert(unsafeGetBytes(event))
 
@@ -284,7 +284,7 @@ func (t *Topk) ObserveForGroupingKey(event, groupingKey string, count float64) {
 }
 
 // Observe should only be used when there is no grouping key present for the overall query
-func (t *Topk) Observe(event string, count float64) {
+func (t *Topk) Observe(event string, count float32) {
 	t.ObserveForGroupingKey(event, DefaultGroupKey, count)
 }
 

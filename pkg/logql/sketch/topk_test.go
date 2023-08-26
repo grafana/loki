@@ -4,6 +4,9 @@ import (
 	"bufio"
 	"container/heap"
 	"fmt"
+	"github.com/alicebob/miniredis/v2/hyperloglog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"io"
 	"math"
 	"math/rand"
@@ -12,10 +15,6 @@ import (
 	"strconv"
 	"testing"
 	"time"
-
-	"github.com/alicebob/miniredis/v2/hyperloglog"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 type event struct {
@@ -161,16 +160,16 @@ func TestRealTopK(t *testing.T) {
 		}
 		m[s] = m[s] + 1
 		if _, ok := h.Find(s); ok {
-			h.update(s, float64(m[s]))
+			h.update(s, float32(m[s]))
 			continue
 		}
 		if len(h) < 100 {
-			heap.Push(&h, &Node{Event: s, count: float64(m[s])})
+			heap.Push(&h, &Node{Event: s, count: float32(m[s])})
 			continue
 		}
-		if float64(m[s]) > (h.Peek().(*Node).count) {
+		if float32(m[s]) > (h.Peek().(*Node).count) {
 			heap.Pop(&h)
-			heap.Push(&h, &Node{Event: s, count: float64(m[s])})
+			heap.Push(&h, &Node{Event: s, count: float32(m[s])})
 		}
 	}
 
@@ -246,16 +245,16 @@ func TestRealTop_Merge(t *testing.T) {
 		}
 		m[s] = m[s] + 1
 		if _, ok := h.Find(s); ok {
-			h.update(s, float64(m[s]))
+			h.update(s, float32(m[s]))
 			continue
 		}
 		if len(h) < k {
-			heap.Push(&h, &Node{Event: s, count: float64(m[s])})
+			heap.Push(&h, &Node{Event: s, count: float32(m[s])})
 			continue
 		}
-		if float64(m[s]) > (h.Peek().(*Node).count) {
+		if float32(m[s]) > (h.Peek().(*Node).count) {
 			heap.Pop(&h)
-			heap.Push(&h, &Node{Event: s, count: float64(m[s])})
+			heap.Push(&h, &Node{Event: s, count: float32(m[s])})
 		}
 	}
 
@@ -659,7 +658,7 @@ func TestTopkZipf(t *testing.T) {
 				expected := make([]element, 0)
 
 				for i := 0; uint64(i) < tc.events; i++ {
-					count := float64(z.Uint64())
+					count := float32(z.Uint64())
 					event := strconv.Itoa(i)
 
 					topk.Observe(event, count)
@@ -743,7 +742,7 @@ func TestTopkNormalDistribution(t *testing.T) {
 
 				for i := 0; i < tc.events; i++ {
 					event := strconv.Itoa(i)
-					count := r.NormFloat64()
+					count := float32(r.NormFloat64())
 
 					topk.Observe(event, count)
 
@@ -775,7 +774,6 @@ func TestTopkNormalDistribution(t *testing.T) {
 
 				//sparsity := topk.sketch.Sparsity()
 				//assert.GreaterOrEqual(t, sparsity, float32(0.14))
-
 				assert.LessOrEqualf(t, missing, tc.maxMissing, "more than expected # of missing elements from topk")
 				assert.LessOrEqualf(t, top10missing, 0, "more than 0 of top 10 missing")
 				assert.LessOrEqualf(t, top50missing, 0, "more than 0 of top 50 missing")

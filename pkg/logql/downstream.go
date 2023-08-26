@@ -537,7 +537,7 @@ func TopkMergeEvalator(evaluators []ProbabilisticStepEvaluator) (StepEvaluator, 
 					}
 					vec = append(vec, promql.Sample{
 						T:      ts,
-						F:      e.Count,
+						F:      float64(e.Count),
 						Metric: ls,
 					})
 				}
