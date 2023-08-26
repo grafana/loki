@@ -42,7 +42,7 @@ type Chunk struct {
 	Metric labels.Labels `json:"metric"`
 	Data   Data          `json:"-"`
 
-	// Deprecated: Always use Encoding(129) -> LogChunk
+	// Always use Encoding(129) -> LogChunk
 	Encoding Encoding `json:"encoding"`
 
 	// The encoded version of the chunk, held so we don't need to re-encode it

@@ -325,7 +325,7 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncNone, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0)
 		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
 		for i := 0; i < from; i++ {
-			memChk.Append(&logproto.Entry{
+			_ = memChk.Append(&logproto.Entry{
 				Timestamp: time.Unix(int64(i), 0),
 				Line:      fmt.Sprintf("line ts=%d", i),
 			})
