@@ -315,7 +315,11 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		return ConcatEvaluator(xs)
 
 	default:
-		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
+		stepEvaluator, err := ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
+		if err != nil {
+			return nil, fmt.Errorf("downstream evaluator fail to execute default case, expr type: %T , logql: %s , err: %s", e, e, err)
+		}
+		return stepEvaluator, nil
 	}
 }
 
