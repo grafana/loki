@@ -7,15 +7,16 @@ services:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
         loki-tenant-id: "1"
-    image: consul
+    image: hashicorp/consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
       - 8500:8500
 
   minio:
+    platform: linux/arm64
     logging:
       <<: *logging
-    image: minio/minio:RELEASE.2022-03-11T23-57-45Z
+    image: minio/minio:latest
     entrypoint: sh
     command: -c 'mkdir -p /data/loki && /opt/bin/minio server --console-address :9001 /data'
     environment:
@@ -35,7 +36,7 @@ services:
   jaeger:
     logging:
       <<: *logging
-    image: jaegertracing/all-in-one
+    image: jaegertracing/all-in-one:1.48
     ports:
       - 16686:16686
       - "14268"

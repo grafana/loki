@@ -98,6 +98,9 @@ const (
 
 	// Storage class header.
 	amzStorageClass = "X-Amz-Storage-Class"
+
+	// amzKmsKeyAccessDeniedErrorMessage is the error message returned by s3 when the permissions to the KMS key is revoked.
+	amzKmsKeyAccessDeniedErrorMessage = "The ciphertext refers to a customer master key that does not exist, does not exist in this region, or you are not allowed to access."
 )
 
 var DefaultConfig = Config{
@@ -144,7 +147,7 @@ type Config struct {
 }
 
 // SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
-// kmsencryptioncontext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
+// KMSEncryptionContext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
 type SSEConfig struct {
 	Type                 string            `yaml:"type"`
 	KMSKeyID             string            `yaml:"kms_key_id"`
@@ -415,7 +418,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
@@ -536,6 +539,12 @@ func (b *Bucket) Delete(ctx context.Context, name string) error {
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return minio.ToErrorResponse(errors.Cause(err)).Code == "NoSuchKey"
+}
+
+// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+func (b *Bucket) IsCustomerManagedKeyError(err error) bool {
+	errResponse := minio.ToErrorResponse(errors.Cause(err))
+	return errResponse.Code == "AccessDenied" && errResponse.Message == amzKmsKeyAccessDeniedErrorMessage
 }
 
 func (b *Bucket) Close() error { return nil }
