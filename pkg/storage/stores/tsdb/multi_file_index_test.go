@@ -208,6 +208,6 @@ func BenchmarkSliceForParallelism(b *testing.B) {
 	}
 	idx := NewMultiIndex(IndexSlice(indices))
 	for i := 0; i < b.N; i++ {
-		idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
+		idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz")) //nolint:errcheck
 	}
 }
