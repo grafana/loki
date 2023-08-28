@@ -86,7 +86,7 @@ func (b *PrefixedBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExp
 
 // IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
 func (b *PrefixedBucketClient) IsCustomerManagedKeyError(err error) bool {
-	return b.bucket.IsObjNotFoundErr(err)
+	return b.bucket.IsCustomerManagedKeyError(err)
 }
 
 // ReaderWithExpectedErrs allows to specify a filter that marks certain errors as expected, so it will not increment
