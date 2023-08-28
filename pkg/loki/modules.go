@@ -507,6 +507,8 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {
+	level.Warn(util_log.Logger).Log("msg", "table manager is deprecated. Consider migrating to tsdb index which relies on a compactor instead.")
+
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, err

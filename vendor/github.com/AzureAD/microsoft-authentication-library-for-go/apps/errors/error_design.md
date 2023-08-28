@@ -69,7 +69,7 @@ func (e CallErr) Error() string {
 
 // Verbose prints a versbose error message with the request or response.
 func (e CallErr) Verbose() string {
-    e.Resp.Request = nil // This brings in a bunch of TLS crap we don't need
+    e.Resp.Request = nil // This brings in a bunch of TLS stuff we don't need
     e.Resp.TLS = nil     // Same
     return fmt.Sprintf("%s:\nRequest:\n%s\nResponse:\n%s", e.Err, prettyConf.Sprint(e.Req), prettyConf.Sprint(e.Resp))
 }

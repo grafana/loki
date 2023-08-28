@@ -11,6 +11,26 @@ Example to List Servers
 		AllTenants: true,
 	}
 
+	allPages, err := servers.ListSimple(computeClient, listOpts).AllPages()
+	if err != nil {
+		panic(err)
+	}
+
+	allServers, err := servers.ExtractServers(allPages)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, server := range allServers {
+		fmt.Printf("%+v\n", server)
+	}
+
+Example to List Detail Servers
+
+	listOpts := servers.ListOpts{
+		AllTenants: true,
+	}
+
 	allPages, err := servers.List(computeClient, listOpts).AllPages()
 	if err != nil {
 		panic(err)
