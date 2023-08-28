@@ -265,7 +265,7 @@ memberlist:
 
 			for _, actual := range []aws.S3Config{
 				config.Ruler.StoreConfig.S3,
-				config.StorageConfig.AWSStorageConfig.S3Config,
+				config.StorageConfig.AWSStorageConfig,
 			} {
 				require.NotNil(t, actual.S3.URL)
 				assert.Equal(t, *expected, *actual.S3.URL)
@@ -324,7 +324,7 @@ memberlist:
 
 			for _, actual := range []aws.S3Config{
 				config.Ruler.StoreConfig.S3,
-				config.StorageConfig.AWSStorageConfig.S3Config,
+				config.StorageConfig.AWSStorageConfig,
 			} {
 				require.NotNil(t, actual.S3.URL)
 				assert.Equal(t, *expected, *actual.S3.URL)
@@ -390,7 +390,7 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -443,7 +443,7 @@ memberlist:
 
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -482,7 +482,7 @@ memberlist:
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 		})
@@ -547,7 +547,7 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.FSConfig, config.StorageConfig.FSConfig)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -575,7 +575,7 @@ memberlist:
 			assert.EqualValues(t, defaults.Ruler.StoreConfig.BOS, config.Ruler.StoreConfig.BOS)
 			// should remain empty
 			assert.EqualValues(t, defaults.StorageConfig.GCSConfig, config.StorageConfig.GCSConfig)
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.AzureStorageConfig, config.StorageConfig.AzureStorageConfig)
 			assert.EqualValues(t, defaults.StorageConfig.Swift, config.StorageConfig.Swift)
 			assert.EqualValues(t, defaults.StorageConfig.BOSStorageConfig, config.StorageConfig.BOSStorageConfig)
@@ -610,7 +610,7 @@ ruler:
 			assert.EqualValues(t, 5*time.Minute, config.StorageConfig.GCSConfig.RequestTimeout)
 
 			// should remain empty
-			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig.S3Config, config.StorageConfig.AWSStorageConfig.S3Config)
+			assert.EqualValues(t, defaults.StorageConfig.AWSStorageConfig, config.StorageConfig.AWSStorageConfig)
 		})
 
 		t.Run("explicit storage config provided via config file is preserved", func(t *testing.T) {
@@ -629,10 +629,10 @@ storage_config:
 
 			config, defaults := testContext(specificRulerConfig, nil)
 
-			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
-			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.AWSStorageConfig.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.SecretAccessKey.String())
 
 			// should be set by common config
 			assert.EqualValues(t, "foobar", config.Ruler.StoreConfig.GCS.BucketName)
@@ -667,20 +667,20 @@ storage_config:
 			config, _ := testContext(namedStoresConfig, nil)
 
 			// should be set by common config
-			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.S3Config.Endpoint)
-			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.S3Config.Region)
-			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.S3Config.AccessKeyID)
-			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://common-bucket", config.StorageConfig.AWSStorageConfig.Endpoint)
+			assert.Equal(t, "us-east1", config.StorageConfig.AWSStorageConfig.Region)
+			assert.Equal(t, "abc123", config.StorageConfig.AWSStorageConfig.AccessKeyID)
+			assert.Equal(t, "def789", config.StorageConfig.AWSStorageConfig.SecretAccessKey.String())
 
-			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Endpoint)
-			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.Region)
-			assert.Equal(t, "123abc", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.AccessKeyID)
-			assert.Equal(t, "789def", config.StorageConfig.NamedStores.AWS["store-1"].S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://foo-bucket", config.StorageConfig.NamedStores.AWS["store-1"].Endpoint)
+			assert.Equal(t, "us-west1", config.StorageConfig.NamedStores.AWS["store-1"].Region)
+			assert.Equal(t, "123abc", config.StorageConfig.NamedStores.AWS["store-1"].AccessKeyID)
+			assert.Equal(t, "789def", config.StorageConfig.NamedStores.AWS["store-1"].SecretAccessKey.String())
 
-			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Endpoint)
-			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.Region)
-			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.AccessKeyID)
-			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].S3Config.SecretAccessKey.String())
+			assert.Equal(t, "s3://bar-bucket", config.StorageConfig.NamedStores.AWS["store-2"].Endpoint)
+			assert.Equal(t, "us-west2", config.StorageConfig.NamedStores.AWS["store-2"].Region)
+			assert.Equal(t, "456def", config.StorageConfig.NamedStores.AWS["store-2"].AccessKeyID)
+			assert.Equal(t, "789abc", config.StorageConfig.NamedStores.AWS["store-2"].SecretAccessKey.String())
 		})
 
 		t.Run("partial ruler config from file is honored for overriding things like bucket names", func(t *testing.T) {
@@ -1714,8 +1714,6 @@ func TestNamedStores_applyDefaults(t *testing.T) {
       store-1:
         s3: "s3.test"
         storage_class: GLACIER
-        dynamodb:
-          dynamodb_url: "dynamo.test"
     azure:
       store-2:
         environment: AzureGermanCloud
@@ -1758,12 +1756,11 @@ func TestNamedStores_applyDefaults(t *testing.T) {
 
 		// expect the defaults to be set on named store config
 		expected := defaults.StorageConfig.AWSStorageConfig
-		assert.NoError(t, expected.DynamoDB.Set("dynamo.test"))
 		assert.NoError(t, expected.S3.Set("s3.test"))
 		// override defaults
 		expected.StorageClass = "GLACIER"
 
-		assert.Equal(t, expected, (aws.StorageConfig)(nsCfg.AWS["store-1"]))
+		assert.Equal(t, expected, (aws.S3Config)(nsCfg.AWS["store-1"]))
 	})
 
 	t.Run("azure", func(t *testing.T) {

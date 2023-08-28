@@ -80,16 +80,16 @@ type StoreLimits interface {
 // Implementing the Unmarshaler for Named*StorageConfig types is fine as
 // we do not apply any dynamic config on them.
 
-type NamedAWSStorageConfig aws.StorageConfig
+type NamedAWSStorageConfig aws.S3Config
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
 func (cfg *NamedAWSStorageConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	flagext.DefaultValues((*aws.StorageConfig)(cfg))
-	return unmarshal((*aws.StorageConfig)(cfg))
+	flagext.DefaultValues((*aws.S3Config)(cfg))
+	return unmarshal((*aws.S3Config)(cfg))
 }
 
 func (cfg *NamedAWSStorageConfig) Validate() error {
-	return (*aws.StorageConfig)(cfg).Validate()
+	return (*aws.S3Config)(cfg).Validate()
 }
 
 type NamedBlobStorageConfig azure.BlobStorageConfig
@@ -176,7 +176,7 @@ func (ns *NamedStores) populateStoreType() error {
 
 	checkForDuplicates := func(name string) error {
 		switch name {
-		case config.StorageTypeAWS, config.StorageTypeAWSDynamo, config.StorageTypeS3,
+		case config.StorageTypeAWS, config.StorageTypeS3,
 			config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGCS,
 			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift,
 			config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
@@ -265,7 +265,7 @@ func (ns *NamedStores) validate() error {
 // Config chooses which storage client to use.
 type Config struct {
 	AlibabaStorageConfig alibaba.OssConfig         `yaml:"alibabacloud"`
-	AWSStorageConfig     aws.StorageConfig         `yaml:"aws"`
+	AWSStorageConfig     aws.S3Config              `yaml:"aws"`
 	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
 	GCPStorageConfig     gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
@@ -351,17 +351,6 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
 		return store, nil
-	case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
-
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case config.StorageTypeGCP:
 		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Consider migrating to tsdb")
 		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
@@ -447,17 +436,6 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case config.StorageTypeAWSDynamo:
-		level.Warn(util_log.Logger).Log("msg", "aws-dynamo is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
-
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBChunkClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case config.StorageTypeAzure:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
@@ -526,15 +504,6 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 	switch name {
 	case config.StorageTypeInMemory:
 		return testutils.NewMockStorage(), nil
-	case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
 	case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case config.StorageTypeBoltDB:
@@ -552,7 +521,7 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		}
 		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
 	}
 }
 
@@ -604,17 +573,17 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 
 	switch storeType {
 	case config.StorageTypeAWS, config.StorageTypeS3:
-		s3Cfg := cfg.AWSStorageConfig.S3Config
+		awsCfg := cfg.AWSStorageConfig
 		if namedStore != "" {
-			awsCfg, ok := cfg.NamedStores.AWS[namedStore]
+			nsCfg, ok := cfg.NamedStores.AWS[namedStore]
 			if !ok {
 				return nil, fmt.Errorf("Unrecognized named aws storage config %s", name)
 			}
 
-			s3Cfg = awsCfg.S3Config
+			awsCfg = (aws.S3Config)(nsCfg)
 		}
 
-		return aws.NewS3ObjectClient(s3Cfg, cfg.Hedging)
+		return aws.NewS3ObjectClient(awsCfg, cfg.Hedging)
 	case config.StorageTypeAlibabaCloud:
 		ossCfg := cfg.AlibabaStorageConfig
 		if namedStore != "" {

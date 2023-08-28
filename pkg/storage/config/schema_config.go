@@ -28,7 +28,6 @@ const (
 
 	StorageTypeAlibabaCloud   = "alibabacloud"
 	StorageTypeAWS            = "aws"
-	StorageTypeAWSDynamo      = "aws-dynamo"
 	StorageTypeAzure          = "azure"
 	StorageTypeBOS            = "bos"
 	StorageTypeBoltDB         = "boltdb"
@@ -155,9 +154,9 @@ type PeriodConfig struct {
 	// used when working with config
 	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
 	// type of index client to use.
-	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, grpc."`
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, gcp, gcp-columnkey, bigtable, bigtable-hashed, grpc."`
 	// type of object client to use.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, grpc."`
+	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: gcp, gcp-columnkey, bigtable, bigtable-hashed, grpc."`
 	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
 	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
@@ -356,7 +355,7 @@ func validateChunks(cfg PeriodConfig) error {
 		objectStore = cfg.ObjectType
 	}
 	switch objectStore {
-	case "aws-dynamo", "bigtable-hashed", "gcp", "gcp-columnkey", "bigtable", "grpc-store":
+	case "bigtable-hashed", "gcp", "gcp-columnkey", "bigtable", "grpc-store":
 		if cfg.ChunkTables.Prefix == "" {
 			return errConfigChunkPrefixNotSet
 		}

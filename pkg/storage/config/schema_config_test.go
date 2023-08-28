@@ -218,19 +218,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: nil,
 		},
-		"should fail if chunks prefix is missing on IndexType: aws-dynamo": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "aws-dynamo",
-						ObjectType:  "aws-dynamo",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
 		"should fail if chunks prefix is missing on IndexType: bigtable-hashed": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{

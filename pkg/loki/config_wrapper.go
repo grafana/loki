@@ -473,13 +473,13 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
-	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.AWSStorageConfig.S3Config) {
+	if !reflect.DeepEqual(cfg.Common.Storage.S3, defaults.StorageConfig.AWSStorageConfig) {
 		configsFound++
 
 		applyConfig = func(r *ConfigWrapper) {
 			r.Ruler.StoreConfig.Type = "s3"
 			r.Ruler.StoreConfig.S3 = r.Common.Storage.S3
-			r.StorageConfig.AWSStorageConfig.S3Config = r.Common.Storage.S3
+			r.StorageConfig.AWSStorageConfig = r.Common.Storage.S3
 			r.StorageConfig.Hedging = r.Common.Storage.Hedging
 		}
 	}
