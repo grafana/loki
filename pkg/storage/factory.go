@@ -268,13 +268,13 @@ type Config struct {
 	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
 	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
+	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
 	GCSConfig              gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
-	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Configures storing chunks and/or the index in Cassandra."`
-	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
+	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Deprecated: Configures storing chunks and/or the index in Cassandra."`
+	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
 	FSConfig               local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
 	Swift                  openstack.SwiftConfig     `yaml:"swift"`
-	GrpcConfig             grpc.Config               `yaml:"grpc_store"`
+	GrpcConfig             grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
 	Hedging                hedging.Config            `yaml:"hedging"`
 	NamedStores            NamedStores               `yaml:"named_stores"`
 	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
@@ -355,6 +355,8 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		store := testutils.NewMockStorage()
 		return store, nil
 	case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
+
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
@@ -364,17 +366,23 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		}
 		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 	case config.StorageTypeGCP:
+		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Consider migrating to tsdb")
 		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable:
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeBigTableHashed:
+		level.Warn(util_log.Logger).Log("msg", "bigtable-hashed is deprecated. Consider migrating to tsdb")
 		cfg.GCPStorageConfig.DistributeKeys = true
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeCassandra:
+		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Consider migrating to tsdb")
 		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case config.StorageTypeBoltDB:
+		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case config.StorageTypeGrpc:
+		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Consider migrating to tsdb")
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.BoltDBShipperType:
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
@@ -417,7 +425,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		boltdbIndexClientsWithShipper[periodCfg.From] = shipper
 		return shipper, nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", periodCfg.IndexType, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v", periodCfg.IndexType, config.BoltDBShipperType, config.TSDBType)
 	}
 }
 
@@ -432,6 +440,10 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		storeType = nsType
 	}
 
+	supportedStores := []string{config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeAzure, config.StorageTypeAlibabaCloud,
+		config.StorageTypeBOS, config.StorageTypeGCS, config.StorageTypeSwift,
+		config.StorageTypeFileSystem, config.StorageTypeCOS}
+
 	switch storeType {
 	case config.StorageTypeInMemory:
 		return testutils.NewMockStorage(), nil
@@ -442,6 +454,8 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeAWSDynamo:
+		level.Warn(util_log.Logger).Log("msg", "aws-dynamo is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
+
 		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
 			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
 		}
@@ -469,8 +483,10 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxChunkBatchSize, schemaCfg), nil
 	case config.StorageTypeGCP:
+		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStores, ", ")))
 		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
@@ -485,6 +501,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeCassandra:
+		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
 		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case config.StorageTypeFileSystem:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
@@ -493,6 +510,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
 	case config.StorageTypeGrpc:
+		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
 		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.StorageTypeCOS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
@@ -501,7 +519,7 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, clie
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeAzure, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc, config.StorageTypeCOS)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v", name, strings.Join(supportedStores, ", "))
 	}
 }
 
@@ -687,6 +705,6 @@ func NewObjectClient(name string, cfg Config, clientMetrics ClientMetrics) (clie
 		}
 		return ibmcloud.NewCOSObjectClient(cosCfg, cfg.Hedging)
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeFileSystem, config.StorageTypeCOS)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS, config.StorageTypeAzure, config.StorageTypeAlibabaCloud, config.StorageTypeSwift, config.StorageTypeBOS, config.StorageTypeCOS, config.StorageTypeFileSystem)
 	}
 }
