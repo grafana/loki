@@ -200,15 +200,14 @@ func BenchmarkSliceForParallelism(b *testing.B) {
 		},
 	}
 
+	dir := b.TempDir()
 	b.ResetTimer()
-	for groups := 0; groups < b.N; groups++ {
-		var indices []Index
-		dir := b.TempDir()
-		for i := 0; i < groups; i++ {
-			indices = append(indices, BuildIndex(b, dir, cases, IndexOpts{}))
-		}
-
-		idx := NewMultiIndex(IndexSlice(indices))
-		idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+	var indices []Index
+	for i := 0; i < 1000; i++ {
+		indices = append(indices, BuildIndex(b, dir, cases, IndexOpts{}))
+	}
+	idx := NewMultiIndex(IndexSlice(indices))
+	for i := 0; i < b.N; i++ {
+		idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz"))
 	}
 }
