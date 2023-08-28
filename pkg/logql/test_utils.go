@@ -264,7 +264,7 @@ func randomStreams(nStreams, nEntries, nShards int, labelNames []string, valueFi
 			line := fmt.Sprintf("stream=stderr level=debug line=%d", j)
 			if valueField {
 				line = fmt.Sprintf("%s value=%f", line, r.Float64()*100.0)
-			} 
+			}
 			stream.Entries = append(stream.Entries, logproto.Entry{
 				Timestamp: time.Unix(0, int64(j*int(time.Second))),
 				Line:      line,

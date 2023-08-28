@@ -909,7 +909,7 @@ func (r *LogRange) WithoutUnwrap() (*LogRange, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &LogRange {
+	return &LogRange{
 		Left:     left,
 		Interval: r.Interval,
 		Offset:   r.Offset,

@@ -328,7 +328,7 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
-			in:  `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+			in: `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
 			out: `(
 				sum(
 					downstream<sum(avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=0_of_2>
@@ -343,12 +343,12 @@ func TestMappingStrings(t *testing.T) {
 			)`,
 		},
 		{
-			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
 			out: `downstream<avg_over_time({job=~"myapps.*"}|= "stats"|jsonbusy="utilization"|unwrapbusy[5m]),shard=0_of_2>
 					++ downstream<avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m]),shard=1_of_2>`,
 		},
 		{
-			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster)`,
+			in: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster)`,
 			out: `(
 				sum by (cluster) (
 					downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=0_of_2>
@@ -1193,6 +1193,124 @@ func TestMapping(t *testing.T) {
 									Operation: syntax.OpTypeCount,
 									Left: &syntax.RangeAggregationExpr{
 										Operation: syntax.OpRangeTypeRate,
+										Left: &syntax.LogRange{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											},
+											Interval: 5 * time.Minute,
+										},
+									},
+								},
+							},
+							next: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			in: `avg_over_time({foo="bar"} | unwrap bytes [5m]) by (cluster)`,
+			expr: &syntax.BinOpExpr{
+				Op: syntax.OpTypeDiv,
+				SampleExpr: &syntax.VectorAggregationExpr{
+					Grouping: &syntax.Grouping{
+						Groups: []string{"cluster"},
+					},
+					Operation: syntax.OpTypeSum,
+					Left: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 0,
+								Of:    2,
+							},
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Grouping: &syntax.Grouping{
+									Groups: []string{"cluster"},
+								},
+								Operation: syntax.OpTypeSum,
+								Left: &syntax.RangeAggregationExpr{
+									Operation: syntax.OpRangeTypeSum,
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										},
+										Interval: 5 * time.Minute,
+										Unwrap: &syntax.UnwrapExpr{
+											Identifier: "bytes",
+										},
+									},
+								},
+							},
+						},
+						next: &ConcatSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
+								shard: &astmapper.ShardAnnotation{
+									Shard: 1,
+									Of:    2,
+								},
+								SampleExpr: &syntax.VectorAggregationExpr{
+									Grouping: &syntax.Grouping{
+										Groups: []string{"cluster"},
+									},
+									Operation: syntax.OpTypeSum,
+									Left: &syntax.RangeAggregationExpr{
+										Operation: syntax.OpRangeTypeSum,
+										Left: &syntax.LogRange{
+											Left: &syntax.MatchersExpr{
+												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+											},
+											Interval: 5 * time.Minute,
+											Unwrap: &syntax.UnwrapExpr{
+												Identifier: "bytes",
+											},
+										},
+									},
+								},
+							},
+							next: nil,
+						},
+					},
+				},
+				RHS: &syntax.VectorAggregationExpr{
+					Operation: syntax.OpTypeSum,
+					Grouping: &syntax.Grouping{
+						Groups: []string{"cluster"},
+					},
+					Left: &ConcatSampleExpr{
+						DownstreamSampleExpr: DownstreamSampleExpr{
+							shard: &astmapper.ShardAnnotation{
+								Shard: 0,
+								Of:    2,
+							},
+							SampleExpr: &syntax.VectorAggregationExpr{
+								Grouping: &syntax.Grouping{
+									Groups: []string{"cluster"},
+								},
+								Operation: syntax.OpTypeSum,
+								Left: &syntax.RangeAggregationExpr{
+									Operation: syntax.OpRangeTypeCount,
+									Left: &syntax.LogRange{
+										Left: &syntax.MatchersExpr{
+											Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+										},
+										Interval: 5 * time.Minute,
+									},
+								},
+							},
+						},
+						next: &ConcatSampleExpr{
+							DownstreamSampleExpr: DownstreamSampleExpr{
+								shard: &astmapper.ShardAnnotation{
+									Shard: 1,
+									Of:    2,
+								},
+								SampleExpr: &syntax.VectorAggregationExpr{
+									Grouping: &syntax.Grouping{
+										Groups: []string{"cluster"},
+									},
+									Operation: syntax.OpTypeSum,
+									Left: &syntax.RangeAggregationExpr{
+										Operation: syntax.OpRangeTypeCount,
 										Left: &syntax.LogRange{
 											Left: &syntax.MatchersExpr{
 												Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
