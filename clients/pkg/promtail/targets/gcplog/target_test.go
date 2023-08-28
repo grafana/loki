@@ -49,6 +49,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_defaults_to_pull_target",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "",
 				},
 			},
@@ -64,6 +65,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_pull_subscriptiontype_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "pull",
 				},
 			},
@@ -79,6 +81,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_push_subscription_creates_new",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "push",
 				},
 			},
@@ -94,6 +97,7 @@ func TestNewGCPLogTarget(t *testing.T) {
 				relabel: nil,
 				jobName: "test_job_unknown_substype_fails_to_create_target",
 				config: &scrapeconfig.GcplogTargetConfig{
+					ProjectID:        "test",
 					SubscriptionType: "magic",
 				},
 			},
