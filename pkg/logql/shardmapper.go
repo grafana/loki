@@ -393,14 +393,9 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// Strip unwrap from log range
-		left, err := syntax.Clone(expr.Left.Left)
+		countOverTimeSelector, err := expr.Left.WithoutUnwrap()
 		if err != nil {
 			return nil, 0, err
-		}
-		countOverTimeSelector := &syntax.LogRange{
-			Left:     left,
-			Interval: expr.Left.Interval,
-			Offset:   expr.Left.Offset,
 		}
 
 		rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{

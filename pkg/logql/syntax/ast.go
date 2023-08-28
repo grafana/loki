@@ -40,7 +40,7 @@ func Clone[T Expr](e T) (T, error) {
 	}
 	cast, ok := copied.(T)
 	if !ok {
-		return empty, fmt.Errorf("unpexpected type: want(%T), got(%T)", empty, copied)
+		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, copied)
 	}
 	return cast, nil
 }
@@ -901,6 +901,19 @@ func (r *LogRange) Walk(f WalkFn) {
 		return
 	}
 	r.Left.Walk(f)
+}
+
+// WithoutUnwrap returns a copy of the log range without the unwrap statement.
+func (r *LogRange) WithoutUnwrap() (*LogRange, error) {
+	left, err := Clone(r.Left)
+	if err != nil {
+		return nil, err
+	}
+	return &LogRange {
+		Left:     left,
+		Interval: r.Interval,
+		Offset:   r.Offset,
+	}, nil
 }
 
 func newLogRange(left LogSelectorExpr, interval time.Duration, u *UnwrapExpr, o *OffsetExpr) *LogRange {

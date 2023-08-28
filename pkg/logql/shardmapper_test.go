@@ -329,11 +329,39 @@ func TestMappingStrings(t *testing.T) {
 		},
 		{
 			in:  `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
-			out: `avg(avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]))`,
+			out: `(
+				sum(
+					downstream<sum(avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=0_of_2>
+					++
+					downstream<sum(avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=1_of_2>)
+				/
+				sum(
+					downstream<count(avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=0_of_2>
+					++
+					downstream<count(avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=1_of_2>
+				)
+			)`,
 		},
 		{
 			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
-			out: `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m])`,
+			out: `downstream<avg_over_time({job=~"myapps.*"}|= "stats"|jsonbusy="utilization"|unwrapbusy[5m]),shard=0_of_2>
+					++ downstream<avg_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m]),shard=1_of_2>`,
+		},
+		{
+			in:  `avg_over_time({job=~"myapps.*"} |= "stats" | json busy="utilization" | unwrap busy [5m]) by (cluster)`,
+			out: `(
+				sum by (cluster) (
+					downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=0_of_2>
+					++
+					downstream<sum by (cluster) (sum_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"|unwrapbusy[5m])),shard=1_of_2>
+				)
+				/
+				sum by (cluster) (
+					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"[5m])),shard=0_of_2>
+					++
+					downstream<sum by (cluster) (count_over_time({job=~"myapps.*"}|="stats"|jsonbusy="utilization"[5m])),shard=1_of_2>
+				)
+			)`,
 		},
 		// should be noop if VectorExpr
 		{
