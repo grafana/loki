@@ -394,7 +394,10 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 
 	stats := stats.FromContext(ctx)
 
+	start := time.Now()
 	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
+	stats.AddChunkRefsFetchTime(time.Since(start))
+
 	if err != nil {
 		return nil, err
 	}
