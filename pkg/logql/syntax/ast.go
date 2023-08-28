@@ -32,8 +32,17 @@ type Expr interface {
 	Pretty(level int) string
 }
 
-func Clone(e Expr) (Expr, error) {
-	return ParseExpr(e.String())
+func Clone[T Expr](e T) (T, error) {
+	var empty T
+	copied, err := ParseExpr(e.String())
+	if err != nil {
+		return empty, err
+	}
+	cast, ok := copied.(T)
+	if !ok {
+		return empty, fmt.Errorf("unpexpected type: want(%T), got(%T)", empty, copied)
+	}
+	return cast, nil
 }
 
 // implicit holds default implementations
@@ -1950,6 +1959,7 @@ var shardableOps = map[string]bool{
 	OpTypeMin:   true,
 
 	// range vector ops
+	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,

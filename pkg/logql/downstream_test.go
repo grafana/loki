@@ -51,6 +51,8 @@ func TestMappingEquivalence(t *testing.T) {
 		{`max(count(rate({a=~".+"}[1s])))`, false},
 		{`max(sum by (cluster) (rate({a=~".+"}[1s]))) / count(rate({a=~".+"}[1s]))`, false},
 		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
+		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -427,13 +429,13 @@ func TestRangeMappingEquivalence(t *testing.T) {
 // approximatelyEquals ensures two responses are approximately equal,
 // up to 6 decimals precision per sample
 func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
-	require.Equal(t, len(as), len(bs))
+	require.Len(t, bs, len(as))
 
 	for i := 0; i < len(as); i++ {
 		a := as[i]
 		b := bs[i]
 		require.Equal(t, a.Metric, b.Metric)
-		require.Equal(t, len(a.Floats), len(b.Floats))
+		require.Lenf(t, b.Floats, len(a.Floats), "at step %d", i)
 
 		for j := 0; j < len(a.Floats); j++ {
 			aSample := &a.Floats[j]
@@ -441,6 +443,6 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 			bSample := &b.Floats[j]
 			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
-		require.Equal(t, a, b)
+		require.Equalf(t, a, b, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
 	}
 }
