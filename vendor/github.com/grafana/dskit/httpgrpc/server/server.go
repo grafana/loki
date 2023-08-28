@@ -15,7 +15,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/go-kit/log/level"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sercand/kuberesolver/v4"
@@ -190,7 +189,7 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if tracer := opentracing.GlobalTracer(); tracer != nil {
 		if span := opentracing.SpanFromContext(r.Context()); span != nil {
 			if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header)); err != nil {
-				level.Warn(log.Global()).Log("msg", "failed to inject tracing headers into request", "err", err)
+				log.Global().Warnf("Failed to inject tracing headers into request: %v", err)
 			}
 		}
 	}

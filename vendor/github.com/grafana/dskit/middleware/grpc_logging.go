@@ -9,19 +9,16 @@ import (
 	"errors"
 	"time"
 
-	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-
-	dskit_log "github.com/grafana/dskit/log"
-
 	"google.golang.org/grpc"
 
 	grpcUtils "github.com/grafana/dskit/grpcutil"
+	"github.com/grafana/dskit/log"
 	"github.com/grafana/dskit/user"
 )
 
 const (
-	gRPC = "gRPC"
+	gRPC     = "gRPC"
+	errorKey = "err"
 )
 
 // An error can implement ShouldLog() to control whether GRPCServerLog will log.
@@ -31,7 +28,7 @@ type OptionalLogging interface {
 
 // GRPCServerLog logs grpc requests, errors, and latency.
 type GRPCServerLog struct {
-	Log log.Logger
+	Log log.Interface
 	// WithRequest will log the entire request rather than just the error
 	WithRequest              bool
 	DisableRequestSuccessLog bool
@@ -49,18 +46,18 @@ func (s GRPCServerLog) UnaryServerInterceptor(ctx context.Context, req interface
 		return resp, err
 	}
 
-	entry := log.With(user.LogWith(ctx, s.Log), "method", info.FullMethod, "duration", time.Since(begin))
+	entry := user.LogWith(ctx, s.Log).WithFields(log.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
 	if err != nil {
 		if s.WithRequest {
-			entry = log.With(entry, "request", req)
+			entry = entry.WithField("request", req)
 		}
 		if grpcUtils.IsCanceled(err) {
-			level.Debug(entry).Log("msg", gRPC, "err", err)
+			entry.WithField(errorKey, err).Debugln(gRPC)
 		} else {
-			level.Warn(entry).Log("msg", gRPC, "err", err)
+			entry.WithField(errorKey, err).Warnln(gRPC)
 		}
 	} else {
-		level.Debug(entry).Log("msg", dskit_log.LazySprintf("%s (success)", gRPC))
+		entry.Debugf("%s (success)", gRPC)
 	}
 	return resp, err
 }
@@ -73,15 +70,15 @@ func (s GRPCServerLog) StreamServerInterceptor(srv interface{}, ss grpc.ServerSt
 		return nil
 	}
 
-	entry := log.With(user.LogWith(ss.Context(), s.Log), "method", info.FullMethod, "duration", time.Since(begin))
+	entry := user.LogWith(ss.Context(), s.Log).WithFields(log.Fields{"method": info.FullMethod, "duration": time.Since(begin)})
 	if err != nil {
 		if grpcUtils.IsCanceled(err) {
-			level.Debug(entry).Log("msg", gRPC, "err", err)
+			entry.WithField(errorKey, err).Debugln(gRPC)
 		} else {
-			level.Warn(entry).Log("msg", gRPC, "err", err)
+			entry.WithField(errorKey, err).Warnln(gRPC)
 		}
 	} else {
-		level.Debug(entry).Log("msg", dskit_log.LazySprintf("%s (success)", gRPC))
+		entry.Debugf("%s (success)", gRPC)
 	}
 	return err
 }

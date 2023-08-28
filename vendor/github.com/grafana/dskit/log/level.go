@@ -23,12 +23,15 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
-// Level is a settable identifier for the minimum level a log entry must have.
+// Level is a settable identifier for the minimum level a log entry
+// must be have.
 type Level struct {
 	s      string
-	Option level.Option
+	Logrus logrus.Level
+	Gokit  level.Option
 }
 
 // RegisterFlags adds the log level flag to the provided flagset.
@@ -59,13 +62,17 @@ func (l Level) MarshalYAML() (interface{}, error) {
 func (l *Level) Set(s string) error {
 	switch s {
 	case "debug":
-		l.Option = level.AllowDebug()
+		l.Logrus = logrus.DebugLevel
+		l.Gokit = level.AllowDebug()
 	case "info":
-		l.Option = level.AllowInfo()
+		l.Logrus = logrus.InfoLevel
+		l.Gokit = level.AllowInfo()
 	case "warn":
-		l.Option = level.AllowWarn()
+		l.Logrus = logrus.WarnLevel
+		l.Gokit = level.AllowWarn()
 	case "error":
-		l.Option = level.AllowError()
+		l.Logrus = logrus.ErrorLevel
+		l.Gokit = level.AllowError()
 	default:
 		return errors.Errorf("unrecognized log level %q", s)
 	}

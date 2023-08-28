@@ -16,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	gokit_log "github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
@@ -119,15 +117,15 @@ type Config struct {
 	GRPCServerMinTimeBetweenPings      time.Duration `yaml:"grpc_server_min_time_between_pings"`
 	GRPCServerPingWithoutStreamAllowed bool          `yaml:"grpc_server_ping_without_stream_allowed"`
 
-	LogFormat                    string           `yaml:"log_format"`
-	LogLevel                     log.Level        `yaml:"log_level"`
-	Log                          gokit_log.Logger `yaml:"-"`
-	LogSourceIPs                 bool             `yaml:"log_source_ips_enabled"`
-	LogSourceIPsHeader           string           `yaml:"log_source_ips_header"`
-	LogSourceIPsRegex            string           `yaml:"log_source_ips_regex"`
-	LogRequestHeaders            bool             `yaml:"log_request_headers"`
-	LogRequestAtInfoLevel        bool             `yaml:"log_request_at_info_level_enabled"`
-	LogRequestExcludeHeadersList string           `yaml:"log_request_exclude_headers_list"`
+	LogFormat                    log.Format    `yaml:"log_format"`
+	LogLevel                     log.Level     `yaml:"log_level"`
+	Log                          log.Interface `yaml:"-"`
+	LogSourceIPs                 bool          `yaml:"log_source_ips_enabled"`
+	LogSourceIPsHeader           string        `yaml:"log_source_ips_header"`
+	LogSourceIPsRegex            string        `yaml:"log_source_ips_regex"`
+	LogRequestHeaders            bool          `yaml:"log_request_headers"`
+	LogRequestAtInfoLevel        bool          `yaml:"log_request_at_info_level_enabled"`
+	LogRequestExcludeHeadersList string        `yaml:"log_request_exclude_headers_list"`
 
 	// If not set, default signal handler is used.
 	SignalHandler SignalHandler `yaml:"-"`
@@ -177,7 +175,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.GRPCServerMinTimeBetweenPings, "server.grpc.keepalive.min-time-between-pings", 5*time.Minute, "Minimum amount of time a client should wait before sending a keepalive ping. If client sends keepalive ping more often, server will send GOAWAY and close the connection.")
 	f.BoolVar(&cfg.GRPCServerPingWithoutStreamAllowed, "server.grpc.keepalive.ping-without-stream-allowed", false, "If true, server allows keepalive pings even when there are no active streams(RPCs). If false, and client sends ping when there are no active streams, server will send GOAWAY and close the connection.")
 	f.StringVar(&cfg.PathPrefix, "server.path-prefix", "", "Base path to serve all API routes from (e.g. /v1/)")
-	f.StringVar(&cfg.LogFormat, "log.format", log.LogfmtFormat, "Output log messages in the given format. Valid formats: [logfmt, json]")
+	cfg.LogFormat.RegisterFlags(f)
 	cfg.LogLevel.RegisterFlags(f)
 	f.BoolVar(&cfg.LogSourceIPs, "server.log-source-ips-enabled", false, "Optionally log the source IPs.")
 	f.StringVar(&cfg.LogSourceIPsHeader, "server.log-source-ips-header", "", "Header field storing the source IPs. Only used if server.log-source-ips-enabled is true. If not set the default Forwarded, X-Real-IP and X-Forwarded-For headers are used")
@@ -214,7 +212,7 @@ type Server struct {
 	HTTP       *mux.Router
 	HTTPServer *http.Server
 	GRPC       *grpc.Server
-	Log        gokit_log.Logger
+	Log        log.Interface
 	Registerer prometheus.Registerer
 	Gatherer   prometheus.Gatherer
 }
@@ -232,10 +230,11 @@ func NewWithMetrics(cfg Config, metrics *Metrics) (*Server, error) {
 }
 
 func newServer(cfg Config, metrics *Metrics) (*Server, error) {
-	// If user doesn't supply a logging implementation, by default instantiate go-kit.
+	// If user doesn't supply a logging implementation, by default instantiate
+	// logrus.
 	logger := cfg.Log
 	if logger == nil {
-		logger = log.NewGoKitWithLevel(cfg.LogLevel, cfg.LogFormat)
+		logger = log.NewLogrus(cfg.LogLevel)
 	}
 
 	gatherer := cfg.Gatherer
@@ -332,7 +331,7 @@ func newServer(cfg Config, metrics *Metrics) (*Server, error) {
 		}
 	}
 
-	level.Info(logger).Log("msg", "server listening on addresses", "http", httpListener.Addr(), "grpc", grpcListener.Addr())
+	logger.WithField("http", httpListener.Addr()).WithField("grpc", grpcListener.Addr()).Infof("server listening on addresses")
 
 	// Setup gRPC server
 	serverLog := middleware.GRPCServerLog{

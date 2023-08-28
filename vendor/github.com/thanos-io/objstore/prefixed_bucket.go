@@ -74,6 +74,11 @@ func (p *PrefixedBucket) IsObjNotFoundErr(err error) bool {
 	return p.bkt.IsObjNotFoundErr(err)
 }
 
+// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+func (p *PrefixedBucket) IsCustomerManagedKeyError(err error) bool {
+	return p.bkt.IsCustomerManagedKeyError(err)
+}
+
 // Attributes returns information about the specified object.
 func (p PrefixedBucket) Attributes(ctx context.Context, name string) (ObjectAttributes, error) {
 	return p.bkt.Attributes(ctx, conditionalPrefix(p.prefix, name))

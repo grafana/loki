@@ -7,13 +7,10 @@ package httpgrpc
 import (
 	"fmt"
 
-	"github.com/go-kit/log/level"
-
 	spb "github.com/gogo/googleapis/google/rpc"
 	"github.com/gogo/protobuf/types"
 	"github.com/gogo/status"
-
-	"github.com/grafana/dskit/log"
+	log "github.com/sirupsen/logrus"
 )
 
 // Errorf returns a HTTP gRPC error than is correctly forwarded over
@@ -54,7 +51,7 @@ func HTTPResponseFromError(err error) (*HTTPResponse, bool) {
 
 	var resp HTTPResponse
 	if err := types.UnmarshalAny(status.Details[0], &resp); err != nil {
-		level.Error(log.Global()).Log("msg", "got error containing non-response", "err", err)
+		log.Errorf("Got error containing non-response: %v", err)
 		return nil, false
 	}
 

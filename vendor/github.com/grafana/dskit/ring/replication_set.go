@@ -5,11 +5,6 @@ import (
 	"errors"
 	"sort"
 	"time"
-
-	kitlog "github.com/go-kit/log"
-	"github.com/go-kit/log/level"
-
-	"github.com/grafana/dskit/spanlogger"
 )
 
 // ReplicationSet describes the instances to talk to for a given key, and how
@@ -33,9 +28,9 @@ func (r ReplicationSet) Do(ctx context.Context, delay time.Duration, f func(cont
 	// Initialise the result tracker, which is use to keep track of successes and failures.
 	var tracker replicationSetResultTracker
 	if r.MaxUnavailableZones > 0 {
-		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones, kitlog.NewNopLogger())
+		tracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
 	} else {
-		tracker = newDefaultResultTracker(r.Instances, r.MaxErrors, kitlog.NewNopLogger())
+		tracker = newDefaultResultTracker(r.Instances, r.MaxErrors)
 	}
 
 	var (
@@ -103,9 +98,6 @@ type DoUntilQuorumConfig struct {
 	// If non-zero and MinimizeRequests is true, enables hedging.
 	// See docs for DoUntilQuorum for more information.
 	HedgingDelay time.Duration
-
-	// If non-nil, DoUntilQuorum will emit log lines and span events during the call.
-	Logger *spanlogger.SpanLogger
 }
 
 func (c DoUntilQuorumConfig) Validate() error {
@@ -204,11 +196,6 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 		return nil, err
 	}
 
-	var logger kitlog.Logger = cfg.Logger
-	if cfg.Logger == nil {
-		logger = kitlog.NewNopLogger()
-	}
-
 	resultsChan := make(chan instanceResult[T], len(r.Instances))
 	resultsRemaining := len(r.Instances)
 
@@ -228,10 +215,10 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 	var resultTracker replicationSetResultTracker
 	var contextTracker replicationSetContextTracker
 	if r.MaxUnavailableZones > 0 {
-		resultTracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones, logger)
+		resultTracker = newZoneAwareResultTracker(r.Instances, r.MaxUnavailableZones)
 		contextTracker = newZoneAwareContextTracker(ctx, r.Instances)
 	} else {
-		resultTracker = newDefaultResultTracker(r.Instances, r.MaxErrors, logger)
+		resultTracker = newDefaultResultTracker(r.Instances, r.MaxErrors)
 		contextTracker = newDefaultContextTracker(ctx, r.Instances)
 	}
 
@@ -283,8 +270,6 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 	for !resultTracker.succeeded() {
 		select {
 		case <-ctx.Done():
-			level.Debug(logger).Log("msg", "parent context done, returning", "err", ctx.Err())
-
 			// No need to cancel individual instance contexts, as they inherit the cancellation from ctx.
 			cleanupResultsAlreadyReceived()
 
@@ -297,25 +282,13 @@ func DoUntilQuorumWithoutSuccessfulContextCancellation[T any](ctx context.Contex
 
 			if result.err == nil {
 				resultsMap[result.instance] = result.result
-			} else {
-				contextTracker.cancelContextFor(result.instance)
-
-				if resultTracker.failed() {
-					level.Error(logger).Log("msg", "cancelling all requests because quorum cannot be reached")
-
-					if cfg.Logger != nil {
-						_ = cfg.Logger.Error(result.err)
-					}
-
-					contextTracker.cancelAllContexts()
-					cleanupResultsAlreadyReceived()
-					return nil, result.err
-				}
+			} else if resultTracker.failed() {
+				contextTracker.cancelAllContexts()
+				cleanupResultsAlreadyReceived()
+				return nil, result.err
 			}
 		}
 	}
-
-	level.Debug(logger).Log("msg", "quorum reached")
 
 	results := make([]T, 0, len(r.Instances))
 
