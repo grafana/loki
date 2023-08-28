@@ -1367,6 +1367,7 @@ github.com/thanos-io/objstore/providers/filesystem
 github.com/thanos-io/objstore/providers/gcs
 github.com/thanos-io/objstore/providers/s3
 github.com/thanos-io/objstore/providers/swift
+github.com/thanos-io/objstore/tracing/opentracing
 # github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448
 ## explicit
 github.com/tonistiigi/fifo
