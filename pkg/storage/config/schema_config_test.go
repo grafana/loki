@@ -231,19 +231,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: errConfigChunkPrefixNotSet,
 		},
-		"should fail if chunks prefix is missing on IndexType: cassandra": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "cassandra",
-						ObjectType:  "cassandra",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
 		"should fail if chunks prefix is missing on IndexType: bigtable-hashed": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{

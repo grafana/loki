@@ -20,7 +20,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
 	"github.com/grafana/loki/pkg/storage/chunk/client/azure"
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
-	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
@@ -179,7 +178,7 @@ func (ns *NamedStores) populateStoreType() error {
 		switch name {
 		case config.StorageTypeAWS, config.StorageTypeAWSDynamo, config.StorageTypeS3,
 			config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGCS,
-			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift, config.StorageTypeCassandra,
+			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift,
 			config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
@@ -265,22 +264,21 @@ func (ns *NamedStores) validate() error {
 
 // Config chooses which storage client to use.
 type Config struct {
-	AlibabaStorageConfig   alibaba.OssConfig         `yaml:"alibabacloud"`
-	AWSStorageConfig       aws.StorageConfig         `yaml:"aws"`
-	AzureStorageConfig     azure.BlobStorageConfig   `yaml:"azure"`
-	BOSStorageConfig       baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig       gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
-	GCSConfig              gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
-	CassandraStorageConfig cassandra.Config          `yaml:"cassandra" doc:"description=Deprecated: Configures storing chunks and/or the index in Cassandra."`
-	BoltDBConfig           local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
-	FSConfig               local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
-	Swift                  openstack.SwiftConfig     `yaml:"swift"`
-	GrpcConfig             grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
-	Hedging                hedging.Config            `yaml:"hedging"`
-	NamedStores            NamedStores               `yaml:"named_stores"`
-	COSConfig              ibmcloud.COSConfig        `yaml:"cos"`
-	IndexCacheValidity     time.Duration             `yaml:"index_cache_validity"`
-	CongestionControl      congestion.Config         `yaml:"congestion_control,omitempty"`
+	AlibabaStorageConfig alibaba.OssConfig         `yaml:"alibabacloud"`
+	AWSStorageConfig     aws.StorageConfig         `yaml:"aws"`
+	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
+	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
+	GCPStorageConfig     gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
+	GCSConfig            gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
+	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
+	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
+	Swift                openstack.SwiftConfig     `yaml:"swift"`
+	GrpcConfig           grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
+	Hedging              hedging.Config            `yaml:"hedging"`
+	NamedStores          NamedStores               `yaml:"named_stores"`
+	COSConfig            ibmcloud.COSConfig        `yaml:"cos"`
+	IndexCacheValidity   time.Duration             `yaml:"index_cache_validity"`
+	CongestionControl    congestion.Config         `yaml:"congestion_control,omitempty"`
 
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
@@ -304,7 +302,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.COSConfig.RegisterFlags(f)
 	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
-	cfg.CassandraStorageConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
@@ -323,9 +320,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if err := cfg.CassandraStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Cassandra Storage config")
-	}
 	if err := cfg.GCPStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid GCP Storage Storage config")
 	}
@@ -378,9 +372,6 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		level.Warn(util_log.Logger).Log("msg", "bigtable-hashed is deprecated. Consider migrating to tsdb")
 		cfg.GCPStorageConfig.DistributeKeys = true
 		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeCassandra:
-		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Consider migrating to tsdb")
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
 	case config.StorageTypeBoltDB:
 		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
@@ -510,9 +501,6 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case config.StorageTypeCassandra:
-		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
-		return cassandra.NewObjectClient(cfg.CassandraStorageConfig, schemaCfg, registerer, cfg.MaxParallelGetChunk)
 	case config.StorageTypeFileSystem:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
@@ -549,8 +537,6 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
 	case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
 		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
-	case config.StorageTypeCassandra:
-		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
 	case config.StorageTypeBoltDB:
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case config.StorageTypeGrpc:
@@ -566,7 +552,7 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		}
 		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
 	}
 }
 

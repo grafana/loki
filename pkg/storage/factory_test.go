@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
@@ -46,45 +45,6 @@ func TestFactoryStop(t *testing.T) {
 	limits, err := validation.NewOverrides(defaults, nil)
 	require.NoError(t, err)
 	store, err := NewStore(cfg, storeConfig, schemaConfig, limits, cm, nil, log.NewNopLogger())
-	require.NoError(t, err)
-
-	store.Stop()
-}
-
-func TestCassandraInMultipleSchemas(t *testing.T) {
-	addresses := os.Getenv("CASSANDRA_TEST_ADDRESSES")
-	if addresses == "" {
-		return
-	}
-
-	// cassandra config
-	var cassandraCfg cassandra.Config
-	flagext.DefaultValues(&cassandraCfg)
-	cassandraCfg.Addresses = addresses
-	cassandraCfg.Keyspace = "test"
-	cassandraCfg.Consistency = "QUORUM"
-	cassandraCfg.ReplicationFactor = 1
-
-	// build schema with cassandra in multiple periodic configs
-	schemaCfg := DefaultSchemaConfig("cassandra", "v1", model.Now().Add(-7*24*time.Hour))
-	newSchemaCfg := schemaCfg.Configs[0]
-	newSchemaCfg.Schema = "v2"
-	newSchemaCfg.From = config.DayTime{Time: model.Now()}
-
-	schemaCfg.Configs = append(schemaCfg.Configs, newSchemaCfg)
-
-	var (
-		cfg         Config
-		storeConfig config.ChunkStoreConfig
-		defaults    validation.Limits
-	)
-	flagext.DefaultValues(&cfg, &storeConfig, &defaults)
-	cfg.CassandraStorageConfig = cassandraCfg
-
-	limits, err := validation.NewOverrides(defaults, nil)
-	require.NoError(t, err)
-
-	store, err := NewStore(cfg, storeConfig, schemaCfg, limits, cm, nil, log.NewNopLogger())
 	require.NoError(t, err)
 
 	store.Stop()

@@ -7,7 +7,6 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
-	"github.com/grafana/loki/pkg/storage/chunk/client/cassandra"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
@@ -26,7 +25,6 @@ func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	fixtures = append(fixtures, aws.Fixtures...)
 	fixtures = append(fixtures, gcp.Fixtures...)
 	fixtures = append(fixtures, local.Fixtures...)
-	fixtures = append(fixtures, cassandra.Fixtures()...)
 	fixtures = append(fixtures, Fixtures...)
 
 	for _, fixture := range fixtures {
