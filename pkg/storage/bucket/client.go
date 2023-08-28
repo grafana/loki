@@ -10,7 +10,7 @@ import (
 	"github.com/go-kit/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/thanos-io/objstore"
-	t "github.com/thanos-io/objstore/tracing/opentracing"
+	opentracing "github.com/thanos-io/objstore/tracing/opentracing"
 
 	"github.com/grafana/loki/pkg/storage/bucket/azure"
 	"github.com/grafana/loki/pkg/storage/bucket/filesystem"
@@ -117,7 +117,7 @@ func NewClient(ctx context.Context, cfg Config, name string, logger log.Logger, 
 		return nil, err
 	}
 
-	client = t.WrapWithTraces(bucketWithMetrics(client, name, reg))
+	client = opentracing.WrapWithTraces(bucketWithMetrics(client, name, reg))
 
 	// Wrap the client with any provided middleware
 	for _, wrap := range cfg.Middlewares {
