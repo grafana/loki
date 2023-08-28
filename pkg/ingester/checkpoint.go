@@ -352,7 +352,7 @@ func (w *WALCheckpointWriter) Advance() (bool, error) {
 		return false, errors.Wrap(err, "create checkpoint dir")
 	}
 
-	checkpoint, err := wlog.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, false)
+	checkpoint, err := wlog.NewSize(log.With(util_log.Logger, "component", "checkpoint_wal"), nil, checkpointDirTemp, walSegmentSize, wlog.CompressionNone)
 	if err != nil {
 		return false, errors.Wrap(err, "open checkpoint")
 	}
