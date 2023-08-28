@@ -4124,10 +4124,10 @@ The `period_config` block configures what index schemas should be used for from 
 # want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15.
 [from: <daytime>]
 
-# store and object_store below affect which <storage_config> key is used.
-# Which index to use. Either tsdb or boltdb-shipper.
-#  Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey,
-# bigtable, bigtable-hashed, cassandra, grpc.
+# store and object_store below affect which <storage_config> key is used. Which
+# index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
+# aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra,
+# grpc.
 [store: <string> | default = ""]
 
 # Which store to use for the chunks. Either aws (alias s3), azure, gcs,
