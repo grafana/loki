@@ -448,6 +448,35 @@ func (m *HTTPFault) validate(all bool) error {
 
 	// no validation rules for DisableDownstreamClusterStats
 
+	if all {
+		switch v := interface{}(m.GetFilterMetadata()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, HTTPFaultValidationError{
+					field:  "FilterMetadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, HTTPFaultValidationError{
+					field:  "FilterMetadata",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetFilterMetadata()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return HTTPFaultValidationError{
+				field:  "FilterMetadata",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
+	}
+
 	if len(errors) > 0 {
 		return HTTPFaultMultiError(errors)
 	}

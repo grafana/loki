@@ -175,7 +175,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [schema_config: <schema_config>]
 
 # The compactor block configures the compactor component, which compacts index
-# shards for performance.
+# shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated,
+# please use `-compactor.` instead.
 [compactor: <compactor>]
 
 # The limits_config block configures global and per-tenant limits in Loki.
@@ -2146,184 +2147,179 @@ Configures the chunk index schema and where it is stored.
 
 ### compactor
 
-The `compactor` block configures the compactor component, which compacts index shards for performance.
+The `compactor` block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
-# CLI flag: -boltdb.shipper.compactor.working-directory
+# CLI flag: -compactor.working-directory
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
 # azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
 # to operate on all the object stores that contain either boltdb-shipper or tsdb
 # index.
-# CLI flag: -boltdb.shipper.compactor.shared-store
+# CLI flag: -compactor.shared-store
 [shared_store: <string> | default = ""]
 
 # Prefix to add to object keys in shared store. Path separator(if any) should
 # always be a '/'. Prefix should never start with a separator but should always
 # end with it.
-# CLI flag: -boltdb.shipper.compactor.shared-store.key-prefix
+# CLI flag: -compactor.shared-store.key-prefix
 [shared_store_key_prefix: <string> | default = "index/"]
 
 # Interval at which to re-run the compaction operation.
-# CLI flag: -boltdb.shipper.compactor.compaction-interval
+# CLI flag: -compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
 # Interval at which to apply/enforce retention. 0 means run at same interval as
 # compaction. If non-zero, it should always be a multiple of compaction
 # interval.
-# CLI flag: -boltdb.shipper.compactor.apply-retention-interval
+# CLI flag: -compactor.apply-retention-interval
 [apply_retention_interval: <duration> | default = 0s]
 
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
-# CLI flag: -boltdb.shipper.compactor.retention-enabled
+# CLI flag: -compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
 
 # Delay after which chunks will be fully deleted during retention.
-# CLI flag: -boltdb.shipper.compactor.retention-delete-delay
+# CLI flag: -compactor.retention-delete-delay
 [retention_delete_delay: <duration> | default = 2h]
 
 # The total amount of worker to use to delete chunks.
-# CLI flag: -boltdb.shipper.compactor.retention-delete-worker-count
+# CLI flag: -compactor.retention-delete-worker-count
 [retention_delete_worker_count: <int> | default = 150]
 
 # The maximum amount of time to spend running retention and deletion on any
 # given table in the index.
-# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+# CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. Defaults to
-# -boltdb.shipper.compactor.shared-store.
-# CLI flag: -boltdb.shipper.compactor.delete-request-store
+# Store used for managing delete requests. Defaults to -compactor.shared-store.
+# CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
-# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+# CLI flag: -compactor.delete-batch-size
 [delete_batch_size: <int> | default = 70]
 
 # Allow cancellation of delete request until duration after they are created.
 # Data would be deleted only after delete requests have been older than this
 # duration. Ideally this should be set to at least 24h.
-# CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
+# CLI flag: -compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
 # Constrain the size of any single delete request. When a delete request >
 # delete_max_interval is input, the request is sharded into smaller requests of
 # no more than delete_max_interval
-# CLI flag: -boltdb.shipper.compactor.delete-max-interval
+# CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 0s]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
-# CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
+# CLI flag: -compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
 # Number of upload/remove operations to execute in parallel when finalizing a
 # compaction. NOTE: This setting is per compaction operation, which can be
 # executed in parallel. The upper bound on the number of concurrent uploads is
 # upload_parallelism * max_compaction_parallelism.
-# CLI flag: -boltdb.shipper.compactor.upload-parallelism
+# CLI flag: -compactor.upload-parallelism
 [upload_parallelism: <int> | default = 10]
 
 # The hash ring configuration used by compactors to elect a single instance for
 # running compactions. The CLI flags prefix for this block config is:
-# boltdb.shipper.compactor.ring
+# compactor.ring
 compactor_ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
     # inmemory, memberlist, multi.
-    # CLI flag: -boltdb.shipper.compactor.ring.store
+    # CLI flag: -compactor.ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -boltdb.shipper.compactor.ring.prefix
+    # CLI flag: -compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.compactor.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.compactor.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring
     [etcd: <etcd>]
 
     multi:
       # Primary backend storage used by multi-client.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.primary
+      # CLI flag: -compactor.ring.multi.primary
       [primary: <string> | default = ""]
 
       # Secondary backend storage used by multi-client.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.secondary
+      # CLI flag: -compactor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
       # Mirror writes to secondary store.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-enabled
+      # CLI flag: -compactor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
       # Timeout for storing value to secondary store.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-timeout
+      # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
   # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-period
+  # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
   # the ring. 0 = never (timeout disabled).
-  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-timeout
+  # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
   # File path where tokens are stored. If empty, tokens are not stored at
   # shutdown and restored at startup.
-  # CLI flag: -boltdb.shipper.compactor.ring.tokens-file-path
+  # CLI flag: -compactor.ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
   # True to enable zone-awareness and replicate blocks across different
   # availability zones.
-  # CLI flag: -boltdb.shipper.compactor.ring.zone-awareness-enabled
+  # CLI flag: -compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
   # Instance ID to register in the ring.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-id
+  # CLI flag: -compactor.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
 
   # Name of network interface to read address from.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-interface-names
+  # CLI flag: -compactor.ring.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
   # Port to advertise in the ring (defaults to server.grpc-listen-port).
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-port
+  # CLI flag: -compactor.ring.instance-port
   [instance_port: <int> | default = 0]
 
   # IP address to advertise in the ring.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-addr
+  # CLI flag: -compactor.ring.instance-addr
   [instance_addr: <string> | default = ""]
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
+  # CLI flag: -compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
   # Enable using a IPv6 instance address.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  # CLI flag: -compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
-# CLI flag: -boltdb.shipper.compactor.tables-to-compact
+# CLI flag: -compactor.tables-to-compact
 [tables_to_compact: <int> | default = 0]
 
-# Do not compact N latest tables. Together with
-# -boltdb.shipper.compactor.run-once and
-# -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing
-# compactor backlogs.
-# CLI flag: -boltdb.shipper.compactor.skip-latest-n-tables
+# Do not compact N latest tables. Together with -compactor.run-once and
+# -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
+# CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
 
 # Deprecated: Use deletion_mode per tenant configuration instead.
@@ -3356,8 +3352,8 @@ ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
+- `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `query-scheduler.ring`
@@ -3400,8 +3396,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
+- `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `query-scheduler.ring`
