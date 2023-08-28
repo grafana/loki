@@ -422,6 +422,8 @@ func minOverTime(samples []promql.FPoint) float64 {
 	return min
 }
 
+// stdvarOverTime calculates the variance using Welford's online algorithm.
+// See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 func stdvarOverTime(samples []promql.FPoint) float64 {
 	var aux, count, mean float64
 	for _, v := range samples {
