@@ -251,7 +251,7 @@ func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, in
 	return io.NopCloser(strings.NewReader("bar")), 3, nil
 }
 
-func (m *mockObjectClient) TestObject(context.Context, string) error {
+func (m *mockObjectClient) ObjectExists(context.Context, string) (bool, error) {
 	panic("not implemented")
 }
 

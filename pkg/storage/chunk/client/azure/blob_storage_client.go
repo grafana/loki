@@ -214,6 +214,28 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
+func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		if err != nil {
+			return err
+		}
+
+		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		return err
+	})
+
+	if err == nil {
+		return true, nil
+	}
+
+	if b.IsObjectNotFoundErr(err) {
+		return false, nil
+	}
+
+	return false, err
+}
+
 // GetObject returns a reader and the size for the specified object key.
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}

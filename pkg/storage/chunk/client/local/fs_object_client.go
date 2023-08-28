@@ -65,13 +65,17 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 // Stop implements ObjectClient
 func (FSObjectClient) Stop() {}
 
-func (FSObjectClient) TestObject(_ context.Context, objectKey string) error {
+func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
 	_, err := os.Lstat(objectKey)
-	if err != nil {
-		return err
+	if err == nil {
+		return true, nil
 	}
 
-	return nil
+	if f.IsObjectNotFoundErr(err) {
+		return false, nil
+	}
+
+	return false, err
 }
 
 // GetObject from the store
