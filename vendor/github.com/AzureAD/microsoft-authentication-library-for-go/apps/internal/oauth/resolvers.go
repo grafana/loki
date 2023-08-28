@@ -46,9 +46,6 @@ func newAuthorityEndpoint(rest *ops.REST) *authorityEndpoint {
 
 // ResolveEndpoints gets the authorization and token endpoints and creates an AuthorityEndpoints instance
 func (m *authorityEndpoint) ResolveEndpoints(ctx context.Context, authorityInfo authority.Info, userPrincipalName string) (authority.Endpoints, error) {
-	if authorityInfo.AuthorityType == ADFS && len(userPrincipalName) == 0 {
-		return authority.Endpoints{}, errors.New("UPN required for authority validation for ADFS")
-	}
 
 	if endpoints, found := m.cachedEndpoints(authorityInfo, userPrincipalName); found {
 		return endpoints, nil
