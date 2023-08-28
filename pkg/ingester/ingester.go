@@ -1081,7 +1081,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
 	if req.Values {
-		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 		if err != nil {
 			return nil, err
 		}
