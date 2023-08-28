@@ -861,7 +861,8 @@ type Cluster struct {
 	TypedDnsResolverConfig *v32.TypedExtensionConfig `protobuf:"bytes,55,opt,name=typed_dns_resolver_config,json=typedDnsResolverConfig,proto3" json:"typed_dns_resolver_config,omitempty"`
 	// Optional configuration for having cluster readiness block on warm-up. Currently, only applicable for
 	// :ref:`STRICT_DNS<envoy_v3_api_enum_value_config.cluster.v3.Cluster.DiscoveryType.STRICT_DNS>`,
-	// or :ref:`LOGICAL_DNS<envoy_v3_api_enum_value_config.cluster.v3.Cluster.DiscoveryType.LOGICAL_DNS>`.
+	// or :ref:`LOGICAL_DNS<envoy_v3_api_enum_value_config.cluster.v3.Cluster.DiscoveryType.LOGICAL_DNS>`,
+	// or :ref:`Redis Cluster<arch_overview_redis>`.
 	// If true, cluster readiness blocks on warm-up. If false, the cluster will complete
 	// initialization whether or not warm-up has completed. Defaults to true.
 	WaitForWarmOnInit *wrappers.BoolValue `protobuf:"bytes,54,opt,name=wait_for_warm_on_init,json=waitForWarmOnInit,proto3" json:"wait_for_warm_on_init,omitempty"`
@@ -2716,7 +2717,7 @@ type Cluster_PreconnectPolicy struct {
 	// This is limited somewhat arbitrarily to 3 because preconnecting too aggressively can
 	// harm latency more than the preconnecting helps.
 	PerUpstreamPreconnectRatio *wrappers.DoubleValue `protobuf:"bytes,1,opt,name=per_upstream_preconnect_ratio,json=perUpstreamPreconnectRatio,proto3" json:"per_upstream_preconnect_ratio,omitempty"`
-	// Indicates how many many streams (rounded up) can be anticipated across a cluster for each
+	// Indicates how many streams (rounded up) can be anticipated across a cluster for each
 	// stream, useful for low QPS services. This is currently supported for a subset of
 	// deterministic non-hash-based load-balancing algorithms (weighted round robin, random).
 	// Unlike ``per_upstream_preconnect_ratio`` this preconnects across the upstream instances in a

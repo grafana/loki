@@ -934,7 +934,7 @@ func (m *SubjectAltNameMatcher) validate(all bool) error {
 	if _, ok := _SubjectAltNameMatcher_SanType_NotInLookup[m.GetSanType()]; ok {
 		err := SubjectAltNameMatcherValidationError{
 			field:  "SanType",
-			reason: "value must not be in list [0]",
+			reason: "value must not be in list [SAN_TYPE_UNSPECIFIED]",
 		}
 		if !all {
 			return err
