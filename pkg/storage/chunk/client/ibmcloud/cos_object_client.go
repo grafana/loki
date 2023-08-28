@@ -316,6 +316,28 @@ func (c *COSObjectClient) DeleteObject(ctx context.Context, objectKey string) er
 	})
 }
 
+func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	bucket := c.bucketFromKey(objectKey)
+	err := instrument.CollectedRequest(ctx, "COS.GetObject", cosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var requestErr error
+		_, requestErr = c.hedgedCOS.HeadObject(&cos.HeadObjectInput{
+			Bucket: ibm.String(bucket),
+			Key:    ibm.String(objectKey),
+		})
+		return requestErr
+	})
+
+	if err == nil {
+		return true, nil
+	}
+
+	if c.IsObjectNotFoundErr(err) {
+		return false, nil
+	}
+
+	return false, err
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.
 func (c *COSObjectClient) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 
