@@ -154,3 +154,61 @@ func TestMultiIndex(t *testing.T) {
 		require.Equal(t, expected, xs)
 	})
 }
+
+func BenchmarkSliceForParallelism(b *testing.B) {
+	cases := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  3,
+					Checksum: 0,
+				},
+				{
+					MinTime:  1,
+					MaxTime:  4,
+					Checksum: 1,
+				},
+				{
+					MinTime:  2,
+					MaxTime:  5,
+					Checksum: 2,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  10,
+					Checksum: 3,
+				},
+			},
+		},
+		{
+			// should be excluded due to bounds checking
+			Labels: mustParseLabels(`{foo="bar", bazz="bozz", bonk="borb"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  8,
+					MaxTime:  9,
+					Checksum: 4,
+				},
+			},
+		},
+	}
+
+	b.ResetTimer()
+	for groups := 0; groups < b.N; groups++ {
+		var indices []Index
+		dir := b.TempDir()
+		for i := 0; i < groups; i++ {
+			indices = append(indices, BuildIndex(b, dir, cases, IndexOpts{}))
+		}
+
+		idx := NewMultiIndex(IndexSlice(indices))
+		idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
+	}
+}
