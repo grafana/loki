@@ -37,19 +37,11 @@ var parserPool = sync.Pool{
 	},
 }
 
-type Parser interface {
-	ParseExpr() (Expr, error)
-	Close()
-}
-
 type parser struct {
 	lex Lexer
 
 	inject    ItemType
 	injecting bool
-
-	// functions contains all functions supported by the parser instance.
-	functions map[string]*Function
 
 	// Everytime an Item is lexed that could be the end
 	// of certain expressions its end position is stored here.
@@ -59,63 +51,6 @@ type parser struct {
 
 	generatedParserResult interface{}
 	parseErrors           ParseErrors
-}
-
-type Opt func(p *parser)
-
-func WithFunctions(functions map[string]*Function) Opt {
-	return func(p *parser) {
-		p.functions = functions
-	}
-}
-
-// NewParser returns a new parser.
-// nolint:revive
-func NewParser(input string, opts ...Opt) *parser {
-	p := parserPool.Get().(*parser)
-
-	p.functions = Functions
-	p.injecting = false
-	p.parseErrors = nil
-	p.generatedParserResult = nil
-
-	// Clear lexer struct before reusing.
-	p.lex = Lexer{
-		input: input,
-		state: lexStatements,
-	}
-
-	// Apply user define options.
-	for _, opt := range opts {
-		opt(p)
-	}
-
-	return p
-}
-
-func (p *parser) ParseExpr() (expr Expr, err error) {
-	defer p.recover(&err)
-
-	parseResult := p.parseGenerated(START_EXPRESSION)
-
-	if parseResult != nil {
-		expr = parseResult.(Expr)
-	}
-
-	// Only typecheck when there are no syntax errors.
-	if len(p.parseErrors) == 0 {
-		p.checkAST(expr)
-	}
-
-	if len(p.parseErrors) != 0 {
-		err = p.parseErrors
-	}
-
-	return expr, err
-}
-
-func (p *parser) Close() {
-	defer parserPool.Put(p)
 }
 
 // ParseErr wraps a parsing error with line and position context.
@@ -170,15 +105,32 @@ func (errs ParseErrors) Error() string {
 
 // ParseExpr returns the expression parsed from the input.
 func ParseExpr(input string) (expr Expr, err error) {
-	p := NewParser(input)
-	defer p.Close()
-	return p.ParseExpr()
+	p := newParser(input)
+	defer parserPool.Put(p)
+	defer p.recover(&err)
+
+	parseResult := p.parseGenerated(START_EXPRESSION)
+
+	if parseResult != nil {
+		expr = parseResult.(Expr)
+	}
+
+	// Only typecheck when there are no syntax errors.
+	if len(p.parseErrors) == 0 {
+		p.checkAST(expr)
+	}
+
+	if len(p.parseErrors) != 0 {
+		err = p.parseErrors
+	}
+
+	return expr, err
 }
 
 // ParseMetric parses the input into a metric
 func ParseMetric(input string) (m labels.Labels, err error) {
-	p := NewParser(input)
-	defer p.Close()
+	p := newParser(input)
+	defer parserPool.Put(p)
 	defer p.recover(&err)
 
 	parseResult := p.parseGenerated(START_METRIC)
@@ -196,8 +148,8 @@ func ParseMetric(input string) (m labels.Labels, err error) {
 // ParseMetricSelector parses the provided textual metric selector into a list of
 // label matchers.
 func ParseMetricSelector(input string) (m []*labels.Matcher, err error) {
-	p := NewParser(input)
-	defer p.Close()
+	p := newParser(input)
+	defer parserPool.Put(p)
 	defer p.recover(&err)
 
 	parseResult := p.parseGenerated(START_METRIC_SELECTOR)
@@ -210,6 +162,22 @@ func ParseMetricSelector(input string) (m []*labels.Matcher, err error) {
 	}
 
 	return m, err
+}
+
+// newParser returns a new parser.
+func newParser(input string) *parser {
+	p := parserPool.Get().(*parser)
+
+	p.injecting = false
+	p.parseErrors = nil
+	p.generatedParserResult = nil
+
+	// Clear lexer struct before reusing.
+	p.lex = Lexer{
+		input: input,
+		state: lexStatements,
+	}
+	return p
 }
 
 // SequenceValue is an omittable value in a sequence of time series values.
@@ -232,10 +200,10 @@ type seriesDescription struct {
 
 // ParseSeriesDesc parses the description of a time series.
 func ParseSeriesDesc(input string) (labels labels.Labels, values []SequenceValue, err error) {
-	p := NewParser(input)
+	p := newParser(input)
 	p.lex.seriesDesc = true
 
-	defer p.Close()
+	defer parserPool.Put(p)
 	defer p.recover(&err)
 
 	parseResult := p.parseGenerated(START_SERIES_DESCRIPTION)
@@ -831,7 +799,7 @@ func MustLabelMatcher(mt labels.MatchType, name, val string) *labels.Matcher {
 }
 
 func MustGetFunction(name string) *Function {
-	f, ok := getFunction(name, Functions)
+	f, ok := getFunction(name)
 	if !ok {
 		panic(fmt.Errorf("function %q does not exist", name))
 	}

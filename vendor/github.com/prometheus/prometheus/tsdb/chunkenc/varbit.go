@@ -122,7 +122,7 @@ func readVarbitInt(b *bstreamReader) (int64, error) {
 		}
 		if bits > (1 << (sz - 1)) {
 			// Or something.
-			bits -= (1 << sz)
+			bits = bits - (1 << sz)
 		}
 		val = int64(bits)
 	}

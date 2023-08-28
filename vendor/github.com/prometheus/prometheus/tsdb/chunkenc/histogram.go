@@ -386,9 +386,9 @@ func counterResetInAnyBucket(oldBuckets, newBuckets []int64, oldSpans, newSpans 
 
 		if oldIdx <= newIdx {
 			// Moving ahead old bucket and span by 1 index.
-			if oldInsideSpanIdx+1 >= oldSpans[oldSpanSliceIdx].Length {
+			if oldInsideSpanIdx == oldSpans[oldSpanSliceIdx].Length-1 {
 				// Current span is over.
-				oldSpanSliceIdx = nextNonEmptySpanSliceIdx(oldSpanSliceIdx, oldSpans)
+				oldSpanSliceIdx++
 				oldInsideSpanIdx = 0
 				if oldSpanSliceIdx >= len(oldSpans) {
 					// All old spans are over.
@@ -405,9 +405,9 @@ func counterResetInAnyBucket(oldBuckets, newBuckets []int64, oldSpans, newSpans 
 
 		if oldIdx > newIdx {
 			// Moving ahead new bucket and span by 1 index.
-			if newInsideSpanIdx+1 >= newSpans[newSpanSliceIdx].Length {
+			if newInsideSpanIdx == newSpans[newSpanSliceIdx].Length-1 {
 				// Current span is over.
-				newSpanSliceIdx = nextNonEmptySpanSliceIdx(newSpanSliceIdx, newSpans)
+				newSpanSliceIdx++
 				newInsideSpanIdx = 0
 				if newSpanSliceIdx >= len(newSpans) {
 					// All new spans are over.
@@ -875,7 +875,7 @@ func (it *histogramIterator) Next() ValueType {
 		it.err = err
 		return ValNone
 	}
-	it.tDelta += tDod
+	it.tDelta = it.tDelta + tDod
 	it.t += it.tDelta
 
 	cntDod, err := readVarbitInt(&it.br)
@@ -883,7 +883,7 @@ func (it *histogramIterator) Next() ValueType {
 		it.err = err
 		return ValNone
 	}
-	it.cntDelta += cntDod
+	it.cntDelta = it.cntDelta + cntDod
 	it.cnt = uint64(int64(it.cnt) + it.cntDelta)
 
 	zcntDod, err := readVarbitInt(&it.br)
@@ -891,7 +891,7 @@ func (it *histogramIterator) Next() ValueType {
 		it.err = err
 		return ValNone
 	}
-	it.zCntDelta += zcntDod
+	it.zCntDelta = it.zCntDelta + zcntDod
 	it.zCnt = uint64(int64(it.zCnt) + it.zCntDelta)
 
 	ok := it.readSum()

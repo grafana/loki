@@ -34,7 +34,6 @@ import (
 	"github.com/prometheus/prometheus/discovery"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/prometheus/prometheus/storage/remote/azuread"
 )
 
 var (
@@ -147,14 +146,13 @@ var (
 
 	// DefaultScrapeConfig is the default scrape configuration.
 	DefaultScrapeConfig = ScrapeConfig{
-		// ScrapeTimeout and ScrapeInterval default to the configured
-		// globals.
-		ScrapeClassicHistograms: false,
-		MetricsPath:             "/metrics",
-		Scheme:                  "http",
-		HonorLabels:             false,
-		HonorTimestamps:         true,
-		HTTPClientConfig:        config.DefaultHTTPClientConfig,
+		// ScrapeTimeout and ScrapeInterval default to the
+		// configured globals.
+		MetricsPath:      "/metrics",
+		Scheme:           "http",
+		HonorLabels:      false,
+		HonorTimestamps:  true,
+		HTTPClientConfig: config.DefaultHTTPClientConfig,
 	}
 
 	// DefaultAlertmanagerConfig is the default alertmanager configuration.
@@ -268,7 +266,7 @@ func (c *Config) GetScrapeConfigs() ([]*ScrapeConfig, error) {
 	for i, scfg := range c.ScrapeConfigs {
 		// We do these checks for library users that would not call Validate in
 		// Unmarshal.
-		if err := scfg.Validate(c.GlobalConfig); err != nil {
+		if err := scfg.Validate(c.GlobalConfig.ScrapeInterval, c.GlobalConfig.ScrapeTimeout); err != nil {
 			return nil, err
 		}
 
@@ -295,7 +293,7 @@ func (c *Config) GetScrapeConfigs() ([]*ScrapeConfig, error) {
 				return nil, fileErr(filename, err)
 			}
 			for _, scfg := range cfg.ScrapeConfigs {
-				if err := scfg.Validate(c.GlobalConfig); err != nil {
+				if err := scfg.Validate(c.GlobalConfig.ScrapeInterval, c.GlobalConfig.ScrapeTimeout); err != nil {
 					return nil, fileErr(filename, err)
 				}
 
@@ -344,7 +342,7 @@ func (c *Config) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	// Do global overrides and validate unique names.
 	jobNames := map[string]struct{}{}
 	for _, scfg := range c.ScrapeConfigs {
-		if err := scfg.Validate(c.GlobalConfig); err != nil {
+		if err := scfg.Validate(c.GlobalConfig.ScrapeInterval, c.GlobalConfig.ScrapeTimeout); err != nil {
 			return err
 		}
 
@@ -391,24 +389,6 @@ type GlobalConfig struct {
 	QueryLogFile string `yaml:"query_log_file,omitempty"`
 	// The labels to add to any timeseries that this Prometheus instance scrapes.
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty"`
-	// An uncompressed response body larger than this many bytes will cause the
-	// scrape to fail. 0 means no limit.
-	BodySizeLimit units.Base2Bytes `yaml:"body_size_limit,omitempty"`
-	// More than this many samples post metric-relabeling will cause the scrape to
-	// fail. 0 means no limit.
-	SampleLimit uint `yaml:"sample_limit,omitempty"`
-	// More than this many targets after the target relabeling will cause the
-	// scrapes to fail. 0 means no limit.
-	TargetLimit uint `yaml:"target_limit,omitempty"`
-	// More than this many labels post metric-relabeling will cause the scrape to
-	// fail. 0 means no limit.
-	LabelLimit uint `yaml:"label_limit,omitempty"`
-	// More than this label name length post metric-relabeling will cause the
-	// scrape to fail. 0 means no limit.
-	LabelNameLengthLimit uint `yaml:"label_name_length_limit,omitempty"`
-	// More than this label value length post metric-relabeling will cause the
-	// scrape to fail. 0 means no limit.
-	LabelValueLengthLimit uint `yaml:"label_value_length_limit,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -487,8 +467,6 @@ type ScrapeConfig struct {
 	ScrapeInterval model.Duration `yaml:"scrape_interval,omitempty"`
 	// The timeout for scraping targets of this config.
 	ScrapeTimeout model.Duration `yaml:"scrape_timeout,omitempty"`
-	// Whether to scrape a classic histogram that is also exposed as a native histogram.
-	ScrapeClassicHistograms bool `yaml:"scrape_classic_histograms,omitempty"`
 	// The HTTP resource path on which to fetch metrics from targets.
 	MetricsPath string `yaml:"metrics_path,omitempty"`
 	// The URL scheme with which to fetch metrics from targets.
@@ -497,23 +475,20 @@ type ScrapeConfig struct {
 	// scrape to fail. 0 means no limit.
 	BodySizeLimit units.Base2Bytes `yaml:"body_size_limit,omitempty"`
 	// More than this many samples post metric-relabeling will cause the scrape to
-	// fail. 0 means no limit.
+	// fail.
 	SampleLimit uint `yaml:"sample_limit,omitempty"`
 	// More than this many targets after the target relabeling will cause the
-	// scrapes to fail. 0 means no limit.
+	// scrapes to fail.
 	TargetLimit uint `yaml:"target_limit,omitempty"`
 	// More than this many labels post metric-relabeling will cause the scrape to
-	// fail. 0 means no limit.
+	// fail.
 	LabelLimit uint `yaml:"label_limit,omitempty"`
 	// More than this label name length post metric-relabeling will cause the
-	// scrape to fail. 0 means no limit.
+	// scrape to fail.
 	LabelNameLengthLimit uint `yaml:"label_name_length_limit,omitempty"`
 	// More than this label value length post metric-relabeling will cause the
-	// scrape to fail. 0 means no limit.
+	// scrape to fail.
 	LabelValueLengthLimit uint `yaml:"label_value_length_limit,omitempty"`
-	// More than this many buckets in a native histogram will cause the scrape to
-	// fail.
-	NativeHistogramBucketLimit uint `yaml:"native_histogram_bucket_limit,omitempty"`
 
 	// We cannot do proper Go type embedding below as the parser will then parse
 	// values arbitrarily into the overflow maps of further-down types.
@@ -571,44 +546,25 @@ func (c *ScrapeConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	return nil
 }
 
-func (c *ScrapeConfig) Validate(globalConfig GlobalConfig) error {
+func (c *ScrapeConfig) Validate(defaultInterval, defaultTimeout model.Duration) error {
 	if c == nil {
 		return errors.New("empty or null scrape config section")
 	}
 	// First set the correct scrape interval, then check that the timeout
 	// (inferred or explicit) is not greater than that.
 	if c.ScrapeInterval == 0 {
-		c.ScrapeInterval = globalConfig.ScrapeInterval
+		c.ScrapeInterval = defaultInterval
 	}
 	if c.ScrapeTimeout > c.ScrapeInterval {
 		return fmt.Errorf("scrape timeout greater than scrape interval for scrape config with job name %q", c.JobName)
 	}
 	if c.ScrapeTimeout == 0 {
-		if globalConfig.ScrapeTimeout > c.ScrapeInterval {
+		if defaultTimeout > c.ScrapeInterval {
 			c.ScrapeTimeout = c.ScrapeInterval
 		} else {
-			c.ScrapeTimeout = globalConfig.ScrapeTimeout
+			c.ScrapeTimeout = defaultTimeout
 		}
 	}
-	if c.BodySizeLimit == 0 {
-		c.BodySizeLimit = globalConfig.BodySizeLimit
-	}
-	if c.SampleLimit == 0 {
-		c.SampleLimit = globalConfig.SampleLimit
-	}
-	if c.TargetLimit == 0 {
-		c.TargetLimit = globalConfig.TargetLimit
-	}
-	if c.LabelLimit == 0 {
-		c.LabelLimit = globalConfig.LabelLimit
-	}
-	if c.LabelNameLengthLimit == 0 {
-		c.LabelNameLengthLimit = globalConfig.LabelNameLengthLimit
-	}
-	if c.LabelValueLengthLimit == 0 {
-		c.LabelValueLengthLimit = globalConfig.LabelValueLengthLimit
-	}
-
 	return nil
 }
 
@@ -908,7 +864,6 @@ type RemoteWriteConfig struct {
 	QueueConfig      QueueConfig             `yaml:"queue_config,omitempty"`
 	MetadataConfig   MetadataConfig          `yaml:"metadata_config,omitempty"`
 	SigV4Config      *sigv4.SigV4Config      `yaml:"sigv4,omitempty"`
-	AzureADConfig    *azuread.AzureADConfig  `yaml:"azuread,omitempty"`
 }
 
 // SetDirectory joins any relative file paths with dir.
@@ -945,12 +900,8 @@ func (c *RemoteWriteConfig) UnmarshalYAML(unmarshal func(interface{}) error) err
 	httpClientConfigAuthEnabled := c.HTTPClientConfig.BasicAuth != nil ||
 		c.HTTPClientConfig.Authorization != nil || c.HTTPClientConfig.OAuth2 != nil
 
-	if httpClientConfigAuthEnabled && (c.SigV4Config != nil || c.AzureADConfig != nil) {
-		return fmt.Errorf("at most one of basic_auth, authorization, oauth2, sigv4, & azuread must be configured")
-	}
-
-	if c.SigV4Config != nil && c.AzureADConfig != nil {
-		return fmt.Errorf("at most one of basic_auth, authorization, oauth2, sigv4, & azuread must be configured")
+	if httpClientConfigAuthEnabled && c.SigV4Config != nil {
+		return fmt.Errorf("at most one of basic_auth, authorization, oauth2, & sigv4 must be configured")
 	}
 
 	return nil
@@ -971,7 +922,7 @@ func validateHeadersForTracing(headers map[string]string) error {
 func validateHeaders(headers map[string]string) error {
 	for header := range headers {
 		if strings.ToLower(header) == "authorization" {
-			return errors.New("authorization header must be changed via the basic_auth, authorization, oauth2, sigv4, or azuread parameter")
+			return errors.New("authorization header must be changed via the basic_auth, authorization, oauth2, or sigv4 parameter")
 		}
 		if _, ok := reservedHeaders[strings.ToLower(header)]; ok {
 			return fmt.Errorf("%s is a reserved header. It must not be changed", header)

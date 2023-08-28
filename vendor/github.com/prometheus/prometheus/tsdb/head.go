@@ -121,8 +121,6 @@ type Head struct {
 	stats *HeadStats
 	reg   prometheus.Registerer
 
-	writeNotified wlog.WriteNotified
-
 	memTruncationInProcess atomic.Bool
 }
 
@@ -152,8 +150,6 @@ type HeadOptions struct {
 	ChunkWriteBufferSize int
 	ChunkWriteQueueSize  int
 
-	SamplesPerChunk int
-
 	// StripeSize sets the number of entries in the hash map, it must be a power of 2.
 	// A larger StripeSize will allocate more memory up-front, but will increase performance when handling a large number of series.
 	// A smaller StripeSize reduces the memory allocated, but can decrease performance with large number of series.
@@ -173,8 +169,6 @@ type HeadOptions struct {
 const (
 	// DefaultOutOfOrderCapMax is the default maximum size of an in-memory out-of-order chunk.
 	DefaultOutOfOrderCapMax int64 = 32
-	// DefaultSamplesPerChunk provides a default target number of samples per chunk.
-	DefaultSamplesPerChunk = 120
 )
 
 func DefaultHeadOptions() *HeadOptions {
@@ -184,7 +178,6 @@ func DefaultHeadOptions() *HeadOptions {
 		ChunkPool:            chunkenc.NewPool(),
 		ChunkWriteBufferSize: chunks.DefaultWriteBufferSize,
 		ChunkWriteQueueSize:  chunks.DefaultWriteQueueSize,
-		SamplesPerChunk:      DefaultSamplesPerChunk,
 		StripeSize:           DefaultStripeSize,
 		SeriesCallback:       &noopSeriesLifecycleCallback{},
 		IsolationDisabled:    defaultIsolationDisabled,
@@ -977,8 +970,8 @@ func (h *Head) DisableNativeHistograms() {
 	h.opts.EnableNativeHistograms.Store(false)
 }
 
-// PostingsCardinalityStats returns highest cardinality stats by label and value names.
-func (h *Head) PostingsCardinalityStats(statsByLabelName string, limit int) *index.PostingsStats {
+// PostingsCardinalityStats returns top 10 highest cardinality stats By label and value names.
+func (h *Head) PostingsCardinalityStats(statsByLabelName string) *index.PostingsStats {
 	h.cardinalityMutex.Lock()
 	defer h.cardinalityMutex.Unlock()
 	currentTime := time.Duration(time.Now().Unix()) * time.Second
@@ -989,7 +982,7 @@ func (h *Head) PostingsCardinalityStats(statsByLabelName string, limit int) *ind
 	if h.cardinalityCache != nil {
 		return h.cardinalityCache
 	}
-	h.cardinalityCache = h.postings.Stats(statsByLabelName, limit)
+	h.cardinalityCache = h.postings.Stats(statsByLabelName)
 	h.lastPostingsStatsCall = time.Duration(time.Now().Unix()) * time.Second
 
 	return h.cardinalityCache
@@ -1219,9 +1212,9 @@ func (h *Head) truncateWAL(mint int64) error {
 			return true
 		}
 		h.deletedMtx.Lock()
-		keepUntil, ok := h.deleted[id]
+		_, ok := h.deleted[id]
 		h.deletedMtx.Unlock()
-		return ok && keepUntil > last
+		return ok
 	}
 	h.metrics.checkpointCreationTotal.Inc()
 	if _, err = wlog.Checkpoint(h.logger, h.wal, first, last, keep, mint); err != nil {
@@ -1242,7 +1235,7 @@ func (h *Head) truncateWAL(mint int64) error {
 	// longer need to track deleted series that are before it.
 	h.deletedMtx.Lock()
 	for ref, segment := range h.deleted {
-		if segment <= last {
+		if segment < first {
 			delete(h.deleted, ref)
 		}
 	}
@@ -1329,12 +1322,12 @@ type Stats struct {
 
 // Stats returns important current HEAD statistics. Note that it is expensive to
 // calculate these.
-func (h *Head) Stats(statsByLabelName string, limit int) *Stats {
+func (h *Head) Stats(statsByLabelName string) *Stats {
 	return &Stats{
 		NumSeries:         h.NumSeries(),
 		MaxTime:           h.MaxTime(),
 		MinTime:           h.MinTime(),
-		IndexPostingStats: h.PostingsCardinalityStats(statsByLabelName, limit),
+		IndexPostingStats: h.PostingsCardinalityStats(statsByLabelName),
 	}
 }
 
@@ -1460,7 +1453,7 @@ func (h *Head) Delete(mint, maxt int64, ms ...*labels.Matcher) error {
 		}
 	}
 	for _, s := range stones {
-		h.tombstones.AddInterval(s.Ref, s.Intervals[0])
+		h.tombstones.AddInterval(storage.SeriesRef(s.Ref), s.Intervals[0])
 	}
 
 	return nil

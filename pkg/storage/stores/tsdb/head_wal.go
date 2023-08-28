@@ -204,7 +204,7 @@ func newHeadWAL(log log.Logger, dir string, t time.Time) (*headWAL, error) {
 	// NB: if we use a non-nil Prometheus Registerer, ensure
 	// that the underlying metrics won't conflict with existing WAL metrics in the ingester.
 	// Likely, this can be done by adding extra label(s)
-	wal, err := wlog.NewSize(log, nil, dir, walSegmentSize, wlog.CompressionNone)
+	wal, err := wlog.NewSize(log, nil, dir, walSegmentSize, false)
 	if err != nil {
 		return nil, err
 	}

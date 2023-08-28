@@ -16,9 +16,8 @@ package stats
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"time"
-
-	"golang.org/x/exp/slices"
 )
 
 // A Timer that can be started and stopped and accumulates the total time it
@@ -79,17 +78,35 @@ func (t *TimerGroup) GetTimer(name fmt.Stringer) *Timer {
 	return timer
 }
 
+// Timers is a slice of Timer pointers that implements Len and Swap from
+// sort.Interface.
+type Timers []*Timer
+
+type byCreationTimeSorter struct{ Timers }
+
+// Len implements sort.Interface.
+func (t Timers) Len() int {
+	return len(t)
+}
+
+// Swap implements sort.Interface.
+func (t Timers) Swap(i, j int) {
+	t[i], t[j] = t[j], t[i]
+}
+
+func (s byCreationTimeSorter) Less(i, j int) bool {
+	return s.Timers[i].created < s.Timers[j].created
+}
+
 // Return a string representation of a TimerGroup.
 func (t *TimerGroup) String() string {
-	timers := make([]*Timer, 0, len(t.timers))
+	timers := byCreationTimeSorter{}
 	for _, timer := range t.timers {
-		timers = append(timers, timer)
+		timers.Timers = append(timers.Timers, timer)
 	}
-	slices.SortFunc(timers, func(a, b *Timer) bool {
-		return a.created < b.created
-	})
+	sort.Sort(timers)
 	result := &bytes.Buffer{}
-	for _, timer := range timers {
+	for _, timer := range timers.Timers {
 		fmt.Fprintf(result, "%s\n", timer)
 	}
 	return result.String()

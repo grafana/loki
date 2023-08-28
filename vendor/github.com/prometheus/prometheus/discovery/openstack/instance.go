@@ -36,7 +36,6 @@ const (
 	openstackLabelAddressPool    = openstackLabelPrefix + "address_pool"
 	openstackLabelInstanceFlavor = openstackLabelPrefix + "instance_flavor"
 	openstackLabelInstanceID     = openstackLabelPrefix + "instance_id"
-	openstackLabelInstanceImage  = openstackLabelPrefix + "instance_image"
 	openstackLabelInstanceName   = openstackLabelPrefix + "instance_name"
 	openstackLabelInstanceStatus = openstackLabelPrefix + "instance_status"
 	openstackLabelPrivateIP      = openstackLabelPrefix + "private_ip"
@@ -145,18 +144,12 @@ func (i *InstanceDiscovery) refresh(ctx context.Context) ([]*targetgroup.Group, 
 				openstackLabelUserID:         model.LabelValue(s.UserID),
 			}
 
-			flavorId, ok := s.Flavor["id"].(string)
+			id, ok := s.Flavor["id"].(string)
 			if !ok {
 				level.Warn(i.logger).Log("msg", "Invalid type for flavor id, expected string")
 				continue
 			}
-			labels[openstackLabelInstanceFlavor] = model.LabelValue(flavorId)
-
-			imageId, ok := s.Image["id"].(string)
-			if ok {
-				labels[openstackLabelInstanceImage] = model.LabelValue(imageId)
-			}
-
+			labels[openstackLabelInstanceFlavor] = model.LabelValue(id)
 			for k, v := range s.Metadata {
 				name := strutil.SanitizeLabelName(k)
 				labels[openstackLabelTagPrefix+model.LabelName(name)] = model.LabelValue(v)

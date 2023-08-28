@@ -17,8 +17,6 @@ import (
 	"math"
 	"sort"
 
-	"golang.org/x/exp/slices"
-
 	"github.com/prometheus/prometheus/model/histogram"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -39,6 +37,10 @@ type bucket struct {
 
 // buckets implements sort.Interface.
 type buckets []bucket
+
+func (b buckets) Len() int           { return len(b) }
+func (b buckets) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b buckets) Less(i, j int) bool { return b[i].upperBound < b[j].upperBound }
 
 type metricWithBuckets struct {
 	metric  labels.Labels
@@ -81,9 +83,7 @@ func bucketQuantile(q float64, buckets buckets) float64 {
 	if q > 1 {
 		return math.Inf(+1)
 	}
-	slices.SortFunc(buckets, func(a, b bucket) bool {
-		return a.upperBound < b.upperBound
-	})
+	sort.Sort(buckets)
 	if !math.IsInf(buckets[len(buckets)-1].upperBound, +1) {
 		return math.NaN()
 	}
@@ -158,21 +158,9 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 	var (
 		bucket histogram.Bucket[float64]
 		count  float64
-		it     histogram.BucketIterator[float64]
-		rank   float64
+		it     = h.AllBucketIterator()
+		rank   = q * h.Count
 	)
-
-	// if there are NaN observations in the histogram (h.Sum is NaN), use the forward iterator
-	// if the q < 0.5, use the forward iterator
-	// if the q >= 0.5, use the reverse iterator
-	if math.IsNaN(h.Sum) || q < 0.5 {
-		it = h.AllBucketIterator()
-		rank = q * h.Count
-	} else {
-		it = h.AllReverseBucketIterator()
-		rank = (1 - q) * h.Count
-	}
-
 	for it.Next() {
 		bucket = it.At()
 		count += bucket.Count
@@ -205,16 +193,7 @@ func histogramQuantile(q float64, h *histogram.FloatHistogram) float64 {
 		return bucket.Upper
 	}
 
-	// NaN observations increase h.Count but not the total number of
-	// observations in the buckets. Therefore, we have to use the forward
-	// iterator to find percentiles. We recognize histograms containing NaN
-	// observations by checking if their h.Sum is NaN.
-	if math.IsNaN(h.Sum) || q < 0.5 {
-		rank -= count - bucket.Count
-	} else {
-		rank = count - rank
-	}
-
+	rank -= count - bucket.Count
 	// TODO(codesome): Use a better estimation than linear.
 	return bucket.Lower + (bucket.Upper-bucket.Lower)*(rank/bucket.Count)
 }

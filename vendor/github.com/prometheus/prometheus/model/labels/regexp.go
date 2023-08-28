@@ -25,16 +25,9 @@ type FastRegexMatcher struct {
 	prefix   string
 	suffix   string
 	contains string
-
-	// shortcut for literals
-	literal bool
-	value   string
 }
 
 func NewFastRegexMatcher(v string) (*FastRegexMatcher, error) {
-	if isLiteral(v) {
-		return &FastRegexMatcher{literal: true, value: v}, nil
-	}
 	re, err := regexp.Compile("^(?:" + v + ")$")
 	if err != nil {
 		return nil, err
@@ -57,9 +50,6 @@ func NewFastRegexMatcher(v string) (*FastRegexMatcher, error) {
 }
 
 func (m *FastRegexMatcher) MatchString(s string) bool {
-	if m.literal {
-		return s == m.value
-	}
 	if m.prefix != "" && !strings.HasPrefix(s, m.prefix) {
 		return false
 	}
@@ -73,14 +63,7 @@ func (m *FastRegexMatcher) MatchString(s string) bool {
 }
 
 func (m *FastRegexMatcher) GetRegexString() string {
-	if m.literal {
-		return m.value
-	}
 	return m.re.String()
-}
-
-func isLiteral(re string) bool {
-	return regexp.QuoteMeta(re) == re
 }
 
 // optimizeConcatRegex returns literal prefix/suffix text that can be safely

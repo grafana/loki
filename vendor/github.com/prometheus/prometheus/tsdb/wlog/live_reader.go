@@ -23,7 +23,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/golang/snappy"
-	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -52,14 +51,10 @@ func NewLiveReaderMetrics(reg prometheus.Registerer) *LiveReaderMetrics {
 
 // NewLiveReader returns a new live reader.
 func NewLiveReader(logger log.Logger, metrics *LiveReaderMetrics, r io.Reader) *LiveReader {
-	// Calling zstd.NewReader with a nil io.Reader and no options cannot return an error.
-	zstdReader, _ := zstd.NewReader(nil)
-
 	lr := &LiveReader{
-		logger:     logger,
-		rdr:        r,
-		zstdReader: zstdReader,
-		metrics:    metrics,
+		logger:  logger,
+		rdr:     r,
+		metrics: metrics,
 
 		// Until we understand how they come about, make readers permissive
 		// to records spanning pages.
@@ -73,18 +68,17 @@ func NewLiveReader(logger log.Logger, metrics *LiveReaderMetrics, r io.Reader) *
 // that are still in the process of being written, and returns records as soon
 // as they can be read.
 type LiveReader struct {
-	logger      log.Logger
-	rdr         io.Reader
-	err         error
-	rec         []byte
-	compressBuf []byte
-	zstdReader  *zstd.Decoder
-	hdr         [recordHeaderSize]byte
-	buf         [pageSize]byte
-	readIndex   int   // Index in buf to start at for next read.
-	writeIndex  int   // Index in buf to start at for next write.
-	total       int64 // Total bytes processed during reading in calls to Next().
-	index       int   // Used to track partial records, should be 0 at the start of every new record.
+	logger     log.Logger
+	rdr        io.Reader
+	err        error
+	rec        []byte
+	snappyBuf  []byte
+	hdr        [recordHeaderSize]byte
+	buf        [pageSize]byte
+	readIndex  int   // Index in buf to start at for next read.
+	writeIndex int   // Index in buf to start at for next write.
+	total      int64 // Total bytes processed during reading in calls to Next().
+	index      int   // Used to track partial records, should be 0 at the start of every new record.
 
 	// For testing, we can treat EOF as a non-error.
 	eofNonErr bool
@@ -197,14 +191,12 @@ func (r *LiveReader) buildRecord() (bool, error) {
 		rt := recTypeFromHeader(r.hdr[0])
 		if rt == recFirst || rt == recFull {
 			r.rec = r.rec[:0]
-			r.compressBuf = r.compressBuf[:0]
+			r.snappyBuf = r.snappyBuf[:0]
 		}
 
-		isSnappyCompressed := r.hdr[0]&snappyMask == snappyMask
-		isZstdCompressed := r.hdr[0]&zstdMask == zstdMask
-
-		if isSnappyCompressed || isZstdCompressed {
-			r.compressBuf = append(r.compressBuf, temp...)
+		compressed := r.hdr[0]&snappyMask != 0
+		if compressed {
+			r.snappyBuf = append(r.snappyBuf, temp...)
 		} else {
 			r.rec = append(r.rec, temp...)
 		}
@@ -215,17 +207,12 @@ func (r *LiveReader) buildRecord() (bool, error) {
 		}
 		if rt == recLast || rt == recFull {
 			r.index = 0
-			if isSnappyCompressed && len(r.compressBuf) > 0 {
+			if compressed && len(r.snappyBuf) > 0 {
 				// The snappy library uses `len` to calculate if we need a new buffer.
 				// In order to allocate as few buffers as possible make the length
 				// equal to the capacity.
 				r.rec = r.rec[:cap(r.rec)]
-				r.rec, err = snappy.Decode(r.rec, r.compressBuf)
-				if err != nil {
-					return false, err
-				}
-			} else if isZstdCompressed && len(r.compressBuf) > 0 {
-				r.rec, err = r.zstdReader.DecodeAll(r.compressBuf, r.rec[:0])
+				r.rec, err = snappy.Decode(r.rec, r.snappyBuf)
 				if err != nil {
 					return false, err
 				}

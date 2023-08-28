@@ -300,7 +300,7 @@ Outer:
 						unknownRefs.Inc()
 						continue
 					}
-					h.tombstones.AddInterval(s.Ref, itv)
+					h.tombstones.AddInterval(storage.SeriesRef(s.Ref), itv)
 				}
 			}
 			tstonesPool.Put(v)
@@ -383,7 +383,7 @@ Outer:
 			floatHistogramsPool.Put(v)
 		case []record.RefMetadata:
 			for _, m := range v {
-				s := h.series.getByID(m.Ref)
+				s := h.series.getByID(chunks.HeadSeriesRef(m.Ref))
 				if s == nil {
 					unknownMetadataRefs.Inc()
 					continue
@@ -564,11 +564,7 @@ func (wp *walSubsetProcessor) processWALSamples(h *Head, mmappedChunks, oooMmapp
 
 	minValidTime := h.minValidTime.Load()
 	mint, maxt := int64(math.MaxInt64), int64(math.MinInt64)
-	appendChunkOpts := chunkOpts{
-		chunkDiskMapper: h.chunkDiskMapper,
-		chunkRange:      h.chunkRange.Load(),
-		samplesPerChunk: h.opts.SamplesPerChunk,
-	}
+	chunkRange := h.chunkRange.Load()
 
 	for in := range wp.input {
 		if in.existingSeries != nil {
@@ -592,7 +588,7 @@ func (wp *walSubsetProcessor) processWALSamples(h *Head, mmappedChunks, oooMmapp
 			if s.T <= ms.mmMaxTime {
 				continue
 			}
-			if _, chunkCreated := ms.append(s.T, s.V, 0, appendChunkOpts); chunkCreated {
+			if _, chunkCreated := ms.append(s.T, s.V, 0, h.chunkDiskMapper, chunkRange); chunkCreated {
 				h.metrics.chunksCreated.Inc()
 				h.metrics.chunks.Inc()
 			}
@@ -622,9 +618,9 @@ func (wp *walSubsetProcessor) processWALSamples(h *Head, mmappedChunks, oooMmapp
 			}
 			var chunkCreated bool
 			if s.h != nil {
-				_, chunkCreated = ms.appendHistogram(s.t, s.h, 0, appendChunkOpts)
+				_, chunkCreated = ms.appendHistogram(s.t, s.h, 0, h.chunkDiskMapper, chunkRange)
 			} else {
-				_, chunkCreated = ms.appendFloatHistogram(s.t, s.fh, 0, appendChunkOpts)
+				_, chunkCreated = ms.appendFloatHistogram(s.t, s.fh, 0, h.chunkDiskMapper, chunkRange)
 			}
 			if chunkCreated {
 				h.metrics.chunksCreated.Inc()
@@ -943,12 +939,10 @@ const (
 )
 
 type chunkSnapshotRecord struct {
-	ref                     chunks.HeadSeriesRef
-	lset                    labels.Labels
-	mc                      *memChunk
-	lastValue               float64
-	lastHistogramValue      *histogram.Histogram
-	lastFloatHistogramValue *histogram.FloatHistogram
+	ref       chunks.HeadSeriesRef
+	lset      labels.Labels
+	mc        *memChunk
+	lastValue float64
 }
 
 func (s *memSeries) encodeToSnapshotRecord(b []byte) []byte {
@@ -963,27 +957,18 @@ func (s *memSeries) encodeToSnapshotRecord(b []byte) []byte {
 	if s.headChunk == nil {
 		buf.PutUvarint(0)
 	} else {
-		enc := s.headChunk.chunk.Encoding()
 		buf.PutUvarint(1)
 		buf.PutBE64int64(s.headChunk.minTime)
 		buf.PutBE64int64(s.headChunk.maxTime)
-		buf.PutByte(byte(enc))
+		buf.PutByte(byte(s.headChunk.chunk.Encoding()))
 		buf.PutUvarintBytes(s.headChunk.chunk.Bytes())
-
-		switch enc {
-		case chunkenc.EncXOR:
-			// Backwards compatibility for old sampleBuf which had last 4 samples.
-			for i := 0; i < 3; i++ {
-				buf.PutBE64int64(0)
-				buf.PutBEFloat64(0)
-			}
+		// Backwards compatibility for old sampleBuf which had last 4 samples.
+		for i := 0; i < 3; i++ {
 			buf.PutBE64int64(0)
-			buf.PutBEFloat64(s.lastValue)
-		case chunkenc.EncHistogram:
-			record.EncodeHistogram(&buf, s.lastHistogramValue)
-		default: // chunkenc.FloatHistogram.
-			record.EncodeFloatHistogram(&buf, s.lastFloatHistogramValue)
+			buf.PutBEFloat64(0)
 		}
+		buf.PutBE64int64(0)
+		buf.PutBEFloat64(s.lastValue)
 	}
 	s.Unlock()
 
@@ -1023,22 +1008,13 @@ func decodeSeriesFromChunkSnapshot(d *record.Decoder, b []byte) (csr chunkSnapsh
 	}
 	csr.mc.chunk = chk
 
-	switch enc {
-	case chunkenc.EncXOR:
-		// Backwards-compatibility for old sampleBuf which had last 4 samples.
-		for i := 0; i < 3; i++ {
-			_ = dec.Be64int64()
-			_ = dec.Be64Float64()
-		}
+	// Backwards-compatibility for old sampleBuf which had last 4 samples.
+	for i := 0; i < 3; i++ {
 		_ = dec.Be64int64()
-		csr.lastValue = dec.Be64Float64()
-	case chunkenc.EncHistogram:
-		csr.lastHistogramValue = &histogram.Histogram{}
-		record.DecodeHistogram(&dec, csr.lastHistogramValue)
-	default: // chunkenc.FloatHistogram.
-		csr.lastFloatHistogramValue = &histogram.FloatHistogram{}
-		record.DecodeFloatHistogram(&dec, csr.lastFloatHistogramValue)
+		_ = dec.Be64Float64()
 	}
+	_ = dec.Be64int64()
+	csr.lastValue = dec.Be64Float64()
 
 	err = dec.Err()
 	if err != nil && len(dec.B) > 0 {
@@ -1119,7 +1095,7 @@ func (h *Head) ChunkSnapshot() (*ChunkSnapshotStats, error) {
 	if err := os.MkdirAll(cpdirtmp, 0o777); err != nil {
 		return stats, errors.Wrap(err, "create chunk snapshot dir")
 	}
-	cp, err := wlog.New(nil, nil, cpdirtmp, h.wal.CompressionType())
+	cp, err := wlog.New(nil, nil, cpdirtmp, h.wal.CompressionEnabled())
 	if err != nil {
 		return stats, errors.Wrap(err, "open chunk snapshot")
 	}
@@ -1416,8 +1392,6 @@ func (h *Head) loadChunkSnapshot() (int, int, map[chunks.HeadSeriesRef]*memSerie
 				series.nextAt = csr.mc.maxTime // This will create a new chunk on append.
 				series.headChunk = csr.mc
 				series.lastValue = csr.lastValue
-				series.lastHistogramValue = csr.lastHistogramValue
-				series.lastFloatHistogramValue = csr.lastFloatHistogramValue
 
 				app, err := series.headChunk.chunk.Appender()
 				if err != nil {

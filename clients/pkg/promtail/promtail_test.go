@@ -522,7 +522,7 @@ func getPromMetrics(t *testing.T, httpListenAddr net.Addr) ([]byte, string) {
 func parsePromMetrics(t *testing.T, bytes []byte, contentType string, metricName string, label string) map[string]float64 {
 	rb := map[string]float64{}
 
-	pr, err := textparse.New(bytes, contentType, false)
+	pr, err := textparse.New(bytes, contentType)
 	require.NoError(t, err)
 	for {
 		et, err := pr.Next()

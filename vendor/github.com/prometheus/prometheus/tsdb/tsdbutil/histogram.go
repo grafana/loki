@@ -108,13 +108,3 @@ func GenerateTestGaugeFloatHistogram(i int) *histogram.FloatHistogram {
 	h.CounterResetHint = histogram.GaugeType
 	return h
 }
-
-func SetHistogramNotCounterReset(h *histogram.Histogram) *histogram.Histogram {
-	h.CounterResetHint = histogram.NotCounterReset
-	return h
-}
-
-func SetFloatHistogramNotCounterReset(h *histogram.FloatHistogram) *histogram.FloatHistogram {
-	h.CounterResetHint = histogram.NotCounterReset
-	return h
-}

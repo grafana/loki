@@ -15,8 +15,7 @@ package index
 
 import (
 	"math"
-
-	"golang.org/x/exp/slices"
+	"sort"
 )
 
 // Stat holds values for a single cardinality statistic.
@@ -32,10 +31,10 @@ type maxHeap struct {
 	Items     []Stat
 }
 
-func (m *maxHeap) init(length int) {
-	m.maxLength = length
+func (m *maxHeap) init(len int) {
+	m.maxLength = len
 	m.minValue = math.MaxUint64
-	m.Items = make([]Stat, 0, length)
+	m.Items = make([]Stat, 0, len)
 }
 
 func (m *maxHeap) push(item Stat) {
@@ -63,8 +62,8 @@ func (m *maxHeap) push(item Stat) {
 }
 
 func (m *maxHeap) get() []Stat {
-	slices.SortFunc(m.Items, func(a, b Stat) bool {
-		return a.Count > b.Count
+	sort.Slice(m.Items, func(i, j int) bool {
+		return m.Items[i].Count > m.Items[j].Count
 	})
 	return m.Items
 }
