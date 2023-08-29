@@ -60,7 +60,7 @@ func buildTestTableManager(t *testing.T, path string, tableRangeToHandle *config
 	}
 	tblManager, err := NewTableManager(cfg, func(s string) (index.Index, error) {
 		return openMockIndexFile(t, s), nil
-	}, indexStorageClient, nil, *tableRangeToHandle, nil, log.NewNopLogger())
+	}, indexStorageClient, nil, *tableRangeToHandle, nil, log.NewNopLogger(), 50)
 	require.NoError(t, err)
 
 	return tblManager.(*tableManager), func() {

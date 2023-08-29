@@ -96,6 +96,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 		indexSets:          map[string]IndexSet{},
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
+		parallelism:        parallelism,
 	}
 
 	level.Debug(table.logger).Log("msg", fmt.Sprintf("opening locally present files for table %s", name), "files", fmt.Sprint(dirEntries))
