@@ -55,6 +55,8 @@ type Config struct {
 	CacheTTL          time.Duration
 	QueryReadyNumDays int
 	Limits            Limits
+
+	parallelism int
 }
 
 type tableManager struct {
@@ -200,7 +202,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.parallelism)
 			tm.tables[tableName] = table
 		}
 	}
@@ -427,7 +429,7 @@ func (tm *tableManager) loadLocalTables() error {
 		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
 		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
-			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.cfg.parallelism)
 		if err != nil {
 			return err
 		}

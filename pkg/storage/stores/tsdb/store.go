@@ -36,6 +36,8 @@ type store struct {
 	backupIndexWriter index.Writer
 	logger            log.Logger
 	stopOnce          sync.Once
+
+	parallelism int
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -51,6 +53,7 @@ func NewStore(
 	reg prometheus.Registerer,
 	logger log.Logger,
 	idxCache cache.Cache,
+	parallelism int,
 ) (
 	index.ReaderWriter,
 	func(),
@@ -63,6 +66,7 @@ func NewStore(
 	storeInstance := &store{
 		backupIndexWriter: backupIndexWriter,
 		logger:            logger,
+		parallelism:       parallelism,
 	}
 
 	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
@@ -74,7 +78,6 @@ func NewStore(
 
 func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
-
 	var sharedCache cache.Cache
 	if indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil {
 		sharedCache = idxCache
@@ -94,6 +97,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,
+		s.parallelism,
 	)
 
 	if err != nil {
@@ -137,6 +141,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 			indexCfg.ActiveIndexDirectory,
 			tsdbMetrics,
 			tsdbManager,
+			s.parallelism,
 		)
 		if err := headManager.Start(); err != nil {
 			return err
@@ -148,8 +153,8 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
-	multiIndex := NewMultiIndex(IndexSlice(indices))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange, s.parallelism))
+	multiIndex := NewMultiIndex(IndexSlice(indices), s.parallelism)
 
 	s.Reader = NewIndexClient(multiIndex, opts, limits)
 

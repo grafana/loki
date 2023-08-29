@@ -42,6 +42,7 @@ type IndexCompactor interface {
 		existingUserIndexSet map[string]IndexSet,
 		makeEmptyUserIndexSetFunc MakeEmptyUserIndexSetFunc,
 		periodConfig config.PeriodConfig,
+		parallelism int,
 	) TableCompactor
 
 	// OpenCompactedIndexFile opens a compressed index file at given path.
@@ -83,13 +84,15 @@ type table struct {
 	usersWithPerUserIndex []string
 	logger                log.Logger
 
+	parallelism int
+
 	ctx context.Context
 }
 
 func newTable(ctx context.Context, workingDirectory string, indexStorageClient storage.Client,
 	indexCompactor IndexCompactor, periodConfig config.PeriodConfig,
 	tableMarker retention.TableMarker, expirationChecker tableExpirationChecker,
-	uploadConcurrency int,
+	uploadConcurrency, parallelism int,
 ) (*table, error) {
 	err := chunk_util.EnsureDirectory(workingDirectory)
 	if err != nil {
@@ -109,6 +112,7 @@ func newTable(ctx context.Context, workingDirectory string, indexStorageClient s
 		baseUserIndexSet:   storage.NewIndexSet(indexStorageClient, true),
 		baseCommonIndexSet: storage.NewIndexSet(indexStorageClient, false),
 		uploadConcurrency:  uploadConcurrency,
+		parallelism:        parallelism,
 	}
 	table.logger = log.With(util_log.Logger, "table-name", table.name)
 
@@ -167,7 +171,7 @@ func (t *table) compact(applyRetention bool) error {
 		var err error
 		t.indexSets[userID], err = newUserIndexSet(t.ctx, t.name, userID, t.baseUserIndexSet, filepath.Join(t.workingDirectory, userID), t.logger)
 		return t.indexSets[userID], err
-	}, t.periodConfig)
+	}, t.periodConfig, t.parallelism)
 
 	err = tableCompactor.CompactTable()
 	if err != nil {

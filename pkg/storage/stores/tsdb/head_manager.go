@@ -111,7 +111,7 @@ type HeadManager struct {
 	cancel chan struct{}
 }
 
-func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager) *HeadManager {
+func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics, tsdbManager TSDBManager, parallelism int) *HeadManager {
 	shards := defaultHeadManagerStripeSize
 	m := &HeadManager{
 		name:        name,
@@ -138,7 +138,7 @@ func NewHeadManager(name string, logger log.Logger, dir string, metrics *Metrics
 			indices = append(indices, m.activeHeads)
 		}
 
-		return NewMultiIndex(IndexSlice(indices)), nil
+		return NewMultiIndex(IndexSlice(indices), parallelism), nil
 	})
 
 	return m

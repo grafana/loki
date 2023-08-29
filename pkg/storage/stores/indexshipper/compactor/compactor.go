@@ -89,8 +89,11 @@ type Config struct {
 	UploadParallelism         int             `yaml:"upload_parallelism"`
 	CompactorRing             util.RingConfig `yaml:"compactor_ring,omitempty" doc:"description=The hash ring configuration used by compactors to elect a single instance for running compactions. The CLI flags prefix for this block config is: compactor.ring"`
 	RunOnce                   bool            `yaml:"_" doc:"hidden"`
-	TablesToCompact           int             `yaml:"tables_to_compact"`
-	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
+
+	TableOperationsParallelism int `yaml:"-" doc:"hidden"`
+
+	TablesToCompact   int `yaml:"tables_to_compact"`
+	SkipLatestNTables int `yaml:"skip_latest_n_tables"`
 
 	// Deprecated
 	DeletionMode string `yaml:"deletion_mode" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
@@ -584,7 +587,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
-		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism, c.cfg.TableOperationsParallelism)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err

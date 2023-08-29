@@ -25,15 +25,17 @@ type indexShipperQuerier struct {
 	shipper     indexShipperIterator
 	chunkFilter chunk.RequestChunkFilterer
 	tableRange  config.TableRange
+
+	parallelism int
 }
 
-func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange) Index {
-	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange}
+func newIndexShipperQuerier(shipper indexShipperIterator, tableRange config.TableRange, parallelism int) Index {
+	return &indexShipperQuerier{shipper: shipper, tableRange: tableRange, parallelism: parallelism}
 }
 
 type indexIterFunc func(func(context.Context, Index) error) error
 
-func (i indexIterFunc) For(_ context.Context, f func(context.Context, Index) error) error {
+func (i indexIterFunc) For(_ context.Context, _ int, f func(context.Context, Index) error) error {
 	return i(f)
 }
 
@@ -59,7 +61,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 		return nil
 	})
 
-	idx := NewMultiIndex(itr)
+	idx := NewMultiIndex(itr, i.parallelism)
 
 	if i.chunkFilter != nil {
 		idx.SetChunkFilterer(i.chunkFilter)

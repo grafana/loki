@@ -136,6 +136,8 @@ type indexShipper struct {
 
 	logger   log.Logger
 	stopOnce sync.Once
+
+	parallelism int
 }
 
 // NewIndexShipper creates a shipper for providing index store functionality using index files and object storage.
@@ -145,7 +147,7 @@ type indexShipper struct {
 // it accepts ranges of table numbers(config.TableRanges) to be managed by the shipper.
 // This is mostly useful on the read path to sync and manage specific index tables within the given table number ranges.
 func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (IndexShipper, error) {
+	tenantFilter downloads.TenantFilter, open index.OpenIndexFileFunc, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger, parallelism int) (IndexShipper, error) {
 	switch cfg.Mode {
 	case ModeReadOnly, ModeWriteOnly, ModeReadWrite:
 	default:
@@ -155,6 +157,7 @@ func NewIndexShipper(cfg Config, storageClient client.ObjectClient, limits downl
 		cfg:               cfg,
 		openIndexFileFunc: open,
 		logger:            logger,
+		parallelism:       parallelism,
 	}
 
 	err := shipper.init(storageClient, limits, tenantFilter, tableRangeToHandle, reg)
@@ -226,7 +229,7 @@ func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, ca
 func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(100)
+	g.SetLimit(s.parallelism)
 
 	if s.downloadsManager != nil {
 		g.Go(func() error {

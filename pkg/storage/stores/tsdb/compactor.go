@@ -31,8 +31,8 @@ func NewIndexCompactor() compactor.IndexCompactor {
 	return indexProcessor{}
 }
 
-func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig) compactor.TableCompactor {
-	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig)
+func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig, parallelism int) compactor.TableCompactor {
+	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig, parallelism)
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
@@ -72,6 +72,8 @@ type tableCompactor struct {
 	ctx                     context.Context
 	periodConfig            config.PeriodConfig
 	compactedIndexes        map[string]compactor.CompactedIndex
+
+	parallelism int
 }
 
 func newTableCompactor(
@@ -80,6 +82,7 @@ func newTableCompactor(
 	existingUserIndexSet map[string]compactor.IndexSet,
 	userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc,
 	periodConfig config.PeriodConfig,
+	parallelism int,
 ) *tableCompactor {
 	return &tableCompactor{
 		ctx:                     ctx,
@@ -87,6 +90,7 @@ func newTableCompactor(
 		existingUserIndexSet:    existingUserIndexSet,
 		userIndexSetFactoryFunc: userIndexSetFactoryFunc,
 		periodConfig:            periodConfig,
+		parallelism:             parallelism,
 	}
 }
 
@@ -132,7 +136,7 @@ func (t *tableCompactor) CompactTable() error {
 
 	var multiTenantIndex Index = NoopIndex{}
 	if len(multiTenantIndices) > 0 {
-		multiTenantIndex = NewMultiIndex(IndexSlice(multiTenantIndices))
+		multiTenantIndex = NewMultiIndex(IndexSlice(multiTenantIndices), t.parallelism)
 	}
 
 	// find all the user ids from the multi-tenant indexes using TenantLabel.

@@ -23,7 +23,7 @@ func buildTestIndexSet(t *testing.T, userID, path string) (*indexSet, stopFunc) 
 	idxSet, err := NewIndexSet(tableName, userID, filepath.Join(cachePath, tableName, userID), baseIndexSet,
 		func(path string) (index.Index, error) {
 			return openMockIndexFile(t, path), nil
-		}, util_log.Logger)
+		}, util_log.Logger, 50)
 	require.NoError(t, err)
 
 	require.NoError(t, idxSet.Init(false))

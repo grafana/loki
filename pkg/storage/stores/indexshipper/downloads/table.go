@@ -50,11 +50,13 @@ type table struct {
 	logger       log.Logger
 	indexSets    map[string]IndexSet
 	indexSetsMtx sync.RWMutex
+
+	parallelism int
 }
 
 // NewTable just creates an instance of table without trying to load files from local storage or object store.
 // It is used for initializing table at query time.
-func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) Table {
+func NewTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, parallelism int) Table {
 	table := table{
 		name:               name,
 		cacheLocation:      cacheLocation,
@@ -65,6 +67,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
 		indexSets:          map[string]IndexSet{},
+		parallelism:        parallelism,
 	}
 
 	return &table
@@ -72,7 +75,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 
 // LoadTable loads a table from local storage(syncs the table too if we have it locally) or downloads it from the shared store.
 // It is used for loading and initializing table at startup. It would initialize index sets which already had files locally.
-func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics) (Table, error) {
+func LoadTable(name, cacheLocation string, storageClient storage.Client, openIndexFileFunc index.OpenIndexFileFunc, metrics *metrics, parallelism int) (Table, error) {
 	err := util.EnsureDirectory(cacheLocation)
 	if err != nil {
 		return nil, err
@@ -105,7 +108,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 
 		userID := entry.Name()
 		userIndexSet, err := NewIndexSet(name, userID, filepath.Join(cacheLocation, userID),
-			table.baseUserIndexSet, openIndexFileFunc, loggerWithUserID(table.logger, userID))
+			table.baseUserIndexSet, openIndexFileFunc, loggerWithUserID(table.logger, userID), parallelism)
 		if err != nil {
 			return nil, err
 		}
@@ -119,7 +122,7 @@ func LoadTable(name, cacheLocation string, storageClient storage.Client, openInd
 	}
 
 	commonIndexSet, err := NewIndexSet(name, "", cacheLocation, table.baseCommonIndexSet,
-		openIndexFileFunc, table.logger)
+		openIndexFileFunc, table.logger, parallelism)
 	if err != nil {
 		return nil, err
 	}
@@ -148,7 +151,7 @@ func (t *table) Close() {
 
 func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(100)
+	g.SetLimit(t.parallelism)
 
 	// iterate through both user and common index
 	users := []string{userID, ""}
@@ -302,7 +305,7 @@ func (t *table) getOrCreateIndexSet(ctx context.Context, id string, forQuerying 
 
 	// instantiate the index set, add it to the map
 	indexSet, err = NewIndexSet(t.name, id, filepath.Join(t.cacheLocation, id), baseIndexSet, t.openIndexFileFunc,
-		loggerWithUserID(t.logger, id))
+		loggerWithUserID(t.logger, id), t.parallelism)
 	if err != nil {
 		return nil, err
 	}
