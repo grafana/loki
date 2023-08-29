@@ -1165,9 +1165,6 @@ wal_cleaner:
   # CLI flag: -ruler.wal-cleaner.min-age
   [min_age: <duration> | default = 12h]
 
-  # Deprecated: CLI flag -ruler.wal-cleaer.period.
-  # Use -ruler.wal-cleaner.period instead.
-  # 
   # How often to run the WAL cleaner. 0 = disabled.
   # CLI flag: -ruler.wal-cleaner.period
   [period: <duration> | default = 0s]
