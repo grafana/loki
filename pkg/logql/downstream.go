@@ -204,7 +204,7 @@ type Downstreamer interface {
 // DownstreamEvaluator is an evaluator which handles shard aware AST nodes
 type DownstreamEvaluator struct {
 	Downstreamer
-	defaultEvaluator Evaluator
+	defaultEvaluator EvaluatorFactory
 }
 
 // Downstream runs queries and collects stats from the embedded Downstreamer
@@ -253,10 +253,10 @@ func NewDownstreamEvaluator(downstreamer Downstreamer) *DownstreamEvaluator {
 	}
 }
 
-// StepEvaluator returns a StepEvaluator for a given SampleExpr
-func (ev *DownstreamEvaluator) StepEvaluator(
+// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr
+func (ev *DownstreamEvaluator) NewStepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator,
+	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
 ) (StepEvaluator, error) {
@@ -276,7 +276,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return ResultStepEvaluator(results[0], params)
+		return NewResultStepEvaluator(results[0], params)
 
 	case *ConcatSampleExpr:
 		cur := e
@@ -300,7 +300,7 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 
 		xs := make([]StepEvaluator, 0, len(queries))
 		for i, res := range results {
-			stepper, err := ResultStepEvaluator(res, params)
+			stepper, err := NewResultStepEvaluator(res, params)
 			if err != nil {
 				level.Warn(util_log.Logger).Log(
 					"msg", "could not extract StepEvaluator",
@@ -312,15 +312,15 @@ func (ev *DownstreamEvaluator) StepEvaluator(
 			xs = append(xs, stepper)
 		}
 
-		return ConcatEvaluator(xs)
+		return NewConcatStepEvaluator(xs)
 
 	default:
-		return ev.defaultEvaluator.StepEvaluator(ctx, nextEv, e, params)
+		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
 	}
 }
 
-// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
-func (ev *DownstreamEvaluator) Iterator(
+// NewIterator returns the iter.EntryIterator for a given LogSelectorExpr
+func (ev *DownstreamEvaluator) NewIterator(
 	ctx context.Context,
 	expr syntax.LogSelectorExpr,
 	params Params,
@@ -382,9 +382,9 @@ func (ev *DownstreamEvaluator) Iterator(
 	}
 }
 
-// ConcatEvaluator joins multiple StepEvaluators.
+// NewConcatStepEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
-func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
+func NewConcatStepEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	return newStepEvaluator(
 		func() (ok bool, ts int64, vec promql.Vector) {
 			var cur promql.Vector
@@ -421,8 +421,8 @@ func ConcatEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
 	)
 }
 
-// ResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func ResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
+// NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
+func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (
 		start = params.Start()
 		end   = params.End()
