@@ -695,7 +695,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary', 'fluent-bit']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'fluent-bit', 'loki-canary-boringcrypto']) {
     trigger+: onTagOrMain,
   },
   manifest_operator('loki-operator') {

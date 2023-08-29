@@ -1427,6 +1427,19 @@ steps:
     target: fluent-bit
     username:
       from_secret: docker_username
+- depends_on:
+  - clone
+  - manifest-fluent-bit
+  image: plugins/manifest:1.4.0
+  name: manifest-loki-canary-boringcrypto
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: loki-canary-boringcrypto
+    username:
+      from_secret: docker_username
 trigger:
   event:
   - push
@@ -2001,8 +2014,3 @@ get:
   path: infra/data/ci/packages-publish/gpg
 kind: secret
 name: gpg_private_key
----
-kind: signature
-hmac: fb384b17b46ac77869765efc735c4d389ba33e37d5c584ec93da7b4c6b0387da
-
-...
