@@ -84,7 +84,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		hammingWeightRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_hamming_weight_ratio",
 			Help:    "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",
-			Buckets: prometheus.ExponentialBucketsRange(0.0001, 1, 10),
+			Buckets: prometheus.ExponentialBucketsRange(0.001, 1, 12),
 		}),
 		estimatedCount: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_estimated_count",
@@ -104,7 +104,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		chunksPerSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_chunks_per_series",
 			Help:    "Number of chunks per series",
-			Buckets: prometheus.ExponentialBucketsRange(1, 100e3, 10),
+			Buckets: prometheus.ExponentialBucketsRange(1, 1000, 10),
 		}),
 	}
 }

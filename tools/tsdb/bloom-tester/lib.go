@@ -65,7 +65,7 @@ func execute() {
 	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
 	helpers.ExitErr("resolving tenants", err)
 
-	sampler, err := NewProbabilisticSampler(0.001)
+	sampler, err := NewProbabilisticSampler(0.002)
 	helpers.ExitErr("creating sampler", err)
 
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
@@ -81,7 +81,7 @@ func execute() {
 }
 
 func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
-	tokenizer := newNGramTokenizer(5, 6)
+	tokenizer := newNGramTokenizer(3, 4, 1)
 	metrics.tenants.Add(float64(len(tenants)))
 
 	var n int         // count iterated series
@@ -122,7 +122,7 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								metrics.chunksKept.Add(float64(len(chks)))
 								metrics.chunksPerSeries.Observe(float64(len(chks)))
 
-								sbf := boom.NewScalableBloomFilter(1000, 0.01, 0.8)
+								sbf := boom.NewScalableBloomFilter(2048, 0.05, 0.8)
 
 								transformed := make([]chunk.Chunk, 0, len(chks))
 								for _, chk := range chks {
@@ -198,9 +198,9 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								n += len(got)
 
 								metrics.bloomSize.Observe(float64(sbf.Capacity() / 8))
-								metrics.hammingWeightRatio.Observe(sbf.FillRatio())
-								// TODO: fillratio is implemented linearly, find a better way to estimate that isn't O(n)
-								metrics.estimatedCount.Observe(float64(estimatedCount(sbf.Capacity(), sbf.FillRatio(), sbf.K())))
+								fillRatio := sbf.FillRatio()
+								metrics.hammingWeightRatio.Observe(fillRatio)
+								metrics.estimatedCount.Observe(float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())))
 							},
 						)
 
@@ -252,14 +252,15 @@ func newLogfmtTokenizer() *logfmtTokenizer {
 
 type ngramTokenizer struct {
 	// [min,max) exclusivity
-	min, max int
-	buffers  [][]rune // circular buffers used for ngram generation
+	min, max, skip int
+	buffers        [][]rune // circular buffers used for ngram generation
 }
 
-func newNGramTokenizer(min, max int) *ngramTokenizer {
+func newNGramTokenizer(min, max, skip int) *ngramTokenizer {
 	t := &ngramTokenizer{
-		min: min,
-		max: max,
+		min:  min,
+		max:  max,
+		skip: skip,
 	}
 	for i := t.min; i < t.max; i++ {
 		t.buffers = append(t.buffers, make([]rune, i))
@@ -270,7 +271,9 @@ func newNGramTokenizer(min, max int) *ngramTokenizer {
 }
 
 func (t *ngramTokenizer) Tokens(line string) (res []Token) {
-	for i, r := range line {
+	var i int // rune index (not position that is measured in the range loop)
+	for _, r := range line {
+
 		// j is the index of the buffer to use
 		for j := 0; j < (t.max - t.min); j++ {
 			// n is the length of the ngram
@@ -279,11 +282,12 @@ func (t *ngramTokenizer) Tokens(line string) (res []Token) {
 			pos := i % n
 			t.buffers[j][pos] = r
 
-			if i >= n-1 {
+			if i >= n-1 && (i+1-n)%(t.skip+1) == 0 {
 				ngram := reassemble(t.buffers[j], (i+1)%n)
 				res = append(res, Token{Key: string(ngram), Value: ""})
 			}
 		}
+		i++
 	}
 	return
 }
@@ -297,6 +301,7 @@ func reassemble(buf []rune, pos int) []byte {
 	return res
 }
 
-func estimatedCount(m uint, hammingRatio float64, k uint) int {
-	return int(-float64(m) * math.Log(1-hammingRatio) / float64(k))
+// n ≈ −m ln(1 − p).
+func estimatedCount(m uint, p float64) uint {
+	return uint(-float64(m) * math.Log(1-p))
 }
