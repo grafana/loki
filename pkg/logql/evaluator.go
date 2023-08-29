@@ -251,203 +251,224 @@ func newVectorAggEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	lb := labels.NewBuilder(nil)
-	buf := make([]byte, 0, 1024)
 	sort.Strings(expr.Grouping.Groups)
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		next, ts, vec := nextEvaluator.Next()
 
-		if !next {
-			return false, 0, promql.Vector{}
-		}
-		result := map[uint64]*groupedAggregation{}
-		if expr.Operation == syntax.OpTypeTopK || expr.Operation == syntax.OpTypeBottomK {
-			if expr.Params < 1 {
-				return next, ts, promql.Vector{}
-			}
-		}
-		for _, s := range vec {
-			metric := s.Metric
+	return &vectorAggEvaluator{
+		nextEvaluator: nextEvaluator,
+		expr:          expr,
+		buf:           make([]byte, 0, 1024),
+		lb:            labels.NewBuilder(nil),
+	}, nil
+}
 
-			var groupingKey uint64
-			if expr.Grouping.Without {
-				groupingKey, buf = metric.HashWithoutLabels(buf, expr.Grouping.Groups...)
+type vectorAggEvaluator struct {
+	nextEvaluator StepEvaluator
+	expr          *syntax.VectorAggregationExpr
+	buf           []byte
+	lb            *labels.Builder
+}
+
+func (e *vectorAggEvaluator) Next() (bool, int64, promql.Vector) {
+	next, ts, vec := e.nextEvaluator.Next()
+
+	if !next {
+		return false, 0, promql.Vector{}
+	}
+	result := map[uint64]*groupedAggregation{}
+	if e.expr.Operation == syntax.OpTypeTopK || e.expr.Operation == syntax.OpTypeBottomK {
+		if e.expr.Params < 1 {
+			return next, ts, promql.Vector{}
+		}
+	}
+	for _, s := range vec {
+		metric := s.Metric
+
+		var groupingKey uint64
+		if e.expr.Grouping.Without {
+			groupingKey, e.buf = metric.HashWithoutLabels(e.buf, e.expr.Grouping.Groups...)
+		} else {
+			groupingKey, e.buf = metric.HashForLabels(e.buf, e.expr.Grouping.Groups...)
+		}
+		group, ok := result[groupingKey]
+		// Add a new group if it doesn't exist.
+		if !ok {
+			var m labels.Labels
+
+			if e.expr.Grouping.Without {
+				e.lb.Reset(metric)
+				e.lb.Del(e.expr.Grouping.Groups...)
+				e.lb.Del(labels.MetricName)
+				m = e.lb.Labels()
 			} else {
-				groupingKey, buf = metric.HashForLabels(buf, expr.Grouping.Groups...)
-			}
-			group, ok := result[groupingKey]
-			// Add a new group if it doesn't exist.
-			if !ok {
-				var m labels.Labels
-
-				if expr.Grouping.Without {
-					lb.Reset(metric)
-					lb.Del(expr.Grouping.Groups...)
-					lb.Del(labels.MetricName)
-					m = lb.Labels()
-				} else {
-					m = make(labels.Labels, 0, len(expr.Grouping.Groups))
-					for _, l := range metric {
-						for _, n := range expr.Grouping.Groups {
-							if l.Name == n {
-								m = append(m, l)
-								break
-							}
+				m = make(labels.Labels, 0, len(e.expr.Grouping.Groups))
+				for _, l := range metric {
+					for _, n := range e.expr.Grouping.Groups {
+						if l.Name == n {
+							m = append(m, l)
+							break
 						}
 					}
-					sort.Sort(m)
 				}
-				result[groupingKey] = &groupedAggregation{
-					labels:     m,
-					value:      s.F,
-					mean:       s.F,
-					groupCount: 1,
-				}
-
-				inputVecLen := len(vec)
-				resultSize := expr.Params
-				if expr.Params > inputVecLen {
-					resultSize = inputVecLen
-				}
-				if expr.Operation == syntax.OpTypeStdvar || expr.Operation == syntax.OpTypeStddev {
-					result[groupingKey].value = 0.0
-				} else if expr.Operation == syntax.OpTypeTopK {
-					result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
-					heap.Push(&result[groupingKey].heap, &promql.Sample{
-						F:      s.F,
-						Metric: s.Metric,
-					})
-				} else if expr.Operation == syntax.OpTypeBottomK {
-					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
-					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
-						F:      s.F,
-						Metric: s.Metric,
-					})
-				} else if expr.Operation == syntax.OpTypeSortDesc {
-					result[groupingKey].heap = make(vectorByValueHeap, 0)
-					heap.Push(&result[groupingKey].heap, &promql.Sample{
-						F:      s.F,
-						Metric: s.Metric,
-					})
-				} else if expr.Operation == syntax.OpTypeSort {
-					result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
-					heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
-						F:      s.F,
-						Metric: s.Metric,
-					})
-				}
-				continue
+				sort.Sort(m)
 			}
-			switch expr.Operation {
-			case syntax.OpTypeSum:
-				group.value += s.F
+			result[groupingKey] = &groupedAggregation{
+				labels:     m,
+				value:      s.F,
+				mean:       s.F,
+				groupCount: 1,
+			}
 
-			case syntax.OpTypeAvg:
-				group.groupCount++
-				group.mean += (s.F - group.mean) / float64(group.groupCount)
+			inputVecLen := len(vec)
+			resultSize := e.expr.Params
+			if e.expr.Params > inputVecLen {
+				resultSize = inputVecLen
+			}
+			if e.expr.Operation == syntax.OpTypeStdvar || e.expr.Operation == syntax.OpTypeStddev {
+				result[groupingKey].value = 0.0
+			} else if e.expr.Operation == syntax.OpTypeTopK {
+				result[groupingKey].heap = make(vectorByValueHeap, 0, resultSize)
+				heap.Push(&result[groupingKey].heap, &promql.Sample{
+					F:      s.F,
+					Metric: s.Metric,
+				})
+			} else if e.expr.Operation == syntax.OpTypeBottomK {
+				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0, resultSize)
+				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
+					F:      s.F,
+					Metric: s.Metric,
+				})
+			} else if e.expr.Operation == syntax.OpTypeSortDesc {
+				result[groupingKey].heap = make(vectorByValueHeap, 0)
+				heap.Push(&result[groupingKey].heap, &promql.Sample{
+					F:      s.F,
+					Metric: s.Metric,
+				})
+			} else if e.expr.Operation == syntax.OpTypeSort {
+				result[groupingKey].reverseHeap = make(vectorByReverseValueHeap, 0)
+				heap.Push(&result[groupingKey].reverseHeap, &promql.Sample{
+					F:      s.F,
+					Metric: s.Metric,
+				})
+			}
+			continue
+		}
+		switch e.expr.Operation {
+		case syntax.OpTypeSum:
+			group.value += s.F
 
-			case syntax.OpTypeMax:
-				if group.value < s.F || math.IsNaN(group.value) {
-					group.value = s.F
+		case syntax.OpTypeAvg:
+			group.groupCount++
+			group.mean += (s.F - group.mean) / float64(group.groupCount)
+
+		case syntax.OpTypeMax:
+			if group.value < s.F || math.IsNaN(group.value) {
+				group.value = s.F
+			}
+
+		case syntax.OpTypeMin:
+			if group.value > s.F || math.IsNaN(group.value) {
+				group.value = s.F
+			}
+
+		case syntax.OpTypeCount:
+			group.groupCount++
+
+		case syntax.OpTypeStddev, syntax.OpTypeStdvar:
+			group.groupCount++
+			delta := s.F - group.mean
+			group.mean += delta / float64(group.groupCount)
+			group.value += delta * (s.F - group.mean)
+
+		case syntax.OpTypeTopK:
+			if len(group.heap) < e.expr.Params || group.heap[0].F < s.F || math.IsNaN(group.heap[0].F) {
+				if len(group.heap) == e.expr.Params {
+					heap.Pop(&group.heap)
 				}
-
-			case syntax.OpTypeMin:
-				if group.value > s.F || math.IsNaN(group.value) {
-					group.value = s.F
-				}
-
-			case syntax.OpTypeCount:
-				group.groupCount++
-
-			case syntax.OpTypeStddev, syntax.OpTypeStdvar:
-				group.groupCount++
-				delta := s.F - group.mean
-				group.mean += delta / float64(group.groupCount)
-				group.value += delta * (s.F - group.mean)
-
-			case syntax.OpTypeTopK:
-				if len(group.heap) < expr.Params || group.heap[0].F < s.F || math.IsNaN(group.heap[0].F) {
-					if len(group.heap) == expr.Params {
-						heap.Pop(&group.heap)
-					}
-					heap.Push(&group.heap, &promql.Sample{
-						F:      s.F,
-						Metric: s.Metric,
-					})
-				}
-
-			case syntax.OpTypeBottomK:
-				if len(group.reverseHeap) < expr.Params || group.reverseHeap[0].F > s.F || math.IsNaN(group.reverseHeap[0].F) {
-					if len(group.reverseHeap) == expr.Params {
-						heap.Pop(&group.reverseHeap)
-					}
-					heap.Push(&group.reverseHeap, &promql.Sample{
-						F:      s.F,
-						Metric: s.Metric,
-					})
-				}
-			case syntax.OpTypeSortDesc:
 				heap.Push(&group.heap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			case syntax.OpTypeSort:
+			}
+
+		case syntax.OpTypeBottomK:
+			if len(group.reverseHeap) < e.expr.Params || group.reverseHeap[0].F > s.F || math.IsNaN(group.reverseHeap[0].F) {
+				if len(group.reverseHeap) == e.expr.Params {
+					heap.Pop(&group.reverseHeap)
+				}
 				heap.Push(&group.reverseHeap, &promql.Sample{
 					F:      s.F,
 					Metric: s.Metric,
 				})
-			default:
-				panic(errors.Errorf("expected aggregation operator but got %q", expr.Operation))
 			}
-		}
-		vec = vec[:0]
-		for _, aggr := range result {
-			switch expr.Operation {
-			case syntax.OpTypeAvg:
-				aggr.value = aggr.mean
-
-			case syntax.OpTypeCount:
-				aggr.value = float64(aggr.groupCount)
-
-			case syntax.OpTypeStddev:
-				aggr.value = math.Sqrt(aggr.value / float64(aggr.groupCount))
-
-			case syntax.OpTypeStdvar:
-				aggr.value = aggr.value / float64(aggr.groupCount)
-
-			case syntax.OpTypeTopK, syntax.OpTypeSortDesc:
-				// The heap keeps the lowest value on top, so reverse it.
-				sort.Sort(sort.Reverse(aggr.heap))
-				for _, v := range aggr.heap {
-					vec = append(vec, promql.Sample{
-						Metric: v.Metric,
-						T:      ts,
-						F:      v.F,
-					})
-				}
-				continue // Bypass default append.
-
-			case syntax.OpTypeBottomK, syntax.OpTypeSort:
-				// The heap keeps the lowest value on top, so reverse it.
-				sort.Sort(sort.Reverse(aggr.reverseHeap))
-				for _, v := range aggr.reverseHeap {
-					vec = append(vec, promql.Sample{
-						Metric: v.Metric,
-						T:      ts,
-						F:      v.F,
-					})
-				}
-				continue // Bypass default append.
-			default:
-			}
-			vec = append(vec, promql.Sample{
-				Metric: aggr.labels,
-				T:      ts,
-				F:      aggr.value,
+		case syntax.OpTypeSortDesc:
+			heap.Push(&group.heap, &promql.Sample{
+				F:      s.F,
+				Metric: s.Metric,
 			})
+		case syntax.OpTypeSort:
+			heap.Push(&group.reverseHeap, &promql.Sample{
+				F:      s.F,
+				Metric: s.Metric,
+			})
+		default:
+			panic(errors.Errorf("expected aggregation operator but got %q", e.expr.Operation))
 		}
-		return next, ts, vec
-	}, nextEvaluator.Close, nextEvaluator.Error)
+	}
+	vec = vec[:0]
+	for _, aggr := range result {
+		switch e.expr.Operation {
+		case syntax.OpTypeAvg:
+			aggr.value = aggr.mean
+
+		case syntax.OpTypeCount:
+			aggr.value = float64(aggr.groupCount)
+
+		case syntax.OpTypeStddev:
+			aggr.value = math.Sqrt(aggr.value / float64(aggr.groupCount))
+
+		case syntax.OpTypeStdvar:
+			aggr.value = aggr.value / float64(aggr.groupCount)
+
+		case syntax.OpTypeTopK, syntax.OpTypeSortDesc:
+			// The heap keeps the lowest value on top, so reverse it.
+			sort.Sort(sort.Reverse(aggr.heap))
+			for _, v := range aggr.heap {
+				vec = append(vec, promql.Sample{
+					Metric: v.Metric,
+					T:      ts,
+					F:      v.F,
+				})
+			}
+			continue // Bypass default append.
+
+		case syntax.OpTypeBottomK, syntax.OpTypeSort:
+			// The heap keeps the lowest value on top, so reverse it.
+			sort.Sort(sort.Reverse(aggr.reverseHeap))
+			for _, v := range aggr.reverseHeap {
+				vec = append(vec, promql.Sample{
+					Metric: v.Metric,
+					T:      ts,
+					F:      v.F,
+				})
+			}
+			continue // Bypass default append.
+		default:
+		}
+		vec = append(vec, promql.Sample{
+			Metric: aggr.labels,
+			T:      ts,
+			F:      aggr.value,
+		})
+	}
+	return next, ts, vec
+}
+
+func (e *vectorAggEvaluator) Close() error {
+	return e.nextEvaluator.Close()
+}
+
+func (e *vectorAggEvaluator) Error() error {
+	return e.nextEvaluator.Error()
 }
 
 func newRangeAggEvaluator(
@@ -622,75 +643,88 @@ func newBinOpStepEvaluator(
 		return nil, err
 	}
 
-	// keep a scoped reference to err as it's referenced in the Error()
-	// implementation of this StepEvaluator
-	var scopedErr error
+	return &binOpStepEvaluator{
+		rse:  rse,
+		lse:  lse,
+		expr: expr,
+	}, nil
+}
 
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		var (
-			ts       int64
-			next     bool
-			lhs, rhs promql.Vector
-		)
-		next, ts, rhs = rse.Next()
-		// These should _always_ happen at the same step on each evaluator.
-		if !next {
-			return next, ts, nil
-		}
-		// build matching signature for each sample in right vector
-		rsigs := make([]uint64, len(rhs))
-		for i, sample := range rhs {
-			rsigs[i] = matchingSignature(sample, expr.Opts)
-		}
+type binOpStepEvaluator struct {
+	rse     StepEvaluator
+	lse     StepEvaluator
+	expr    *syntax.BinOpExpr
+	lastErr error
+}
 
-		next, ts, lhs = lse.Next()
-		if !next {
-			return next, ts, nil
-		}
-		// build matching signature for each sample in left vector
-		lsigs := make([]uint64, len(lhs))
-		for i, sample := range lhs {
-			lsigs[i] = matchingSignature(sample, expr.Opts)
-		}
+func (e *binOpStepEvaluator) Next() (bool, int64, promql.Vector) {
+	var (
+		ts       int64
+		next     bool
+		lhs, rhs promql.Vector
+	)
+	next, ts, rhs = e.rse.Next()
+	// These should _always_ happen at the same step on each evaluator.
+	if !next {
+		return next, ts, nil
+	}
+	// build matching signature for each sample in right vector
+	rsigs := make([]uint64, len(rhs))
+	for i, sample := range rhs {
+		rsigs[i] = matchingSignature(sample, e.expr.Opts)
+	}
 
-		var results promql.Vector
-		switch expr.Op {
-		case syntax.OpTypeAnd:
-			results = vectorAnd(lhs, rhs, lsigs, rsigs)
-		case syntax.OpTypeOr:
-			results = vectorOr(lhs, rhs, lsigs, rsigs)
-		case syntax.OpTypeUnless:
-			results = vectorUnless(lhs, rhs, lsigs, rsigs)
-		default:
-			results, scopedErr = vectorBinop(expr.Op, expr.Opts, lhs, rhs, lsigs, rsigs)
+	next, ts, lhs = e.lse.Next()
+	if !next {
+		return next, ts, nil
+	}
+	// build matching signature for each sample in left vector
+	lsigs := make([]uint64, len(lhs))
+	for i, sample := range lhs {
+		lsigs[i] = matchingSignature(sample, e.expr.Opts)
+	}
+
+	var results promql.Vector
+	switch e.expr.Op {
+	case syntax.OpTypeAnd:
+		results = vectorAnd(lhs, rhs, lsigs, rsigs)
+	case syntax.OpTypeOr:
+		results = vectorOr(lhs, rhs, lsigs, rsigs)
+	case syntax.OpTypeUnless:
+		results = vectorUnless(lhs, rhs, lsigs, rsigs)
+	default:
+		results, e.lastErr = vectorBinop(e.expr.Op, e.expr.Opts, lhs, rhs, lsigs, rsigs)
+	}
+	return true, ts, results
+}
+
+func (e *binOpStepEvaluator) Close() (lastError error) {
+	for _, ev := range []StepEvaluator{e.lse, e.rse} {
+		if err := ev.Close(); err != nil {
+			lastError = err
 		}
-		return true, ts, results
-	}, func() (lastError error) {
-		for _, ev := range []StepEvaluator{lse, rse} {
-			if err := ev.Close(); err != nil {
-				lastError = err
-			}
+	}
+	return lastError
+}
+
+func (e *binOpStepEvaluator) Error() error {
+	var errs []error
+	if e.lastErr != nil {
+		errs = append(errs, e.lastErr)
+	}
+	for _, ev := range []StepEvaluator{e.lse, e.rse} {
+		if err := ev.Error(); err != nil {
+			errs = append(errs, err)
 		}
-		return lastError
-	}, func() error {
-		var errs []error
-		if scopedErr != nil {
-			errs = append(errs, scopedErr)
-		}
-		for _, ev := range []StepEvaluator{lse, rse} {
-			if err := ev.Error(); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		switch len(errs) {
-		case 0:
-			return nil
-		case 1:
-			return errs[0]
-		default:
-			return util.MultiError(errs)
-		}
-	})
+	}
+	switch len(errs) {
+	case 0:
+		return nil
+	case 1:
+		return errs[0]
+	default:
+		return util.MultiError(errs)
+	}
 }
 
 func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {
@@ -882,7 +916,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 func newLiteralStepEvaluator(
 	op string,
 	lit *syntax.LiteralExpr,
-	eval StepEvaluator,
+	nextEv StepEvaluator,
 	inverted bool,
 	returnBool bool,
 ) (StepEvaluator, error) {
@@ -890,50 +924,68 @@ func newLiteralStepEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	var mergeErr error
 
-	return newStepEvaluator(
-		func() (bool, int64, promql.Vector) {
-			ok, ts, vec := eval.Next()
-			results := make(promql.Vector, 0, len(vec))
-			for _, sample := range vec {
+	return &literalStepEvaluator{
+		nextEv:     nextEv,
+		val:        val,
+		inverted:   inverted,
+		op:         op,
+		returnBool: returnBool,
+	}, nil
+}
 
-				literalPoint := promql.Sample{
-					Metric: sample.Metric,
-					T:      ts,
-					F:      val,
-				}
+type literalStepEvaluator struct {
+	nextEv     StepEvaluator
+	mergeErr   error
+	val        float64
+	inverted   bool
+	op         string
+	returnBool bool
+}
 
-				left, right := &literalPoint, &sample
-				if inverted {
-					left, right = right, left
-				}
-				merged, err := syntax.MergeBinOp(
-					op,
-					left,
-					right,
-					!returnBool,
-					syntax.IsComparisonOperator(op),
-				)
-				if err != nil {
-					mergeErr = err
-					return false, 0, nil
-				}
-				if merged != nil {
-					results = append(results, *merged)
-				}
-			}
+func (e *literalStepEvaluator) Next() (bool, int64, promql.Vector) {
+	ok, ts, vec := e.nextEv.Next()
+	results := make(promql.Vector, 0, len(vec))
+	for _, sample := range vec {
 
-			return ok, ts, results
-		},
-		eval.Close,
-		func() error {
-			if mergeErr != nil {
-				return mergeErr
-			}
-			return eval.Error()
-		},
-	)
+		literalPoint := promql.Sample{
+			Metric: sample.Metric,
+			T:      ts,
+			F:      e.val,
+		}
+
+		left, right := &literalPoint, &sample
+		if e.inverted {
+			left, right = right, left
+		}
+		merged, err := syntax.MergeBinOp(
+			e.op,
+			left,
+			right,
+			!e.returnBool,
+			syntax.IsComparisonOperator(e.op),
+		)
+		if err != nil {
+			e.mergeErr = err
+			return false, 0, nil
+		}
+		if merged != nil {
+			results = append(results, *merged)
+		}
+	}
+
+	return ok, ts, results
+}
+
+func (e *literalStepEvaluator) Close() error {
+	return e.nextEv.Close()
+}
+
+func (e *literalStepEvaluator) Error() error {
+	if e.mergeErr != nil {
+		return e.mergeErr
+	}
+	return e.nextEv.Error()
 }
 
 // vectorIterator return simple vector like (1).
@@ -985,42 +1037,61 @@ func newLabelReplaceEvaluator(
 	if err != nil {
 		return nil, err
 	}
-	buf := make([]byte, 0, 1024)
-	var labelCache map[uint64]labels.Labels
-	return newStepEvaluator(func() (bool, int64, promql.Vector) {
-		next, ts, vec := nextEvaluator.Next()
-		if !next {
-			return false, 0, promql.Vector{}
-		}
-		if labelCache == nil {
-			labelCache = make(map[uint64]labels.Labels, len(vec))
-		}
-		var hash uint64
-		for i, s := range vec {
-			hash, buf = s.Metric.HashWithoutLabels(buf)
-			if labels, ok := labelCache[hash]; ok {
-				vec[i].Metric = labels
-				continue
-			}
-			src := s.Metric.Get(expr.Src)
-			indexes := expr.Re.FindStringSubmatchIndex(src)
-			if indexes == nil {
-				// If there is no match, no replacement should take place.
-				labelCache[hash] = s.Metric
-				continue
-			}
-			res := expr.Re.ExpandString([]byte{}, expr.Replacement, src, indexes)
 
-			lb := labels.NewBuilder(s.Metric).Del(expr.Dst)
-			if len(res) > 0 {
-				lb.Set(expr.Dst, string(res))
-			}
-			outLbs := lb.Labels()
-			labelCache[hash] = outLbs
-			vec[i].Metric = outLbs
+	return &labelReplaceEvaluator{
+		nextEvaluator: nextEvaluator,
+		expr:          expr,
+		buf:           make([]byte, 0, 1024),
+	}, nil
+}
+
+type labelReplaceEvaluator struct {
+	nextEvaluator StepEvaluator
+	labelCache    map[uint64]labels.Labels
+	expr          *syntax.LabelReplaceExpr
+	buf           []byte
+}
+
+func (e *labelReplaceEvaluator) Next() (bool, int64, promql.Vector) {
+	next, ts, vec := e.nextEvaluator.Next()
+	if !next {
+		return false, 0, promql.Vector{}
+	}
+	if e.labelCache == nil {
+		e.labelCache = make(map[uint64]labels.Labels, len(vec))
+	}
+	var hash uint64
+	for i, s := range vec {
+		hash, e.buf = s.Metric.HashWithoutLabels(e.buf)
+		if labels, ok := e.labelCache[hash]; ok {
+			vec[i].Metric = labels
+			continue
 		}
-		return next, ts, vec
-	}, nextEvaluator.Close, nextEvaluator.Error)
+		src := s.Metric.Get(e.expr.Src)
+		indexes := e.expr.Re.FindStringSubmatchIndex(src)
+		if indexes == nil {
+			// If there is no match, no replacement should take place.
+			e.labelCache[hash] = s.Metric
+			continue
+		}
+		res := e.expr.Re.ExpandString([]byte{}, e.expr.Replacement, src, indexes)
+
+		lb := labels.NewBuilder(s.Metric).Del(e.expr.Dst)
+		if len(res) > 0 {
+			lb.Set(e.expr.Dst, string(res))
+		}
+		outLbs := lb.Labels()
+		e.labelCache[hash] = outLbs
+		vec[i].Metric = outLbs
+	}
+	return next, ts, vec
+}
+
+func (e *labelReplaceEvaluator) Close() error {
+	return e.nextEvaluator.Close()
+}
+func (e *labelReplaceEvaluator) Error() error {
+	return e.nextEvaluator.Error()
 }
 
 // This is to replace missing timeseries during absent_over_time aggregation.
