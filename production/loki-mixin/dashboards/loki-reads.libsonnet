@@ -57,6 +57,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                            ingester: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester'))],
                            ingesterZoneAware: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-write' % $._config.ssd.pod_prefix_matcher else 'ingester-zone.*'))],
                            querierOrIndexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else '(querier|index-gateway)'))],
+                           indexGateway: [utils.selector.re('job', '($namespace)/%s' % (if $._config.ssd.enabled then '%s-read' % $._config.ssd.pod_prefix_matcher else 'index-gateway'))],
                          },
 
                          local selector(matcherId) =
@@ -71,6 +72,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          ingesterSelector:: selector('ingester'),
                          ingesterZoneSelector:: selector('ingesterZoneAware'),
                          querierOrIndexGatewaySelector:: selector('querierOrIndexGateway'),
+                         indexGatewaySelector:: selector('indexGateway'),
                        } +
                        $.dashboard('Loki / Reads', uid='reads')
                        .addCluster()
@@ -211,16 +213,16 @@ local utils = import 'mixin-utils/utils.libsonnet';
                          $.row('Index')
                          .addPanel(
                            $.panel('QPS') +
-                           $.qpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                           $.qpsPanel('loki_index_request_duration_seconds_count{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].indexGatewaySelector)
                          )
                          .addPanel(
                            $.panel('Latency') +
-                           $.latencyPanel('loki_index_request_duration_seconds', '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector)
+                           $.latencyPanel('loki_index_request_duration_seconds', '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].indexGatewaySelector)
                          )
                          .addPanel(
                            p99LatencyByPod(
                              'loki_index_request_duration_seconds_bucket',
-                             '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].querierSelector
+                             '{%s operation!="index_chunk"}' % dashboards['loki-reads.json'].indexGatewaySelector
                            )
                          )
                        )
