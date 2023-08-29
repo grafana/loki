@@ -176,10 +176,7 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 		return NewSSEParsedConfig(cfg.SSEConfig)
 	}
 
-	// default behavior to return SSE-S3 type
-	return NewSSEParsedConfig(bucket_s3.SSEConfig{
-		Type: bucket_s3.SSES3,
-	})
+	return nil, nil
 }
 
 func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
