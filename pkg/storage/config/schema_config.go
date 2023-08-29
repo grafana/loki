@@ -30,7 +30,6 @@ const (
 	StorageTypeAWS          = "aws"
 	StorageTypeAzure        = "azure"
 	StorageTypeBOS          = "bos"
-	StorageTypeBoltDB       = "boltdb"
 	StorageTypeInMemory     = "inmemory"
 	StorageTypeFileSystem   = "filesystem"
 	StorageTypeGCS          = "gcs"

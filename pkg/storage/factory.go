@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
-	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -36,7 +35,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 var (
@@ -342,9 +340,6 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
 		return store, nil
-	case config.StorageTypeBoltDB:
-		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
-		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case config.BoltDBShipperType:
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
 			if indexGatewayClient != nil {
@@ -473,8 +468,6 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 	switch name {
 	case config.StorageTypeInMemory:
 		return testutils.NewMockStorage(), nil
-	case config.StorageTypeBoltDB:
-		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case config.BoltDBShipperType, config.TSDBType:
 		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
 		if err != nil {
