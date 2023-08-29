@@ -218,19 +218,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: nil,
 		},
-		"should fail if chunks prefix is missing on IndexType: grpc-store": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "grpc-store",
-						ObjectType:  "grpc-store",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
 		"invalid schema with same from time configs": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{
@@ -408,8 +395,8 @@ func TestSchemaForTime(t *testing.T) {
 	schemaCfg := SchemaConfig{Configs: []PeriodConfig{
 		{
 			From:       DayTime{Time: 1564358400000},
-			IndexType:  "grpc-store",
-			ObjectType: "grpc-store",
+			IndexType:  "boltdb-shipper",
+			ObjectType: "gcs",
 			Schema:     "v10",
 			IndexTables: PeriodicTableConfig{
 				Prefix: "index_",
@@ -420,8 +407,8 @@ func TestSchemaForTime(t *testing.T) {
 		},
 		{
 			From:       DayTime{Time: 1564444800000},
-			IndexType:  "grpc-store",
-			ObjectType: "grpc-store",
+			IndexType:  "boltdb-shipper",
+			ObjectType: "gcs",
 			Schema:     "v10",
 			IndexTables: PeriodicTableConfig{
 				Prefix: "index_",

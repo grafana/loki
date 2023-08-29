@@ -34,7 +34,6 @@ const (
 	StorageTypeInMemory     = "inmemory"
 	StorageTypeFileSystem   = "filesystem"
 	StorageTypeGCS          = "gcs"
-	StorageTypeGrpc         = "grpc-store"
 	StorageTypeLocal        = "local"
 	StorageTypeS3           = "s3"
 	StorageTypeSwift        = "swift"
@@ -150,9 +149,9 @@ type PeriodConfig struct {
 	// used when working with config
 	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
 	// type of index client to use.
-	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, grpc."`
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper."`
 	// type of object client to use.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: grpc."`
+	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config)"`
 	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
 	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
@@ -345,22 +344,6 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 	}
 }
 
-func validateChunks(cfg PeriodConfig) error {
-	objectStore := cfg.IndexType
-	if cfg.ObjectType != "" {
-		objectStore = cfg.ObjectType
-	}
-	switch objectStore {
-	case "grpc-store":
-		if cfg.ChunkTables.Prefix == "" {
-			return errConfigChunkPrefixNotSet
-		}
-		return nil
-	default:
-		return nil
-	}
-}
-
 func (cfg *PeriodConfig) applyDefaults() {
 	if cfg.RowShards == 0 {
 		cfg.RowShards = defaultRowShards(cfg.Schema)
@@ -401,11 +384,6 @@ func (cfg *PeriodConfig) TSDBFormat() (int, error) {
 
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
-	validateError := validateChunks(cfg)
-	if validateError != nil {
-		return validateError
-	}
-
 	if cfg.IndexType == TSDBType && cfg.IndexTables.Period != ObjectStorageIndexRequiredPeriod {
 		return errTSDBNon24HoursIndexPeriod
 	}

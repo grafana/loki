@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/baidubce"
 	"github.com/grafana/loki/pkg/storage/chunk/client/congestion"
 	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
-	"github.com/grafana/loki/pkg/storage/chunk/client/grpc"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/grafana/loki/pkg/storage/chunk/client/ibmcloud"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -178,7 +177,7 @@ func (ns *NamedStores) populateStoreType() error {
 		switch name {
 		case config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS,
 			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift,
-			config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
+			config.StorageTypeFileSystem, config.StorageTypeInMemory:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
 		}
 
@@ -271,7 +270,6 @@ type Config struct {
 	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
 	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
 	Swift                openstack.SwiftConfig     `yaml:"swift"`
-	GrpcConfig           grpc.Config               `yaml:"grpc_store" doc:"deprecated"`
 	Hedging              hedging.Config            `yaml:"hedging"`
 	NamedStores          NamedStores               `yaml:"named_stores"`
 	COSConfig            ibmcloud.COSConfig        `yaml:"cos"`
@@ -302,7 +300,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
-	cfg.GrpcConfig.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)
 	cfg.CongestionControl.RegisterFlagsWithPrefix("store.", f)
 
@@ -348,9 +345,6 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 	case config.StorageTypeBoltDB:
 		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
-	case config.StorageTypeGrpc:
-		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Consider migrating to tsdb")
-		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.BoltDBShipperType:
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
 			if indexGatewayClient != nil {
@@ -463,9 +457,6 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, client.FSEncoder, cfg.MaxParallelGetChunk, schemaCfg), nil
-	case config.StorageTypeGrpc:
-		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
-		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
 	case config.StorageTypeCOS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
@@ -484,8 +475,6 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		return testutils.NewMockStorage(), nil
 	case config.StorageTypeBoltDB:
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
-	case config.StorageTypeGrpc:
-		return grpc.NewTableClient(cfg.GrpcConfig)
 	case config.BoltDBShipperType, config.TSDBType:
 		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
 		if err != nil {
@@ -497,7 +486,7 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		}
 		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v", name, config.StorageTypeInMemory, config.StorageTypeGrpc)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v", name, config.StorageTypeInMemory)
 	}
 }
 
