@@ -87,10 +87,7 @@ limits_config:
     reject_old_samples_max_age: 168h
     split_queries_by_interval: 15m
 querier:
-    engine:
-        timeout: 5m
     query_ingesters_within: 2h
-    query_timeout: 5m
     multi_tenant_queries_enabled: true
     per_request_limits_enabled: true
 query_range:
