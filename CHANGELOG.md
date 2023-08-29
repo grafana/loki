@@ -64,6 +64,7 @@
 * [10344](https://github.com/grafana/loki/pull/10344) **ashwanthgoli**  Compactor: deprecate `-boltdb.shipper.compactor.` prefix in favor of `-compactor.`.
 * [10373](https://github.com/grafana/loki/pull/10373) **jeschkies**  Loki: Shard `avg_over_time` range aggregations.
 * [10377](https://github.com/grafana/loki/pull/10377) **shantanualsi** Remove deprecated config `-s3.sse-encryption` in favor or `-s3.sse.*` settings.
+* [10073](https://github.com/grafana/loki/pull/10073) **sandeepsukhani,salvacorts,vlad-diachenko** Support attaching non-indexed labels to log lines.
 
 ##### Fixes
 
@@ -98,6 +99,7 @@
 * [8474](https://github.com/grafana/loki/pull/8787) **andriikushch**: Promtail: Add a new target for the Azure Event Hubs
 * [8874](https://github.com/grafana/loki/pull/8874) **rfratto**: Promtail: Support expoential backoff when polling unchanged files for logs.
 * [9508](https://github.com/grafana/loki/pull/9508) **farodin91**: Promtail: improve behavior of partial lines.
+* [9986](https://github.com/grafana/loki/pull/9986) **vlad-diachenko**: Promtail: Add `non_indexed_labels` stage to attach non-indexed labels to each log line.
 
 ##### Fixes
 
