@@ -8,6 +8,7 @@ metadata:
   labels:
     {{- include "loki.writeLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -15,6 +16,7 @@ metadata:
     {{- with .Values.write.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- end }}
 spec:
 {{- if not .Values.write.autoscaling.enabled }}
   replicas: {{ .Values.write.replicas }}
