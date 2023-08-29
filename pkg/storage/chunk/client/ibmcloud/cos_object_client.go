@@ -327,15 +327,11 @@ func (c *COSObjectClient) ObjectExists(ctx context.Context, objectKey string) (b
 		return requestErr
 	})
 
-	if err == nil {
-		return true, nil
+	if err != nil {
+		return false, err
 	}
 
-	if c.IsObjectNotFoundErr(err) {
-		return false, nil
-	}
-
-	return false, err
+	return true, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured S3 bucket.

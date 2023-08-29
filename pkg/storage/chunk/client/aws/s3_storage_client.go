@@ -320,15 +320,11 @@ func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bo
 		return err
 	})
 
-	if err == nil {
-		return true, nil
+	if err != nil {
+		return false, err
 	}
 
-	if a.IsObjectNotFoundErr(err) {
-		return false, nil
-	}
-
-	return false, err
+	return true, nil
 }
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket

@@ -67,15 +67,11 @@ func (FSObjectClient) Stop() {}
 
 func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
 	_, err := os.Lstat(objectKey)
-	if err == nil {
-		return true, nil
+	if err != nil {
+		return false, err
 	}
 
-	if f.IsObjectNotFoundErr(err) {
-		return false, nil
-	}
-
-	return false, err
+	return true, nil
 }
 
 // GetObject from the store

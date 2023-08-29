@@ -225,15 +225,11 @@ func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool,
 		return err
 	})
 
-	if err == nil {
-		return true, nil
+	if err != nil {
+		return false, err
 	}
 
-	if b.IsObjectNotFoundErr(err) {
-		return false, nil
-	}
-
-	return false, err
+	return true, nil
 }
 
 // GetObject returns a reader and the size for the specified object key.

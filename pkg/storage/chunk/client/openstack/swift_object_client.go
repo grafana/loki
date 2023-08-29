@@ -126,11 +126,11 @@ func (s *SwiftObjectClient) Stop() {
 
 func (s *SwiftObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
 	_, _, err := s.hedgingConn.Object(s.cfg.ContainerName, objectKey)
-	if err == nil {
-		return true, nil
+	if err != nil {
+		return false, err
 	}
 
-	return false, err
+	return true, nil
 }
 
 // GetObject returns a reader and the size for the specified object key from the configured swift container.

@@ -95,15 +95,11 @@ func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (
 		_, requestErr = b.client.GetObjectMeta(b.cfg.BucketName, objectKey)
 		return requestErr
 	})
-	if err == nil {
-		return true, nil
+	if err != nil {
+		return false, err
 	}
 
-	if b.IsObjectNotFoundErr(err) {
-		return false, nil
-	}
-
-	return false, err
+	return true, nil
 }
 
 func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
