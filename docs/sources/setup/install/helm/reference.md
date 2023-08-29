@@ -3043,20 +3043,20 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.namespaced</td>
+			<td>bool</td>
+			<td>Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspAnnotations</td>
 			<td>object</td>
 			<td>Specify PSP annotations Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations</td>
 			<td><pre lang="json">
 {}
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>rbac.namespaced</td>
-			<td>bool</td>
-			<td></td>
-			<td><pre lang="json">
-false
 </pre>
 </td>
 		</tr>
@@ -3459,16 +3459,25 @@ null
 		<tr>
 			<td>sidecar.enableUniqueFilenames</td>
 			<td>bool</td>
-			<td></td>
+			<td>Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.</td>
 			<td><pre lang="json">
 false
 </pre>
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.image.pullPolicy</td>
+			<td>string</td>
+			<td>Docker image pull policy</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>sidecar.image.repository</td>
 			<td>string</td>
-			<td></td>
+			<td>The Docker registry and image for the k8s sidecar</td>
 			<td><pre lang="json">
 "kiwigrid/k8s-sidecar"
 </pre>
@@ -3477,7 +3486,7 @@ false
 		<tr>
 			<td>sidecar.image.sha</td>
 			<td>string</td>
-			<td></td>
+			<td>Docker image sha. If empty, no sha will be used</td>
 			<td><pre lang="json">
 ""
 </pre>
@@ -3486,25 +3495,16 @@ false
 		<tr>
 			<td>sidecar.image.tag</td>
 			<td>string</td>
-			<td></td>
+			<td>Docker image tag</td>
 			<td><pre lang="json">
-"1.23.3"
-</pre>
-</td>
-		</tr>
-		<tr>
-			<td>sidecar.imagePullPolicy</td>
-			<td>string</td>
-			<td></td>
-			<td><pre lang="json">
-"IfNotPresent"
+"1.24.3"
 </pre>
 </td>
 		</tr>
 		<tr>
 			<td>sidecar.livenessProbe</td>
 			<td>object</td>
-			<td></td>
+			<td>Liveness probe definition. Probe is disabled on the sidecar by default.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3513,7 +3513,7 @@ false
 		<tr>
 			<td>sidecar.readinessProbe</td>
 			<td>object</td>
-			<td></td>
+			<td>Readiness probe definition. Probe is disabled on the sidecar by default.</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3522,7 +3522,7 @@ false
 		<tr>
 			<td>sidecar.resources</td>
 			<td>object</td>
-			<td></td>
+			<td>Resource requests and limits for the sidecar</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3531,7 +3531,7 @@ false
 		<tr>
 			<td>sidecar.rules.enabled</td>
 			<td>bool</td>
-			<td>Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets</td>
+			<td>Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.</td>
 			<td><pre lang="json">
 true
 </pre>
@@ -3540,7 +3540,7 @@ true
 		<tr>
 			<td>sidecar.rules.folder</td>
 			<td>string</td>
-			<td>Folder in which the rules will be placed in</td>
+			<td>Folder into which the rules will be placed.</td>
 			<td><pre lang="json">
 "/rules"
 </pre>
@@ -3549,7 +3549,7 @@ true
 		<tr>
 			<td>sidecar.rules.label</td>
 			<td>string</td>
-			<td>Label that the configmaps/secrets with rules are marked with</td>
+			<td>Label that the configmaps/secrets with rules will be marked with.</td>
 			<td><pre lang="json">
 "loki_rule"
 </pre>
@@ -3558,7 +3558,7 @@ true
 		<tr>
 			<td>sidecar.rules.labelValue</td>
 			<td>string</td>
-			<td>Value of label that the configmaps/secrets with rules are set to</td>
+			<td>Label value that the configmaps/secrets with rules will be set to.</td>
 			<td><pre lang="json">
 ""
 </pre>
@@ -3567,7 +3567,7 @@ true
 		<tr>
 			<td>sidecar.rules.logLevel</td>
 			<td>string</td>
-			<td>Log level of the sidecar container</td>
+			<td>Log level of the sidecar container.</td>
 			<td><pre lang="json">
 "INFO"
 </pre>
@@ -3576,7 +3576,7 @@ true
 		<tr>
 			<td>sidecar.rules.resource</td>
 			<td>string</td>
-			<td>Search in configmap, secret or both</td>
+			<td>Search in configmap, secret, or both.</td>
 			<td><pre lang="json">
 "both"
 </pre>
@@ -3585,7 +3585,7 @@ true
 		<tr>
 			<td>sidecar.rules.script</td>
 			<td>string</td>
-			<td>Absolute path to shell script to execute after a configmap or secret got reloaded</td>
+			<td>Absolute path to the shell script to execute after a configmap or secret has been reloaded.</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -3594,7 +3594,7 @@ null
 		<tr>
 			<td>sidecar.rules.searchNamespace</td>
 			<td>string</td>
-			<td></td>
+			<td>Comma separated list of namespaces. If specified, the sidecar will search for config-maps/secrets inside these namespaces. Otherwise the namespace in which the sidecar is running will be used. It's also possible to specify 'ALL' to search in all namespaces.</td>
 			<td><pre lang="json">
 null
 </pre>
@@ -3603,7 +3603,7 @@ null
 		<tr>
 			<td>sidecar.rules.watchClientTimeout</td>
 			<td>int</td>
-			<td>WatchClientTimeout: is a client-side timeout, configuring your local socket. If you have a network outage dropping all packets with no RST/FIN, this is how long your client waits before realizing & dropping the connection. defaults to 66sec (sic!)</td>
+			<td>WatchClientTimeout: is a client-side timeout, configuring your local socket. If you have a network outage dropping all packets with no RST/FIN, this is how long your client waits before realizing & dropping the connection. Defaults to 66sec.</td>
 			<td><pre lang="json">
 60
 </pre>
@@ -3612,7 +3612,7 @@ null
 		<tr>
 			<td>sidecar.rules.watchMethod</td>
 			<td>string</td>
-			<td>Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH requests, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.</td>
+			<td>Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH request, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.</td>
 			<td><pre lang="json">
 "WATCH"
 </pre>
@@ -3621,7 +3621,7 @@ null
 		<tr>
 			<td>sidecar.rules.watchServerTimeout</td>
 			<td>int</td>
-			<td>WatchServerTimeout: request to the server, asking it to cleanly close the connection after that. defaults to 60sec; much higher values like 3600 seconds (1h) are feasible for non-Azure K8S</td>
+			<td>WatchServerTimeout: request to the server, asking it to cleanly close the connection after that. defaults to 60sec; much higher values like 3600 seconds (1h) are feasible for non-Azure K8S.</td>
 			<td><pre lang="json">
 60
 </pre>
@@ -3630,9 +3630,18 @@ null
 		<tr>
 			<td>sidecar.securityContext</td>
 			<td>object</td>
-			<td></td>
+			<td>The SecurityContext for the sidecar.</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.skipTlsVerify</td>
+			<td>bool</td>
+			<td>Set to true to skip tls verification for kube api calls.</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>

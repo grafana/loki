@@ -87,7 +87,7 @@ spec:
           {{- else }}
           image: "{{ .Values.sidecar.image.repository }}:{{ .Values.sidecar.image.tag }}"
           {{- end }}
-          imagePullPolicy: {{ .Values.sidecar.imagePullPolicy }}
+          imagePullPolicy: {{ .Values.sidecar.image.pullPolicy }}
           env:
             - name: METHOD
               value: {{ .Values.sidecar.rules.watchMethod }}
