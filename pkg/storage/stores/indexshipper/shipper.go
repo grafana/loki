@@ -226,6 +226,7 @@ func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, ca
 func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
 
 	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(100)
 
 	if s.downloadsManager != nil {
 		g.Go(func() error {
