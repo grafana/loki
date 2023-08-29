@@ -171,10 +171,6 @@ func TestChunkStore_LabelValuesForMetricName(t *testing.T) {
 					store, schemaCfg := newTestChunkStoreConfig(t, schema, storeCfg)
 					defer store.Stop()
 
-					if schema == "v13" {
-						_ = "break"
-					}
-
 					chunkFmt, headBlockFmt, _ := schemaCfg.Configs[0].ChunkFormat()
 
 					fooChunk1 := dummyChunkWithFormat(t, now, fooMetric1, chunkFmt, headBlockFmt)
