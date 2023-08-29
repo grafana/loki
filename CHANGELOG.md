@@ -66,6 +66,7 @@
 * [10377](https://github.com/grafana/loki/pull/10377) **shantanualsi** Remove deprecated config `-s3.sse-encryption` in favor or `-s3.sse.*` settings.
 * [10073](https://github.com/grafana/loki/pull/10073) **sandeepsukhani,salvacorts,vlad-diachenko** Support attaching non-indexed labels to log lines.
 * [10378](https://github.com/grafana/loki/pull/10378) **shantanualsi** Remove deprecated `ruler.wal-cleaer.period`
+* [10380](https://github.com/grafana/loki/pull/10380) **shantanualsi** Remove `experimental.ruler.enable-api` in favour of `ruler.enable-api`
 
 ##### Fixes
 
