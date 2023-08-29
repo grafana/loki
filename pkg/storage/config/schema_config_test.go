@@ -218,58 +218,6 @@ func TestSchemaConfig_Validate(t *testing.T) {
 			},
 			err: nil,
 		},
-		"should fail if chunks prefix is missing on IndexType: bigtable-hashed": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "bigtable-hashed",
-						ObjectType:  "bigtable-hashed",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: gcp": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "gcp",
-						ObjectType:  "gcp",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: gcp-columnkey": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "gcp-columnkey",
-						ObjectType:  "gcp-columnkey",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
-		"should fail if chunks prefix is missing on IndexType: bigtable": {
-			config: &SchemaConfig{
-				Configs: []PeriodConfig{
-					{
-						Schema:      "v10",
-						IndexType:   "bigtable",
-						ObjectType:  "bigtable",
-						IndexTables: PeriodicTableConfig{Period: 24 * time.Hour},
-					},
-				},
-			},
-			err: errConfigChunkPrefixNotSet,
-		},
 		"should fail if chunks prefix is missing on IndexType: grpc-store": {
 			config: &SchemaConfig{
 				Configs: []PeriodConfig{
@@ -928,20 +876,9 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			},
 			{
 				From:       DayTime{Time: now.Add(10 * 24 * time.Hour)},
-				IndexType:  StorageTypeBigTable,
-				ObjectType: StorageTypeFileSystem,
-				Schema:     "v11",
-				IndexTables: PeriodicTableConfig{
-					Prefix: "index_",
-					Period: time.Hour * 24,
-				},
-				RowShards: 2,
-			},
-			{
-				From:       DayTime{Time: now.Add(5 * 24 * time.Hour)},
 				IndexType:  TSDBType,
 				ObjectType: StorageTypeFileSystem,
-				Schema:     "v11",
+				Schema:     "v12",
 				IndexTables: PeriodicTableConfig{
 					Prefix: "index_",
 					Period: time.Hour * 24,
@@ -966,22 +903,14 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 
 	require.Equal(t, TableRanges{
 		{
-			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			End:          schemaConfig.Configs[4].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[3],
-		},
-	}, GetIndexStoreTableRanges(StorageTypeBigTable, schemaConfig.Configs))
-
-	require.Equal(t, TableRanges{
-		{
 			Start:        schemaConfig.Configs[2].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			End:          schemaConfig.Configs[3].From.Add(-time.Millisecond).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			PeriodConfig: &schemaConfig.Configs[2],
 		},
 		{
-			Start:        schemaConfig.Configs[4].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
+			Start:        schemaConfig.Configs[3].From.Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
 			End:          model.Time(math.MaxInt64).Unix() / int64(schemaConfig.Configs[0].IndexTables.Period/time.Second),
-			PeriodConfig: &schemaConfig.Configs[4],
+			PeriodConfig: &schemaConfig.Configs[3],
 		},
 	}, GetIndexStoreTableRanges(TSDBType, schemaConfig.Configs))
 }

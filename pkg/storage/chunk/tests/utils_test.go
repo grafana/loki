@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -21,7 +20,6 @@ type storageClientTest func(*testing.T, index.Client, client.Client)
 
 func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
 	var fixtures []testutils.Fixture
-	fixtures = append(fixtures, gcp.Fixtures...)
 	fixtures = append(fixtures, local.Fixtures...)
 	fixtures = append(fixtures, Fixtures...)
 

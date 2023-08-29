@@ -26,18 +26,10 @@ func MustParseDayTime(s string) config.DayTime {
 var testPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("2020-01-01"),
-		IndexType: config.StorageTypeBigTable,
-	},
-	{
-		From:      MustParseDayTime("2021-01-01"),
-		IndexType: config.TSDBType,
-	},
-	{
-		From:      MustParseDayTime("2022-01-01"),
 		IndexType: config.BoltDBShipperType,
 	},
 	{
-		From:      MustParseDayTime("2023-01-01"),
+		From:      MustParseDayTime("2021-01-01"),
 		IndexType: config.TSDBType,
 	},
 }
@@ -50,7 +42,7 @@ func TestIgnoresInvalidShardFactorWhenTSDBNotPresent(t *testing.T) {
 		[]config.PeriodConfig{
 			{
 				From:      MustParseDayTime("2020-01-01"),
-				IndexType: config.StorageTypeBigTable,
+				IndexType: config.BoltDBShipperType,
 			},
 		},
 		factor,
@@ -61,7 +53,7 @@ func TestIgnoresInvalidShardFactorWhenTSDBNotPresent(t *testing.T) {
 		[]config.PeriodConfig{
 			{
 				From:      MustParseDayTime("2020-01-01"),
-				IndexType: config.StorageTypeBigTable,
+				IndexType: config.BoltDBShipperType,
 			},
 			{
 				From:      MustParseDayTime("2021-01-01"),
@@ -71,7 +63,6 @@ func TestIgnoresInvalidShardFactorWhenTSDBNotPresent(t *testing.T) {
 		factor,
 	)
 	require.Error(t, err)
-
 }
 
 func TestMultiIndexCreation(t *testing.T) {
@@ -87,14 +78,6 @@ func TestMultiIndexCreation(t *testing.T) {
 			},
 			{
 				Time: testPeriodConfigs[1].From.Time.Time(),
-				idx:  1,
-			},
-			{
-				Time: testPeriodConfigs[2].From.Time.Time(),
-				idx:  0,
-			},
-			{
-				Time: testPeriodConfigs[3].From.Time.Time(),
 				idx:  1,
 			},
 		},

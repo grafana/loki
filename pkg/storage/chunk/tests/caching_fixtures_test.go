@@ -11,7 +11,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
+	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -40,7 +40,7 @@ func (f fixture) Clients() (index.Client, client.Client, index.TableClient, conf
 
 // Fixtures for unit testing the caching storage.
 var Fixtures = []testutils.Fixture{
-	fixture{gcp.Fixtures[0]},
+	fixture{local.Fixtures[0]},
 }
 
 func defaultLimits() (*validation.Overrides, error) {

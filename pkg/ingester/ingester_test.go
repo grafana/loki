@@ -584,7 +584,7 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 			},
 		},
@@ -613,7 +613,7 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 			periodicConfigs: []config.PeriodConfig{
 				{
 					From:      config.DayTime{Time: now.Add(-48 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
@@ -645,7 +645,7 @@ func TestIngester_asyncStoreMaxLookBack(t *testing.T) {
 				},
 				{
 					From:      config.DayTime{Time: now.Add(-24 * time.Hour)},
-					IndexType: "bigtable",
+					IndexType: "boltdb",
 				},
 			},
 		},

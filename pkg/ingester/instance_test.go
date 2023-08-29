@@ -51,7 +51,7 @@ func MustParseDayTime(s string) config.DayTime {
 var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
-		IndexType: config.StorageTypeBigTable,
+		IndexType: config.BoltDBShipperType,
 		Schema:    "v13",
 	},
 }

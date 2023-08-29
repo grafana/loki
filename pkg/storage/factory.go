@@ -176,8 +176,7 @@ func (ns *NamedStores) populateStoreType() error {
 
 	checkForDuplicates := func(name string) error {
 		switch name {
-		case config.StorageTypeAWS, config.StorageTypeS3,
-			config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGCS,
+		case config.StorageTypeAWS, config.StorageTypeS3, config.StorageTypeGCS,
 			config.StorageTypeAzure, config.StorageTypeBOS, config.StorageTypeSwift,
 			config.StorageTypeFileSystem, config.StorageTypeInMemory, config.StorageTypeGrpc:
 			return fmt.Errorf("named store %q should not match with the name of a predefined storage type", name)
@@ -268,7 +267,6 @@ type Config struct {
 	AWSStorageConfig     aws.S3Config              `yaml:"aws"`
 	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
-	GCPStorageConfig     gcp.Config                `yaml:"bigtable" doc:"description=Deprecated: Configures storing indexes in Bigtable. Required fields only required when bigtable is defined in config."`
 	GCSConfig            gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
 	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
 	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
@@ -300,7 +298,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.AzureStorageConfig.RegisterFlags(f)
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.COSConfig.RegisterFlags(f)
-	cfg.GCPStorageConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
 	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
@@ -320,9 +317,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // Validate config and returns error on failure
 func (cfg *Config) Validate() error {
-	if err := cfg.GCPStorageConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid GCP Storage Storage config")
-	}
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
@@ -351,16 +345,6 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
 		return store, nil
-	case config.StorageTypeGCP:
-		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Consider migrating to tsdb")
-		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
-		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeBigTableHashed:
-		level.Warn(util_log.Logger).Log("msg", "bigtable-hashed is deprecated. Consider migrating to tsdb")
-		cfg.GCPStorageConfig.DistributeKeys = true
-		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeBoltDB:
 		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
 		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
@@ -454,12 +438,6 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 			return nil, err
 		}
 		return client.NewClientWithMaxParallel(c, nil, cfg.MaxChunkBatchSize, schemaCfg), nil
-	case config.StorageTypeGCP:
-		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Please use one of the supported object stores: "+strings.Join(supportedStores, ", "))
-		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Please use one of the supported object stores: %s", storeType, strings.Join(supportedStores, ", ")))
-		return gcp.NewBigtableObjectClient(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 	case config.StorageTypeGCS:
 		c, err := NewObjectClient(name, cfg, clientMetrics)
 		if err != nil {
@@ -504,8 +482,6 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 	switch name {
 	case config.StorageTypeInMemory:
 		return testutils.NewMockStorage(), nil
-	case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
-		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
 	case config.StorageTypeBoltDB:
 		return local.NewTableClient(cfg.BoltDBConfig.Directory)
 	case config.StorageTypeGrpc:
@@ -521,7 +497,7 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		}
 		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v", name, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
+		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v", name, config.StorageTypeInMemory, config.StorageTypeGrpc)
 	}
 }
 
