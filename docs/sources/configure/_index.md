@@ -1165,9 +1165,6 @@ wal_cleaner:
   # CLI flag: -ruler.wal-cleaner.min-age
   [min_age: <duration> | default = 12h]
 
-  # Deprecated: CLI flag -ruler.wal-cleaer.period.
-  # Use -ruler.wal-cleaner.period instead.
-  # 
   # How often to run the WAL cleaner. 0 = disabled.
   # CLI flag: -ruler.wal-cleaner.period
   [period: <duration> | default = 0s]
@@ -4288,11 +4285,6 @@ dynamodb:
 # CLI flag: -s3.insecure
 [insecure: <boolean> | default = false]
 
-# Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-# s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-# CLI flag: -s3.sse-encryption
-[sse_encryption: <boolean> | default = false]
-
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
   # CLI flag: -s3.http.timeout
@@ -4569,11 +4561,6 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # Disable https on s3 connection.
 # CLI flag: -<prefix>.storage.s3.insecure
 [insecure: <boolean> | default = false]
-
-# Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-# s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-# CLI flag: -<prefix>.storage.s3.sse-encryption
-[sse_encryption: <boolean> | default = false]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
