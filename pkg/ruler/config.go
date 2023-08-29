@@ -33,7 +33,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.WALCleaner.RegisterFlags(f)
 	c.Evaluation.RegisterFlags(f)
 
-	// TODO(owen-d, 3.0.0): remove deprecated experimental prefix in Cortex if they'll accept it.
 	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
 }
 
