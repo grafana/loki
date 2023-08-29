@@ -99,7 +99,8 @@ You can use `--keep-empty` flag to retain them.
 #### deprecated configs are now removed
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
 2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type.
+3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
+4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
 
 ### Jsonnet
 
