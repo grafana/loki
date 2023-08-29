@@ -130,10 +130,6 @@ func (s *SwiftObjectClient) ObjectExists(_ context.Context, objectKey string) (b
 		return true, nil
 	}
 
-	if s.IsObjectNotFoundErr(err) {
-		return false, nil
-	}
-
 	return false, err
 }
 
