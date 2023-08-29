@@ -174,6 +174,11 @@ Introducing this tag aims to relieve Linux/CentOS users with CGO enabled from in
 
 ### Ruler
 
+#### CLI flag `ruler.wal-cleaer.period` deprecated
+
+CLI flag `ruler.wal-cleaer.period` is now deprecated and replaced with a typo fix `ruler.wal-cleaner.period`.
+The yaml configuration remains unchanged:
+
 ```yaml
 ruler:
   wal_cleaner:
