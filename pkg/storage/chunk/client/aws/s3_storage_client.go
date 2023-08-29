@@ -71,7 +71,6 @@ type S3Config struct {
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
 	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
-	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	StorageClass     string              `yaml:"storage_class"`
@@ -108,9 +107,6 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
-
-	// TODO Remove in Cortex 1.10.0
-	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -178,13 +174,6 @@ func NewS3ObjectClient(cfg S3Config, hedgingCfg hedging.Config) (*S3ObjectClient
 func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 	if cfg.SSEConfig.Type != "" {
 		return NewSSEParsedConfig(cfg.SSEConfig)
-	}
-
-	// deprecated, but if used it assumes SSE-S3 type
-	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(bucket_s3.SSEConfig{
-			Type: bucket_s3.SSES3,
-		})
 	}
 
 	return nil, nil
