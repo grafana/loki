@@ -269,7 +269,7 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 		NewProxyBackend("backend-1", backendURL1, time.Second, true),
 		NewProxyBackend("backend-2", backendURL2, time.Second, false),
 	}
-	
+
 	comparator := &mockComparator{}
 	proxyMetrics := NewProxyMetrics(prometheus.NewRegistry())
 	endpoint := NewProxyEndpoint(backends, "test", proxyMetrics, log.NewNopLogger(), comparator, true)
@@ -332,6 +332,9 @@ func Test_ProxyEndpoint_SummaryMetrics(t *testing.T) {
 			wg.Wait()
 			require.Equal(t, uint64(tc.counts), requestCount.Load())
 
+			require.Eventually(t, func() bool {
+				return prom_testutil.ToFloat64(proxyMetrics.responsesComparedTotal) == 1
+			}, 2*time.Second, 100*time.Millisecond, "expect exactly 1 response to be compared.")
 			err := prom_testutil.CollectAndCompare(proxyMetrics.missingMetrics, strings.NewReader(tc.expectedMetrics))
 			require.NoError(t, err)
 		})
@@ -420,6 +423,6 @@ func Test_backendResponse_statusCode(t *testing.T) {
 
 type mockComparator struct{}
 
-func (c *mockComparator) Compare(_, _[]byte) (*ComparisonSummary, error) {
+func (c *mockComparator) Compare(_, _ []byte) (*ComparisonSummary, error) {
 	return &ComparisonSummary{missingMetrics: 12}, nil
 }

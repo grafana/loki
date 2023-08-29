@@ -189,10 +189,10 @@ func (p *ProxyEndpoint) executeBackendRequests(r *http.Request, resCh chan *back
 				result = comparisonFailed
 			}
 
-			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
 			if p.instrumentCompares && summary != nil {
 				p.metrics.missingMetrics.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Observe(float64(summary.missingMetrics))
 			}
+			p.metrics.responsesComparedTotal.WithLabelValues(p.backends[i].name, p.routeName, result, issuer).Inc()
 		}
 	}
 }
