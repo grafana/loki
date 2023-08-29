@@ -32,8 +32,6 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.WAL.RegisterFlags(f)
 	c.WALCleaner.RegisterFlags(f)
 	c.Evaluation.RegisterFlags(f)
-
-	f.BoolVar(&c.Config.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
 }
 
 // Validate overrides the embedded cortex variant which expects a cortex limits struct. Instead, copy the relevant bits over.

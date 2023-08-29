@@ -188,6 +188,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics.")
 
+	f.BoolVar(&cfg.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
+
 	cfg.RingCheckPeriod = 5 * time.Second
 }
 
