@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/pkg/errors"
@@ -523,13 +524,20 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	return true, ts, vec
 }
 
-func (r rangeVectorEvaluator) Close() error { return r.iter.Close() }
+func (r *rangeVectorEvaluator) Close() error { return r.iter.Close() }
 
-func (r rangeVectorEvaluator) Error() error {
+func (r *rangeVectorEvaluator) Error() error {
 	if r.err != nil {
 		return r.err
 	}
 	return r.iter.Error()
+}
+
+func (r *rangeVectorEvaluator) Explain(depth int) string {
+	var b strings.Builder
+	b.WriteString("RangeAgg(???)")
+
+	return b.String()
 }
 
 type absentRangeVectorEvaluator struct {
@@ -725,6 +733,22 @@ func (e *binOpStepEvaluator) Error() error {
 	default:
 		return util.MultiError(errs)
 	}
+}
+
+func (e *binOpStepEvaluator) Explain(depth int) string {
+	var b strings.Builder
+	b.WriteString("BinOp(")
+	b.WriteString(e.expr.Op)
+	b.WriteString(")")
+
+	b.WriteString(strings.Repeat("  ", depth))
+	b.WriteString("├─ ")
+	b.WriteString(e.lse.Explain(depth + 1))
+	b.WriteString(strings.Repeat("  ", depth))
+	b.WriteString("├─ ")
+	b.WriteString(e.rse.Explain(depth + 1))
+
+	return b.String()
 }
 
 func matchingSignature(sample promql.Sample, opts *syntax.BinOpOptions) uint64 {

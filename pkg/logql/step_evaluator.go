@@ -12,4 +12,6 @@ type StepEvaluator interface {
 	Close() error
 	// Reports any error
 	Error() error
+	// Explain returns a print of the step evaluation tree
+	Explain(depth int) string
 }
