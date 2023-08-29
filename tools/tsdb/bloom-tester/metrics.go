@@ -81,7 +81,6 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 			Name: "bloom_value_collisions",
 			Help: "Number of values that collided with existing values",
 		}),
-
 		hammingWeightRatio: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_hamming_weight_ratio",
 			Help:    "Ratio of the hamming weight of the bloom filter to the number of bits in the bloom filter",

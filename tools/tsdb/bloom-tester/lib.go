@@ -15,7 +15,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
@@ -82,11 +81,12 @@ func execute() {
 }
 
 func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
-	tokenizer := newNGramTokenizer(4, 8)
+	tokenizer := newNGramTokenizer(5, 6)
 	metrics.tenants.Add(float64(len(tenants)))
 
 	var n int         // count iterated series
 	reportEvery := 10 // report every n chunks
+	pool := newPool(runtime.NumCPU())
 
 	for _, tenant := range tenants {
 		err := shipper.ForEach(
@@ -103,103 +103,106 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 					context.Background(),
 					nil, model.Earliest, model.Latest,
 					func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+						chksCpy := make([]index.ChunkMeta, len(chks))
+						copy(chksCpy, chks)
+						pool.acquire(
+							ls.Copy(),
+							fp,
+							chksCpy,
+							func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 
-						metrics.series.Inc()
-						metrics.chunks.Add(float64(len(chks)))
+								metrics.series.Inc()
+								metrics.chunks.Add(float64(len(chks)))
 
-						if !sampler.Sample() {
-							return
-						}
-
-						metrics.seriesKept.Inc()
-						metrics.chunksKept.Add(float64(len(chks)))
-						metrics.chunksPerSeries.Observe(float64(len(chks)))
-
-						sbf := boom.NewScalableBloomFilter(1000, 0.01, 0.8)
-
-						transformed := make([]chunk.Chunk, 0, len(chks))
-						for _, chk := range chks {
-							transformed = append(transformed, chunk.Chunk{
-								ChunkRef: logproto.ChunkRef{
-									Fingerprint: uint64(fp),
-									UserID:      tenant,
-									From:        chk.From(),
-									Through:     chk.Through(),
-									Checksum:    chk.Checksum,
-								},
-							})
-						}
-
-						got, err := client.GetChunks(
-							context.Background(),
-							transformed,
-						)
-						helpers.ExitErr("getting chunks", err)
-
-						err = concurrency.ForEachJob(
-							context.Background(),
-							len(got),
-							runtime.NumCPU(),
-							func(ctx context.Context, idx int) error {
-								lc := got[idx].Data.(*chunkenc.Facade).LokiChunk()
-
-								if (n+idx+1)%reportEvery == 0 {
-									estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
-									level.Info(util_log.Logger).Log(
-										"msg", "iterated",
-										"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
-										"chunks", len(chks),
-										"series", ls.String(),
-									)
+								if !sampler.Sample() {
+									return
 								}
 
-								itr, err := lc.Iterator(
+								metrics.seriesKept.Inc()
+								metrics.chunksKept.Add(float64(len(chks)))
+								metrics.chunksPerSeries.Observe(float64(len(chks)))
+
+								sbf := boom.NewScalableBloomFilter(1000, 0.01, 0.8)
+
+								transformed := make([]chunk.Chunk, 0, len(chks))
+								for _, chk := range chks {
+									transformed = append(transformed, chunk.Chunk{
+										ChunkRef: logproto.ChunkRef{
+											Fingerprint: uint64(fp),
+											UserID:      tenant,
+											From:        chk.From(),
+											Through:     chk.Through(),
+											Checksum:    chk.Checksum,
+										},
+									})
+								}
+
+								got, err := client.GetChunks(
 									context.Background(),
-									time.Unix(0, 0),
-									time.Unix(0, math.MaxInt64),
-									logproto.FORWARD,
-									log.NewNoopPipeline().ForStream(ls),
+									transformed,
 								)
-								helpers.ExitErr("getting iterator", err)
+								helpers.ExitErr("getting chunks", err)
 
-								for itr.Next() && itr.Error() == nil {
-									toks := tokenizer.Tokens(itr.Entry().Line)
-									for _, tok := range toks {
-										if tok.Key != "" {
-											if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
-												metrics.collisions.Inc()
-												metrics.keyCollisions.Inc()
-											}
-											metrics.inserts.Inc()
-											metrics.keysInserted.Inc()
-										}
+								for idx := range got {
+									lc := got[idx].Data.(*chunkenc.Facade).LokiChunk()
 
-										if tok.Value != "" {
-											if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
-												metrics.collisions.Inc()
-												metrics.valueCollisions.Inc()
+									if (n+idx+1)%reportEvery == 0 {
+										estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
+										level.Info(util_log.Logger).Log(
+											"msg", "iterated",
+											"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
+											"chunks", len(chks),
+											"series", ls.String(),
+										)
+									}
+
+									itr, err := lc.Iterator(
+										context.Background(),
+										time.Unix(0, 0),
+										time.Unix(0, math.MaxInt64),
+										logproto.FORWARD,
+										log.NewNoopPipeline().ForStream(ls),
+									)
+									helpers.ExitErr("getting iterator", err)
+
+									for itr.Next() && itr.Error() == nil {
+										toks := tokenizer.Tokens(itr.Entry().Line)
+										for _, tok := range toks {
+											if tok.Key != "" {
+												if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
+													metrics.collisions.Inc()
+													metrics.keyCollisions.Inc()
+												}
+												metrics.inserts.Inc()
+												metrics.keysInserted.Inc()
 											}
-											metrics.inserts.Inc()
-											metrics.valuesInserted.Inc()
+
+											if tok.Value != "" {
+												if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
+													metrics.collisions.Inc()
+													metrics.valueCollisions.Inc()
+												}
+												metrics.inserts.Inc()
+												metrics.valuesInserted.Inc()
+											}
 										}
 									}
 								}
-								return itr.Error()
+
+								helpers.ExitErr("iterating chunks", err)
+								var chunkTotalUncompressedSize int
+								for _, c := range got {
+									chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
+								}
+								metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
+								n += len(got)
+
+								metrics.bloomSize.Observe(float64(sbf.Capacity() / 8))
+								metrics.hammingWeightRatio.Observe(sbf.FillRatio())
+								// TODO: fillratio is implemented linearly, find a better way to estimate that isn't O(n)
+								metrics.estimatedCount.Observe(float64(estimatedCount(sbf.Capacity(), sbf.FillRatio(), sbf.K())))
 							},
 						)
-
-						helpers.ExitErr("iterating chunks", err)
-						var chunkTotalUncompressedSize int
-						for _, c := range got {
-							chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
-						}
-						metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
-						n += len(got)
-
-						metrics.bloomSize.Observe(float64(sbf.Capacity() / 8))
-						metrics.hammingWeightRatio.Observe(sbf.FillRatio())
-						// TODO: fillratio is implemented linearly, find a better way to estimate that isn't O(n)
-						metrics.estimatedCount.Observe(float64(estimatedCount(sbf.Capacity(), sbf.FillRatio(), sbf.K())))
 
 					},
 					labels.MustNewMatcher(labels.MatchEqual, "", ""),
