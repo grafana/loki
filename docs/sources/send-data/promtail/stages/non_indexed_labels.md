@@ -12,7 +12,7 @@ The labels stage is an action stage that takes data from the extracted map and
 modifies the [non-indexed labels]({{< relref "../../../get-started/labels/non-indexed-labels" >}}) set that is sent to Loki with the log entry.
 
 {{% admonition type="warning" %}}
-Non-indexed labels will be rejected by loki unless the `structured_metadata` per tenant configuration (in the `limits_config`) is enabled.
+Non-indexed labels will be rejected by Loki unless you enable the `allow_structured_metadata` per tenant configuration (in the `limits_config`).
 {{% /admonition %}}
 
 ## Schema

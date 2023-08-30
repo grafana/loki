@@ -61,7 +61,7 @@ limits_config:
   ingestion_rate_mb: 50
   ingestion_burst_size_mb: 50
   reject_old_samples: false
-  structured_metadata: true
+  allow_structured_metadata: true
 
 storage_config:
   named_stores:

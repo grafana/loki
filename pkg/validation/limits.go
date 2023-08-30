@@ -180,7 +180,7 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
-	StructuredMetadata bool `yaml:"structured_metadata,omitempty" json:"structured_metadata,omitempty" doc:"description=Allow user to send structured metadata (non-indexed labels) in push payload."`
+	AllowStructuredMetadata bool `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata (non-indexed labels) in push payload."`
 }
 
 type StreamRetention struct {
@@ -291,7 +291,7 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 
-	f.BoolVar(&l.StructuredMetadata, "validation.structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
+	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -767,8 +767,8 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
 }
 
-func (o *Overrides) StructuredMetadata(userID string) bool {
-	return o.getOverridesForUser(userID).StructuredMetadata
+func (o *Overrides) AllowStructuredMetadata(userID string) bool {
+	return o.getOverridesForUser(userID).AllowStructuredMetadata
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

@@ -2704,7 +2704,7 @@ shard_streams:
 
 # Allow user to send structured metadata (non-indexed labels) in push payload.
 # CLI flag: -validation.structured-metadata
-[structured_metadata: <boolean> | default = false]
+[allow_structured_metadata: <boolean> | default = false]
 ```
 
 ### frontend_worker

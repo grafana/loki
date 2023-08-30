@@ -89,7 +89,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			"test",
 			fakeLimits{
 				&validation.Limits{
-					StructuredMetadata: false,
+					AllowStructuredMetadata: false,
 				},
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", NonIndexedLabels: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
