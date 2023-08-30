@@ -42,6 +42,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -104,7 +105,7 @@ type Config struct {
 
 	WAL WALConfig `yaml:"wal,omitempty" doc:"description=The ingester WAL (Write Ahead Log) records incoming logs and stores them on the local file systems in order to guarantee persistence of acknowledged data in the event of a process crash."`
 
-	ChunkFilterer chunk.RequestChunkFilterer `yaml:"-"`
+	ChunkFilterer indexstore.RequestChunkFilterer `yaml:"-"`
 	// Optional wrapper that can be used to modify the behaviour of the ingester
 	Wrapper Wrapper `yaml:"-"`
 
@@ -240,7 +241,7 @@ type Ingester struct {
 
 	wal WAL
 
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter indexstore.RequestChunkFilterer
 
 	streamRateCalculator *StreamRateCalculator
 
@@ -319,7 +320,7 @@ func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits
 	return i, nil
 }
 
-func (i *Ingester) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (i *Ingester) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
 }
 

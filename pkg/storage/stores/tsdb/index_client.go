@@ -4,8 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -13,8 +11,9 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/querier/astmapper"
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
@@ -290,7 +289,7 @@ func (c *IndexClient) Volume(ctx context.Context, userID string, from, through m
 // SetChunkFilterer sets a chunk filter to be used when retrieving chunks.
 // This is only used for GetSeries implementation.
 // Todo we might want to pass it as a parameter to GetSeries instead.
-func (c *IndexClient) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (c *IndexClient) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	c.idx.SetChunkFilterer(chunkFilter)
 }
 

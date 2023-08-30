@@ -29,6 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb"
@@ -836,7 +837,7 @@ func Test_store_SelectSample(t *testing.T) {
 
 type fakeChunkFilterer struct{}
 
-func (f fakeChunkFilterer) ForRequest(_ context.Context) chunk.Filterer {
+func (f fakeChunkFilterer) ForRequest(_ context.Context) indexstore.Filterer {
 	return f
 }
 

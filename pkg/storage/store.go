@@ -27,7 +27,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index"
+	chunkstore "github.com/grafana/loki/pkg/storage/stores/chunk"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
 	"github.com/grafana/loki/pkg/storage/stores/series"
@@ -48,8 +49,8 @@ var (
 
 type Store interface {
 	stores.Store
-	stores.ChunkReader
-	index.Filterable
+	chunkstore.Reader
+	indexstore.Filterable
 	GetSchemaConfigs() []config.PeriodConfig
 }
 
@@ -74,7 +75,7 @@ type store struct {
 	limits StoreLimits
 	logger log.Logger
 
-	chunkFilterer               chunk.RequestChunkFilterer
+	chunkFilterer               indexstore.RequestChunkFilterer
 	congestionControllerFactory func(cfg congestion.Config, logger log.Logger, metrics *congestion.Metrics) congestion.Controller
 }
 
@@ -234,7 +235,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (chunkstore.Writer, indexstore.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{
 			"component": fmt.Sprintf(
@@ -254,7 +255,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			}
 			idx := series.NewIndexGatewayClientStore(gw, indexClientLogger)
 
-			return failingChunkWriter{}, index.NewMonitoredReaderWriter(idx, indexClientReg), func() {
+			return failingChunkWriter{}, indexstore.NewMonitoredReaderWriter(idx, indexClientReg), func() {
 				f.Stop()
 				gw.Stop()
 			}, nil
@@ -270,7 +271,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			return nil, nil, nil, err
 		}
 
-		var backupIndexWriter index.Writer
+		var backupIndexWriter indexstore.Writer
 		backupStoreStop := func() {}
 		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
 			pCopy := p
@@ -292,7 +293,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			return nil, nil, nil, err
 		}
 
-		indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+		indexReaderWriter = indexstore.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
 		chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 		return chunkWriter, indexReaderWriter,
@@ -319,7 +320,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	}
 
 	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
-	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+	indexReaderWriter = indexstore.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
 	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 	return chunkWriter,
@@ -380,7 +381,7 @@ func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Ma
 	return matchers, nil
 }
 
-func (s *store) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
+func (s *store) SetChunkFilterer(chunkFilterer indexstore.RequestChunkFilterer) {
 	s.chunkFilterer = chunkFilterer
 	s.Store.SetChunkFilterer(chunkFilterer)
 }
@@ -497,7 +498,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 		return nil, err
 	}
 
-	var chunkFilterer chunk.Filterer
+	var chunkFilterer indexstore.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}
@@ -535,7 +536,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 		return nil, err
 	}
 
-	var chunkFilterer chunk.Filterer
+	var chunkFilterer indexstore.Filterer
 	if s.chunkFilterer != nil {
 		chunkFilterer = s.chunkFilterer.ForRequest(ctx)
 	}

@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
@@ -45,7 +45,7 @@ func withoutTenantLabel(ls labels.Labels) labels.Labels {
 
 func (m *MultiTenantIndex) Bounds() (model.Time, model.Time) { return m.idx.Bounds() }
 
-func (m *MultiTenantIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (m *MultiTenantIndex) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	m.idx.SetChunkFilterer(chunkFilter)
 }
 

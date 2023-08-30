@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
@@ -49,7 +49,7 @@ type shouldIncludeChunk func(index.ChunkMeta) bool
 
 type Index interface {
 	Bounded
-	SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer)
+	indexstore.Filterable
 	Close() error
 	// GetChunkRefs accepts an optional []ChunkRef argument.
 	// If not nil, it will use that slice to build the result,
@@ -93,7 +93,7 @@ func (NoopIndex) Stats(_ context.Context, _ string, _, _ model.Time, _ IndexStat
 	return nil
 }
 
-func (NoopIndex) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
+func (NoopIndex) SetChunkFilterer(_ indexstore.RequestChunkFilterer) {}
 
 func (NoopIndex) Volume(_ context.Context, _ string, _, _ model.Time, _ VolumeAccumulator, _ *index.ShardAnnotation, _ shouldIncludeChunk, _ []string, _ string, _ ...*labels.Matcher) error {
 	return nil

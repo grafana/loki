@@ -17,7 +17,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/errors"
-	"github.com/grafana/loki/pkg/storage/stores/index"
+	chunkstore "github.com/grafana/loki/pkg/storage/stores/chunk"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -38,8 +39,8 @@ type storeEntry struct {
 	limits      StoreLimits
 	stop        func()
 	fetcher     *fetcher.Fetcher
-	indexReader index.Reader
-	ChunkWriter
+	indexReader indexstore.Reader
+	chunkstore.Writer
 }
 
 func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
@@ -80,7 +81,7 @@ func (c *storeEntry) GetSeries(ctx context.Context, userID string, from, through
 	return c.indexReader.GetSeries(ctx, userID, from, through, matchers...)
 }
 
-func (c *storeEntry) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (c *storeEntry) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	c.indexReader.SetChunkFilterer(chunkFilter)
 }
 

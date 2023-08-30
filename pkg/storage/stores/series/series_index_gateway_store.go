@@ -111,7 +111,7 @@ func (c *IndexGatewayClientStore) Volume(ctx context.Context, _ string, from, th
 	})
 }
 
-func (c *IndexGatewayClientStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
+func (c *IndexGatewayClientStore) SetChunkFilterer(_ index.RequestChunkFilterer) {
 	level.Warn(c.logger).Log("msg", "SetChunkFilterer called on index gateway client store, but it does not support it")
 }
 

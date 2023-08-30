@@ -9,37 +9,20 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
-	"github.com/grafana/loki/pkg/storage/stores/index"
+	chunkstore "github.com/grafana/loki/pkg/storage/stores/chunk"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 )
 
-type ChunkReader interface {
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
-}
-
-type ChunkWriter interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
-}
-
-type ChunkFetcher interface {
-	GetChunkFetcher(tm model.Time) *fetcher.Fetcher
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-}
-
 type Store interface {
-	index.BaseReader
-	index.Filterable
-	ChunkWriter
-	ChunkFetcher
+	indexstore.BaseReader
+	indexstore.Filterable
+	chunkstore.Writer
+	chunkstore.Fetcher
 	Stop()
 }
 
@@ -63,13 +46,13 @@ func NewCompositeStore(limits StoreLimits) *CompositeStore {
 	return &CompositeStore{compositeStore{}, limits}
 }
 
-func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index index.Reader, writer ChunkWriter, stop func()) {
+func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index indexstore.Reader, writer chunkstore.Writer, stop func()) {
 	c.stores = append(c.stores, compositeStoreEntry{
 		start: start,
 		Store: &storeEntry{
 			fetcher:     fetcher,
 			indexReader: index,
-			ChunkWriter: writer,
+			Writer:      writer,
 			limits:      c.limits,
 			stop:        stop,
 		},
@@ -102,7 +85,7 @@ func (c compositeStore) PutOne(ctx context.Context, from, through model.Time, ch
 	})
 }
 
-func (c compositeStore) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (c compositeStore) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	for _, store := range c.stores {
 		store.Store.SetChunkFilterer(chunkFilter)
 	}

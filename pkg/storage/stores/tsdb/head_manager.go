@@ -21,8 +21,8 @@ import (
 	"github.com/prometheus/prometheus/tsdb/record"
 	"go.uber.org/atomic"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/wal"
 )
@@ -627,7 +627,7 @@ type tenantHeads struct {
 	locks       []sync.RWMutex
 	tenants     []map[string]*Head
 	log         log.Logger
-	chunkFilter chunk.RequestChunkFilterer
+	chunkFilter indexstore.RequestChunkFilterer
 	metrics     *Metrics
 }
 
@@ -713,7 +713,7 @@ func (t *tenantHeads) shardForTenant(userID string) uint64 {
 
 func (t *tenantHeads) Close() error { return nil }
 
-func (t *tenantHeads) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (t *tenantHeads) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	t.chunkFilter = chunkFilter
 }
 

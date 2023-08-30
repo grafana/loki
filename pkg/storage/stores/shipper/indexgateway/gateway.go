@@ -19,8 +19,8 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
-	"github.com/grafana/loki/pkg/storage/stores/index"
+	chunkstore "github.com/grafana/loki/pkg/storage/stores/chunk"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
@@ -31,8 +31,8 @@ const (
 )
 
 type IndexQuerier interface {
-	stores.ChunkFetcher
-	index.BaseReader
+	chunkstore.Fetcher
+	indexstore.BaseReader
 	Stop()
 }
 

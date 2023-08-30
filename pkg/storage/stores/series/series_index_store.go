@@ -68,7 +68,7 @@ type indexReaderWriter struct {
 	index            series_index.Client
 	schemaCfg        config.SchemaConfig
 	fetcher          *fetcher.Fetcher
-	chunkFilterer    chunk.RequestChunkFilterer
+	chunkFilterer    index.RequestChunkFilterer
 	chunkBatchSize   int
 	writeDedupeCache cache.Cache
 }
@@ -192,7 +192,7 @@ func (c *indexReaderWriter) GetChunkRefs(ctx context.Context, userID string, fro
 	return chunks, nil
 }
 
-func (c *indexReaderWriter) SetChunkFilterer(f chunk.RequestChunkFilterer) {
+func (c *indexReaderWriter) SetChunkFilterer(f index.RequestChunkFilterer) {
 	c.chunkFilterer = f
 }
 
@@ -231,7 +231,7 @@ func (c *indexReaderWriter) chunksToSeries(ctx context.Context, in []logproto.Ch
 		split = len(chunksBySeries)
 	}
 
-	var chunkFilterer chunk.Filterer
+	var chunkFilterer index.Filterer
 	if c.chunkFilterer != nil {
 		chunkFilterer = c.chunkFilterer.ForRequest(ctx)
 	}

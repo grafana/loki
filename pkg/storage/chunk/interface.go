@@ -17,12 +17,10 @@
 package chunk
 
 import (
-	"context"
 	"errors"
 	"io"
 
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/util/filter"
 )
@@ -57,14 +55,4 @@ type Data interface {
 	// Entries returns the number of entries in a chunk
 	Entries() int
 	Utilization() float64
-}
-
-// RequestChunkFilterer creates ChunkFilterer for a given request context.
-type RequestChunkFilterer interface {
-	ForRequest(ctx context.Context) Filterer
-}
-
-// Filterer filters chunks based on the metric.
-type Filterer interface {
-	ShouldFilter(metric labels.Labels) bool
 }

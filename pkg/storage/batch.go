@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -86,7 +87,7 @@ type batchChunkIterator struct {
 	lastOverlapping []*LazyChunk
 	metrics         *ChunkMetrics
 	matchers        []*labels.Matcher
-	chunkFilterer   chunk.Filterer
+	chunkFilterer   indexstore.Filterer
 
 	begun      bool
 	ctx        context.Context
@@ -105,7 +106,7 @@ func newBatchChunkIterator(
 	start, end time.Time,
 	metrics *ChunkMetrics,
 	matchers []*labels.Matcher,
-	chunkFilterer chunk.Filterer,
+	chunkFilterer indexstore.Filterer,
 ) *batchChunkIterator {
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
@@ -325,7 +326,7 @@ func newLogBatchIterator(
 	pipeline syntax.Pipeline,
 	direction logproto.Direction,
 	start, end time.Time,
-	chunkFilterer chunk.Filterer,
+	chunkFilterer indexstore.Filterer,
 ) (iter.EntryIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &logBatchIterator{
@@ -470,7 +471,7 @@ func newSampleBatchIterator(
 	matchers []*labels.Matcher,
 	extractor syntax.SampleExtractor,
 	start, end time.Time,
-	chunkFilterer chunk.Filterer,
+	chunkFilterer indexstore.Filterer,
 ) (iter.SampleIterator, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
@@ -607,7 +608,7 @@ func fetchChunkBySeries(
 	metrics *ChunkMetrics,
 	chunks []*LazyChunk,
 	matchers []*labels.Matcher,
-	chunkFilter chunk.Filterer,
+	chunkFilter indexstore.Filterer,
 ) (map[model.Fingerprint][][]*LazyChunk, error) {
 	chksBySeries := partitionBySeriesChunks(chunks)
 
@@ -643,7 +644,7 @@ func fetchChunkBySeries(
 func filterSeriesByMatchers(
 	chks map[model.Fingerprint][][]*LazyChunk,
 	matchers []*labels.Matcher,
-	chunkFilterer chunk.Filterer,
+	chunkFilterer indexstore.Filterer,
 	metrics *ChunkMetrics,
 ) map[model.Fingerprint][][]*LazyChunk {
 	var filteredSeries, filteredChks int

@@ -34,6 +34,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -361,7 +362,7 @@ func (s *testStore) GetSchemaConfigs() []config.PeriodConfig {
 
 func (s *testStore) Stop() {}
 
-func (s *testStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {}
+func (s *testStore) SetChunkFilterer(_ indexstore.RequestChunkFilterer) {}
 
 func (s *testStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*stats.Stats, error) {
 	return &stats.Stats{}, nil

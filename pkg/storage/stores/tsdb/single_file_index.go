@@ -15,8 +15,8 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
@@ -126,7 +126,7 @@ func (f *TSDBFile) Reader() (io.ReadSeeker, error) {
 // It loads the file into memory and doesn't keep a file descriptor open
 type TSDBIndex struct {
 	reader         IndexReader
-	chunkFilter    chunk.RequestChunkFilterer
+	chunkFilter    indexstore.RequestChunkFilterer
 	postingsReader PostingsReader
 }
 
@@ -185,7 +185,7 @@ func (i *TSDBIndex) Bounds() (model.Time, model.Time) {
 	return model.Time(from), model.Time(through)
 }
 
-func (i *TSDBIndex) SetChunkFilterer(chunkFilter chunk.RequestChunkFilterer) {
+func (i *TSDBIndex) SetChunkFilterer(chunkFilter indexstore.RequestChunkFilterer) {
 	i.chunkFilter = chunkFilter
 }
 
@@ -198,7 +198,7 @@ func (i *TSDBIndex) ForSeries(ctx context.Context, shard *index.ShardAnnotation,
 	chks := ChunkMetasPool.Get()
 	defer ChunkMetasPool.Put(chks)
 
-	var filterer chunk.Filterer
+	var filterer indexstore.Filterer
 	if i.chunkFilter != nil {
 		filterer = i.chunkFilter.ForRequest(ctx)
 	}
@@ -304,7 +304,7 @@ func (i *TSDBIndex) Stats(ctx context.Context, _ string, from, through model.Tim
 	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
 		// TODO(owen-d): use pool
 		var ls labels.Labels
-		var filterer chunk.Filterer
+		var filterer indexstore.Filterer
 		if i.chunkFilter != nil {
 			filterer = i.chunkFilter.ForRequest(ctx)
 		}
@@ -378,7 +378,7 @@ func (i *TSDBIndex) Volume(
 
 	return i.postingsReader.ForPostings(ctx, matchers, func(p index.Postings) error {
 		var ls labels.Labels
-		var filterer chunk.Filterer
+		var filterer indexstore.Filterer
 		if i.chunkFilter != nil {
 			filterer = i.chunkFilter.ForRequest(ctx)
 		}

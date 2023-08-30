@@ -38,6 +38,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/validation"
@@ -441,7 +442,7 @@ func (s *mockStore) GetSchemaConfigs() []config.PeriodConfig {
 	return defaultPeriodConfigs
 }
 
-func (s *mockStore) SetChunkFilterer(_ chunk.RequestChunkFilterer) {
+func (s *mockStore) SetChunkFilterer(_ indexstore.RequestChunkFilterer) {
 }
 
 // chunk.Store methods
