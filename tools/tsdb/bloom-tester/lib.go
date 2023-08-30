@@ -65,7 +65,7 @@ func execute() {
 	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
 	helpers.ExitErr("resolving tenants", err)
 
-	sampler, err := NewProbabilisticSampler(0.002)
+	sampler, err := NewProbabilisticSampler(0.001)
 	helpers.ExitErr("creating sampler", err)
 
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
@@ -80,8 +80,49 @@ func execute() {
 	level.Info(util_log.Logger).Log("msg", "finished analyzing")
 }
 
+var (
+	three      = newNGramTokenizer(3, 4, 0)
+	threeSkip1 = newNGramTokenizer(3, 4, 1)
+	threeSkip2 = newNGramTokenizer(3, 4, 2)
+
+	onePctError  = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.01, 0.8) }
+	fivePctError = func() *boom.ScalableBloomFilter { return boom.NewScalableBloomFilter(1024, 0.05, 0.8) }
+)
+
+var experiments = []Experiment{
+	NewExperiment(
+		"token=3_error=1%",
+		three,
+		onePctError,
+	),
+	NewExperiment(
+		"token=3_error=5%",
+		three,
+		fivePctError,
+	),
+	NewExperiment(
+		"token=3skip1_error=1%",
+		threeSkip1,
+		onePctError,
+	),
+	NewExperiment(
+		"token=3skip1_error=5%",
+		threeSkip1,
+		fivePctError,
+	),
+	NewExperiment(
+		"token=3skip2_error=1%",
+		threeSkip2,
+		onePctError,
+	),
+	NewExperiment(
+		"token=3skip2_error=5%",
+		threeSkip2,
+		fivePctError,
+	),
+}
+
 func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
-	tokenizer := newNGramTokenizer(3, 4, 1)
 	metrics.tenants.Add(float64(len(tenants)))
 
 	var n int         // count iterated series
@@ -122,8 +163,6 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								metrics.chunksKept.Add(float64(len(chks)))
 								metrics.chunksPerSeries.Observe(float64(len(chks)))
 
-								sbf := boom.NewScalableBloomFilter(2048, 0.05, 0.8)
-
 								transformed := make([]chunk.Chunk, 0, len(chks))
 								for _, chk := range chks {
 									transformed = append(transformed, chunk.Chunk{
@@ -143,53 +182,6 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								)
 								helpers.ExitErr("getting chunks", err)
 
-								for idx := range got {
-									lc := got[idx].Data.(*chunkenc.Facade).LokiChunk()
-
-									if (n+idx+1)%reportEvery == 0 {
-										estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
-										level.Info(util_log.Logger).Log(
-											"msg", "iterated",
-											"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
-											"chunks", len(chks),
-											"series", ls.String(),
-										)
-									}
-
-									itr, err := lc.Iterator(
-										context.Background(),
-										time.Unix(0, 0),
-										time.Unix(0, math.MaxInt64),
-										logproto.FORWARD,
-										log.NewNoopPipeline().ForStream(ls),
-									)
-									helpers.ExitErr("getting iterator", err)
-
-									for itr.Next() && itr.Error() == nil {
-										toks := tokenizer.Tokens(itr.Entry().Line)
-										for _, tok := range toks {
-											if tok.Key != "" {
-												if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
-													metrics.collisions.Inc()
-													metrics.keyCollisions.Inc()
-												}
-												metrics.inserts.Inc()
-												metrics.keysInserted.Inc()
-											}
-
-											if tok.Value != "" {
-												if dup := sbf.TestAndAdd([]byte(tok.Key)); dup {
-													metrics.collisions.Inc()
-													metrics.valueCollisions.Inc()
-												}
-												metrics.inserts.Inc()
-												metrics.valuesInserted.Inc()
-											}
-										}
-									}
-								}
-
-								helpers.ExitErr("iterating chunks", err)
 								var chunkTotalUncompressedSize int
 								for _, c := range got {
 									chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
@@ -197,10 +189,57 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 								n += len(got)
 
-								metrics.bloomSize.Observe(float64(sbf.Capacity() / 8))
-								fillRatio := sbf.FillRatio()
-								metrics.hammingWeightRatio.Observe(fillRatio)
-								metrics.estimatedCount.Observe(float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())))
+								for experimentIdx, experiment := range experiments {
+
+									tokenizer := experiment.tokenizer
+									sbf := experiment.bloom()
+
+									for idx := range got {
+										lc := got[idx].Data.(*chunkenc.Facade).LokiChunk()
+
+										if experimentIdx == 0 && (n+idx+1)%reportEvery == 0 {
+											estimatedProgress := float64(fp) / float64(model.Fingerprint(math.MaxUint64)) * 100.
+											level.Info(util_log.Logger).Log(
+												"msg", "iterated",
+												"progress", fmt.Sprintf("%.2f%%", estimatedProgress),
+												"chunks", len(chks),
+												"series", ls.String(),
+											)
+										}
+
+										itr, err := lc.Iterator(
+											context.Background(),
+											time.Unix(0, 0),
+											time.Unix(0, math.MaxInt64),
+											logproto.FORWARD,
+											log.NewNoopPipeline().ForStream(ls),
+										)
+										helpers.ExitErr("getting iterator", err)
+
+										for itr.Next() && itr.Error() == nil {
+											toks := tokenizer.Tokens(itr.Entry().Line)
+											metrics.lines.WithLabelValues(experiment.name).Inc()
+											for _, tok := range toks {
+												for _, str := range []string{tok.Key, tok.Value} {
+													if str != "" {
+														if dup := sbf.TestAndAdd([]byte(str)); dup {
+															metrics.collisions.WithLabelValues(experiment.name).Inc()
+														}
+														metrics.inserts.WithLabelValues(experiment.name).Inc()
+													}
+												}
+											}
+										}
+										helpers.ExitErr("iterating chunks", itr.Error())
+
+										metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
+										fillRatio := sbf.FillRatio()
+										metrics.hammingWeightRatio.WithLabelValues(experiment.name).Observe(fillRatio)
+										metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
+											float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
+										)
+									}
+								}
 							},
 						)
 
@@ -215,6 +254,9 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 		helpers.ExitErr(fmt.Sprintf("iterating tenant %s", tenant), err)
 
 	}
+
+	pool.drain()                 // wait for workers to finishh
+	time.Sleep(30 * time.Second) // allow final scrape
 	return nil
 }
 

@@ -35,3 +35,9 @@ func (p *pool) acquire(
 		p.ch <- struct{}{}
 	}()
 }
+
+func (p *pool) drain() {
+	for i := 0; i < p.n; i++ {
+		<-p.ch
+	}
+}
