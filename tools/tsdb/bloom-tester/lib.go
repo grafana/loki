@@ -194,6 +194,9 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 									tokenizer := experiment.tokenizer
 									sbf := experiment.bloom()
 
+									var (
+										lines, inserts, collisions float64
+									)
 									for idx := range got {
 										lc := got[idx].Data.(*chunkenc.Facade).LokiChunk()
 
@@ -218,14 +221,14 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 
 										for itr.Next() && itr.Error() == nil {
 											toks := tokenizer.Tokens(itr.Entry().Line)
-											metrics.lines.WithLabelValues(experiment.name).Inc()
+											lines++
 											for _, tok := range toks {
 												for _, str := range []string{tok.Key, tok.Value} {
 													if str != "" {
 														if dup := sbf.TestAndAdd([]byte(str)); dup {
-															metrics.collisions.WithLabelValues(experiment.name).Inc()
+															collisions++
 														}
-														metrics.inserts.WithLabelValues(experiment.name).Inc()
+														inserts++
 													}
 												}
 											}
@@ -239,6 +242,11 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 											float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
 										)
 									}
+
+									metrics.lines.WithLabelValues(experiment.name).Add(lines)
+									metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
+									metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
+
 								}
 							},
 						)
