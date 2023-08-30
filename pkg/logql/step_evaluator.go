@@ -1,6 +1,8 @@
 package logql
 
 import (
+	"github.com/xlab/treeprint"
+
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -13,5 +15,5 @@ type StepEvaluator interface {
 	// Reports any error
 	Error() error
 	// Explain returns a print of the step evaluation tree
-	Explain(depth int) string
+	Explain(treeprint.Tree)
 }
