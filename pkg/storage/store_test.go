@@ -1013,8 +1013,9 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	shipperConfig.Mode = indexshipper.ModeReadWrite
 
 	cfg := Config{
-		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
+		MaxParallelismTableOps: 50,
+		FSConfig:               local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		TSDBShipperConfig:      tsdb.IndexCfg{Config: shipperConfig},
 		NamedStores: NamedStores{
 			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
