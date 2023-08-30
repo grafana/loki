@@ -7,7 +7,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/stretchr/testify/require"
-	"github.com/xlab/treeprint"
 
 	"github.com/grafana/dskit/user"
 
@@ -43,15 +42,15 @@ func TestExplain(t *testing.T) {
 	ev, err := downEv.NewStepEvaluator(ctx, downEv, expr.(syntax.SampleExpr), params)
 	require.NoError(t, err)
 
-	tree := treeprint.New()
+	tree := NewTree()
 	ev.Explain(tree)
 
-	expected := `.
-└── [[topk  by ()]]  VectorAgg
-    └── Concat
-        ├── VectorStep
-        ├── ...
-        └── VectorStep
+	expected :=
+		`[topk,  by ()] VectorAgg
+ └── Concat
+      ├── VectorStep
+      ├── ...
+      └── VectorStep
 `
 	require.Equal(t, expected, tree.String())
 }

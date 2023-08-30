@@ -125,7 +125,6 @@ require (
 	github.com/richardartoul/molecule v1.0.0
 	github.com/thanos-io/objstore v0.0.0-20230727115635-d0c43443ecda
 	github.com/willf/bloom v2.0.3+incompatible
-	github.com/xlab/treeprint v1.2.0
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1
 	golang.org/x/oauth2 v0.10.0
