@@ -1,16 +1,16 @@
 package logql
 
-func (e *literalStepEvaluator) Explain(parent Node) {
+func (e *LiteralStepEvaluator) Explain(parent Node) {
 	b := parent.Child("Literal")
 	e.nextEv.Explain(b)
 }
 
-func (e *labelReplaceEvaluator) Explain(parent Node) {
+func (e *LabelReplaceEvaluator) Explain(parent Node) {
 	b := parent.Childf("%s LabelReplace", e.expr.Replacement)
 	e.nextEvaluator.Explain(b)
 }
 
-func (e *vectorAggEvaluator) Explain(parent Node) {
+func (e *VectorAggEvaluator) Explain(parent Node) {
 	b := parent.Childf("[%s, %s] VectorAgg", e.expr.Operation, e.expr.Grouping)
 	e.nextEvaluator.Explain(b)
 }
@@ -19,11 +19,11 @@ func (m *MatrixStepEvaluator) Explain(parent Node) {
 	parent.Child("MatrixStep")
 }
 
-func (e *vectorStepEvaluator) Explain(parent Node) {
+func (e *VectorStepEvaluator) Explain(parent Node) {
 	parent.Child("VectorStep")
 }
 
-func (e *concatStepEvaluator) Explain(parent Node) {
+func (e *ConcatStepEvaluator) Explain(parent Node) {
 	b := parent.Child("Concat")
 	if len(e.evaluators) < 3 {
 		for _, child := range e.evaluators {
@@ -36,20 +36,20 @@ func (e *concatStepEvaluator) Explain(parent Node) {
 	}
 }
 
-func (r *rangeVectorEvaluator) Explain(parent Node) {
+func (r *RangeVectorEvaluator) Explain(parent Node) {
 	parent.Child("RangeVectorAgg")
 }
 
-func (e *absentRangeVectorEvaluator) Explain(parent Node) {
+func (e *AbsentRangeVectorEvaluator) Explain(parent Node) {
 	parent.Child("Absent RangeVectorAgg")
 }
 
-func (e *binOpStepEvaluator) Explain(parent Node) {
+func (e *BinOpStepEvaluator) Explain(parent Node) {
 	b := parent.Childf("%s BinOp", e.expr.Op)
 	e.lse.Explain(b)
 	e.rse.Explain(b)
 }
 
-func (i *vectorIterator) Explain(parent Node) {
+func (i *VectorIterator) Explain(parent Node) {
 	parent.Childf("%f vectorIterator", i.val)
 }

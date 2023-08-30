@@ -381,17 +381,17 @@ func (ev *DownstreamEvaluator) NewIterator(
 	}
 }
 
-type concatStepEvaluator struct {
+type ConcatStepEvaluator struct {
 	evaluators []StepEvaluator
 }
 
 // NewConcatStepEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
 func NewConcatStepEvaluator(evaluators []StepEvaluator) StepEvaluator {
-	return &concatStepEvaluator{evaluators}
+	return &ConcatStepEvaluator{evaluators}
 }
 
-func (e *concatStepEvaluator) Next() (ok bool, ts int64, vec promql.Vector) {
+func (e *ConcatStepEvaluator) Next() (ok bool, ts int64, vec promql.Vector) {
 	var cur promql.Vector
 	for _, eval := range e.evaluators {
 		ok, ts, cur = eval.Next()
@@ -400,7 +400,7 @@ func (e *concatStepEvaluator) Next() (ok bool, ts int64, vec promql.Vector) {
 	return ok, ts, vec
 }
 
-func (e *concatStepEvaluator) Close() (lastErr error) {
+func (e *ConcatStepEvaluator) Close() (lastErr error) {
 	for _, eval := range e.evaluators {
 		if err := eval.Close(); err != nil {
 			lastErr = err
@@ -409,7 +409,7 @@ func (e *concatStepEvaluator) Close() (lastErr error) {
 	return lastErr
 }
 
-func (e *concatStepEvaluator) Error() error {
+func (e *ConcatStepEvaluator) Error() error {
 	var errs []error
 	for _, eval := range e.evaluators {
 		if err := eval.Error(); err != nil {

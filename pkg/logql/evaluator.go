@@ -243,7 +243,7 @@ func newVectorAggEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (*VectorAggEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
@@ -253,7 +253,7 @@ func newVectorAggEvaluator(
 	}
 	sort.Strings(expr.Grouping.Groups)
 
-	return &vectorAggEvaluator{
+	return &VectorAggEvaluator{
 		nextEvaluator: nextEvaluator,
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
@@ -261,14 +261,14 @@ func newVectorAggEvaluator(
 	}, nil
 }
 
-type vectorAggEvaluator struct {
+type VectorAggEvaluator struct {
 	nextEvaluator StepEvaluator
 	expr          *syntax.VectorAggregationExpr
 	buf           []byte
 	lb            *labels.Builder
 }
 
-func (e *vectorAggEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *VectorAggEvaluator) Next() (bool, int64, promql.Vector) {
 	next, ts, vec := e.nextEvaluator.Next()
 
 	if !next {
@@ -463,11 +463,11 @@ func (e *vectorAggEvaluator) Next() (bool, int64, promql.Vector) {
 	return next, ts, vec
 }
 
-func (e *vectorAggEvaluator) Close() error {
+func (e *VectorAggEvaluator) Close() error {
 	return e.nextEvaluator.Close()
 }
 
-func (e *vectorAggEvaluator) Error() error {
+func (e *VectorAggEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 
@@ -491,23 +491,23 @@ func newRangeAggEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return &absentRangeVectorEvaluator{
+		return &AbsentRangeVectorEvaluator{
 			iter: iter,
 			lbs:  absentLabels,
 		}, nil
 	}
-	return &rangeVectorEvaluator{
+	return &RangeVectorEvaluator{
 		iter: iter,
 	}, nil
 }
 
-type rangeVectorEvaluator struct {
+type RangeVectorEvaluator struct {
 	iter RangeVectorIterator
 
 	err error
 }
 
-func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+func (r *RangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
 		return false, 0, promql.Vector{}
@@ -523,23 +523,23 @@ func (r *rangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	return true, ts, vec
 }
 
-func (r *rangeVectorEvaluator) Close() error { return r.iter.Close() }
+func (r *RangeVectorEvaluator) Close() error { return r.iter.Close() }
 
-func (r *rangeVectorEvaluator) Error() error {
+func (r *RangeVectorEvaluator) Error() error {
 	if r.err != nil {
 		return r.err
 	}
 	return r.iter.Error()
 }
 
-type absentRangeVectorEvaluator struct {
+type AbsentRangeVectorEvaluator struct {
 	iter RangeVectorIterator
 	lbs  labels.Labels
 
 	err error
 }
 
-func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
+func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	next := r.iter.Next()
 	if !next {
 		return false, 0, promql.Vector{}
@@ -565,9 +565,9 @@ func (r *absentRangeVectorEvaluator) Next() (bool, int64, promql.Vector) {
 	}
 }
 
-func (r absentRangeVectorEvaluator) Close() error { return r.iter.Close() }
+func (r AbsentRangeVectorEvaluator) Close() error { return r.iter.Close() }
 
-func (r absentRangeVectorEvaluator) Error() error {
+func (r AbsentRangeVectorEvaluator) Error() error {
 	if r.err != nil {
 		return r.err
 	}
@@ -643,21 +643,21 @@ func newBinOpStepEvaluator(
 		return nil, err
 	}
 
-	return &binOpStepEvaluator{
+	return &BinOpStepEvaluator{
 		rse:  rse,
 		lse:  lse,
 		expr: expr,
 	}, nil
 }
 
-type binOpStepEvaluator struct {
+type BinOpStepEvaluator struct {
 	rse     StepEvaluator
 	lse     StepEvaluator
 	expr    *syntax.BinOpExpr
 	lastErr error
 }
 
-func (e *binOpStepEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *BinOpStepEvaluator) Next() (bool, int64, promql.Vector) {
 	var (
 		ts       int64
 		next     bool
@@ -698,7 +698,7 @@ func (e *binOpStepEvaluator) Next() (bool, int64, promql.Vector) {
 	return true, ts, results
 }
 
-func (e *binOpStepEvaluator) Close() (lastError error) {
+func (e *BinOpStepEvaluator) Close() (lastError error) {
 	for _, ev := range []StepEvaluator{e.lse, e.rse} {
 		if err := ev.Close(); err != nil {
 			lastError = err
@@ -707,7 +707,7 @@ func (e *binOpStepEvaluator) Close() (lastError error) {
 	return lastError
 }
 
-func (e *binOpStepEvaluator) Error() error {
+func (e *BinOpStepEvaluator) Error() error {
 	var errs []error
 	if e.lastErr != nil {
 		errs = append(errs, e.lastErr)
@@ -919,13 +919,13 @@ func newLiteralStepEvaluator(
 	nextEv StepEvaluator,
 	inverted bool,
 	returnBool bool,
-) (StepEvaluator, error) {
+) (*LiteralStepEvaluator, error) {
 	val, err := lit.Value()
 	if err != nil {
 		return nil, err
 	}
 
-	return &literalStepEvaluator{
+	return &LiteralStepEvaluator{
 		nextEv:     nextEv,
 		val:        val,
 		inverted:   inverted,
@@ -934,7 +934,7 @@ func newLiteralStepEvaluator(
 	}, nil
 }
 
-type literalStepEvaluator struct {
+type LiteralStepEvaluator struct {
 	nextEv     StepEvaluator
 	mergeErr   error
 	val        float64
@@ -943,7 +943,7 @@ type literalStepEvaluator struct {
 	returnBool bool
 }
 
-func (e *literalStepEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *LiteralStepEvaluator) Next() (bool, int64, promql.Vector) {
 	ok, ts, vec := e.nextEv.Next()
 	results := make(promql.Vector, 0, len(vec))
 	for _, sample := range vec {
@@ -977,29 +977,29 @@ func (e *literalStepEvaluator) Next() (bool, int64, promql.Vector) {
 	return ok, ts, results
 }
 
-func (e *literalStepEvaluator) Close() error {
+func (e *LiteralStepEvaluator) Close() error {
 	return e.nextEv.Close()
 }
 
-func (e *literalStepEvaluator) Error() error {
+func (e *LiteralStepEvaluator) Error() error {
 	if e.mergeErr != nil {
 		return e.mergeErr
 	}
 	return e.nextEv.Error()
 }
 
-// vectorIterator return simple vector like (1).
-type vectorIterator struct {
+// VectorIterator return simple vector like (1).
+type VectorIterator struct {
 	stepMs, endMs, currentMs int64
 	val                      float64
 }
 
 func newVectorIterator(val float64,
-	stepMs, startMs, endMs int64) *vectorIterator {
+	stepMs, startMs, endMs int64) *VectorIterator {
 	if stepMs == 0 {
 		stepMs = 1
 	}
-	return &vectorIterator{
+	return &VectorIterator{
 		val:       val,
 		stepMs:    stepMs,
 		endMs:     endMs,
@@ -1007,7 +1007,7 @@ func newVectorIterator(val float64,
 	}
 }
 
-func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
+func (r *VectorIterator) Next() (bool, int64, promql.Vector) {
 	r.currentMs = r.currentMs + r.stepMs
 	if r.currentMs > r.endMs {
 		return false, 0, nil
@@ -1018,11 +1018,11 @@ func (r *vectorIterator) Next() (bool, int64, promql.Vector) {
 	return true, r.currentMs, results
 }
 
-func (r *vectorIterator) Close() error {
+func (r *VectorIterator) Close() error {
 	return nil
 }
 
-func (r *vectorIterator) Error() error {
+func (r *VectorIterator) Error() error {
 	return nil
 }
 
@@ -1032,27 +1032,27 @@ func newLabelReplaceEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.LabelReplaceExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (*LabelReplaceEvaluator, error) {
 	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
 
-	return &labelReplaceEvaluator{
+	return &LabelReplaceEvaluator{
 		nextEvaluator: nextEvaluator,
 		expr:          expr,
 		buf:           make([]byte, 0, 1024),
 	}, nil
 }
 
-type labelReplaceEvaluator struct {
+type LabelReplaceEvaluator struct {
 	nextEvaluator StepEvaluator
 	labelCache    map[uint64]labels.Labels
 	expr          *syntax.LabelReplaceExpr
 	buf           []byte
 }
 
-func (e *labelReplaceEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *LabelReplaceEvaluator) Next() (bool, int64, promql.Vector) {
 	next, ts, vec := e.nextEvaluator.Next()
 	if !next {
 		return false, 0, promql.Vector{}
@@ -1087,10 +1087,10 @@ func (e *labelReplaceEvaluator) Next() (bool, int64, promql.Vector) {
 	return next, ts, vec
 }
 
-func (e *labelReplaceEvaluator) Close() error {
+func (e *LabelReplaceEvaluator) Close() error {
 	return e.nextEvaluator.Close()
 }
-func (e *labelReplaceEvaluator) Error() error {
+func (e *LabelReplaceEvaluator) Error() error {
 	return e.nextEvaluator.Error()
 }
 

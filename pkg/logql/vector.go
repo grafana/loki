@@ -65,21 +65,21 @@ func (s *vectorByReverseValueHeap) Pop() interface{} {
 	return el
 }
 
-type vectorStepEvaluator struct {
+type VectorStepEvaluator struct {
 	exhausted bool
 	start     time.Time
 	data      promql.Vector
 }
 
-func NewVectorStepEvaluator(start time.Time, data promql.Vector) StepEvaluator {
-	return &vectorStepEvaluator{
+func NewVectorStepEvaluator(start time.Time, data promql.Vector) *VectorStepEvaluator {
+	return &VectorStepEvaluator{
 		exhausted: false,
 		start:     start,
 		data:      data,
 	}
 }
 
-func (e *vectorStepEvaluator) Next() (bool, int64, promql.Vector) {
+func (e *VectorStepEvaluator) Next() (bool, int64, promql.Vector) {
 	if !e.exhausted {
 		e.exhausted = true
 		return true, e.start.UnixNano() / int64(time.Millisecond), e.data
@@ -87,10 +87,10 @@ func (e *vectorStepEvaluator) Next() (bool, int64, promql.Vector) {
 	return false, 0, nil
 }
 
-func (e *vectorStepEvaluator) Close() error {
+func (e *VectorStepEvaluator) Close() error {
 	return nil
 }
 
-func (e *vectorStepEvaluator) Error() error {
+func (e *VectorStepEvaluator) Error() error {
 	return nil
 }
