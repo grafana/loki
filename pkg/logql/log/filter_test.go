@@ -25,19 +25,19 @@ func Test_SimplifiedRegex(t *testing.T) {
 	}{
 		// regex we intend to support.
 		{"foo", true, newContainsFilter([]byte("foo"), false), true},
-		{"not", true, newNotFilter(newContainsFilter([]byte("not"), false)), false},
+		{"not", true, NewNotFilter(newContainsFilter([]byte("not"), false)), false},
 		{"(foo)", true, newContainsFilter([]byte("foo"), false), true},
 		{"(foo|ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
 		{"(foo|ba|ar)", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), newContainsFilter([]byte("ar"), false)), true},
 		{"(foo|(ba|ar))", true, newOrFilter(newContainsFilter([]byte("foo"), false), newOrFilter(newContainsFilter([]byte("ba"), false), newContainsFilter([]byte("ar"), false))), true},
 		{"foo.*", true, newContainsFilter([]byte("foo"), false), true},
-		{".*foo", true, newNotFilter(newContainsFilter([]byte("foo"), false)), false},
+		{".*foo", true, NewNotFilter(newContainsFilter([]byte("foo"), false)), false},
 		{".*foo.*", true, newContainsFilter([]byte("foo"), false), true},
 		{"(.*)(foo).*", true, newContainsFilter([]byte("foo"), false), true},
 		{"(foo.*|.*ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
-		{"(foo.*|.*bar.*)", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
-		{".*foo.*|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
-		{".*foo|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{"(foo.*|.*bar.*)", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo.*|bar", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo|bar", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
 		// This construct is similar to (...), but won't create a capture group.
 		{"(?:.*foo.*|bar)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false)), true},
 		// named capture group
@@ -134,7 +134,7 @@ func Test_TrueFilter(t *testing.T) {
 		expectTrue bool
 	}{
 		{"empty match", newContainsFilter(empty, false), true},
-		{"not empty match", newNotFilter(newContainsFilter(empty, true)), false},
+		{"not empty match", NewNotFilter(newContainsFilter(empty, true)), false},
 		{"match", newContainsFilter([]byte("foo"), false), false},
 		{"empty match and", NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
 		{"empty match or", newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
@@ -146,8 +146,8 @@ func Test_TrueFilter(t *testing.T) {
 		{"nil both or", newOrFilter(nil, nil), false},   // returns nil
 		{"empty match and chained", NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
 		{"empty match or chained", newOrFilter(newContainsFilter(empty, false), newOrFilter(newContainsFilter(empty, true), newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
-		{"empty match and", newNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
-		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match and", NewNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match or", NewNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if test.expectTrue {
