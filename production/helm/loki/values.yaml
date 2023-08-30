@@ -164,7 +164,7 @@ loki:
             period: 24h
     {{- end }}
 
-    {{ include "loki.rulerConfig" . }}
+    {{ include "loki.rulerConfig". }}
 
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
