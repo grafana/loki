@@ -1912,7 +1912,7 @@ hedging:
 
 congestion_control:
   # Use storage congestion control (default: disabled).
-  # CLI flag: -store.enabled
+  # CLI flag: -store.congestion-control.enabled
   [enabled: <boolean> | default = false]
 
   controller:
@@ -1939,11 +1939,11 @@ congestion_control:
   retry:
     # Congestion control retry strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.retry.strategy
+    # CLI flag: -store.congestion-control.retry.strategy
     [strategy: <string> | default = ""]
 
     # Maximum number of retries allowed.
-    # CLI flag: -store.retry.strategy.limited.limit
+    # CLI flag: -store.congestion-control.retry.strategy.limited.limit
     [limit: <int> | default = 2]
 
   hedging:
@@ -1956,7 +1956,7 @@ congestion_control:
 
     # Congestion control hedge strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.hedge.strategy
+    # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
 # The cache block configures the cache backend.
@@ -3199,7 +3199,7 @@ storage:
 
   congestion_control:
     # Use storage congestion control (default: disabled).
-    # CLI flag: -common.storage.enabled
+    # CLI flag: -common.storage.congestion-control.enabled
     [enabled: <boolean> | default = false]
 
     controller:
@@ -3226,11 +3226,11 @@ storage:
     retry:
       # Congestion control retry strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.retry.strategy
+      # CLI flag: -common.storage.congestion-control.retry.strategy
       [strategy: <string> | default = ""]
 
       # Maximum number of retries allowed.
-      # CLI flag: -common.storage.retry.strategy.limited.limit
+      # CLI flag: -common.storage.congestion-control.retry.strategy.limited.limit
       [limit: <int> | default = 2]
 
     hedging:
@@ -3243,7 +3243,7 @@ storage:
 
       # Congestion control hedge strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.hedge.strategy
+      # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
 [persist_tokens: <boolean>]

@@ -15,7 +15,7 @@ type Config struct {
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	prefix = fmt.Sprintf("%s.%s", prefix, "congestion-control.")
+	prefix = fmt.Sprintf("%s%s", prefix, "congestion-control.")
 	f.BoolVar(&c.Enabled, prefix+"enabled", false, "Use storage congestion control (default: disabled).")
 
 	c.Controller.RegisterFlagsWithPrefix(prefix, f)
