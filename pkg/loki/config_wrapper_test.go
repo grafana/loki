@@ -856,6 +856,13 @@ query_range:
 	})
 }
 
+const defaultResulsCacheString = `---
+query_range:
+  results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
 func TestDefaultFIFOCacheBehavior(t *testing.T) {
 	t.Run("for the chunk cache config", func(t *testing.T) {
 		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
@@ -966,14 +973,7 @@ query_range:
 		})
 
 		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      memcached_client:
-        host: memcached.host.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.ResultsCacheConfig.CacheConfig.MemcacheClient.Host)
 			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
 		})
@@ -1017,14 +1017,7 @@ query_range:
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      memcached_client:
-        host: memcached.host.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
 			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
 		})
@@ -1063,14 +1056,7 @@ query_range:
 		})
 
 		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      memcached_client:
-        host: memcached.host.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
 			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
 		})

@@ -93,11 +93,11 @@ func (c *Context) Ingester() Ingester {
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
-		Chunk:       c.caches.Chunk,
-		Index:       c.caches.Index,
-		Result:      c.caches.Result,
-		StatsResult: c.caches.StatsResult,
-    VolumeResult: c.caches.VolumeResult,
+		Chunk:        c.caches.Chunk,
+		Index:        c.caches.Index,
+		Result:       c.caches.Result,
+		StatsResult:  c.caches.StatsResult,
+		VolumeResult: c.caches.VolumeResult,
 	}
 }
 
