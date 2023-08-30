@@ -14,7 +14,7 @@ simplifies the operation and significantly lowers the cost of Loki.
 Prior to Loki 2.0, chunks and index data were stored in separate backends:
 object storage (or filesystem) for chunk data and NoSQL/Key-Value databases for index data.
 
-Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call [Single Store](#loki-single-store).
+Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call [Single Store](#single-store).
 This type only requires one store, the object store, for both the index and chunks.
 More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
 
