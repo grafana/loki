@@ -6,6 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/aws"
+	"github.com/grafana/loki/pkg/storage/chunk/client/gcp"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -16,19 +18,38 @@ const (
 	tableName = "test"
 )
 
-type storageClientTest func(*testing.T, index.Client, client.Client)
+type chunkClientTest func(*testing.T, client.Client)
+type indexClientTest func(*testing.T, index.Client)
 
-func forAllFixtures(t *testing.T, storageClientTest storageClientTest) {
-	var fixtures []testutils.Fixture
-	fixtures = append(fixtures, local.Fixtures...)
-	fixtures = append(fixtures, Fixtures...)
+func forAllChunkClientFixtures(t *testing.T, chunkClientTest chunkClientTest) {
+	var fixtures []testutils.ChunkFixture
+	fixtures = append(fixtures, local.ChunkFixture)
+	fixtures = append(fixtures, aws.ChunkFixture)
+	fixtures = append(fixtures, gcp.ChunkFixture)
 
 	for _, fixture := range fixtures {
 		t.Run(fixture.Name(), func(t *testing.T) {
-			indexClient, objectClient, closer, err := testutils.Setup(fixture, tableName)
+			chunkClient, closer, err := fixture.Client()
 			require.NoError(t, err)
 			defer closer.Close()
-			storageClientTest(t, indexClient, objectClient)
+
+			chunkClientTest(t, chunkClient)
+		})
+	}
+}
+
+func forAllIndexClientFixtures(t *testing.T, indexClientTest indexClientTest) {
+	var fixtures []testutils.IndexFixture
+	fixtures = append(fixtures, local.IndexFixture)
+	fixtures = append(fixtures, Fixture)
+
+	for _, fixture := range fixtures {
+		t.Run(fixture.Name(), func(t *testing.T) {
+			indexClient, closer, err := fixture.Client()
+			require.NoError(t, err)
+			defer closer.Close()
+
+			indexClientTest(t, indexClient)
 		})
 	}
 }

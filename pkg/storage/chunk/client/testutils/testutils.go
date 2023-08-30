@@ -1,12 +1,10 @@
 package testutils
 
 import (
-	"context"
 	"io"
 	"strconv"
 	"time"
 
-	"github.com/grafana/dskit/flagext"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
@@ -21,10 +19,16 @@ const (
 	userID = "userID"
 )
 
-// Fixture type for per-backend testing.
-type Fixture interface {
+// Fixture type for chunk client testing.
+type ChunkFixture interface {
 	Name() string
-	Clients() (index.Client, chunkclient.Client, index.TableClient, config.SchemaConfig, io.Closer, error)
+	Client() (chunkclient.Client, io.Closer, error)
+}
+
+// Fixture type for index client testing.
+type IndexFixture interface {
+	Name() string
+	Client() (index.Client, io.Closer, error)
 }
 
 // CloserFunc is to io.Closer as http.HandlerFunc is to http.Handler.
@@ -33,37 +37,6 @@ type CloserFunc func() error
 // Close implements io.Closer.
 func (f CloserFunc) Close() error {
 	return f()
-}
-
-// DefaultSchemaConfig returns default schema for use in test fixtures
-func DefaultSchemaConfig(kind string) config.SchemaConfig {
-	return SchemaConfig(kind, "v9", model.Now().Add(-time.Hour*2))
-}
-
-// Setup a fixture with initial tables
-func Setup(fixture Fixture, tableName string) (index.Client, chunkclient.Client, io.Closer, error) {
-	var tbmConfig index.TableManagerConfig
-	flagext.DefaultValues(&tbmConfig)
-	indexClient, chunkClient, tableClient, schemaConfig, closer, err := fixture.Clients()
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	tableManager, err := index.NewTableManager(tbmConfig, schemaConfig, 12*time.Hour, tableClient, nil, nil, nil)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	err = tableManager.SyncTables(context.Background())
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	err = tableClient.CreateTable(context.Background(), config.TableDesc{
-		Name: tableName,
-	})
-
-	return indexClient, chunkClient, closer, err
 }
 
 // CreateChunks creates some chunks for testing

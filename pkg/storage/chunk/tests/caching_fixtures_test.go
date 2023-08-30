@@ -10,38 +10,34 @@ import (
 
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
-	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/validation"
 )
 
 type fixture struct {
-	fixture testutils.Fixture
+	fixture testutils.IndexFixture
 }
 
 func (f fixture) Name() string { return "caching-store" }
-func (f fixture) Clients() (index.Client, client.Client, index.TableClient, config.SchemaConfig, io.Closer, error) {
+func (f fixture) Client() (index.Client, io.Closer, error) {
 	limits, err := defaultLimits()
 	if err != nil {
-		return nil, nil, nil, config.SchemaConfig{}, nil, err
+		return nil, nil, err
 	}
-	indexClient, chunkClient, tableClient, schemaConfig, closer, err := f.fixture.Clients()
+	indexClient, closer, err := f.fixture.Client()
 	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
 	indexClient = index.NewCachingIndexClient(indexClient, cache.NewFifoCache("index-fifo", cache.FifoCacheConfig{
 		MaxSizeItems: 500,
 		TTL:          5 * time.Minute,
 	}, reg, logger, stats.ChunkCache), 5*time.Minute, limits, logger, false)
-	return indexClient, chunkClient, tableClient, schemaConfig, closer, err
+	return indexClient, closer, err
 }
 
 // Fixtures for unit testing the caching storage.
-var Fixtures = []testutils.Fixture{
-	fixture{local.Fixtures[0]},
-}
+var Fixture = fixture{local.IndexFixture}
 
 func defaultLimits() (*validation.Overrides, error) {
 	var defaults validation.Limits

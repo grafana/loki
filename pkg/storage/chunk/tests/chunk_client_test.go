@@ -16,11 +16,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 func TestChunksBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, _ index.Client, client client.Client) {
+	forAllChunkClientFixtures(t, func(t *testing.T, client client.Client) {
 		s := config.SchemaConfig{
 			Configs: []config.PeriodConfig{
 				{

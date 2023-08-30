@@ -3,9 +3,6 @@ package local
 import (
 	"io"
 	"os"
-	"time"
-
-	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/testutils"
@@ -13,18 +10,18 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
-type fixture struct {
+type indexFixture struct {
 	name    string
 	dirname string
 }
 
-func (f *fixture) Name() string {
+func (f indexFixture) Name() string {
 	return f.name
 }
 
-func (f *fixture) Clients() (
-	indexClient index.Client, chunkClient client.Client, tableClient index.TableClient,
-	schemaConfig config.SchemaConfig, closer io.Closer, err error,
+func (f indexFixture) Client() (
+	indexClient index.Client,
+	closer io.Closer, err error,
 ) {
 	f.dirname, err = os.MkdirTemp(os.TempDir(), "boltdb")
 	if err != nil {
@@ -38,32 +35,37 @@ func (f *fixture) Clients() (
 		return
 	}
 
+	closer = testutils.CloserFunc(func() error {
+		return os.RemoveAll(f.dirname)
+	})
+
+	return
+}
+
+type chunkFixture struct {
+	name    string
+	dirname string
+}
+
+func (f chunkFixture) Name() string {
+	return f.name
+}
+
+func (f chunkFixture) Client() (
+	chunkClient client.Client,
+	closer io.Closer, err error,
+) {
+	f.dirname, err = os.MkdirTemp(os.TempDir(), "boltdb")
+	if err != nil {
+		return
+	}
+
 	oClient, err := NewFSObjectClient(FSConfig{Directory: f.dirname})
 	if err != nil {
 		return
 	}
 
 	chunkClient = client.NewClient(oClient, client.FSEncoder, config.SchemaConfig{})
-
-	tableClient, err = NewTableClient(f.dirname)
-	if err != nil {
-		return
-	}
-
-	schemaConfig = config.SchemaConfig{
-		Configs: []config.PeriodConfig{{
-			IndexType: "boltdb",
-			From:      config.DayTime{Time: model.Now()},
-			ChunkTables: config.PeriodicTableConfig{
-				Prefix: "chunks",
-				Period: 10 * time.Minute,
-			},
-			IndexTables: config.PeriodicTableConfig{
-				Prefix: "index",
-				Period: 10 * time.Minute,
-			},
-		}},
-	}
 
 	closer = testutils.CloserFunc(func() error {
 		return os.RemoveAll(f.dirname)
@@ -72,9 +74,5 @@ func (f *fixture) Clients() (
 	return
 }
 
-// Fixtures for unit testing GCP storage.
-var Fixtures = []testutils.Fixture{
-	&fixture{
-		name: "boltdb",
-	},
-}
+var IndexFixture = indexFixture{name: "boltdb"}
+var ChunkFixture = chunkFixture{name: "fs"}

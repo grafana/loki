@@ -12,14 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 var ctx = user.InjectOrgID(context.Background(), "1")
 
 func TestIndexBasic(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
+	forAllIndexClientFixtures(t, func(t *testing.T, client index.Client) {
 		// Write out 30 entries, into different hash and range values.
 		batch := client.NewWriteBatch()
 		for i := 0; i < 30; i++ {
@@ -106,7 +105,7 @@ var entries = []index.Entry{
 }
 
 func TestQueryPages(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
+	forAllIndexClientFixtures(t, func(t *testing.T, client index.Client) {
 		batch := client.NewWriteBatch()
 		for _, entry := range entries {
 			batch.Add(entry.TableName, entry.HashValue, entry.RangeValue, entry.Value)
@@ -206,7 +205,7 @@ func TestQueryPages(t *testing.T) {
 }
 
 func TestCardinalityLimit(t *testing.T) {
-	forAllFixtures(t, func(t *testing.T, client index.Client, _ client.Client) {
+	forAllIndexClientFixtures(t, func(t *testing.T, client index.Client) {
 		limits, err := defaultLimits()
 		require.NoError(t, err)
 
