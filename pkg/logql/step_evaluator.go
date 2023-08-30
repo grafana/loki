@@ -17,7 +17,7 @@ type StepEvaluator interface {
 }
 
 type stepEvaluator struct {
-	fn    func() (bool, int64, promql.Vector)
+	next  func() (bool, int64, promql.Vector)
 	close func() error
 	err   func() error
 }
@@ -35,14 +35,14 @@ func newStepEvaluator(fn func() (bool, int64, promql.Vector), closeFn func() err
 		err = func() error { return nil }
 	}
 	return &stepEvaluator{
-		fn:    fn,
+		next:  fn,
 		close: closeFn,
 		err:   err,
 	}, nil
 }
 
 func (e *stepEvaluator) Next() (bool, int64, promql.Vector) {
-	return e.fn()
+	return e.next()
 }
 
 func (e *stepEvaluator) Close() error {

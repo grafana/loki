@@ -135,10 +135,10 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
-	logger    log.Logger
-	evaluator Evaluator
-	limits    Limits
-	opts      EngineOpts
+	logger           log.Logger
+	evaluatorFactory EvaluatorFactory
+	limits           Limits
+	opts             EngineOpts
 }
 
 // NewEngine creates a new LogQL Engine.
@@ -148,10 +148,10 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
-		logger:    logger,
-		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
-		limits:    l,
-		opts:      opts,
+		logger:           logger,
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		limits:           l,
+		opts:             opts,
 	}
 }
 
@@ -160,7 +160,7 @@ func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
 		params:    params,
-		evaluator: ng.evaluator,
+		evaluator: ng.evaluatorFactory,
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
@@ -181,7 +181,7 @@ type query struct {
 	params       Params
 	parse        func(context.Context, string) (syntax.Expr, error)
 	limits       Limits
-	evaluator    Evaluator
+	evaluator    EvaluatorFactory
 	record       bool
 	logExecQuery bool
 }
@@ -286,7 +286,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
-		iter, err := q.evaluator.Iterator(ctx, e, q.params)
+		iter, err := q.evaluator.NewIterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
 		}
@@ -340,7 +340,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
