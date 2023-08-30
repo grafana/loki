@@ -421,6 +421,22 @@ func (m *MockStorage) DeleteChunk(ctx context.Context, _, chunkID string) error 
 	return m.DeleteObject(ctx, chunkID)
 }
 
+func (m *MockStorage) ObjectExists(_ context.Context, objectKey string) (bool, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+
+	if m.mode == MockStorageModeWriteOnly {
+		return false, errPermissionDenied
+	}
+
+	_, ok := m.objects[objectKey]
+	if !ok {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func (m *MockStorage) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
