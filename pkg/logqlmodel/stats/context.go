@@ -173,6 +173,7 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.ChunksDownloadTime += m.ChunksDownloadTime
+	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
 	s.Chunk.HeadChunkNonIndexedLabelsBytes += m.Chunk.HeadChunkNonIndexedLabelsBytes
 	s.Chunk.HeadChunkLines += m.Chunk.HeadChunkLines
@@ -247,6 +248,10 @@ func (r Result) ChunksDownloadTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
 }
 
+func (r Result) ChunkRefsFetchTime() time.Duration {
+	return time.Duration(r.Querier.Store.ChunkRefsFetchTime + r.Ingester.Store.ChunkRefsFetchTime)
+}
+
 func (r Result) TotalDuplicates() int64 {
 	return r.Querier.Store.Chunk.TotalDuplicates + r.Ingester.Store.Chunk.TotalDuplicates
 }
@@ -318,6 +323,10 @@ func (c *Context) AddDuplicates(i int64) {
 
 func (c *Context) AddChunksDownloadTime(i time.Duration) {
 	atomic.AddInt64(&c.store.ChunksDownloadTime, int64(i))
+}
+
+func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
+	atomic.AddInt64(&c.store.ChunkRefsFetchTime, int64(i))
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {
@@ -433,6 +442,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
 		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),
+		"Ingester.ChunkRefsFetchTime", time.Duration(r.Ingester.Store.ChunkRefsFetchTime),
 		"Ingester.HeadChunkBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.HeadChunkBytes)),
 		"Ingester.HeadChunkLines", r.Ingester.Store.Chunk.HeadChunkLines,
 		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.DecompressedBytes)),
@@ -444,6 +454,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.TotalChunksRef", r.Querier.Store.TotalChunksRef,
 		"Querier.TotalChunksDownloaded", r.Querier.Store.TotalChunksDownloaded,
 		"Querier.ChunksDownloadTime", time.Duration(r.Querier.Store.ChunksDownloadTime),
+		"Querier.ChunkRefsFetchTime", time.Duration(r.Querier.Store.ChunkRefsFetchTime),
 		"Querier.HeadChunkBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.HeadChunkBytes)),
 		"Querier.HeadChunkLines", r.Querier.Store.Chunk.HeadChunkLines,
 		"Querier.DecompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.DecompressedBytes)),

@@ -56,7 +56,7 @@ func Test_EncodingChunks(t *testing.T) {
 
 			t.Run(fmt.Sprintf("%v-%s", close, tc.desc), func(t *testing.T) {
 				conf := tc.conf
-				c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.DefaultHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
+				c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
 				fillChunk(t, c)
 				if close {
 					require.Nil(t, c.Close())
@@ -90,7 +90,9 @@ func Test_EncodingChunks(t *testing.T) {
 					}
 				}
 
-				backAgain, err := fromWireChunks(&conf, chunks)
+				_, headfmt := defaultChunkFormat(t)
+
+				backAgain, err := fromWireChunks(&conf, headfmt, chunks)
 				require.Nil(t, err)
 
 				for i, to := range backAgain {
@@ -117,7 +119,7 @@ func Test_EncodingChunks(t *testing.T) {
 
 func Test_EncodingCheckpoint(t *testing.T) {
 	conf := dummyConf()
-	c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.DefaultHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
+	c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, conf.BlockSize, conf.TargetChunkSize)
 	require.Nil(t, c.Append(&logproto.Entry{
 		Timestamp: time.Unix(1, 0),
 		Line:      "hi there",

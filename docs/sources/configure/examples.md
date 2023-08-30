@@ -297,7 +297,6 @@ storage_config:
     access_key_id: s3_access_key_id
     secret_access_key: s3_secret_access_key
     insecure: false
-    sse_encryption: false
     http_config:
       idle_conn_timeout: 90s
       response_header_timeout: 0s
@@ -324,7 +323,6 @@ schema_config:
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
-    sse_encryption: true
     sse:
       type: SSE-KMS
       kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab

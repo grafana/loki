@@ -67,7 +67,12 @@ func main() {
 		panic(err)
 	}
 
-	builder := tsdb.NewBuilder(index.LiveFormat)
+	indexFormat, err := periodConfig.TSDBFormat()
+	if err != nil {
+		panic(err)
+	}
+
+	builder := tsdb.NewBuilder(indexFormat)
 
 	log.Println("Loading index into memory")
 

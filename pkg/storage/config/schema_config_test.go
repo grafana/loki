@@ -7,9 +7,13 @@ import (
 	"time"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	yaml "gopkg.in/yaml.v2"
+
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/chunk"
 )
 
 func TestChunkTableFor(t *testing.T) {
@@ -422,6 +426,15 @@ func TestPeriodConfig_Validate(t *testing.T) {
 				ChunkTables: PeriodicTableConfig{Period: 0},
 			},
 		},
+		{
+			desc: "v13",
+			in: PeriodConfig{
+				Schema:      "v13",
+				RowShards:   16,
+				IndexTables: PeriodicTableConfig{Period: 0},
+				ChunkTables: PeriodicTableConfig{Period: 0},
+			},
+		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
 			if tc.err == "" {
@@ -549,6 +562,19 @@ func TestVersionAsInt(t *testing.T) {
 				},
 			},
 			expected: int(12),
+		},
+		{
+			name: "v13",
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v13",
+						RowShards: 16,
+					},
+				},
+			},
+			expected: int(13),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -983,4 +1009,76 @@ func TestGetIndexStoreTableRanges(t *testing.T) {
 			PeriodConfig: &schemaConfig.Configs[4],
 		},
 	}, GetIndexStoreTableRanges(TSDBType, schemaConfig.Configs))
+}
+
+const (
+	fixedTimestamp = model.Time(1557654321000)
+	userID         = "userID"
+)
+
+var (
+	labelsForDummyChunks = labels.Labels{
+		{Name: labels.MetricName, Value: "foo"},
+		{Name: "bar", Value: "baz"},
+		{Name: "toms", Value: "code"},
+	}
+)
+
+func TestChunkKeys(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		chunk     chunk.Chunk
+		schemaCfg SchemaConfig
+	}{
+		{
+			name: "Legacy key (pre-checksum)",
+			chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v11",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+		{
+			name: "Newer key (post-v12)",
+			chunk: chunk.Chunk{
+				ChunkRef: logproto.ChunkRef{
+					Fingerprint: 100,
+					UserID:      "fake",
+					From:        model.TimeFromUnix(1000),
+					Through:     model.TimeFromUnix(5000),
+					Checksum:    12345,
+				},
+			},
+			schemaCfg: SchemaConfig{
+				Configs: []PeriodConfig{
+					{
+						From:      DayTime{Time: 0},
+						Schema:    "v12",
+						RowShards: 16,
+					},
+				},
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := tc.schemaCfg.ExternalKey(tc.chunk.ChunkRef)
+			newChunk, err := chunk.ParseExternalKey("fake", key)
+			require.NoError(t, err)
+			require.Equal(t, tc.chunk, newChunk)
+			require.Equal(t, key, tc.schemaCfg.ExternalKey(newChunk.ChunkRef))
+		})
+	}
 }

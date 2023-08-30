@@ -420,7 +420,7 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 		// not locking the mutex here since there should be no writers at this point
 		downloadedDB := dbsToRead[workNum]
 
-		err = readFile(idxSet.GetLogger(), downloadedDB, func(bucketName string, batch []indexEntry) error {
+		return readFile(idxSet.GetLogger(), downloadedDB, func(bucketName string, batch []indexEntry) error {
 			indexFile := compactedFile
 			if bucketName != shipper_util.GetUnsafeString(local.IndexBucketName) {
 				t.userCompactedIndexSetMtx.RLock()
@@ -435,7 +435,6 @@ func (t *tableCompactor) compactCommonIndexes(ctx context.Context) (*CompactedIn
 
 			return writeBatch(indexFile, batch)
 		})
-		return nil
 	})
 
 	if err != nil {

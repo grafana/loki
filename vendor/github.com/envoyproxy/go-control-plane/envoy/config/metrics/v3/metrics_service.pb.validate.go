@@ -143,6 +143,17 @@ func (m *MetricsServiceConfig) validate(all bool) error {
 
 	// no validation rules for EmitTagsAsLabels
 
+	if _, ok := HistogramEmitMode_name[int32(m.GetHistogramEmitMode())]; !ok {
+		err := MetricsServiceConfigValidationError{
+			field:  "HistogramEmitMode",
+			reason: "value must be one of the defined enum values",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
 	if len(errors) > 0 {
 		return MetricsServiceConfigMultiError(errors)
 	}

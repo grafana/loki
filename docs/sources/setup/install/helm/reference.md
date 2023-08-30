@@ -106,6 +106,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for backend pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.extraArgs</td>
 			<td>list</td>
 			<td>Additional CLI args for the backend</td>
@@ -971,6 +980,15 @@ null
 			<td></td>
 			<td><pre lang="json">
 "RollingUpdate"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>gateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for gateway pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -2349,6 +2367,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -2989,6 +3016,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.pspAnnotations</td>
+			<td>object</td>
+			<td>Specify PSP annotations Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
@@ -3075,6 +3111,15 @@ false
 			<td>Target memory utilisation percentage for the read</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for read pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3430,6 +3475,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for single binary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
@@ -3678,6 +3732,15 @@ Hard node and soft zone anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config table-manager pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4094,6 +4157,15 @@ false
 			<td>Target memory utilization percentage for the write.</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for write pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -558,12 +557,6 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 
 			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
 			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
-			// TODO: remove this clause once we remove the deprecated query-timeout flag.
-			if q.cfg.QueryTimeout != 0 { // querier YAML configuration is still configured.
-				level.Warn(log).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "WrapQuerySpanAndTimeout", "org_id", strings.Join(tenants, ","))
-				timeout = q.cfg.QueryTimeout
-			}
-
 			newCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 

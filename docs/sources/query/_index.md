@@ -52,7 +52,7 @@ Implement a health check with a simple query:
 1 + 1
 ```
 
-Double the rate of a a log stream's entries:
+Double the rate of a log stream's entries:
 
 ```logql
 sum(rate({app="foo"}[1m])) * 2

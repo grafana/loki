@@ -117,6 +117,10 @@ spec:
       affinity:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
+      {{- with .Values.read.dnsConfig }}
+      dnsConfig:
+        {{- tpl . $ | nindent 8 }}
+      {{- end }}
       {{- with .Values.read.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

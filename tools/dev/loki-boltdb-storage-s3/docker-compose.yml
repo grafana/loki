@@ -7,7 +7,7 @@ services:
         loki-url: "http://localhost:8001/loki/api/v1/push"
         loki-retries: "1"
         loki-tenant-id: "1"
-    image: consul
+    image: hashicorp/consul
     command: [ "agent", "-dev" ,"-client=0.0.0.0", "-log-level=info" ]
     ports:
       - 8500:8500

@@ -168,7 +168,7 @@ loki:
             period: 24h
     {{- end }}
 
-    {{ include "loki.rulerConfig" . }}
+    {{ include "loki.rulerConfig". }}
 
     {{- if or .Values.tableManager.retention_deletes_enabled .Values.tableManager.retention_period }}
     table_manager:
@@ -498,6 +498,12 @@ rbac:
   pspEnabled: false
   # -- For OpenShift set pspEnabled to 'false' and sccEnabled to 'true' to use the SecurityContextConstraints.
   sccEnabled: false
+  # -- Specify PSP annotations
+  # Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations
+  pspAnnotations: {}
+  # seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
+  # seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'
+  # apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
 # -- Section for configuring optional Helm test
 test:
   enabled: true
@@ -657,6 +663,8 @@ monitoring:
     extraEnvFrom: []
     # -- Resource requests and limits for the canary
     resources: {}
+    # -- DNS config for canary pods
+    dnsConfig: {}
     # -- Node selector for canary pods
     nodeSelector: {}
     # -- Tolerations for canary pods
@@ -766,6 +774,8 @@ write:
             matchLabels:
               {{- include "loki.writeSelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for write pods
+  dnsConfig: {}
   # -- Node selector for write pods
   nodeSelector: {}
   # -- Tolerations for write pods
@@ -840,6 +850,8 @@ tableManager:
               matchLabels:
                 {{- include "loki.tableManagerSelectorLabels" . | nindent 12 }}
             topologyKey: failure-domain.beta.kubernetes.io/zone
+  # -- DNS config table-manager pods
+  dnsConfig: {}
   # -- Node selector for table-manager pods
   nodeSelector: {}
   # -- Tolerations for table-manager pods
@@ -927,6 +939,8 @@ read:
             matchLabels:
               {{- include "loki.readSelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for read pods
+  dnsConfig: {}
   # -- Node selector for read pods
   nodeSelector: {}
   # -- Tolerations for read pods
@@ -1023,6 +1037,8 @@ backend:
             matchLabels:
               {{- include "loki.backendSelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for backend pods
+  dnsConfig: {}
   # -- Node selector for backend pods
   nodeSelector: {}
   # -- Tolerations for backend pods
@@ -1103,6 +1119,8 @@ singleBinary:
             matchLabels:
               {{- include "loki.singleBinarySelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for single binary pods
+  dnsConfig: {}
   # -- Node selector for single binary pods
   nodeSelector: {}
   # -- Tolerations for single binary pods
@@ -1265,6 +1283,8 @@ gateway:
             matchLabels:
               {{- include "loki.gatewaySelectorLabels" . | nindent 10 }}
           topologyKey: kubernetes.io/hostname
+  # -- DNS config for gateway pods
+  dnsConfig: {}
   # -- Node selector for gateway pods
   nodeSelector: {}
   # -- Tolerations for gateway pods

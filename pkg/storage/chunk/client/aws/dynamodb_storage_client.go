@@ -84,7 +84,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
-	DynamoDBConfig `yaml:"dynamodb"`
+	DynamoDBConfig `yaml:"dynamodb" doc:"description=Deprecated: Configures storing indexes in DynamoDB."`
 	S3Config       `yaml:",inline"`
 }
 

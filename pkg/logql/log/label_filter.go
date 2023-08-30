@@ -372,7 +372,7 @@ type lineFilterLabelFilter struct {
 func (s *lineFilterLabelFilter) String() string {
 	if unwrappedFilter, ok := s.filter.(regexpFilter); ok {
 		rStr := unwrappedFilter.String()
-		str := fmt.Sprintf(`%s%s"%s"`, s.Matcher.Name, s.Matcher.Type, rStr)
+		str := fmt.Sprintf("%s%s`%s`", s.Matcher.Name, s.Matcher.Type, rStr)
 		return str
 	}
 	return s.Matcher.String()

@@ -48,13 +48,6 @@ var NodeTypesByProvider = map[string]map[string]NodeType{
 			readPod:  StandardRead,
 			writePod: StandardWrite,
 		},
-		"t2.4xlarge": {
-			name:     "t2.4xlarge",
-			cores:    16,
-			memoryGB: 64,
-			readPod:  StandardRead,
-			writePod: StandardWrite,
-		},
 	},
 	"GCP": {
 		"e2-standard-4": {
