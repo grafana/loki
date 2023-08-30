@@ -5,11 +5,15 @@ description: non_indexed_labels stage
 # non_indexed_labels
 
 {{% admonition type="warning" %}}
-Non-indexed labels is an experimental feature and is subject to change in future releases of Grafana Loki.
+Non-indexed labels is an experimental feature and is subject to change in future releases of Grafana Loki. 
 {{% /admonition %}}
 
 The labels stage is an action stage that takes data from the extracted map and
 modifies the [non-indexed labels]({{< relref "../../../get-started/labels/non-indexed-labels" >}}) set that is sent to Loki with the log entry.
+
+{{% admonition type="warning" %}}
+Non-indexed labels will be rejected by loki unless the `structured_metadata` per tenant configuration (in the `limits_config`) is enabled.
+{{% /admonition %}}
 
 ## Schema
 
