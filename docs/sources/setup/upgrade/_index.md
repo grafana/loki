@@ -102,6 +102,8 @@ You can use `--keep-empty` flag to retain them.
 3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
 4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
 5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+6. `query_range.split_queries_by_interval` is now removed. Use the flag in `limits_config` instead.
+7. `query_range.forward_headers_list` is now removed
 
 ### Jsonnet
 
