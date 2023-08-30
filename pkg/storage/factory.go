@@ -265,7 +265,7 @@ type Config struct {
 	AzureStorageConfig   azure.BlobStorageConfig   `yaml:"azure"`
 	BOSStorageConfig     baidubce.BOSStorageConfig `yaml:"bos"`
 	GCSConfig            gcp.GCSConfig             `yaml:"gcs" doc:"description=Configures storing chunks in GCS. Required fields only required when gcs is defined in config."`
-	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"description=Deprecated: Configures storing index in BoltDB. Required fields only required when boltdb is present in the configuration."`
+	BoltDBConfig         local.BoltDBConfig        `yaml:"boltdb" doc:"hidden"`
 	FSConfig             local.FSConfig            `yaml:"filesystem" doc:"description=Configures storing the chunks on the local file system. Required fields only required when filesystem is present in the configuration."`
 	Swift                openstack.SwiftConfig     `yaml:"swift"`
 	Hedging              hedging.Config            `yaml:"hedging"`
@@ -295,7 +295,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.BOSStorageConfig.RegisterFlags(f)
 	cfg.COSConfig.RegisterFlags(f)
 	cfg.GCSConfig.RegisterFlags(f)
-	cfg.BoltDBConfig.RegisterFlags(f)
 	cfg.FSConfig.RegisterFlags(f)
 	cfg.Swift.RegisterFlags(f)
 	cfg.Hedging.RegisterFlagsWithPrefix("store.", f)

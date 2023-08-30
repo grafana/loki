@@ -206,7 +206,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 			// having these as separate block entries would result in duplicate storage configs
 			// similar reasoning applies to other storage configs listed below
 			StructType: []reflect.Type{reflect.TypeOf(aws.S3Config{}), reflect.TypeOf(storage.NamedAWSStorageConfig{})},
-			Desc:       "The aws_storage_config block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.",
+			Desc:       "The aws_storage_config block configures the connection to S3 object storage backend.",
 		},
 		{
 			Name:       "azure_storage_config",

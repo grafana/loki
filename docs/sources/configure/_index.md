@@ -1696,8 +1696,8 @@ The `storage_config` block configures one of many possible stores for both the i
 # The CLI flags prefix for this block configuration is: common
 [alibabacloud: <alibabacloud_storage_config>]
 
-# The aws_storage_config block configures the connection to dynamoDB and S3
-# object storage. Either one of them or both can be configured.
+# The aws_storage_config block configures the connection to S3 object storage
+# backend.
 [aws: <aws_storage_config>]
 
 # The azure_storage_config block configures the connection to Azure object
@@ -1711,13 +1711,6 @@ The `storage_config` block configures one of many possible stores for both the i
 # Configures storing chunks in GCS. Required fields only required when gcs is
 # defined in config.
 [gcs: <gcs_storage_config>]
-
-# Deprecated: Configures storing index in BoltDB. Required fields only required
-# when boltdb is present in the configuration.
-boltdb:
-  # Location of BoltDB index files.
-  # CLI flag: -boltdb.dir
-  [directory: <string> | default = ""]
 
 # Configures storing the chunks on the local file system. Required fields only
 # required when filesystem is present in the configuration.
@@ -2993,8 +2986,8 @@ Common configuration to be shared between multiple modules. If a more specific c
 [path_prefix: <string> | default = ""]
 
 storage:
-  # The aws_storage_config block configures the connection to dynamoDB and S3
-  # object storage. Either one of them or both can be configured.
+  # The aws_storage_config block configures the connection to S3 object storage
+  # backend.
   # The CLI flags prefix for this block configuration is: common.storage
   [s3: <aws_storage_config>]
 
@@ -4013,7 +4006,7 @@ chunks:
 
 ### aws_storage_config
 
-The `aws_storage_config` block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured. The supported CLI flags `<prefix>` used to reference this configuration block are:
+The `aws_storage_config` block configures the connection to S3 object storage backend. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `common.storage`
 - `ruler.storage`
