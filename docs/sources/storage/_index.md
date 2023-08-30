@@ -18,9 +18,28 @@ Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now cal
 This type only requires one store, the object store, for both the index and chunks.
 More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
 
+Loki 2.8 adds TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki.
+
 Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
 
-**[Single Store](#loki-single-store) is the recommended way to persist data in Loki.**
+## Single Store
+
+Single Store refers to using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
+
+### TSDB (recommended)
+
+Starting in Loki 2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
+
+### BoltDB (deprecated)
+
+Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki.
+
+Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
+When using Single Store, no extra [Chunk storage](#chunk-storage) and [Index storage](#index-storage) are necessary.
+
+### Supported storage backends
+
+See [Object Storage](#object-storage) for supported backends.
 
 ## Chunk storage
 
@@ -94,25 +113,6 @@ DynamoDB is susceptible to rate limiting, particularly due to overconsuming what
 BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}) aims to support clustered deployments using `boltdb` as an index.
 
 > **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
-
-## Loki Single Store
-
-Single Store refers to using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
-
-### TSDB (recommended)
-
-Starting in Loki v2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
-
-### BoltDB (deprecated)
-
-Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki.
-
-Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
-
-### Supported storage backends
-
-See [Object Storage](#object-storage) for supported backends.
-
 
 ## Schema Config
 
