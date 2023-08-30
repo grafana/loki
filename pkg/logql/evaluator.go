@@ -123,31 +123,31 @@ func Sortable(q Params) (bool, error) {
 	return sortable, nil
 }
 
-// Evaluator is an interface for iterating over data at different nodes in the AST
-type Evaluator interface {
-	SampleEvaluator
-	EntryEvaluator
+// EvaluatorFactory is an interface for iterating over data at different nodes in the AST
+type EvaluatorFactory interface {
+	SampleEvaluatorFactory
+	EntryEvaluatorFactory
 }
 
-type SampleEvaluator interface {
-	// StepEvaluator returns a StepEvaluator for a given SampleExpr. It's explicitly passed another StepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
-	// StepEvaluator implementations which can be composed.
-	StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+type SampleEvaluatorFactory interface {
+	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
+	// NewStepEvaluator implementations which can be composed.
+	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
 
-func (s SampleEvaluatorFunc) StepEvaluator(ctx context.Context, nextEvaluator SampleEvaluator, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
-	return s(ctx, nextEvaluator, expr, p)
+func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+	return s(ctx, nextEvaluatorFactory, expr, p)
 }
 
-type EntryEvaluator interface {
-	// Iterator returns the iter.EntryIterator for a given LogSelectorExpr
-	Iterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error)
+type EntryEvaluatorFactory interface {
+	// NewIterator returns the iter.EntryIterator for a given LogSelectorExpr
+	NewIterator(context.Context, syntax.LogSelectorExpr, Params) (iter.EntryIterator, error)
 }
 
 // EvaluatorUnsupportedType is a helper for signaling that an evaluator does not support an Expr type
-func EvaluatorUnsupportedType(expr syntax.Expr, ev Evaluator) error {
+func EvaluatorUnsupportedType(expr syntax.Expr, ev EvaluatorFactory) error {
 	return errors.Errorf("unexpected expr type (%T) for Evaluator type (%T) ", expr, ev)
 }
 
@@ -164,7 +164,7 @@ func NewDefaultEvaluator(querier Querier, maxLookBackPeriod time.Duration) *Defa
 	}
 }
 
-func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr syntax.LogSelectorExpr, q Params) (iter.EntryIterator, error) {
+func (ev *DefaultEvaluator) NewIterator(ctx context.Context, expr syntax.LogSelectorExpr, q Params) (iter.EntryIterator, error) {
 	params := SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Start:     q.Start(),
@@ -183,9 +183,9 @@ func (ev *DefaultEvaluator) Iterator(ctx context.Context, expr syntax.LogSelecto
 	return ev.querier.SelectLogs(ctx, params)
 }
 
-func (ev *DefaultEvaluator) StepEvaluator(
+func (ev *DefaultEvaluator) NewStepEvaluator(
 	ctx context.Context,
-	nextEv SampleEvaluator,
+	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
 ) (StepEvaluator, error) {
@@ -194,7 +194,7 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEv = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluator, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
@@ -206,10 +206,10 @@ func (ev *DefaultEvaluator) StepEvaluator(
 				if err != nil {
 					return nil, err
 				}
-				return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
+				return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), rangExpr, q, rangExpr.Left.Offset)
 			})
 		}
-		return vectorAggEvaluator(ctx, nextEv, e, q)
+		return newVectorAggEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.RangeAggregationExpr:
 		it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 			&logproto.SampleQueryRequest{
@@ -222,11 +222,11 @@ func (ev *DefaultEvaluator) StepEvaluator(
 		if err != nil {
 			return nil, err
 		}
-		return rangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
+		return newRangeAggEvaluator(iter.NewPeekingSampleIterator(it), e, q, e.Left.Offset)
 	case *syntax.BinOpExpr:
-		return binOpStepEvaluator(ctx, nextEv, e, q)
+		return newBinOpStepEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.LabelReplaceExpr:
-		return labelReplaceEvaluator(ctx, nextEv, e, q)
+		return newLabelReplaceEvaluator(ctx, nextEvFactory, e, q)
 	case *syntax.VectorExpr:
 		val, err := e.Value()
 		if err != nil {
@@ -238,16 +238,16 @@ func (ev *DefaultEvaluator) StepEvaluator(
 	}
 }
 
-func vectorAggEvaluator(
+func newVectorAggEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator,
+	evFactory SampleEvaluatorFactory,
 	expr *syntax.VectorAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
 	if expr.Grouping == nil {
 		return nil, errors.Errorf("aggregation operator '%q' without grouping", expr.Operation)
 	}
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}
@@ -450,7 +450,7 @@ func vectorAggEvaluator(
 	}, nextEvaluator.Close, nextEvaluator.Error)
 }
 
-func rangeAggEvaluator(
+func newRangeAggEvaluator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
 	q Params,
@@ -555,9 +555,9 @@ func (r absentRangeVectorEvaluator) Error() error {
 
 // binOpExpr explicitly does not handle when both legs are literals as
 // it makes the type system simpler and these are reduced in mustNewBinOpExpr
-func binOpStepEvaluator(
+func newBinOpStepEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator,
+	evFactory SampleEvaluatorFactory,
 	expr *syntax.BinOpExpr,
 	q Params,
 ) (StepEvaluator, error) {
@@ -567,11 +567,11 @@ func binOpStepEvaluator(
 
 	// match a literal expr with all labels in the other leg
 	if lOk {
-		rhs, err := ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		rhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(
+		return newLiteralStepEvaluator(
 			expr.Op,
 			leftLit,
 			rhs,
@@ -580,11 +580,11 @@ func binOpStepEvaluator(
 		)
 	}
 	if rOk {
-		lhs, err := ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		lhs, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
 			return nil, err
 		}
-		return literalStepEvaluator(
+		return newLiteralStepEvaluator(
 			expr.Op,
 			rightLit,
 			lhs,
@@ -602,7 +602,7 @@ func binOpStepEvaluator(
 	// load them in parallel
 	g.Go(func() error {
 		var err error
-		lse, err = ev.StepEvaluator(ctx, ev, expr.SampleExpr, q)
+		lse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.SampleExpr, q)
 		if err != nil {
 			cancel()
 		}
@@ -610,7 +610,7 @@ func binOpStepEvaluator(
 	})
 	g.Go(func() error {
 		var err error
-		rse, err = ev.StepEvaluator(ctx, ev, expr.RHS, q)
+		rse, err = evFactory.NewStepEvaluator(ctx, evFactory, expr.RHS, q)
 		if err != nil {
 			cancel()
 		}
@@ -877,9 +877,9 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 	return lb.Labels()
 }
 
-// literalStepEvaluator merges a literal with a StepEvaluator. Since order matters in
+// newLiteralStepEvaluator merges a literal with a StepEvaluator. Since order matters in
 // non-commutative operations, inverted should be true when the literalExpr is not the left argument.
-func literalStepEvaluator(
+func newLiteralStepEvaluator(
 	op string,
 	lit *syntax.LiteralExpr,
 	eval StepEvaluator,
@@ -974,14 +974,14 @@ func (r *vectorIterator) Error() error {
 	return nil
 }
 
-// labelReplaceEvaluator
-func labelReplaceEvaluator(
+// newLabelReplaceEvaluator
+func newLabelReplaceEvaluator(
 	ctx context.Context,
-	ev SampleEvaluator,
+	evFactory SampleEvaluatorFactory,
 	expr *syntax.LabelReplaceExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	nextEvaluator, err := ev.StepEvaluator(ctx, ev, expr.Left, q)
+	nextEvaluator, err := evFactory.NewStepEvaluator(ctx, evFactory, expr.Left, q)
 	if err != nil {
 		return nil, err
 	}

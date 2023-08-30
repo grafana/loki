@@ -376,6 +376,34 @@ func Test_FilterMatcher(t *testing.T) {
 			},
 			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
 		},
+		{
+			`{app="foo"} |= "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} !~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
 	} {
 		tt := tt
 		t.Run(tt.q, func(t *testing.T) {
@@ -394,6 +422,25 @@ func Test_FilterMatcher(t *testing.T) {
 					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
+		})
+	}
+}
+
+func TestOrLineFilterTypes(t *testing.T) {
+	for _, tt := range []struct {
+		ty labels.MatchType
+	}{
+		{labels.MatchEqual},
+		{labels.MatchNotEqual},
+		{labels.MatchRegexp},
+		{labels.MatchNotRegexp},
+	} {
+		t.Run("right inherits left's type", func(t *testing.T) {
+			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
+			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+
+			_ = newOrLineFilter(left, right)
+			require.Equal(t, tt.ty, right.Ty)
 		})
 	}
 }

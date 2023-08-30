@@ -1165,9 +1165,6 @@ wal_cleaner:
   # CLI flag: -ruler.wal-cleaner.min-age
   [min_age: <duration> | default = 12h]
 
-  # Deprecated: CLI flag -ruler.wal-cleaer.period.
-  # Use -ruler.wal-cleaner.period instead.
-  # 
   # How often to run the WAL cleaner. 0 = disabled.
   # CLI flag: -ruler.wal-cleaner.period
   [period: <duration> | default = 0s]
@@ -1758,7 +1755,7 @@ hedging:
 
 congestion_control:
   # Use storage congestion control (default: disabled).
-  # CLI flag: -store.enabled
+  # CLI flag: -store.congestion-control.enabled
   [enabled: <boolean> | default = false]
 
   controller:
@@ -1785,11 +1782,11 @@ congestion_control:
   retry:
     # Congestion control retry strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.retry.strategy
+    # CLI flag: -store.congestion-control.retry.strategy
     [strategy: <string> | default = ""]
 
     # Maximum number of retries allowed.
-    # CLI flag: -store.retry.strategy.limited.limit
+    # CLI flag: -store.congestion-control.retry.strategy.limited.limit
     [limit: <int> | default = 2]
 
   hedging:
@@ -1802,7 +1799,7 @@ congestion_control:
 
     # Congestion control hedge strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.hedge.strategy
+    # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
 # The cache block configures the cache backend.
@@ -3045,7 +3042,7 @@ storage:
 
   congestion_control:
     # Use storage congestion control (default: disabled).
-    # CLI flag: -common.storage.enabled
+    # CLI flag: -common.storage.congestion-control.enabled
     [enabled: <boolean> | default = false]
 
     controller:
@@ -3072,11 +3069,11 @@ storage:
     retry:
       # Congestion control retry strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.retry.strategy
+      # CLI flag: -common.storage.congestion-control.retry.strategy
       [strategy: <string> | default = ""]
 
       # Maximum number of retries allowed.
-      # CLI flag: -common.storage.retry.strategy.limited.limit
+      # CLI flag: -common.storage.congestion-control.retry.strategy.limited.limit
       [limit: <int> | default = 2]
 
     hedging:
@@ -3089,7 +3086,7 @@ storage:
 
       # Congestion control hedge strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.hedge.strategy
+      # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
 [persist_tokens: <boolean>]
@@ -4052,11 +4049,6 @@ The `aws_storage_config` block configures the connection to S3 object storage ba
 # Disable https on s3 connection.
 # CLI flag: -<prefix>.s3.insecure
 [insecure: <boolean> | default = false]
-
-# Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-# s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-# CLI flag: -<prefix>.s3.sse-encryption
-[sse_encryption: <boolean> | default = false]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
