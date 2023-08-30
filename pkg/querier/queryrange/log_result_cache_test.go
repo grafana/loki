@@ -7,9 +7,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -434,7 +436,10 @@ func Test_LogResultCacheDifferentRangeNonEmptyAndEmpty(t *testing.T) {
 	fake.AssertExpectations(t)
 }
 
-func Test_LogResultFillingGap(t *testing.T) {
+// Test_LogResultNonOverlappingCache tests the scenario where the cached query does not overlap with the new request
+func Test_LogResultNonOverlappingCache(t *testing.T) {
+	metrics := NewLogResultCacheMetrics(prometheus.NewPedanticRegistry())
+	mockCache := cache.NewMockCache()
 	var (
 		ctx = user.InjectOrgID(context.Background(), "foo")
 		lrc = NewLogResultCache(
@@ -442,12 +447,17 @@ func Test_LogResultFillingGap(t *testing.T) {
 			fakeLimits{
 				splits: map[string]time.Duration{"foo": time.Minute},
 			},
-			cache.NewMockCache(),
+			mockCache,
 			nil,
 			nil,
-			nil,
+			metrics,
 		)
 	)
+
+	checkCacheMetrics := func(expectedHits, expectedMisses int) {
+		require.Equal(t, float64(expectedHits), testutil.ToFloat64(metrics.CacheHit))
+		require.Equal(t, float64(expectedMisses), testutil.ToFloat64(metrics.CacheMiss))
+	}
 
 	// data requested for just 1 sec, resulting in empty response
 	req1 := &LokiRequest{
@@ -456,16 +466,24 @@ func Test_LogResultFillingGap(t *testing.T) {
 		Limit:   entriesLimit,
 	}
 
-	// data requested for just 1 sec, within the same split but couple seconds apart
+	// data requested for just 1 sec(non-overlapping), resulting in empty response
 	req2 := &LokiRequest{
-		StartTs: time.Unix(0, time.Minute.Nanoseconds()+35*time.Second.Nanoseconds()),
-		EndTs:   time.Unix(0, time.Minute.Nanoseconds()+36*time.Second.Nanoseconds()),
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()+24*time.Second.Nanoseconds()),
+		EndTs:   time.Unix(0, time.Minute.Nanoseconds()+25*time.Second.Nanoseconds()),
 		Limit:   entriesLimit,
 	}
 
+	// data requested for larger interval than req1(overlapping with req2), returns empty response
 	req3 := &LokiRequest{
-		StartTs: time.Unix(0, time.Minute.Nanoseconds()+25*time.Second.Nanoseconds()),
-		EndTs:   time.Unix(0, time.Minute.Nanoseconds()+26*time.Second.Nanoseconds()),
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()+24*time.Second.Nanoseconds()),
+		EndTs:   time.Unix(0, time.Minute.Nanoseconds()+29*time.Second.Nanoseconds()),
+		Limit:   entriesLimit,
+	}
+
+	// data requested for larger interval than req3(non-overlapping), returns non-empty response
+	req4 := &LokiRequest{
+		StartTs: time.Unix(0, time.Minute.Nanoseconds()+10*time.Second.Nanoseconds()),
+		EndTs:   time.Unix(0, time.Minute.Nanoseconds()+20*time.Second.Nanoseconds()),
 		Limit:   entriesLimit,
 	}
 
@@ -476,34 +494,49 @@ func Test_LogResultFillingGap(t *testing.T) {
 				Response: emptyResponse(req1),
 			},
 		},
-		// partial request being made for missing interval at the end
+		// req2 should do query for just its query range and should not update the cache
 		{
 			RequestResponse: queryrangebase.RequestResponse{
 				Request: &LokiRequest{
-					StartTs: time.Unix(0, time.Minute.Nanoseconds()+31*time.Second.Nanoseconds()),
-					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+36*time.Second.Nanoseconds()),
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()+24*time.Second.Nanoseconds()),
+					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+25*time.Second.Nanoseconds()),
 					Limit:   entriesLimit,
 				},
-				Response: nonEmptyResponse(&LokiRequest{
-					StartTs: time.Unix(0, time.Minute.Nanoseconds()+31*time.Second.Nanoseconds()),
-					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+36*time.Second.Nanoseconds()),
+				Response: emptyResponse(&LokiRequest{
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()+24*time.Second.Nanoseconds()),
+					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+25*time.Second.Nanoseconds()),
 					Limit:   entriesLimit,
-				}, time.Unix(31, 0), time.Unix(34, 0), lblFooBar), // data not present for actual query interval i.e req2
+				}),
 			},
 		},
-		// partial request being made for missing interval at the beginning
+		// req3 should do query for just its query range and should update the cache
 		{
 			RequestResponse: queryrangebase.RequestResponse{
 				Request: &LokiRequest{
-					StartTs: time.Unix(0, time.Minute.Nanoseconds()+25*time.Second.Nanoseconds()),
-					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()+24*time.Second.Nanoseconds()),
+					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+29*time.Second.Nanoseconds()),
+					Limit:   entriesLimit,
+				},
+				Response: emptyResponse(&LokiRequest{
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()+24*time.Second.Nanoseconds()),
+					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+29*time.Second.Nanoseconds()),
+					Limit:   entriesLimit,
+				}),
+			},
+		},
+		// req4 should do query for its query range. Data would be non-empty so cache should not be updated
+		{
+			RequestResponse: queryrangebase.RequestResponse{
+				Request: &LokiRequest{
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()+10*time.Second.Nanoseconds()),
+					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+20*time.Second.Nanoseconds()),
 					Limit:   entriesLimit,
 				},
 				Response: nonEmptyResponse(&LokiRequest{
-					StartTs: time.Unix(0, time.Minute.Nanoseconds()+25*time.Second.Nanoseconds()),
-					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+30*time.Second.Nanoseconds()),
+					StartTs: time.Unix(0, time.Minute.Nanoseconds()+10*time.Second.Nanoseconds()),
+					EndTs:   time.Unix(0, time.Minute.Nanoseconds()+20*time.Second.Nanoseconds()),
 					Limit:   entriesLimit,
-				}, time.Unix(27, 0), time.Unix(29, 0), lblFooBar), // data not present for actual query interval i.e req3
+				}, time.Unix(71, 0), time.Unix(79, 0), lblFooBar),
 			},
 		},
 	})
@@ -513,16 +546,37 @@ func Test_LogResultFillingGap(t *testing.T) {
 	resp, err := h.Do(ctx, req1)
 	require.NoError(t, err)
 	require.Equal(t, emptyResponse(req1), resp)
+	checkCacheMetrics(0, 1)
+	require.Equal(t, 1, mockCache.NumKeyUpdates())
 
-	// although the caching code would request for more data than the actual query, we should have empty response here since we
-	// do not have any data for the query we made
+	// req2 should not update the cache since it has same length as previously cached query
 	resp, err = h.Do(ctx, req2)
 	require.NoError(t, err)
-	require.Equal(t, mergeLokiResponse(emptyResponse(req1), emptyResponse(req2)), resp)
+	require.Equal(t, emptyResponse(req2), resp)
+	checkCacheMetrics(1, 1)
+	require.Equal(t, 1, mockCache.NumKeyUpdates())
 
+	// req3 should update the cache since it has larger length than previously cached query
 	resp, err = h.Do(ctx, req3)
 	require.NoError(t, err)
-	require.Equal(t, mergeLokiResponse(emptyResponse(req1), emptyResponse(req3)), resp)
+	require.Equal(t, emptyResponse(req3), resp)
+	checkCacheMetrics(2, 1)
+	require.Equal(t, 2, mockCache.NumKeyUpdates())
+
+	// req4 returns non-empty response so it should not update the cache
+	resp, err = h.Do(ctx, req4)
+	require.NoError(t, err)
+	require.Equal(t, nonEmptyResponse(req4, time.Unix(71, 0), time.Unix(79, 0), lblFooBar), resp)
+	checkCacheMetrics(3, 1)
+	require.Equal(t, 2, mockCache.NumKeyUpdates())
+
+	// req2 should return back empty response from the cache, without updating the cache
+	resp, err = h.Do(ctx, req2)
+	require.NoError(t, err)
+	require.Equal(t, emptyResponse(req2), resp)
+	checkCacheMetrics(4, 1)
+	require.Equal(t, 2, mockCache.NumKeyUpdates())
+
 	fake.AssertExpectations(t)
 }
 

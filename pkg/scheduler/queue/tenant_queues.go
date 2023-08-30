@@ -109,7 +109,7 @@ func newTenantQueues(maxUserQueueSize int, forgetDelay time.Duration) *tenantQue
 	}
 }
 
-func (q *tenantQueues) hasTenantQueues() bool {
+func (q *tenantQueues) hasNoTenantQueues() bool {
 	return q.mapping.Len() == 0
 }
 

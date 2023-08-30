@@ -1,18 +1,16 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"fmt"
-	"io"
+	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"sync"
 	"syscall"
 	"time"
-
-	"crypto/tls"
-	"net/http"
-	"os/signal"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/backoff"
@@ -128,6 +126,16 @@ func main() {
 			_, _ = fmt.Fprintf(os.Stderr, "TLS configuration error: %s\n", err.Error())
 			os.Exit(1)
 		}
+	} else if *useTLS && *insecureSkipVerify {
+		// Case where cert cannot be trusted but we are also not using mTLS.
+		tc.InsecureSkipVerify = *insecureSkipVerify
+
+		var err error
+		tlsConfig, err = config.NewTLSConfig(&tc)
+		if err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "TLS configuration error: %s\n", err.Error())
+			os.Exit(1)
+		}
 	}
 
 	sentChan := make(chan time.Time)
@@ -143,13 +151,7 @@ func main() {
 		c.lock.Lock()
 		defer c.lock.Unlock()
 
-		var (
-			err error
-			w   io.Writer
-		)
-
-		w = os.Stdout
-
+		var entryWriter writer.EntryWriter
 		if *push {
 			backoffCfg := backoff.Config{
 				MinBackoff: *writeMinBackoff,
@@ -168,17 +170,20 @@ func main() {
 				*caFile, *certFile, *keyFile,
 				*user, *pass,
 				&backoffCfg,
-				log.NewLogfmtLogger(os.Stdout),
+				log.NewLogfmtLogger(os.Stderr),
 			)
 			if err != nil {
 				_, _ = fmt.Fprintf(os.Stderr, "Unable to create writer for Loki, check config: %s", err)
 				os.Exit(1)
 			}
 
-			w = push
+			entryWriter = push
+		} else {
+			entryWriter = writer.NewStreamWriter(os.Stdout, logger)
 		}
 
-		c.writer = writer.NewWriter(w, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
+		c.writer = writer.NewWriter(entryWriter, sentChan, *interval, *outOfOrderMin, *outOfOrderMax, *outOfOrderPercentage, *size, logger)
+		var err error
 		c.reader, err = reader.NewReader(os.Stderr, receivedChan, *useTLS, tlsConfig, *caFile, *certFile, *keyFile, *addr, *user, *pass, *tenantID, *queryTimeout, *lName, *lVal, *sName, *sValue, *interval, *queryAppend)
 		if err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "Unable to create reader for Loki querier, check config: %s", err)

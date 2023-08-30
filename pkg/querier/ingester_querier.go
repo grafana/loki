@@ -6,14 +6,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+
 	"github.com/gogo/status"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
 	"github.com/grafana/dskit/services"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/httpgrpc"
 	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/loki/pkg/distributor/clientpool"
@@ -76,29 +78,32 @@ func (q *IngesterQuerier) forAllIngesters(ctx context.Context, f func(context.Co
 }
 
 // forGivenIngesters runs f, in parallel, for given ingesters
-// TODO taken from Cortex, see if we can refactor out an usable interface.
 func (q *IngesterQuerier) forGivenIngesters(ctx context.Context, replicationSet ring.ReplicationSet, f func(context.Context, logproto.QuerierClient) (interface{}, error)) ([]responseFromIngesters, error) {
-	results, err := replicationSet.Do(ctx, q.extraQueryDelay, func(ctx context.Context, ingester *ring.InstanceDesc) (interface{}, error) {
+	cfg := ring.DoUntilQuorumConfig{
+		// Nothing here
+	}
+	results, err := ring.DoUntilQuorum(ctx, replicationSet, cfg, func(ctx context.Context, ingester *ring.InstanceDesc) (responseFromIngesters, error) {
 		client, err := q.pool.GetClientFor(ingester.Addr)
 		if err != nil {
-			return nil, err
+			return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
 		resp, err := f(ctx, client.(logproto.QuerierClient))
 		if err != nil {
-			return nil, err
+			return responseFromIngesters{addr: ingester.Addr}, err
 		}
 
 		return responseFromIngesters{ingester.Addr, resp}, nil
+	}, func(responseFromIngesters) {
+		// Nothing to do
 	})
+
 	if err != nil {
 		return nil, err
 	}
 
 	responses := make([]responseFromIngesters, 0, len(results))
-	for _, result := range results {
-		responses = append(responses, result.(responseFromIngesters))
-	}
+	responses = append(responses, results...)
 
 	return responses, err
 }
@@ -291,7 +296,7 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 	return chunkIDs, nil
 }
 
-func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+func (q *IngesterQuerier) Stats(ctx context.Context, _ string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
 	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
 		return querierClient.GetStats(ctx, &logproto.IndexStatsRequest{
 			From:     from,
@@ -315,6 +320,40 @@ func (q *IngesterQuerier) Stats(ctx context.Context, userID string, from, throug
 
 	merged := index_stats.MergeStats(casted...)
 	return &merged, nil
+}
+
+func (q *IngesterQuerier) Volume(ctx context.Context, _ string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	matcherString := "{}"
+	if len(matchers) > 0 {
+		matcherString = syntax.MatchersString(matchers)
+	}
+
+	resps, err := q.forAllIngesters(ctx, func(ctx context.Context, querierClient logproto.QuerierClient) (interface{}, error) {
+		return querierClient.GetVolume(ctx, &logproto.VolumeRequest{
+			From:         from,
+			Through:      through,
+			Matchers:     matcherString,
+			Limit:        limit,
+			TargetLabels: targetLabels,
+			AggregateBy:  aggregateBy,
+		})
+	})
+
+	if err != nil {
+		if isUnimplementedCallError(err) {
+			// Handle communication with older ingesters gracefully
+			return &logproto.VolumeResponse{}, nil
+		}
+		return nil, err
+	}
+
+	casted := make([]*logproto.VolumeResponse, 0, len(resps))
+	for _, resp := range resps {
+		casted = append(casted, resp.response.(*logproto.VolumeResponse))
+	}
+
+	merged := seriesvolume.Merge(casted, limit)
+	return merged, nil
 }
 
 func convertMatchersToString(matchers []*labels.Matcher) string {

@@ -149,8 +149,8 @@ metadata:
     capabilities: Full Lifecycle
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
-    containerImage: quay.io/openshift-logging/loki-operator:v0.1.0
-    createdAt: "2023-03-27T19:03:01Z"
+    containerImage: quay.io/openshift-logging/loki-operator:0.1.0
+    createdAt: "2023-08-02T07:55:28Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -160,7 +160,7 @@ metadata:
       Loki is a memory intensive application.  The initial
       set of OCP nodes may not be large enough to support the Loki stack.  Additional OCP nodes must be added
       to the OCP cluster if you desire to run with the recommended (or better) memory.
-    olm.skipRange: '>=5.4.0-0 <5.7.0'
+    olm.skipRange: '>=5.6.0-0 <5.8.0'
     operatorframework.io/cluster-monitoring: "true"
     operatorframework.io/suggested-namespace: openshift-operators-redhat
     operators.openshift.io/valid-subscription: '["OpenShift Container Platform", "OpenShift
@@ -173,7 +173,7 @@ metadata:
     operatorframework.io/arch.arm64: supported
     operatorframework.io/arch.ppc64le: supported
     operatorframework.io/arch.s390x: supported
-  name: loki-operator.v0.1.0-placeholder
+  name: loki-operator.v0.1.0
   namespace: placeholder
 spec:
   apiservicedefinitions: {}
@@ -342,6 +342,23 @@ spec:
         path: limits.global.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.global.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.global.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -354,8 +371,8 @@ spec:
         path: limits.global.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.global.queries.maxQuerySeries
         x-descriptors:
@@ -409,6 +426,23 @@ spec:
         path: limits.tenants.ingestion.maxLineSize
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimit defines the maximum byte rate per second per
+          stream. Units MB.
+        displayName: Maximum byte rate per second per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: PerStreamRateLimitBurst defines the maximum burst bytes per stream.
+          Units MB.
+        displayName: Maximum burst bytes per stream (in MB)
+        path: limits.tenants.ingestion.perStreamRateLimitBurst
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: CardinalityLimit defines the cardinality limit for index queries.
+        displayName: Cardinality Limit
+        path: limits.tenants.queries.cardinalityLimit
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
       - description: MaxChunksPerQuery defines the maximum number of chunks that can
           be fetched by a single query.
         displayName: Max Chunk per Query
@@ -421,8 +455,8 @@ spec:
         path: limits.tenants.queries.maxEntriesLimitPerQuery
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: MaxQuerySeries defines the the maximum of unique series that
-          is returned by a metric query.
+      - description: MaxQuerySeries defines the maximum of unique series that is returned
+          by a metric query.
         displayName: Max Query Series
         path: limits.tenants.queries.maxQuerySeries
         x-descriptors:
@@ -451,12 +485,37 @@ spec:
       - description: NoProxy configures the NO_PROXY/no_proxy env variable.
         displayName: NoProxy
         path: proxy.noProxy
-      - description: ReplicationFactor defines the policy for log stream replication.
+      - description: Replication defines the configuration for Loki data replication.
+        displayName: Replication Spec
+        path: replication
+      - description: Factor defines the policy for log stream replication.
+        displayName: Replication Factor
+        path: replication.factor
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: 'Zones defines an array of ZoneSpec that the scheduler will try
+          to satisfy. IMPORTANT: Make sure that the replication factor defined is
+          less than or equal to the number of available zones.'
+        displayName: Zones Spec
+        path: replication.zones
+      - description: MaxSkew describes the maximum degree to which Pods can be unevenly
+          distributed.
+        displayName: Max Skew
+        path: replication.zones[0].maxSkew
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:number
+      - description: TopologyKey is the key that defines a topology in the Nodes'
+          labels.
+        displayName: Topology Key
+        path: replication.zones[0].topologyKey
+      - description: 'Deprecated: Please use replication.factor instead. This field
+          will be removed in future versions of this CRD. ReplicationFactor defines
+          the policy for log stream replication.'
         displayName: Replication Factor
         path: replicationFactor
         x-descriptors:
         - urn:alm:descriptor:com.tectonic.ui:number
-      - description: Rules defines the spec for the ruler component
+      - description: Rules defines the spec for the ruler component.
         displayName: Rules
         path: rules
         x-descriptors:
@@ -505,6 +564,7 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:gcs
         - urn:alm:descriptor:com.tectonic.ui:select:s3
         - urn:alm:descriptor:com.tectonic.ui:select:swift
+        - urn:alm:descriptor:com.tectonic.ui:select:alibabacloud
       - description: TLS configuration for reaching the object storage endpoint.
         displayName: TLS Config
         path: storage.tls
@@ -526,7 +586,7 @@ spec:
         x-descriptors:
         - urn:alm:descriptor:io.kubernetes:StorageClass
       - description: Template defines the resource/limits/tolerations/nodeselectors
-          per component
+          per component.
         displayName: Node Placement
         path: template
         x-descriptors:
@@ -534,6 +594,12 @@ spec:
       - description: Compactor defines the compaction component spec.
         displayName: Compactor pods
         path: template.compactor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.compactor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.compactor.replicas
@@ -542,6 +608,12 @@ spec:
       - description: Distributor defines the distributor component spec.
         displayName: Distributor pods
         path: template.distributor
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.distributor.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.distributor.replicas
@@ -550,6 +622,12 @@ spec:
       - description: Gateway defines the lokistack gateway component spec.
         displayName: Gateway pods
         path: template.gateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.gateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.gateway.replicas
@@ -558,6 +636,12 @@ spec:
       - description: IndexGateway defines the index gateway component spec.
         displayName: Index Gateway pods
         path: template.indexGateway
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.indexGateway.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.indexGateway.replicas
@@ -566,6 +650,12 @@ spec:
       - description: Ingester defines the ingester component spec.
         displayName: Ingester pods
         path: template.ingester
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ingester.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ingester.replicas
@@ -574,6 +664,12 @@ spec:
       - description: Querier defines the querier component spec.
         displayName: Querier pods
         path: template.querier
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.querier.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.querier.replicas
@@ -582,6 +678,12 @@ spec:
       - description: QueryFrontend defines the query frontend component spec.
         displayName: Query Frontend pods
         path: template.queryFrontend
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.queryFrontend.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.queryFrontend.replicas
@@ -590,6 +692,12 @@ spec:
       - description: Ruler defines the ruler component spec.
         displayName: Ruler pods
         path: template.ruler
+      - description: PodAntiAffinity defines the pod anti affinity scheduling rules
+          to schedule pods of a component.
+        displayName: PodAntiAffinity
+        path: template.ruler.podAntiAffinity
+        x-descriptors:
+        - urn:alm:descriptor:com.tectonic.ui:podAntiAffinity
       - description: Replicas defines the number of replica pods of the component.
         displayName: Replicas
         path: template.ruler.replicas
@@ -603,17 +711,48 @@ spec:
           configuration spec per tenant.
         displayName: Authentication
         path: tenants.authentication
+      - description: TLSConfig defines the spec for the mTLS tenant's authentication.
+        displayName: mTLS Configuration
+        path: tenants.authentication[0].mTLS
+      - description: CA defines the spec for the custom CA for tenant's authentication.
+        displayName: CA ConfigMap
+        path: tenants.authentication[0].mTLS.ca
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].mTLS.ca.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].mTLS.ca.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: OIDC defines the spec for the OIDC tenant's authentication.
         displayName: OIDC Configuration
         path: tenants.authentication[0].oidc
+      - description: IssuerCA defines the spec for the issuer CA for tenant's authentication.
+        displayName: IssuerCA ConfigMap
+        path: tenants.authentication[0].oidc.issuerCA
+      - description: Key is the data key of a ConfigMap containing a CA certificate.
+          It needs to be in the same namespace as the LokiStack custom resource. If
+          empty, it defaults to "service-ca.crt".
+        displayName: CA ConfigMap Key
+        path: tenants.authentication[0].oidc.issuerCA.caKey
+      - description: CA is the name of a ConfigMap containing a CA certificate. It
+          needs to be in the same namespace as the LokiStack custom resource.
+        displayName: CA ConfigMap Name
+        path: tenants.authentication[0].oidc.issuerCA.caName
+        x-descriptors:
+        - urn:alm:descriptor:io.kubernetes:ConfigMap
       - description: IssuerURL defines the URL for issuer.
         displayName: Issuer URL
         path: tenants.authentication[0].oidc.issuerURL
       - description: RedirectURL defines the URL for redirect.
         displayName: Redirect URL
         path: tenants.authentication[0].oidc.redirectURL
-      - description: Secret defines the spec for the clientID, clientSecret and issuerCAPath
-          for tenant's authentication.
+      - description: Secret defines the spec for the clientID and clientSecret for
+          tenant's authentication.
         displayName: Tenant Secret
         path: tenants.authentication[0].oidc.secret
       - description: Name of a secret in the namespace configured for tenant secrets.
@@ -654,6 +793,15 @@ spec:
         - urn:alm:descriptor:com.tectonic.ui:select:dynamic
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-logging
         - urn:alm:descriptor:com.tectonic.ui:select:openshift-network
+      - description: Openshift defines the configuration specific to Openshift modes.
+        displayName: Openshift
+        path: tenants.openshift
+      - description: "AdminGroups defines a list of groups, whose members are considered
+          to have admin-privileges by the Loki Operator. Setting this to an empty
+          array disables admin groups. \n By default the following groups are considered
+          admin-groups: - system:cluster-admins - cluster-admin - dedicated-admin"
+        displayName: Admin Groups
+        path: tenants.openshift.adminGroups
       statusDescriptors:
       - description: Distributor is a map to the per pod status of the distributor
           deployment
@@ -739,6 +887,9 @@ spec:
           alerts.
         displayName: LogQL Expression
         path: groups[0].rules[0].expr
+      - description: Labels to add to each recording rule.
+        displayName: Labels
+        path: groups[0].rules[0].labels
       - description: The name of the time series to output to. Must be a valid metric
           name.
         displayName: Metric Name
@@ -1237,14 +1388,6 @@ spec:
           - list
           - watch
         - apiGroups:
-          - ""
-          resources:
-          - secrets
-          verbs:
-          - get
-          - list
-          - watch
-        - apiGroups:
           - apps
           resources:
           - deployments
@@ -1408,6 +1551,16 @@ spec:
           - update
           - watch
         - apiGroups:
+          - policy
+          resources:
+          - poddisruptionbudgets
+          verbs:
+          - create
+          - get
+          - list
+          - update
+          - watch
+        - apiGroups:
           - rbac.authorization.k8s.io
           resources:
           - clusterrolebindings
@@ -1448,11 +1601,11 @@ spec:
         serviceAccountName: default
       deployments:
       - label:
-          app.kubernetes.io/instance: loki-operator-v0.0.1
+          app.kubernetes.io/instance: loki-operator-0.1.0
           app.kubernetes.io/managed-by: operator-lifecycle-manager
           app.kubernetes.io/name: loki-operator
           app.kubernetes.io/part-of: cluster-logging
-          app.kubernetes.io/version: 0.0.1
+          app.kubernetes.io/version: 0.1.0
           control-plane: controller-manager
         name: loki-operator-controller-manager
         spec:
@@ -1481,12 +1634,12 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: quay.io/openshift-logging/loki:v2.7.4
+                  value: quay.io/openshift-logging/loki:v2.8.3
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
                   value: quay.io/observatorium/opa-openshift:latest
-                image: quay.io/openshift-logging/loki-operator:v0.1.0-placeholder
+                image: quay.io/openshift-logging/loki-operator:0.1.0
                 imagePullPolicy: IfNotPresent
                 livenessProbe:
                   httpGet:
@@ -1544,6 +1697,8 @@ spec:
                 kubernetes.io/os: linux
               securityContext:
                 runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
               terminationGracePeriodSeconds: 10
               volumes:
               - configMap:
@@ -1602,13 +1757,13 @@ spec:
   provider:
     name: Red Hat
   relatedImages:
-  - image: quay.io/openshift-logging/loki:v2.7.4
+  - image: quay.io/openshift-logging/loki:v2.8.3
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
   - image: quay.io/observatorium/opa-openshift:latest
     name: opa
-  version: 0.1.0-placeholder
+  version: 0.1.0
   webhookdefinitions:
   - admissionReviewVersions:
     - v1

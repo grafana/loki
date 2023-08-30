@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MIT
+
 package hclog
 
 import (
@@ -8,7 +11,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"os"
 	"reflect"
 	"runtime"
 	"sort"
@@ -17,6 +19,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/fatih/color"
 )
@@ -48,6 +52,12 @@ var (
 		Warn:  color.New(color.FgHiYellow),
 		Error: color.New(color.FgHiRed),
 	}
+
+	faintBoldColor                 = color.New(color.Faint, color.Bold)
+	faintColor                     = color.New(color.Faint)
+	faintMultiLinePrefix           = faintColor.Sprint("  | ")
+	faintFieldSeparator            = faintColor.Sprint("=")
+	faintFieldSeparatorWithNewLine = faintColor.Sprint("=\n")
 )
 
 // Make sure that intLogger is a Logger
@@ -70,6 +80,7 @@ type intLogger struct {
 	level  *int32
 
 	headerColor ColorOption
+	fieldColor  ColorOption
 
 	implied []interface{}
 
@@ -77,6 +88,8 @@ type intLogger struct {
 
 	// create subloggers with their own level setting
 	independentLevels bool
+
+	subloggerHook func(sub Logger) Logger
 }
 
 // New returns a configured logger.
@@ -115,14 +128,19 @@ func newLogger(opts *LoggerOptions) *intLogger {
 		mutex = new(sync.Mutex)
 	}
 
-	var primaryColor, headerColor ColorOption
-
-	if opts.ColorHeaderOnly {
-		primaryColor = ColorOff
+	var (
+		primaryColor ColorOption = ColorOff
+		headerColor  ColorOption = ColorOff
+		fieldColor   ColorOption = ColorOff
+	)
+	switch {
+	case opts.ColorHeaderOnly:
 		headerColor = opts.Color
-	} else {
+	case opts.ColorHeaderAndFields:
+		fieldColor = opts.Color
+		headerColor = opts.Color
+	default:
 		primaryColor = opts.Color
-		headerColor = ColorOff
 	}
 
 	l := &intLogger{
@@ -137,6 +155,8 @@ func newLogger(opts *LoggerOptions) *intLogger {
 		exclude:           opts.Exclude,
 		independentLevels: opts.IndependentLevels,
 		headerColor:       headerColor,
+		fieldColor:        fieldColor,
+		subloggerHook:     opts.SubloggerHook,
 	}
 	if opts.IncludeLocation {
 		l.callerOffset = offsetIntLogger + opts.AdditionalLocationOffset
@@ -152,6 +172,10 @@ func newLogger(opts *LoggerOptions) *intLogger {
 		l.timeFormat = opts.TimeFormat
 	}
 
+	if l.subloggerHook == nil {
+		l.subloggerHook = identityHook
+	}
+
 	l.setColorization(opts)
 
 	atomic.StoreInt32(l.level, int32(level))
@@ -159,8 +183,12 @@ func newLogger(opts *LoggerOptions) *intLogger {
 	return l
 }
 
+func identityHook(logger Logger) Logger {
+	return logger
+}
+
 // offsetIntLogger is the stack frame offset in the call stack for the caller to
-// one of the Warn,Info,Log,etc methods.
+// one of the Warn, Info, Log, etc methods.
 const offsetIntLogger = 3
 
 // Log a message and a set of key/value pairs if the given level is at
@@ -235,7 +263,17 @@ func needsQuoting(str string) bool {
 	return false
 }
 
-// Non-JSON logging format function
+// logPlain is the non-JSON logging format function which writes directly
+// to the underlying writer the logger was initialized with.
+//
+// If the logger was initialized with a color function, it also handles
+// applying the color to the log message.
+//
+// Color Options
+//  1. No color.
+//  2. Color the whole log line, based on the level.
+//  3. Color only the header (level) part of the log line.
+//  4. Color both the header and fields of the log line.
 func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, args ...interface{}) {
 
 	if !l.disableTime {
@@ -269,16 +307,19 @@ func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, 
 
 	if name != "" {
 		l.writer.WriteString(name)
-		l.writer.WriteString(": ")
+		if msg != "" {
+			l.writer.WriteString(": ")
+			l.writer.WriteString(msg)
+		}
+	} else if msg != "" {
+		l.writer.WriteString(msg)
 	}
-
-	l.writer.WriteString(msg)
 
 	args = append(l.implied, args...)
 
 	var stacktrace CapturedStacktrace
 
-	if args != nil && len(args) > 0 {
+	if len(args) > 0 {
 		if len(args)%2 != 0 {
 			cs, ok := args[len(args)-1].(CapturedStacktrace)
 			if ok {
@@ -292,13 +333,16 @@ func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, 
 
 		l.writer.WriteByte(':')
 
+		// Handle the field arguments, which come in pairs (key=val).
 	FOR:
 		for i := 0; i < len(args); i = i + 2 {
 			var (
+				key string
 				val string
 				raw bool
 			)
 
+			// Convert the field value to a string.
 			switch st := args[i+1].(type) {
 			case string:
 				val = st
@@ -350,8 +394,7 @@ func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, 
 				}
 			}
 
-			var key string
-
+			// Convert the field key to a string.
 			switch st := args[i].(type) {
 			case string:
 				key = st
@@ -359,21 +402,49 @@ func (l *intLogger) logPlain(t time.Time, name string, level Level, msg string, 
 				key = fmt.Sprintf("%s", st)
 			}
 
+			// Optionally apply the ANSI "faint" and "bold"
+			// SGR values to the key.
+			if l.fieldColor != ColorOff {
+				key = faintBoldColor.Sprint(key)
+			}
+
+			// Values may contain multiple lines, and that format
+			// is preserved, with each line prefixed with a "  | "
+			// to show it's part of a collection of lines.
+			//
+			// Values may also need quoting, if not all the runes
+			// in the value string are "normal", like if they
+			// contain ANSI escape sequences.
 			if strings.Contains(val, "\n") {
 				l.writer.WriteString("\n  ")
 				l.writer.WriteString(key)
-				l.writer.WriteString("=\n")
-				writeIndent(l.writer, val, "  | ")
+				if l.fieldColor != ColorOff {
+					l.writer.WriteString(faintFieldSeparatorWithNewLine)
+					writeIndent(l.writer, val, faintMultiLinePrefix)
+				} else {
+					l.writer.WriteString("=\n")
+					writeIndent(l.writer, val, "  | ")
+				}
 				l.writer.WriteString("  ")
 			} else if !raw && needsQuoting(val) {
 				l.writer.WriteByte(' ')
 				l.writer.WriteString(key)
-				l.writer.WriteByte('=')
-				l.writer.WriteString(strconv.Quote(val))
+				if l.fieldColor != ColorOff {
+					l.writer.WriteString(faintFieldSeparator)
+				} else {
+					l.writer.WriteByte('=')
+				}
+				l.writer.WriteByte('"')
+				writeEscapedForOutput(l.writer, val, true)
+				l.writer.WriteByte('"')
 			} else {
 				l.writer.WriteByte(' ')
 				l.writer.WriteString(key)
-				l.writer.WriteByte('=')
+				if l.fieldColor != ColorOff {
+					l.writer.WriteString(faintFieldSeparator)
+				} else {
+					l.writer.WriteByte('=')
+				}
 				l.writer.WriteString(val)
 			}
 		}
@@ -393,17 +464,96 @@ func writeIndent(w *writer, str string, indent string) {
 		if nl == -1 {
 			if str != "" {
 				w.WriteString(indent)
-				w.WriteString(str)
+				writeEscapedForOutput(w, str, false)
 				w.WriteString("\n")
 			}
 			return
 		}
 
 		w.WriteString(indent)
-		w.WriteString(str[:nl])
+		writeEscapedForOutput(w, str[:nl], false)
 		w.WriteString("\n")
 		str = str[nl+1:]
 	}
+}
+
+func needsEscaping(str string) bool {
+	for _, b := range str {
+		if !unicode.IsPrint(b) || b == '"' {
+			return true
+		}
+	}
+
+	return false
+}
+
+const (
+	lowerhex = "0123456789abcdef"
+)
+
+var bufPool = sync.Pool{
+	New: func() interface{} {
+		return new(bytes.Buffer)
+	},
+}
+
+func writeEscapedForOutput(w io.Writer, str string, escapeQuotes bool) {
+	if !needsEscaping(str) {
+		w.Write([]byte(str))
+		return
+	}
+
+	bb := bufPool.Get().(*bytes.Buffer)
+	bb.Reset()
+
+	defer bufPool.Put(bb)
+
+	for _, r := range str {
+		if escapeQuotes && r == '"' {
+			bb.WriteString(`\"`)
+		} else if unicode.IsPrint(r) {
+			bb.WriteRune(r)
+		} else {
+			switch r {
+			case '\a':
+				bb.WriteString(`\a`)
+			case '\b':
+				bb.WriteString(`\b`)
+			case '\f':
+				bb.WriteString(`\f`)
+			case '\n':
+				bb.WriteString(`\n`)
+			case '\r':
+				bb.WriteString(`\r`)
+			case '\t':
+				bb.WriteString(`\t`)
+			case '\v':
+				bb.WriteString(`\v`)
+			default:
+				switch {
+				case r < ' ':
+					bb.WriteString(`\x`)
+					bb.WriteByte(lowerhex[byte(r)>>4])
+					bb.WriteByte(lowerhex[byte(r)&0xF])
+				case !utf8.ValidRune(r):
+					r = 0xFFFD
+					fallthrough
+				case r < 0x10000:
+					bb.WriteString(`\u`)
+					for s := 12; s >= 0; s -= 4 {
+						bb.WriteByte(lowerhex[r>>uint(s)&0xF])
+					}
+				default:
+					bb.WriteString(`\U`)
+					for s := 28; s >= 0; s -= 4 {
+						bb.WriteByte(lowerhex[r>>uint(s)&0xF])
+					}
+				}
+			}
+		}
+	}
+
+	w.Write(bb.Bytes())
 }
 
 func (l *intLogger) renderSlice(v reflect.Value) string {
@@ -638,7 +788,7 @@ func (l *intLogger) With(args ...interface{}) Logger {
 		sl.implied = append(sl.implied, MissingKey, extra)
 	}
 
-	return sl
+	return l.subloggerHook(sl)
 }
 
 // Create a new sub-Logger that a name decending from the current name.
@@ -652,7 +802,7 @@ func (l *intLogger) Named(name string) Logger {
 		sl.name = name
 	}
 
-	return sl
+	return l.subloggerHook(sl)
 }
 
 // Create a new sub-Logger with an explicit name. This ignores the current
@@ -663,7 +813,7 @@ func (l *intLogger) ResetNamed(name string) Logger {
 
 	sl.name = name
 
-	return sl
+	return l.subloggerHook(sl)
 }
 
 func (l *intLogger) ResetOutput(opts *LoggerOptions) error {
@@ -707,6 +857,11 @@ func (l *intLogger) SetLevel(level Level) {
 	atomic.StoreInt32(l.level, int32(level))
 }
 
+// Returns the current level
+func (l *intLogger) GetLevel() Level {
+	return Level(atomic.LoadInt32(l.level))
+}
+
 // Create a *log.Logger that will send it's data through this Logger. This
 // allows packages that expect to be using the standard library log to actually
 // use this logger.
@@ -732,16 +887,6 @@ func (l *intLogger) StandardWriter(opts *StandardLoggerOptions) io.Writer {
 		inferLevelsWithTimestamp: opts.InferLevelsWithTimestamp,
 		forceLevel:               opts.ForceLevel,
 	}
-}
-
-// checks if the underlying io.Writer is a file, and
-// panics if not. For use by colorization.
-func (l *intLogger) checkWriterIsFile() *os.File {
-	fi, ok := l.writer.w.(*os.File)
-	if !ok {
-		panic("Cannot enable coloring of non-file Writers")
-	}
-	return fi
 }
 
 // Accept implements the SinkAdapter interface

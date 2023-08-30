@@ -3,14 +3,23 @@ package indexgateway
 import (
 	"context"
 	"fmt"
+	"math"
 	"testing"
+
+	"github.com/grafana/dskit/user"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	util_test "github.com/grafana/loki/pkg/util"
+	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
 )
 
@@ -71,11 +80,13 @@ func (m *mockQueryIndexServer) Context() context.Context {
 
 type mockIndexClient struct {
 	index.Client
-	response *mockBatch
+	response      *mockBatch
+	tablesQueried []string
 }
 
-func (m mockIndexClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
+func (m *mockIndexClient) QueryPages(_ context.Context, queries []index.Query, callback index.QueryPagesCallback) error {
 	for _, query := range queries {
+		m.tablesQueried = append(m.tablesQueried, query.TableName)
 		callback(query, m.response)
 	}
 
@@ -127,7 +138,16 @@ func TestGateway_QueryIndex(t *testing.T) {
 			})
 		}
 		expectedQueryKey = util.QueryKey(query)
-		gateway.indexClient = mockIndexClient{response: &mockBatch{size: responseSize}}
+		gateway.indexClients = []IndexClientWithRange{{
+			IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+			TableRange: config.TableRange{
+				Start: 0,
+				End:   math.MaxInt64,
+				PeriodConfig: &config.PeriodConfig{
+					IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+				},
+			},
+		}}
 
 		err := gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: []*logproto.IndexQuery{{
 			TableName:        query.TableName,
@@ -141,4 +161,123 @@ func TestGateway_QueryIndex(t *testing.T) {
 		// verify that we actually got responses back by checking if expectedRanges got cleared.
 		require.Len(t, expectedRanges, 0)
 	}
+}
+
+func TestGateway_QueryIndex_multistore(t *testing.T) {
+	var (
+		responseSize    = 99
+		expectedQueries []*logproto.IndexQuery
+		queries         []*logproto.IndexQuery
+	)
+
+	var server logproto.IndexGateway_QueryIndexServer = &mockQueryIndexServer{
+		callback: func(resp *logproto.QueryIndexResponse) {
+			require.True(t, len(expectedQueries) > 0)
+			require.Equal(t, util.QueryKey(index.Query{
+				TableName:        expectedQueries[0].TableName,
+				HashValue:        expectedQueries[0].HashValue,
+				RangeValuePrefix: expectedQueries[0].RangeValuePrefix,
+				RangeValueStart:  expectedQueries[0].RangeValueStart,
+				ValueEqual:       expectedQueries[0].ValueEqual,
+			}), resp.QueryKey)
+			require.Len(t, resp.Rows, responseSize)
+
+			expectedQueries = expectedQueries[1:]
+		},
+	}
+
+	// builds queries for the listed tables
+	for _, i := range []int{6, 10, 12, 16, 99} {
+		queries = append(queries, &logproto.IndexQuery{
+			TableName:        fmt.Sprintf("%s%d", tableNamePrefix, i),
+			HashValue:        fmt.Sprintf("%s%d", hashValuePrefix, i),
+			RangeValuePrefix: []byte(fmt.Sprintf("%s%d", rangeValuePrefixPrefix, i)),
+			RangeValueStart:  []byte(fmt.Sprintf("%s%d", rangeValueStartPrefix, i)),
+			ValueEqual:       []byte(fmt.Sprintf("%s%d", valueEqualPrefix, i)),
+		})
+	}
+
+	indexClients := []IndexClientWithRange{{
+		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+		// no matching queries for this range
+		TableRange: config.TableRange{
+			Start: 0,
+			End:   4,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+			},
+		},
+	}, {
+		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+		TableRange: config.TableRange{
+			Start: 5,
+			End:   10,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+			},
+		},
+	}, {
+		IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
+		TableRange: config.TableRange{
+			Start: 15,
+			End:   math.MaxInt64,
+			PeriodConfig: &config.PeriodConfig{
+				IndexTables: config.PeriodicTableConfig{Prefix: tableNamePrefix},
+			},
+		},
+	}}
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, nil, indexClients)
+	require.NoError(t, err)
+
+	expectedQueries = append(expectedQueries,
+		queries[3], queries[4], // queries matching table range 15->MaxInt64
+		queries[0], queries[1], // queries matching table range 5->10
+	)
+
+	err = gateway.QueryIndex(&logproto.QueryIndexRequest{Queries: queries}, server)
+	require.NoError(t, err)
+
+	// since indexClients are sorted, 0 index would contain the latest period
+	require.ElementsMatch(t, gateway.indexClients[0].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name16", "table-name99"})
+	require.ElementsMatch(t, gateway.indexClients[1].IndexClient.(*mockIndexClient).tablesQueried, []string{"table-name6", "table-name10"})
+	require.ElementsMatch(t, gateway.indexClients[2].IndexClient.(*mockIndexClient).tablesQueried, []string{})
+
+	require.Len(t, expectedQueries, 0)
+}
+
+func TestVolume(t *testing.T) {
+	indexQuerier := newIngesterQuerierMock()
+	indexQuerier.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{Volumes: []logproto.Volume{
+		{Name: "bar", Volume: 38},
+	}}, nil)
+
+	gateway, err := NewIndexGateway(Config{}, util_log.Logger, nil, indexQuerier, nil)
+	require.NoError(t, err)
+
+	ctx := user.InjectOrgID(context.Background(), "test")
+	vol, err := gateway.GetVolume(ctx, &logproto.VolumeRequest{Matchers: "{}"})
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.VolumeResponse{Volumes: []logproto.Volume{
+		{Name: "bar", Volume: 38},
+	}}, vol)
+}
+
+type indexQuerierMock struct {
+	IndexQuerier
+	util_test.ExtendedMock
+}
+
+func newIngesterQuerierMock() *indexQuerierMock {
+	return &indexQuerierMock{}
+}
+
+func (i *indexQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, _ []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	args := i.Called(userID, from, through, matchers)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
 }

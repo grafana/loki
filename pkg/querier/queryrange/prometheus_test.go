@@ -18,12 +18,16 @@ var emptyStats = `"stats": {
 			"chunksDownloadTime": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
+			"chunkRefsFetchTime": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
 				"decompressedLines": 0,
+				"decompressedNonIndexedLabelsBytes": 0,
 				"headChunkBytes": 0,
 				"headChunkLines": 0,
+				"headChunkNonIndexedLabelsBytes": 0,
+                "postFilterLines": 0,
 				"totalDuplicates": 0
 			}
 		},
@@ -37,12 +41,16 @@ var emptyStats = `"stats": {
 			"chunksDownloadTime": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
+			"chunkRefsFetchTime": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
 				"decompressedLines": 0,
+				"decompressedNonIndexedLabelsBytes": 0,
 				"headChunkBytes": 0,
 				"headChunkLines": 0,
+				"headChunkNonIndexedLabelsBytes": 0,
+                "postFilterLines": 0,
 				"totalDuplicates": 0
 			}
 		}
@@ -58,6 +66,15 @@ var emptyStats = `"stats": {
 			"downloadTime": 0
 		},
 		"index": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		},
+		"statsResult": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
 			"entriesStored": 0,
@@ -86,7 +103,9 @@ var emptyStats = `"stats": {
 		"subqueries": 0,
 		"totalBytesProcessed":0,
 		"totalEntriesReturned":0,
-		"totalLinesProcessed":0
+		"totalLinesProcessed":0,
+		"totalNonIndexedLabelsBytesProcessed": 0,
+        "totalPostFilterLines": 0
 	}
 }`
 

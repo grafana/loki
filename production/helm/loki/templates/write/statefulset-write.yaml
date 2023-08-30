@@ -8,10 +8,18 @@ metadata:
   labels:
     {{- include "loki.writeLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  annotations:
+    {{- with .Values.loki.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- with .Values.write.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
+{{- if not .Values.write.autoscaling.enabled }}
   replicas: {{ .Values.write.replicas }}
-
-  podManagementPolicy: Parallel
+{{- end }}
+  podManagementPolicy: {{ .Values.write.podManagementPolicy }}
   updateStrategy:
     rollingUpdate:
       partition: 0
@@ -32,7 +40,7 @@ spec:
   template:
     metadata:
       annotations:
-        checksum/config: {{ include (print .Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config: {{ include (print .Template.BasePath "/config.yaml") . | sha256sum }}
         {{- with .Values.loki.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
@@ -101,9 +109,15 @@ spec:
             {{- toYaml .Values.loki.containerSecurityContext | nindent 12 }}
           readinessProbe:
             {{- toYaml .Values.loki.readinessProbe | nindent 12 }}
-          {{- with .Values.write.lifecycle }}
+          {{- if .Values.write.lifecycle }}
           lifecycle:
-            {{- toYaml . | nindent 12 }}
+            {{- toYaml .Values.write.lifecycle | nindent 12 }}
+          {{- else if .Values.write.autoscaling.enabled }}
+          lifecycle:
+            preStop:
+              httpGet:
+                path: "/ingester/flush_shutdown"
+                port: http-metrics
           {{- end }}
           volumeMounts:
             - name: config
@@ -125,6 +139,10 @@ spec:
       affinity:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
+      {{- with .Values.write.dnsConfig }}
+      dnsConfig:
+        {{- tpl . $ | nindent 8 }}
+      {{- end }}
       {{- with .Values.write.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -139,8 +157,7 @@ spec:
           secret:
             secretName: {{ .Values.loki.existingSecretForConfig }}
           {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
+          {{- include "loki.configVolume" . | nindent 10 }}
           {{- end }}
         - name: runtime-config
           configMap:
@@ -173,4 +190,7 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+    {{- with .Values.write.extraVolumeClaimTemplates }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 {{- end }}

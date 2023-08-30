@@ -14,7 +14,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/hashicorp/go-sockaddr"
+	sockaddr "github.com/hashicorp/go-sockaddr"
 	"github.com/hashicorp/memberlist"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
@@ -23,6 +23,7 @@ import (
 
 	dstls "github.com/grafana/dskit/crypto/tls"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/netutil"
 )
 
 type messageType uint8
@@ -34,6 +35,7 @@ const (
 )
 
 const zeroZeroZeroZero = "0.0.0.0"
+const colonColon = "::"
 
 // TCPTransportConfig is a configuration structure for creating new TCPTransport.
 type TCPTransportConfig struct {
@@ -54,8 +56,7 @@ type TCPTransportConfig struct {
 	TransportDebug bool `yaml:"-" category:"advanced"`
 
 	// Where to put custom metrics. nil = don't register.
-	MetricsRegisterer prometheus.Registerer `yaml:"-"`
-	MetricsNamespace  string                `yaml:"-"`
+	MetricsNamespace string `yaml:"-"`
 
 	TLSEnabled bool               `yaml:"tls_enabled" category:"advanced"`
 	TLS        dstls.ClientConfig `yaml:",inline"`
@@ -111,7 +112,7 @@ type TCPTransport struct {
 
 // NewTCPTransport returns a new tcp-based transport with the given configuration. On
 // success all the network listeners will be created and listening.
-func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTransport, error) {
+func NewTCPTransport(config TCPTransportConfig, logger log.Logger, registerer prometheus.Registerer) (*TCPTransport, error) {
 	if len(config.BindAddrs) == 0 {
 		config.BindAddrs = []string{zeroZeroZeroZero}
 	}
@@ -133,7 +134,7 @@ func NewTCPTransport(config TCPTransportConfig, logger log.Logger) (*TCPTranspor
 		}
 	}
 
-	t.registerMetrics(config.MetricsRegisterer)
+	t.registerMetrics(registerer)
 
 	// Clean up listeners if there's an error.
 	defer func() {
@@ -358,13 +359,11 @@ func (t *TCPTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 			return nil, 0, fmt.Errorf("failed to parse advertise address %q", ip)
 		}
 
-		// Ensure IPv4 conversion if necessary.
-		if ip4 := advertiseAddr.To4(); ip4 != nil {
-			advertiseAddr = ip4
-		}
 		advertisePort = port
 	} else {
-		if t.cfg.BindAddrs[0] == zeroZeroZeroZero {
+
+		switch t.cfg.BindAddrs[0] {
+		case zeroZeroZeroZero:
 			// Otherwise, if we're not bound to a specific IP, let's
 			// use a suitable private IP address.
 			var err error
@@ -378,9 +377,19 @@ func (t *TCPTransport) FinalAdvertiseAddr(ip string, port int) (net.IP, int, err
 
 			advertiseAddr = net.ParseIP(ip)
 			if advertiseAddr == nil {
-				return nil, 0, fmt.Errorf("failed to parse advertise address: %q", ip)
+				return nil, 0, fmt.Errorf("failed to parse advertise address %q", ip)
 			}
-		} else {
+		case colonColon:
+			inet6Ip, err := netutil.GetFirstAddressOf(nil, t.logger, true)
+			if err != nil {
+				return nil, 0, fmt.Errorf("failed to get private inet6 address: %w", err)
+			}
+
+			advertiseAddr = net.ParseIP(inet6Ip)
+			if advertiseAddr == nil {
+				return nil, 0, fmt.Errorf("failed to parse inet6 advertise address %q", ip)
+			}
+		default:
 			// Use the IP that we're bound to, based on the first
 			// TCP listener, which we already ensure is there.
 			advertiseAddr = t.tcpListeners[0].Addr().(*net.TCPAddr).IP

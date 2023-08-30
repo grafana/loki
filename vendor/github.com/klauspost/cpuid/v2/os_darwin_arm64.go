@@ -83,7 +83,7 @@ func tryToFillCPUInfoFomSysctl(c *CPUInfo) {
 	c.Model = sysctlGetInt(0, "machdep.cpu.model")
 	c.CacheLine = sysctlGetInt64(0, "hw.cachelinesize")
 	c.Cache.L1I = sysctlGetInt64(-1, "hw.l1icachesize")
-	c.Cache.L1D = sysctlGetInt64(-1, "hw.l1icachesize")
+	c.Cache.L1D = sysctlGetInt64(-1, "hw.l1dcachesize")
 	c.Cache.L2 = sysctlGetInt64(-1, "hw.l2cachesize")
 	c.Cache.L3 = sysctlGetInt64(-1, "hw.l3cachesize")
 

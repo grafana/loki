@@ -23,9 +23,10 @@ jobs:
       with:
         go-version: ${{ matrix.go }}
       id: go
-    - uses: actions/checkout@v3.3.0
+    - uses: actions/checkout@v3
     - name: Install make
       run: sudo apt-get install make
     - name: make bundle
-      run: make bundle
+      run: |
+        make bundle-all && git diff --exit-code -I'^    createdAt: '
       working-directory: ./operator

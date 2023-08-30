@@ -96,8 +96,8 @@ func (b *Blooms) AddStream(fp model.Fingerprint) {
 	})
 }
 
-func (b *Blooms) AddChunk(fp model.Fingerprint, chk index.ChunkMeta) {
-	b.stats.AddChunk(fp, chk)
+func (b *Blooms) AddChunkStats(s index.ChunkStats) {
+	b.stats.AddChunkStats(s)
 }
 
 func (b *Blooms) add(filter *bloom.BloomFilter, key []byte, update func()) {

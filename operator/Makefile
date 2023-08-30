@@ -21,10 +21,10 @@ LOKI_OPERATOR_NS ?= kubernetes-operators
 # To re-generate a bundle for another specific version without changing the standard setup, you can:
 # - use the VERSION as arg of the bundle target (e.g make bundle VERSION=0.0.2)
 # - use environment variables to overwrite this value (e.g export VERSION=0.0.2)
-VERSION ?= v0.2.0
+VERSION ?= 0.4.0
 CHANNELS ?= "alpha"
 DEFAULT_CHANNEL ?= "alpha"
-SUPPORTED_OCP_VERSIONS="v4.10"
+SUPPORTED_OCP_VERSIONS="v4.12"
 
 # REGISTRY_BASE
 # defines the container registry and organization for the bundle and operator container images.
@@ -32,24 +32,20 @@ REGISTRY_BASE_COMMUNITY = docker.io/grafana
 REGISTRY_BASE_OPENSHIFT = quay.io/openshift-logging
 REGISTRY_BASE ?= $(REGISTRY_BASE_COMMUNITY)
 
-# TODO(@periklis): Replace this image tag with VERSION once we have GH tags
-MAIN_IMAGE_TAG = main-99acb9b
-
 # Customize for variants: community, community-openshift or openshift
 VARIANT ?= community
 ifeq ($(VARIANT), openshift)
 ifeq ($(REGISTRY_BASE), $(REGISTRY_BASE_COMMUNITY))
     REGISTRY_BASE = $(REGISTRY_BASE_OPENSHIFT)
 endif
-    VERSION = v0.1.0-placeholder
+    VERSION = 0.1.0
     CHANNELS = stable
     DEFAULT_CHANNEL = stable
     LOKI_OPERATOR_NS = openshift-operators-redhat
-    MAIN_IMAGE_TAG = $(VERSION)
 endif
 
 # Image URL to use all building/pushing image targets
-IMG ?= $(REGISTRY_BASE)/loki-operator:$(MAIN_IMAGE_TAG)
+IMG ?= $(REGISTRY_BASE)/loki-operator:$(VERSION)
 
 # CHANNELS define the bundle channels used in the bundle.
 # Add a new line here if you would like to change its default config. (E.g CHANNELS = "preview,fast,stable")
@@ -75,7 +71,7 @@ BUNDLE_METADATA_OPTS ?= $(BUNDLE_CHANNELS) $(BUNDLE_DEFAULT_CHANNEL)
 BUNDLE_IMG ?= $(REGISTRY_BASE)/loki-operator-bundle:$(VERSION)
 
 # BUNDLE_GEN_FLAGS are the flags passed to the operator-sdk generate bundle command
-BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(subst v,,$(VERSION)) $(BUNDLE_METADATA_OPTS)
+BUNDLE_GEN_FLAGS ?= -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
 
 MANIFESTS_DIR = config/manifests/$(VARIANT)
 BUNDLE_DIR = ./bundle/$(VARIANT)
@@ -173,6 +169,10 @@ scorecard: generate go-generate bundle-all ## Run scorecard tests for all bundle
 .PHONY: lint
 lint: $(GOLANGCI_LINT) | generate ## Run golangci-lint on source code.
 	$(GOLANGCI_LINT) run --timeout=5m ./...
+
+.PHONY: lint-fix
+lint-fix: $(GOLANGCI_LINT) ## Attempt to automatically fix lint issues in source code.
+	$(GOLANGCI_LINT) run --fix --timeout=5m ./...
 
 .PHONY: lint-prometheus
 lint-prometheus: $(PROMTOOL) ## Run promtool check against recording rules and alerts.
@@ -343,3 +343,15 @@ check-operatorhub-pr-template:
 	curl https://raw.githubusercontent.com/operator-framework/community-operators/master/docs/pull_request_template.md -o hack/.operatorhub-pr-template.md -s > /dev/null 2>&1
 	git diff -s --exit-code hack/.operatorhub-pr-template.md || (echo "Build failed: the PR template for OperatorHub has changed. Sync it and try again." && exit 1)
 
+JSONNET_SRC = $(shell find . -type f -not -path './jsonnet/vendor/*' \( -name '*.libsonnet' -o -name '*.jsonnet' \))
+JSONNET_VENDOR_DIR = jsonnet/vendor
+
+$(JSONNET_VENDOR_DIR): $(JB) jsonnet/jsonnetfile.json jsonnet/jsonnetfile.lock.json
+	@cd jsonnet/ && $(JB) install
+
+jsonnet-format: $(JSONNETFMT) $(JSONNET_SRC)
+	@$(JSONNETFMT) -n 2 --max-blank-lines 2 --string-style s --comment-style s -i $(JSONNET_SRC)
+
+generate-dashboards: $(JSONNET) jsonnet-format $(JSONNET_VENDOR_DIR)
+	@rm -f internal/manifests/openshift/internal/dashboards/static/*.json
+	@$(JSONNET) -J "$(JSONNET_VENDOR_DIR)" -m internal/manifests/openshift/internal/dashboards/static jsonnet/main.jsonnet

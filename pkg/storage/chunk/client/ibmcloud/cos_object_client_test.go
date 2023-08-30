@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 
 	"net/http"
 	"net/http/httptest"
@@ -20,10 +21,11 @@ import (
 	"github.com/IBM/ibm-cos-sdk-go/service/s3/s3iface"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
 
 var (
@@ -63,7 +65,7 @@ func newMockCosClient(data map[string][]byte) *mockCosClient {
 	}
 }
 
-func (cosClient *mockCosClient) GetObjectWithContext(ctx context.Context, input *s3.GetObjectInput, opts ...request.Option) (*s3.GetObjectOutput, error) {
+func (cosClient *mockCosClient) GetObjectWithContext(_ context.Context, input *s3.GetObjectInput, _ ...request.Option) (*s3.GetObjectOutput, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.GetObjectOutput{}, errMissingBucket
 	}
@@ -83,7 +85,7 @@ func (cosClient *mockCosClient) GetObjectWithContext(ctx context.Context, input 
 	return &output, nil
 }
 
-func (cosClient *mockCosClient) PutObjectWithContext(ctx context.Context, input *s3.PutObjectInput, opts ...request.Option) (*s3.PutObjectOutput, error) {
+func (cosClient *mockCosClient) PutObjectWithContext(_ context.Context, input *s3.PutObjectInput, _ ...request.Option) (*s3.PutObjectOutput, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.PutObjectOutput{}, errMissingBucket
 	}
@@ -105,7 +107,7 @@ func (cosClient *mockCosClient) PutObjectWithContext(ctx context.Context, input 
 	return &s3.PutObjectOutput{}, nil
 }
 
-func (cosClient *mockCosClient) DeleteObjectWithContext(ctx context.Context, input *s3.DeleteObjectInput, opts ...request.Option) (*s3.DeleteObjectOutput, error) {
+func (cosClient *mockCosClient) DeleteObjectWithContext(_ context.Context, input *s3.DeleteObjectInput, _ ...request.Option) (*s3.DeleteObjectOutput, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.DeleteObjectOutput{}, errMissingBucket
 	}
@@ -119,7 +121,7 @@ func (cosClient *mockCosClient) DeleteObjectWithContext(ctx context.Context, inp
 	return &s3.DeleteObjectOutput{}, nil
 }
 
-func (cosClient *mockCosClient) ListObjectsV2WithContext(ctx context.Context, input *s3.ListObjectsV2Input, opts ...request.Option) (*s3.ListObjectsV2Output, error) {
+func (cosClient *mockCosClient) ListObjectsV2WithContext(_ context.Context, input *s3.ListObjectsV2Input, _ ...request.Option) (*s3.ListObjectsV2Output, error) {
 	if *input.Bucket != cosClient.bucket {
 		return &s3.ListObjectsV2Output{}, errMissingBucket
 	}
@@ -194,7 +196,7 @@ func Test_COSConfig(t *testing.T) {
 			errEmptyBucket,
 		},
 		{
-			"Access key ID and Secret Access key and APIKey is empty",
+			"Access key ID, Secret Access key, APIKey and CR token file path are empty",
 			COSConfig{
 				BucketNames:       "test",
 				Endpoint:          "test",
@@ -219,7 +221,18 @@ func Test_COSConfig(t *testing.T) {
 			errors.Wrap(errServiceInstanceID, errCOSConfig),
 		},
 		{
-			"valid config",
+			"CR token file path with empty trusted profile name and ID",
+			COSConfig{
+				BucketNames:     "test",
+				Endpoint:        "test",
+				Region:          "dummy",
+				AuthEndpoint:    "dummy",
+				CRTokenFilePath: "dummy",
+			},
+			errors.Wrap(errTrustedProfile, errCOSConfig),
+		},
+		{
+			"valid config with Access key ID and Secret Access key",
 			COSConfig{
 				BucketNames:     "test",
 				Endpoint:        "test",
@@ -241,13 +254,34 @@ func Test_COSConfig(t *testing.T) {
 			},
 			nil,
 		},
+		{
+			"valid config with trusted profile",
+			COSConfig{
+				BucketNames:        "test",
+				Endpoint:           "test",
+				Region:             "dummy",
+				AuthEndpoint:       "dummy",
+				CRTokenFilePath:    "dummy",
+				TrustedProfileName: "test",
+			},
+			nil,
+		},
 	}
 	for _, tt := range tests {
+		if crTokenFilePath := tt.cosConfig.CRTokenFilePath; crTokenFilePath != "" {
+			file, err := createTempFile(crTokenFilePath, "test-token")
+			require.NoError(t, err)
+			defer os.Remove(file.Name())
+
+			tt.cosConfig.CRTokenFilePath = file.Name()
+		}
+
 		cosClient, err := NewCOSObjectClient(tt.cosConfig, hedging.Config{})
 		if tt.expectedError != nil {
 			require.Equal(t, tt.expectedError.Error(), err.Error())
 			continue
 		}
+
 		require.NotNil(t, cosClient.cos)
 		require.NotNil(t, cosClient.hedgedCOS)
 		require.Equal(t, []string{tt.cosConfig.BucketNames}, cosClient.bucketNames)
@@ -466,43 +500,20 @@ func Test_APIKeyAuth(t *testing.T) {
 	tokenType := "Bearer"
 	resp := "testGet"
 
-	cosSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != fmt.Sprintf("%s %s", tokenType, testToken) {
-			w.WriteHeader(http.StatusUnauthorized)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-		fmt.Fprintln(w, resp)
-	}))
-	defer cosSvr.Close()
+	mockCosServer := mockCOSServer(testToken, tokenType, resp)
+	defer mockCosServer.Close()
 
-	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := token.Token{
-			AccessToken:  testToken,
-			RefreshToken: "test",
-			TokenType:    tokenType,
-			ExpiresIn:    int64((time.Hour * 24).Seconds()),
-			Expiration:   time.Now().Add(time.Hour * 24).Unix(),
-		}
-
-		data, err := json.Marshal(token)
-		require.NoError(t, err)
-
-		w.WriteHeader(http.StatusAccepted)
-		_, err = w.Write(data)
-		require.NoError(t, err)
-	}))
-
-	defer authServer.Close()
+	mockAuthServer := mockAuthServer(testToken, tokenType)
+	defer mockAuthServer.Close()
 
 	cosConfig := COSConfig{
 		BucketNames:       "dummy",
-		Endpoint:          cosSvr.URL,
+		Endpoint:          mockCosServer.URL,
 		Region:            "dummy",
 		APIKey:            flagext.SecretWithValue("dummy"),
 		ServiceInstanceID: "test",
 		ForcePathStyle:    true,
-		AuthEndpoint:      authServer.URL,
+		AuthEndpoint:      mockAuthServer.URL,
 		BackoffConfig: backoff.Config{
 			MaxRetries: 1,
 		},
@@ -517,4 +528,81 @@ func Test_APIKeyAuth(t *testing.T) {
 	data, err := io.ReadAll(reader)
 	require.NoError(t, err)
 	require.Equal(t, resp, strings.Trim(string(data), "\n"))
+}
+
+func Test_TrustedProfileAuth(t *testing.T) {
+	testToken := "test"
+	tokenType := "Bearer"
+	resp := "testGet"
+
+	mockCosServer := mockCOSServer(testToken, tokenType, resp)
+	defer mockCosServer.Close()
+
+	mockAuthServer := mockAuthServer(testToken, tokenType)
+	defer mockAuthServer.Close()
+
+	file, err := createTempFile("crtoken", "test cr token")
+	require.NoError(t, err)
+	defer os.Remove(file.Name())
+
+	cosConfig := COSConfig{
+		BucketNames:        "dummy",
+		Endpoint:           mockCosServer.URL,
+		Region:             "dummy",
+		ForcePathStyle:     true,
+		AuthEndpoint:       mockAuthServer.URL,
+		CRTokenFilePath:    file.Name(),
+		TrustedProfileName: "test",
+		BackoffConfig: backoff.Config{
+			MaxRetries: 1,
+		},
+	}
+
+	cosClient, err := NewCOSObjectClient(cosConfig, hedging.Config{})
+	require.NoError(t, err)
+
+	reader, _, err := cosClient.GetObject(context.Background(), "key-1")
+	require.NoError(t, err)
+
+	data, err := io.ReadAll(reader)
+	require.NoError(t, err)
+	require.Equal(t, resp, strings.Trim(string(data), "\n"))
+}
+
+func mockCOSServer(accessToken, tokenType, resp string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != fmt.Sprintf("%s %s", tokenType, accessToken) {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		if _, err := fmt.Fprintln(w, resp); err != nil {
+			fmt.Println("failed to write data", err)
+			return
+		}
+	}))
+}
+
+func mockAuthServer(accessToken, tokenType string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := token.Token{
+			AccessToken:  accessToken,
+			RefreshToken: "test",
+			TokenType:    tokenType,
+			ExpiresIn:    int64((time.Hour * 24).Seconds()),
+			Expiration:   time.Now().Add(time.Hour * 24).Unix(),
+		}
+
+		data, err := json.Marshal(token)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		if _, err = w.Write(data); err != nil {
+			fmt.Println("failed to write data", err)
+			return
+		}
+	}))
 }

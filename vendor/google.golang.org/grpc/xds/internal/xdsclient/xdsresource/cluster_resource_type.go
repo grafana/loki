@@ -31,8 +31,7 @@ var (
 	// Singleton instantiation of the resource type implementation.
 	clusterType = clusterResourceType{
 		resourceTypeState: resourceTypeState{
-			v2TypeURL:                  "type.googleapis.com/envoy.api.v2.Cluster",
-			v3TypeURL:                  "type.googleapis.com/envoy.config.cluster.v3.Cluster",
+			typeURL:                    "type.googleapis.com/envoy.config.cluster.v3.Cluster",
 			typeEnum:                   ClusterResource,
 			allResourcesRequiredInSotW: true,
 		},
@@ -50,7 +49,7 @@ type clusterResourceType struct {
 // Decode deserializes and validates an xDS resource serialized inside the
 // provided `Any` proto, as received from the xDS management server.
 func (clusterResourceType) Decode(opts *DecodeOptions, resource *anypb.Any) (*DecodeResult, error) {
-	name, cluster, err := unmarshalClusterResource(resource, nil, opts.Logger)
+	name, cluster, err := unmarshalClusterResource(resource, opts.Logger)
 	switch {
 	case name == "":
 		// Name is unset only when protobuf deserialization fails.
@@ -90,7 +89,6 @@ func (c *ClusterResourceData) Equal(other ResourceData) bool {
 		return false
 	}
 	return proto.Equal(c.Resource.Raw, other.Raw())
-
 }
 
 // ToJSON returns a JSON string representation of the resource data.

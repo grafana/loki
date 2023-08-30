@@ -188,6 +188,11 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return errors.Is(err, storage.ErrObjectNotExist)
 }
 
+// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+func (b *Bucket) IsCustomerManagedKeyError(_ error) bool {
+	return false
+}
+
 func (b *Bucket) Close() error {
 	return b.closer.Close()
 }

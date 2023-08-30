@@ -10,12 +10,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/user"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/dskit/concurrency"
 	"github.com/grafana/dskit/internal/slices"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 )
 
 // PoolClient is the interface that should be implemented by a
@@ -80,7 +80,7 @@ func NewPool(clientName string, cfg PoolConfig, discovery PoolServiceDiscovery, 
 	return p
 }
 
-func (p *Pool) iteration(ctx context.Context) error {
+func (p *Pool) iteration(_ context.Context) error {
 	p.removeStaleClients()
 	if p.cfg.HealthCheckEnabled {
 		p.cleanUnhealthy()
@@ -103,8 +103,11 @@ func (p *Pool) GetClientFor(addr string) (PoolClient, error) {
 		return client, nil
 	}
 
+	// No client in cache so create one
 	p.Lock()
 	defer p.Unlock()
+
+	// Check if a client has been created just after checking the cache and before acquiring the lock.
 	client, ok = p.clients[addr]
 	if ok {
 		return client, nil

@@ -8,11 +8,11 @@ import (
 	"testing"
 	"time"
 
+	ww "github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
-	ww "github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
@@ -84,6 +84,17 @@ var (
 				},
 				RowShards: 16,
 			},
+			{
+				From:       dayFromTime(start.Add(125 * time.Hour)),
+				IndexType:  "tsdb",
+				ObjectType: "filesystem",
+				Schema:     "v12",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+			},
 		},
 	}
 	allSchemas = []struct {
@@ -95,6 +106,7 @@ var (
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
 		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
+		{"v13", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[4]},
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)
@@ -148,7 +160,7 @@ func (t *table) IndexChunk(chunk chunk.Chunk) (bool, error) {
 	return true, nil
 }
 
-func (t *table) CleanupSeries(userID []byte, lbls labels.Labels) error {
+func (t *table) CleanupSeries(_ []byte, _ labels.Labels) error {
 	return nil
 }
 
@@ -303,7 +315,7 @@ func entryFromChunk(c chunk.Chunk) ChunkEntry {
 			From:     c.From,
 			Through:  c.Through,
 		},
-		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(nil),
+		Labels: labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(),
 	}
 }
 

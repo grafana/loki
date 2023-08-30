@@ -28,6 +28,24 @@ const (
 	StorageSchemaUpdateBuffer = time.Hour * 2
 )
 
+const (
+	// The AnnotationDisableTenantValidation annotation can contain a boolean value that, if true, disables the tenant-ID validation.
+	AnnotationDisableTenantValidation = "loki.grafana.com/disable-tenant-validation"
+
+	// The AnnotationAvailabilityZone annotation contains the availability zone used in the Loki configuration of that pod.
+	// It is automatically added to managed Pods by the operator, if needed.
+	AnnotationAvailabilityZone = "loki.grafana.com/availability-zone"
+
+	// The AnnotationAvailabilityZoneLabels annotation contains a list of node-labels that are used to construct the availability zone
+	// of the annotated Pod. It is used by the zone-awareness controller and automatically added to managed Pods by the operator,
+	// if needed.
+	AnnotationAvailabilityZoneLabels string = "loki.grafana.com/availability-zone-labels"
+
+	// LabelZoneAwarePod is a pod-label that is added to Pods that should be reconciled by the zone-awareness controller.
+	// It is automatically added to managed Pods by the operator, if needed.
+	LabelZoneAwarePod string = "loki.grafana.com/zone-aware"
+)
+
 var (
 	// ErrGroupNamesNotUnique is the error type when loki groups have not unique names.
 	ErrGroupNamesNotUnique = errors.New("Group names are not unique")
@@ -41,6 +59,8 @@ var (
 	ErrParseLogQLExpression = errors.New("Failed to parse LogQL expression")
 	// ErrParseLogQLNotSample when the Loki rule expression does not evaluate to a sample expression.
 	ErrParseLogQLNotSample = errors.New("LogQL expression is not a sample query")
+	// ErrParseLogQLSelector when the Loki rule expression does not have a valid selector.
+	ErrParseLogQLSelector = errors.New("Failed to get selector from LogQL expression")
 	// ErrEffectiveDatesNotUnique when effective dates are not unique.
 	ErrEffectiveDatesNotUnique = errors.New("Effective dates are not unique")
 	// ErrParseEffectiveDates when effective dates cannot be parsed.
@@ -55,6 +75,12 @@ var (
 	ErrSchemaRetroactivelyChanged = errors.New("Cannot retroactively change schema")
 	// ErrHeaderAuthCredentialsConflict when both Credentials and CredentialsFile are used in a header authentication client.
 	ErrHeaderAuthCredentialsConflict = errors.New("credentials and credentialsFile cannot be used at the same time")
+	// ErrReplicationZonesNodes when there is an error retrieving nodes with replication zones labels.
+	ErrReplicationZonesNodes = errors.New("Failed to retrieve nodes for zone replication")
+	// ErrReplicationFactorToZonesRatio when the replication factor defined is greater than the number of available zones.
+	ErrReplicationFactorToZonesRatio = errors.New("replication factor is greater than the number of available zones")
+	// ErrReplicationSpecConflict when both the ReplicationSpec and depricated ReplicationFactor are used.
+	ErrReplicationSpecConflict = errors.New("replicationSpec and replicationFactor (deprecated) cannot be used at the same time")
 
 	// ErrRuleMustMatchNamespace indicates that an expression used in an alerting or recording rule is missing
 	// matchers for a namespace.

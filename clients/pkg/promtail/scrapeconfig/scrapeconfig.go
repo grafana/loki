@@ -8,6 +8,7 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/grafana/dskit/flagext"
 
+	"github.com/grafana/dskit/server"
 	promconfig "github.com/prometheus/common/config"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/discovery"
@@ -25,7 +26,6 @@ import (
 	"github.com/prometheus/prometheus/discovery/triton"
 	"github.com/prometheus/prometheus/discovery/zookeeper"
 	"github.com/prometheus/prometheus/model/relabel"
-	"github.com/weaveworks/common/server"
 
 	"github.com/grafana/loki/clients/pkg/logentry/stages"
 	"github.com/grafana/loki/clients/pkg/promtail/discovery/consulagent"
@@ -50,6 +50,13 @@ type Config struct {
 	DockerSDConfigs        []*moby.DockerSDConfig `mapstructure:"docker_sd_configs,omitempty" yaml:"docker_sd_configs,omitempty"`
 	ServiceDiscoveryConfig ServiceDiscoveryConfig `mapstructure:",squash" yaml:",inline"`
 	Encoding               string                 `mapstructure:"encoding,omitempty" yaml:"encoding,omitempty"`
+	DecompressionCfg       *DecompressionConfig   `yaml:"decompression,omitempty"`
+}
+
+type DecompressionConfig struct {
+	Enabled      bool
+	InitialDelay time.Duration `yaml:"initial_delay"`
+	Format       string
 }
 
 type ServiceDiscoveryConfig struct {
@@ -372,7 +379,10 @@ type CloudflareConfig struct {
 	// - minimal
 	// - extended
 	// - all
+	// - custom
 	FieldsType string `yaml:"fields_type"`
+	// The additional list of fields to supplement those provided via fields_type.
+	AdditionalFields []string `yaml:"additional_fields"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.
@@ -400,6 +410,10 @@ type GcplogTargetConfig struct {
 
 	// Server is the weaveworks server config for listening connections. Used just for `push` subscription type.
 	Server server.Config `yaml:"server"`
+
+	// UseFullLine force Promtail to send the full line from Cloud Logging even if `textPayload` is available.
+	// By default, if `textPayload` is present in the line, then it's used as log line.
+	UseFullLine bool `yaml:"use_full_line"`
 }
 
 // HerokuDrainTargetConfig describes a scrape config to listen and consume heroku logs, in the HTTPS drain manner.

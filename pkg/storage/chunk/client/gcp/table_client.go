@@ -112,13 +112,13 @@ func (c *tableClient) DeleteTable(ctx context.Context, name string) error {
 	return nil
 }
 
-func (c *tableClient) DescribeTable(ctx context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
+func (c *tableClient) DescribeTable(_ context.Context, name string) (desc config.TableDesc, isActive bool, err error) {
 	return config.TableDesc{
 		Name: name,
 	}, true, nil
 }
 
-func (c *tableClient) UpdateTable(ctx context.Context, current, expected config.TableDesc) error {
+func (c *tableClient) UpdateTable(_ context.Context, _, _ config.TableDesc) error {
 	return nil
 }
 

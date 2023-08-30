@@ -14,6 +14,12 @@ import (
 // To use the non-recommended decoding, set this boolean to `true` prior to using this package.
 var DecodePaddingAllowed bool
 
+// DecodeStrict will switch the codec used for decoding JWTs into strict mode.
+// In this mode, the decoder requires that trailing padding bits are zero, as described in RFC 4648 section 3.5.
+// Note that this is a global variable, and updating it will change the behavior on a package level, and is also NOT go-routine safe.
+// To use strict decoding, set this boolean to `true` prior to using this package.
+var DecodeStrict bool
+
 // TimeFunc provides the current time when parsing token to validate "exp" claim (expiration time).
 // You can override it to use another time value.  This is useful for testing or if your
 // server uses a different time zone than your tokens.
@@ -121,12 +127,17 @@ func EncodeSegment(seg []byte) string {
 // Deprecated: In a future release, we will demote this function to a non-exported function, since it
 // should only be used internally
 func DecodeSegment(seg string) ([]byte, error) {
+	encoding := base64.RawURLEncoding
+
 	if DecodePaddingAllowed {
 		if l := len(seg) % 4; l > 0 {
 			seg += strings.Repeat("=", 4-l)
 		}
-		return base64.URLEncoding.DecodeString(seg)
+		encoding = base64.URLEncoding
 	}
 
-	return base64.RawURLEncoding.DecodeString(seg)
+	if DecodeStrict {
+		encoding = encoding.Strict()
+	}
+	return encoding.DecodeString(seg)
 }

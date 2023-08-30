@@ -1,5 +1,26 @@
 # Change Log
 
+## [v1.99.0] - 2023-04-24
+
+- #616 - @bentranter - Bump CI version for Go 1.20
+- #615 - @bentranter - Remove beta support for tokens API
+- #604 - @dvigueras - Add support for "Validate a Container Registry Name"
+- #613 - @ibilalkayy - updated the README file by showing up the build status icon
+
+## [v1.98.0] - 2023-03-09
+
+- #608 - @anitgandhi - client: don't process body upon 204 response
+- #607 - @gregmankes - add apps rewrites/redirects to app spec
+
+## [v1.97.0] - 2023-02-10
+
+- #601 - @jcodybaker - APPS-6813: update app platform - pending_deployment + timing
+- #602 - @jcodybaker - Use App Platform active deployment for GetLogs if not specified
+
+## [v1.96.0] - 2023-01-23
+
+- #599 - @markpaulson - Adding PromoteReplicaToPrimary to client interface.
+
 ## [v1.95.0] - 2023-01-23
 
 - #595 - @dweinshenker - Add UpgradeMajorVersion to godo

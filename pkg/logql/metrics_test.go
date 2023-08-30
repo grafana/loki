@@ -9,11 +9,11 @@ import (
 	"time"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uber/jaeger-client-go"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -85,7 +85,7 @@ func TestLogSlowQuery(t *testing.T) {
 	}, logqlmodel.Streams{logproto.Stream{Entries: make([]logproto.Entry, 10)}})
 	require.Regexp(t,
 		regexp.MustCompile(fmt.Sprintf(
-			`level=info org_id=foo traceID=%s latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
+			`level=info org_id=foo traceID=%s sampled=true latency=slow query=".*" query_hash=.* query_type=filter range_type=range length=1h0m0s .*\n`,
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		)),
 		buf.String())
@@ -111,7 +111,7 @@ func TestLogLabelsQuery(t *testing.T) {
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=labels length=1h0m0s duration=25.25s status=200 label=foo query= splits=0 throughput=100kB total_bytes=100kB total_entries=12\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -137,7 +137,7 @@ func TestLogSeriesQuery(t *testing.T) {
 	})
 	require.Equal(t,
 		fmt.Sprintf(
-			"level=info org_id=foo traceID=%s latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" splits=0 throughput=100kB total_bytes=100kB total_entries=10\n",
+			"level=info org_id=foo traceID=%s sampled=true latency=slow query_type=series length=1h0m0s duration=25.25s status=200 match=\"{container_name=~\\\"prometheus.*\\\", component=\\\"server\\\"}:{app=\\\"loki\\\"}\" splits=0 throughput=100kB total_bytes=100kB total_entries=10\n",
 			sp.Context().(jaeger.SpanContext).SpanID().String(),
 		),
 		buf.String())
@@ -160,12 +160,14 @@ func Test_testToKeyValues(t *testing.T) {
 		},
 		{
 			name: "canonical-form-multiple-values",
-			in:   "Source=logvolhist,Feature=beta",
+			in:   "Source=logvolhist,Feature=beta,User=Jinx@grafana.com",
 			exp: []interface{}{
 				"source",
 				"logvolhist",
 				"feature",
 				"beta",
+				"user",
+				"Jinx@grafana.com",
 			},
 		},
 		{

@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/logproto"
+
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
@@ -37,6 +39,16 @@ func (s *storeMock) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
 	return args.Get(0).(*fetcher.Fetcher)
 }
 
+func (s *storeMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	args := s.Called(userID, from, through, targetLabels, matchers)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
+}
+
 type ingesterQuerierMock struct {
 	IngesterQuerier
 	util.ExtendedMock
@@ -51,22 +63,38 @@ func (i *ingesterQuerierMock) GetChunkIDs(ctx context.Context, from, through mod
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (i *ingesterQuerierMock) Volume(_ context.Context, userID string, from, through model.Time, _ int32, targetLabels []string, _ string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	args := i.Called(userID, from, through, targetLabels, matchers)
+
+	if args.Get(0) == nil {
+		return nil, args.Error(1)
+	}
+
+	return args.Get(0).(*logproto.VolumeResponse), args.Error(1)
+}
+
 func buildMockChunkRef(t *testing.T, num int) []chunk.Chunk {
 	now := time.Now()
 	var chunks []chunk.Chunk
 
+	periodConfig := config.PeriodConfig{
+
+		From:      config.DayTime{Time: 0},
+		Schema:    "v11",
+		RowShards: 16,
+	}
+
 	s := config.SchemaConfig{
 		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
+			periodConfig,
 		},
 	}
 
+	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
+	require.NoError(t, err)
+
 	for i := 0; i < num; i++ {
-		chk := newChunk(buildTestStreams(fooLabelsWithName, timeRange{
+		chk := newChunk(chunkfmt, headfmt, buildTestStreams(fooLabelsWithName, timeRange{
 			from: now.Add(time.Duration(i) * time.Minute),
 			to:   now.Add(time.Duration(i+1) * time.Minute),
 		}))
@@ -286,6 +314,42 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 			require.Len(t, ingesterQuerier.GetMockedCallsByMethod("GetChunkIDs"), expectedNumCalls)
 		})
 	}
+}
+
+func TestVolume(t *testing.T) {
+	store := newStoreMock()
+	store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
+		&logproto.VolumeResponse{
+			Volumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 38},
+			},
+			Limit: 10,
+		}, nil)
+
+	ingesterQuerier := newIngesterQuerierMock()
+	ingesterQuerier.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(&logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{bar="baz"}`, Volume: 38},
+		},
+		Limit: 10,
+	}, nil)
+
+	asyncStoreCfg := AsyncStoreCfg{
+		IngesterQuerier:      ingesterQuerier,
+		QueryIngestersWithin: 3 * time.Hour,
+	}
+	asyncStore := NewAsyncStore(asyncStoreCfg, store, config.SchemaConfig{})
+
+	vol, err := asyncStore.Volume(context.Background(), "test", model.Now().Add(-2*time.Hour), model.Now(), 10, nil, "labels", nil...)
+	require.NoError(t, err)
+
+	require.Equal(t, &logproto.VolumeResponse{
+		Volumes: []logproto.Volume{
+			{Name: `{bar="baz"}`, Volume: 38},
+			{Name: `{foo="bar"}`, Volume: 38},
+		},
+		Limit: 10,
+	}, vol)
 }
 
 func convertChunksToChunkIDs(s config.SchemaConfig, chunks []chunk.Chunk) []string {

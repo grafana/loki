@@ -4,14 +4,23 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/utils/strings/slices"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 // RecordingRuleValidator does extended-validation of RecordingRule resources for Openshift-based deployments.
 func RecordingRuleValidator(_ context.Context, recordingRule *lokiv1.RecordingRule) field.ErrorList {
+	validateTenantIDs, fieldErr := tenantIDValidationEnabled(recordingRule.Annotations)
+	if fieldErr != nil {
+		return field.ErrorList{fieldErr}
+	}
+
+	if !validateTenantIDs {
+		return nil
+	}
+
 	var allErrs field.ErrorList
 
 	// Check tenant matches expected value

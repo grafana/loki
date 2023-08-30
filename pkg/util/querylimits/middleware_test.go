@@ -23,10 +23,30 @@ func Test_MiddlewareWithoutHeader(t *testing.T) {
 	r, err := http.NewRequest("GET", "/example", nil)
 	require.NoError(t, err)
 	wrapped.ServeHTTP(rr, r)
+	response := rr.Result()
+	require.Equal(t, http.StatusOK, response.StatusCode)
+}
+
+func Test_MiddlewareWithBrokenHeader(t *testing.T) {
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limits := ExtractQueryLimitsContext(r.Context())
+		require.Nil(t, limits)
+	})
+	m := NewQueryLimitsMiddleware(log.NewNopLogger())
+	wrapped := m.Wrap(nextHandler)
+
+	rr := httptest.NewRecorder()
+	r, err := http.NewRequest("GET", "/example", nil)
+	require.NoError(t, err)
+	r.Header.Add(HTTPHeaderQueryLimitsKey, "{broken}")
+	wrapped.ServeHTTP(rr, r)
+	response := rr.Result()
+	require.Equal(t, http.StatusOK, response.StatusCode)
 }
 
 func Test_MiddlewareWithHeader(t *testing.T) {
 	limits := QueryLimits{
+		model.Duration(1 * time.Second),
 		model.Duration(1 * time.Second),
 		model.Duration(1 * time.Second),
 		1,
@@ -49,4 +69,6 @@ func Test_MiddlewareWithHeader(t *testing.T) {
 	err = InjectQueryLimitsHTTP(r, &limits)
 	require.NoError(t, err)
 	wrapped.ServeHTTP(rr, r)
+	response := rr.Result()
+	require.Equal(t, http.StatusOK, response.StatusCode)
 }

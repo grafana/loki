@@ -28,16 +28,14 @@ type BuiltInCertManagement struct {
 
 // OpenShiftFeatureGates is the supported set of all operator features gates on OpenShift.
 type OpenShiftFeatureGates struct {
+	// Enabled defines the flag to enable that these feature gates are used against OpenShift Container Platform releases.
+	Enabled bool `json:"enabled,omitempty"`
+
 	// ServingCertsService enables OpenShift service-ca annotations on the lokistack-gateway service only
 	// to use the in-platform CA and generate a TLS cert/key pair per service for
 	// in-cluster data-in-transit encryption.
 	// More details: https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html
 	ServingCertsService bool `json:"servingCertsService,omitempty"`
-
-	// GatewayRoute enables creating an OpenShift Route for the LokiStack
-	// gateway to expose the service to public internet access.
-	// More details: https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html
-	GatewayRoute bool `json:"gatewayRoute,omitempty"`
 
 	// ExtendedRuleValidation enables extended validation of AlertingRule and RecordingRule
 	// to enforce tenancy in an OpenShift context.
@@ -50,6 +48,9 @@ type OpenShiftFeatureGates struct {
 	// ClusterProxy enables usage of the proxy variables set in the proxy resource.
 	// More details: https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy
 	ClusterProxy bool `json:"clusterProxy,omitempty"`
+
+	// Dashboards enables the loki-mixin dashboards into the OpenShift Console
+	Dashboards bool `json:"dashboards,omitempty"`
 }
 
 // FeatureGates is the supported set of all operator feature gates.
@@ -100,9 +101,9 @@ type FeatureGates struct {
 	// More details: https://grafana.com/docs/loki/latest/release-notes/v2-5/#usage-reporting
 	GrafanaLabsUsageReport bool `json:"grafanaLabsUsageReport,omitempty"`
 
-	// RuntimeSeccompProfile enables the restricted seccomp profile on all
-	// Lokistack components.
-	RuntimeSeccompProfile bool `json:"runtimeSeccompProfile,omitempty"`
+	// RestrictedPodSecurityStandard enables compliance with the restrictive pod security standard.
+	// More details: https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted
+	RestrictedPodSecurityStandard bool `json:"restrictedPodSecurityStandard,omitempty"`
 
 	// LokiStackWebhook enables the LokiStack CR validation and conversion webhooks.
 	LokiStackWebhook bool `json:"lokiStackWebhook,omitempty"`

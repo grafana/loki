@@ -19,6 +19,18 @@ type EntryIterator interface {
 	Entry() logproto.Entry
 }
 
+type EntryIteratorOptions struct {
+	KeepNonIndexedLabels bool
+}
+
+type EntryIteratorOption func(*EntryIteratorOptions)
+
+func WithKeepNonIndexedLabels() EntryIteratorOption {
+	return func(o *EntryIteratorOptions) {
+		o.KeepNonIndexedLabels = true
+	}
+}
+
 // streamIterator iterates over entries in a stream.
 type streamIterator struct {
 	i      int
@@ -128,7 +140,6 @@ func (i *mergeEntryIterator) fillBuffer() {
 	for {
 		next := i.tree.Winner()
 		entry := next.Entry()
-		previous := i.buffer
 		i.buffer = append(i.buffer, entryWithLabels{
 			Entry:      entry,
 			labels:     next.Labels(),
@@ -139,6 +150,7 @@ func (i *mergeEntryIterator) fillBuffer() {
 				!i.buffer[0].Entry.Timestamp.Equal(entry.Timestamp)) {
 			break
 		}
+		previous := i.buffer[:len(i.buffer)-1]
 
 		var dupe bool
 		for _, t := range previous {

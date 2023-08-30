@@ -10,7 +10,7 @@ Loki uses GitHub to manage reviews of pull requests:
 
 Before creating a large pull request to change or add functionality, please create a _Loki Improvement Document (LID)_. We use LIDs to discuss and vet ideas submitted by maintainers or the community in an open and transparent way. As of Jan 2023, we are starting with a lightweight LID process and we may add more structure, inspired by Python's [PEP](https://peps.python.org/pep-0001/) and Kafka's [KIP](https://cwiki.apache.org/confluence/display/KAFKA/Kafka+Improvement+Proposals) approaches.
 
-LIDs must be created as a pull request using [this template](docs/sources/lids/template.md).
+LIDs must be created as a pull request using [this template](docs/sources/community/lids/template.md).
 
 ## Pull Request Prerequisites/Checklist
 
@@ -26,7 +26,7 @@ LIDs must be created as a pull request using [this template](docs/sources/lids/t
    * It fixes an issue present in a previous release
    * It causes a change in operation that would be useful for an operator of Loki to know
    * You can skip this step for documentation changes, build related changes and simple bug fixes or enhancements. Rationale being we are attempting to curate the CHANGELOG entries with the most relevant and important changes that end users of Loki care about.
-1. Your PR documents upgrading steps under `docs/sources/upgrading/_index.md` if it changes:
+1. Your PR documents upgrading steps under `docs/sources/setup/upgrade/_index.md` if it changes:
    * Default configuration values
    * Metric names or label names
    * Changes existing log lines that may be used in dashboard or alerts. e.g: logs lines in any `metrics.go` files might be used in building dashboards or alerts.
@@ -135,7 +135,7 @@ import (
 
 We're glad you're here to help make our technical documentation even better for Loki users.
 
-The Grafana docs team has created a [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/writing-guide/contribute-documentation/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/style-guide/), and templates to help you contribute to the Loki documentation. 
+The Grafana docs team has created a [Writer's Toolkit](https://grafana.com/docs/writers-toolkit/) that includes information about how we write docs, a [Style Guide](https://grafana.com/docs/writers-toolkit/write/style-guide/), and templates to help you contribute to the Loki documentation. 
 
 The Loki documentation is written using the CommonMark flavor of markdown, including some extended features. For more information about markdown, you can see the [CommonMark specification](https://spec.commonmark.org/), and a [quick reference guide](https://commonmark.org/help/) for CommonMark.
 

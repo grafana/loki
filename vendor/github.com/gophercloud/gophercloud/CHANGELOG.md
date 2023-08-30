@@ -1,3 +1,81 @@
+## v1.5.0 (2023-06-21)
+
+New features and improvements:
+
+* [GH-2634](https://github.com/gophercloud/gophercloud/pull/2634) baremetal: update inspection inventory with recent additions
+* [GH-2635](https://github.com/gophercloud/gophercloud/pull/2635) [manila]: Add Share Replicas support
+* [GH-2637](https://github.com/gophercloud/gophercloud/pull/2637) [FWaaS_v2]: Add FWaaS_V2 workflow and enable tests
+* [GH-2639](https://github.com/gophercloud/gophercloud/pull/2639) Implement errors.Unwrap() on unexpected status code errors
+* [GH-2648](https://github.com/gophercloud/gophercloud/pull/2648) [manila]: implement share transfer API
+
+
+## v1.4.0 (2023-05-25)
+
+New features and improvements:
+
+* [GH-2465](https://github.com/gophercloud/gophercloud/pull/2465) keystone: add v3 limits update operation
+* [GH-2596](https://github.com/gophercloud/gophercloud/pull/2596) keystone: add v3 limits get operation
+* [GH-2618](https://github.com/gophercloud/gophercloud/pull/2618) keystone: add v3 limits delete operation
+* [GH-2616](https://github.com/gophercloud/gophercloud/pull/2616) Add CRUD support for register limit APIs
+* [GH-2610](https://github.com/gophercloud/gophercloud/pull/2610) Add PUT/HEAD/DELETE for identity/v3/OS-INHERIT
+* [GH-2597](https://github.com/gophercloud/gophercloud/pull/2597) Add validation and optimise objects.BulkDelete
+* [GH-2602](https://github.com/gophercloud/gophercloud/pull/2602) [swift v1]: introduce a TempURLKey argument for objects.CreateTempURLOpts struct
+* [GH-2623](https://github.com/gophercloud/gophercloud/pull/2623) Add the ability to remove ingress/egress policies from fwaas_v2 groups
+* [GH-2625](https://github.com/gophercloud/gophercloud/pull/2625) neutron: Support trunk_details extension
+
+CI changes:
+
+* [GH-2608](https://github.com/gophercloud/gophercloud/pull/2608) Drop train and ussuri jobs
+* [GH-2589](https://github.com/gophercloud/gophercloud/pull/2589) Bump EmilienM/devstack-action from 0.10 to 0.11
+* [GH-2604](https://github.com/gophercloud/gophercloud/pull/2604) Bump mheap/github-action-required-labels from 3 to 4
+* [GH-2620](https://github.com/gophercloud/gophercloud/pull/2620) Pin goimport dep to a version that works with go 1.14
+* [GH-2619](https://github.com/gophercloud/gophercloud/pull/2619) Fix version comparison for acceptance tests
+* [GH-2627](https://github.com/gophercloud/gophercloud/pull/2627) Limits: Fix ToDo to create registered limit and use it
+* [GH-2629](https://github.com/gophercloud/gophercloud/pull/2629) [manila]: Add share from snapshot restore functional test
+
+
+## v1.3.0 (2023-03-28)
+
+* [GH-2464](https://github.com/gophercloud/gophercloud/pull/2464) keystone: add v3 limits create operation
+* [GH-2512](https://github.com/gophercloud/gophercloud/pull/2512) Manila: add List for share-access-rules API
+* [GH-2529](https://github.com/gophercloud/gophercloud/pull/2529) Added target state "rebuild" for Ironic nodes
+* [GH-2539](https://github.com/gophercloud/gophercloud/pull/2539) Add release instructions
+* [GH-2540](https://github.com/gophercloud/gophercloud/pull/2540) [all] IsEmpty to check for HTTP status 204
+* [GH-2543](https://github.com/gophercloud/gophercloud/pull/2543) keystone: add v3 OS-FEDERATION mappings get operation
+* [GH-2545](https://github.com/gophercloud/gophercloud/pull/2545) baremetal: add inspection_{started,finished}_at to Node
+* [GH-2546](https://github.com/gophercloud/gophercloud/pull/2546) Drop train job for baremetal
+* [GH-2549](https://github.com/gophercloud/gophercloud/pull/2549) objects: Clarify ExtractContent usage
+* [GH-2550](https://github.com/gophercloud/gophercloud/pull/2550) keystone: add v3 OS-FEDERATION mappings update operation
+* [GH-2552](https://github.com/gophercloud/gophercloud/pull/2552) objectstorage: Reject container names with a slash
+* [GH-2555](https://github.com/gophercloud/gophercloud/pull/2555) nova: introduce servers.ListSimple along with the more detailed servers.List
+* [GH-2558](https://github.com/gophercloud/gophercloud/pull/2558) Expand docs on 'clientconfig' usage
+* [GH-2563](https://github.com/gophercloud/gophercloud/pull/2563) Support propagate_uplink_status for Ports
+* [GH-2567](https://github.com/gophercloud/gophercloud/pull/2567) Fix invalid baremetal-introspection service type
+* [GH-2568](https://github.com/gophercloud/gophercloud/pull/2568) Prefer github mirrors over opendev repos
+* [GH-2571](https://github.com/gophercloud/gophercloud/pull/2571) Swift V1: support object versioning
+* [GH-2572](https://github.com/gophercloud/gophercloud/pull/2572) networking v2: add extraroutes Add and Remove methods
+* [GH-2573](https://github.com/gophercloud/gophercloud/pull/2573) Enable tests for object versioning
+* [GH-2576](https://github.com/gophercloud/gophercloud/pull/2576) keystone: add v3 OS-FEDERATION mappings delete operation
+* [GH-2578](https://github.com/gophercloud/gophercloud/pull/2578) Add periodic jobs for OpenStack zed release and reduce periodic jobs frequency
+* [GH-2580](https://github.com/gophercloud/gophercloud/pull/2580) [neutron v2]: Add support for network segments update
+* [GH-2583](https://github.com/gophercloud/gophercloud/pull/2583) Add missing rule protocol constants for IPIP
+* [GH-2584](https://github.com/gophercloud/gophercloud/pull/2584) CI: workaround mongodb dependency for messaging and clustering master jobs
+* [GH-2587](https://github.com/gophercloud/gophercloud/pull/2587) fix: Incorrect Documentation
+* [GH-2593](https://github.com/gophercloud/gophercloud/pull/2593) Make TestMTUNetworkCRUDL deterministic
+* [GH-2594](https://github.com/gophercloud/gophercloud/pull/2594) Bump actions/setup-go from 3 to 4
+
+
+## v1.2.0 (2023-01-27)
+
+Starting with this version, Gophercloud sends its actual version in the
+user-agent string in the format `gophercloud/v1.2.0`. It no longer sends the
+hardcoded string `gophercloud/2.0.0`.
+
+* [GH-2542](https://github.com/gophercloud/gophercloud/pull/2542) Add field hidden in containerinfra/v1/clustertemplates
+* [GH-2537](https://github.com/gophercloud/gophercloud/pull/2537) Support value_specs for Ports
+* [GH-2530](https://github.com/gophercloud/gophercloud/pull/2530) keystone: add v3 OS-FEDERATION mappings create operation
+* [GH-2519](https://github.com/gophercloud/gophercloud/pull/2519) Modify user-agent header to ensure current gophercloud version is provided
+
 ## v1.1.1 (2022-12-07)
 
 The GOPROXY cache for v1.1.0 was corrupted with a tag pointing to the wrong commit. This release fixes the problem by exposing a new release with the same content.
@@ -174,7 +252,7 @@ IMPROVEMENTS
 NOTES / BREAKING CHANGES
 
 * `compute/v2/extensions/keypairs.List` now takes a `ListOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
-* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186) 
+* `compute/v2/extensions/keypairs.Get` now takes a `GetOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
 * `compute/v2/extensions/keypairs.Delete` now takes a `DeleteOptsBuilder` argument [GH-2186](https://github.com/gophercloud/gophercloud/pull/2186)
 * `compute/v2/extensions/hypervisors.List` now takes a `ListOptsBuilder` argument [GH-2187](https://github.com/gophercloud/gophercloud/pull/2187)
 
@@ -469,7 +547,7 @@ UPGRADE NOTES
 * The various `IDFromName` convenience functions have been moved to https://github.com/gophercloud/utils [GH-1897](https://github.com/gophercloud/gophercloud/pull/1897)
 * `sharedfilesystems/v2/shares.GetExportLocations` was renamed to `sharedfilesystems/v2/shares.ListExportLocations` [GH-1932](https://github.com/gophercloud/gophercloud/pull/1932)
 
-IMPROVEMENTS 
+IMPROVEMENTS
 
 * Added `blockstorage/extensions/volumeactions.SetBootable` [GH-1891](https://github.com/gophercloud/gophercloud/pull/1891)
 * Added `blockstorage/extensions/backups.Export` [GH-1894](https://github.com/gophercloud/gophercloud/pull/1894)
@@ -765,4 +843,4 @@ BUG FIXES
 
 ## 0.1.0 (May 27, 2019)
 
-Initial tagged release. 
+Initial tagged release.

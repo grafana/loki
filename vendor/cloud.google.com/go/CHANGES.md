@@ -1,5 +1,72 @@
 # Changes
 
+## [0.110.4](https://github.com/googleapis/google-cloud-go/compare/v0.110.3...v0.110.4) (2023-07-05)
+
+
+### Bug Fixes
+
+* **internal/retry:** Simplify gRPC status code mapping of retry error ([#8196](https://github.com/googleapis/google-cloud-go/issues/8196)) ([e8b224a](https://github.com/googleapis/google-cloud-go/commit/e8b224a3bcb0ca9430990ef6ae8ddb7b60f5225d))
+
+## [0.110.3](https://github.com/googleapis/google-cloud-go/compare/v0.110.2...v0.110.3) (2023-06-23)
+
+
+### Bug Fixes
+
+* **internal/retry:** Never return nil from GRPCStatus() ([#8128](https://github.com/googleapis/google-cloud-go/issues/8128)) ([005d2df](https://github.com/googleapis/google-cloud-go/commit/005d2dfb6b68bf5a35bfb8db449d3f0084b34d6e))
+
+
+### Documentation
+
+* **v1:** Minor clarifications for TaskGroup and min_cpu_platform ([3382ef8](https://github.com/googleapis/google-cloud-go/commit/3382ef81b6bcefe1c7bfc14aa5ff9bbf25850966))
+
+## [0.110.2](https://github.com/googleapis/google-cloud-go/compare/v0.110.1...v0.110.2) (2023-05-08)
+
+
+### Bug Fixes
+
+* **deps:** Update grpc to v1.55.0 ([#7885](https://github.com/googleapis/google-cloud-go/issues/7885)) ([9fc48a9](https://github.com/googleapis/google-cloud-go/commit/9fc48a921428c94c725ea90415d55ff0c177dd81))
+
+## [0.110.1](https://github.com/googleapis/google-cloud-go/compare/v0.110.0...v0.110.1) (2023-05-03)
+
+
+### Bug Fixes
+
+* **httpreplay:** Add ignore-header flag, fix tests ([#7865](https://github.com/googleapis/google-cloud-go/issues/7865)) ([1829706](https://github.com/googleapis/google-cloud-go/commit/1829706c5ade36cc786b2e6780fda5e7302f965b))
+
+## [0.110.0](https://github.com/googleapis/google-cloud-go/compare/v0.109.0...v0.110.0) (2023-02-15)
+
+
+### Features
+
+* **internal/postprocessor:** Detect and initialize new modules ([#7288](https://github.com/googleapis/google-cloud-go/issues/7288)) ([59ce02c](https://github.com/googleapis/google-cloud-go/commit/59ce02c13f265741a8f1f0f7ad5109bf83e3df82))
+* **internal/postprocessor:** Only regen snippets for changed modules ([#7300](https://github.com/googleapis/google-cloud-go/issues/7300)) ([220f8a5](https://github.com/googleapis/google-cloud-go/commit/220f8a5ad2fd64b75c5a1af531b1ab4597cf17d7))
+
+
+### Bug Fixes
+
+* **internal/postprocessor:** Add scopes without OwlBot api-name feature ([#7404](https://github.com/googleapis/google-cloud-go/issues/7404)) ([f7fe4f6](https://github.com/googleapis/google-cloud-go/commit/f7fe4f68ebf2ca28efd282f3419329dd2c09d245))
+* **internal/postprocessor:** Include module and package in scope ([#7294](https://github.com/googleapis/google-cloud-go/issues/7294)) ([d2c5c84](https://github.com/googleapis/google-cloud-go/commit/d2c5c8449f6939301f0fd506282e8fc73fc84f96))
+
+## [0.109.0](https://github.com/googleapis/google-cloud-go/compare/v0.108.0...v0.109.0) (2023-01-18)
+
+
+### Features
+
+* **internal/postprocessor:** Make OwlBot postprocessor ([#7202](https://github.com/googleapis/google-cloud-go/issues/7202)) ([7a1022e](https://github.com/googleapis/google-cloud-go/commit/7a1022e215261d679c8496cdd35a9cad1f13e527))
+
+## [0.108.0](https://github.com/googleapis/google-cloud-go/compare/v0.107.0...v0.108.0) (2023-01-05)
+
+
+### Features
+
+* **all:** Enable REGAPIC and REST numeric enums ([#6999](https://github.com/googleapis/google-cloud-go/issues/6999)) ([28f3572](https://github.com/googleapis/google-cloud-go/commit/28f3572addb0f563a2a42a76977b4e083191613f))
+* **debugger:** Add REST client ([06a54a1](https://github.com/googleapis/google-cloud-go/commit/06a54a16a5866cce966547c51e203b9e09a25bc0))
+
+
+### Bug Fixes
+
+* **internal/gapicgen:** Disable rest for non-rest APIs ([#7157](https://github.com/googleapis/google-cloud-go/issues/7157)) ([ab332ce](https://github.com/googleapis/google-cloud-go/commit/ab332ced06f6c07909444e4528c02a8b6a0a70a6))
+
 ## [0.107.0](https://github.com/googleapis/google-cloud-go/compare/v0.106.0...v0.107.0) (2022-11-15)
 
 

@@ -113,7 +113,7 @@ func TestIndexSet_Sync(t *testing.T) {
 	indexesSetup = buildListOfExpectedIndexes("", 0, 10)
 
 	// sync and verify the indexSet
-	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
+	indexSet.baseIndexSet.RefreshIndexTableCache(context.Background(), tableName)
 	require.NoError(t, indexSet.Sync(context.Background()))
 
 	// check index set twice; first run to have new files to download, second run to test with no changes in storage.
@@ -126,7 +126,7 @@ func TestIndexSet_Sync(t *testing.T) {
 	indexesSetup = indexesSetup[1:]
 
 	// sync and verify the indexSet
-	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
+	indexSet.baseIndexSet.RefreshIndexTableCache(context.Background(), tableName)
 	require.NoError(t, indexSet.Sync(context.Background()))
 	checkIndexSet()
 
@@ -135,7 +135,7 @@ func TestIndexSet_Sync(t *testing.T) {
 	// first, let us add a new file and refresh the index list cache
 	oneMoreDB := "one-more-db"
 	require.NoError(t, os.WriteFile(filepath.Join(tablePathInStorage, oneMoreDB), []byte(oneMoreDB), 0755))
-	indexSet.baseIndexSet.RefreshIndexListCache(context.Background())
+	indexSet.baseIndexSet.RefreshIndexTableCache(context.Background(), tableName)
 
 	// now, without syncing the indexset, let us compact the index in storage
 	compactedDBName := "compacted-db"

@@ -820,7 +820,22 @@ OIDCSpec
 </em>
 </td>
 <td>
+<em>(Optional)</em>
 <p>OIDC defines the spec for the OIDC tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>mTLS</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-MTLSSpec">
+MTLSSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>TLSConfig defines the spec for the mTLS tenant&rsquo;s authentication.</p>
 </td>
 </tr>
 </tbody>
@@ -882,6 +897,49 @@ OPASpec
 <td>
 <em>(Optional)</em>
 <p>RoleBindings defines configuration to bind a set of roles to a set of subjects.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## CASpec { #loki-grafana-com-v1-CASpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-MTLSSpec">MTLSSpec</a>, <a href="#loki-grafana-com-v1-OIDCSpec">OIDCSpec</a>, <a href="#loki-grafana-com-v1-ObjectStorageTLSSpec">ObjectStorageTLSSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>caKey</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Key is the data key of a ConfigMap containing a CA certificate.
+It needs to be in the same namespace as the LokiStack custom resource.
+If empty, it defaults to &ldquo;service-ca.crt&rdquo;.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>caName</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>CA is the name of a ConfigMap containing a CA certificate.
+It needs to be in the same namespace as the LokiStack custom resource.</p>
 </td>
 </tr>
 </tbody>
@@ -1112,6 +1170,30 @@ int32
 <p>MaxLineSize defines the maximum line size on ingestion path. Units in Bytes.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>perStreamRateLimit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamRateLimit defines the maximum byte rate per second per stream. Units MB.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>perStreamRateLimitBurst</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PerStreamRateLimitBurst defines the maximum burst bytes per stream. Units MB.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
@@ -1300,6 +1382,21 @@ the component onto it.</p>
 <em>(Optional)</em>
 <p>Tolerations defines the tolerations required by a node to schedule
 the component onto it.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>podAntiAffinity</code><br/>
+<em>
+<a href="https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#podantiaffinity-v1-core">
+Kubernetes core/v1.PodAntiAffinity
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>PodAntiAffinity defines the pod anti affinity scheduling rules to schedule pods
+of a component.</p>
 </td>
 </tr>
 </tbody>
@@ -1509,6 +1606,9 @@ PodStatusMap
 </tr><tr><td><p>&#34;FailedComponents&#34;</p></td>
 <td><p>ReasonFailedComponents when all/some LokiStack components fail to roll out.</p>
 </td>
+</tr><tr><td><p>&#34;InvalidGatewayTenantConfigMap&#34;</p></td>
+<td><p>ReasonInvalidGatewayTenantConfigMap when the format of the configmap is invalid.</p>
+</td>
 </tr><tr><td><p>&#34;InvalidGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonInvalidGatewayTenantSecret when the format of the secret is invalid.</p>
 </td>
@@ -1531,8 +1631,15 @@ with the select cluster size.</p>
 </tr><tr><td><p>&#34;InvalidTenantsConfiguration&#34;</p></td>
 <td><p>ReasonInvalidTenantsConfiguration when the tenant configuration provided is invalid.</p>
 </td>
+</tr><tr><td><p>&#34;MissingGatewayTenantAuthenticationConfig&#34;</p></td>
+<td><p>ReasonMissingGatewayAuthenticationConfig when the config for when a tenant is missing authentication config</p>
+</td>
 </tr><tr><td><p>&#34;MissingGatewayOpenShiftBaseDomain&#34;</p></td>
 <td><p>ReasonMissingGatewayOpenShiftBaseDomain when the reconciler cannot lookup the OpenShift DNS base domain.</p>
+</td>
+</tr><tr><td><p>&#34;MissingGatewayTenantConfigMap&#34;</p></td>
+<td><p>ReasonMissingGatewayTenantConfigMap when the required tenant configmap
+for authentication is missing.</p>
 </td>
 </tr><tr><td><p>&#34;MissingGatewayTenantSecret&#34;</p></td>
 <td><p>ReasonMissingGatewayTenantSecret when the required tenant secret
@@ -1550,8 +1657,14 @@ storage is missing.</p>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>
 </td>
+</tr><tr><td><p>&#34;ReasonNoZoneAwareNodes&#34;</p></td>
+<td><p>ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
+</td>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
+</td>
+</tr><tr><td><p>&#34;ReasonQueryTimeoutInvalid&#34;</p></td>
+<td><p>ReasonQueryTimeoutInvalid when the QueryTimeout can not be parsed.</p>
 </td>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
@@ -1602,7 +1715,15 @@ are degraded or the cluster cannot connect to object storage.</p>
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;1x.extra-small&#34;</p></td>
+<tbody><tr><td><p>&#34;1x.demo&#34;</p></td>
+<td><p>SizeOneXDemo defines the size of a single Loki deployment
+with tiny resource requirements and without HA support.
+This size is intended to run in single-node clusters on laptops,
+it is only useful for very light testing, demonstrations, or prototypes.
+There are no ingestion/query performance guarantees.
+DO NOT USE THIS IN PRODUCTION!</p>
+</td>
+</tr><tr><td><p>&#34;1x.extra-small&#34;</p></td>
 <td><p>SizeOneXExtraSmall defines the size of a single Loki deployment
 with extra small resources/limits requirements and without HA support.
 This size is ultimately dedicated for development and demo purposes.
@@ -1729,7 +1850,22 @@ int32
 </td>
 <td>
 <em>(Optional)</em>
-<p>ReplicationFactor defines the policy for log stream replication.</p>
+<p>Deprecated: Please use replication.factor instead. This field will be removed in future versions of this CRD.
+ReplicationFactor defines the policy for log stream replication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>replication</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ReplicationSpec">
+ReplicationSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Replication defines the configuration for Loki data replication.</p>
 </td>
 </tr>
 <tr>
@@ -1743,7 +1879,7 @@ RulesSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>Rules defines the spec for the ruler component</p>
+<p>Rules defines the spec for the ruler component.</p>
 </td>
 </tr>
 <tr>
@@ -1771,7 +1907,7 @@ LokiTemplateSpec
 </td>
 <td>
 <em>(Optional)</em>
-<p>Template defines the resource/limits/tolerations/nodeselectors per component</p>
+<p>Template defines the resource/limits/tolerations/nodeselectors per component.</p>
 </td>
 </tr>
 <tr>
@@ -2018,6 +2154,37 @@ LokiComponentSpec
 </tbody>
 </table>
 
+## MTLSSpec { #loki-grafana-com-v1-MTLSSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-AuthenticationSpec">AuthenticationSpec</a>)
+</p>
+<div>
+<p>MTLSSpec specifies mTLS configuration parameters.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>ca</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CASpec">
+CASpec
+</a>
+</em>
+</td>
+<td>
+<p>CA defines the spec for the custom CA for tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## ManagementStateType { #loki-grafana-com-v1-ManagementStateType }
 (<code>string</code> alias)
 <p>
@@ -2135,7 +2302,21 @@ TenantSecretSpec
 </em>
 </td>
 <td>
-<p>Secret defines the spec for the clientID, clientSecret and issuerCAPath for tenant&rsquo;s authentication.</p>
+<p>Secret defines the spec for the clientID and clientSecret for tenant&rsquo;s authentication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>issuerCA</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-CASpec">
+CASpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>IssuerCA defines the spec for the issuer CA for tenant&rsquo;s authentication.</p>
 </td>
 </tr>
 <tr>
@@ -2346,7 +2527,10 @@ string
 <th>Description</th>
 </tr>
 </thead>
-<tbody><tr><td><p>&#34;azure&#34;</p></td>
+<tbody><tr><td><p>&#34;alibabacloud&#34;</p></td>
+<td><p>ObjectStorageSecretAlibabaCloud when using AlibabaCloud OSS for Loki storage</p>
+</td>
+</tr><tr><td><p>&#34;azure&#34;</p></td>
 <td><p>ObjectStorageSecretAzure when using Azure for Loki storage</p>
 </td>
 </tr><tr><td><p>&#34;gcs&#34;</p></td>
@@ -2466,6 +2650,41 @@ It needs to be in the same namespace as the LokiStack custom resource.</p>
 </tbody>
 </table>
 
+## OpenshiftTenantSpec { #loki-grafana-com-v1-OpenshiftTenantSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-TenantsSpec">TenantsSpec</a>)
+</p>
+<div>
+<p>OpenshiftTenantSpec defines the configuration specific to Openshift modes.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>adminGroups</code><br/>
+<em>
+[]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>AdminGroups defines a list of groups, whose members are considered to have admin-privileges by the Loki Operator.
+Setting this to an empty array disables admin groups.</p>
+<p>By default the following groups are considered admin-groups:
+- system:cluster-admins
+- cluster-admin
+- dedicated-admin</p>
+</td>
+</tr>
+</tbody>
+</table>
+
 ## PermissionType { #loki-grafana-com-v1-PermissionType }
 (<code>string</code> alias)
 <p>
@@ -2557,7 +2776,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>
@@ -2571,6 +2790,18 @@ string
 <td>
 <em>(Optional)</em>
 <p>Timeout when querying ingesters or storage during the execution of a query request.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>cardinalityLimit</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>CardinalityLimit defines the cardinality limit for index queries.</p>
 </td>
 </tr>
 </tbody>
@@ -2736,6 +2967,18 @@ string
 <p>The LogQL expression to evaluate. Every evaluation cycle this is
 evaluated at the current time, and all resultant time series become
 pending/firing alerts.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>labels</code><br/>
+<em>
+map[string]string
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Labels to add to each recording rule.</p>
 </td>
 </tr>
 </tbody>
@@ -3261,6 +3504,50 @@ RemoteWriteClientQueueSpec
 <td>
 <em>(Optional)</em>
 <p>Defines the configuration for remote write client queue.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ReplicationSpec { #loki-grafana-com-v1-ReplicationSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-LokiStackSpec">LokiStackSpec</a>)
+</p>
+<div>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>factor</code><br/>
+<em>
+int32
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Factor defines the policy for log stream replication.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>zones</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-ZoneSpec">
+[]ZoneSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Zones defines an array of ZoneSpec that the scheduler will try to satisfy.
+IMPORTANT: Make sure that the replication factor defined is less than or equal to the number of available zones.</p>
 </td>
 </tr>
 </tbody>
@@ -3893,6 +4180,60 @@ AuthorizationSpec
 <td>
 <em>(Optional)</em>
 <p>Authorization defines the lokistack-gateway component authorization configuration spec per tenant.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>openshift</code><br/>
+<em>
+<a href="#loki-grafana-com-v1-OpenshiftTenantSpec">
+OpenshiftTenantSpec
+</a>
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>Openshift defines the configuration specific to Openshift modes.</p>
+</td>
+</tr>
+</tbody>
+</table>
+
+## ZoneSpec { #loki-grafana-com-v1-ZoneSpec }
+<p>
+(<em>Appears on:</em><a href="#loki-grafana-com-v1-ReplicationSpec">ReplicationSpec</a>)
+</p>
+<div>
+<p>ZoneSpec defines the spec to support zone-aware component deployments.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>
+<code>maxSkew</code><br/>
+<em>
+int
+</em>
+</td>
+<td>
+<p>MaxSkew describes the maximum degree to which Pods can be unevenly distributed.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>topologyKey</code><br/>
+<em>
+string
+</em>
+</td>
+<td>
+<p>TopologyKey is the key that defines a topology in the Nodes&rsquo; labels.</p>
 </td>
 </tr>
 </tbody>
@@ -6204,7 +6545,7 @@ int32
 </em>
 </td>
 <td>
-<p>MaxQuerySeries defines the the maximum of unique series
+<p>MaxQuerySeries defines the maximum of unique series
 that is returned by a metric query.</p>
 </td>
 </tr>

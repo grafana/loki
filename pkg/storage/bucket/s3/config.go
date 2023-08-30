@@ -18,8 +18,9 @@ import (
 )
 
 const (
+	// Signature Version 2 is being turned off (deprecated) in Amazon S3. Amazon S3 will then only accept API requests that are signed using Signature Version 4.
+	// https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingAWSSDK.html#UsingAWSSDK-sig2-deprecation
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 
 	// SSEKMS config type constant to configure S3 server side encryption using KMS
 	// https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingKMSEncryption.html
@@ -31,9 +32,8 @@ const (
 )
 
 var (
-	supportedSignatureVersions = []string{SignatureVersionV4, SignatureVersionV2}
-	supportedSSETypes          = []string{SSEKMS, SSES3}
-
+	supportedSignatureVersions     = []string{SignatureVersionV4}
+	supportedSSETypes              = []string{SSEKMS, SSES3}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 	errUnsupportedSSEType          = errors.New("unsupported S3 SSE type")
 	errInvalidSSEContext           = errors.New("invalid S3 SSE encryption context")

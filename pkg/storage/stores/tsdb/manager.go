@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"sync"
 	"time"
@@ -28,7 +27,7 @@ import (
 type TSDBManager interface {
 	Start() error
 	// Builds a new TSDB file from a set of WALs
-	BuildFromWALs(time.Time, []WALIdentifier) error
+	BuildFromWALs(time.Time, []WALIdentifier, bool) error
 	// Builds a new TSDB file from tenantHeads
 	BuildFromHead(*tenantHeads) error
 }
@@ -42,11 +41,13 @@ tsdbManager is used for managing active index and is responsible for:
   - Removing old TSDBs which are no longer needed
 */
 type tsdbManager struct {
-	nodeName    string // node name
-	log         log.Logger
-	dir         string
-	metrics     *Metrics
-	tableRanges config.TableRanges
+	nodeName   string // node name
+	log        log.Logger
+	name       string
+	dir        string
+	metrics    *Metrics
+	tableRange config.TableRange
+	schemaCfg  config.SchemaConfig
 
 	sync.RWMutex
 
@@ -54,20 +55,24 @@ type tsdbManager struct {
 }
 
 func NewTSDBManager(
+	name,
 	nodeName,
 	dir string,
 	shipper indexshipper.IndexShipper,
-	tableRanges config.TableRanges,
+	tableRange config.TableRange,
+	schemaCfg config.SchemaConfig,
 	logger log.Logger,
 	metrics *Metrics,
 ) TSDBManager {
 	return &tsdbManager{
-		nodeName:    nodeName,
-		log:         log.With(logger, "component", "tsdb-manager"),
-		dir:         dir,
-		metrics:     metrics,
-		tableRanges: tableRanges,
-		shipper:     shipper,
+		name:       name,
+		nodeName:   nodeName,
+		log:        log.With(logger, "component", "tsdb-manager"),
+		dir:        dir,
+		metrics:    metrics,
+		tableRange: tableRange,
+		schemaCfg:  schemaCfg,
+		shipper:    shipper,
 	}
 }
 
@@ -87,12 +92,6 @@ func (m *tsdbManager) Start() (err error) {
 		)
 	}()
 
-	// regexp for finding the trailing index bucket number at the end of table name
-	extractBucketNumberRegex, err := regexp.Compile(`[0-9]+$`)
-	if err != nil {
-		return err
-	}
-
 	// load list of multitenant tsdbs
 	mulitenantDir := managerMultitenantDir(m.dir)
 	files, err := os.ReadDir(mulitenantDir)
@@ -106,12 +105,8 @@ func (m *tsdbManager) Start() (err error) {
 		}
 
 		bucket := f.Name()
-		if !extractBucketNumberRegex.MatchString(f.Name()) {
-			level.Warn(m.log).Log(
-				"msg", "directory name does not match expected bucket name pattern",
-				"name", bucket,
-				"err", err.Error(),
-			)
+		if ok, err := m.tableRange.TableInRange(bucket); !ok {
+			level.Info(m.log).Log("msg", fmt.Sprintf("skip loading, table not in range: %s", f.Name()), "reason", err)
 			continue
 		}
 		buckets++
@@ -133,8 +128,8 @@ func (m *tsdbManager) Start() (err error) {
 			}
 			indices++
 
-			prefixed := newPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
-			loaded, err := NewShippableTSDBFile(prefixed)
+			prefixed := NewPrefixedIdentifier(id, filepath.Join(mulitenantDir, bucket), "")
+			loaded, err := NewShippableTSDBFile(prefixed, IndexOpts{})
 
 			if err != nil {
 				level.Warn(m.log).Log(
@@ -156,31 +151,40 @@ func (m *tsdbManager) Start() (err error) {
 	return nil
 }
 
-func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
+type chunkInfo struct {
+	chunkMetas index.ChunkMetas
+	tsdbFormat int
+}
+
+func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
 
 		// chunks may overlap index period bounds, in which case they're written to multiple
-		pds := make(map[string]index.ChunkMetas)
+		pds := make(map[string]chunkInfo)
 		for _, chk := range chks {
-			idxBuckets := indexBuckets(chk.From(), chk.Through(), m.tableRanges)
+			idxBuckets := indexBuckets(chk.From(), chk.Through(), tableRanges)
 
 			for _, bucket := range idxBuckets {
-				pds[bucket] = append(pds[bucket], chk)
+				chkinfo := pds[bucket.prefix]
+				chkinfo.chunkMetas = append(chkinfo.chunkMetas, chk)
+				chkinfo.tsdbFormat = bucket.tsdbFormat
+				pds[bucket.prefix] = chkinfo
 			}
 		}
 
 		// Embed the tenant label into TSDB
 		lb := labels.NewBuilder(ls)
 		lb.Set(TenantLabel, user)
-		withTenant := lb.Labels(nil)
+		withTenant := lb.Labels()
 
 		// Add the chunks to all relevant builders
-		for pd, matchingChks := range pds {
+		for pd, chkinfo := range pds {
+			matchingChks := chkinfo.chunkMetas
 			b, ok := periods[pd]
 			if !ok {
-				b = NewBuilder()
+				b = NewBuilder(chkinfo.tsdbFormat)
 				periods[pd] = b
 			}
 
@@ -201,7 +205,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 
 	for p, b := range periods {
 		dstDir := filepath.Join(managerMultitenantDir(m.dir), fmt.Sprint(p))
-		dst := newPrefixedIdentifier(
+		dst := NewPrefixedIdentifier(
 			MultitenantTSDBIdentifier{
 				nodeName: m.nodeName,
 				ts:       heads.start,
@@ -215,7 +219,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 		start := time.Now()
 		_, err = b.Build(
 			context.Background(),
-			managerScratchDir(m.dir),
+			filepath.Join(managerScratchDir(m.dir), m.name),
 			func(from, through model.Time, checksum uint32) Identifier {
 				return dst
 			},
@@ -226,12 +230,12 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads) (err error) {
 
 		level.Debug(m.log).Log("msg", "finished building tsdb for period", "pd", p, "dst", dst.Path(), "duration", time.Since(start))
 
-		loaded, err := NewShippableTSDBFile(dst)
+		loaded, err := NewShippableTSDBFile(dst, IndexOpts{})
 		if err != nil {
 			return err
 		}
 
-		if err := m.shipper.AddIndex(p, "", loaded); err != nil {
+		if err := shipper.AddIndex(p, "", loaded); err != nil {
 			return err
 		}
 	}
@@ -251,10 +255,10 @@ func (m *tsdbManager) BuildFromHead(heads *tenantHeads) (err error) {
 		m.metrics.tsdbBuilds.WithLabelValues(status, "head").Inc()
 	}()
 
-	return m.buildFromHead(heads)
+	return m.buildFromHead(heads, m.shipper, []config.TableRange{m.tableRange})
 }
 
-func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error) {
+func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy bool) (err error) {
 	level.Debug(m.log).Log("msg", "building WALs", "n", len(ids), "ts", t)
 	defer func() {
 		status := statusSuccess
@@ -265,14 +269,28 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 		m.metrics.tsdbBuilds.WithLabelValues(status, "wal").Inc()
 	}()
 
+	var (
+		tableRanges = []config.TableRange{m.tableRange}
+		shipper     = m.shipper
+	)
+
+	if legacy {
+		// pass all TSDB tableRanges as the legacy WAL files are not period specific.
+		tableRanges = config.GetIndexStoreTableRanges(config.TSDBType, m.schemaCfg.Configs)
+
+		// do not ship legacy WAL files.
+		// TSDBs built from these WAL files would get loaded on starting tsdbManager
+		shipper = indexshipper.Noop{}
+	}
+
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
 	for _, id := range ids {
 		tmp := newTenantHeads(id.ts, defaultHeadManagerStripeSize, m.metrics, m.log)
-		if err = recoverHead(m.dir, tmp, []WALIdentifier{id}); err != nil {
+		if err = recoverHead(m.name, m.dir, tmp, []WALIdentifier{id}, legacy); err != nil {
 			return errors.Wrap(err, "building TSDB from WALs")
 		}
 
-		err := m.buildFromHead(tmp)
+		err := m.buildFromHead(tmp, shipper, tableRanges)
 		if err != nil {
 			return err
 		}
@@ -281,13 +299,19 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier) (err error
 	return nil
 }
 
-func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []string) {
+type indexInfo struct {
+	prefix     string
+	tsdbFormat int
+}
+
+func indexBuckets(from, through model.Time, tableRanges config.TableRanges) (res []indexInfo) {
 	start := from.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	end := through.Time().UnixNano() / int64(config.ObjectStorageIndexRequiredPeriod)
 	for cur := start; cur <= end; cur++ {
 		cfg := tableRanges.ConfigForTableNumber(cur)
 		if cfg != nil {
-			res = append(res, cfg.IndexTables.Prefix+strconv.Itoa(int(cur)))
+			tsdbFormat, _ := cfg.TSDBFormat() // Ignoring error, as any valid period config should return valid format.
+			res = append(res, indexInfo{prefix: cfg.IndexTables.Prefix + strconv.Itoa(int(cur)), tsdbFormat: tsdbFormat})
 		}
 	}
 	if len(res) == 0 {

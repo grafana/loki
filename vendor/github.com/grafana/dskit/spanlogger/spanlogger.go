@@ -8,7 +8,8 @@ import (
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/weaveworks/common/tracing"
+
+	"github.com/grafana/dskit/tracing"
 )
 
 type loggerCtxMarker struct{}
@@ -69,7 +70,7 @@ func FromContext(ctx context.Context, fallback log.Logger, resolver TenantResolv
 	}
 	sp := opentracing.SpanFromContext(ctx)
 	if sp == nil {
-		sp = defaultNoopSpan
+		sp = opentracing.NoopTracer{}.StartSpan("noop")
 	}
 	lwc, sampled := withContext(ctx, logger, resolver)
 	return &SpanLogger{

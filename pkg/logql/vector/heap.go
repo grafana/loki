@@ -13,10 +13,10 @@ func (s HeapByMaxValue) Len() int {
 }
 
 func (s HeapByMaxValue) Less(i, j int) bool {
-	if math.IsNaN(s[i].V) {
+	if math.IsNaN(s[i].F) {
 		return true
 	}
-	return s[i].V < s[j].V
+	return s[i].F < s[j].F
 }
 
 func (s HeapByMaxValue) Swap(i, j int) {
@@ -42,10 +42,10 @@ func (s HeapByMinValue) Len() int {
 }
 
 func (s HeapByMinValue) Less(i, j int) bool {
-	if math.IsNaN(s[i].V) {
+	if math.IsNaN(s[i].F) {
 		return true
 	}
-	return s[i].V > s[j].V
+	return s[i].F > s[j].F
 }
 
 func (s HeapByMinValue) Swap(i, j int) {

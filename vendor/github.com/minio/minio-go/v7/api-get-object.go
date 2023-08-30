@@ -23,8 +23,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
-	"strconv"
 	"sync"
 
 	"github.com/minio/minio-go/v7/pkg/s3utils"
@@ -654,19 +652,11 @@ func (c *Client) getObject(ctx context.Context, bucketName, objectName string, o
 		return nil, ObjectInfo{}, nil, err
 	}
 
-	urlValues := make(url.Values)
-	if opts.VersionID != "" {
-		urlValues.Set("versionId", opts.VersionID)
-	}
-	if opts.PartNumber > 0 {
-		urlValues.Set("partNumber", strconv.Itoa(opts.PartNumber))
-	}
-
 	// Execute GET on objectName.
 	resp, err := c.executeMethod(ctx, http.MethodGet, requestMetadata{
 		bucketName:       bucketName,
 		objectName:       objectName,
-		queryValues:      urlValues,
+		queryValues:      opts.toQueryValues(),
 		customHeader:     opts.Header(),
 		contentSHA256Hex: emptySHA256Hex,
 	})

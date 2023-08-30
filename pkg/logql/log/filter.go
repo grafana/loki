@@ -3,9 +3,10 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"github.com/grafana/loki/pkg/util"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/grafana/loki/pkg/util"
 
 	"github.com/grafana/regexp"
 	"github.com/grafana/regexp/syntax"
@@ -231,16 +232,18 @@ func (a orFilter) ToStage() Stage {
 
 type regexpFilter struct {
 	*regexp.Regexp
+
+	orig string
 }
 
 // newRegexpFilter creates a new line filter for a given regexp.
 // If match is false the filter is the negation of the regexp.
-func newRegexpFilter(re string, match bool) (Filterer, error) {
+func newRegexpFilter(re string, orig string, match bool) (Filterer, error) {
 	reg, err := regexp.Compile(re)
 	if err != nil {
 		return nil, err
 	}
-	f := regexpFilter{reg}
+	f := regexpFilter{Regexp: reg, orig: orig}
 	if match {
 		return f, nil
 	}
@@ -257,6 +260,10 @@ func (r regexpFilter) ToStage() Stage {
 			return line, r.Filter(line)
 		},
 	}
+}
+
+func (r regexpFilter) String() string {
+	return r.orig
 }
 
 type equalFilter struct {
@@ -314,8 +321,8 @@ func containsLower(line, substr []byte) bool {
 	j := 0
 	for len(line) > 0 {
 		// ascii fast case
-		if c := line[0]; c < utf8.RuneSelf {
-			if c == substr[j] || c+'a'-'A' == substr[j] {
+		if c := line[0]; c < utf8.RuneSelf && substr[j] < utf8.RuneSelf {
+			if c == substr[j] || c+'a'-'A' == substr[j] || c == substr[j]+'a'-'A' {
 				j++
 				if j == len(substr) {
 					return true
@@ -450,7 +457,7 @@ func parseRegexpFilter(re string, match bool, isLabel bool) (Filterer, error) {
 			// the beginning and ending of lines
 			regex = "^(?:" + regex + ")$"
 		}
-		return newRegexpFilter(regex, match)
+		return newRegexpFilter(regex, re, match)
 	}
 	if match {
 		return f, nil

@@ -299,8 +299,7 @@ func unpackString(msg []byte, off int) (string, int, error) {
 }
 
 func packString(s string, msg []byte, off int) (int, error) {
-	txtTmp := make([]byte, 256*4+1)
-	off, err := packTxtString(s, msg, off, txtTmp)
+	off, err := packTxtString(s, msg, off)
 	if err != nil {
 		return len(msg), err
 	}
@@ -402,8 +401,7 @@ func unpackStringTxt(msg []byte, off int) ([]string, int, error) {
 }
 
 func packStringTxt(s []string, msg []byte, off int) (int, error) {
-	txtTmp := make([]byte, 256*4+1) // If the whole string consists out of \DDD we need this many.
-	off, err := packTxt(s, msg, off, txtTmp)
+	off, err := packTxt(s, msg, off)
 	if err != nil {
 		return len(msg), err
 	}
@@ -625,7 +623,7 @@ func unpackDataSVCB(msg []byte, off int) ([]SVCBKeyValue, int, error) {
 }
 
 func packDataSVCB(pairs []SVCBKeyValue, msg []byte, off int) (int, error) {
-	pairs = append([]SVCBKeyValue(nil), pairs...)
+	pairs = cloneSlice(pairs)
 	sort.Slice(pairs, func(i, j int) bool {
 		return pairs[i].Key() < pairs[j].Key()
 	})
@@ -809,4 +807,38 @@ func unpackDataAplPrefix(msg []byte, off int) (APLPrefix, int, error) {
 		Negation: (nlen & 0x80) != 0,
 		Network:  ipnet,
 	}, off, nil
+}
+
+func unpackIPSECGateway(msg []byte, off int, gatewayType uint8) (net.IP, string, int, error) {
+	var retAddr net.IP
+	var retString string
+	var err error
+
+	switch gatewayType {
+	case IPSECGatewayNone: // do nothing
+	case IPSECGatewayIPv4:
+		retAddr, off, err = unpackDataA(msg, off)
+	case IPSECGatewayIPv6:
+		retAddr, off, err = unpackDataAAAA(msg, off)
+	case IPSECGatewayHost:
+		retString, off, err = UnpackDomainName(msg, off)
+	}
+
+	return retAddr, retString, off, err
+}
+
+func packIPSECGateway(gatewayAddr net.IP, gatewayString string, msg []byte, off int, gatewayType uint8, compression compressionMap, compress bool) (int, error) {
+	var err error
+
+	switch gatewayType {
+	case IPSECGatewayNone: // do nothing
+	case IPSECGatewayIPv4:
+		off, err = packDataA(gatewayAddr, msg, off)
+	case IPSECGatewayIPv6:
+		off, err = packDataAAAA(gatewayAddr, msg, off)
+	case IPSECGatewayHost:
+		off, err = packDomainName(gatewayString, msg, off, compression, compress)
+	}
+
+	return off, err
 }

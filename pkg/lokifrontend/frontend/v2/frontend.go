@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -20,7 +21,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/httpgrpc"
 	"go.uber.org/atomic"
 
 	"github.com/grafana/dskit/tenant"
@@ -147,7 +147,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 	return f, nil
 }
 
-func (f *Frontend) starting(ctx context.Context) error {
+func (f *Frontend) starting(_ context.Context) error {
 	// Instead of re-using `ctx` from the frontend service, `schedulerWorkers`
 	// needs to use their own service context, because we want to control the
 	// stopping process in the `stopping` function of the frontend. If we would

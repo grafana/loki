@@ -1,4 +1,4 @@
-package handlers_test
+package handlers
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 	configv1 "github.com/grafana/loki/operator/apis/config/v1"
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/external/k8s/k8sfakes"
-	"github.com/grafana/loki/operator/internal/handlers"
 	"github.com/grafana/loki/operator/internal/status"
 
 	"github.com/ViaQ/logerr/v2/log"
@@ -146,7 +145,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNotFound_DoesNotError(t *testing.
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was NOT called because the Get failed
@@ -170,7 +169,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsAnErrorOtherThanNotFound_ReturnsT
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	require.Equal(t, badRequestErr, errors.Unwrap(err))
 
@@ -256,7 +255,7 @@ func TestCreateOrUpdateLokiStack_SetsNamespaceOnAllObjects(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -363,7 +362,7 @@ func TestCreateOrUpdateLokiStack_SetsOwnerRefOnAllObjects(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -422,7 +421,7 @@ func TestCreateOrUpdateLokiStack_WhenSetControllerRefInvalid_ContinueWithOtherOb
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -524,7 +523,7 @@ func TestCreateOrUpdateLokiStack_WhenGetReturnsNoError_UpdateObjects(t *testing.
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create not called
@@ -591,7 +590,7 @@ func TestCreateOrUpdateLokiStack_WhenCreateReturnsError_ContinueWithOtherObjects
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -699,7 +698,7 @@ func TestCreateOrUpdateLokiStack_WhenUpdateReturnsError_ContinueWithOtherObjects
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -759,7 +758,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingSecret_SetDegraded(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -824,7 +823,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidSecret_SetDegraded(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -898,7 +897,7 @@ func TestCreateOrUpdateLokiStack_WithInvalidStorageSchema_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -944,7 +943,9 @@ func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T
 					Type: lokiv1.ObjectStorageSecretS3,
 				},
 				TLS: &lokiv1.ObjectStorageTLSSpec{
-					CA: "not-existing",
+					lokiv1.CASpec{
+						CA: "not-existing",
+					},
 				},
 			},
 		},
@@ -968,7 +969,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingCAConfigMap_SetDegraded(t *testing.T
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -1014,7 +1015,9 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 					Type: lokiv1.ObjectStorageSecretS3,
 				},
 				TLS: &lokiv1.ObjectStorageTLSSpec{
-					CA: invalidCAConfigMap.Name,
+					lokiv1.CASpec{
+						CA: invalidCAConfigMap.Name,
+					},
 				},
 			},
 		},
@@ -1041,7 +1044,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidCAConfigMap_SetDegraded(t *testing.T
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -1125,7 +1128,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidTenantsConfiguration_SetDegraded(t *
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -1214,7 +1217,7 @@ func TestCreateOrUpdateLokiStack_WhenMissingGatewaySecret_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -1307,7 +1310,7 @@ func TestCreateOrUpdateLokiStack_WhenInvalidGatewaySecret_SetDegraded(t *testing
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
 
 	// make sure error is returned to re-trigger reconciliation
 	require.Error(t, err)
@@ -1378,7 +1381,79 @@ func TestCreateOrUpdateLokiStack_MissingTenantsSpec_SetDegraded(t *testing.T) {
 
 	k.StatusStub = func() client.StatusWriter { return sw }
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, ff)
+
+	// make sure error is returned
+	require.Error(t, err)
+	require.Equal(t, degradedErr, err)
+}
+
+func TestCreateOrUpdateLokiStack_WhenInvalidQueryTimeout_SetDegraded(t *testing.T) {
+	sw := &k8sfakes.FakeStatusWriter{}
+	k := &k8sfakes.FakeClient{}
+	r := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+		},
+	}
+
+	degradedErr := &status.DegradedError{
+		Message: `Error parsing query timeout: time: invalid duration "invalid"`,
+		Reason:  lokiv1.ReasonQueryTimeoutInvalid,
+		Requeue: false,
+	}
+
+	stack := &lokiv1.LokiStack{
+		TypeMeta: metav1.TypeMeta{
+			Kind: "LokiStack",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-stack",
+			Namespace: "some-ns",
+			UID:       "b23f9a38-9672-499f-8c29-15ede74d3ece",
+		},
+		Spec: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXExtraSmall,
+			Storage: lokiv1.ObjectStorageSpec{
+				Schemas: []lokiv1.ObjectStorageSchema{
+					{
+						Version:       lokiv1.ObjectStorageSchemaV12,
+						EffectiveDate: "2023-05-22",
+					},
+				},
+				Secret: lokiv1.ObjectStorageSecretSpec{
+					Name: defaultSecret.Name,
+					Type: lokiv1.ObjectStorageSecretS3,
+				},
+			},
+			Tenants: &lokiv1.TenantsSpec{
+				Mode: "openshift",
+			},
+			Limits: &lokiv1.LimitsSpec{
+				Global: &lokiv1.LimitsTemplateSpec{
+					QueryLimits: &lokiv1.QueryLimitSpec{
+						QueryTimeout: "invalid",
+					},
+				},
+			},
+		},
+	}
+
+	// Create looks up the CR first, so we need to return our fake stack
+	k.GetStub = func(_ context.Context, name types.NamespacedName, object client.Object, _ ...client.GetOption) error {
+		if r.Name == name.Name && r.Namespace == name.Namespace {
+			k.SetClientObject(object, stack)
+		}
+		if defaultSecret.Name == name.Name {
+			k.SetClientObject(object, &defaultSecret)
+		}
+		return nil
+	}
+
+	k.StatusStub = func() client.StatusWriter { return sw }
+
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 
 	// make sure error is returned
 	require.Error(t, err)
@@ -1487,7 +1562,7 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 		return nil
 	}
 
-	err := handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err := CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure create was called
@@ -1527,7 +1602,7 @@ func TestCreateOrUpdateLokiStack_RemovesRulerResourcesWhenDisabled(t *testing.T)
 		}
 		return apierrors.NewNotFound(schema.GroupResource{}, "something wasn't found")
 	}
-	err = handlers.CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
+	err = CreateOrUpdateLokiStack(context.TODO(), logger, r, k, scheme, featureGates)
 	require.NoError(t, err)
 
 	// make sure delete was called twice (delete rules configmap and ruler statefulset)

@@ -11,6 +11,9 @@ import (
 )
 
 const (
+	// ec2CopySnapshotPresignedUrlCustomization handler name
+	ec2CopySnapshotPresignedUrlCustomization = "ec2CopySnapshotPresignedUrl"
+
 	// customRetryerMinRetryDelay sets min retry delay
 	customRetryerMinRetryDelay = 1 * time.Second
 
@@ -21,7 +24,10 @@ const (
 func init() {
 	initRequest = func(r *request.Request) {
 		if r.Operation.Name == opCopySnapshot { // fill the PresignedURL parameter
-			r.Handlers.Build.PushFront(fillPresignedURL)
+			r.Handlers.Build.PushFrontNamed(request.NamedHandler{
+				Name: ec2CopySnapshotPresignedUrlCustomization,
+				Fn:   fillPresignedURL,
+			})
 		}
 
 		// only set the retryer on request if config doesn't have a retryer
@@ -48,13 +54,15 @@ func fillPresignedURL(r *request.Request) {
 
 	origParams := r.Params.(*CopySnapshotInput)
 
-	// Stop if PresignedURL/DestinationRegion is set
-	if origParams.PresignedUrl != nil || origParams.DestinationRegion != nil {
+	// Stop if PresignedURL is set
+	if origParams.PresignedUrl != nil {
 		return
 	}
 
+	// Always use config region as destination region for SDKs
 	origParams.DestinationRegion = r.Config.Region
-	newParams := awsutil.CopyOf(r.Params).(*CopySnapshotInput)
+
+	newParams := awsutil.CopyOf(origParams).(*CopySnapshotInput)
 
 	// Create a new request based on the existing request. We will use this to
 	// presign the CopySnapshot request against the source region.
@@ -82,8 +90,12 @@ func fillPresignedURL(r *request.Request) {
 	clientInfo.Endpoint = resolved.URL
 	clientInfo.SigningRegion = resolved.SigningRegion
 
+	// Copy handlers without Presigned URL customization to avoid an infinite loop
+	handlersWithoutPresignCustomization := r.Handlers.Copy()
+	handlersWithoutPresignCustomization.Build.RemoveByName(ec2CopySnapshotPresignedUrlCustomization)
+
 	// Presign a CopySnapshot request with modified params
-	req := request.New(*cfg, clientInfo, r.Handlers, r.Retryer, r.Operation, newParams, r.Data)
+	req := request.New(*cfg, clientInfo, handlersWithoutPresignCustomization, r.Retryer, r.Operation, newParams, r.Data)
 	url, err := req.Presign(5 * time.Minute) // 5 minutes should be enough.
 	if err != nil {                          // bubble error back up to original request
 		r.Error = err

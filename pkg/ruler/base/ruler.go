@@ -2,6 +2,7 @@ package base
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"hash/fnv"
@@ -21,6 +22,7 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -28,8 +30,6 @@ import (
 	"github.com/prometheus/prometheus/model/rulefmt"
 	"github.com/prometheus/prometheus/notifier"
 	promRules "github.com/prometheus/prometheus/rules"
-	"github.com/prometheus/prometheus/util/strutil"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/grafana/dskit/tenant"
@@ -76,6 +76,8 @@ const (
 type Config struct {
 	// This is used for template expansion in alerts; must be a valid URL.
 	ExternalURL flagext.URLValue `yaml:"external_url"`
+	// This is used for template expansion in alerts, and represents the corresponding Grafana datasource UID.
+	DatasourceUID string `yaml:"datasource_uid"`
 	// Labels to add to all alerts
 	ExternalLabels labels.Labels `yaml:"external_labels,omitempty" doc:"description=Labels to add to all alerts."`
 	// GRPC Client configuration.
@@ -158,7 +160,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	flagext.DeprecatedFlag(f, "ruler.num-workers", "This flag is no longer functional. For increased concurrency horizontal sharding is recommended", util_log.Logger)
 
 	cfg.ExternalURL.URL, _ = url.Parse("") // Must be non-nil
-	f.Var(&cfg.ExternalURL, "ruler.external.url", "URL of alerts return path.")
+	f.Var(&cfg.ExternalURL, "ruler.external.url", "Base URL of the Grafana instance.")
+	f.StringVar(&cfg.DatasourceUID, "ruler.datasource-uid", "", "Datasource UID for the dashboard.")
 	f.DurationVar(&cfg.EvaluationInterval, "ruler.evaluation-interval", 1*time.Minute, "How frequently to evaluate rules.")
 	f.DurationVar(&cfg.PollInterval, "ruler.poll-interval", 1*time.Minute, "How frequently to poll for rule changes.")
 
@@ -175,7 +178,6 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.ShardingAlgo, "ruler.sharding-algo", util.ShardingAlgoByGroup, fmt.Sprintf("The sharding algorithm to use for deciding how rules & groups are sharded. Supported values are: %s.", strings.Join(supportedShardingAlgos, ", ")))
 	f.DurationVar(&cfg.FlushCheckPeriod, "ruler.flush-period", 1*time.Minute, "Period with which to attempt to flush rule groups.")
 	f.StringVar(&cfg.RulePath, "ruler.rule-path", "/rules", "File path to store temporary rule files.")
-	f.BoolVar(&cfg.EnableAPI, "experimental.ruler.enable-api", false, "Enable the ruler API.")
 	f.DurationVar(&cfg.OutageTolerance, "ruler.for-outage-tolerance", time.Hour, `Max time to tolerate outage for restoring "for" state of alert.`)
 	f.DurationVar(&cfg.ForGracePeriod, "ruler.for-grace-period", 10*time.Minute, `Minimum duration between alert and restored "for" state. This is maintained only for alerts with configured "for" time greater than the grace period.`)
 	f.DurationVar(&cfg.ResendDelay, "ruler.resend-delay", time.Minute, `Minimum amount of time to wait before resending an alert to Alertmanager.`)
@@ -185,6 +187,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 	f.BoolVar(&cfg.EnableQueryStats, "ruler.query-stats-enabled", false, "Report the wall time for ruler queries to complete as a per user metric and as an info level log message.")
 	f.BoolVar(&cfg.DisableRuleGroupLabel, "ruler.disable-rule-group-label", false, "Disable the rule_group label on exported metrics.")
+
+	f.BoolVar(&cfg.EnableAPI, "ruler.enable-api", true, "Enable the ruler API.")
 
 	cfg.RingCheckPeriod = 5 * time.Second
 }
@@ -374,11 +378,41 @@ type sender interface {
 	Send(alerts ...*notifier.Alert)
 }
 
+type query struct {
+	Expr       string      `json:"expr"`
+	QueryType  string      `json:"queryType"`
+	Datasource *datasource `json:"datasource,omitempty"`
+}
+
+type datasource struct {
+	Type string `json:"type"`
+	UID  string `json:"uid"`
+}
+
+func grafanaLinkForExpression(expr, datasourceUID string) string {
+	exprStruct := query{
+		Expr:      expr,
+		QueryType: "range",
+	}
+
+	if datasourceUID != "" {
+		exprStruct.Datasource = &datasource{
+			Type: "loki",
+			UID:  datasourceUID,
+		}
+	}
+
+	marshaledExpression, _ := json.Marshal(exprStruct)
+	escapedExpression := url.QueryEscape(string(marshaledExpression))
+	str := `/explore?left={"queries":[%s]}`
+	return fmt.Sprintf(str, escapedExpression)
+}
+
 // SendAlerts implements a rules.NotifyFunc for a Notifier.
 // It filters any non-firing alerts from the input.
 //
 // Copied from Prometheus's main.go.
-func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
+func SendAlerts(n sender, externalURL, datasourceUID string) promRules.NotifyFunc {
 	return func(ctx context.Context, expr string, alerts ...*promRules.Alert) {
 		var res []*notifier.Alert
 
@@ -387,7 +421,7 @@ func SendAlerts(n sender, externalURL string) promRules.NotifyFunc {
 				StartsAt:     alert.FiredAt,
 				Labels:       alert.Labels,
 				Annotations:  alert.Annotations,
-				GeneratorURL: externalURL + strutil.TableLinkForExpression(expr),
+				GeneratorURL: externalURL + grafanaLinkForExpression(expr, datasourceUID),
 			}
 			if !alert.ResolvedAt.IsZero() {
 				a.EndsAt = alert.ResolvedAt
@@ -795,6 +829,7 @@ func (r *Ruler) getLocalRules(userID string) ([]*GroupStateDesc, error) {
 				Namespace: decodedNamespace,
 				Interval:  interval,
 				User:      userID,
+				Limit:     int64(group.Limit()),
 			},
 
 			EvaluationTimestamp: group.GetLastEvaluation(),
@@ -909,6 +944,9 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 			name := RemoveRuleTokenFromGroupName(grp.Group.Name)
 			grp.Group.Name = name
 
+			// When merging include the namepsace in case the same group name exists in multiple namespaces
+			name = grp.Group.Namespace + "/" + name
+
 			_, found := merged[name]
 			if found {
 				merged[name].ActiveRules = append(merged[name].ActiveRules, grp.ActiveRules...)
@@ -933,7 +971,7 @@ func (r *Ruler) getShardedRules(ctx context.Context, userID string) ([]*GroupSta
 }
 
 // Rules implements the rules service
-func (r *Ruler) Rules(ctx context.Context, in *RulesRequest) (*RulesResponse, error) {
+func (r *Ruler) Rules(ctx context.Context, _ *RulesRequest) (*RulesResponse, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("no user id found in context")

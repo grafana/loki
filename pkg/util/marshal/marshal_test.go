@@ -34,6 +34,14 @@ var queryTests = []struct {
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
 					},
+					{
+						Timestamp: time.Unix(0, 123456789012346),
+						Line:      "super line with labels",
+						NonIndexedLabels: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+					},
 				},
 				Labels: `{test="test"}`,
 			},
@@ -48,7 +56,8 @@ var queryTests = []struct {
 							"test": "test"
 						},
 						"values":[
-							[ "123456789012345", "super line" ]
+							[ "123456789012345", "super line"],
+							[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 						]
 					}
 				],
@@ -58,12 +67,16 @@ var queryTests = []struct {
 							"chunksDownloadTime": 0,
 							"totalChunksRef": 0,
 							"totalChunksDownloaded": 0,
+							"chunkRefsFetchTime": 0,
 							"chunk" :{
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
+								"decompressedNonIndexedLabelsBytes": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+								"headChunkNonIndexedLabelsBytes": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						},
@@ -77,12 +90,16 @@ var queryTests = []struct {
 							"chunksDownloadTime": 0,
 							"totalChunksRef": 0,
 							"totalChunksDownloaded": 0,
+							"chunkRefsFetchTime": 0,
 							"chunk" :{
 								"compressedBytes": 0,
 								"decompressedBytes": 0,
 								"decompressedLines": 0,
+								"decompressedNonIndexedLabelsBytes": 0,
 								"headChunkBytes": 0,
 								"headChunkLines": 0,
+								"headChunkNonIndexedLabelsBytes": 0,
+                                "postFilterLines": 0,
 								"totalDuplicates": 0
 							}
 						}
@@ -98,6 +115,15 @@ var queryTests = []struct {
 							"downloadTime": 0
 						},
 						"index": {
+							"entriesFound": 0,
+							"entriesRequested": 0,
+							"entriesStored": 0,
+							"bytesReceived": 0,
+							"bytesSent": 0,
+							"requests": 0,
+							"downloadTime": 0
+						},
+						"statsResult": {
 							"entriesFound": 0,
 							"entriesRequested": 0,
 							"entriesStored": 0,
@@ -124,9 +150,11 @@ var queryTests = []struct {
                         "shards": 0,
                         "splits": 0,
 						"subqueries": 0,
-						"totalBytesProcessed":0,
-                                                "totalEntriesReturned":0,
-						"totalLinesProcessed":0
+						"totalBytesProcessed": 0,
+                        "totalEntriesReturned": 0,
+						"totalLinesProcessed": 0,
+						"totalNonIndexedLabelsBytesProcessed": 0,
+                        "totalPostFilterLines": 0
 					}
 				}
 			}
@@ -136,10 +164,8 @@ var queryTests = []struct {
 	{
 		promql.Vector{
 			{
-				Point: promql.Point{
-					T: 1568404331324,
-					V: 0.013333333333333334,
-				},
+				T: 1568404331324,
+				F: 0.013333333333333334,
 				Metric: []labels.Label{
 					{
 						Name:  "filename",
@@ -152,10 +178,8 @@ var queryTests = []struct {
 				},
 			},
 			{
-				Point: promql.Point{
-					T: 1568404331324,
-					V: 3.45,
-				},
+				T: 1568404331324,
+				F: 3.45,
 				Metric: []labels.Label{
 					{
 						Name:  "filename",
@@ -199,12 +223,16 @@ var queryTests = []struct {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
+						"chunkRefsFetchTime": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -218,12 +246,16 @@ var queryTests = []struct {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
+						"chunkRefsFetchTime": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -239,6 +271,15 @@ var queryTests = []struct {
 						"downloadTime": 0
 					},
 					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -265,9 +306,11 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -278,10 +321,10 @@ var queryTests = []struct {
 	{
 		promql.Matrix{
 			{
-				Points: []promql.Point{
+				Floats: []promql.FPoint{
 					{
 						T: 1568404331324,
-						V: 0.013333333333333334,
+						F: 0.013333333333333334,
 					},
 				},
 				Metric: []labels.Label{
@@ -296,14 +339,14 @@ var queryTests = []struct {
 				},
 			},
 			{
-				Points: []promql.Point{
+				Floats: []promql.FPoint{
 					{
 						T: 1568404331324,
-						V: 3.45,
+						F: 3.45,
 					},
 					{
 						T: 1568404331339,
-						V: 4.45,
+						F: 4.45,
 					},
 				},
 				Metric: []labels.Label{
@@ -357,12 +400,16 @@ var queryTests = []struct {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
+						"chunkRefsFetchTime": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					},
@@ -376,12 +423,16 @@ var queryTests = []struct {
 						"chunksDownloadTime": 0,
 						"totalChunksRef": 0,
 						"totalChunksDownloaded": 0,
+						"chunkRefsFetchTime": 0,
 						"chunk" :{
 							"compressedBytes": 0,
 							"decompressedBytes": 0,
 							"decompressedLines": 0,
+							"decompressedNonIndexedLabelsBytes": 0,
 							"headChunkBytes": 0,
 							"headChunkLines": 0,
+							"headChunkNonIndexedLabelsBytes": 0,
+                            "postFilterLines": 0,
 							"totalDuplicates": 0
 						}
 					}
@@ -397,6 +448,15 @@ var queryTests = []struct {
 						"downloadTime": 0
 					},
 					"index": {
+						"entriesFound": 0,
+						"entriesRequested": 0,
+						"entriesStored": 0,
+						"bytesReceived": 0,
+						"bytesSent": 0,
+						"requests": 0,
+						"downloadTime": 0
+					},
+					"statsResult": {
 						"entriesFound": 0,
 						"entriesRequested": 0,
 						"entriesStored": 0,
@@ -423,9 +483,11 @@ var queryTests = []struct {
                     "shards": 0,
                     "splits": 0,
 					"subqueries": 0,
-					"totalBytesProcessed":0,
-                                        "totalEntriesReturned":0,
-					"totalLinesProcessed":0
+					"totalBytesProcessed": 0,
+                    "totalEntriesReturned": 0,
+					"totalLinesProcessed": 0,
+					"totalNonIndexedLabelsBytesProcessed": 0,
+                    "totalPostFilterLines": 0
 				}
 			  }
 			},
@@ -465,6 +527,14 @@ var tailTests = []struct {
 							Timestamp: time.Unix(0, 123456789012345),
 							Line:      "super line",
 						},
+						{
+							Timestamp: time.Unix(0, 123456789012346),
+							Line:      "super line with labels",
+							NonIndexedLabels: []logproto.LabelAdapter{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							},
+						},
 					},
 					Labels: "{test=\"test\"}",
 				},
@@ -483,7 +553,8 @@ var tailTests = []struct {
 						"test": "test"
 					},
 					"values":[
-						[ "123456789012345", "super line" ]
+						[ "123456789012345", "super line"],
+						[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
 					]
 				}
 			],
@@ -652,7 +723,7 @@ func Test_WriteSeriesResponseJSON(t *testing.T) {
 			err := WriteSeriesResponseJSON(tc.input, &b)
 			require.NoError(t, err)
 
-			require.JSONEqf(t, tc.expected, b.String(), "Label Test %d failed", i)
+			require.JSONEqf(t, tc.expected, b.String(), "Series Test %d failed", i)
 		})
 	}
 }
@@ -663,7 +734,7 @@ type wrappedValue struct {
 	parser.Value
 }
 
-func (w wrappedValue) Generate(rand *rand.Rand, size int) reflect.Value {
+func (w wrappedValue) Generate(rand *rand.Rand, _ int) reflect.Value {
 	types := []string{
 		loghttp.ResultTypeMatrix,
 		loghttp.ResultTypeScalar,
@@ -735,7 +806,8 @@ func randLabel(rand *rand.Rand) labels.Label {
 
 func randLabels(rand *rand.Rand) labels.Labels {
 	var labels labels.Labels
-	for i := 0; i < rand.Intn(100); i++ {
+	nLabels := rand.Intn(100)
+	for i := 0; i < nLabels; i++ {
 		labels = append(labels, randLabel(rand))
 	}
 
@@ -744,7 +816,8 @@ func randLabels(rand *rand.Rand) labels.Labels {
 
 func randEntries(rand *rand.Rand) []logproto.Entry {
 	var entries []logproto.Entry
-	for i := 0; i < rand.Intn(100); i++ {
+	nEntries := rand.Intn(100)
+	for i := 0; i < nEntries; i++ {
 		l, _ := quick.Value(reflect.TypeOf(""), rand)
 		entries = append(entries, logproto.Entry{Timestamp: time.Now(), Line: l.Interface().(string)})
 	}

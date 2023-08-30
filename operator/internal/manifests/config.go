@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 // LokiConfigMap creates the single configmap containing the loki configuration for the whole cluster
@@ -29,6 +29,10 @@ func LokiConfigMap(opt Options) (*corev1.ConfigMap, string, error) {
 
 	s := sha1.New()
 	_, err = s.Write(c)
+	if err != nil {
+		return nil, "", err
+	}
+	_, err = s.Write(rc)
 	if err != nil {
 		return nil, "", err
 	}
@@ -103,6 +107,16 @@ func ConfigOptions(opt Options) config.Options {
 		protocol = "https"
 	}
 
+	// nolint:staticcheck
+	// Handle the deprecated field opt.Stack.ReplicationFactor.
+	if (opt.Stack.Replication == nil || opt.Stack.Replication.Factor == 0) && opt.Stack.ReplicationFactor > 0 {
+		if opt.Stack.Replication == nil {
+			opt.Stack.Replication = &lokiv1.ReplicationSpec{}
+		}
+
+		opt.Stack.Replication.Factor = opt.Stack.ReplicationFactor
+	}
+
 	return config.Options{
 		Stack: opt.Stack,
 		Gates: opt.Gates,
@@ -143,7 +157,7 @@ func ConfigOptions(opt Options) config.Options {
 			FQDN: fqdn(NewQueryFrontendGRPCService(opt).GetName(), opt.Namespace),
 			Port: grpcPort,
 		},
-		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing),
+		GossipRing: gossipRingConfig(opt.Name, opt.Namespace, opt.Stack.HashRing, opt.Stack.Replication),
 		Querier: config.Address{
 			Protocol: protocol,
 			FQDN:     fqdn(NewQuerierHTTPService(opt).GetName(), opt.Namespace),
@@ -162,6 +176,7 @@ func ConfigOptions(opt Options) config.Options {
 			IngesterMemoryRequest: opt.ResourceRequirements.Ingester.Requests.Memory().Value(),
 		},
 		ObjectStorage:         opt.ObjectStorage,
+		HTTPTimeouts:          opt.Timeouts.Loki,
 		EnableRemoteReporting: opt.Gates.GrafanaLabsUsageReport,
 		Ruler: config.Ruler{
 			Enabled:               rulerEnabled,
@@ -243,7 +258,7 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 	return conf
 }
 
-func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) config.GossipRing {
+func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, replication *lokiv1.ReplicationSpec) config.GossipRing {
 	var instanceAddr string
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
@@ -257,10 +272,11 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec) conf
 	}
 
 	return config.GossipRing{
-		InstanceAddr:         instanceAddr,
-		InstancePort:         grpcPort,
-		BindPort:             gossipPort,
-		MembersDiscoveryAddr: fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+		InstanceAddr:                   instanceAddr,
+		InstancePort:                   grpcPort,
+		BindPort:                       gossipPort,
+		MembersDiscoveryAddr:           fqdn(BuildLokiGossipRingService(stackName).GetName(), stackNs),
+		EnableInstanceAvailabilityZone: replication != nil && len(replication.Zones) > 0,
 	}
 }
 
@@ -321,6 +337,7 @@ func remoteWriteConfig(s *lokiv1.RemoteWriteSpec, rs *RulerSecret) *config.Remot
 }
 
 var deleteWorkerCountMap = map[lokiv1.LokiStackSizeType]uint{
+	lokiv1.SizeOneXDemo:       10,
 	lokiv1.SizeOneXExtraSmall: 10,
 	lokiv1.SizeOneXSmall:      150,
 	lokiv1.SizeOneXMedium:     150,

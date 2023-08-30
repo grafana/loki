@@ -2,13 +2,10 @@
 title: Alerting and recording rules
 menuTitle: Alert
 description: Learn how the rule evaluates queries for alerting.
-
 aliases:
-  - /docs/loki/latest/rules/
-  - docs/loki/latest/alert/
-  - docs/loki/latest/alerting/
-
-weight: 850
+  - ./rules/
+  - ./alerting/
+weight: 800
 keywords:
   - loki
   - alert
@@ -87,7 +84,7 @@ We support [Prometheus-compatible](https://prometheus.io/docs/prometheus/latest/
 
 > Querying the precomputed result will then often be much faster than executing the original expression every time it is needed. This is especially useful for dashboards, which need to query the same expression repeatedly every time they refresh.
 
-Loki allows you to run [metric queries]({{<relref "../logql/metric_queries">}}) over your logs, which means
+Loki allows you to run [metric queries]({{< relref "../query/metric_queries" >}}) over your logs, which means
 that you can derive a numeric aggregation from your logs, like calculating the number of requests over time from your NGINX access log.
 
 ### Example
@@ -108,6 +105,43 @@ rules:
 This query (`expr`) will be executed every 1 minute (`interval`), the result of which will be stored in the metric
 name we have defined (`record`). This metric named `nginx:requests:rate1m` can now be sent to Prometheus, where it will be stored
 just like any other metric.
+
+
+### Limiting Alerts and Recording Rule Samples
+
+Like [Prometheus](https://prometheus.io/docs/prometheus/latest/configuration/recording_rules/#limiting-alerts-and-series), you can configure a limit for alerts produced by alerting rules and samples produced by recording rules. This limit can be configured per-group. Using limits can prevent a faulty rule from generating a large number of alerts or recording samples. When the limit is exceeded, all recording samples produced by the rule are discarded, and if it is an alerting rule, all alerts for the rule, active, pending, or inactive, are cleared. The event will be recorded as an error in the evaluation, and the rule health will be set to `err`. The default value for limit is `0` meaning no limit.
+
+#### Example
+
+Here is an example of a rule group along with its limit configured.
+
+
+
+```yaml
+groups:
+  - name: production_rules
+    limit: 10
+    interval: 1m
+    rules:
+      - alert: HighPercentageError
+        expr: |
+          sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+            /
+          sum(rate({app="foo", env="production"}[5m])) by (job)
+            > 0.05
+        for: 10m
+        labels:
+            severity: page
+        annotations:
+            summary: High request latency
+      - record: nginx:requests:rate1m
+        expr: |
+          sum(
+            rate({container="nginx"}[1m])
+          )
+        labels:
+          cluster: "us-central1"
+```
 
 ### Remote-Write
 
@@ -133,11 +167,11 @@ ruler:
       url: http://localhost:9090/api/v1/write
 ```
 
-Further configuration options can be found under [ruler]({{<relref "../configuration#ruler">}}).
+Further configuration options can be found under [ruler]({{< relref "../configure#ruler" >}}).
 
 ### Operations
 
-Please refer to the [Recording Rules]({{<relref "../operations/recording-rules">}}) page.
+Please refer to the [Recording Rules]({{< relref "../operations/recording-rules" >}}) page.
 
 ## Use cases
 
@@ -164,7 +198,7 @@ Sometimes you want to know whether _any_ instance of something has occurred. Ale
 
 ### Alerting on high-cardinality sources
 
-Another great use case is alerting on high cardinality sources. These are things which are difficult/expensive to record as metrics because the potential label set is huge. A great example of this is per-tenant alerting in multi-tenanted systems like Loki. It's a common balancing act between the desire to have per-tenant metrics and the cardinality explosion that ensues (adding a single _tenant_ label to an existing Prometheus metric would increase it's cardinality by the number of tenants).
+Another great use case is alerting on high cardinality sources. These are things which are difficult/expensive to record as metrics because the potential label set is huge. A great example of this is per-tenant alerting in multi-tenanted systems like Loki. It's a common balancing act between the desire to have per-tenant metrics and the cardinality explosion that ensues (adding a single _tenant_ label to an existing Prometheus metric would increase its cardinality by the number of tenants).
 
 Creating these alerts in LogQL is attractive because these metrics can be extracted at _query time_, meaning we don't suffer the cardinality explosion in our metrics store.
 
@@ -241,7 +275,7 @@ jobs:
 
 One option to scale the Ruler is by scaling it horizontally. However, with multiple Ruler instances running they will need to coordinate to determine which instance will evaluate which rule. Similar to the ingesters, the Rulers establish a hash ring to divide up the responsibilities of evaluating rules.
 
-The possible configurations are listed fully in the [configuration documentation]({{<relref "../configuration">}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires it's own ring be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
+The possible configurations are listed fully in the [configuration documentation]({{< relref "../configure" >}}), but in order to shard rules across multiple Rulers, the rules API must be enabled via flag (`-ruler.enable-api`) or config file parameter. Secondly, the Ruler requires its own ring to be configured. From there the Rulers will shard and handle the division of rules automatically. Unlike ingesters, Rulers do not hand over responsibility: all rules are re-sharded randomly every time a Ruler is added to or removed from the ring.
 
 A full sharding-enabled Ruler example is:
 
@@ -266,7 +300,7 @@ ruler:
 
 The Ruler supports the following types of storage: `azure`, `gcs`, `s3`, `swift`, `cos` and `local`. Most kinds of storage work with the sharded Ruler configuration in an obvious way, that is, configure all Rulers to use the same backend.
 
-The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{<relref "../api/#ruler">}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
+The local implementation reads the rule files off of the local filesystem. This is a read-only backend that does not support the creation and deletion of rules through the [Ruler API]({{< relref "../reference/api#ruler" >}}). Despite the fact that it reads the local filesystem this method can still be used in a sharded Ruler configuration if the operator takes care to load the same rules to every Ruler. For instance, this could be accomplished by mounting a [Kubernetes ConfigMap](https://kubernetes.io/docs/concepts/configuration/configmap/) onto every Ruler pod.
 
 A typical local configuration might look something like:
 ```

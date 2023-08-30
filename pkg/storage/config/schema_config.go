@@ -4,18 +4,22 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/mtime"
 	"github.com/prometheus/common/model"
-	"github.com/weaveworks/common/mtime"
 	yaml "gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
@@ -52,6 +56,7 @@ const (
 var (
 	errInvalidSchemaVersion     = errors.New("invalid schema version")
 	errInvalidTablePeriod       = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
+	errInvalidTableName         = errors.New("invalid table name")
 	errConfigFileNotSet         = errors.New("schema config file needs to be set")
 	errConfigChunkPrefixNotSet  = errors.New("schema config for chunks is missing the 'prefix' setting")
 	errSchemaIncreasingFromTime = errors.New("from time in schemas must be distinct and in increasing order")
@@ -60,7 +65,26 @@ var (
 	errUpcomingBoltdbShipperNon24Hours = errors.New("boltdb-shipper with future date must always have periodic config for index set to 24h")
 	errTSDBNon24HoursIndexPeriod       = errors.New("tsdb must always have periodic config for index set to 24h")
 	errZeroLengthConfig                = errors.New("must specify at least one schema configuration")
+
+	// regexp for finding the trailing index table number at the end of the table name
+	extractTableNumberRegex = regexp.MustCompile(`[0-9]+$`)
 )
+
+// ExtractTableNumberFromName extracts the table number from a given tableName.
+// returns -1 on error.
+func ExtractTableNumberFromName(tableName string) (int64, error) {
+	match := extractTableNumberRegex.Find([]byte(tableName))
+	if match == nil {
+		return -1, errInvalidTableName
+	}
+
+	tableNumber, err := strconv.ParseInt(string(match), 10, 64)
+	if err != nil {
+		return -1, err
+	}
+
+	return tableNumber, nil
+}
 
 // TableRange represents a range of table numbers built based on the configured schema start/end date and the table period.
 // Both Start and End are inclusive.
@@ -73,16 +97,55 @@ type TableRange struct {
 type TableRanges []TableRange
 
 // TableInRange tells whether given table falls in any of the ranges and the tableName has the right prefix based on the schema config.
-func (t TableRanges) TableInRange(tableNumber int64, tableName string) bool {
+func (t TableRanges) TableInRange(tableName string) (bool, error) {
+	tableNumber, err := ExtractTableNumberFromName(tableName)
+	if err != nil {
+		return false, err
+	}
+
 	cfg := t.ConfigForTableNumber(tableNumber)
-	return cfg != nil && fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName
+	return cfg != nil &&
+		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName, nil
 }
 
 func (t TableRanges) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
 	for _, r := range t {
-		if r.Start <= tableNumber && tableNumber <= r.End {
-			return r.PeriodConfig
+		if cfg := r.ConfigForTableNumber(tableNumber); cfg != nil {
+			return cfg
 		}
+	}
+
+	return nil
+}
+
+func (t TableRanges) TableNameFor(table int64) (string, bool) {
+	cfg := t.ConfigForTableNumber(table)
+	if cfg == nil {
+		return "", false
+	}
+	return fmt.Sprintf("%s%d", cfg.IndexTables.Prefix, table), true
+}
+
+// TableInRange tells whether given table falls in the range and the tableName has the right prefix based on the schema config.
+func (t TableRange) TableInRange(tableName string) (bool, error) {
+	// non-periodic tables
+	if t.PeriodConfig.IndexTables.Period == 0 {
+		return t.PeriodConfig.IndexTables.Prefix == tableName, nil
+	}
+
+	tableNumber, err := ExtractTableNumberFromName(tableName)
+	if err != nil {
+		return false, err
+	}
+
+	cfg := t.ConfigForTableNumber(tableNumber)
+	return cfg != nil &&
+		fmt.Sprintf("%s%s", cfg.IndexTables.Prefix, strconv.Itoa(int(tableNumber))) == tableName, nil
+}
+
+func (t TableRange) ConfigForTableNumber(tableNumber int64) *PeriodConfig {
+	if t.Start <= tableNumber && tableNumber <= t.End {
+		return t.PeriodConfig
 	}
 
 	return nil
@@ -93,10 +156,10 @@ type PeriodConfig struct {
 	// used when working with config
 	From DayTime `yaml:"from" doc:"description=The date of the first day that index buckets should be created. Use a date in the past if this is your only period_config, otherwise use a date when you want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15."`
 	// type of index client to use.
-	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used.\nWhich store to use for the index. Either aws, aws-dynamo, gcp, bigtable, bigtable-hashed, cassandra, boltdb or boltdb-shipper. "`
-	// type of object client to use; if omitted, defaults to store.
-	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs, cassandra, swift, filesystem or a named_store (refer to named_stores_config). If omitted, defaults to the same value as store."`
-	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v11."`
+	IndexType string `yaml:"store" doc:"description=store and object_store below affect which <storage_config> key is used. Which index to use. Either tsdb or boltdb-shipper. Following stores are deprecated: aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	// type of object client to use.
+	ObjectType  string              `yaml:"object_store" doc:"description=Which store to use for the chunks. Either aws (alias s3), azure, gcs, alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to named_stores_config). Following stores are deprecated: aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc."`
+	Schema      string              `yaml:"schema" doc:"description=The schema version to use, current recommended schema is v12."`
 	IndexTables PeriodicTableConfig `yaml:"index" doc:"description=Configures how the index is updated and stored."`
 	ChunkTables PeriodicTableConfig `yaml:"chunks" doc:"description=Configured how the chunks are updated and stored."`
 	RowShards   uint32              `yaml:"row_shards" doc:"description=How many shards will be created. Only used if schema is v10 or greater."`
@@ -121,6 +184,13 @@ func (cfg *PeriodConfig) UnmarshalYAML(unmarshal func(interface{}) error) error 
 // GetIndexTableNumberRange returns the table number range calculated based on
 // the configured schema start date, index table period and the given schemaEndDate
 func (cfg *PeriodConfig) GetIndexTableNumberRange(schemaEndDate DayTime) TableRange {
+	// non-periodic tables
+	if cfg.IndexTables.Period == 0 {
+		return TableRange{
+			PeriodConfig: cfg,
+		}
+	}
+
 	return TableRange{
 		Start:        cfg.From.Unix() / int64(cfg.IndexTables.Period/time.Second),
 		End:          schemaEndDate.Unix() / int64(cfg.IndexTables.Period/time.Second),
@@ -234,28 +304,26 @@ func ActivePeriodConfig(configs []PeriodConfig) int {
 	return i
 }
 
-func usingForPeriodConfigs(configs []PeriodConfig, fn func(PeriodConfig) bool) bool {
+func usingForPeriodConfigs(configs []PeriodConfig, fn func(string) bool) bool {
 	activePCIndex := ActivePeriodConfig(configs)
 
-	if fn(configs[activePCIndex]) ||
-		(len(configs)-1 > activePCIndex && fn(configs[activePCIndex+1])) {
+	if fn(configs[activePCIndex].IndexType) ||
+		(len(configs)-1 > activePCIndex && fn(configs[activePCIndex+1].IndexType)) {
 		return true
 	}
 
 	return false
 }
 
-func UsingObjectStorageIndex(configs []PeriodConfig) bool {
-	fn := func(cfg PeriodConfig) bool {
-		switch cfg.IndexType {
-		case BoltDBShipperType, TSDBType:
-			return true
-		default:
-			return false
-		}
-	}
+// IsObjectStorageIndex returns true if the index type is either boltdb-shipper or tsdb.
+func IsObjectStorageIndex(indexType string) bool {
+	return indexType == BoltDBShipperType || indexType == TSDBType
+}
 
-	return usingForPeriodConfigs(configs, fn)
+// UsingObjectStorageIndex returns true if the current or any of the upcoming periods
+// use an object store index.
+func UsingObjectStorageIndex(configs []PeriodConfig) bool {
+	return usingForPeriodConfigs(configs, IsObjectStorageIndex)
 }
 
 func defaultRowShards(schema string) uint32 {
@@ -305,6 +373,38 @@ func (cfg *PeriodConfig) applyDefaults() {
 	}
 }
 
+// ChunkFormat returns chunk format including it's headBlockFormat corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) ChunkFormat() (byte, chunkenc.HeadBlockFmt, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to get chunk format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return chunkenc.ChunkFormatV3, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV3), nil
+	default: // for v13 and above
+		return chunkenc.ChunkFormatV4, chunkenc.ChunkHeadFormatFor(chunkenc.ChunkFormatV4), nil
+	}
+}
+
+// TSDBFormat returns index format corresponding to the `schema` version
+// in the given `PeriodConfig`.
+func (cfg *PeriodConfig) TSDBFormat() (int, error) {
+	sver, err := cfg.VersionAsInt()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get index format: %w", err)
+	}
+
+	switch {
+	case sver <= 12:
+		return index.FormatV2, nil
+	default: // for v13 and above
+		return index.FormatV3, nil
+	}
+}
+
 // Validate the period config.
 func (cfg PeriodConfig) validate() error {
 	validateError := validateChunks(cfg)
@@ -330,7 +430,7 @@ func (cfg PeriodConfig) validate() error {
 	}
 
 	switch v {
-	case 10, 11, 12:
+	case 10, 11, 12, 13:
 		if cfg.RowShards == 0 {
 			return fmt.Errorf("must have row_shards > 0 (current: %d) for schema (%s)", cfg.RowShards, cfg.Schema)
 		}
@@ -365,6 +465,9 @@ func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 
 	v := strings.Trim(cfg.Schema, "v")
 	n, err := strconv.Atoi(v)
+	if err != nil {
+		err = fmt.Errorf("invalid schema version: %w", err)
+	}
 	cfg.schemaInt = &n
 	return n, err
 }
@@ -549,4 +652,22 @@ func newExternalKey(ref logproto.ChunkRef) string {
 // v12+
 func newerExternalKey(ref logproto.ChunkRef) string {
 	return fmt.Sprintf("%s/%x/%x:%x:%x", ref.UserID, ref.Fingerprint, int64(ref.From), int64(ref.Through), ref.Checksum)
+}
+
+func GetIndexStoreTableRanges(indexType string, periodicConfigs []PeriodConfig) TableRanges {
+	var ranges TableRanges
+	for i := range periodicConfigs {
+		if periodicConfigs[i].IndexType != indexType {
+			continue
+		}
+
+		periodEndTime := DayTime{Time: math.MaxInt64}
+		if i < len(periodicConfigs)-1 {
+			periodEndTime = DayTime{Time: periodicConfigs[i+1].From.Time.Add(-time.Millisecond)}
+		}
+
+		ranges = append(ranges, periodicConfigs[i].GetIndexTableNumberRange(periodEndTime))
+	}
+
+	return ranges
 }

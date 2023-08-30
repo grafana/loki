@@ -4,15 +4,16 @@ import (
 	"fmt"
 	"path"
 
-	"github.com/grafana/loki/operator/internal/manifests/internal/config"
-
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	policyv1 "k8s.io/api/policy/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/grafana/loki/operator/internal/manifests/internal/config"
 )
 
 // BuildQueryFrontend returns a list of k8s objects for Loki QueryFrontend
@@ -37,6 +38,12 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		}
 	}
 
+	if opts.Gates.RestrictedPodSecurityStandard {
+		if err := configurePodSpecForRestrictedStandard(&deployment.Spec.Template.Spec); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := configureHashRingEnv(&deployment.Spec.Template.Spec, opts); err != nil {
 		return nil, err
 	}
@@ -45,17 +52,24 @@ func BuildQueryFrontend(opts Options) ([]client.Object, error) {
 		return nil, err
 	}
 
+	if err := configureReplication(&deployment.Spec.Template, opts.Stack.Replication, LabelQueryFrontendComponent, opts.Name); err != nil {
+		return nil, err
+	}
+
 	return []client.Object{
 		deployment,
 		NewQueryFrontendGRPCService(opts),
 		NewQueryFrontendHTTPService(opts),
+		NewQueryFrontendPodDisruptionBudget(opts),
 	}, nil
 }
 
 // NewQueryFrontendDeployment creates a deployment object for a query-frontend
 func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
+	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 	podSpec := corev1.PodSpec{
-		Affinity: defaultAffinity(opts.Gates.DefaultNodeAffinity),
+		Affinity: configureAffinity(LabelQueryFrontendComponent, opts.Name, opts.Gates.DefaultNodeAffinity, opts.Stack.Template.QueryFrontend),
 		Volumes: []corev1.Volume{
 			{
 				Name: configVolumeName,
@@ -124,19 +138,14 @@ func NewQueryFrontendDeployment(opts Options) *appsv1.Deployment {
 				TerminationMessagePath:   "/dev/termination-log",
 				TerminationMessagePolicy: "File",
 				ImagePullPolicy:          "IfNotPresent",
-				SecurityContext:          containerSecurityContext(),
 			},
 		},
-		SecurityContext: podSecurityContext(opts.Gates.RuntimeSeccompProfile),
 	}
 
 	if opts.Stack.Template != nil && opts.Stack.Template.QueryFrontend != nil {
 		podSpec.Tolerations = opts.Stack.Template.QueryFrontend.Tolerations
 		podSpec.NodeSelector = opts.Stack.Template.QueryFrontend.NodeSelector
 	}
-
-	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
-	a := commonAnnotations(opts.ConfigSHA1, opts.CertRotationRequiredAt)
 
 	return &appsv1.Deployment{
 		TypeMeta: metav1.TypeMeta{
@@ -220,6 +229,30 @@ func NewQueryFrontendHTTPService(opts Options) *corev1.Service {
 				},
 			},
 			Selector: labels,
+		},
+	}
+}
+
+// NewQueryFrontendPodDisruptionBudget returns a PodDisruptionBudget for the LokiStack
+// query-frontend pods.
+func NewQueryFrontendPodDisruptionBudget(opts Options) *policyv1.PodDisruptionBudget {
+	l := ComponentLabels(LabelQueryFrontendComponent, opts.Name)
+	ma := intstr.FromInt(1)
+	return &policyv1.PodDisruptionBudget{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "PodDisruptionBudget",
+			APIVersion: policyv1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Labels:    l,
+			Name:      QueryFrontendName(opts.Name),
+			Namespace: opts.Namespace,
+		},
+		Spec: policyv1.PodDisruptionBudgetSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: l,
+			},
+			MinAvailable: &ma,
 		},
 	}
 }

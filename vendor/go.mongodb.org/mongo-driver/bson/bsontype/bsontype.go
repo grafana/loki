@@ -8,7 +8,9 @@
 // a stringifier for the Type to enable easier debugging when working with BSON.
 package bsontype // import "go.mongodb.org/mongo-driver/bson/bsontype"
 
-// These constants uniquely refer to each BSON type.
+// BSON element types as described in https://bsonspec.org/spec.html.
+//
+// Deprecated: Use bson.Type* constants instead.
 const (
 	Double           Type = 0x01
 	String           Type = 0x02
@@ -31,7 +33,12 @@ const (
 	Decimal128       Type = 0x13
 	MinKey           Type = 0xFF
 	MaxKey           Type = 0x7F
+)
 
+// BSON binary element subtypes as described in https://bsonspec.org/spec.html.
+//
+// Deprecated: Use the bson.TypeBinary* constants instead.
+const (
 	BinaryGeneric     byte = 0x00
 	BinaryFunction    byte = 0x01
 	BinaryBinaryOld   byte = 0x02

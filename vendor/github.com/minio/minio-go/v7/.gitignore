@@ -3,3 +3,4 @@
 validator
 golangci-lint
 functional_tests
+.idea

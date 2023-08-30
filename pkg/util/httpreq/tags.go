@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/weaveworks/common/middleware"
+	"github.com/grafana/dskit/middleware"
 )
 
 // NOTE(kavi): Why new type?
@@ -16,7 +16,7 @@ type ctxKey string
 
 var (
 	QueryTagsHTTPHeader ctxKey = "X-Query-Tags"
-	safeQueryTags              = regexp.MustCompile("[^a-zA-Z0-9-=, ]+") // only alpha-numeric, ' ', ',', '=' and `-`
+	safeQueryTags              = regexp.MustCompile("[^a-zA-Z0-9-=.@, ]+") // only alpha-numeric, ' ', ',', '=', '@', '.' and `-`
 
 	QueryQueueTimeHTTPHeader ctxKey = "X-Query-Queue-Time"
 )
@@ -26,7 +26,7 @@ func ExtractQueryTagsMiddleware() middleware.Interface {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			ctx := req.Context()
 			tags := req.Header.Get(string(QueryTagsHTTPHeader))
-			tags = safeQueryTags.ReplaceAllString(tags, "")
+			tags = safeQueryTags.ReplaceAllString(tags, "_")
 
 			if tags != "" {
 				ctx = context.WithValue(ctx, QueryTagsHTTPHeader, tags)

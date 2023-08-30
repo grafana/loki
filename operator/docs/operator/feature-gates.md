@@ -231,14 +231,14 @@ More details: <a href="https://grafana.com/docs/loki/latest/release-notes/v2-5/#
 </tr>
 <tr>
 <td>
-<code>runtimeSeccompProfile</code><br/>
+<code>restrictedPodSecurityStandard</code><br/>
 <em>
 bool
 </em>
 </td>
 <td>
-<p>RuntimeSeccompProfile enables the restricted seccomp profile on all
-Lokistack components.</p>
+<p>RestrictedPodSecurityStandard enables compliance with the restrictive pod security standard.
+More details: <a href="https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted">https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted</a></p>
 </td>
 </tr>
 <tr>
@@ -342,6 +342,17 @@ when using HTTPEncryption or GRPCEncryption.</p>
 <tbody>
 <tr>
 <td>
+<code>enabled</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Enabled defines the flag to enable that these feature gates are used against OpenShift Container Platform releases.</p>
+</td>
+</tr>
+<tr>
+<td>
 <code>servingCertsService</code><br/>
 <em>
 bool
@@ -352,19 +363,6 @@ bool
 to use the in-platform CA and generate a TLS cert/key pair per service for
 in-cluster data-in-transit encryption.
 More details: <a href="https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html">https://docs.openshift.com/container-platform/latest/security/certificate_types_descriptions/service-ca-certificates.html</a></p>
-</td>
-</tr>
-<tr>
-<td>
-<code>gatewayRoute</code><br/>
-<em>
-bool
-</em>
-</td>
-<td>
-<p>GatewayRoute enables creating an OpenShift Route for the LokiStack
-gateway to expose the service to public internet access.
-More details: <a href="https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html">https://docs.openshift.com/container-platform/latest/networking/understanding-networking.html</a></p>
 </td>
 </tr>
 <tr>
@@ -401,6 +399,17 @@ bool
 <td>
 <p>ClusterProxy enables usage of the proxy variables set in the proxy resource.
 More details: <a href="https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy">https://docs.openshift.com/container-platform/4.11/networking/enable-cluster-wide-proxy.html#enable-cluster-wide-proxy</a></p>
+</td>
+</tr>
+<tr>
+<td>
+<code>dashboards</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<p>Dashboards enables the loki-mixin dashboards into the OpenShift Console</p>
 </td>
 </tr>
 </tbody>

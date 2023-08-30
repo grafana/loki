@@ -2,8 +2,9 @@
 package log_test
 
 import (
-	"github.com/grafana/loki/pkg/logql/log"
 	"testing"
+
+	"github.com/grafana/loki/pkg/logql/log"
 
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
@@ -42,7 +43,7 @@ var (
 )
 
 func Test_ParserHints(t *testing.T) {
-	lbs := labels.Labels{{Name: "app", Value: "nginx"}, {Name: "cluster", Value: "us-central-west"}}
+	lbs := labels.FromStrings("app", "nginx", "cluster", "us-central-west")
 
 	t.Parallel()
 	for _, tt := range []struct {
@@ -257,7 +258,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
 		h := log.NewParserHint(nil, nil, true, true, "metric", s)
 
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "protocol", Value: "HTTP/2.0"}}, 0)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.False(t, h.ShouldContinueParsingLine("protocol", lb))
 	})
 
@@ -265,7 +266,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		s := []log.Stage{log.NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "protocol", "nothing"))}
 		h := log.NewParserHint(nil, nil, true, true, "metric", s)
 
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "response", Value: "200"}}, 0)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("response", "200"), 0)
 		require.True(t, h.ShouldContinueParsingLine("response", lb))
 	})
 
@@ -278,7 +279,7 @@ func TestLabelFiltersInParseHints(t *testing.T) {
 		}
 
 		h := log.NewParserHint(nil, nil, true, true, "metric", s)
-		lb := log.NewBaseLabelsBuilder().ForLabels(labels.Labels{{Name: "protocol", Value: "HTTP/2.0"}}, 0)
+		lb := log.NewBaseLabelsBuilder().ForLabels(labels.FromStrings("protocol", "HTTP/2.0"), 0)
 		require.True(t, h.ShouldContinueParsingLine("protocol", lb))
 	})
 }

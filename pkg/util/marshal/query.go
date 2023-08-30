@@ -3,6 +3,7 @@ package marshal
 import (
 	"fmt"
 	"strconv"
+	"unsafe"
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
@@ -90,24 +91,18 @@ func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 		return loghttp.Stream{}, errors.Wrapf(err, "err while creating labelset for %s", s.Labels)
 	}
 
-	ret := loghttp.Stream{
-		Labels:  labels,
-		Entries: make([]loghttp.Entry, len(s.Entries)),
+	// Avoid a nil entries slice to be consistent with the decoding
+	entries := []loghttp.Entry{}
+	if len(s.Entries) > 0 {
+		entries = *(*[]loghttp.Entry)(unsafe.Pointer(&s.Entries))
 	}
 
-	for i, e := range s.Entries {
-		ret.Entries[i] = NewEntry(e)
+	ret := loghttp.Stream{
+		Labels:  labels,
+		Entries: entries,
 	}
 
 	return ret, nil
-}
-
-// NewEntry constructs an Entry from a logproto.Entry
-func NewEntry(e logproto.Entry) loghttp.Entry {
-	return loghttp.Entry{
-		Timestamp: e.Timestamp,
-		Line:      e.Line,
-	}
 }
 
 func NewScalar(s promql.Scalar) loghttp.Scalar {
@@ -133,7 +128,7 @@ func NewVector(v promql.Vector) loghttp.Vector {
 func NewSample(s promql.Sample) model.Sample {
 
 	ret := model.Sample{
-		Value:     model.SampleValue(s.V),
+		Value:     model.SampleValue(s.F),
 		Timestamp: model.Time(s.T),
 		Metric:    NewMetric(s.Metric),
 	}
@@ -156,12 +151,12 @@ func NewMatrix(m promql.Matrix) loghttp.Matrix {
 func NewSampleStream(s promql.Series) model.SampleStream {
 	ret := model.SampleStream{
 		Metric: NewMetric(s.Metric),
-		Values: make([]model.SamplePair, len(s.Points)),
+		Values: make([]model.SamplePair, len(s.Floats)),
 	}
 
-	for i, p := range s.Points {
+	for i, p := range s.Floats {
 		ret.Values[i].Timestamp = model.Time(p.T)
-		ret.Values[i].Value = model.SampleValue(p.V)
+		ret.Values[i].Value = model.SampleValue(p.F)
 	}
 
 	return ret
@@ -315,6 +310,18 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
+		if len(e.NonIndexedLabels) > 0 {
+			s.WriteMore()
+			s.WriteObjectStart()
+			for i, lbl := range e.NonIndexedLabels {
+				if i > 0 {
+					s.WriteMore()
+				}
+				s.WriteObjectField(lbl.Name)
+				s.WriteString(lbl.Value)
+			}
+			s.WriteObjectEnd()
+		}
 		s.WriteArrayEnd()
 
 		s.Flush()
@@ -356,7 +363,7 @@ func encodeSample(sample promql.Sample, s *jsoniter.Stream) {
 
 	s.WriteMore()
 	s.WriteObjectField("value")
-	encodeValue(sample.T, sample.V, s)
+	encodeValue(sample.T, sample.F, s)
 }
 
 func encodeValue(T int64, V float64, s *jsoniter.Stream) {
@@ -403,11 +410,11 @@ func encodeSampleStream(stream promql.Series, s *jsoniter.Stream) {
 	s.WriteMore()
 	s.WriteObjectField("values")
 	s.WriteArrayStart()
-	for i, p := range stream.Points {
+	for i, p := range stream.Floats {
 		if i > 0 {
 			s.WriteMore()
 		}
-		encodeValue(p.T, p.V, s)
+		encodeValue(p.T, p.F, s)
 	}
 	s.WriteArrayEnd()
 }

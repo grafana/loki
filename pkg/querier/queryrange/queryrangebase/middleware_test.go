@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/weaveworks/common/user"
+	"github.com/grafana/dskit/user"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -28,7 +28,7 @@ type fakeGenNumberLoader struct {
 	genNumber string
 }
 
-func (l *fakeGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
+func (l *fakeGenNumberLoader) GetResultsCacheGenNumber(_ []string) string {
 	return l.genNumber
 }
 

@@ -136,9 +136,11 @@ func (q *RequestQueue) Dequeue(ctx context.Context, last QueueIndex, querierID s
 
 FindQueue:
 	// We need to wait if there are no tenants, or no pending requests for given querier.
-	for (q.queues.hasTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
+	for (q.queues.hasNoTenantQueues() || querierWait) && ctx.Err() == nil && !q.stopped {
 		querierWait = false
+		start := time.Now()
 		q.cond.Wait(ctx)
+		q.metrics.querierWaitTime.WithLabelValues(querierID).Observe(time.Since(start).Seconds())
 	}
 
 	if q.stopped {
@@ -196,7 +198,7 @@ func (q *RequestQueue) stopping(_ error) error {
 	q.mtx.Lock()
 	defer q.mtx.Unlock()
 
-	for !q.queues.hasTenantQueues() && q.connectedQuerierWorkers.Load() > 0 {
+	for !q.queues.hasNoTenantQueues() && q.connectedQuerierWorkers.Load() > 0 {
 		q.cond.Wait(context.Background())
 	}
 

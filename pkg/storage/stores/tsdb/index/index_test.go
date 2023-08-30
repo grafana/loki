@@ -29,12 +29,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/goleak"
 
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/util/testutil"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 func TestMain(m *testing.M) {
@@ -128,7 +129,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	fn := filepath.Join(dir, IndexFilename)
 
 	// An empty index must still result in a readable file.
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 	require.NoError(t, iw.Close())
 
@@ -152,7 +153,7 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	fn := filepath.Join(dir, IndexFilename)
 
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 
 	series := []labels.Labels{
@@ -232,7 +233,7 @@ func TestPostingsMany(t *testing.T) {
 
 	fn := filepath.Join(dir, IndexFilename)
 
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 
 	// Create a label in the index which has 999 values.
@@ -366,7 +367,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		})
 	}
 
-	iw, err := NewWriter(context.Background(), filepath.Join(dir, IndexFilename))
+	iw, err := NewWriter(context.Background(), FormatV3, filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	syms := []string{}
@@ -720,7 +721,7 @@ func TestDecoder_ChunkSamples(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			iw, err := NewWriter(context.Background(), filepath.Join(dir, name))
+			iw, err := NewWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
 			require.NoError(t, err)
 
 			syms := []string{}
