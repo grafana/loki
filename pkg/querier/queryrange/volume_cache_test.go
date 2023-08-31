@@ -14,91 +14,200 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 )
 
 func TestVolumeCache(t *testing.T) {
-	cfg := queryrangebase.ResultsCacheConfig{
-		CacheConfig: cache.Config{
-			Cache: cache.NewMockCache(),
-		},
-	}
-	c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
-	require.NoError(t, err)
-	cacheMiddleware, err := NewVolumeCacheMiddleware(
-		log.NewNopLogger(),
-		WithSplitByLimits(fakeLimits{}, 24*time.Hour),
-		DefaultCodec,
-		c,
-		nil,
-		nil,
-		func(_ context.Context, _ []string, _ queryrangebase.Request) int {
-			return 1
-		},
-		false,
-		nil,
-		nil,
-	)
-	require.NoError(t, err)
+	setup := func(volResp *VolumeResponse) (*int, queryrangebase.Handler) {
+		cfg := queryrangebase.ResultsCacheConfig{
+			CacheConfig: cache.Config{
+				Cache: cache.NewMockCache(),
+			},
+		}
+		c, err := cache.New(cfg.CacheConfig, nil, log.NewNopLogger(), stats.ResultCache)
+		require.NoError(t, err)
+		cacheMiddleware, err := NewVolumeCacheMiddleware(
+			log.NewNopLogger(),
+			WithSplitByLimits(fakeLimits{}, 24*time.Hour),
+			DefaultCodec,
+			c,
+			nil,
+			nil,
+			func(_ context.Context, _ []string, _ queryrangebase.Request) int {
+				return 1
+			},
+			false,
+			nil,
+			nil,
+		)
+		require.NoError(t, err)
 
-	from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
-	volReq := &logproto.VolumeRequest{
-		From:     from,
-		Through:  through,
-		Matchers: `{foo="bar"}`,
-		Limit:    10,
+		calls, volHandler := volumeResultHandler(volResp)
+		rc := cacheMiddleware.Wrap(volHandler)
+
+		return calls, rc
 	}
 
-	volResp := &VolumeResponse{
-		Response: &logproto.VolumeResponse{
-			Volumes: []logproto.Volume{
-				{
-					Name:   `{foo="bar"}`,
-					Volume: 42,
+	t.Run("caches the response for the same request", func(t *testing.T) {
+		volResp := &VolumeResponse{
+			Response: &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{
+						Name:   `{foo="bar"}`,
+						Volume: 42,
+					},
+				},
+				Limit: 10,
+			},
+		}
+		calls, handler := setup(volResp)
+
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+		volReq := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: `{foo="bar"}`,
+			Limit:    10,
+		}
+
+		*calls = 0
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		resp, err := handler.Do(ctx, volReq)
+		require.NoError(t, err)
+		require.Equal(t, 1, *calls)
+		require.Equal(t, volResp, resp)
+
+		// Doing same request again shouldn't change anything.
+		*calls = 0
+		resp, err = handler.Do(ctx, volReq)
+		require.NoError(t, err)
+		require.Equal(t, 0, *calls)
+		require.Equal(t, volResp, resp)
+	})
+
+	t.Run("a new request with overlapping time range should reuse part of the previous request for the overlap", func(t *testing.T) {
+		volResp := &VolumeResponse{
+			Response: &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{
+						Name:   `{foo="bar"}`,
+						Volume: 42,
+					},
+				},
+				Limit: 10,
+			},
+		}
+		calls, handler := setup(volResp)
+
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+		volReq := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: `{foo="bar"}`,
+			Limit:    10,
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		resp, err := handler.Do(ctx, volReq)
+		require.NoError(t, err)
+		require.Equal(t, 1, *calls)
+		require.Equal(t, volResp, resp)
+
+		// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
+		*calls = 0
+		req := volReq.WithStartEnd(volReq.GetStart()+(15*time.Minute).Milliseconds(), volReq.GetEnd()+(15*time.Minute).Milliseconds())
+		vol := float64(0.75)
+		expectedVol := &VolumeResponse{
+			Response: &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{
+						Name:   `{foo="bar"}`,
+						Volume: uint64(vol*float64(42)) + 42,
+					},
+				},
+				Limit: 10,
+			},
+		}
+
+		resp, err = handler.Do(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, 1, *calls)
+		require.Equal(t, expectedVol, resp)
+	})
+
+	t.Run("caches are only valid for the same request parameters", func(t *testing.T) {
+		volResp := &VolumeResponse{
+			Response: &logproto.VolumeResponse{
+				Volumes: []logproto.Volume{
+					{
+						Name:   `{foo="bar"}`,
+						Volume: 42,
+					},
+				},
+				Limit: 10,
+			},
+		}
+		calls, handler := setup(volResp)
+
+		// initial call to fill cache
+		from, through := util.RoundToMilliseconds(testTime, testTime.Add(1*time.Hour))
+		volReq := &logproto.VolumeRequest{
+			From:     from,
+			Through:  through,
+			Matchers: `{foo="bar"}`,
+			Limit:    10,
+			Step:     1,
+		}
+
+		ctx := user.InjectOrgID(context.Background(), "fake")
+		_, err := handler.Do(ctx, volReq)
+		require.NoError(t, err)
+		require.Equal(t, 1, *calls)
+
+		type testCase struct {
+			fn func(*logproto.VolumeRequest)
+		}
+		testCases := map[string]testCase{
+			"different step": {
+				fn: func(req *logproto.VolumeRequest) {
+					req.Step = 2
 				},
 			},
-			Limit: 10,
-		},
-	}
-
-	calls, volHandler := volumeResultHandler(volResp)
-	rc := cacheMiddleware.Wrap(volHandler)
-
-	ctx := user.InjectOrgID(context.Background(), "fake")
-	resp, err := rc.Do(ctx, volReq)
-	require.NoError(t, err)
-	require.Equal(t, 1, *calls)
-	require.Equal(t, volResp, resp)
-
-	// Doing same request again shouldn't change anything.
-	*calls = 0
-	resp, err = rc.Do(ctx, volReq)
-	require.NoError(t, err)
-	require.Equal(t, 0, *calls)
-	require.Equal(t, volResp, resp)
-
-	// Doing a request with new start later than the previous query and end time later than the previous one,
-	// should reuse part of the previous request and issue a new request for the remaining time till end.
-	// The new start time is 15m (i.e. 25%) in the future with regard to the previous request time span.
-	*calls = 0
-	req := volReq.WithStartEnd(volReq.GetStart()+(15*time.Minute).Milliseconds(), volReq.GetEnd()+(15*time.Minute).Milliseconds())
-	vol := float64(0.75)
-	expectedVol := &VolumeResponse{
-		Response: &logproto.VolumeResponse{
-			Volumes: []logproto.Volume{
-				{
-					Name:   `{foo="bar"}`,
-					Volume: uint64(vol*float64(42)) + 42,
+			"new limit": {
+				fn: func(req *logproto.VolumeRequest) {
+					req.Limit = 11
 				},
 			},
-			Limit: 10,
-		},
-	}
+			"aggregate by labels": {
+				fn: func(req *logproto.VolumeRequest) {
+					req.AggregateBy = seriesvolume.Labels
+				},
+			},
+			"target labels": {
+				fn: func(req *logproto.VolumeRequest) {
+					req.TargetLabels = []string{"foo"}
+				},
+			},
+		}
 
-	resp, err = rc.Do(ctx, req)
-	require.NoError(t, err)
-	require.Equal(t, 1, *calls)
-	require.Equal(t, expectedVol, resp)
+		for name, tc := range testCases {
+			*calls = 0
+
+			volReq := &logproto.VolumeRequest{
+				From:     from,
+				Through:  through,
+				Matchers: `{foo="bar"}`,
+				Limit:    10,
+				Step:     1,
+			}
+			tc.fn(volReq)
+
+			_, err = handler.Do(ctx, volReq)
+			require.NoError(t, err)
+			require.Equal(t, 1, *calls, name)
+		}
+	})
 }
 
 func TestVolumeCache_RecentData(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	strings "strings"
 	"time"
 
 	"github.com/go-kit/log"
@@ -25,7 +26,12 @@ type VolumeSplitter struct {
 // GenerateCacheKey generates a cache key based on the userID, Request and interval.
 func (i VolumeSplitter) GenerateCacheKey(ctx context.Context, userID string, r queryrangebase.Request) string {
 	cacheKey := i.cacheKeyLimits.GenerateCacheKey(ctx, userID, r)
-	return fmt.Sprintf("volume:%s", cacheKey)
+
+	volumeReq := r.(*logproto.VolumeRequest)
+	limit := volumeReq.GetLimit()
+	aggregateBy := volumeReq.GetAggregateBy()
+	targetLabels := volumeReq.GetTargetLabels()
+	return fmt.Sprintf("volume:%s:%d:%s:%s", cacheKey, limit, aggregateBy, strings.Join(targetLabels, ","))
 }
 
 type VolumeExtractor struct{}
