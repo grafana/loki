@@ -556,7 +556,7 @@ func buildChunks(t testing.TB, size int) []Chunk {
 
 	for i := 0; i < size; i++ {
 		// build chunks of 256k blocks, 1.5MB target size. Same as default config.
-		c := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
+		c := chunkenc.NewMemChunk(chunkenc.ChunkFormatV3, chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 1500*1024)
 		fillChunk(t, c)
 		descs = append(descs, chunkDesc{
 			chunk: c,

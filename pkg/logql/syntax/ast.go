@@ -32,8 +32,17 @@ type Expr interface {
 	Pretty(level int) string
 }
 
-func Clone(e Expr) (Expr, error) {
-	return ParseExpr(e.String())
+func Clone[T Expr](e T) (T, error) {
+	var empty T
+	copied, err := ParseExpr(e.String())
+	if err != nil {
+		return empty, err
+	}
+	cast, ok := copied.(T)
+	if !ok {
+		return empty, fmt.Errorf("unpexpected type of cloned expression: want %T, got %T", empty, copied)
+	}
+	return cast, nil
 }
 
 // implicit holds default implementations
@@ -275,7 +284,7 @@ func (e *PipelineExpr) Pipeline() (log.Pipeline, error) {
 func (e *PipelineExpr) HasFilter() bool {
 	for _, p := range e.MultiStages {
 		switch p.(type) {
-		case *LineFilterExpr, *LabelFilterExpr, *DistinctFilterExpr:
+		case *LineFilterExpr, *LabelFilterExpr:
 			return true
 		default:
 			continue
@@ -286,6 +295,7 @@ func (e *PipelineExpr) HasFilter() bool {
 
 type LineFilterExpr struct {
 	Left  *LineFilterExpr
+	Or    *LineFilterExpr
 	Ty    labels.MatchType
 	Match string
 	Op    string
@@ -298,6 +308,18 @@ func newLineFilterExpr(ty labels.MatchType, op, match string) *LineFilterExpr {
 		Match: match,
 		Op:    op,
 	}
+}
+
+func newOrLineFilter(left, right *LineFilterExpr) *LineFilterExpr {
+	right.Ty = left.Ty
+
+	if left.Ty == labels.MatchEqual || left.Ty == labels.MatchRegexp {
+		left.Or = right
+		return left
+	}
+
+	// !(left or right) == (!left and !right).
+	return newNestedLineFilterExpr(left, right)
 }
 
 func newNestedLineFilterExpr(left *LineFilterExpr, right *LineFilterExpr) *LineFilterExpr {
@@ -373,10 +395,17 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 			}
 			acc = append(acc, next)
 		default:
-			next, err := log.NewFilter(curr.Match, curr.Ty)
+			var next log.Filterer
+			var err error
+			if curr.Or != nil {
+				next, err = newOrFilter(curr)
+			} else {
+				next, err = log.NewFilter(curr.Match, curr.Ty)
+			}
 			if err != nil {
 				return nil, err
 			}
+
 			acc = append(acc, next)
 		}
 	}
@@ -392,6 +421,23 @@ func (e *LineFilterExpr) Filter() (log.Filterer, error) {
 	}
 
 	return log.NewAndFilters(acc), nil
+}
+
+func newOrFilter(f *LineFilterExpr) (log.Filterer, error) {
+	orFilter, err := log.NewFilter(f.Match, f.Ty)
+	if err != nil {
+		return nil, err
+	}
+
+	for or := f.Or; or != nil; or = or.Or {
+		filter, err := log.NewFilter(or.Match, or.Ty)
+		if err != nil {
+			return nil, err
+		}
+		orFilter = log.ChainOrFilter(orFilter, filter)
+	}
+
+	return orFilter, nil
 }
 
 func (e *LineFilterExpr) Stage() (log.Stage, error) {
@@ -736,37 +782,6 @@ func (j *JSONExpressionParser) String() string {
 	return sb.String()
 }
 
-type DistinctFilterExpr struct {
-	labels []string
-	implicit
-}
-
-func newDistinctFilterExpr(labels []string) *DistinctFilterExpr {
-	return &DistinctFilterExpr{
-		labels: labels,
-	}
-}
-
-func (e *DistinctFilterExpr) Shardable() bool { return false }
-
-func (e *DistinctFilterExpr) Walk(f WalkFn) { f(e) }
-
-func (e *DistinctFilterExpr) Stage() (log.Stage, error) {
-	return log.NewDistinctFilter(e.labels)
-}
-
-func (e *DistinctFilterExpr) String() string {
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s %s ", OpPipe, OpFilterDistinct))
-	for i, label := range e.labels {
-		sb.WriteString(label)
-		if i+1 != len(e.labels) {
-			sb.WriteString(",")
-		}
-	}
-	return sb.String()
-}
-
 type internedStringSet map[string]struct {
 	s  string
 	ok bool
@@ -925,6 +940,19 @@ func (r *LogRange) Walk(f WalkFn) {
 	r.Left.Walk(f)
 }
 
+// WithoutUnwrap returns a copy of the log range without the unwrap statement.
+func (r *LogRange) WithoutUnwrap() (*LogRange, error) {
+	left, err := Clone(r.Left)
+	if err != nil {
+		return nil, err
+	}
+	return &LogRange{
+		Left:     left,
+		Interval: r.Interval,
+		Offset:   r.Offset,
+	}, nil
+}
+
 func newLogRange(left LogSelectorExpr, interval time.Duration, u *UnwrapExpr, o *OffsetExpr) *LogRange {
 	var offset time.Duration
 	if o != nil {
@@ -1039,8 +1067,6 @@ const (
 
 	// function filters
 	OpFilterIP = "ip"
-
-	OpFilterDistinct = "distinct"
 
 	// drop labels
 	OpDrop = "drop"
@@ -1983,6 +2009,7 @@ var shardableOps = map[string]bool{
 	OpTypeMin:   true,
 
 	// range vector ops
+	OpRangeTypeAvg:       true,
 	OpRangeTypeCount:     true,
 	OpRangeTypeRate:      true,
 	OpRangeTypeBytes:     true,

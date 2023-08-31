@@ -85,7 +85,7 @@ const (
 // If the export data version is not recognized or the format is otherwise
 // compromised, an error is returned.
 func IImportData(fset *token.FileSet, imports map[string]*types.Package, data []byte, path string) (int, *types.Package, error) {
-	pkgs, err := iimportCommon(fset, imports, data, false, path, nil)
+	pkgs, err := iimportCommon(fset, GetPackagesFromMap(imports), data, false, path, false)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -94,10 +94,49 @@ func IImportData(fset *token.FileSet, imports map[string]*types.Package, data []
 
 // IImportBundle imports a set of packages from the serialized package bundle.
 func IImportBundle(fset *token.FileSet, imports map[string]*types.Package, data []byte) ([]*types.Package, error) {
-	return iimportCommon(fset, imports, data, true, "", nil)
+	return iimportCommon(fset, GetPackagesFromMap(imports), data, true, "", false)
 }
 
-func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data []byte, bundle bool, path string, insert InsertType) (pkgs []*types.Package, err error) {
+// A GetPackagesFunc function obtains the non-nil symbols for a set of
+// packages, creating and recursively importing them as needed. An
+// implementation should store each package symbol is in the Pkg
+// field of the items array.
+//
+// Any error causes importing to fail. This can be used to quickly read
+// the import manifest of an export data file without fully decoding it.
+type GetPackagesFunc = func(items []GetPackagesItem) error
+
+// A GetPackagesItem is a request from the importer for the package
+// symbol of the specified name and path.
+type GetPackagesItem struct {
+	Name, Path string
+	Pkg        *types.Package // to be filled in by GetPackagesFunc call
+
+	// private importer state
+	pathOffset uint64
+	nameIndex  map[string]uint64
+}
+
+// GetPackagesFromMap returns a GetPackagesFunc that retrieves
+// packages from the given map of package path to package.
+//
+// The returned function may mutate m: each requested package that is not
+// found is created with types.NewPackage and inserted into m.
+func GetPackagesFromMap(m map[string]*types.Package) GetPackagesFunc {
+	return func(items []GetPackagesItem) error {
+		for i, item := range items {
+			pkg, ok := m[item.Path]
+			if !ok {
+				pkg = types.NewPackage(item.Path, item.Name)
+				m[item.Path] = pkg
+			}
+			items[i].Pkg = pkg
+		}
+		return nil
+	}
+}
+
+func iimportCommon(fset *token.FileSet, getPackages GetPackagesFunc, data []byte, bundle bool, path string, shallow bool) (pkgs []*types.Package, err error) {
 	const currentVersion = iexportVersionCurrent
 	version := int64(-1)
 	if !debug {
@@ -108,7 +147,7 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 				} else if version > currentVersion {
 					err = fmt.Errorf("cannot import %q (%v), export data is newer version - update tool", path, e)
 				} else {
-					err = fmt.Errorf("cannot import %q (%v), possibly version skew - reinstall package", path, e)
+					err = fmt.Errorf("internal error while importing %q (%v); please report an issue", path, e)
 				}
 			}
 		}()
@@ -117,11 +156,8 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 	r := &intReader{bytes.NewReader(data), path}
 
 	if bundle {
-		bundleVersion := r.uint64()
-		switch bundleVersion {
-		case bundleVersion:
-		default:
-			errorf("unknown bundle format version %d", bundleVersion)
+		if v := r.uint64(); v != bundleVersion {
+			errorf("unknown bundle format version %d", v)
 		}
 	}
 
@@ -139,7 +175,7 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 	sLen := int64(r.uint64())
 	var fLen int64
 	var fileOffset []uint64
-	if insert != nil {
+	if shallow {
 		// Shallow mode uses a different position encoding.
 		fLen = int64(r.uint64())
 		fileOffset = make([]uint64, r.uint64())
@@ -156,9 +192,9 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 	r.Seek(sLen+fLen+dLen, io.SeekCurrent)
 
 	p := iimporter{
-		version: int(version),
-		ipath:   path,
-		insert:  insert,
+		version:  int(version),
+		ipath:    path,
+		usePosv2: shallow, // precise offsets are encoded only in shallow mode
 
 		stringData:  stringData,
 		stringCache: make(map[uint64]string),
@@ -185,8 +221,9 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 		p.typCache[uint64(i)] = pt
 	}
 
-	pkgList := make([]*types.Package, r.uint64())
-	for i := range pkgList {
+	// Gather the relevant packages from the manifest.
+	items := make([]GetPackagesItem, r.uint64())
+	for i := range items {
 		pkgPathOff := r.uint64()
 		pkgPath := p.stringAt(pkgPathOff)
 		pkgName := p.stringAt(r.uint64())
@@ -195,30 +232,42 @@ func iimportCommon(fset *token.FileSet, imports map[string]*types.Package, data 
 		if pkgPath == "" {
 			pkgPath = path
 		}
-		pkg := imports[pkgPath]
-		if pkg == nil {
-			pkg = types.NewPackage(pkgPath, pkgName)
-			imports[pkgPath] = pkg
-		} else if pkg.Name() != pkgName {
-			errorf("conflicting names %s and %s for package %q", pkg.Name(), pkgName, path)
-		}
-		if i == 0 && !bundle {
-			p.localpkg = pkg
-		}
-
-		p.pkgCache[pkgPathOff] = pkg
+		items[i].Name = pkgName
+		items[i].Path = pkgPath
+		items[i].pathOffset = pkgPathOff
 
 		// Read index for package.
 		nameIndex := make(map[string]uint64)
 		nSyms := r.uint64()
-		// In shallow mode we don't expect an index for other packages.
-		assert(nSyms == 0 || p.localpkg == pkg || p.insert == nil)
+		// In shallow mode, only the current package (i=0) has an index.
+		assert(!(shallow && i > 0 && nSyms != 0))
 		for ; nSyms > 0; nSyms-- {
 			name := p.stringAt(r.uint64())
 			nameIndex[name] = r.uint64()
 		}
 
-		p.pkgIndex[pkg] = nameIndex
+		items[i].nameIndex = nameIndex
+	}
+
+	// Request packages all at once from the client,
+	// enabling a parallel implementation.
+	if err := getPackages(items); err != nil {
+		return nil, err // don't wrap this error
+	}
+
+	// Check the results and complete the index.
+	pkgList := make([]*types.Package, len(items))
+	for i, item := range items {
+		pkg := item.Pkg
+		if pkg == nil {
+			errorf("internal error: getPackages returned nil package for %q", item.Path)
+		} else if pkg.Path() != item.Path {
+			errorf("internal error: getPackages returned wrong path %q, want %q", pkg.Path(), item.Path)
+		} else if pkg.Name() != item.Name {
+			errorf("internal error: getPackages returned wrong name %s for package %q, want %s", pkg.Name(), item.Path, item.Name)
+		}
+		p.pkgCache[item.pathOffset] = pkg
+		p.pkgIndex[pkg] = item.nameIndex
 		pkgList[i] = pkg
 	}
 
@@ -289,8 +338,7 @@ type iimporter struct {
 	version int
 	ipath   string
 
-	localpkg *types.Package
-	insert   func(pkg *types.Package, name string) // "shallow" mode only
+	usePosv2 bool
 
 	stringData  []byte
 	stringCache map[uint64]string
@@ -338,13 +386,9 @@ func (p *iimporter) doDecl(pkg *types.Package, name string) {
 
 	off, ok := p.pkgIndex[pkg][name]
 	if !ok {
-		// In "shallow" mode, call back to the application to
-		// find the object and insert it into the package scope.
-		if p.insert != nil {
-			assert(pkg != p.localpkg)
-			p.insert(pkg, name) // "can't fail"
-			return
-		}
+		// In deep mode, the index should be complete. In shallow
+		// mode, we should have already recursively loaded necessary
+		// dependencies so the above Lookup succeeds.
 		errorf("%v.%v not in index", pkg, name)
 	}
 
@@ -711,7 +755,7 @@ func (r *importReader) qualifiedIdent() (*types.Package, string) {
 }
 
 func (r *importReader) pos() token.Pos {
-	if r.p.insert != nil { // shallow mode
+	if r.p.usePosv2 {
 		return r.posv2()
 	}
 	if r.p.version >= iexportVersionPosCol {

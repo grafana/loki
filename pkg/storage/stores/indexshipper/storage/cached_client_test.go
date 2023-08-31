@@ -219,7 +219,7 @@ func TestCachedObjectClient_errors(t *testing.T) {
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
-					objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), tc.prefix, "", false)
+					objects, commonPrefixes, err := cachedObjectClient.List(context.Background(), tc.prefix, "", false)
 					require.NoError(t, err)
 					require.Equal(t, expectedListCallsCount, objectClient.listCallsCount)
 					require.Equal(t, tc.expectedObjects, objects)

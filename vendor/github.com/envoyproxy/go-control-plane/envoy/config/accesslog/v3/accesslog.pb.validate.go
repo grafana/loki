@@ -17,6 +17,8 @@ import (
 	"unicode/utf8"
 
 	"google.golang.org/protobuf/types/known/anypb"
+
+	v3 "github.com/envoyproxy/go-control-plane/envoy/data/accesslog/v3"
 )
 
 // ensure the imports are used
@@ -33,6 +35,8 @@ var (
 	_ = (*mail.Address)(nil)
 	_ = anypb.Any{}
 	_ = sort.Sort
+
+	_ = v3.AccessLogType(0)
 )
 
 // Validate checks the field values on AccessLog with the rules defined in the
@@ -733,6 +737,48 @@ func (m *AccessLogFilter) validate(all bool) error {
 			if err := v.Validate(); err != nil {
 				return AccessLogFilterValidationError{
 					field:  "MetadataFilter",
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	case *AccessLogFilter_LogTypeFilter:
+		if v == nil {
+			err := AccessLogFilterValidationError{
+				field:  "FilterSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofFilterSpecifierPresent = true
+
+		if all {
+			switch v := interface{}(m.GetLogTypeFilter()).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, AccessLogFilterValidationError{
+						field:  "LogTypeFilter",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, AccessLogFilterValidationError{
+						field:  "LogTypeFilter",
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(m.GetLogTypeFilter()).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return AccessLogFilterValidationError{
+					field:  "LogTypeFilter",
 					reason: "embedded message failed validation",
 					cause:  err,
 				}
@@ -2455,6 +2501,124 @@ var _ interface {
 	Cause() error
 	ErrorName() string
 } = MetadataFilterValidationError{}
+
+// Validate checks the field values on LogTypeFilter with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LogTypeFilter) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LogTypeFilter with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LogTypeFilterMultiError, or
+// nil if none found.
+func (m *LogTypeFilter) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LogTypeFilter) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	for idx, item := range m.GetTypes() {
+		_, _ = idx, item
+
+		if _, ok := v3.AccessLogType_name[int32(item)]; !ok {
+			err := LogTypeFilterValidationError{
+				field:  fmt.Sprintf("Types[%v]", idx),
+				reason: "value must be one of the defined enum values",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+
+	}
+
+	// no validation rules for Exclude
+
+	if len(errors) > 0 {
+		return LogTypeFilterMultiError(errors)
+	}
+
+	return nil
+}
+
+// LogTypeFilterMultiError is an error wrapping multiple validation errors
+// returned by LogTypeFilter.ValidateAll() if the designated constraints
+// aren't met.
+type LogTypeFilterMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LogTypeFilterMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LogTypeFilterMultiError) AllErrors() []error { return m }
+
+// LogTypeFilterValidationError is the validation error returned by
+// LogTypeFilter.Validate if the designated constraints aren't met.
+type LogTypeFilterValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LogTypeFilterValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LogTypeFilterValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LogTypeFilterValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LogTypeFilterValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LogTypeFilterValidationError) ErrorName() string { return "LogTypeFilterValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LogTypeFilterValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLogTypeFilter.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LogTypeFilterValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LogTypeFilterValidationError{}
 
 // Validate checks the field values on ExtensionFilter with the rules defined
 // in the proto definition for this message. If any rules are violated, the

@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage/chunk"
+	"github.com/grafana/loki/pkg/util/filter"
 )
 
 var testEncoding = []Encoding{
@@ -57,35 +58,46 @@ var (
 	}{
 		{
 			headBlockFmt: OrderedHeadBlockFmt,
-			chunkFormat:  chunkFormatV2,
+			chunkFormat:  ChunkFormatV2,
 		},
 		{
 			headBlockFmt: OrderedHeadBlockFmt,
-			chunkFormat:  chunkFormatV3,
+			chunkFormat:  ChunkFormatV3,
 		},
 		{
 			headBlockFmt: UnorderedHeadBlockFmt,
-			chunkFormat:  chunkFormatV3,
+			chunkFormat:  ChunkFormatV3,
 		},
 		{
 			headBlockFmt: UnorderedWithNonIndexedLabelsHeadBlockFmt,
-			chunkFormat:  chunkFormatV4,
+			chunkFormat:  ChunkFormatV4,
 		},
 	}
 )
 
-const DefaultTestHeadBlockFmt = DefaultHeadBlockFmt
+const (
+	DefaultTestHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
+	lblPing                 = "ping"
+	lblPong                 = "pong"
+)
 
 func TestBlocksInclusive(t *testing.T) {
-	chk := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
-	err := chk.Append(logprotoEntry(1, "1"))
-	require.Nil(t, err)
-	err = chk.cut()
-	require.Nil(t, err)
+	for _, enc := range testEncoding {
+		enc := enc
+		for _, format := range allPossibleFormats {
+			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
+			chk := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
+			err := chk.Append(logprotoEntry(1, "1"))
+			require.Nil(t, err)
+			err = chk.cut()
+			require.Nil(t, err)
 
-	blocks := chk.Blocks(time.Unix(0, 1), time.Unix(0, 1))
-	require.Equal(t, 1, len(blocks))
-	require.Equal(t, 1, blocks[0].Entries())
+			blocks := chk.Blocks(time.Unix(0, 1), time.Unix(0, 1))
+			require.Equal(t, 1, len(blocks))
+			require.Equal(t, 1, blocks[0].Entries())
+		}
+	}
+
 }
 
 func TestBlock(t *testing.T) {
@@ -182,7 +194,7 @@ func TestBlock(t *testing.T) {
 					require.Equal(t, cases[idx].ts, e.Timestamp.UnixNano())
 					require.Equal(t, cases[idx].str, e.Line)
 					require.Empty(t, e.NonIndexedLabels)
-					if chunkFormat < chunkFormatV4 {
+					if chunkFormat < ChunkFormatV4 {
 						require.Equal(t, labels.EmptyLabels().String(), it.Labels())
 					} else {
 						expectedLabels := logproto.FromLabelAdaptersToLabels(cases[idx].lbs).String()
@@ -240,43 +252,47 @@ func TestBlock(t *testing.T) {
 func TestCorruptChunk(t *testing.T) {
 	for _, enc := range testEncoding {
 		enc := enc
-		t.Run(enc.String(), func(t *testing.T) {
-			t.Parallel()
+		for _, format := range allPossibleFormats {
+			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
 
-			chk := NewMemChunk(enc, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
-			cases := []struct {
-				data []byte
-			}{
-				// Data that should not decode as lines from a chunk in any encoding.
-				{data: []byte{0}},
-				{data: []byte{1}},
-				{data: []byte("asdfasdfasdfqwyteqwtyeq")},
-			}
+			t.Run(enc.String(), func(t *testing.T) {
+				t.Parallel()
 
-			ctx, start, end := context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64)
-			for i, c := range cases {
-				chk.blocks = []block{{b: c.data}}
-				it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
-				require.NoError(t, err, "case %d", i)
-
-				idx := 0
-				for it.Next() {
-					idx++
+				chk := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
+				cases := []struct {
+					data []byte
+				}{
+					// Data that should not decode as lines from a chunk in any encoding.
+					{data: []byte{0}},
+					{data: []byte{1}},
+					{data: []byte("asdfasdfasdfqwyteqwtyeq")},
 				}
-				require.Error(t, it.Error(), "case %d", i)
-				require.NoError(t, it.Close())
-			}
-		})
+
+				ctx, start, end := context.Background(), time.Unix(0, 0), time.Unix(0, math.MaxInt64)
+				for i, c := range cases {
+					chk.blocks = []block{{b: c.data}}
+					it, err := chk.Iterator(ctx, start, end, logproto.FORWARD, noopStreamPipeline)
+					require.NoError(t, err, "case %d", i)
+
+					idx := 0
+					for it.Next() {
+						idx++
+					}
+					require.Error(t, it.Error(), "case %d", i)
+					require.NoError(t, it.Close())
+				}
+			})
+		}
 	}
 }
 
 func TestReadFormatV1(t *testing.T) {
 	t.Parallel()
 
-	c := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunk(c)
-	// overrides default v2 format
-	c.format = chunkFormatV1
+	// overrides to v1 for testing that specific version.
+	c.format = ChunkFormatV1
 
 	b, err := c.Bytes()
 	if err != nil {
@@ -369,14 +385,14 @@ func testNameWithFormats(enc Encoding, chunkFormat byte, headBlockFmt HeadBlockF
 }
 
 func TestRoundtripV3(t *testing.T) {
-	for _, f := range HeadBlockFmts {
-		for _, enc := range testEncoding {
-			enc := enc
-			t.Run(fmt.Sprintf("%v-%v", f, enc), func(t *testing.T) {
+	for _, enc := range testEncoding {
+		enc := enc
+		for _, format := range allPossibleFormats {
+			chunkfmt, headfmt := format.chunkFormat, format.headBlockFmt
+			t.Run(fmt.Sprintf("%v-%v", format, enc), func(t *testing.T) {
 				t.Parallel()
 
-				c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
-				c.format = chunkFormatV3
+				c := NewMemChunk(chunkfmt, enc, headfmt, testBlockSize, testTargetSize)
 				_ = fillChunk(c)
 
 				b, err := c.Bytes()
@@ -408,7 +424,7 @@ func TestSerialization(t *testing.T) {
 				t.Run(testName, func(t *testing.T) {
 					t.Parallel()
 
-					chk := NewMemChunk(enc, testData.headBlockFmt, testBlockSize, testTargetSize)
+					chk := NewMemChunk(testData.chunkFormat, enc, testData.headBlockFmt, testBlockSize, testTargetSize)
 					chk.format = testData.chunkFormat
 					numSamples := 50000
 					var entry *logproto.Entry
@@ -437,7 +453,7 @@ func TestSerialization(t *testing.T) {
 						require.Equal(t, int64(i), e.Timestamp.UnixNano())
 						require.Equal(t, strconv.Itoa(i), e.Line)
 						require.Nil(t, e.NonIndexedLabels)
-						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
+						if appendWithNonIndexedLabels && testData.chunkFormat >= ChunkFormatV4 {
 							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), it.Labels())
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), it.Labels())
@@ -460,7 +476,7 @@ func TestSerialization(t *testing.T) {
 						s := sampleIt.Sample()
 						require.Equal(t, int64(i), s.Timestamp)
 						require.Equal(t, 1., s.Value)
-						if appendWithNonIndexedLabels && testData.chunkFormat >= chunkFormatV4 {
+						if appendWithNonIndexedLabels && testData.chunkFormat >= ChunkFormatV4 {
 							require.Equal(t, labels.FromStrings("foo", strconv.Itoa(i)).String(), sampleIt.Labels())
 						} else {
 							require.Equal(t, labels.EmptyLabels().String(), sampleIt.Labels())
@@ -525,7 +541,7 @@ func TestChunkFilling(t *testing.T) {
 func TestGZIPChunkTargetSize(t *testing.T) {
 	t.Parallel()
 
-	chk := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+	chk := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 
 	lineSize := 512
 	entry := &logproto.Entry{
@@ -622,7 +638,7 @@ func TestMemChunk_AppendOutOfOrder(t *testing.T) {
 			t.Run(testName, func(t *testing.T) {
 				t.Parallel()
 
-				tester(t, NewMemChunk(EncGZIP, f, testBlockSize, testTargetSize))
+				tester(t, NewMemChunk(ChunkFormatV3, EncGZIP, f, testBlockSize, testTargetSize))
 			})
 		}
 	}
@@ -667,7 +683,7 @@ func TestChunkSize(t *testing.T) {
 }
 
 func TestChunkStats(t *testing.T) {
-	c := NewMemChunk(EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, DefaultTestHeadBlockFmt, testBlockSize, 0)
 	first := time.Now()
 	entry := &logproto.Entry{
 		Timestamp: first,
@@ -793,7 +809,7 @@ func BenchmarkWrite(b *testing.B) {
 				b.Run(name, func(b *testing.B) {
 					uncompressedBytes, compressedBytes := 0, 0
 					for n := 0; n < b.N; n++ {
-						c := NewMemChunk(enc, f, testBlockSize, testTargetSize)
+						c := NewMemChunk(ChunkFormatV3, enc, f, testBlockSize, testTargetSize)
 						// adds until full so we trigger cut which serialize using gzip
 						for c.SpaceFor(entry) {
 							_ = c.Append(entry)
@@ -885,7 +901,7 @@ func BenchmarkBackwardIterator(b *testing.B) {
 	for _, bs := range testBlockSizes {
 		b.Run(humanize.Bytes(uint64(bs)), func(b *testing.B) {
 			b.ReportAllocs()
-			c := NewMemChunk(EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
+			c := NewMemChunk(ChunkFormatV3, EncSnappy, DefaultTestHeadBlockFmt, bs, testTargetSize)
 			_ = fillChunk(c)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
@@ -996,7 +1012,7 @@ func BenchmarkHeadBlockSampleIterator(b *testing.B) {
 func TestMemChunk_IteratorBounds(t *testing.T) {
 	createChunk := func() *MemChunk {
 		t.Helper()
-		c := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, 1e6, 1e6)
+		c := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, 1e6, 1e6)
 
 		if err := c.Append(&logproto.Entry{
 			Timestamp: time.Unix(0, 1),
@@ -1060,7 +1076,7 @@ func TestMemchunkLongLine(t *testing.T) {
 		t.Run(enc.String(), func(t *testing.T) {
 			t.Parallel()
 
-			c := NewMemChunk(enc, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV3, enc, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize)
 			for i := 1; i <= 10; i++ {
 				require.NoError(t, c.Append(&logproto.Entry{Timestamp: time.Unix(0, int64(i)), Line: strings.Repeat("e", 200000)}))
 			}
@@ -1078,9 +1094,9 @@ func TestMemchunkLongLine(t *testing.T) {
 func TestBytesWith(t *testing.T) {
 	t.Parallel()
 
-	exp, err := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
+	exp, err := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith(nil)
 	require.Nil(t, err)
-	out, err := NewMemChunk(EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
+	out, err := NewMemChunk(ChunkFormatV3, EncNone, DefaultTestHeadBlockFmt, testBlockSize, testTargetSize).BytesWith([]byte{1, 2, 3})
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
@@ -1125,7 +1141,7 @@ func TestCheckpointEncoding(t *testing.T) {
 			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
 
-			if f.chunkFormat <= chunkFormatV2 {
+			if f.chunkFormat <= ChunkFormatV2 {
 				for i := range c.blocks {
 					c.blocks[i].uncompressedSize = 0
 				}
@@ -1154,7 +1170,7 @@ func TestCheckpointEncoding(t *testing.T) {
 			cpy, err = MemchunkFromCheckpoint(chk.Bytes(), head.Bytes(), f.headBlockFmt, blockSize, targetSize)
 			require.Nil(t, err)
 
-			if f.chunkFormat <= chunkFormatV2 {
+			if f.chunkFormat <= ChunkFormatV2 {
 				for i := range c.blocks {
 					c.blocks[i].uncompressedSize = 0
 				}
@@ -1173,7 +1189,7 @@ var (
 func BenchmarkBufferedIteratorLabels(b *testing.B) {
 	for _, f := range HeadBlockFmts {
 		b.Run(f.String(), func(b *testing.B) {
-			c := NewMemChunk(EncSnappy, f, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV3, EncSnappy, f, testBlockSize, testTargetSize)
 			_ = fillChunk(c)
 
 			labelsSet := []labels.Labels{
@@ -1388,7 +1404,7 @@ func TestMemChunk_Rebound(t *testing.T) {
 }
 
 func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
-	chk := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+	chk := NewMemChunk(ChunkFormatV3, EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	for ; from.Before(through); from = from.Add(time.Second) {
 		err := chk.Append(&logproto.Entry{
 			Line:      from.String(),
@@ -1406,39 +1422,81 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	chkThrough := chkFrom.Add(10 * time.Second)
 	chkThroughPlus1 := chkThrough.Add(1 * time.Second)
 
-	filterFunc := func(_ time.Time, in string) bool {
-		return strings.HasPrefix(in, "matching")
-	}
-
 	for _, tc := range []struct {
-		name                               string
-		matchingSliceFrom, matchingSliceTo *time.Time
-		err                                error
-		nrMatching                         int
-		nrNotMatching                      int
+		name          string
+		testMemChunk  *MemChunk
+		filterFunc    filter.Func
+		err           error
+		nrMatching    int
+		nrNotMatching int
 	}{
 		{
-			name:          "no matches",
+			name:         "no matches",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, nil, nil, false),
+			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+				return strings.HasPrefix(in, "matching")
+			},
 			nrMatching:    0,
 			nrNotMatching: 10,
 		},
 		{
-			name:              "some lines removed",
-			matchingSliceFrom: &chkFrom,
-			matchingSliceTo:   &chkFromPlus5,
-			nrMatching:        5,
-			nrNotMatching:     5,
+			name:         "some lines removed",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, false),
+			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+				return strings.HasPrefix(in, "matching")
+			},
+			nrMatching:    5,
+			nrNotMatching: 5,
 		},
 		{
-			name:              "all lines match",
-			err:               chunk.ErrSliceNoDataInRange,
-			matchingSliceFrom: &chkFrom,
-			matchingSliceTo:   &chkThroughPlus1,
+			name:         "all lines match",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
+			filterFunc: func(_ time.Time, in string, _ ...labels.Label) bool {
+				return strings.HasPrefix(in, "matching")
+			},
+			err: chunk.ErrSliceNoDataInRange,
+		},
+
+		// Test cases with non-indexed labels
+		{
+			name:         "no matches - chunk without non-indexed labels",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, false),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
+			},
+			nrMatching:    0,
+			nrNotMatching: 10,
+		},
+		{
+			name:         "non-indexed labels not matching",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get("ding") == "dong"
+			},
+			nrMatching:    0,
+			nrNotMatching: 10,
+		},
+		{
+			name:         "some lines removed - with non-indexed labels",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkFromPlus5, true),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
+			},
+			nrMatching:    5,
+			nrNotMatching: 5,
+		},
+		{
+			name:         "all lines match -  with non-indexed labels",
+			testMemChunk: buildFilterableTestMemChunk(t, chkFrom, chkThrough, &chkFrom, &chkThroughPlus1, true),
+			filterFunc: func(_ time.Time, in string, nonIndexedLabels ...labels.Label) bool {
+				return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && strings.HasPrefix(in, "matching")
+			},
+			err: chunk.ErrSliceNoDataInRange,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			originalChunk := buildFilterableTestMemChunk(t, chkFrom, chkThrough, tc.matchingSliceFrom, tc.matchingSliceTo)
-			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, filterFunc)
+			originalChunk := tc.testMemChunk
+			newChunk, err := originalChunk.Rebound(chkFrom, chkThrough, tc.filterFunc)
 			if tc.err != nil {
 				require.Equal(t, tc.err, err)
 				return
@@ -1466,25 +1524,35 @@ func TestMemChunk_ReboundAndFilter_with_filter(t *testing.T) {
 	}
 }
 
-func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time) *MemChunk {
-	chk := NewMemChunk(EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
+func buildFilterableTestMemChunk(t *testing.T, from, through time.Time, matchingFrom, matchingTo *time.Time, withNonIndexedLabels bool) *MemChunk {
+	chk := NewMemChunk(ChunkFormatV4, EncGZIP, DefaultTestHeadBlockFmt, defaultBlockSize, 0)
 	t.Logf("from   : %v", from.String())
 	t.Logf("through: %v", through.String())
+	var nonIndexedLabels push.LabelsAdapter
+	if withNonIndexedLabels {
+		nonIndexedLabels = push.LabelsAdapter{{Name: lblPing, Value: lblPong}}
+	}
 	for from.Before(through) {
 		// If a line is between matchingFrom and matchingTo add the prefix "matching"
 		if matchingFrom != nil && matchingTo != nil &&
 			(from.Equal(*matchingFrom) || (from.After(*matchingFrom) && (from.Before(*matchingTo)))) {
 			t.Logf("%v matching line", from.String())
 			err := chk.Append(&logproto.Entry{
-				Line:      fmt.Sprintf("matching %v", from.String()),
-				Timestamp: from,
+				Line:             fmt.Sprintf("matching %v", from.String()),
+				Timestamp:        from,
+				NonIndexedLabels: nonIndexedLabels,
 			})
 			require.NoError(t, err)
 		} else {
 			t.Logf("%v non-match line", from.String())
+			var nonIndexedLabels push.LabelsAdapter
+			if withNonIndexedLabels {
+				nonIndexedLabels = push.LabelsAdapter{{Name: "ding", Value: "dong"}}
+			}
 			err := chk.Append(&logproto.Entry{
-				Line:      from.String(),
-				Timestamp: from,
+				Line:             from.String(),
+				Timestamp:        from,
+				NonIndexedLabels: nonIndexedLabels,
 			})
 			require.NoError(t, err)
 		}
@@ -1599,7 +1667,7 @@ func TestMemChunk_SpaceFor(t *testing.T) {
 			expectFunc: func(chunkFormat byte, _ HeadBlockFmt) bool {
 				// Succeed unless we're using chunk format v4, which should
 				// take the non-indexed labels into account.
-				return chunkFormat < chunkFormatV4
+				return chunkFormat < ChunkFormatV4
 			},
 		},
 	} {
@@ -1634,7 +1702,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 			streamLabels := labels.Labels{
 				{Name: "job", Value: "fake"},
 			}
-			chk := newMemChunkWithFormat(chunkFormatV4, enc, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+			chk := newMemChunkWithFormat(ChunkFormatV4, enc, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
 			require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "lineA", []logproto.LabelAdapter{
 				{Name: "traceID", Value: "123"},
 				{Name: "user", Value: "a"},
@@ -2003,7 +2071,7 @@ func TestMemChunk_IteratorWithNonIndexedLabels(t *testing.T) {
 }
 
 func TestMemChunk_IteratorOptions(t *testing.T) {
-	chk := newMemChunkWithFormat(chunkFormatV4, EncNone, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
+	chk := newMemChunkWithFormat(ChunkFormatV4, EncNone, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
 	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(0, "0", logproto.FromLabelsToLabelAdapters(
 		labels.FromStrings("a", "0"),
 	))))

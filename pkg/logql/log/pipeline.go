@@ -308,7 +308,7 @@ func (sp *filteringStreamPipeline) Process(ts int64, line []byte, nonIndexedLabe
 		}
 	}
 
-	return sp.pipeline.Process(ts, line)
+	return sp.pipeline.Process(ts, line, nonIndexedLabels...)
 }
 
 func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (string, CategorizedLabelsResult, bool) {
@@ -323,7 +323,7 @@ func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, nonIndex
 		}
 	}
 
-	return sp.pipeline.ProcessString(ts, line)
+	return sp.pipeline.ProcessString(ts, line, nonIndexedLabels...)
 }
 
 // ReduceStages reduces multiple stages into one.

@@ -162,7 +162,7 @@ func TestNamedStores(t *testing.T) {
 		schemaConfig.Configs[0].ObjectType = "not-found"
 		_, err := NewStore(cfg, config.ChunkStoreConfig{}, schemaConfig, limits, cm, nil, util_log.Logger)
 		require.Error(t, err)
-		require.Contains(t, err.Error(), "Unrecognized storage client not-found, choose one of: aws, azure, cassandra, inmemory, gcp, bigtable, bigtable-hashed, grpc-store")
+		require.Contains(t, err.Error(), "Unrecognized storage client not-found, choose one of: aws, s3, azure, alibabacloud, bos, gcs, swift, filesystem, cos")
 	})
 }
 

@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	desiredVer               = tsdb_index.LiveFormat
+	desiredVer               = tsdb_index.FormatV3
 	tableNumMin, tableNumMax int64
 	newTablePrefix           string
 )

@@ -207,6 +207,11 @@ func (b *InMemBucket) IsObjNotFoundErr(err error) bool {
 	return errors.Is(err, errNotFound)
 }
 
+// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+func (b *InMemBucket) IsCustomerManagedKeyError(_ error) bool {
+	return false
+}
+
 func (b *InMemBucket) Close() error { return nil }
 
 // Name returns the bucket name.

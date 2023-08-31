@@ -277,7 +277,6 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
-				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -336,7 +335,6 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
-				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 

@@ -967,6 +967,162 @@ var _ interface {
 	ErrorName() string
 } = OverloadActionValidationError{}
 
+// Validate checks the field values on LoadShedPoint with the rules defined in
+// the proto definition for this message. If any rules are violated, the first
+// error encountered is returned, or nil if there are no violations.
+func (m *LoadShedPoint) Validate() error {
+	return m.validate(false)
+}
+
+// ValidateAll checks the field values on LoadShedPoint with the rules defined
+// in the proto definition for this message. If any rules are violated, the
+// result is a list of violation errors wrapped in LoadShedPointMultiError, or
+// nil if none found.
+func (m *LoadShedPoint) ValidateAll() error {
+	return m.validate(true)
+}
+
+func (m *LoadShedPoint) validate(all bool) error {
+	if m == nil {
+		return nil
+	}
+
+	var errors []error
+
+	if utf8.RuneCountInString(m.GetName()) < 1 {
+		err := LoadShedPointValidationError{
+			field:  "Name",
+			reason: "value length must be at least 1 runes",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	if len(m.GetTriggers()) < 1 {
+		err := LoadShedPointValidationError{
+			field:  "Triggers",
+			reason: "value must contain at least 1 item(s)",
+		}
+		if !all {
+			return err
+		}
+		errors = append(errors, err)
+	}
+
+	for idx, item := range m.GetTriggers() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, LoadShedPointValidationError{
+						field:  fmt.Sprintf("Triggers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, LoadShedPointValidationError{
+						field:  fmt.Sprintf("Triggers[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return LoadShedPointValidationError{
+					field:  fmt.Sprintf("Triggers[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
+	if len(errors) > 0 {
+		return LoadShedPointMultiError(errors)
+	}
+
+	return nil
+}
+
+// LoadShedPointMultiError is an error wrapping multiple validation errors
+// returned by LoadShedPoint.ValidateAll() if the designated constraints
+// aren't met.
+type LoadShedPointMultiError []error
+
+// Error returns a concatenation of all the error messages it wraps.
+func (m LoadShedPointMultiError) Error() string {
+	var msgs []string
+	for _, err := range m {
+		msgs = append(msgs, err.Error())
+	}
+	return strings.Join(msgs, "; ")
+}
+
+// AllErrors returns a list of validation violation errors.
+func (m LoadShedPointMultiError) AllErrors() []error { return m }
+
+// LoadShedPointValidationError is the validation error returned by
+// LoadShedPoint.Validate if the designated constraints aren't met.
+type LoadShedPointValidationError struct {
+	field  string
+	reason string
+	cause  error
+	key    bool
+}
+
+// Field function returns field value.
+func (e LoadShedPointValidationError) Field() string { return e.field }
+
+// Reason function returns reason value.
+func (e LoadShedPointValidationError) Reason() string { return e.reason }
+
+// Cause function returns cause value.
+func (e LoadShedPointValidationError) Cause() error { return e.cause }
+
+// Key function returns key value.
+func (e LoadShedPointValidationError) Key() bool { return e.key }
+
+// ErrorName returns error name.
+func (e LoadShedPointValidationError) ErrorName() string { return "LoadShedPointValidationError" }
+
+// Error satisfies the builtin error interface
+func (e LoadShedPointValidationError) Error() string {
+	cause := ""
+	if e.cause != nil {
+		cause = fmt.Sprintf(" | caused by: %v", e.cause)
+	}
+
+	key := ""
+	if e.key {
+		key = "key for "
+	}
+
+	return fmt.Sprintf(
+		"invalid %sLoadShedPoint.%s: %s%s",
+		key,
+		e.field,
+		e.reason,
+		cause)
+}
+
+var _ error = LoadShedPointValidationError{}
+
+var _ interface {
+	Field() string
+	Reason() string
+	Key() bool
+	Cause() error
+	ErrorName() string
+} = LoadShedPointValidationError{}
+
 // Validate checks the field values on BufferFactoryConfig with the rules
 // defined in the proto definition for this message. If any rules are
 // violated, the first error encountered is returned, or nil if there are no violations.
@@ -1210,6 +1366,40 @@ func (m *OverloadManager) validate(all bool) error {
 
 	}
 
+	for idx, item := range m.GetLoadshedPoints() {
+		_, _ = idx, item
+
+		if all {
+			switch v := interface{}(item).(type) {
+			case interface{ ValidateAll() error }:
+				if err := v.ValidateAll(); err != nil {
+					errors = append(errors, OverloadManagerValidationError{
+						field:  fmt.Sprintf("LoadshedPoints[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			case interface{ Validate() error }:
+				if err := v.Validate(); err != nil {
+					errors = append(errors, OverloadManagerValidationError{
+						field:  fmt.Sprintf("LoadshedPoints[%v]", idx),
+						reason: "embedded message failed validation",
+						cause:  err,
+					})
+				}
+			}
+		} else if v, ok := interface{}(item).(interface{ Validate() error }); ok {
+			if err := v.Validate(); err != nil {
+				return OverloadManagerValidationError{
+					field:  fmt.Sprintf("LoadshedPoints[%v]", idx),
+					reason: "embedded message failed validation",
+					cause:  err,
+				}
+			}
+		}
+
+	}
+
 	if all {
 		switch v := interface{}(m.GetBufferFactoryConfig()).(type) {
 		case interface{ ValidateAll() error }:
@@ -1344,7 +1534,7 @@ func (m *ScaleTimersOverloadActionConfig_ScaleTimer) validate(all bool) error {
 	if _, ok := _ScaleTimersOverloadActionConfig_ScaleTimer_Timer_NotInLookup[m.GetTimer()]; ok {
 		err := ScaleTimersOverloadActionConfig_ScaleTimerValidationError{
 			field:  "Timer",
-			reason: "value must not be in list [0]",
+			reason: "value must not be in list [UNSPECIFIED]",
 		}
 		if !all {
 			return err

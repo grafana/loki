@@ -50,6 +50,7 @@ ingester:
 
 ruler:
   enable_api: true
+  enable_sharding: true  
   wal:
     dir: /loki/ruler-wal
   storage:
