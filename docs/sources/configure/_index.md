@@ -775,10 +775,6 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures the query splitting and caching in the Loki query-frontend.
 
 ```yaml
-# Deprecated: Use -querier.split-queries-by-interval instead. CLI flag:
-# -querier.split-queries-by-day. Split queries by day and execute in parallel.
-[split_queries_by_interval: <duration>]
-
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]
@@ -806,11 +802,6 @@ results_cache:
 # query ASTs. This feature is supported only by the chunks storage engine.
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
-
-# Deprecated. List of headers forwarded by the query Frontend to downstream
-# querier.
-# CLI flag: -frontend.forward-headers-list
-[forward_headers_list: <list of strings> | default = []]
 
 # The downstream querier is required to answer in the accepted format. Can be
 # 'json' or 'protobuf'. Note: Both will still be routed over GRPC.

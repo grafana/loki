@@ -131,6 +131,10 @@ func (a *AIMDController) List(ctx context.Context, prefix string, delimiter stri
 	return a.inner.List(ctx, prefix, delimiter)
 }
 
+func (a *AIMDController) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	return a.inner.ObjectExists(ctx, objectKey)
+}
+
 func (a *AIMDController) DeleteObject(ctx context.Context, objectKey string) error {
 	return a.inner.DeleteObject(ctx, objectKey)
 }
@@ -198,6 +202,7 @@ func NewNoopController(Config) *NoopController {
 	return &NoopController{}
 }
 
+func (n *NoopController) ObjectExists(context.Context, string) (bool, error)     { return true, nil }
 func (n *NoopController) PutObject(context.Context, string, io.ReadSeeker) error { return nil }
 func (n *NoopController) GetObject(context.Context, string) (io.ReadCloser, int64, error) {
 	return nil, 0, nil
