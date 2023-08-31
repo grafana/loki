@@ -65,6 +65,15 @@ func NewFSObjectClient(cfg FSConfig) (*FSObjectClient, error) {
 // Stop implements ObjectClient
 func (FSObjectClient) Stop() {}
 
+func (f *FSObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
+	_, err := os.Lstat(objectKey)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // GetObject from the store
 func (f *FSObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	fl, err := os.Open(filepath.Join(f.cfg.Directory, filepath.FromSlash(objectKey)))

@@ -102,6 +102,8 @@ You can use `--keep-empty` flag to retain them.
 3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
 4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
 5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
 
 ### Jsonnet
 
