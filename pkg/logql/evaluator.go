@@ -476,7 +476,7 @@ func newRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
-) (StepEvaluator[promql.Vector], error) {
+) (StepEvaluator[StepResult], error) {
 	// TODO(karsten): we want a different expression for tdigest. This is
 	// just a hack for now.
 	if expr.Operation == syntax.OpRangeTypeQuantile {
@@ -517,7 +517,7 @@ func newRangeAggEvaluator(
 }
 
 type RangeVectorEvaluator struct {
-	iter RangeVectorIterator
+	iter RangeVectorIterator[promql.Vector]
 
 	err error
 }
@@ -548,7 +548,7 @@ func (r *RangeVectorEvaluator) Error() error {
 }
 
 type AbsentRangeVectorEvaluator struct {
-	iter RangeVectorIterator
+	iter RangeVectorIterator[promql.Vector]
 	lbs  labels.Labels
 
 	err error

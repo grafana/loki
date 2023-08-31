@@ -6,9 +6,45 @@ import (
 	"github.com/prometheus/prometheus/promql"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
 type TDigestVector = []tdigestSample
+
+type TDigestStepEvaluator struct {
+	iter RangeVectorIterator[TDigestVector]
+
+	err error
+}
+
+func (r *TDigestStepEvaluator) Next() (bool, int64, TDigestVector) {
+	next := r.iter.Next()
+	if !next {
+		return false, 0, TDigestVector{}
+	}
+	ts, vec := r.iter.At()
+	for _, s := range vec {
+		// Errors are not allowed in metrics unless they've been specifically requested.
+		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
+			r.err = logqlmodel.NewPipelineErr(s.Metric)
+			return false, 0, TDigestVector{}
+		}
+	}
+	return true, ts, vec
+}
+
+func (r *TDigestStepEvaluator) Close() error { return r.iter.Close() }
+
+func (r *TDigestStepEvaluator) Error() error {
+	if r.err != nil {
+		return r.err
+	}
+	return r.iter.Error()
+}
+
+func (r *TDigestStepEvaluator) Explain(parent Node) {
+	parent.Child("T-Digest")	
+}
 
 func newTDigestIterator(
 	it iter.PeekingSampleIterator,
