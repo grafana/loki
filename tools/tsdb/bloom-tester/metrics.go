@@ -7,16 +7,18 @@ import (
 )
 
 type Experiment struct {
-	name      string
-	tokenizer Tokenizer
-	bloom     func() *boom.ScalableBloomFilter
+	name          string
+	tokenizer     Tokenizer
+	bloom         func() *boom.ScalableBloomFilter
+	encodeChunkID bool
 }
 
-func NewExperiment(name string, tokenizer Tokenizer, bloom func() *boom.ScalableBloomFilter) Experiment {
+func NewExperiment(name string, tokenizer Tokenizer, encodeChunkID bool, bloom func() *boom.ScalableBloomFilter) Experiment {
 	return Experiment{
-		name:      name,
-		tokenizer: tokenizer,
-		bloom:     bloom,
+		name:          name,
+		tokenizer:     tokenizer,
+		bloom:         bloom,
+		encodeChunkID: encodeChunkID,
 	}
 }
 
@@ -67,7 +69,7 @@ func NewMetrics(r prometheus.Registerer) *Metrics {
 		chunksPerSeries: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_chunks_per_series",
 			Help:    "Number of chunks per series",
-			Buckets: prometheus.ExponentialBucketsRange(1, 1000, 10),
+			Buckets: prometheus.ExponentialBucketsRange(1, 10000, 12),
 		}),
 		chunkSize: promauto.With(r).NewHistogram(prometheus.HistogramOpts{
 			Name:    "bloom_chunk_series_size",
