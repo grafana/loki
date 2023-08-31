@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/grafana/gomemcache/memcache"
 	"github.com/pkg/errors"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 )
 
@@ -22,6 +24,10 @@ type Cache interface {
 	Stop()
 	// GetCacheType returns a string indicating the cache "type" for the purpose of grouping cache usage statistics
 	GetCacheType() stats.CacheType
+}
+
+type WithCacheAllocator interface {
+	WithAllocator(alloc memcache.Allocator)
 }
 
 // Config for building Caches.
@@ -156,6 +162,7 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 
 		client := NewMemcachedClient(cfg.MemcacheClient, cfg.Prefix, reg, logger)
 		cache := NewMemcached(cfg.Memcache, client, cfg.Prefix, reg, logger, cacheType)
+		cache.WithAllocator(chunkenc.ChunkAllocator)
 
 		cacheName := cfg.Prefix + "memcache"
 		caches = append(caches, CollectStats(NewBackground(cacheName, cfg.Background, Instrument(cacheName, cache, reg), reg)))

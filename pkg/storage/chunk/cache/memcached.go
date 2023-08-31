@@ -50,6 +50,7 @@ type Memcached struct {
 	closed chan struct{}
 
 	logger log.Logger
+	alloc  memcache.Allocator
 }
 
 // NewMemcached makes a new Memcached.
@@ -131,6 +132,10 @@ func memcacheStatusCode(err error) string {
 	}
 }
 
+func (c *Memcached) WithAllocator(alloc memcache.Allocator) {
+	c.alloc = alloc
+}
+
 // Fetch gets keys from the cache. The keys that are found must be in the order of the keys requested.
 func (c *Memcached) Fetch(ctx context.Context, keys []string) (found []string, bufs [][]byte, missed []string, err error) {
 	if c.cfg.BatchSize == 0 {
@@ -149,7 +154,13 @@ func (c *Memcached) fetch(ctx context.Context, keys []string) (found []string, b
 		start = time.Now()
 		items map[string]*memcache.Item
 	)
-	items, err = c.memcache.GetMulti(keys)
+
+	var opts []memcache.Option
+	if c.alloc != nil {
+		opts = append(opts, memcache.WithAllocator(c.alloc))
+	}
+
+	items, err = c.memcache.GetMulti(keys, opts...)
 	c.requestDuration.After(ctx, "Memcache.GetMulti", memcacheStatusCode(err), start)
 	if err != nil {
 		return found, bufs, keys, err

@@ -3,14 +3,13 @@ package chunk
 import (
 	"bytes"
 	"encoding/binary"
+	errs "errors"
 	"hash/crc32"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
 	"unsafe"
-
-	errs "errors"
 
 	"github.com/golang/snappy"
 	jsoniter "github.com/json-iterator/go"
