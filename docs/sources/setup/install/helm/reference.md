@@ -74,7 +74,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -83,7 +83,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -3065,7 +3065,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the read</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -3074,7 +3074,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the read</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -4111,7 +4111,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the write.</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -4120,7 +4120,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the write.</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
