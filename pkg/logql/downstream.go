@@ -387,7 +387,7 @@ type ConcatStepEvaluator struct {
 
 // NewConcatStepEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
-func NewConcatStepEvaluator(evaluators []StepEvaluator) StepEvaluator {
+func NewConcatStepEvaluator(evaluators []StepEvaluator) *ConcatStepEvaluator {
 	return &ConcatStepEvaluator{evaluators}
 }
 
