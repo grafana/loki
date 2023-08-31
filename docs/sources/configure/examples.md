@@ -4,31 +4,6 @@ description: Loki Configuration Examples
 ---
  # Examples
 
-## alibaba-cloud-storage-config.yaml
-
-```yaml
-
-# This partial configuration uses Alibaba for chunk storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    object_store: alibabacloud
-    schema: v11
-    index:
-      prefix: loki_index_
-      period: 168h
-
-storage_config:
-  alibabacloud:
-    bucket: <bucket>
-    endpoint: <endpoint>
-    access_key_id: <access_key_id>
-    secret_access_key: <secret_access_key>
-
-```
-
-
 ## 1-Local-Configuration-Example.yaml
 
 ```yaml
@@ -120,17 +95,16 @@ compactor:
 schema_config:
   configs:
   - from: 2020-05-15
-    store: aws
+    store: tsdb
     object_store: s3
     schema: v11
     index:
       prefix: loki_
+      period: 24h
 storage_config:
   aws:
     s3: s3://region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://region
-      
+
 ```
 
 
@@ -166,115 +140,58 @@ compactor:
 ```
 
 
-## 5-S3-And-DynamoDB-Snippet.yaml
-
-```yaml
-
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
-```
-
-
-## 6-Cassandra-Snippet.yaml
-
-```yaml
-
-# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: cassandra
-    object_store: filesystem
-    schema: v11
-    index:
-      prefix: cassandra_table
-      period: 168h
-
-storage_config:
-  cassandra:
-    username: cassandra
-    password: cassandra
-    addresses: 127.0.0.1
-    auth: true
-    keyspace: lokiindex
-
-  filesystem:
-    directory: /tmp/loki/chunks
-    
-```
-
-
-## 7-Schema-Migration-Snippet.yaml
+## 5-Schema-Migration-Snippet.yaml
 
 ```yaml
 
 schema_config:
   configs:
-    # Starting from 2018-04-15 Loki should store indexes on Cassandra
-    # using weekly periodic tables and chunks on filesystem.
+    # Starting from 2018-04-15 Loki should store indexes on tsdb and chunks on filesystem.
     # The index tables will be prefixed with "index_".
   - from: "2018-04-15"
-    store: cassandra
+    store: tsdb
     object_store: filesystem
     schema: v11
     index:
-        period: 168h
+        period: 24h
         prefix: index_
 
   # Starting from 2020-6-15 we moved from filesystem to AWS S3 for storing the chunks.
   - from: "2020-06-15"
-    store: cassandra
+    store: tsdb
     object_store: s3
     schema: v11
     index:
-        period: 168h
+        period: 24h
         prefix: index_
-        
+
 ```
 
 
-## 8-GCS-Snippet.yaml
+## 6-GCS-Snippet.yaml
 
 ```yaml
 
-# This partial configuration uses GCS for chunk storage and uses BigTable for index storage
+# This partial configuration uses GCS for chunk storage.
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: bigtable
+    store: tsdb
     object_store: gcs
     schema: v11
     index:
       prefix: loki_index_
-      period: 168h
+      period: 24h
 
 storage_config:
-  bigtable:
-    instance: BIGTABLE_INSTANCE
-    project: BIGTABLE_PROJECT
   gcs:
     bucket_name: GCS_BUCKET_NAME
-    
+
 ```
 
 
-## 9-Expanded-S3-Snippet.yaml
+## 7-Expanded-S3-Snippet.yaml
 
 ```yaml
 
@@ -284,11 +201,12 @@ storage_config:
 schema_config:
   configs:
   - from: 2020-05-15
-    store: aws
+    store: tsdb
     object_store: s3
     schema: v11
     index:
       prefix: loki_
+      period: 24h
 storage_config:
   aws:
     bucketnames: bucket_name1, bucket_name2
@@ -302,37 +220,36 @@ storage_config:
       response_header_timeout: 0s
       insecure_skip_verify: false
     s3forcepathstyle: true
-    
+
 ```
 
 
-## 10-S3-And-DynamoDB-With-KMS-Snippet.yaml
+## 8-S3-With-KMS-Snippet.yaml
 
 ```yaml
 
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage and a KMS CMK for encryption
+# This partial configuration uses S3 for chunk storage and a KMS CMK for encryption
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: aws
+    store: tsdb
     object_store: s3
     schema: v11
     index:
       prefix: loki_
+      period: 24h
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
     sse:
       type: SSE-KMS
       kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      kms_key_id: 0987dcba-09fe-87dc-65ba-ab0987654321
+
 ```
 
 
-## 11-COS-HMAC-Example.yaml
+## 9-COS-HMAC-Example.yaml
 
 ```yaml
 
@@ -359,7 +276,7 @@ storage_config:
 ```
 
 
-## 12-COS-APIKey-Example.yaml
+## 10-COS-APIKey-Example.yaml
 
 ```yaml
 
@@ -387,7 +304,7 @@ storage_config:
 ```
 
 
-## 13-COS-Trusted-Profile-Example.yaml
+## 11-COS-Trusted-Profile-Example.yaml
 
 ```yaml
 
@@ -417,6 +334,31 @@ storage_config:
     auth_endpoint: <iam_endpoint_for_authentication>
     cr_token_file_path: <path_to_compute_resource_token>
     trusted_profile_name: <name_of_the_trusted_profile> # You can also use trusted_profile_id instead of trusted_profile_name
+
+```
+
+
+## 12-alibaba-cloud-storage-config.yaml
+
+```yaml
+
+# This partial configuration uses Alibaba for chunk storage
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    object_store: alibabacloud
+    schema: v11
+    index:
+      prefix: loki_index_
+      period: 24h
+
+storage_config:
+  alibabacloud:
+    bucket: <bucket>
+    endpoint: <endpoint>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
 
 ```
 

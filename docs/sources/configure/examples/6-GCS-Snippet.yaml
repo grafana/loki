@@ -1,0 +1,15 @@
+# This partial configuration uses GCS for chunk storage.
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: tsdb
+    object_store: gcs
+    schema: v11
+    index:
+      prefix: loki_index_
+      period: 24h
+
+storage_config:
+  gcs:
+    bucket_name: GCS_BUCKET_NAME

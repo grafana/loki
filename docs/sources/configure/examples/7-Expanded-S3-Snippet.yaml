@@ -4,11 +4,12 @@
 schema_config:
   configs:
   - from: 2020-05-15
-    store: aws
+    store: tsdb
     object_store: s3
     schema: v11
     index:
       prefix: loki_
+      period: 24h
 storage_config:
   aws:
     bucketnames: bucket_name1, bucket_name2
@@ -22,4 +23,3 @@ storage_config:
       response_header_timeout: 0s
       insecure_skip_verify: false
     s3forcepathstyle: true
-    

@@ -1,19 +1,17 @@
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage and a KMS CMK for encryption
+# This partial configuration uses S3 for chunk storage and a KMS CMK for encryption
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: aws
+    store: tsdb
     object_store: s3
     schema: v11
     index:
       prefix: loki_
+      period: 24h
 storage_config:
   aws:
     s3: s3://access_key:secret_access_key@region/bucket_name
     sse:
       type: SSE-KMS
       kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      kms_key_id: 0987dcba-09fe-87dc-65ba-ab0987654321
