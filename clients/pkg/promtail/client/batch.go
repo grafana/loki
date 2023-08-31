@@ -52,7 +52,7 @@ func newBatch(maxStreams int, entries ...api.Entry) *batch {
 
 // add an entry to the batch
 func (b *batch) add(entry api.Entry) error {
-	b.bytes += len(entry.Line)
+	b.bytes += entrySize(entry)
 
 	// Append the entry to an already existing stream (if any)
 	labels := labelsMapToString(entry.Labels, ReservedLabelTenantID)
@@ -113,7 +113,7 @@ func (b *batch) sizeBytes() int {
 // sizeBytesAfter returns the size of the batch after the input entry
 // will be added to the batch itself
 func (b *batch) sizeBytesAfter(entry api.Entry) int {
-	return b.bytes + len(entry.Line)
+	return b.bytes + entrySize(entry)
 }
 
 // age of the batch since its creation
@@ -145,4 +145,12 @@ func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 		entriesCount += len(stream.Entries)
 	}
 	return &req, entriesCount
+}
+
+func entrySize(entry api.Entry) int {
+	nonIndexedLabelsSize := 0
+	for _, label := range entry.NonIndexedLabels {
+		nonIndexedLabelsSize += label.Size()
+	}
+	return len(entry.Line) + nonIndexedLabelsSize
 }
