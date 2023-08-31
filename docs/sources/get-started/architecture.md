@@ -97,50 +97,6 @@ Symbols store references to the actual strings containing label names and values
 
 Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{< relref "../operations/storage/boltdb-shipper" >}}) to store the `index` in object storage (the same way we store `chunks`).
 
-###  Deprecated: Multi-store
-
-The **chunk store** is Loki's long-term data store, designed to support
-interactive querying and sustained writing without the need for background
-maintenance tasks. It consists of:
-
-- An index for the chunks. This index can be backed by:
-    - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Google Bigtable](https://cloud.google.com/bigtable)
-    - [Apache Cassandra](https://cassandra.apache.org)
-- A key-value (KV) store for the chunk data itself, which can be:
-    - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Google Bigtable](https://cloud.google.com/bigtable)
-    - [Apache Cassandra](https://cassandra.apache.org)
-    - [Amazon S3](https://aws.amazon.com/s3)
-    - [Google Cloud Storage](https://cloud.google.com/storage/)
-
-> Unlike the other core components of Loki, the chunk store is not a separate
-> service, job, or process, but rather a library embedded in the two services
-> that need to access Loki data: the [ingester]({{< relref "./components#ingester" >}}) and [querier]({{< relref "./components#querier" >}}).
-
-The chunk store relies on a unified interface to the
-"[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and
-Cassandra) that can be used to back the chunk store index. This interface
-assumes that the index is a collection of entries keyed by:
-
-- A **hash key**. This is required for *all* reads and writes.
-- A **range key**. This is required for writes and can be omitted for reads,
-which can be queried by prefix or range.
-
-The interface works somewhat differently across the supported databases:
-
-- DynamoDB supports range and hash keys natively. Index entries are thus
-  modelled directly as DynamoDB entries, with the hash key as the distribution
-  key and the range as the DynamoDB range key.
-- For Bigtable and Cassandra, index entries are modelled as individual column
-  values. The hash key becomes the row key and the range key becomes the column
-  key.
-
-A set of schemas are used to map the matchers and label sets used on reads and
-writes to the chunk store into appropriate operations on the index. Schemas have
-been added as Loki has evolved, mainly in an attempt to better load balance
-writes and improve query performance.
-
 ## Read Path
 
 To summarize, the read path works as follows:

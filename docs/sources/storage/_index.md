@@ -271,8 +271,6 @@ storage_config:
   aws:
     s3: s3://region
     bucketnames: <bucket1,bucket2>
-    dynamodb:
-      dynamodb_url: dynamodb://region
 ```
 
 The role should have a policy with the following permissions attached.
@@ -424,36 +422,6 @@ storage_config:
     region: <region>
     service_instance_id: <cos_service_instance_id>
     auth_endpoint: <iam_endpoint_for_authentication>
-```
-
-### On premise deployment (Cassandra+Cassandra)
-
-> **Note:** Cassandra as storage backend for chunks and indexes is deprecated.
-
-**Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
-
-```yaml
-storage_config:
-  cassandra:
-    addresses: <comma-separated-IPs-or-hostnames>
-    keyspace: <keyspace>
-    auth: <true|false>
-    username: <username> # only applicable when auth=true
-    password: <password> # only applicable when auth=true
-
-schema_config:
-  configs:
-    - from: 2020-07-01
-      store: cassandra
-      object_store: cassandra
-      schema: v11
-      index:
-        prefix: index_
-        period: 168h
-      chunks:
-        prefix: chunk_
-        period: 168h
-
 ```
 
 ### On premise deployment (MinIO Single Store)

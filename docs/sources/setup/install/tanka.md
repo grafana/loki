@@ -64,17 +64,14 @@ loki + promtail + gateway {
     htpasswd_contents: 'loki:$apr1$H4yGiGNg$ssl5/NymaGFRUvxIV1Nyr.',
 
     // S3 variables -- Remove if not using s3
-    storage_backend: 's3,dynamodb',
+    storage_backend: 's3',
     s3_access_key: 'key',
     s3_secret_access_key: 'secret access key',
     s3_address: 'url',
     s3_bucket_name: 'loki-test',
-    dynamodb_region: 'region',
 
     // GCS variables -- Remove if not using gcs
-    storage_backend: 'bigtable,gcs',
-    bigtable_instance: 'instance',
-    bigtable_project: 'project',
+    storage_backend: 'gcs',
     gcs_bucket_name: 'bucket',
 
     //Set this variable based on the type of object storage you're using.
