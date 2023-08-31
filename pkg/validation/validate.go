@@ -61,7 +61,7 @@ const (
 	DuplicateLabelNames                  = "duplicate_label_names"
 	DuplicateLabelNamesErrorMsg          = "stream '%s' has duplicate label name: '%s'"
 	DisallowedStructuredMetadata         = "disallowed_structured_metadata"
-	DisallowedStructuredMetadataErrorMsg = "stream '%s' has includes structured metadata, but this feature is disallowed. Please see `limits_config.structured_metadata` or contact your Loki administrator to enable it."
+	DisallowedStructuredMetadataErrorMsg = "stream '%s' includes structured metadata, but this feature is disallowed. Please see `limits_config.structured_metadata` or contact your Loki administrator to enable it."
 )
 
 type ErrStreamRateLimit struct {

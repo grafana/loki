@@ -2703,7 +2703,7 @@ shard_streams:
 [index_gateway_shard_size: <int> | default = 0]
 
 # Allow user to send structured metadata (non-indexed labels) in push payload.
-# CLI flag: -validation.structured-metadata
+# CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
 ```
 
