@@ -9,6 +9,7 @@ metadata:
   labels:
     {{- include "loki.backendLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -16,6 +17,7 @@ metadata:
     {{- with .Values.backend.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- end }}
 spec:
 {{- if not .Values.backend.autoscaling.enabled }}
   replicas: {{ .Values.backend.replicas }}
