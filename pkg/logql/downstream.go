@@ -157,6 +157,15 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
+type TDigestEvalExpr struct{
+	syntax.SampleExpr
+	tdigestExpr any
+}
+
+func (e TDigestEvalExpr) String() string {
+	return fmt.Sprintf("tdigestEval<%s>", "???")
+}
+
 type Shards []astmapper.ShardAnnotation
 
 func (xs Shards) Encode() (encoded []string) {

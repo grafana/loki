@@ -425,7 +425,18 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
+		shards, bytesPerShard, err := m.shards.Shards(expr)
+		if err != nil {
+			return nil, 0, err
+		}
+
 		// quantile_over_time() by (foo) -> tdigest_eval(tdigest_merge by (foo) (quantile_over_time() by (foo)))
+
+		return &TDigestEvalExpr{
+			merge: &TDigestMergeExpr{
+				dowmstreams: nil,
+			},
+		}, bytesPerShard, nil 
 
 	default:
 		// don't shard if there's not an appropriate optimization
