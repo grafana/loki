@@ -132,12 +132,12 @@ type EvaluatorFactory interface {
 type SampleEvaluatorFactory interface {
 	// NewStepEvaluator returns a NewStepEvaluator for a given SampleExpr. It's explicitly passed another NewStepEvaluator// in order to enable arbitrary computation of embedded expressions. This allows more modular & extensible
 	// NewStepEvaluator implementations which can be composed.
-	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+	NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator[promql.Vector], error)
 }
 
-type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error)
+type SampleEvaluatorFunc func(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator[promql.Vector], error)
 
-func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator, error) {
+func (s SampleEvaluatorFunc) NewStepEvaluator(ctx context.Context, nextEvaluatorFactory SampleEvaluatorFactory, expr syntax.SampleExpr, p Params) (StepEvaluator[promql.Vector], error) {
 	return s(ctx, nextEvaluatorFactory, expr, p)
 }
 
@@ -188,13 +188,13 @@ func (ev *DefaultEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	switch e := expr.(type) {
 	case *syntax.VectorAggregationExpr:
 		if rangExpr, ok := e.Left.(*syntax.RangeAggregationExpr); ok && e.Operation == syntax.OpTypeSum {
 			// if range expression is wrapped with a vector expression
 			// we should send the vector expression for allowing reducing labels at the source.
-			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator, error) {
+			nextEvFactory = SampleEvaluatorFunc(func(ctx context.Context, _ SampleEvaluatorFactory, _ syntax.SampleExpr, _ Params) (StepEvaluator[promql.Vector], error) {
 				it, err := ev.querier.SelectSamples(ctx, SelectSampleParams{
 					&logproto.SampleQueryRequest{
 						Start:    q.Start().Add(-rangExpr.Left.Interval).Add(-rangExpr.Left.Offset),
@@ -262,7 +262,7 @@ func newVectorAggEvaluator(
 }
 
 type VectorAggEvaluator struct {
-	nextEvaluator StepEvaluator
+	nextEvaluator StepEvaluator[promql.Vector]
 	expr          *syntax.VectorAggregationExpr
 	buf           []byte
 	lb            *labels.Builder
@@ -476,7 +476,7 @@ func newRangeAggEvaluator(
 	expr *syntax.RangeAggregationExpr,
 	q Params,
 	o time.Duration,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	iter, err := newRangeVectorIterator(
 		it, expr,
 		expr.Left.Interval.Nanoseconds(),
@@ -581,7 +581,7 @@ func newBinOpStepEvaluator(
 	evFactory SampleEvaluatorFactory,
 	expr *syntax.BinOpExpr,
 	q Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	// first check if either side is a literal
 	leftLit, lOk := expr.SampleExpr.(*syntax.LiteralExpr)
 	rightLit, rOk := expr.RHS.(*syntax.LiteralExpr)
@@ -614,7 +614,7 @@ func newBinOpStepEvaluator(
 		)
 	}
 
-	var lse, rse StepEvaluator
+	var lse, rse StepEvaluator[promql.Vector]
 
 	ctx, cancel := context.WithCancel(ctx)
 	g := errgroup.Group{}
@@ -651,8 +651,8 @@ func newBinOpStepEvaluator(
 }
 
 type BinOpStepEvaluator struct {
-	rse     StepEvaluator
-	lse     StepEvaluator
+	rse     StepEvaluator[promql.Vector]
+	lse     StepEvaluator[promql.Vector]
 	expr    *syntax.BinOpExpr
 	lastErr error
 }
@@ -699,7 +699,7 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, promql.Vector) {
 }
 
 func (e *BinOpStepEvaluator) Close() (lastError error) {
-	for _, ev := range []StepEvaluator{e.lse, e.rse} {
+	for _, ev := range []StepEvaluator[promql.Vector]{e.lse, e.rse} {
 		if err := ev.Close(); err != nil {
 			lastError = err
 		}
@@ -712,7 +712,7 @@ func (e *BinOpStepEvaluator) Error() error {
 	if e.lastErr != nil {
 		errs = append(errs, e.lastErr)
 	}
-	for _, ev := range []StepEvaluator{e.lse, e.rse} {
+	for _, ev := range []StepEvaluator[promql.Vector]{e.lse, e.rse} {
 		if err := ev.Error(); err != nil {
 			errs = append(errs, err)
 		}
@@ -916,7 +916,7 @@ func resultMetric(lhs, rhs labels.Labels, opts *syntax.BinOpOptions) labels.Labe
 func newLiteralStepEvaluator(
 	op string,
 	lit *syntax.LiteralExpr,
-	nextEv StepEvaluator,
+	nextEv StepEvaluator[promql.Vector],
 	inverted bool,
 	returnBool bool,
 ) (*LiteralStepEvaluator, error) {
@@ -935,7 +935,7 @@ func newLiteralStepEvaluator(
 }
 
 type LiteralStepEvaluator struct {
-	nextEv     StepEvaluator
+	nextEv     StepEvaluator[promql.Vector]
 	mergeErr   error
 	val        float64
 	inverted   bool
@@ -1046,7 +1046,7 @@ func newLabelReplaceEvaluator(
 }
 
 type LabelReplaceEvaluator struct {
-	nextEvaluator StepEvaluator
+	nextEvaluator StepEvaluator[promql.Vector]
 	labelCache    map[uint64]labels.Labels
 	expr          *syntax.LabelReplaceExpr
 	buf           []byte

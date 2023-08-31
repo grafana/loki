@@ -258,7 +258,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 	nextEvFactory SampleEvaluatorFactory,
 	expr syntax.SampleExpr,
 	params Params,
-) (StepEvaluator, error) {
+) (StepEvaluator[promql.Vector], error) {
 	switch e := expr.(type) {
 
 	case DownstreamSampleExpr:
@@ -297,7 +297,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 
-		xs := make([]StepEvaluator, 0, len(queries))
+		xs := make([]StepEvaluator[promql.Vector], 0, len(queries))
 		for i, res := range results {
 			stepper, err := NewResultStepEvaluator(res, params)
 			if err != nil {
@@ -382,12 +382,12 @@ func (ev *DownstreamEvaluator) NewIterator(
 }
 
 type ConcatStepEvaluator struct {
-	evaluators []StepEvaluator
+	evaluators []StepEvaluator[promql.Vector]
 }
 
 // NewConcatStepEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
-func NewConcatStepEvaluator(evaluators []StepEvaluator) *ConcatStepEvaluator {
+func NewConcatStepEvaluator(evaluators []StepEvaluator[promql.Vector]) *ConcatStepEvaluator {
 	return &ConcatStepEvaluator{evaluators}
 }
 
@@ -427,7 +427,7 @@ func (e *ConcatStepEvaluator) Error() error {
 }
 
 // NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
-func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
+func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator[promql.Vector], error) {
 	var (
 		start = params.Start()
 		end   = params.End()
