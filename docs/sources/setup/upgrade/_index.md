@@ -105,6 +105,20 @@ You can use `--keep-empty` flag to retain them.
 6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
 
+#### Legacy storage backends are removed
+
+DynamoDB, Bigtable and Cassandra are no longer supported.
+Please configure an [Object Store](/docs/loki/latest/storage/#object-storage)(for storing both chunks and index) and use TSDB(recommended) as the index type.
+
+Following values can no longer be used as `store` or `object_store` in the period config:
+- aws-dynamo
+- cassandra
+- bigtable, bigtable-hashed
+- gcp, gcp-columnkey
+- grpc-store
+
+`aws` aliases to `s3`, it can stil be configured as `object_store`.
+
 ### Jsonnet
 
 ##### Deprecated PodDisruptionBudget definition has been removed
