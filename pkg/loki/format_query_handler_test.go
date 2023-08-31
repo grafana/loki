@@ -33,6 +33,14 @@ func Test_formatQueryHandlerResponse(t *testing.T) {
 				Err:    "parse error at line 1, col 6: literal not terminated",
 			},
 		},
+		{
+			name:  "not-logql",
+			query: `trying-to-use-grep-syntax`,
+			expected: FormatQueryResponse{
+				Status: "invalid-query",
+				Err:    "parse error at line 1, col 1: syntax error: unexpected IDENTIFIER (queries should use LogQL: https://grafana.com/docs/loki/latest/logql/log_queries/)",
+			},
+		},
 	}
 
 	for _, tc := range cases {
