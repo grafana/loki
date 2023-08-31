@@ -2017,6 +2017,7 @@ var shardableOps = map[string]bool{
 	OpRangeTypeSum:       true,
 	OpRangeTypeMax:       true,
 	OpRangeTypeMin:       true,
+	OpRangeTypeQuantile:  true,
 
 	// binops - arith
 	OpTypeAdd: true,

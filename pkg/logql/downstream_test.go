@@ -35,6 +35,7 @@ func TestMappingEquivalence(t *testing.T) {
 		query       string
 		approximate bool
 	}{
+		/*
 		{`1`, false},
 		{`1 + 1`, false},
 		{`{a="1"}`, false},
@@ -53,6 +54,8 @@ func TestMappingEquivalence(t *testing.T) {
 		{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
 		{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
+		*/
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.

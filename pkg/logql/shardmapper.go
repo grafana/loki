@@ -379,7 +379,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
-		// avg_overtime() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
+		// avg_over_time() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
 		lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
 			Left: &syntax.RangeAggregationExpr{
 				Left:      expr.Left,
@@ -418,6 +418,14 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			RHS:        rhs,
 			Op:         syntax.OpTypeDiv,
 		}, bytesPerShard, nil
+
+	case syntax.OpRangeTypeQuantile:
+		potentialConflict := syntax.ReducesLabels(expr)
+		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
+			return m.mapSampleExpr(expr, r)
+		}
+
+		// quantile_over_time() by (foo) -> tdigest_eval(tdigest_merge by (foo) (quantile_over_time() by (foo)))
 
 	default:
 		// don't shard if there's not an appropriate optimization
