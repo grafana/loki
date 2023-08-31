@@ -65,7 +65,7 @@ func newPoint(t time.Time, v float64) promql.FPoint {
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 
 	// no overlap test case.
-	buildStreamingIt := func() (RangeVectorIterator, error) {
+	buildStreamingIt := func() (RangeVectorIterator[promql.Vector], error) {
 		tt := struct {
 			selRange   int64
 			step       int64
@@ -107,7 +107,7 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 		return it, nil
 	}
 
-	buildBatchIt := func() (RangeVectorIterator, error) {
+	buildBatchIt := func() (RangeVectorIterator[promql.Vector], error) {
 		tt := struct {
 			selRange   int64
 			step       int64

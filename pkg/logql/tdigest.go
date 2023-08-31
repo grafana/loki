@@ -1,15 +1,25 @@
 package logql
 
 import (
+	"math"
+
 	"github.com/influxdata/tdigest"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
+	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-type TDigestVector = []tdigestSample
+type TDigestVector []tdigestSample
+type TDigestMatrix []TDigestVector
+
+func (TDigestMatrix) String() string {
+	return "TDigestMatrix()"
+}
+
+func (TDigestMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
 
 type TDigestStepEvaluator struct {
 	iter RangeVectorIterator[TDigestVector]
@@ -79,7 +89,7 @@ type tdigestBatchRangeVectorIterator struct {
 	at []tdigestSample
 }
 
-func (r *tdigestBatchRangeVectorIterator) At() (int64, []tdigestSample) {
+func (r *tdigestBatchRangeVectorIterator) At() (int64, TDigestVector) {
 	if r.at == nil {
 		r.at = make([]tdigestSample, 0, len(r.window))
 	}
@@ -102,4 +112,31 @@ func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) (*tdigest
 		t.Add(v.F, 1)
 	}
 	return t
+}
+
+func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (promql_parser.Value, error) {
+	// TODO(karsten): check if ts should be used
+	next, _, vec := stepEvaluator.Next()
+	if stepEvaluator.Error() != nil {
+		return nil, stepEvaluator.Error()
+	}
+
+	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
+	if stepCount <= 0 {
+		stepCount = 1
+	}
+
+	result := make([]TDigestVector, 0)	
+
+	for next {
+		result = append(result, vec)
+
+		next, _, vec = stepEvaluator.Next()
+		if stepEvaluator.Error() != nil {
+			return nil, stepEvaluator.Error()
+		}
+	}
+
+
+	return TDigestMatrix(result), stepEvaluator.Error()
 }
