@@ -203,7 +203,7 @@ func getLocalStore(cm ClientMetrics) Store {
 		Configs: []config.PeriodConfig{
 			{
 				From:       config.DayTime{Time: start},
-				IndexType:  "boltdb",
+				IndexType:  "boltdb-local",
 				ObjectType: config.StorageTypeFileSystem,
 				Schema:     "v9",
 				IndexTables: config.PeriodicTableConfig{
