@@ -37,9 +37,11 @@ const (
 	StorageTypeS3           = "s3"
 	StorageTypeSwift        = "swift"
 	StorageTypeCOS          = "cos"
+
+	TSDBType = "tsdb"
 	// BoltDBShipperType holds the index type for using boltdb with shipper which keeps flushing them to a shared storage
 	BoltDBShipperType = "boltdb-shipper"
-	TSDBType          = "tsdb"
+	BoltDBLocalType   = "boltdb-local"
 
 	// ObjectStorageIndexRequiredPeriod defines the required index period for object storage based index stores like boltdb-shipper and tsdb
 	ObjectStorageIndexRequiredPeriod = 24 * time.Hour

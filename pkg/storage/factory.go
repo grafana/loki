@@ -339,6 +339,8 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 	case config.StorageTypeInMemory:
 		store := testutils.NewMockStorage()
 		return store, nil
+	case config.BoltDBLocalType:
+		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
 	case config.BoltDBShipperType:
 		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
 			if indexGatewayClient != nil {
