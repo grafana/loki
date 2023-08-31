@@ -64,7 +64,7 @@ func execute() {
 	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
 	helpers.ExitErr("resolving tenants", err)
 
-	sampler, err := NewProbabilisticSampler(0.0002)
+	sampler, err := NewProbabilisticSampler(0.00002)
 	helpers.ExitErr("creating sampler", err)
 
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
@@ -152,10 +152,6 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 									return
 								}
 
-								metrics.seriesKept.Inc()
-								metrics.chunksKept.Add(float64(len(chks)))
-								metrics.chunksPerSeries.Observe(float64(len(chks)))
-
 								transformed := make([]chunk.Chunk, 0, len(chks))
 								for _, chk := range chks {
 									transformed = append(transformed, chunk.Chunk{
@@ -175,6 +171,7 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								)
 								helpers.ExitErr("getting chunks", err)
 
+								// record raw chunk sizes
 								var chunkTotalUncompressedSize int
 								for _, c := range got {
 									chunkTotalUncompressedSize += c.Data.(*chunkenc.Facade).LokiChunk().UncompressedSize()
@@ -182,10 +179,12 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 								metrics.chunkSize.Observe(float64(chunkTotalUncompressedSize))
 								n += len(got)
 
+								// iterate experiments
 								for experimentIdx, experiment := range experiments {
 
 									sbf := experiment.bloom()
 
+									// Iterate chunks
 									var (
 										lines, inserts, collisions float64
 									)
@@ -231,20 +230,24 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 											}
 										}
 										helpers.ExitErr("iterating chunks", itr.Error())
-
-										metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
-										fillRatio := sbf.FillRatio()
-										metrics.hammingWeightRatio.WithLabelValues(experiment.name).Observe(fillRatio)
-										metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
-											float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
-										)
 									}
 
+									metrics.bloomSize.WithLabelValues(experiment.name).Observe(float64(sbf.Capacity() / 8))
+									fillRatio := sbf.FillRatio()
+									metrics.hammingWeightRatio.WithLabelValues(experiment.name).Observe(fillRatio)
+									metrics.estimatedCount.WithLabelValues(experiment.name).Observe(
+										float64(estimatedCount(sbf.Capacity(), sbf.FillRatio())),
+									)
 									metrics.lines.WithLabelValues(experiment.name).Add(lines)
 									metrics.inserts.WithLabelValues(experiment.name).Add(inserts)
 									metrics.collisions.WithLabelValues(experiment.name).Add(collisions)
 
 								}
+
+								metrics.seriesKept.Inc()
+								metrics.chunksKept.Add(float64(len(chks)))
+								metrics.chunksPerSeries.Observe(float64(len(chks)))
+
 							},
 						)
 
