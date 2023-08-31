@@ -19,6 +19,10 @@ func NewLabelSet(s string) (loghttp.LabelSet, error) {
 }
 
 func NewLabelSetFromLabels(lbls labels.Labels) loghttp.LabelSet {
+	if len(lbls) == 0 {
+		return nil
+	}
+
 	ret := make(map[string]string, len(lbls))
 	for _, l := range lbls {
 		ret[l.Name] = l.Value
@@ -27,7 +31,7 @@ func NewLabelSetFromLabels(lbls labels.Labels) loghttp.LabelSet {
 	return ret
 }
 
-func NewCategorizedLabelSet(labels logproto.GroupedLabels) loghttp.CategorizedLabelSet {
+func NewCategorizedLabelSet(labels logproto.CategorizedLabels) loghttp.CategorizedLabelSet {
 	return loghttp.CategorizedLabelSet{
 		Stream:             NewLabelSetFromLabels(logproto.FromLabelAdaptersToLabels(labels.Stream)),
 		StructuredMetadata: NewLabelSetFromLabels(logproto.FromLabelAdaptersToLabels(labels.StructuredMetadata)),

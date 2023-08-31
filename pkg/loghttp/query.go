@@ -243,9 +243,9 @@ func (s Streams) ToProto() []logproto.Stream {
 	for _, s := range s {
 		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
 		result = append(result, logproto.Stream{
-			Labels:        s.Labels.String(),
-			GroupedLabels: s.CategorizedLabels.ToProto(),
-			Entries:       entries,
+			Labels:            s.Labels.String(),
+			CategorizedLabels: s.CategorizedLabels.ToProto(),
+			Entries:           entries,
 		})
 	}
 	return result
@@ -254,8 +254,10 @@ func (s Streams) ToProto() []logproto.Stream {
 // Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
 	Labels            LabelSet            `json:"stream"`
-	CategorizedLabels CategorizedLabelSet `json:"categorizedLabels,omitempty"`
+	CategorizedLabels CategorizedLabelSet `json:"-"`
 	Entries           []Entry             `json:"values"`
+
+	EncodeFlags []EncodingFlag `json:"-"`
 }
 
 func (s *Stream) UnmarshalJSON(data []byte) error {
@@ -268,9 +270,22 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
-			// TODO(salvacorts): Deserialize the stream as a CategorizedLabelSet if the
-			// 					 there are multiple nested objects.
-			if err := s.Labels.UnmarshalJSON(value); err != nil {
+			// Try to get the "stream" field inside the stream object.
+			// If it's there, and it's an object, then it's a stream with categorized labels.
+			// Otherwise, if it's not there of it's a string, then it's a stream with labels as string.
+			// TODO(salvacorts): If we can just return two different keys (e.g. "stream" vs "labels") we could avoid checking which kind of object is it.
+			_, streamType, _, err := jsonparser.Get(value, "stream")
+			if err == nil && streamType == jsonparser.Object {
+				if err = s.CategorizedLabels.UnmarshalJSON(value); err != nil {
+					return err
+				}
+				s.Labels = s.CategorizedLabels.ToLabelSet()
+				s.EncodeFlags = append(s.EncodeFlags, FlagGroupLabels)
+			} else if err == jsonparser.KeyPathNotFoundError || streamType == jsonparser.String {
+				if err := s.Labels.UnmarshalJSON(value); err != nil {
+					return err
+				}
+			} else {
 				return err
 			}
 		case "values":
@@ -299,24 +314,21 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-// It will serialize only the Labels field if the CategorizedLabels field is nilm and vice-versa.
+// If the FlagGroupLabels encoding flag is set, the serialized "stream" field will be a map of groups to labels.
+// TODO(salvacorts): Maybe we can remove this method? We also have encodeStream and the push/pkg Stream.MarshalJSON
 func (s *Stream) MarshalJSON() ([]byte, error) {
-	if s.CategorizedLabels.Empty() {
+	if EncodingFlagIsSet(s.EncodeFlags, FlagGroupLabels) {
 		return json.Marshal(struct {
-			Labels  LabelSet `json:"stream"`
-			Entries []Entry  `json:"values"`
+			CategorizedLabels CategorizedLabelSet `json:"stream"`
+			Entries           []Entry             `json:"values"`
 		}{
-			Labels:  s.Labels,
-			Entries: s.Entries,
+			CategorizedLabels: s.CategorizedLabels,
+			Entries:           s.Entries,
 		})
 	}
-	return json.Marshal(struct {
-		CategorizedLabels CategorizedLabelSet `json:"stream"`
-		Entries           []Entry             `json:"values"`
-	}{
-		CategorizedLabels: s.CategorizedLabels,
-		Entries:           s.Entries,
-	})
+
+	type raw Stream
+	return json.Marshal(raw(*s))
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.

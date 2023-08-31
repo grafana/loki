@@ -154,8 +154,8 @@ func (i *dumbChunkIterator) Labels() string {
 	return ""
 }
 
-func (i *dumbChunkIterator) GroupedLabels() logproto.GroupedLabels {
-	return logproto.GroupedLabels{}
+func (i *dumbChunkIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return logproto.CategorizedLabels{}
 }
 
 func (i *dumbChunkIterator) StreamHash() uint64 {

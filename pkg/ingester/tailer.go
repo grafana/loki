@@ -159,7 +159,7 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 		if stream, ok = streams[parsedLbs.Hash()]; !ok {
 			stream = &logproto.Stream{
 				Labels: parsedLbs.String(),
-				GroupedLabels: logproto.GroupedLabels{
+				CategorizedLabels: logproto.CategorizedLabels{
 					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream().Labels()),
 					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata().Labels()),
 					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed().Labels()),

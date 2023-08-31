@@ -15,10 +15,10 @@ import (
 // We are not using the proto generated version but this custom one so that we
 // can improve serialization see benchmark.
 type Stream struct {
-	Labels        string        `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
-	Entries       []Entry       `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
-	Hash          uint64        `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
-	GroupedLabels GroupedLabels `protobuf:"bytes,4,opt,name=groupedLabels,proto3" json:"groupedLabels"`
+	Labels            string            `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
+	Entries           []Entry           `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
+	Hash              uint64            `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	CategorizedLabels CategorizedLabels `protobuf:"bytes,4,opt,name=categorizedLabels,proto3" json:"categorizedLabels"`
 }
 
 // Entry is a log entry with a timestamp.
@@ -28,14 +28,39 @@ type Entry struct {
 	NonIndexedLabels LabelsAdapter `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
 }
 
-// GroupedLabels is a set of labels grouped by their type.
+// CategorizedLabels is a set of labels grouped by their type.
 // We are not using the proto generated version but this custom one so that we
 // can use LabelsAdapter instead of LabelsPairAdapter.
 // This type should be kept in sync with the proto generated version so we safely cast it.
-type GroupedLabels struct {
+type CategorizedLabels struct {
 	Stream             LabelsAdapter `protobuf:"bytes,1,rep,name=stream,proto3" json:"stream"`
 	StructuredMetadata LabelsAdapter `protobuf:"bytes,2,rep,name=structuredMetadata,proto3" json:"structuredMetadata"`
 	Parsed             LabelsAdapter `protobuf:"bytes,3,rep,name=parsed,proto3" json:"parsed"`
+}
+
+// MarshalJSON implements json.Marshaler.
+// In Loki, this method should only be used by the
+// Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
+// We will ignore the categorized labels and only return the stream labels.
+func (m *Stream) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Labels  string  `json:"labels"`
+		Entries []Entry `json:"entries"`
+	}{
+		Labels:  m.Labels,
+		Entries: m.Entries,
+	})
+}
+
+// MarshalJSON implements json.Marshaler.
+// In Loki, this method should only be used by the
+// Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
+// We will ignore the non-indexed labels.
+func (m *Entry) MarshalJSON() ([]byte, error) {
+	type raw Entry
+	e := raw(*m)
+	e.NonIndexedLabels = nil
+	return json.Marshal(e)
 }
 
 // LabelAdapter should be a copy of the Prometheus labels.Label type.
@@ -135,7 +160,7 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	var l int
 	_ = l
 	{
-		size, err := (*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.Labels))).MarshalToSizedBuffer(dAtA[:i])
+		size, err := (*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).MarshalToSizedBuffer(dAtA[:i])
 		if err != nil {
 			return 0, err
 		}
@@ -341,7 +366,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 			}
 		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field GroupedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field CategorizedLabels", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -368,7 +393,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := (*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.Labels))).Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			if err := (*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -694,7 +719,7 @@ func (m *Stream) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(m.Hash)
 	}
-	l = (*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.GroupedLabels))).Size()
+	l = (*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).Size()
 	n += 1 + l + sovPush(uint64(l))
 	return n
 }
@@ -770,7 +795,7 @@ func (m *Stream) Equal(that interface{}) bool {
 	if m.Hash != that1.Hash {
 		return false
 	}
-	if !(*(*GroupedLabelsAdapter)(unsafe.Pointer(&m.Labels))).Equal(that1.Labels) {
+	if !(*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).Equal(that1.CategorizedLabels) {
 		return false
 	}
 	return true

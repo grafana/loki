@@ -50,11 +50,7 @@ var queryTests = []struct {
 						},
 						{
 							"ts": "2019-09-13T18:32:23.380001319Z",
-							"line": "super line with labels",
-							"nonIndexedLabels": {
-								"foo": "a",
-								"bar": "b"
-							}
+							"line": "super line with labels"
 						}
 					]
 				}
@@ -220,11 +216,7 @@ var tailTests = []struct {
 						},
 						{
 							"ts": "2019-09-13T18:32:23.380001319Z",
-							"line": "super line with labels",
-							"nonIndexedLabels": {
-								"foo": "a",
-								"bar": "b"
-							}						
+							"line": "super line with labels"
 						}
 					]
 				}

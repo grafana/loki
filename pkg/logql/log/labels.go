@@ -56,6 +56,15 @@ type CategorizedLabelsResult interface {
 	Parsed() LabelsResult
 }
 
+// NewCategorizedLabelsResult creates a new NewCategorizedLabelsResult
+func NewCategorizedLabelsResult(stream, structuredMetadata, parsed LabelsResult) CategorizedLabelsResult {
+	return &categorizedLabelsResult{
+		stream:             stream,
+		structuredMetadata: structuredMetadata,
+		parsed:             parsed,
+	}
+}
+
 type categorizedLabelsResult struct {
 	stream             LabelsResult
 	structuredMetadata LabelsResult
@@ -476,18 +485,14 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 func (b *LabelsBuilder) CategorizedLabelsResult() CategorizedLabelsResult {
 	// unchanged path.
 	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
-		return categorizedLabelsResult{
-			stream:             b.currentResult,
-			structuredMetadata: EmptyLabelsResult,
-			parsed:             EmptyLabelsResult,
-		}
+		return NewCategorizedLabelsResult(b.currentResult, EmptyLabelsResult, EmptyLabelsResult)
 	}
 
-	return categorizedLabelsResult{
-		stream:             b.toResult(b.labelsForCategory(StreamLabel)),
-		structuredMetadata: b.toResult(b.labelsForCategory(StructuredMetadataLabel)),
-		parsed:             b.toResult(b.labelsForCategory(ParsedLabel)),
-	}
+	return NewCategorizedLabelsResult(
+		b.toResult(b.labelsForCategory(StreamLabel)),
+		b.toResult(b.labelsForCategory(StructuredMetadataLabel)),
+		b.toResult(b.labelsForCategory(ParsedLabel)),
+	)
 }
 
 func (b *BaseLabelsBuilder) toResult(buf CategorizedLabels) LabelsResult {

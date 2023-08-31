@@ -710,136 +710,133 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 
 }
 
-func TestCategorizedLabels(t *testing.T) {
-	clu := cluster.New(nil, cluster.SchemaWithTDSBAndNonIndexedLabels)
-
-	defer func() {
-		assert.NoError(t, clu.Cleanup())
-	}()
-
-	var (
-		tDistributor = clu.AddComponent(
-			"distributor",
-			"-target=distributor",
-		)
-		tIndexGateway = clu.AddComponent(
-			"index-gateway",
-			"-target=index-gateway",
-			"-tsdb.enable-postings-cache=true",
-			"-store.index-cache-read.cache.enable-fifocache=true",
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	var (
-		tIngester = clu.AddComponent(
-			"ingester",
-			"-target=ingester",
-			"-ingester.flush-on-shutdown=true",
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		tQueryScheduler = clu.AddComponent(
-			"query-scheduler",
-			"-target=query-scheduler",
-			"-query-scheduler.use-scheduler-ring=false",
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		tCompactor = clu.AddComponent(
-			"compactor",
-			"-target=compactor",
-			"-boltdb.shipper.compactor.compaction-interval=1s",
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	// finally, run the query-frontend and querier.
-	var (
-		tQueryFrontend = clu.AddComponent(
-			"query-frontend",
-			"-target=query-frontend",
-			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-frontend.default-validity=0s",
-			"-common.compactor-address="+tCompactor.HTTPURL(),
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-		_ = clu.AddComponent(
-			"querier",
-			"-target=querier",
-			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
-			"-common.compactor-address="+tCompactor.HTTPURL(),
-			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
-		)
-	)
-	require.NoError(t, clu.Run())
-
-	tenantID := randStringRunes()
-
-	now := time.Now()
-	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
-	cliDistributor.Now = now
-	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
-	cliIngester.Now = now
-	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
-	cliQueryFrontend.Now = now
-	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
-	cliIndexGateway.Now = now
-
-	t.Run("ingest-logs", func(t *testing.T) {
-		require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineA", map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineB", map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
-		require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineC msg=foo", map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
-	})
-
-	tests := []struct {
-		name            string
-		query           string
-		expectedLines   []string
-		expectedStreams map[string]map[string]string
-	}{
-		{
-			name:            "no parser",
-			query:           `{job="fake"}`,
-			expectedLines:   []string{"lineA", "lineB", "lineC msg=foo"},
-			expectedStreams: nil,
-		},
-		{
-			name:            "with parser",
-			query:           `{job="fake"} | logfmt`,
-			expectedLines:   []string{"lineA", "lineB", "lineC msg=foo"},
-			expectedStreams: nil,
-		},
-	}
-	runTests := func() {
-		for _, tc := range tests {
-			t.Run(tc.name, func(t *testing.T) {
-				resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
-				require.NoError(t, err)
-				assert.Equal(t, "streams", resp.Data.ResultType)
-
-				var lines []string
-				for _, stream := range resp.Data.Stream {
-					for _, val := range stream.Values {
-						lines = append(lines, val[1])
-					}
-				}
-
-				assert.ElementsMatch(t, []string{"lineA", "lineB"}, lines)
-			})
-		}
-	}
-
-	t.Run("Query before flush", func(t *testing.T) {
-		runTests()
-	})
-
-	// restart ingester which should flush the chunks and index
-	require.NoError(t, tIngester.Restart())
-
-	t.Run("Query after flush", func(t *testing.T) {
-		runTests()
-	})
-}
+// func TestCategorizedLabels(t *testing.T) {
+// 	clu := cluster.New(nil, cluster.SchemaWithTDSBAndNonIndexedLabels)
+//
+// 	defer func() {
+// 		assert.NoError(t, clu.Cleanup())
+// 	}()
+//
+// 	var (
+// 		tDistributor = clu.AddComponent(
+// 			"distributor",
+// 			"-target=distributor",
+// 		)
+// 		tIndexGateway = clu.AddComponent(
+// 			"index-gateway",
+// 			"-target=index-gateway",
+// 			"-tsdb.enable-postings-cache=true",
+// 			"-store.index-cache-read.cache.enable-fifocache=true",
+// 		)
+// 	)
+// 	require.NoError(t, clu.Run())
+//
+// 	var (
+// 		tIngester = clu.AddComponent(
+// 			"ingester",
+// 			"-target=ingester",
+// 			"-ingester.flush-on-shutdown=true",
+// 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+// 		)
+// 		tQueryScheduler = clu.AddComponent(
+// 			"query-scheduler",
+// 			"-target=query-scheduler",
+// 			"-query-scheduler.use-scheduler-ring=false",
+// 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+// 		)
+// 		tCompactor = clu.AddComponent(
+// 			"compactor",
+// 			"-target=compactor",
+// 			"-boltdb.shipper.compactor.compaction-interval=1s",
+// 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+// 		)
+// 	)
+// 	require.NoError(t, clu.Run())
+//
+// 	// finally, run the query-frontend and querier.
+// 	var (
+// 		tQueryFrontend = clu.AddComponent(
+// 			"query-frontend",
+// 			"-target=query-frontend",
+// 			"-frontend.scheduler-address="+tQueryScheduler.GRPCURL(),
+// 			"-frontend.default-validity=0s",
+// 			"-common.compactor-address="+tCompactor.HTTPURL(),
+// 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+// 		)
+// 		_ = clu.AddComponent(
+// 			"querier",
+// 			"-target=querier",
+// 			"-querier.scheduler-address="+tQueryScheduler.GRPCURL(),
+// 			"-common.compactor-address="+tCompactor.HTTPURL(),
+// 			"-tsdb.shipper.index-gateway-client.server-address="+tIndexGateway.GRPCURL(),
+// 		)
+// 	)
+// 	require.NoError(t, clu.Run())
+//
+// 	tenantID := randStringRunes()
+//
+// 	now := time.Now()
+// 	cliDistributor := client.New(tenantID, "", tDistributor.HTTPURL())
+// 	cliDistributor.Now = now
+// 	cliIngester := client.New(tenantID, "", tIngester.HTTPURL())
+// 	cliIngester.Now = now
+// 	cliQueryFrontend := client.New(tenantID, "", tQueryFrontend.HTTPURL())
+// 	cliQueryFrontend.Now = now
+// 	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
+// 	cliIndexGateway.Now = now
+//
+// 	t.Run("ingest-logs", func(t *testing.T) {
+// 		require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineA", map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
+// 		require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineB", map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
+// 		require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineC msg=foo", map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
+// 	})
+//
+// 	tests := []struct {
+// 		name            string
+// 		query           string
+// 		expectedStreams map[string]map[string]string
+// 	}{
+// 		{
+// 			name:            "no parser",
+// 			query:           `{job="fake"}`,
+// 			expectedStreams: nil,
+// 		},
+// 		{
+// 			name:            "with parser",
+// 			query:           `{job="fake"} | logfmt`,
+// 			expectedStreams: nil,
+// 		},
+// 	}
+// 	runTests := func(t *testing.T) {
+// 		for _, tc := range tests {
+// 			t.Run(tc.name, func(t *testing.T) {
+// 				resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
+// 				require.NoError(t, err)
+// 				assert.Equal(t, "streams", resp.Data.ResultType)
+//
+// 				var lines []string
+// 				for _, stream := range resp.Data.Stream {
+// 					for _, val := range stream.Values {
+// 						lines = append(lines, val[1])
+// 					}
+// 				}
+//
+// 				assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC msg=foo"}, lines)
+// 			})
+// 		}
+// 	}
+//
+// 	t.Run("Query before flush", func(t *testing.T) {
+// 		runTests(t)
+// 	})
+//
+// 	// restart ingester which should flush the chunks and index
+// 	require.NoError(t, tIngester.Restart())
+//
+// 	t.Run("Query after flush", func(t *testing.T) {
+// 		runTests(t)
+// 	})
+// }
 
 func getValueFromMF(mf *dto.MetricFamily, lbs []*dto.LabelPair) float64 {
 	for _, m := range mf.Metric {

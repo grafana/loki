@@ -9,7 +9,6 @@ type Iterator interface {
 	// Labels returns the labels for the current entry.
 	// The labels can be mutated by the query engine and not reflect the original stream.
 	Labels() string
-	GroupedLabels() logproto.GroupedLabels
 	// StreamHash returns the hash of the original stream for the current entry.
 	StreamHash() uint64
 	Error() error
@@ -23,8 +22,8 @@ var NoopIterator = noOpIterator{}
 func (noOpIterator) Next() bool     { return false }
 func (noOpIterator) Error() error   { return nil }
 func (noOpIterator) Labels() string { return "" }
-func (noOpIterator) GroupedLabels() logproto.GroupedLabels {
-	return logproto.GroupedLabels{}
+func (noOpIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return logproto.CategorizedLabels{}
 }
 func (noOpIterator) StreamHash() uint64      { return 0 }
 func (noOpIterator) Entry() logproto.Entry   { return logproto.Entry{} }

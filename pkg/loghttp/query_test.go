@@ -9,6 +9,7 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -151,7 +152,12 @@ func TestStreams_ToProto(t *testing.T) {
 			"some",
 			[]Stream{
 				{
-					Labels: map[string]string{"foo": "bar"},
+					Labels: map[string]string{"job": "fake"},
+					CategorizedLabels: CategorizedLabelSet{
+						Stream:             map[string]string{"job": "fake"},
+						StructuredMetadata: map[string]string{"foo": "a", "bar": "b"},
+						Parsed:             nil,
+					},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
 						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
@@ -161,7 +167,12 @@ func TestStreams_ToProto(t *testing.T) {
 					},
 				},
 				{
-					Labels: map[string]string{"foo": "bar", "lvl": "error"},
+					Labels: map[string]string{"job": "fake", "lvl": "error"},
+					CategorizedLabels: CategorizedLabelSet{
+						Stream:             map[string]string{"job": "fake"},
+						StructuredMetadata: map[string]string{"foo": "a", "bar": "b"},
+						Parsed:             map[string]string{"lvl": "error"},
+					},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
 						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: labels.Labels{
@@ -173,7 +184,12 @@ func TestStreams_ToProto(t *testing.T) {
 			},
 			[]logproto.Stream{
 				{
-					Labels: `{foo="bar"}`,
+					Labels: `{job="fake"}`,
+					CategorizedLabels: logproto.CategorizedLabels{
+						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+						Parsed:             []logproto.LabelAdapter{},
+					},
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
 						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: []logproto.LabelAdapter{
@@ -183,7 +199,12 @@ func TestStreams_ToProto(t *testing.T) {
 					},
 				},
 				{
-					Labels: `{foo="bar", lvl="error"}`,
+					Labels: `{job="fake", lvl="error"}`,
+					CategorizedLabels: logproto.CategorizedLabels{
+						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+						Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("lvl", "error")),
+					},
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
 						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: []logproto.LabelAdapter{
@@ -198,7 +219,7 @@ func TestStreams_ToProto(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.s.ToProto(); !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Streams.ToProto() = %v, want %v", got, tt.want)
+				assert.Equal(t, tt.want, got)
 			}
 		})
 	}

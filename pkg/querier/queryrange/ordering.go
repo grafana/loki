@@ -20,9 +20,10 @@ func (m entries) start() int64 {
 }
 
 type byDir struct {
-	markers   []entries
-	direction logproto.Direction
-	labels    string
+	markers           []entries
+	direction         logproto.Direction
+	labels            string
+	categorizedLabels logproto.CategorizedLabels
 }
 
 func (a byDir) Len() int      { return len(a.markers) }

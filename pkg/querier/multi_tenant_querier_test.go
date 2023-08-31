@@ -252,6 +252,10 @@ func (it mockEntryIterator) Labels() string {
 	return it.labels
 }
 
+func (it mockEntryIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return logproto.CategorizedLabels{}
+}
+
 func (it mockEntryIterator) Entry() logproto.Entry {
 	return logproto.Entry{}
 }

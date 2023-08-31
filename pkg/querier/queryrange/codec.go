@@ -711,8 +711,9 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 
 		for i, stream := range response.Data.Result {
 			streams[i] = logproto.Stream{
-				Labels:  stream.Labels,
-				Entries: stream.Entries,
+				Labels:            stream.Labels,
+				CategorizedLabels: stream.CategorizedLabels,
+				Entries:           stream.Entries,
 			}
 		}
 		result := logqlmodel.Result{
@@ -964,8 +965,9 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 			s, ok := groups[stream.Labels]
 			if !ok {
 				s = &byDir{
-					direction: direction,
-					labels:    stream.Labels,
+					direction:         direction,
+					labels:            stream.Labels,
+					categorizedLabels: stream.CategorizedLabels,
 				}
 				groups[stream.Labels] = s
 			}
@@ -994,9 +996,11 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	if total <= int(limit) {
 		results := make([]logproto.Stream, 0, len(keys))
 		for _, key := range keys {
+			group := groups[key]
 			results = append(results, logproto.Stream{
-				Labels:  key,
-				Entries: groups[key].merge(),
+				Labels:            key,
+				CategorizedLabels: group.categorizedLabels,
+				Entries:           group.merge(),
 			})
 		}
 		return results
@@ -1007,9 +1011,11 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 	}
 
 	for _, key := range keys {
+		group := groups[key]
 		stream := &logproto.Stream{
-			Labels:  key,
-			Entries: groups[key].merge(),
+			Labels:            key,
+			CategorizedLabels: group.categorizedLabels,
+			Entries:           group.merge(),
 		}
 		if len(stream.Entries) > 0 {
 			pq.streams = append(pq.streams, stream)
@@ -1028,8 +1034,9 @@ func mergeOrderedNonOverlappingStreams(resps []*LokiResponse, limit uint32, dire
 		s, ok := resultDict[next.Labels]
 		if !ok {
 			s = &logproto.Stream{
-				Labels:  next.Labels,
-				Entries: make([]logproto.Entry, 0, int(limit)/len(keys)), // allocation hack -- assume uniform distribution across labels
+				Labels:            next.Labels,
+				CategorizedLabels: next.CategorizedLabels,
+				Entries:           make([]logproto.Entry, 0, int(limit)/len(keys)), // allocation hack -- assume uniform distribution across labels
 			}
 			resultDict[next.Labels] = s
 		}

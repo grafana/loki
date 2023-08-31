@@ -500,7 +500,7 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		labels, entry := i.Labels(), i.Entry()
+		labels, categorizedLabels, entry := i.Labels(), i.CategorizedLabels(), i.Entry()
 		forwardShouldOutput := dir == logproto.FORWARD &&
 			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
 		backwardShouldOutput := dir == logproto.BACKWARD &&
@@ -512,7 +512,8 @@ func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, inte
 			stream, ok := streams[labels]
 			if !ok {
 				stream = &logproto.Stream{
-					Labels: labels,
+					Labels:            labels,
+					CategorizedLabels: categorizedLabels,
 				}
 				streams[labels] = stream
 			}

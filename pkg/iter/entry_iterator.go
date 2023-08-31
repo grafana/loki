@@ -17,6 +17,7 @@ import (
 type EntryIterator interface {
 	Iterator
 	Entry() logproto.Entry
+	CategorizedLabels() logproto.CategorizedLabels
 }
 
 type EntryIteratorOptions struct {
@@ -58,8 +59,8 @@ func (i *streamIterator) Labels() string {
 	return i.stream.Labels
 }
 
-func (i *streamIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.stream.GroupedLabels
+func (i *streamIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return i.stream.CategorizedLabels
 }
 
 func (i *streamIterator) StreamHash() uint64 { return i.stream.Hash }
@@ -145,10 +146,10 @@ func (i *mergeEntryIterator) fillBuffer() {
 		next := i.tree.Winner()
 		entry := next.Entry()
 		i.buffer = append(i.buffer, entryWithLabels{
-			Entry:         entry,
-			labels:        next.Labels(),
-			streamHash:    next.StreamHash(),
-			groupedLabels: next.GroupedLabels(),
+			Entry:             entry,
+			labels:            next.Labels(),
+			streamHash:        next.StreamHash(),
+			categorizedLabels: next.CategorizedLabels(),
 		})
 		if len(i.buffer) > 1 &&
 			(i.buffer[0].streamHash != next.StreamHash() ||
@@ -178,7 +179,7 @@ func (i *mergeEntryIterator) nextFromBuffer() {
 	i.currEntry.Entry = i.buffer[0].Entry
 	i.currEntry.labels = i.buffer[0].labels
 	i.currEntry.streamHash = i.buffer[0].streamHash
-	i.currEntry.groupedLabels = i.buffer[0].groupedLabels
+	i.currEntry.categorizedLabels = i.buffer[0].categorizedLabels
 	if len(i.buffer) == 2 {
 		i.buffer[0] = i.buffer[1]
 		i.buffer = i.buffer[:1]
@@ -199,8 +200,8 @@ func (i *mergeEntryIterator) Labels() string {
 	return i.currEntry.labels
 }
 
-func (i *mergeEntryIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.currEntry.groupedLabels
+func (i *mergeEntryIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return i.currEntry.categorizedLabels
 }
 
 func (i *mergeEntryIterator) StreamHash() uint64 { return i.currEntry.streamHash }
@@ -330,7 +331,7 @@ func (i *entrySortIterator) Next() bool {
 	i.currEntry.Entry = next.Entry()
 	i.currEntry.labels = next.Labels()
 	i.currEntry.streamHash = next.StreamHash()
-	i.currEntry.groupedLabels = next.GroupedLabels()
+	i.currEntry.categorizedLabels = next.CategorizedLabels()
 	return true
 }
 
@@ -342,8 +343,8 @@ func (i *entrySortIterator) Labels() string {
 	return i.currEntry.labels
 }
 
-func (i *entrySortIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.currEntry.groupedLabels
+func (i *entrySortIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return i.currEntry.categorizedLabels
 }
 
 func (i *entrySortIterator) StreamHash() uint64 {
@@ -420,8 +421,8 @@ func (i *queryClientIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *queryClientIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.curr.GroupedLabels()
+func (i *queryClientIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return i.curr.CategorizedLabels()
 }
 
 func (i *queryClientIterator) StreamHash() uint64 { return i.curr.StreamHash() }
@@ -474,11 +475,11 @@ func (i *nonOverlappingIterator) Labels() string {
 	return i.curr.Labels()
 }
 
-func (i *nonOverlappingIterator) GroupedLabels() logproto.GroupedLabels {
+func (i *nonOverlappingIterator) CategorizedLabels() logproto.CategorizedLabels {
 	if i.curr == nil {
-		return logproto.GroupedLabels{}
+		return logproto.CategorizedLabels{}
 	}
-	return i.curr.GroupedLabels()
+	return i.curr.CategorizedLabels()
 }
 
 func (i *nonOverlappingIterator) StreamHash() uint64 {
@@ -551,9 +552,9 @@ func (i *timeRangedIterator) Next() bool {
 
 type entryWithLabels struct {
 	logproto.Entry
-	labels        string
-	streamHash    uint64
-	groupedLabels logproto.GroupedLabels
+	labels            string
+	streamHash        uint64
+	categorizedLabels logproto.CategorizedLabels
 }
 
 type reverseIterator struct {
@@ -589,7 +590,7 @@ func (i *reverseIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for count := uint32(0); (i.limit == 0 || count < i.limit) && i.iter.Next(); count++ {
-			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.GroupedLabels()})
+			i.entriesWithLabels = append(i.entriesWithLabels, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.CategorizedLabels()})
 		}
 		i.iter.Close()
 	}
@@ -613,8 +614,8 @@ func (i *reverseIterator) Labels() string {
 	return i.cur.labels
 }
 
-func (i *reverseIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.cur.groupedLabels
+func (i *reverseIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return i.cur.categorizedLabels
 }
 
 func (i *reverseIterator) StreamHash() uint64 {
@@ -668,7 +669,7 @@ func (i *reverseEntryIterator) load() {
 	if !i.loaded {
 		i.loaded = true
 		for i.iter.Next() {
-			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.GroupedLabels()})
+			i.buf.entries = append(i.buf.entries, entryWithLabels{i.iter.Entry(), i.iter.Labels(), i.iter.StreamHash(), i.iter.CategorizedLabels()})
 		}
 		i.iter.Close()
 	}
@@ -692,8 +693,8 @@ func (i *reverseEntryIterator) Labels() string {
 	return i.cur.labels
 }
 
-func (i *reverseEntryIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.cur.groupedLabels
+func (i *reverseEntryIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return i.cur.categorizedLabels
 }
 
 func (i *reverseEntryIterator) StreamHash() uint64 {
@@ -731,7 +732,7 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 		streamsCount int
 	)
 	for ; respSize < size && i.Next(); respSize++ {
-		labels, groupedLabels, hash, entry := i.Labels(), i.GroupedLabels(), i.StreamHash(), i.Entry()
+		labels, categorizedLabels, hash, entry := i.Labels(), i.CategorizedLabels(), i.StreamHash(), i.Entry()
 		mutatedStreams, ok := streams[hash]
 		if !ok {
 			mutatedStreams = map[string]*logproto.Stream{}
@@ -741,9 +742,9 @@ func ReadBatch(i EntryIterator, size uint32) (*logproto.QueryResponse, uint32, e
 		if !ok {
 			streamsCount++
 			mutatedStream = &logproto.Stream{
-				Labels:        labels,
-				Hash:          hash,
-				GroupedLabels: groupedLabels,
+				Labels:            labels,
+				Hash:              hash,
+				CategorizedLabels: categorizedLabels,
 			}
 			mutatedStreams[labels] = mutatedStream
 		}
@@ -836,11 +837,11 @@ func (it *peekingEntryIterator) Labels() string {
 	return ""
 }
 
-func (it *peekingEntryIterator) GroupedLabels() logproto.GroupedLabels {
+func (it *peekingEntryIterator) CategorizedLabels() logproto.CategorizedLabels {
 	if it.next != nil {
-		return it.next.groupedLabels
+		return it.next.categorizedLabels
 	}
-	return logproto.GroupedLabels{}
+	return logproto.CategorizedLabels{}
 }
 
 func (it *peekingEntryIterator) StreamHash() uint64 {

@@ -20,7 +20,7 @@ message PushRequest {
 
 message PushResponse {}
 
-message GroupedLabelsAdapter {
+message CategorizedLabelsAdapter {
   repeated LabelPairAdapter stream = 1 [
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "stream"
@@ -44,9 +44,9 @@ message StreamAdapter {
   // hash contains the original hash of the stream.
   uint64 hash = 3 [(gogoproto.jsontag) = "-"];
   // group contains the grouped labels of the stream.
-  GroupedLabelsAdapter groupedLabels = 4 [
+  CategorizedLabelsAdapter categorizedLabels = 4 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "groupedLabels"
+    (gogoproto.jsontag) = "categorizedLabels"
   ];
 }
 

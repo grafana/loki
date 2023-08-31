@@ -581,7 +581,7 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 				{T: 60 * 1000, F: 1.2, Metric: labels.FromStrings("app", "fuzz")},
 			},
 		},
-		//sort and sort_desc
+		// sort and sort_desc
 		{
 			`sort(rate(({app=~"foo|bar"} |~".+bar")[1m]))  + 1`, time.Unix(60, 0), logproto.FORWARD, 100,
 			[][]logproto.Series{
@@ -1575,7 +1575,7 @@ func TestEngine_RangeQuery(t *testing.T) {
 			},
 			promql.Matrix{
 				promql.Series{
-					//vector result
+					// vector result
 					Metric: labels.Labels(nil),
 					Floats: []promql.FPoint{{T: 60000, F: 0}, {T: 80000, F: 0}, {T: 100000, F: 0}, {T: 120000, F: 0}, {T: 140000, F: 0}, {T: 160000, F: 0}, {T: 180000, F: 0}}},
 				promql.Series{
@@ -2894,6 +2894,10 @@ func (errorIterator) Next() bool { return false }
 func (errorIterator) Error() error { return ErrMock }
 
 func (errorIterator) Labels() string { return "" }
+
+func (errorIterator) CategorizedLabels() logproto.CategorizedLabels {
+	return logproto.CategorizedLabels{}
+}
 
 func (errorIterator) StreamHash() uint64 { return 0 }
 

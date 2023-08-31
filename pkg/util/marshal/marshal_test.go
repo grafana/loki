@@ -141,6 +141,11 @@ var queryTests = []struct {
 					},
 				},
 				Labels: `{test="test"}`,
+				CategorizedLabels: logproto.CategorizedLabels{
+					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+					StructuredMetadata: []logproto.LabelAdapter{},
+					Parsed:             []logproto.LabelAdapter{},
+				},
 			},
 		},
 		fmt.Sprintf(`{
@@ -349,6 +354,11 @@ var tailTests = []struct {
 						},
 					},
 					Labels: "{test=\"test\"}",
+					CategorizedLabels: logproto.CategorizedLabels{
+						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
+						StructuredMetadata: []logproto.LabelAdapter{},
+						Parsed:             []logproto.LabelAdapter{},
+					},
 				},
 			},
 			DroppedEntries: []legacy.DroppedEntry{
@@ -544,7 +554,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 	inputStream := logqlmodel.Streams{
 		logproto.Stream{
 			Labels: `{test="test"}`,
-			GroupedLabels: logproto.GroupedLabels{
+			CategorizedLabels: logproto.CategorizedLabels{
 				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 				StructuredMetadata: []logproto.LabelAdapter{},
 				Parsed:             []logproto.LabelAdapter{},
@@ -558,7 +568,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 		},
 		logproto.Stream{
 			Labels: `{test="test", foo="a", bar="b"}`,
-			GroupedLabels: logproto.GroupedLabels{
+			CategorizedLabels: logproto.CategorizedLabels{
 				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
 				Parsed:             []logproto.LabelAdapter{},
@@ -576,7 +586,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 		},
 		logproto.Stream{
 			Labels: `{test="test", foo="a", bar="b", msg="baz"}`,
-			GroupedLabels: logproto.GroupedLabels{
+			CategorizedLabels: logproto.CategorizedLabels{
 				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
 				Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
@@ -654,9 +664,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 							"stream": {
 								"stream": {
 									"test": "test"
-								},
-								"structuredMetadata": {},
-								"parsed": {}
+								}
 							},
 							"values":[
 								[ "123456789012346", "super line"]
@@ -670,8 +678,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 								"structuredMetadata": {
 									"foo": "a",
 									"bar": "b"
-								},
-								"parsed": {}
+								}
 							},
 							"values":[
 								[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
@@ -726,7 +733,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: `{test="test"}`,
-						GroupedLabels: logproto.GroupedLabels{
+						CategorizedLabels: logproto.CategorizedLabels{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 							StructuredMetadata: []logproto.LabelAdapter{},
 							Parsed:             []logproto.LabelAdapter{},
@@ -785,7 +792,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: `{test="test", foo="a", bar="b"}`,
-						GroupedLabels: logproto.GroupedLabels{
+						CategorizedLabels: logproto.CategorizedLabels{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
 							Parsed:             []logproto.LabelAdapter{},
@@ -854,7 +861,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				Streams: []logproto.Stream{
 					{
 						Labels: `{test="test", foo="a", bar="b", msg="baz"}`,
-						GroupedLabels: logproto.GroupedLabels{
+						CategorizedLabels: logproto.CategorizedLabels{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
 							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
@@ -1040,7 +1047,7 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
 		js := json.NewStream(json.ConfigFastest, &buf, 0)
-		err := encodeResult(w.Value, js)
+		err := encodeResult(w.Value, js, loghttp.FlagGroupLabels)
 		require.NoError(t, err)
 		js.Flush()
 		actual := buf.String()

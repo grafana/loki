@@ -288,6 +288,11 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 	expected := []logproto.Stream{
 		{
 			Labels: lbls.String(),
+			CategorizedLabels: logproto.CategorizedLabels{
+				Stream:             logproto.FromLabelsToLabelAdapters(lbls),
+				StructuredMetadata: []logproto.LabelAdapter{},
+				Parsed:             []logproto.LabelAdapter{},
+			},
 			Entries: []logproto.Entry{
 				{
 					Timestamp: time.Unix(1, 0),

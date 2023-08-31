@@ -94,14 +94,48 @@ type CategorizedLabelSet struct {
 	Parsed             LabelSet `json:"parsed,omitempty"`
 }
 
-func (c CategorizedLabelSet) Empty() bool {
+func (c *CategorizedLabelSet) Empty() bool {
 	return len(c.Stream) == 0 && len(c.StructuredMetadata) == 0 && len(c.Parsed) == 0
 }
 
-func (c CategorizedLabelSet) ToProto() logproto.GroupedLabels {
-	return logproto.GroupedLabels{
+func (c *CategorizedLabelSet) ToProto() logproto.CategorizedLabels {
+	return logproto.CategorizedLabels{
 		Stream:             logproto.FromLabelsToLabelAdapters(labels.FromMap(c.Stream.Map())),
 		StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromMap(c.StructuredMetadata.Map())),
 		Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromMap(c.Parsed.Map())),
 	}
+}
+
+func (c *CategorizedLabelSet) ToLabelSet() LabelSet {
+	ret := make(LabelSet, len(c.Stream)+len(c.StructuredMetadata)+len(c.Parsed))
+	for k, v := range c.Stream {
+		ret[k] = v
+	}
+	for k, v := range c.StructuredMetadata {
+		ret[k] = v
+	}
+	for k, v := range c.Parsed {
+		ret[k] = v
+	}
+	return ret
+}
+
+func (c *CategorizedLabelSet) UnmarshalJSON(data []byte) error {
+	return jsonparser.ObjectEach(data, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
+		switch string(key) {
+		case "stream":
+			if err := c.Stream.UnmarshalJSON(val); err != nil {
+				return err
+			}
+		case "structuredMetadata":
+			if err := c.StructuredMetadata.UnmarshalJSON(val); err != nil {
+				return err
+			}
+		case "parsed":
+			if err := c.Parsed.UnmarshalJSON(val); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }

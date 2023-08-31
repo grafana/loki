@@ -34,9 +34,8 @@ type peekingSampleIterator struct {
 
 type sampleWithLabels struct {
 	logproto.Sample
-	labels        string
-	streamHash    uint64
-	groupedLabels logproto.GroupedLabels
+	labels     string
+	streamHash uint64
 }
 
 func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
@@ -68,13 +67,6 @@ func (it *peekingSampleIterator) Labels() string {
 		return it.next.labels
 	}
 	return ""
-}
-
-func (it *peekingSampleIterator) GroupedLabels() logproto.GroupedLabels {
-	if it.next != nil {
-		return it.next.groupedLabels
-	}
-	return logproto.GroupedLabels{}
 }
 
 func (it *peekingSampleIterator) StreamHash() uint64 {
@@ -240,7 +232,6 @@ func (i *mergeSampleIterator) Next() bool {
 	if i.heap.Len() == 1 {
 		i.curr.Sample = i.heap.Peek().Sample()
 		i.curr.labels = i.heap.Peek().Labels()
-		i.curr.groupedLabels = i.heap.Peek().GroupedLabels()
 		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
 			i.heap.Pop()
@@ -271,10 +262,9 @@ Outer:
 		}
 		if !dupe {
 			i.buffer = append(i.buffer, sampleWithLabels{
-				Sample:        sample,
-				labels:        next.Labels(),
-				streamHash:    next.StreamHash(),
-				groupedLabels: next.GroupedLabels(),
+				Sample:     sample,
+				labels:     next.Labels(),
+				streamHash: next.StreamHash(),
 			})
 		}
 	inner:
@@ -294,10 +284,9 @@ Outer:
 				}
 			}
 			i.buffer = append(i.buffer, sampleWithLabels{
-				Sample:        sample,
-				labels:        next.Labels(),
-				streamHash:    next.StreamHash(),
-				groupedLabels: next.GroupedLabels(),
+				Sample:     sample,
+				labels:     next.Labels(),
+				streamHash: next.StreamHash(),
 			})
 		}
 		i.pushBuffer = append(i.pushBuffer, next)
@@ -316,7 +305,6 @@ Outer:
 func (i *mergeSampleIterator) nextFromBuffer() {
 	i.curr.Sample = i.buffer[0].Sample
 	i.curr.labels = i.buffer[0].labels
-	i.curr.groupedLabels = i.buffer[0].groupedLabels
 	i.curr.streamHash = i.buffer[0].streamHash
 	if len(i.buffer) == 1 {
 		i.buffer = i.buffer[:0]
@@ -331,10 +319,6 @@ func (i *mergeSampleIterator) Sample() logproto.Sample {
 
 func (i *mergeSampleIterator) Labels() string {
 	return i.curr.labels
-}
-
-func (i *mergeSampleIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.curr.groupedLabels
 }
 
 func (i *mergeSampleIterator) StreamHash() uint64 {
@@ -451,10 +435,6 @@ func (i *sortSampleIterator) Labels() string {
 	return i.curr.labels
 }
 
-func (i *sortSampleIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.curr.groupedLabels
-}
-
 func (i *sortSampleIterator) StreamHash() uint64 {
 	return i.curr.streamHash
 }
@@ -521,10 +501,6 @@ func (i *sampleQueryClientIterator) Sample() logproto.Sample {
 
 func (i *sampleQueryClientIterator) Labels() string {
 	return i.curr.Labels()
-}
-
-func (i *sampleQueryClientIterator) GroupedLabels() logproto.GroupedLabels {
-	return i.curr.GroupedLabels()
 }
 
 func (i *sampleQueryClientIterator) StreamHash() uint64 {
@@ -609,11 +585,6 @@ func (i *seriesIterator) Labels() string {
 	return i.series.Labels
 }
 
-func (i *seriesIterator) GroupedLabels() logproto.GroupedLabels {
-	// TODO: Support series?
-	return logproto.GroupedLabels{}
-}
-
 func (i *seriesIterator) StreamHash() uint64 {
 	return i.series.StreamHash
 }
@@ -666,13 +637,6 @@ func (i *nonOverlappingSampleIterator) Labels() string {
 		return ""
 	}
 	return i.curr.Labels()
-}
-
-func (i *nonOverlappingSampleIterator) GroupedLabels() logproto.GroupedLabels {
-	if i.curr == nil {
-		return logproto.GroupedLabels{}
-	}
-	return i.curr.GroupedLabels()
 }
 
 func (i *nonOverlappingSampleIterator) StreamHash() uint64 {

@@ -74,7 +74,8 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 	ret := make([]loghttp.Stream, len(s))
 
 	for i, stream := range s {
-		ret[i], err = NewStream(stream)
+		// We set the FlagGroupLabels to keep the categorized labels
+		ret[i], err = NewStream(stream, loghttp.FlagGroupLabels)
 
 		if err != nil {
 			return nil, err
@@ -98,11 +99,10 @@ func NewStream(s logproto.Stream, encodeFlags ...loghttp.EncodingFlag) (loghttp.
 	}
 
 	ret := loghttp.Stream{
-		Labels:  labels,
-		Entries: entries,
-	}
-	if loghttp.EncodingFlagIsSet(encodeFlags, loghttp.FlagGroupLabels) {
-		ret.CategorizedLabels = NewCategorizedLabelSet(s.GroupedLabels)
+		Labels:            labels,
+		Entries:           entries,
+		CategorizedLabels: NewCategorizedLabelSet(s.CategorizedLabels),
+		EncodeFlags:       encodeFlags,
 	}
 
 	return ret, nil
@@ -289,7 +289,7 @@ func encodeLabels(labels []logproto.LabelAdapter, s *jsoniter.Stream) error {
 	return nil
 }
 
-func encodeGroupedLabels(groupedLabels logproto.GroupedLabels, s *jsoniter.Stream) error {
+func encodeCategorizedLabels(categorizedLabels logproto.CategorizedLabels, s *jsoniter.Stream) error {
 	writeGroup := func(name string, lbls []logproto.LabelAdapter) error {
 		s.WriteObjectField(name)
 		s.WriteObjectStart()
@@ -300,16 +300,22 @@ func encodeGroupedLabels(groupedLabels logproto.GroupedLabels, s *jsoniter.Strea
 		return nil
 	}
 
-	if err := writeGroup("stream", groupedLabels.Stream); err != nil {
-		return err
+	if len(categorizedLabels.Stream) > 0 {
+		if err := writeGroup("stream", categorizedLabels.Stream); err != nil {
+			return err
+		}
 	}
-	s.WriteMore()
-	if err := writeGroup("structuredMetadata", groupedLabels.StructuredMetadata); err != nil {
-		return err
+	if len(categorizedLabels.StructuredMetadata) > 0 {
+		s.WriteMore()
+		if err := writeGroup("structuredMetadata", categorizedLabels.StructuredMetadata); err != nil {
+			return err
+		}
 	}
-	s.WriteMore()
-	if err := writeGroup("parsed", groupedLabels.Parsed); err != nil {
-		return err
+	if len(categorizedLabels.Parsed) > 0 {
+		s.WriteMore()
+		if err := writeGroup("parsed", categorizedLabels.Parsed); err != nil {
+			return err
+		}
 	}
 	s.Flush()
 	return nil
@@ -326,7 +332,7 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags ...log
 	s.WriteObjectStart()
 
 	if loghttp.EncodingFlagIsSet(encodeFlags, loghttp.FlagGroupLabels) {
-		if err := encodeGroupedLabels(stream.GroupedLabels, s); err != nil {
+		if err := encodeCategorizedLabels(stream.CategorizedLabels, s); err != nil {
 			return err
 		}
 	} else {

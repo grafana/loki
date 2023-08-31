@@ -53,7 +53,7 @@ func (it *cachedIterator) consumeWrapped() bool {
 		return false
 	}
 	// we're caching entries
-	it.cache = append(it.cache, entryWithLabels{Entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash(), groupedLabels: it.Wrapped().GroupedLabels()})
+	it.cache = append(it.cache, entryWithLabels{Entry: it.Wrapped().Entry(), labels: it.Wrapped().Labels(), streamHash: it.Wrapped().StreamHash(), categorizedLabels: it.Wrapped().CategorizedLabels()})
 	it.curr++
 	return true
 }
@@ -87,11 +87,11 @@ func (it *cachedIterator) Labels() string {
 	return it.cache[it.curr].labels
 }
 
-func (it *cachedIterator) GroupedLabels() logproto.GroupedLabels {
+func (it *cachedIterator) CategorizedLabels() logproto.CategorizedLabels {
 	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
-		return logproto.GroupedLabels{}
+		return logproto.CategorizedLabels{}
 	}
-	return it.cache[it.curr].groupedLabels
+	return it.cache[it.curr].categorizedLabels
 }
 
 func (it *cachedIterator) StreamHash() uint64 {
@@ -188,13 +188,6 @@ func (it *cachedSampleIterator) Labels() string {
 		return ""
 	}
 	return it.cache[it.curr].labels
-}
-
-func (it *cachedSampleIterator) GroupedLabels() logproto.GroupedLabels {
-	if len(it.cache) == 0 || it.curr < 0 || it.curr >= len(it.cache) {
-		return logproto.GroupedLabels{}
-	}
-	return it.cache[it.curr].groupedLabels
 }
 
 func (it *cachedSampleIterator) StreamHash() uint64 {

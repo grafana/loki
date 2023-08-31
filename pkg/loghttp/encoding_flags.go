@@ -5,13 +5,13 @@ import "net/url"
 type EncodingFlag string
 
 const (
-	encodeFlags     string       = "encode_flags"
+	EncodeFlags     string       = "encode_flags"
 	FlagGroupLabels EncodingFlag = "group_labels"
 )
 
 func GetEncodingFlags(values url.Values) []EncodingFlag {
-	flags := make([]EncodingFlag, 0, len(values[encodeFlags]))
-	for _, value := range values[encodeFlags] {
+	flags := make([]EncodingFlag, 0, len(values[EncodeFlags]))
+	for _, value := range values[EncodeFlags] {
 		flags = append(flags, EncodingFlag(value))
 	}
 
