@@ -32,9 +32,9 @@ type RangeStreamingAgg interface {
 
 // RangeVectorIterator iterates through a range of samples.
 // To fetch the current vector use `At` with a `BatchRangeVectorAggregator` or `RangeStreamingAgg`.
-type RangeVectorIterator interface {
+type RangeVectorIterator[T StepResult] interface {
 	Next() bool
-	At() (int64, promql.Vector)
+	At() (int64, T)
 	Close() error
 	Error() error
 }
@@ -42,7 +42,7 @@ type RangeVectorIterator interface {
 func newRangeVectorIterator(
 	it iter.PeekingSampleIterator,
 	expr *syntax.RangeAggregationExpr,
-	selRange, step, start, end, offset int64) (RangeVectorIterator, error) {
+	selRange, step, start, end, offset int64) (RangeVectorIterator[promql.Vector], error) {
 	// forces at least one step.
 	if step == 0 {
 		step = 1

@@ -158,8 +158,6 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
-# github.com/DataDog/sketches-go v1.4.2
-## explicit; go 1.15
 # github.com/DmitriyVTitov/size v1.5.0
 ## explicit; go 1.14
 github.com/DmitriyVTitov/size
@@ -973,6 +971,7 @@ github.com/influxdata/go-syslog/v3/octetcounting
 github.com/influxdata/go-syslog/v3/rfc5424
 # github.com/influxdata/tdigest v0.0.1
 ## explicit; go 1.13
+github.com/influxdata/tdigest
 # github.com/influxdata/telegraf v1.16.3
 ## explicit; go 1.15
 github.com/influxdata/telegraf

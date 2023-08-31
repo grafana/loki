@@ -477,6 +477,21 @@ func newRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator[promql.Vector], error) {
+	// TODO(karsten): we want a different expression for tdigest. This is
+	// just a hack for now.
+	if expr.Operation == syntax.OpRangeTypeQuantile {
+		iter := newTDigestIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &TDigestStepEvaluator{
+			iter: iter,
+		}, nil
+	}
+
 	iter, err := newRangeVectorIterator(
 		it, expr,
 		expr.Left.Interval.Nanoseconds(),
