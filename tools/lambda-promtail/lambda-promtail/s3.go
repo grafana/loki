@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -31,6 +33,8 @@ type parserConfig struct {
 	timestampRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
+	// if the timestamp is a string that can be parsed or a Unix timestamp
+	timestampType string
 	// how many lines or jsonToken to skip at the beginning of the file
 	skipHeaderCount int
 	// key of the metadata label to use as a value for the__aws_<logType>_owner label
@@ -45,6 +49,7 @@ const (
 	CLOUDFRONT_LOG_TYPE        string = "cloudfront"
 	LB_NLB_TYPE                string = "net"
 	LB_ALB_TYPE                string = "app"
+	WAF_LOG_TYPE               string = "WAFLogs"
 )
 
 var (
@@ -66,11 +71,17 @@ var (
 	// CloudFront
 	// source https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/AccessLogs.html#AccessLogsFileNaming
 	// example: example-prefix/EMLARXS9EXAMPLE.2019-11-14-20.RT4KCN4SGK9.gz
+	// AWS WAF logs
+	// source: https://docs.aws.amazon.com/waf/latest/developerguide/logging-s3.html
+	// format: aws-waf-logs-suffix[/prefix]/AWSLogs/aws-account-id/WAFLogs/region/webacl-name/year/month/day/hour/minute/aws-account-id_waflogs_region_webacl-name_timestamp_hash.log.gz
+	// example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
 	defaultFilenameRegex     = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?P<lb_type>app|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
 	defaultTimestampRegex    = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+(?:\.\d+Z)?)`)
 	cloudtrailFilenameRegex  = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
 	cloudfrontFilenameRegex  = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
+	wafFilenameRegex         = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>WAFLogs)\/(?P<region>[\w-]+)\/(?P<src>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?P<hour>\d+)\/(?P<minute>\d+)\/\d+\_waflogs\_[\w-]+_[\w-]+_\d+T\d+Z_\w+`)
+	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
 	parsers                  = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
 			logTypeLabel:    "s3_vpc_flow",
@@ -78,6 +89,7 @@ var (
 			ownerLabelKey:   "account_id",
 			timestampRegex:  defaultTimestampRegex,
 			timestampFormat: time.RFC3339,
+			timestampType:   "string",
 			skipHeaderCount: 1,
 		},
 		LB_LOG_TYPE: {
@@ -86,6 +98,7 @@ var (
 			ownerLabelKey:   "account_id",
 			timestampFormat: time.RFC3339,
 			timestampRegex:  defaultTimestampRegex,
+			timestampType:   "string",
 		},
 		CLOUDTRAIL_LOG_TYPE: {
 			logTypeLabel:    "s3_cloudtrail",
@@ -99,7 +112,15 @@ var (
 			ownerLabelKey:   "prefix",
 			timestampRegex:  cloudfrontTimestampRegex,
 			timestampFormat: "2006-01-02\x0915:04:05",
+			timestampType:   "string",
 			skipHeaderCount: 2,
+		},
+		WAF_LOG_TYPE: {
+			logTypeLabel:   "s3_waf",
+			filenameRegex:  wafFilenameRegex,
+			ownerLabelKey:  "account_id",
+			timestampRegex: wafTimestampRegex,
+			timestampType:  "unix",
 		},
 	}
 )
@@ -182,9 +203,19 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
 				match[1] += "Z"
 			}
-			timestamp, err = time.Parse(parser.timestampFormat, match[1])
-			if err != nil {
-				return err
+
+			if parser.timestampType == "string" {
+				timestamp, err = time.Parse(parser.timestampFormat, match[1])
+				if err != nil {
+					return err
+				}
+			} else if parser.timestampType == "unix" {
+				// convert to microseconds so that we only use one function
+				usec, err := toMicroseconds(match[1])
+				if err != nil {
+					return err
+				}
+				timestamp = time.UnixMicro(usec).UTC()
 			}
 		}
 
@@ -300,4 +331,17 @@ func stringToRawEvent(body string) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+func toMicroseconds(s string) (usec int64, err error) {
+	// Unix time in microseconds has 16 digits
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return usec, err
+	}
+	iPow10 := int(math.Log10(float64(i)))
+	multiplier := math.Pow10(15 - iPow10)
+	usec = int64(float64(i) * multiplier)
+
+	return usec, err
 }
