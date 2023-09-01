@@ -26,3 +26,5 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
   - The `-boltdb.shipper.compactor.*` CLI flags are deprecated in favor of `-compactor.*`.
   - The `-ingester.unordered-writes` CLI flag is deprecated and will always default to `true` in the next major release.
   - For the full list of deprecations see CHANGELOG.md
+
+-  **[new feature] promtail: Add a Promtail stage for probabilistic sampling**: :warning: ADD DESCRIPTION HERE :warning:. [PR #7127](https://github.com/grafana/loki/pull/7127)]
