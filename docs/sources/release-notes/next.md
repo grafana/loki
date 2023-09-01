@@ -29,10 +29,4 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Upgrade Considerations
 
-1. Previously deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting is now removed.
-2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-3. `s3.sse-encryption` is removed. Use `sse.type` to set SSE type. AWS now defaults encryption of all buckets to SSE-S3.
-4. The config with typo `ruler.wal-cleaer.period` is removed. Use the correct `ruler.wal-cleaner.period` instead.
-5. Experimental config `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
-6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-7. Already deprecated config `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+We have removed a few already deprecated configs. For a full list, please read the upgrade guide before upgrading Loki. 
