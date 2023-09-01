@@ -112,6 +112,8 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 				return *condition, nil
 			}
 		}
+
+		return conditionPending, nil
 	}
 
 	return conditionReady, nil
