@@ -112,8 +112,6 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 				return *condition, nil
 			}
 		}
-
-		return conditionPending, nil
 	}
 
 	return conditionReady, nil
@@ -130,6 +128,10 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 		return nil, err
 	}
 
+	if len(nodeList.Items) == 0 {
+		return &conditionDegradedNodeLabels, nil
+	}
+
 	for _, node := range nodeList.Items {
 		for _, nodeLabel := range nodeLabels {
 			if node.Labels[nodeLabel] == "" {
@@ -138,7 +140,7 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 		}
 	}
 
-	return &conditionDegradedNodeLabels, nil
+	return &conditionPending, nil
 }
 
 func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {
