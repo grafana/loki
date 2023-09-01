@@ -22,7 +22,7 @@ type IndexGatewayClientStore struct {
 	logger log.Logger
 }
 
-func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) index.ReaderWriter {
+func NewIndexGatewayClientStore(client logproto.IndexGatewayClient, logger log.Logger) index.ReadWriteStore {
 	return &IndexGatewayClientStore{
 		client: client,
 		logger: logger,

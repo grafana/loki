@@ -39,7 +39,7 @@ type storeEntry struct {
 	limits      StoreLimits
 	stop        func()
 	fetcher     *fetcher.Fetcher
-	indexReader indexstore.Reader
+	indexReader indexstore.ReadStore
 	chunkstore.WriteStore
 }
 

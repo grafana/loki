@@ -15,11 +15,11 @@ import (
 )
 
 type monitoredReaderWriter struct {
-	rw      ReaderWriter
+	rw      ReadWriteStore
 	metrics *metrics
 }
 
-func NewMonitoredReaderWriter(rw ReaderWriter, reg prometheus.Registerer) ReaderWriter {
+func NewMonitoredReaderWriter(rw ReadWriteStore, reg prometheus.Registerer) ReadWriteStore {
 	return &monitoredReaderWriter{
 		rw:      rw,
 		metrics: newMetrics(reg),

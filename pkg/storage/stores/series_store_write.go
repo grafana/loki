@@ -42,11 +42,11 @@ type Writer struct {
 	schemaCfg                 config.SchemaConfig
 	DisableIndexDeduplication bool
 
-	indexWriter index.Writer
+	indexWriter index.WriteStore
 	fetcher     *fetcher.Fetcher
 }
 
-func NewChunkWriter(fetcher *fetcher.Fetcher, schemaCfg config.SchemaConfig, indexWriter index.Writer, disableIndexDeduplication bool) *Writer {
+func NewChunkWriter(fetcher *fetcher.Fetcher, schemaCfg config.SchemaConfig, indexWriter index.WriteStore, disableIndexDeduplication bool) *Writer {
 	return &Writer{
 		schemaCfg:                 schemaCfg,
 		DisableIndexDeduplication: disableIndexDeduplication,

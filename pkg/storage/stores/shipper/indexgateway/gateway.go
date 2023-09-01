@@ -32,7 +32,7 @@ const (
 
 type IndexQuerier interface {
 	chunkstore.Fetcher
-	indexstore.BaseReader
+	indexstore.ReadStoreBase
 	Stop()
 }
 

@@ -74,7 +74,7 @@ type indexReaderWriter struct {
 }
 
 func NewIndexReaderWriter(schemaCfg config.SchemaConfig, schema series_index.SeriesStoreSchema, index series_index.Client,
-	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) index.ReaderWriter {
+	fetcher *fetcher.Fetcher, chunkBatchSize int, writeDedupeCache cache.Cache) index.ReadWriteStore {
 	return &indexReaderWriter{
 		schema:           schema,
 		index:            index,

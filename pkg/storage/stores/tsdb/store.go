@@ -30,10 +30,10 @@ type IndexWriter interface {
 }
 
 type store struct {
-	index.Reader
+	index.ReadStore
 	indexShipper      indexshipper.IndexShipper
 	indexWriter       IndexWriter
-	backupIndexWriter index.Writer
+	backupIndexWriter index.WriteStore
 	logger            log.Logger
 	stopOnce          sync.Once
 }
@@ -47,12 +47,12 @@ func NewStore(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
-	backupIndexWriter index.Writer,
+	backupIndexWriter index.WriteStore,
 	reg prometheus.Registerer,
 	logger log.Logger,
 	idxCache cache.Cache,
 ) (
-	index.ReaderWriter,
+	index.ReadWriteStore,
 	func(),
 	error,
 ) {
@@ -151,7 +151,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
 	multiIndex := NewMultiIndex(IndexSlice(indices))
 
-	s.Reader = NewIndexClient(multiIndex, opts, limits)
+	s.ReadStore = NewIndexClient(multiIndex, opts, limits)
 
 	return nil
 }

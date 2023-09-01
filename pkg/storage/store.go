@@ -235,7 +235,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (chunkstore.WriteStore, indexstore.ReaderWriter, func(), error) {
+func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (chunkstore.WriteStore, indexstore.ReadWriteStore, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{
 			"component": fmt.Sprintf(
@@ -271,7 +271,7 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			return nil, nil, nil, err
 		}
 
-		var backupIndexWriter indexstore.Writer
+		var backupIndexWriter indexstore.WriteStore
 		backupStoreStop := func() {}
 		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
 			pCopy := p
