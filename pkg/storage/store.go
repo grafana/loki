@@ -49,7 +49,7 @@ var (
 
 type Store interface {
 	stores.Store
-	chunkstore.Reader
+	chunkstore.ReadStore
 	indexstore.Filterable
 	GetSchemaConfigs() []config.PeriodConfig
 }
@@ -235,7 +235,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (chunkstore.Writer, indexstore.ReaderWriter, func(), error) {
+func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (chunkstore.WriteStore, indexstore.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{
 			"component": fmt.Sprintf(

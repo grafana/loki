@@ -40,7 +40,7 @@ type storeEntry struct {
 	stop        func()
 	fetcher     *fetcher.Fetcher
 	indexReader indexstore.Reader
-	chunkstore.Writer
+	chunkstore.WriteStore
 }
 
 func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {

@@ -21,7 +21,7 @@ import (
 type Store interface {
 	indexstore.BaseReader
 	indexstore.Filterable
-	chunkstore.Writer
+	chunkstore.WriteStore
 	chunkstore.Fetcher
 	Stop()
 }
@@ -46,13 +46,13 @@ func NewCompositeStore(limits StoreLimits) *CompositeStore {
 	return &CompositeStore{compositeStore{}, limits}
 }
 
-func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index indexstore.Reader, writer chunkstore.Writer, stop func()) {
+func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, index indexstore.Reader, writer chunkstore.WriteStore, stop func()) {
 	c.stores = append(c.stores, compositeStoreEntry{
 		start: start,
 		Store: &storeEntry{
 			fetcher:     fetcher,
 			indexReader: index,
-			Writer:      writer,
+			WriteStore:  writer,
 			limits:      c.limits,
 			stop:        stop,
 		},
