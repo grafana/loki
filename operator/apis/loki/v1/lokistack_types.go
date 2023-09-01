@@ -992,6 +992,8 @@ const (
 	ReasonQueryTimeoutInvalid LokiStackConditionReason = "ReasonQueryTimeoutInvalid"
 	// ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.
 	ReasonNoZoneAwareNodes LokiStackConditionReason = "ReasonNoZoneAwareNodes"
+	// ReasonTopologyKeyNodeLabelsEmpty when the topologyKey node label has an empty value
+	ReasonTopologyKeyNodeLabelsEmpty LokiStackConditionReason = "ReasonTopologyKeyNodeLabelsEmpty"
 )
 
 // PodStatusMap defines the type for mapping pod status to pod name.

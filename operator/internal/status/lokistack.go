@@ -17,10 +17,11 @@ import (
 )
 
 const (
-	messageReady              = "All components ready"
-	messageFailed             = "Some LokiStack components failed"
-	messagePending            = "Some LokiStack components pending on dependencies"
-	messageDegradedNodeLabels = "Cluster contains no nodes matching the labels used for zone-awareness"
+	messageReady                      = "All components ready"
+	messageFailed                     = "Some LokiStack components failed"
+	messagePending                    = "Some LokiStack components pending on dependencies"
+	messageDegradedNodeLabels         = "Cluster contains no nodes matching the labels used for zone-awareness"
+	messageTopologyKeyNodeLabelsEmpty = "No value for the labels used for zone-awareness"
 )
 
 var (
@@ -43,6 +44,11 @@ var (
 		Type:    string(lokiv1.ConditionDegraded),
 		Message: messageDegradedNodeLabels,
 		Reason:  string(lokiv1.ReasonNoZoneAwareNodes),
+	}
+	conditionTopologyKeyNodeLabelsEmpty = metav1.Condition{
+		Type:    string(lokiv1.ConditionDegraded),
+		Message: messageTopologyKeyNodeLabelsEmpty,
+		Reason:  string(lokiv1.ReasonTopologyKeyNodeLabelsEmpty),
 	}
 )
 
@@ -97,13 +103,13 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 		if stack.Spec.Replication != nil && len(stack.Spec.Replication.Zones) > 0 {
 			// When there are pending pods and zone-awareness is enabled check if there are any nodes
 			// that can satisfy the constraints and emit a condition if not.
-			nodesOk, err := checkForZoneawareNodes(ctx, k, stack.Spec.Replication.Zones)
+			condition, err := checkForZoneawareNodes(ctx, k, stack.Spec.Replication.Zones)
 			if err != nil {
 				return metav1.Condition{}, err
 			}
 
-			if !nodesOk {
-				return conditionDegradedNodeLabels, nil
+			if condition != nil {
+				return *condition, nil
 			}
 		}
 
@@ -113,7 +119,7 @@ func generateCondition(ctx context.Context, cs *lokiv1.LokiStackComponentStatus,
 	return conditionReady, nil
 }
 
-func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1.ZoneSpec) (bool, error) {
+func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1.ZoneSpec) (*metav1.Condition, error) {
 	nodeLabels := client.HasLabels{}
 	for _, z := range zones {
 		nodeLabels = append(nodeLabels, z.TopologyKey)
@@ -121,10 +127,18 @@ func checkForZoneawareNodes(ctx context.Context, k client.Client, zones []lokiv1
 
 	nodeList := &corev1.NodeList{}
 	if err := k.List(ctx, nodeList, nodeLabels); err != nil {
-		return false, err
+		return nil, err
 	}
 
-	return len(nodeList.Items) > 0, nil
+	for _, node := range nodeList.Items {
+		for _, nodeLabel := range nodeLabels {
+			if node.Labels[nodeLabel] == "" {
+				return &conditionTopologyKeyNodeLabelsEmpty, nil
+			}
+		}
+	}
+
+	return &conditionDegradedNodeLabels, nil
 }
 
 func updateCondition(ctx context.Context, k k8s.Client, req ctrl.Request, condition metav1.Condition) error {
