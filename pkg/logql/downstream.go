@@ -159,11 +159,19 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 
 type TDigestEvalExpr struct{
 	syntax.SampleExpr
-	tdigestExpr any
+	tdigestExpr *TDigestMergeExpr
 }
 
 func (e TDigestEvalExpr) String() string {
 	return fmt.Sprintf("tdigestEval<%s>", "???")
+}
+
+type TDigestMergeExpr struct{
+	downstreams: []DownstreamSamDownstreamSampleExpr
+}
+
+func (e TDigestMergeExpr) String() string {
+	return fmt.Sprintf("tdigestMerge<%s>", "???")
 }
 
 type Shards []astmapper.ShardAnnotation
