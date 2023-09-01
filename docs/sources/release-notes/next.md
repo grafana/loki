@@ -20,6 +20,8 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 -  **New volume and volume_range endpoints**: Two new endoints, `index/volume` and `index/volume_range`, have been added to Loki. They return aggregate volume information from the TSDB index for all streams matching a provided stream selector. This feature was introduced via multiple PRs, including [PR #9988](https://github.com/grafana/loki/pull/9988), [PR #9966](https://github.com/grafana/loki/pull/9966), [PR #9833](https://github.com/grafana/loki/pull/9833), [PR #9832](https://github.com/grafana/loki/pull/9832), [PR #9776](https://github.com/grafana/loki/pull/9776), [PR #9762](https://github.com/grafana/loki/pull/9762), [PR #9704](https://github.com/grafana/loki/pull/9704), [PR #10248](https://github.com/grafana/loki/pull/10248), [PR #10099](https://github.com/grafana/loki/pull/10099), [PR #10076](https://github.com/grafana/loki/pull/10076), [PR #10047](https://github.com/grafana/loki/pull/10047) and [PR #10045](https://github.com/grafana/loki/pull/10045)
 
+- **New Storage Client**: Add support for IBM cloud object storage as storage client. [PR #8826](https://github.com/grafana/loki/pull/8826)
+
 - **Deprecations**
   - Legacy index and chunk stores that are not "single store" (such as `tsdb`, `boltdb-shipper`) are deprecated. These storage backends are Cassandra (`cassandra`), DynamoDB (`aws`, `aws-dynamo`), BigTable (`bigtable`, `bigtable-hashed`), GCP (`gcp`, `gcp-columnkey`), and gRPC (`grpc`). See https://grafana.com/docs/loki/latest/storage/ for more information.
   - The `table-manager` target is deprecated, because it is not used by "single store" implementations.
