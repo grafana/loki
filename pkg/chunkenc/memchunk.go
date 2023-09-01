@@ -1578,8 +1578,6 @@ func (si *bufferedIterator) close() {
 		SymbolsPool.Put(si.symbolsBuf)
 		si.symbolsBuf = nil
 	}
-
-	ChunkAllocator.Put(&si.origBytes)
 }
 
 func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer, options ...iter.EntryIteratorOption) iter.EntryIterator {

@@ -30,6 +30,8 @@ type peekingSampleIterator struct {
 
 	cache *sampleWithLabels
 	next  *sampleWithLabels
+
+	closed atomic.Bool
 }
 
 type sampleWithLabels struct {
@@ -59,6 +61,8 @@ func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
 }
 
 func (it *peekingSampleIterator) Close() error {
+	it.closed.Store(true)
+
 	return it.iter.Close()
 }
 
@@ -234,7 +238,7 @@ func (i *mergeSampleIterator) Next() bool {
 		i.curr.labels = i.heap.Peek().Labels()
 		i.curr.streamHash = i.heap.Peek().StreamHash()
 		if !i.heap.Peek().Next() {
-			i.heap.Pop()
+			i.heap.Pop().(SampleIterator).Close()
 		}
 		return true
 	}
@@ -270,6 +274,7 @@ Outer:
 	inner:
 		for {
 			if !next.Next() {
+				next.Close()
 				continue Outer
 			}
 			sample := next.Sample()

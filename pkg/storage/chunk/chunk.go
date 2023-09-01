@@ -18,6 +18,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/util"
 )
 
 var (
@@ -356,6 +357,11 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 	}
 
 	return c.Data.UnmarshalFromBuf(remainingData[:int(dataLen)])
+}
+
+func (c *Chunk) Close() error {
+	util.ChunkAllocator.Put(&c.encoded)
+	return nil
 }
 
 func equalByKey(a, b Chunk) bool {

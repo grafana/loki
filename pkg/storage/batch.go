@@ -3,9 +3,11 @@ package storage
 import (
 	"context"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/multierror"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -82,6 +84,7 @@ func NewChunkMetrics(r prometheus.Registerer, maxBatchSize int) *ChunkMetrics {
 type batchChunkIterator struct {
 	schemas         config.SchemaConfig
 	chunks          lazyChunks
+	origChunks      []*LazyChunk
 	batchSize       int
 	lastOverlapping []*LazyChunk
 	metrics         *ChunkMetrics
@@ -93,6 +96,10 @@ type batchChunkIterator struct {
 	start, end time.Time
 	direction  logproto.Direction
 	next       chan *chunkBatch
+
+	cancel context.CancelFunc
+	done   chan struct{}
+	wg     sync.WaitGroup
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
@@ -107,6 +114,8 @@ func newBatchChunkIterator(
 	matchers []*labels.Matcher,
 	chunkFilterer chunk.Filterer,
 ) *batchChunkIterator {
+	ctx, cancel := context.WithCancel(ctx)
+
 	// __name__ is not something we filter by because it's a constant in loki
 	// and only used for upstream compatibility; therefore remove it.
 	// The same applies to the sharding label which is injected by the cortex storage code.
@@ -120,10 +129,14 @@ func newBatchChunkIterator(
 		end:           end,
 		direction:     direction,
 		ctx:           ctx,
+		cancel:        cancel,
+		done:          make(chan struct{}),
 		chunks:        lazyChunks{direction: direction, chunks: chunks},
+		origChunks:    chunks,
 		next:          make(chan *chunkBatch),
 		chunkFilterer: chunkFilterer,
 	}
+
 	sort.Sort(res.chunks)
 	return res
 }
@@ -136,19 +149,31 @@ func (it *batchChunkIterator) Start() {
 	}
 }
 
+// Start is idempotent and will begin the processing thread which seeds the iterator data.
+func (it *batchChunkIterator) Close() error {
+	it.cancel()
+	it.wg.Wait()
+
+	return nil
+}
+
 func (it *batchChunkIterator) loop() {
+	it.wg.Add(1)
+
 	for {
 		if it.chunks.Len() == 0 {
-			close(it.next)
-			return
+			break
 		}
+
 		select {
 		case <-it.ctx.Done():
-			close(it.next)
-			return
+			break
 		case it.next <- it.nextBatch():
 		}
 	}
+
+	it.wg.Done()
+	close(it.next)
 }
 
 func (it *batchChunkIterator) Next() *chunkBatch {
@@ -303,6 +328,23 @@ type chunkBatch struct {
 
 	from, through time.Time
 	nextChunk     *LazyChunk
+}
+
+func (c *chunkBatch) Close() error {
+	var errs multierror.MultiError
+
+	for _, sl := range c.chunksBySeries {
+		for _, in := range sl {
+			for _, x := range in {
+				err := x.Close()
+				if err != nil {
+					errs.Add(err)
+				}
+			}
+		}
+	}
+
+	return errs.Err()
 }
 
 type logBatchIterator struct {
@@ -472,11 +514,9 @@ func newSampleBatchIterator(
 	start, end time.Time,
 	chunkFilterer chunk.Filterer,
 ) (iter.SampleIterator, error) {
-	ctx, cancel := context.WithCancel(ctx)
 	return &sampleBatchIterator{
 		extractor:          extractor,
 		ctx:                ctx,
-		cancel:             cancel,
 		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, logproto.FORWARD, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
@@ -503,11 +543,19 @@ func (it *sampleBatchIterator) Error() error {
 }
 
 func (it *sampleBatchIterator) Close() error {
-	it.cancel()
-	if it.curr != nil {
-		return it.curr.Close()
+	var err multierror.MultiError
+
+	err.Add(it.batchChunkIterator.Close())
+
+	for _, c := range it.origChunks {
+		err.Add(c.Close())
 	}
-	return nil
+
+	if it.curr != nil {
+		err.Add(it.curr.Close())
+	}
+
+	return err.Err()
 }
 
 func (it *sampleBatchIterator) Sample() logproto.Sample {

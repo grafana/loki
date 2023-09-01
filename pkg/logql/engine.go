@@ -265,6 +265,8 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 }
 
 func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
+	util.Closed.Store(false)
+
 	tenants, _ := tenant.TenantIDs(ctx)
 	timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
 	queryTimeout := validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)

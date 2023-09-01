@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"time"
 
 	"github.com/go-kit/log/level"
@@ -21,6 +22,8 @@ type LazyChunk struct {
 	Chunk   chunk.Chunk
 	IsValid bool
 	Fetcher *fetcher.Fetcher
+
+	closed atomic.Bool
 
 	// cache of overlapping block.
 	// We use the offset of the block as key since it's unique per chunk.
@@ -197,6 +200,15 @@ func (c *LazyChunk) IsOverlapping(with *LazyChunk, direction logproto.Direction)
 		}
 	}
 	return false
+}
+
+func (c *LazyChunk) Close() error {
+	if len(c.overlappingSampleBlocks) <= 0 && len(c.overlappingBlocks) <= 0 {
+		c.closed.Store(true)
+		return c.Chunk.Close()
+	}
+
+	return nil
 }
 
 // lazyChunks is a slice of lazy chunks that can ordered by chunk boundaries

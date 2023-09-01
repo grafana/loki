@@ -31,8 +31,6 @@ type ReaderPool interface {
 }
 
 var (
-	// TODO: align with max chunk size, or drop max size entirely?
-	ChunkAllocator = NewPoolAllocator(2 << 20)
 
 	// Gzip is the gnu zip compression pool
 	Gzip     = GzipPool{level: gzip.DefaultCompression}
