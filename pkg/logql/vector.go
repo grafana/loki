@@ -2,6 +2,7 @@ package logql
 
 import (
 	"math"
+	"time"
 
 	"github.com/prometheus/prometheus/promql"
 )
@@ -62,4 +63,34 @@ func (s *vectorByReverseValueHeap) Pop() interface{} {
 	el := old[n-1]
 	*s = old[0 : n-1]
 	return el
+}
+
+type VectorStepEvaluator struct {
+	exhausted bool
+	start     time.Time
+	data      promql.Vector
+}
+
+func NewVectorStepEvaluator(start time.Time, data promql.Vector) *VectorStepEvaluator {
+	return &VectorStepEvaluator{
+		exhausted: false,
+		start:     start,
+		data:      data,
+	}
+}
+
+func (e *VectorStepEvaluator) Next() (bool, int64, promql.Vector) {
+	if !e.exhausted {
+		e.exhausted = true
+		return true, e.start.UnixNano() / int64(time.Millisecond), e.data
+	}
+	return false, 0, nil
+}
+
+func (e *VectorStepEvaluator) Close() error {
+	return nil
+}
+
+func (e *VectorStepEvaluator) Error() error {
+	return nil
 }

@@ -92,6 +92,15 @@ const emptyStats = `{
 			"requests": 0,
 			"downloadTime": 0
 		},
+		"volumeResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		},
 		"result": {
 			"entriesFound": 0,
 			"entriesRequested": 0,

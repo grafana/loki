@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -312,7 +311,7 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			xs = append(xs, stepper)
 		}
 
-		return NewConcatStepEvaluator(xs)
+		return NewConcatStepEvaluator(xs), nil
 
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)
@@ -382,43 +381,49 @@ func (ev *DownstreamEvaluator) NewIterator(
 	}
 }
 
+type ConcatStepEvaluator struct {
+	evaluators []StepEvaluator
+}
+
 // NewConcatStepEvaluator joins multiple StepEvaluators.
 // Contract: They must be of identical start, end, and step values.
-func NewConcatStepEvaluator(evaluators []StepEvaluator) (StepEvaluator, error) {
-	return newStepEvaluator(
-		func() (ok bool, ts int64, vec promql.Vector) {
-			var cur promql.Vector
-			for _, eval := range evaluators {
-				ok, ts, cur = eval.Next()
-				vec = append(vec, cur...)
-			}
-			return ok, ts, vec
-		},
-		func() (lastErr error) {
-			for _, eval := range evaluators {
-				if err := eval.Close(); err != nil {
-					lastErr = err
-				}
-			}
-			return lastErr
-		},
-		func() error {
-			var errs []error
-			for _, eval := range evaluators {
-				if err := eval.Error(); err != nil {
-					errs = append(errs, err)
-				}
-			}
-			switch len(errs) {
-			case 0:
-				return nil
-			case 1:
-				return errs[0]
-			default:
-				return util.MultiError(errs)
-			}
-		},
-	)
+func NewConcatStepEvaluator(evaluators []StepEvaluator) *ConcatStepEvaluator {
+	return &ConcatStepEvaluator{evaluators}
+}
+
+func (e *ConcatStepEvaluator) Next() (ok bool, ts int64, vec promql.Vector) {
+	var cur promql.Vector
+	for _, eval := range e.evaluators {
+		ok, ts, cur = eval.Next()
+		vec = append(vec, cur...)
+	}
+	return ok, ts, vec
+}
+
+func (e *ConcatStepEvaluator) Close() (lastErr error) {
+	for _, eval := range e.evaluators {
+		if err := eval.Close(); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
+}
+
+func (e *ConcatStepEvaluator) Error() error {
+	var errs []error
+	for _, eval := range e.evaluators {
+		if err := eval.Error(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	switch len(errs) {
+	case 0:
+		return nil
+	case 1:
+		return errs[0]
+	default:
+		return util.MultiError(errs)
+	}
 }
 
 // NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
@@ -431,16 +436,9 @@ func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator
 
 	switch data := res.Data.(type) {
 	case promql.Vector:
-		var exhausted bool
-		return newStepEvaluator(func() (bool, int64, promql.Vector) {
-			if !exhausted {
-				exhausted = true
-				return true, start.UnixNano() / int64(time.Millisecond), data
-			}
-			return false, 0, nil
-		}, nil, nil)
+		return NewVectorStepEvaluator(start, data), nil
 	case promql.Matrix:
-		return NewMatrixStepper(start, end, step, data), nil
+		return NewMatrixStepEvaluator(start, end, step, data), nil
 	default:
 		return nil, fmt.Errorf("unexpected type (%s) uncoercible to StepEvaluator", data.Type())
 	}

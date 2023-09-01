@@ -150,6 +150,9 @@ func RecordRangeAndInstantQueryMetrics(
 		"cache_stats_results_req", stats.Caches.StatsResult.EntriesRequested,
 		"cache_stats_results_hit", stats.Caches.StatsResult.EntriesFound,
 		"cache_stats_results_download_time", stats.Caches.StatsResult.CacheDownloadTime(),
+		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
 		"cache_result_req", stats.Caches.Result.EntriesRequested,
 		"cache_result_hit", stats.Caches.Result.EntriesFound,
 		"cache_result_download_time", stats.Caches.Result.CacheDownloadTime(),
@@ -295,6 +298,7 @@ func RecordVolumeQueryMetrics(
 	ctx context.Context,
 	log log.Logger,
 	start, end time.Time,
+	query string,
 	status string,
 	stats logql_stats.Result,
 ) {
@@ -310,15 +314,19 @@ func RecordVolumeQueryMetrics(
 		latencyType = latencyTypeSlow
 	}
 
-	// we also log queries, useful for troubleshooting slow queries.
 	level.Info(logger).Log(
 		"latency", latencyType,
 		"query_type", queryType,
+		"query", query,
+		"query_hash", HashedQuery(query),
 		"length", end.Sub(start),
 		"duration", time.Duration(int64(stats.Summary.ExecTime*float64(time.Second))),
 		"status", status,
 		"splits", stats.Summary.Splits,
 		"total_entries", stats.Summary.TotalEntriesReturned,
+		"cache_volume_results_req", stats.Caches.VolumeResult.EntriesRequested,
+		"cache_volume_results_hit", stats.Caches.VolumeResult.EntriesFound,
+		"cache_volume_results_download_time", stats.Caches.VolumeResult.CacheDownloadTime(),
 	)
 
 	execLatency.WithLabelValues(status, queryType, "").

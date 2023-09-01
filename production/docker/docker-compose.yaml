@@ -42,7 +42,7 @@ services:
   prometheus:
     image: prom/prometheus:v2.27.0
     ports:
-      - 9090:9090
+      - 9090
     volumes:
       - ./config/prometheus.yaml:/etc/prometheus/prometheus.yml
       - prometheus:/prometheus
@@ -76,7 +76,7 @@ services:
       - ./loki/:/var/log/
       - ./config:/etc/promtail/
     ports:
-      - "9080:9080"
+      - 9080
     command: -config.file=/etc/promtail/promtail.yaml
     networks:
       - loki
@@ -171,7 +171,7 @@ services:
       - "7946"
       # uncomment to use interactive debugging
       # - "60000-60002:40000" #  makes the replicas available on ports 60000, 60001, 60002
-    command: "-config.file=/etc/loki/loki.yaml -target=backend"
+    command: "-config.file=/etc/loki/loki.yaml -target=backend -legacy-read-mode=false"
     networks:
       - loki
     restart: always
