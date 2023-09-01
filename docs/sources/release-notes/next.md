@@ -26,3 +26,7 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
   - The `-boltdb.shipper.compactor.*` CLI flags are deprecated in favor of `-compactor.*`.
   - The `-ingester.unordered-writes` CLI flag is deprecated and will always default to `true` in the next major release.
   - For the full list of deprecations see CHANGELOG.md
+
+## Upgrade Considerations
+
+We have removed a few already deprecated configs. For a full list, please read the upgrade guide before upgrading Loki. 
