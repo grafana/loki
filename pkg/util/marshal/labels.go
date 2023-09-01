@@ -1,11 +1,11 @@
 package marshal
 
 import (
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 // NewLabelSet constructs a Labelset from a promql metric list as a string

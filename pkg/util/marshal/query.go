@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"unsafe"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -75,7 +76,7 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 
 	for i, stream := range s {
 		// We set the FlagGroupLabels to keep the categorized labels
-		ret[i], err = NewStream(stream, loghttp.FlagGroupLabels)
+		ret[i], err = NewStream(stream, httpreq.FlagGroupLabels)
 
 		if err != nil {
 			return nil, err
@@ -86,7 +87,7 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 }
 
 // NewStream constructs a Stream from a logproto.Stream
-func NewStream(s logproto.Stream, encodeFlags ...loghttp.EncodingFlag) (loghttp.Stream, error) {
+func NewStream(s logproto.Stream, encodeFlags ...httpreq.EncodingFlag) (loghttp.Stream, error) {
 	labels, err := NewLabelSet(s.Labels)
 	if err != nil {
 		return loghttp.Stream{}, errors.Wrapf(err, "err while creating labelset for %s", s.Labels)
@@ -176,7 +177,7 @@ func NewMetric(l labels.Labels) model.Metric {
 	return ret
 }
 
-func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...loghttp.EncodingFlag) error {
+func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	s.WriteObjectStart()
 	s.WriteObjectField("status")
 	s.WriteString("success")
@@ -192,7 +193,7 @@ func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...loghtt
 	return nil
 }
 
-func encodeData(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...loghttp.EncodingFlag) error {
+func encodeData(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	s.WriteObjectStart()
 
 	s.WriteObjectField("resultType")
@@ -214,7 +215,7 @@ func encodeData(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...loghttp.
 	return nil
 }
 
-func encodeResult(v parser.Value, s *jsoniter.Stream, encodeFlags ...loghttp.EncodingFlag) error {
+func encodeResult(v parser.Value, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	switch v.Type() {
 	case loghttp.ResultTypeStream:
 		result, ok := v.(logqlmodel.Streams)
@@ -258,7 +259,7 @@ func encodeResult(v parser.Value, s *jsoniter.Stream, encodeFlags ...loghttp.Enc
 	return nil
 }
 
-func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream, encodeFlags ...loghttp.EncodingFlag) error {
+func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	s.WriteArrayStart()
 	defer s.WriteArrayEnd()
 
@@ -324,14 +325,14 @@ func encodeCategorizedLabels(categorizedLabels logproto.CategorizedLabels, s *js
 // encodeStream encodes a logproto.Stream to JSON.
 // If the FlagGroupLabels is set, the stream labels are grouped by their group name.
 // Otherwise, the stream labels are written one after the other.
-func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags ...loghttp.EncodingFlag) error {
+func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	s.WriteObjectStart()
 	defer s.WriteObjectEnd()
 
 	s.WriteObjectField("stream")
 	s.WriteObjectStart()
 
-	if loghttp.EncodingFlagIsSet(encodeFlags, loghttp.FlagGroupLabels) {
+	if httpreq.EncodingFlagIsSet(encodeFlags, httpreq.FlagGroupLabels) {
 		if err := encodeCategorizedLabels(stream.CategorizedLabels, s); err != nil {
 			return err
 		}

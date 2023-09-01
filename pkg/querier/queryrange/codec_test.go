@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -791,7 +792,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			},
 			streamsStringWithCategories, false,
 			map[string]string{
-				loghttp.EncodeFlags: string(loghttp.FlagGroupLabels),
+				loghttp.EncodeFlags: string(httpreq.FlagGroupLabels),
 			},
 		},
 		{

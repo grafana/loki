@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/buger/jsonparser"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
@@ -257,7 +258,7 @@ type Stream struct {
 	CategorizedLabels CategorizedLabelSet `json:"-"`
 	Entries           []Entry             `json:"values"`
 
-	EncodeFlags []EncodingFlag `json:"-"`
+	EncodeFlags []httpreq.EncodingFlag `json:"-"`
 }
 
 func (s *Stream) UnmarshalJSON(data []byte) error {
@@ -280,7 +281,7 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 					return err
 				}
 				s.Labels = s.CategorizedLabels.ToLabelSet()
-				s.EncodeFlags = append(s.EncodeFlags, FlagGroupLabels)
+				s.EncodeFlags = append(s.EncodeFlags, httpreq.FlagGroupLabels)
 			} else if err == jsonparser.KeyPathNotFoundError || streamType == jsonparser.String {
 				if err := s.Labels.UnmarshalJSON(value); err != nil {
 					return err
@@ -317,7 +318,7 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 // If the FlagGroupLabels encoding flag is set, the serialized "stream" field will be a map of groups to labels.
 // TODO(salvacorts): Maybe we can remove this method? We also have encodeStream and the push/pkg Stream.MarshalJSON
 func (s *Stream) MarshalJSON() ([]byte, error) {
-	if EncodingFlagIsSet(s.EncodeFlags, FlagGroupLabels) {
+	if httpreq.EncodingFlagIsSet(s.EncodeFlags, httpreq.FlagGroupLabels) {
 		return json.Marshal(struct {
 			CategorizedLabels CategorizedLabelSet `json:"stream"`
 			Entries           []Entry             `json:"values"`

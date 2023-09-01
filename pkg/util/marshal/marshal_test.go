@@ -9,6 +9,7 @@ import (
 	"testing/quick"
 	"time"
 
+	"github.com/grafana/loki/pkg/util/httpreq"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -615,7 +616,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 
 	for _, tc := range []struct {
 		name        string
-		encodeFlags []loghttp.EncodingFlag
+		encodeFlags []httpreq.EncodingFlag
 		expected    string
 	}{
 		{
@@ -661,8 +662,8 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 		},
 		{
 			name: "categorized labels",
-			encodeFlags: []loghttp.EncodingFlag{
-				loghttp.FlagGroupLabels,
+			encodeFlags: []httpreq.EncodingFlag{
+				httpreq.FlagGroupLabels,
 			},
 			expected: fmt.Sprintf(`{
 				"status": "success",
@@ -728,7 +729,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 	type withEncFlags struct {
 		name     string
-		flags    []loghttp.EncodingFlag
+		flags    []httpreq.EncodingFlag
 		expected string
 	}
 	for _, tc := range []struct {
@@ -775,8 +776,8 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				},
 				{
 					name: "group labels",
-					flags: []loghttp.EncodingFlag{
-						loghttp.FlagGroupLabels,
+					flags: []httpreq.EncodingFlag{
+						httpreq.FlagGroupLabels,
 					},
 					expected: `{
 						"streams": [
@@ -840,8 +841,8 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				},
 				{
 					name: "group labels",
-					flags: []loghttp.EncodingFlag{
-						loghttp.FlagGroupLabels,
+					flags: []httpreq.EncodingFlag{
+						httpreq.FlagGroupLabels,
 					},
 					expected: `{
 						"streams": [
@@ -910,8 +911,8 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				},
 				{
 					name: "group labels",
-					flags: []loghttp.EncodingFlag{
-						loghttp.FlagGroupLabels,
+					flags: []httpreq.EncodingFlag{
+						httpreq.FlagGroupLabels,
 					},
 					expected: `{
 						"streams": [
@@ -1056,7 +1057,7 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
 		js := json.NewStream(json.ConfigFastest, &buf, 0)
-		err := encodeResult(w.Value, js, loghttp.FlagGroupLabels)
+		err := encodeResult(w.Value, js, httpreq.FlagGroupLabels)
 		require.NoError(t, err)
 		js.Flush()
 		actual := buf.String()

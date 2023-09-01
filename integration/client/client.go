@@ -297,8 +297,29 @@ func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 
 // StreamValues holds a label key value pairs for the Stream and a list of a list of values
 type StreamValues struct {
-	Stream map[string]string
-	Values [][]string
+	Stream           map[string]string
+	StreamCategories map[string]map[string]string
+	Values           [][]string
+}
+
+func (s *StreamValues) UnmarshalJSON(b []byte) error {
+	type streamWithCategories struct {
+		Stream map[string]map[string]string `json:"stream"`
+		Values [][]string                   `json:"values"`
+	}
+	var streamWithCategoriesValues streamWithCategories
+	if err := json.Unmarshal(b, &streamWithCategoriesValues); err == nil {
+		s.StreamCategories = streamWithCategoriesValues.Stream
+		s.Values = streamWithCategoriesValues.Values
+		return nil
+	}
+
+	type raw StreamValues
+	if err := json.Unmarshal(b, (*raw)(s)); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // MatrixValues holds a label key value pairs for the metric and a list of a list of values
@@ -394,16 +415,16 @@ type Rules struct {
 	Rules []interface{}
 }
 
-type queryParam struct {
-	name, value string
+type Header struct {
+	Name, Value string
 }
 
 // RunRangeQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunRangeQuery(ctx context.Context, query string, extraParams ...queryParam) (*Response, error) {
+func (c *Client) RunRangeQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
-	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query, extraParams...))
+	buf, statusCode, err := c.run(ctx, c.rangeQueryURL(query), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
@@ -412,16 +433,13 @@ func (c *Client) RunRangeQuery(ctx context.Context, query string, extraParams ..
 }
 
 // RunQuery runs a query and returns an error if anything went wrong
-func (c *Client) RunQuery(ctx context.Context, query string, extraParams ...queryParam) (*Response, error) {
+func (c *Client) RunQuery(ctx context.Context, query string, extraHeaders ...Header) (*Response, error) {
 	ctx, cancelFunc := context.WithTimeout(ctx, requestTimeout)
 	defer cancelFunc()
 
 	v := url.Values{}
 	v.Set("query", query)
 	v.Set("time", formatTS(c.Now.Add(time.Second)))
-	for _, p := range extraParams {
-		v.Set(p.name, p.value)
-	}
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -430,7 +448,7 @@ func (c *Client) RunQuery(ctx context.Context, query string, extraParams ...quer
 	u.Path = "/loki/api/v1/query"
 	u.RawQuery = v.Encode()
 
-	buf, statusCode, err := c.run(ctx, u.String())
+	buf, statusCode, err := c.run(ctx, u.String(), extraHeaders...)
 	if err != nil {
 		return nil, err
 	}
@@ -477,14 +495,11 @@ func (c *Client) parseResponse(buf []byte, statusCode int) (*Response, error) {
 	return &lokiResp, nil
 }
 
-func (c *Client) rangeQueryURL(query string, extraParams ...queryParam) string {
+func (c *Client) rangeQueryURL(query string) string {
 	v := url.Values{}
 	v.Set("query", query)
 	v.Set("start", formatTS(c.Now.Add(-7*24*time.Hour)))
 	v.Set("end", formatTS(c.Now.Add(time.Second)))
-	for _, p := range extraParams {
-		v.Set(p.name, p.value)
-	}
 
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -553,18 +568,21 @@ func (c *Client) LabelValues(ctx context.Context, labelName string) ([]string, e
 	return values.Data, nil
 }
 
-func (c *Client) request(ctx context.Context, method string, url string) (*http.Request, error) {
+func (c *Client) request(ctx context.Context, method string, url string, extraHeaders ...Header) (*http.Request, error) {
 	ctx = user.InjectOrgID(ctx, c.instanceID)
 	req, err := http.NewRequestWithContext(ctx, method, url, nil)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("X-Scope-OrgID", c.instanceID)
+	for _, h := range extraHeaders {
+		req.Header.Add(h.Name, h.Value)
+	}
 	return req, nil
 }
 
-func (c *Client) run(ctx context.Context, u string) ([]byte, int, error) {
-	req, err := c.request(ctx, "GET", u)
+func (c *Client) run(ctx context.Context, u string, extraHeaders ...Header) ([]byte, int, error) {
+	req, err := c.request(ctx, "GET", u, extraHeaders...)
 	if err != nil {
 		return nil, 0, err
 	}

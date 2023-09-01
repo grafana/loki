@@ -3,10 +3,11 @@ package marshal
 import (
 	"github.com/grafana/loki/pkg/loghttp"
 	legacy "github.com/grafana/loki/pkg/loghttp/legacy"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 // NewTailResponse constructs a TailResponse from a legacy.TailResponse
-func NewTailResponse(r legacy.TailResponse, encodeFlags ...loghttp.EncodingFlag) (loghttp.TailResponse, error) {
+func NewTailResponse(r legacy.TailResponse, encodeFlags ...httpreq.EncodingFlag) (loghttp.TailResponse, error) {
 	var err error
 	ret := loghttp.TailResponse{
 		Streams:        make([]loghttp.Stream, len(r.Streams)),

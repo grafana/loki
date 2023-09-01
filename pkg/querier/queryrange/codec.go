@@ -317,6 +317,11 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
+	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodeFlagsHeader)
+	if encodingFlags != "" {
+		header.Set(httpreq.LokiEncodeFlagsHeader, encodingFlags)
+	}
+
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
 	if actor != "" {
 		header.Set(httpreq.LokiActorPathHeader, actor)
@@ -694,11 +699,11 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 
 	// Default to JSON.
 	version := loghttp.GetVersion(req.RequestURI)
-	encodingFlags := loghttp.GetEncodingFlags(req.URL.Query())
+	encodingFlags := httpreq.ExtractEncodeFlags(req.Context())
 	return encodeResponseJSON(ctx, version, res, encodingFlags...)
 }
 
-func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags ...loghttp.EncodingFlag) (*http.Response, error) {
+func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags ...httpreq.EncodingFlag) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -1275,6 +1280,11 @@ func httpResponseHeadersToPromResponseHeaders(httpHeaders http.Header) []queryra
 
 func getQueryTags(ctx context.Context) string {
 	v, _ := ctx.Value(httpreq.QueryTagsHTTPHeader).(string) // it's ok to be empty
+	return v
+}
+
+func getEncodingFlags(ctx context.Context) string {
+	v, _ := ctx.Value(httpreq.LokiEncodeFlagsHeader).(string) // it's ok to be empty
 	return v
 }
 
