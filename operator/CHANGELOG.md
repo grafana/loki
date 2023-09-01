@@ -1,6 +1,6 @@
 ## Main
 
-- [9468](https://github.com/grafana/loki/pull/9468) **periklis**: Add support for reconciling loki-mixin dashboards on OpenShift Console
+- [10418](https://github.com/grafana/loki/pull/10418) **btaani**: Lokistack should report degraded condition if no value of the topologyKey label
 - [9942](https://github.com/grafana/loki/pull/9942) **btaani**: Use a condition to warn when there are no nodes with matching labels for zone-awareness
 
 ## 0.4.0 (2023-07-27)
