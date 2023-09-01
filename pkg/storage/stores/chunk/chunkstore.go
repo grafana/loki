@@ -26,7 +26,7 @@ type Writer interface {
 	PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error
 }
 
-// ChunkWriter is an interface for a chunk store that reads and writes data
+// ReaderWriter is an interface for a chunk store that reads and writes data
 type ReaderWriter interface {
 	Reader
 	Writer
