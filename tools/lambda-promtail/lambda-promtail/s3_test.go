@@ -682,7 +682,7 @@ func TestProcessSQSEvent(t *testing.T) {
 	require.True(t, handlerCalled)
 }
 
-func TestToMicroseconds(t *testing.T) {
+func TestGetUnixSecNsec(t *testing.T) {
 	type args struct {
 		s string
 	}
@@ -690,56 +690,63 @@ func TestToMicroseconds(t *testing.T) {
 		name         string
 		args         args
 		wantErr      bool
-		expectedUsec int64
+		expectedSec  int64
+		expectedNsec int64
 	}{
 		{
-			name: "timestamp in seconds",
+			name: "timestamp_in_seconds",
 			args: args{
 				s: "1234567890",
 			},
-			expectedUsec: 1234567890000000,
+			expectedSec:  1234567890,
+			expectedNsec: 0,
 			wantErr:      false,
 		},
 		{
-			name: "timestamp in milliseconds",
+			name: "timestamp_in_milliseconds",
 			args: args{
 				s: "1234567890123",
 			},
-			expectedUsec: 1234567890123000,
+			expectedSec:  1234567890,
+			expectedNsec: 123000000,
 			wantErr:      false,
 		},
 		{
-			name: "timestamp in microseconds",
+			name: "timestamp_in_microseconds",
 			args: args{
 				s: "1234567890123456",
 			},
-			expectedUsec: 1234567890123456,
+			expectedSec:  1234567890,
+			expectedNsec: 123456000,
 			wantErr:      false,
 		},
 		{
-			name: "timestamp in nanoseconds",
+			name: "timestamp_in_nanoseconds",
 			args: args{
 				s: "1234567890123456789",
 			},
-			expectedUsec: 1234567890123456,
+			expectedSec:  1234567890,
+			expectedNsec: 123456789,
 			wantErr:      false,
 		},
 		{
-			name: "strconv error",
+			name: "strconv_error",
 			args: args{
 				s: "string",
 			},
-			expectedUsec: 0,
+			expectedSec:  0,
+			expectedNsec: 0,
 			wantErr:      true,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			usec, err := toMicroseconds(tt.args.s)
+			sec, nsec, err := getUnixSecNsec(tt.args.s)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("toMicroseconds() error = %v, wantErr %v", err, tt.wantErr)
 			}
-			require.Equal(t, tt.expectedUsec, usec)
+			require.Equal(t, tt.expectedSec, sec)
+			require.Equal(t, tt.expectedNsec, nsec)
 		})
 	}
 }

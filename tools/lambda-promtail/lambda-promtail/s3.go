@@ -211,12 +211,11 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 					return err
 				}
 			case "unix":
-				// convert to microseconds so that we only use one function
-				usec, err := toMicroseconds(match[1])
+				sec, nsec, err := getUnixSecNsec(match[1])
 				if err != nil {
 					return err
 				}
-				timestamp = time.UnixMicro(usec).UTC()
+				timestamp = time.Unix(sec, nsec).UTC()
 			default:
 				level.Warn(*log).Log("msg", fmt.Sprintf("timestamp type of %s parser unknown, using current time", labels["type"]))
 			}
@@ -336,15 +335,42 @@ func stringToRawEvent(body string) (map[string]interface{}, error) {
 	return result, nil
 }
 
-func toMicroseconds(s string) (usec int64, err error) {
-	// Unix time in microseconds has 16 digits
+// getUnixSecNsec returns the Unix time seconds and nanoseconds in the string s.
+// It assumes that the first 10 digits of the parsed int is the Unix time in seconds and the rest is the nanoseconds part.
+// This assumption will hold until 2286-11-20 17:46:40 UTC, so it's a safe assumption.
+// It also makes use of the fact that the log10 of a number in base 10 is its number of digits - 1.
+// It returns early if the fractional seconds is 0 because getting the log10 of 0 results in -Inf.
+// For example, given a string 1234567890123:
+//   iLog10 = 12  // the parsed int is 13 digits long
+//   multiplier = 0.001  // to get the seconds part it must be divided by 1000
+//   sec = 1234567890123 * 0.001 = 1234567890  // this is the seconds part of the Unix time
+//   fractionalSec = 123  // the rest of the parsed int
+//   fractionalSecLog10 = 2  // it is 3 digits long
+//   multiplier = 1000000  // nano is 10^-9, so the nanoseconds part is 9 digits long
+//   nsec = 123000000  // this is the nanoseconds part of the Unix time
+func getUnixSecNsec(s string) (sec int64, nsec int64, err error) {
+	const (
+		UNIX_SEC_LOG10     = 9
+		UNIX_NANOSEC_LOG10 = 8
+	)
+
 	i, err := strconv.ParseInt(s, 10, 64)
 	if err != nil {
-		return usec, err
+		return sec, nsec, err
 	}
-	iPow10 := int(math.Log10(float64(i)))
-	multiplier := math.Pow10(15 - iPow10)
-	usec = int64(float64(i) * multiplier)
 
-	return usec, err
+	iLog10 := int(math.Log10(float64(i)))
+	multiplier := math.Pow10(UNIX_SEC_LOG10 - iLog10)
+	sec = int64(float64(i) * multiplier)
+
+	fractionalSec := float64(i % sec)
+	if fractionalSec == 0 {
+		return sec, 0, err
+	}
+
+	fractionalSecLog10 := int(math.Log10(fractionalSec))
+	multiplier = math.Pow10(UNIX_NANOSEC_LOG10 - fractionalSecLog10)
+	nsec = int64(fractionalSec * multiplier)
+
+	return sec, nsec, err
 }
