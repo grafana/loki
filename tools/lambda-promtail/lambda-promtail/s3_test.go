@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -9,9 +10,9 @@ import (
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/stretchr/testify/require"
-
+	"github.com/go-kit/log"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/stretchr/testify/require"
 )
 
 func Test_getLabels(t *testing.T) {
@@ -348,6 +349,7 @@ func Test_parseS3Log(t *testing.T) {
 		expectedLen        int
 		expectedStream     string
 		expectedTimestamps []time.Time
+		expectedLog        string
 	}{
 		{
 			name: "vpcflowlogs",
@@ -519,6 +521,31 @@ func Test_parseS3Log(t *testing.T) {
 			expectedStream: "",
 			wantErr:        true,
 		},
+		{
+			name: "no_timestamp_type",
+			args: args{
+				batchSize: 131072, // Set large enough we don't try and send to promtail
+				filename:  "../testdata/waflog.log.gz",
+				b: &batch{
+					streams: map[string]*logproto.Stream{},
+				},
+				labels: map[string]string{
+					"account_id": "11111111111",
+					"src":        "TEST-WEBACL",
+					"type":       "no_type",
+				},
+			},
+			expectedLen:    1,
+			expectedStream: `{__aws_log_type="s3_waf", __aws_s3_waf="TEST-WEBACL", __aws_s3_waf_owner="11111111111"}`,
+			expectedLog:    `level=warn msg="timestamp type of no_type parser unknown, using current time"` + "\n",
+			wantErr:        false,
+		},
+	}
+	parsers["no_type"] = parserConfig{
+		logTypeLabel:   "s3_waf",
+		filenameRegex:  wafFilenameRegex,
+		ownerLabelKey:  "account_id",
+		timestampRegex: wafTimestampRegex,
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -528,7 +555,9 @@ func Test_parseS3Log(t *testing.T) {
 			if err != nil {
 				t.Errorf("parseS3Log() failed to open test file: %s - %v", tt.args.filename, err)
 			}
-			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj); (err != nil) != tt.wantErr {
+			buf := &bytes.Buffer{}
+			log := log.NewLogfmtLogger(buf)
+			if err := parseS3Log(context.Background(), tt.args.b, tt.args.labels, tt.args.obj, &log); (err != nil) != tt.wantErr {
 				t.Errorf("parseS3Log() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			require.Len(t, tt.args.b.streams, tt.expectedLen)
@@ -542,6 +571,7 @@ func Test_parseS3Log(t *testing.T) {
 						require.Equal(t, tt.expectedTimestamps[i], entry.Timestamp)
 					}
 				}
+				require.Equal(t, tt.expectedLog, buf.String())
 			}
 		})
 	}

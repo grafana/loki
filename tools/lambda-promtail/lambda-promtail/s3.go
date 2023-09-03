@@ -141,7 +141,7 @@ func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	return s3Client, nil
 }
 
-func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser) error {
+func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
 	parser, ok := parsers[labels["type"]]
 	if !ok {
 		if labels["type"] == CLOUDTRAIL_DIGEST_LOG_TYPE {
@@ -204,18 +204,21 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 				match[1] += "Z"
 			}
 
-			if parser.timestampType == "string" {
+			switch parser.timestampType {
+			case "string":
 				timestamp, err = time.Parse(parser.timestampFormat, match[1])
 				if err != nil {
 					return err
 				}
-			} else if parser.timestampType == "unix" {
+			case "unix":
 				// convert to microseconds so that we only use one function
 				usec, err := toMicroseconds(match[1])
 				if err != nil {
 					return err
 				}
 				timestamp = time.UnixMicro(usec).UTC()
+			default:
+				level.Warn(*log).Log("msg", fmt.Sprintf("timestamp type of %s parser unknown, using current time", labels["type"]))
 			}
 		}
 
@@ -281,7 +284,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 		if err != nil {
 			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
 		}
-		err = parseS3Log(ctx, batch, labels, obj.Body)
+		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {
 			return err
 		}
