@@ -592,6 +592,16 @@ JSON post body can be sent in the following format:
 }
 ```
 
+You can optionally attach [non-indexed labels]({{< relref "../get-started/labels/non-indexed-labels" >}}) to each log line by adding a JSON object to the end of the log line array.
+The JSON object must be a valid JSON object with string keys and string values. The JSON object should not contain any nested object.
+The JSON object must be set immediately after the log line. Here is an example of a log entry with some non-indexed labels attached:
+
+```
+"values": [
+    [ "<unix epoch in nanoseconds>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
+]
+```
+
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
 
 In microservices mode, `/loki/api/v1/push` is exposed by the distributor.
