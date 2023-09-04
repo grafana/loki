@@ -28,8 +28,8 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 	lblFoo, err := syntax.ParseLabels(`{foo="bar"}`)
 	require.NoError(t, err)
 	streamSelectorWithLineFilters := lblFoo.String() + `|="fizz"`
-	streamSelectorWithNonIndexedLabelsFilters := lblFoo.String() + `| ping="pong"`
-	streamSelectorWithLineAndNonIndexedLabelsFilters := lblFoo.String() + `| ping="pong" |= "fizz"`
+	streamSelectorWithStructuredMetadataFilters := lblFoo.String() + `| ping="pong"`
+	streamSelectorWithLineAndStructuredMetadataFilters := lblFoo.String() + `| ping="pong" |= "fizz"`
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -170,21 +170,21 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "whole chunk deleted by single request with non-indexed labels filters",
+			name:         "whole chunk deleted by single request with structured metadata filters",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
 				},
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -195,21 +195,21 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "whole chunk deleted by single request with line and non-indexed labels filters",
+			name:         "whole chunk deleted by single request with line and structured metadata filters",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithLineAndNonIndexedLabelsFilters,
+					Query:     streamSelectorWithLineAndStructuredMetadataFilters,
 					StartTime: now.Add(-24 * time.Hour),
 					EndTime:   now,
 				},
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && strings.Contains(s, "fizz")
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong && strings.Contains(s, "fizz")
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -333,27 +333,27 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "multiple delete requests with non-indexed labels filters and one deleting the whole chunk",
+			name:         "multiple delete requests with structured metadata filters and one deleting the whole chunk",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-48 * time.Hour),
 					EndTime:   now.Add(-24 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now,
 				},
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -476,27 +476,27 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "multiple overlapping requests with non-indexed labels filters deleting the whole chunk",
+			name:         "multiple overlapping requests with structured metadata filters deleting the whole chunk",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-13 * time.Hour),
 					EndTime:   now.Add(-6 * time.Hour),
 				},
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-8 * time.Hour),
 					EndTime:   now,
 				},
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -581,33 +581,33 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 			},
 		},
 		{
-			name:         "multiple non-overlapping requests with non-indexed labels filter deleting the whole chunk",
+			name:         "multiple non-overlapping requests with structured metadata filter deleting the whole chunk",
 			deletionMode: deletionmode.FilterAndDelete,
 			batchSize:    70,
 			deleteRequestsFromStore: []DeleteRequest{
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-12 * time.Hour),
 					EndTime:   now.Add(-6*time.Hour) - 1,
 				},
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-6 * time.Hour),
 					EndTime:   now.Add(-4*time.Hour) - 1,
 				},
 				{
 					UserID:    testUserID,
-					Query:     streamSelectorWithNonIndexedLabelsFilters,
+					Query:     streamSelectorWithStructuredMetadataFilters,
 					StartTime: now.Add(-4 * time.Hour),
 					EndTime:   now,
 				},
 			},
 			expectedResp: resp{
 				isExpired: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
-					return labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
+					return labels.Labels(structuredMetadata).Get(lblPing) == lblPong
 				},
 			},
 			expectedDeletionRangeByUser: map[string]model.Interval{
@@ -758,14 +758,14 @@ func TestDeleteRequestsManager_Expired(t *testing.T) {
 				if start.Time().Minute()%2 == 1 {
 					line = "fizz buzz"
 				}
-				// mix of empty, ding=dong and ping=pong as non-indexed labels
-				var nonIndexedLabels []labels.Label
+				// mix of empty, ding=dong and ping=pong as structured metadata
+				var structuredMetadata []labels.Label
 				if start.Time().Minute()%3 == 0 {
-					nonIndexedLabels = []labels.Label{{Name: lblPing, Value: lblPong}}
+					structuredMetadata = []labels.Label{{Name: lblPing, Value: lblPong}}
 				} else if start.Time().Minute()%2 == 0 {
-					nonIndexedLabels = []labels.Label{{Name: "ting", Value: "tong"}}
+					structuredMetadata = []labels.Label{{Name: "ting", Value: "tong"}}
 				}
-				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, nonIndexedLabels...), filterFunc(start.Time(), line, nonIndexedLabels...), "line", line, "time", start.Time(), "now", now.Time())
+				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, structuredMetadata...), filterFunc(start.Time(), line, structuredMetadata...), "line", line, "time", start.Time(), "now", now.Time())
 			}
 
 			require.Equal(t, len(tc.expectedDeletionRangeByUser), len(mgr.deleteRequestsToProcess))

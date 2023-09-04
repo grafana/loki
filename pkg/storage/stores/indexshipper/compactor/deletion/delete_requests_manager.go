@@ -269,9 +269,9 @@ func (d *DeleteRequestsManager) Expired(ref retention.ChunkEntry, _ model.Time) 
 	}
 
 	d.metrics.deleteRequestsChunksSelectedTotal.WithLabelValues(string(ref.UserID)).Inc()
-	return true, func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+	return true, func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
 		for _, ff := range filterFuncs {
-			if ff(ts, s, nonIndexedLabels...) {
+			if ff(ts, s, structuredMetadata...) {
 				return true
 			}
 		}

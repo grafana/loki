@@ -57,7 +57,7 @@ message Summary {
   int64 bytesProcessedPerSecond = 1 [(gogoproto.jsontag) = "bytesProcessedPerSecond"];
   // Total lines processed per second.
   int64 linesProcessedPerSecond = 2 [(gogoproto.jsontag) = "linesProcessedPerSecond"];
-  // Total bytes processed. Includes non-indexed labels bytes.
+  // Total bytes processed. Includes structured metadata bytes.
   int64 totalBytesProcessed = 3 [(gogoproto.jsontag) = "totalBytesProcessed"];
   // Total lines processed.
   int64 totalLinesProcessed = 4 [(gogoproto.jsontag) = "totalLinesProcessed"];
@@ -81,7 +81,7 @@ message Summary {
   // Total lines post query filtering
   int64 totalPostFilterLines = 11 [(gogoproto.jsontag) = "totalPostFilterLines"];
   // Total bytes processed of metadata.
-  int64 totalNonIndexedLabelsBytesProcessed = 12 [(gogoproto.jsontag) = "totalNonIndexedLabelsBytesProcessed"];
+  int64 totalStructuredMetadataBytesProcessed = 12 [(gogoproto.jsontag) = "totalStructuredMetadataBytesProcessed"];
 }
 
 message Querier {
@@ -125,11 +125,11 @@ message Store {
 }
 
 message Chunk {
-  // Total bytes processed but was already in memory (found in the headchunk). Includes non-indexed labels bytes.
+  // Total bytes processed but was already in memory (found in the headchunk). Includes structured metadata bytes.
   int64 headChunkBytes = 4 [(gogoproto.jsontag) = "headChunkBytes"];
   // Total lines processed but was already in memory. (found in the headchunk)
   int64 headChunkLines = 5 [(gogoproto.jsontag) = "headChunkLines"];
-  // Total bytes decompressed and processed from chunks. Includes non-indexed labels bytes.
+  // Total bytes decompressed and processed from chunks. Includes structured metadata bytes.
   int64 decompressedBytes = 6 [(gogoproto.jsontag) = "decompressedBytes"];
   // Total lines decompressed and processed from chunks.
   int64 decompressedLines = 7 [(gogoproto.jsontag) = "decompressedLines"];
@@ -140,9 +140,9 @@ message Chunk {
   // Total lines post filtering
   int64 postFilterLines = 10 [(gogoproto.jsontag) = "postFilterLines"];
   // Total bytes processed for metadata but was already in memory. (found in the headchunk)
-  int64 headChunkNonIndexedLabelsBytes = 11 [(gogoproto.jsontag) = "headChunkNonIndexedLabelsBytes"];
+  int64 headChunkStructuredMetadataBytes = 11 [(gogoproto.jsontag) = "headChunkStructuredMetadataBytes"];
   // Total bytes of entries metadata decompressed and processed from chunks.
-  int64 decompressedNonIndexedLabelsBytes = 12 [(gogoproto.jsontag) = "decompressedNonIndexedLabelsBytes"];
+  int64 decompressedStructuredMetadataBytes = 12 [(gogoproto.jsontag) = "decompressedStructuredMetadataBytes"];
 }
 
 message Cache {

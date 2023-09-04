@@ -39,7 +39,7 @@ var logEntries = []api.Entry{
 		Entry: logproto.Entry{
 			Timestamp: time.Unix(7, 0).UTC(),
 			Line:      "line7",
-			NonIndexedLabels: push.LabelsAdapter{
+			StructuredMetadata: push.LabelsAdapter{
 				{Name: "trace_id", Value: "12345"},
 			},
 		},
