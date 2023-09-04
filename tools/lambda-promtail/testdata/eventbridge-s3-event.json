@@ -1,28 +1,28 @@
 {
   "version": "0",
-  "id": "7146f4d1-5c34-831d-1c31-bebbccf62bd8",
+  "id": "52f34d1b-bd8e-5a96-4e0a-0343037b0e63",
   "detail-type": "Object Created",
   "source": "aws.s3",
-  "account": "366620023056",
-  "time": "2023-08-25T17:02:14Z",
+  "account": "123",
+  "time": "2023-08-25T17:41:58Z",
   "region": "us-east-2",
   "resources": [
-      "arn:aws:s3:::thepalbi-test"
+    "arn:aws:s3:::thepalbi-test"
   ],
   "detail": {
-      "version": "0",
-      "bucket": {
-          "name": "thepalbi-test"
-      },
-      "object": {
-          "key": "test_1692982933_12.txt",
-          "size": 100,
-          "etag": "8adc5937e635f6c9af646f0b23560fae",
-          "sequencer": "0064E8DE967D73ECB1"
-      },
-      "request-id": "KC9BPVQVZMAW0GRP",
-      "requester": "366620023056",
-      "source-ip-address": "181.167.76.151",
-      "reason": "PutObject"
+    "version": "0",
+    "bucket": {
+      "name": "bucket"
+    },
+    "object": {
+      "key": "pizza.txt",
+      "size": 100,
+      "etag": "8adc5937e635f6c9af646f0b23560fae",
+      "sequencer": "0064E8E7E6404BABBD"
+    },
+    "request-id": "VHS8EE09Q94HJZDZ",
+    "requester": "366620023056",
+    "source-ip-address": "1.167.76.151",
+    "reason": "PutObject"
   }
 }

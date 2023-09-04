@@ -199,23 +199,14 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 	return nil
 }
 
-// S3EventInfo contains all information necessary to process an s3 notification event. It's used to abstract away
-// if the s3 event reaches the lambda directly from a bucket notification. or through event bridge.
-type S3EventInfo struct {
-	ObjectKey    string
-	BucketName   string
-	BucketOwner  string
-	BucketRegion string
-}
-
-func getLabels(info S3EventInfo) (map[string]string, error) {
+func getLabels(record events.S3EventRecord) (map[string]string, error) {
 
 	labels := make(map[string]string)
 
-	labels["key"] = info.ObjectKey
-	labels["bucket"] = info.BucketName
-	labels["bucket_owner"] = info.BucketOwner
-	labels["bucket_region"] = info.BucketRegion
+	labels["key"] = record.S3.Object.Key
+	labels["bucket"] = record.S3.Bucket.Name
+	labels["bucket_owner"] = record.S3.Bucket.OwnerIdentity.PrincipalID
+	labels["bucket_region"] = record.AWSRegion
 	for key, p := range parsers {
 		if p.filenameRegex.MatchString(labels["key"]) {
 			if labels["type"] == "" {
@@ -230,31 +221,17 @@ func getLabels(info S3EventInfo) (map[string]string, error) {
 		}
 	}
 	if labels["type"] == "" {
-		return labels, fmt.Errorf("type of S3 event could not be determined for object %q", info.ObjectKey)
+		return labels, fmt.Errorf("type of S3 event could not be determined for object %q", record.S3.Object.Key)
 	}
 	return labels, nil
 }
 
 func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log.Logger) error {
-	var eventInfos []S3EventInfo
-	for _, rec := range ev.Records {
-		eventInfos = append(eventInfos, S3EventInfo{
-			ObjectKey:    rec.S3.Object.Key,
-			BucketName:   rec.S3.Bucket.Name,
-			BucketOwner:  rec.S3.Bucket.OwnerIdentity.PrincipalID,
-			BucketRegion: rec.AWSRegion,
-		})
-	}
-
-	return doProcessS3Event(ctx, eventInfos, pc, log)
-}
-
-func doProcessS3Event(ctx context.Context, evs []S3EventInfo, pc Client, log *log.Logger) error {
 	batch, err := newBatch(ctx, pc)
 	if err != nil {
 		return err
 	}
-	for _, record := range evs {
+	for _, record := range ev.Records {
 		labels, err := getLabels(record)
 		if err != nil {
 			return err
