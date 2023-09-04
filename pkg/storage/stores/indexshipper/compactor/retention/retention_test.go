@@ -216,13 +216,13 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{
-			Timestamp:        ts.Time(),
-			Line:             ts.String(),
-			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
+			Timestamp:          ts.Time(),
+			Line:               ts.String(),
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
 		}))
 	}
 
@@ -339,11 +339,11 @@ func TestChunkRewriter(t *testing.T) {
 			},
 		},
 		{
-			name:  "rewrite first half using non-indexed labels",
+			name:  "rewrite first half using structured metadata",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, _ string, nonIndexedLabels ...labels.Label) bool {
+			filterFunc: func(ts time.Time, _ string, structuredMetadata ...labels.Label) bool {
 				tsUnixNano := ts.UnixNano()
-				if labels.Labels(nonIndexedLabels).Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
+				if labels.Labels(structuredMetadata).Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
 					todaysTableInterval.Start.UnixNano() <= tsUnixNano &&
 					tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
 					return true
@@ -544,20 +544,20 @@ func TestChunkRewriter(t *testing.T) {
 				require.Equal(t, expectedChunks[i][len(expectedChunks[i])-1].End, chunks[i].Through)
 
 				lokiChunk := chunks[i].Data.(*chunkenc.Facade).LokiChunk()
-				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepNonIndexedLabels())
+				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepStructuredMetadata())
 				require.NoError(t, err)
 
 				for _, interval := range expectedChunks[i] {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
-						expectedNonIndexedLabels := labels.FromStrings("foo", curr.String())
+						expectedStructuredMetadata := labels.FromStrings("foo", curr.String())
 
 						require.True(t, newChunkItr.Next())
 						require.Equal(t, logproto.Entry{
-							Timestamp:        curr.Time(),
-							Line:             curr.String(),
-							NonIndexedLabels: logproto.FromLabelsToLabelAdapters(expectedNonIndexedLabels),
+							Timestamp:          curr.Time(),
+							Line:               curr.String(),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
 						}, newChunkItr.Entry())
-						require.Equal(t, expectedNonIndexedLabels.String(), newChunkItr.Labels())
+						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
 				}
 
