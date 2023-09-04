@@ -1,9 +1,9 @@
 ---
 menuTitle: Structured metadata
-title: What are structured metadata
+title: What is structured metadata
 description: Attaching metadata to logs.
 ---
-# What are structured metadata
+# What is structured metadata
 
 {{% admonition type="warning" %}}
 Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki.
