@@ -7,6 +7,17 @@
   local service = k.core.v1.service,
   local containerPort = k.core.v1.containerPort,
 
+  local boltdb_shipper = {
+    shared_store: $._config.boltdb_shipper_shared_store,
+    active_index_directory: '/data/index',
+    cache_location: '/data/boltdb-cache',
+  },
+  local tsdb_shipper = {
+    shared_store: $._config.tsdb_shipper_shared_store,
+    active_index_directory: '/data/tsdb-index',
+    cache_location: '/data/tsdb-cache',
+  },
+
   _config+:: {
     // flag for tuning things when boltdb-shipper is current or upcoming index type.
     using_boltdb_shipper: true,
@@ -24,19 +35,16 @@
     compactor_pvc_class: 'fast',
     index_period_hours: if self.using_shipper_store then 24 else super.index_period_hours,
     loki+: if self.using_shipper_store then {
-      storage_config+: if $._config.using_boltdb_shipper then {
-        boltdb_shipper+: {
-          shared_store: $._config.boltdb_shipper_shared_store,
-          active_index_directory: '/data/index',
-          cache_location: '/data/boltdb-cache',
-        },
-      } else {} + if $._config.using_tsdb_shipper then {
-        tsdb_shipper+: {
-          shared_store: $._config.tsdb_shipper_shared_store,
-          active_index_directory: '/data/tsdb-index',
-          cache_location: '/data/tsdb-cache',
-        },
-      } else {},
+      storage_config+: if $._config.using_boltdb_shipper && $._config.using_tsdb_shipper then {
+        boltdb_shipper+: boltdb_shipper,
+        tsdb_shipper+: tsdb_shipper,
+      }
+      else if $._config.using_boltdb_shipper then {
+        boltdb_shipper+: boltdb_shipper,
+      }
+      else if $._config.using_tsdb_shipper then {
+        tsdb_shipper+: tsdb_shipper,
+      },
       compactor+: {
         working_directory: '/data/compactor',
         // prefer tsdb index over boltdb
