@@ -55,7 +55,6 @@ type SelectStore interface {
 type Store interface {
 	stores.Store
 	SelectStore
-	index.Filterable
 	GetSchemaConfigs() []config.PeriodConfig
 }
 
