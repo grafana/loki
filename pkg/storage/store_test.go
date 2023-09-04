@@ -875,7 +875,7 @@ func Test_ChunkFilterer(t *testing.T) {
 		v := mustParseLabels(it.Labels())["foo"]
 		require.NotEqual(t, "bazz", v)
 	}
-	ids, err := s.Series(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
+	ids, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: newQuery("{foo=~\"ba.*\"}", from, from.Add(1*time.Hour), nil, nil)})
 	require.NoError(t, err)
 	for _, id := range ids {
 		v := id.Labels["foo"]
@@ -943,7 +943,7 @@ func Test_store_GetSeries(t *testing.T) {
 				chunkMetrics: NilMetrics,
 			}
 			ctx = user.InjectOrgID(context.Background(), "test-user")
-			out, err := s.Series(ctx, logql.SelectLogParams{QueryRequest: tt.req})
+			out, err := s.SelectSeries(ctx, logql.SelectLogParams{QueryRequest: tt.req})
 			if err != nil {
 				t.Errorf("store.GetSeries() error = %v", err)
 				return
@@ -1492,7 +1492,7 @@ func Test_GetSeries(t *testing.T) {
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			series, err := store.Series(ctx, tt.req)
+			series, err := store.SelectSeries(ctx, tt.req)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedSeries, series)
 		})

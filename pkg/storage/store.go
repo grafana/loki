@@ -46,9 +46,15 @@ var (
 	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
+type SelectStore interface {
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+}
+
 type Store interface {
 	stores.Store
-	stores.ChunkReader
+	SelectStore
 	index.Filterable
 	GetSchemaConfigs() []config.PeriodConfig
 }
@@ -81,7 +87,7 @@ type store struct {
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
 	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,
-) (Store, error) {
+) (*store, error) {
 	if len(schemaCfg.Configs) != 0 {
 		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
 			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
@@ -424,7 +430,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 	return lazyChunks, nil
 }
 
-func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *store) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
