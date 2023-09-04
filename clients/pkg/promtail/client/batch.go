@@ -148,9 +148,9 @@ func (b *batch) createPushRequest() (*logproto.PushRequest, int) {
 }
 
 func entrySize(entry api.Entry) int {
-	nonIndexedLabelsSize := 0
-	for _, label := range entry.NonIndexedLabels {
-		nonIndexedLabelsSize += label.Size()
+	structuredMetadataSize := 0
+	for _, label := range entry.StructuredMetadata {
+		structuredMetadataSize += label.Size()
 	}
-	return len(entry.Line) + nonIndexedLabelsSize
+	return len(entry.Line) + structuredMetadataSize
 }
