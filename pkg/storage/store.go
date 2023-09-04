@@ -60,7 +60,6 @@ type Store interface {
 
 type store struct {
 	stores.Store
-	composite *stores.CompositeStore
 
 	cfg       Config
 	storeCfg  config.ChunkStoreConfig
@@ -141,7 +140,6 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 
 	s := &store{
 		Store:     stores,
-		composite: stores,
 		cfg:       cfg,
 		storeCfg:  storeCfg,
 		schemaCfg: schemaCfg,
@@ -188,7 +186,8 @@ func (s *store) init() error {
 			return err
 		}
 
-		s.composite.AddStore(p.From.Time, f, idx, w, stop)
+		// s.Store is always assigned the CompositeStore implementation of the Store interface
+		s.Store.(*stores.CompositeStore).AddStore(p.From.Time, f, idx, w, stop)
 	}
 
 	if s.cfg.EnableAsyncStore {
