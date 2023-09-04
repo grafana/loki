@@ -33,12 +33,12 @@ var (
 	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant. Includes non-indexed labels bytes.",
+		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
 	}, []string{"tenant", "retention_hours"})
-	nonIndexedLabelsBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
-		Name:      "distributor_non_indexed_labels_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant for entries' non-indexed labels",
+		Name:      "distributor_structured_metadata_bytes_received_total",
+		Help:      "The total number of uncompressed bytes received per tenant for entries' structured metadata",
 	}, []string{"tenant", "retention_hours"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -46,9 +46,9 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 
-	bytesReceivedStats                 = analytics.NewCounter("distributor_bytes_received")
-	nonIndexedLabelsBytesReceivedStats = analytics.NewCounter("distributor_non_indexed_labels_bytes_received")
-	linesReceivedStats                 = analytics.NewCounter("distributor_lines_received")
+	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
+	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
+	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 const applicationJSON = "application/json"
@@ -88,11 +88,11 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 
 	contentType := r.Header.Get(contentType)
 	var (
-		entriesSize          int64
-		nonIndexedLabelsSize int64
-		streamLabelsSize     int64
-		totalEntries         int64
-		req                  logproto.PushRequest
+		entriesSize            int64
+		structuredMetadataSize int64
+		streamLabelsSize       int64
+		totalEntries           int64
+		req                    logproto.PushRequest
 	)
 
 	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
@@ -140,16 +140,16 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		for _, e := range s.Entries {
 			totalEntries++
 			var entryLabelsSize int64
-			for _, l := range e.NonIndexedLabels {
+			for _, l := range e.StructuredMetadata {
 				entryLabelsSize += int64(len(l.Name) + len(l.Value))
 			}
 			entrySize := int64(len(e.Line)) + entryLabelsSize
 			entriesSize += entrySize
-			nonIndexedLabelsSize += entryLabelsSize
+			structuredMetadataSize += entryLabelsSize
 			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entrySize))
-			nonIndexedLabelsBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entryLabelsSize))
+			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entryLabelsSize))
 			bytesReceivedStats.Inc(entrySize)
-			nonIndexedLabelsBytesReceivedStats.Inc(entryLabelsSize)
+			structuredMetadataBytesReceivedStats.Inc(entryLabelsSize)
 			if e.Timestamp.After(mostRecentEntry) {
 				mostRecentEntry = e.Timestamp
 			}
@@ -172,7 +172,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		"entries", totalEntries,
 		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
-		"nonIndexedLabelsSize", humanize.Bytes(uint64(nonIndexedLabelsSize)),
+		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
 		"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
 	)

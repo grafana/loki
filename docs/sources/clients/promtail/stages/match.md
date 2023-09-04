@@ -40,21 +40,11 @@ match:
   # Nested set of pipeline stages only if the selector
   # matches the labels of the log entries:
   stages:
-    - [
-        <regex_stage>
-        <json_stage> |
-        <template_stage> |
-        <match_stage> |
-        <timestamp_stage> |
-        <output_stage> |
-        <labels_stage> |
-        <metrics_stage> |
-        <tenant_stage>
-      ]
+    [<stages>...]
 ```
 
-Refer to the [Promtail Configuration Reference]({{< relref "../configuration.md" >}}) for the
-schema on the various other stages referenced here.
+Refer to the [Promtail Stages Configuration Reference]({{< relref "./_index.md#stages" >}}) for the
+schema on the various stages supported here.
 
 ### Example
 

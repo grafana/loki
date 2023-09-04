@@ -20,6 +20,9 @@ Too many label value combinations leads to too many streams. The penalties for t
 
 To avoid those issues, don't add a label for something until you know you need it! Use filter expressions (`|= "text"`, `|~ "regex"`, …) and brute force those logs. It works -- and it's fast.
 
+If you often parse a label from a log line at query time, the label has a high cardinality, and extracting that label is expensive in terms of performance; consider extracting the label on the client side
+attaching it as [structured metadata]({{< relref "./structured-metadata" >}}) to log lines .
+
 From early on, we have set a label dynamically using Promtail pipelines for `level`. This seemed intuitive for us as we often wanted to only show logs for `level="error"`; however, we are re-evaluating this now as writing a query. `{app="loki"} |= "level=error"` is proving to be just as fast for many of our applications as `{app="loki",level="error"}`.
 
 This may seem surprising, but if applications have medium to low volume, that label causes one application's logs to be split into up to five streams, which means 5x chunks being stored.  And loading chunks has an overhead associated with it. Imagine now if that query were `{app="loki",level!="debug"}`. That would have to load **way** more chunks than `{app="loki"} != "level=debug"`.

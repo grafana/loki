@@ -154,7 +154,7 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: map[string]string{"foo": "bar"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
@@ -164,7 +164,7 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: map[string]string{"foo": "bar", "lvl": "error"},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: labels.Labels{
+						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: labels.Labels{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
@@ -176,7 +176,7 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: `{foo="bar"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
-						{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: []logproto.LabelAdapter{
+						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
@@ -186,7 +186,7 @@ func TestStreams_ToProto(t *testing.T) {
 					Labels: `{foo="bar", lvl="error"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4", NonIndexedLabels: []logproto.LabelAdapter{
+						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						}},
@@ -223,7 +223,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "1"},
-							{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+							{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							}},
@@ -246,7 +246,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 						Labels: LabelSet{"foo": "bar"},
 						Entries: []Entry{
 							{Timestamp: time.Unix(0, 1), Line: "log line 1"},
-							{Timestamp: time.Unix(0, 2), Line: "some log line 2", NonIndexedLabels: labels.Labels{
+							{Timestamp: time.Unix(0, 2), Line: "some log line 2", StructuredMetadata: labels.Labels{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							}},
@@ -259,7 +259,7 @@ func Test_QueryResponseUnmarshal(t *testing.T) {
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 2), Line: "2"},
-							{Timestamp: time.Unix(0, 2), Line: "2", NonIndexedLabels: labels.Labels{
+							{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							}},

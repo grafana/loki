@@ -20,58 +20,76 @@ index and in stored chunks.
 ## Chunk Format
 
 ```
-  -------------------------------------------------------------------
-  |                               |                                 |
-  |        MagicNumber(4b)        |           version(1b)           |
-  |                               |                                 |
-  -------------------------------------------------------------------
-  |         block-1 bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |         block-2 bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |         block-n bytes         |          checksum (4b)          |
-  -------------------------------------------------------------------
-  |                        #blocks (uvarint)                        |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint) |
-  -------------------------------------------------------------------
-  |                      checksum(from #blocks)                     |
-  -------------------------------------------------------------------
-  |                    #blocks section byte offset                  |
-  -------------------------------------------------------------------
+  ----------------------------------------------------------------------------
+  |                        |                       |                         |
+  |     MagicNumber(4b)    |     version(1b)       |      encoding (1b)      |
+  |                        |                       |                         |
+  ----------------------------------------------------------------------------
+  |                      #structuredMetadata (uvarint)                       |
+  ----------------------------------------------------------------------------
+  |      len(label-1) (uvarint)      |          label-1 (bytes)              |
+  ----------------------------------------------------------------------------
+  |      len(label-2) (uvarint)      |          label-2 (bytes)              |
+  ----------------------------------------------------------------------------
+  |      len(label-n) (uvarint)      |          label-n (bytes)              |
+  ----------------------------------------------------------------------------
+  |                      checksum(from #structuredMetadata)                  |
+  ----------------------------------------------------------------------------
+  |           block-1 bytes          |           checksum (4b)               |
+  ----------------------------------------------------------------------------
+  |           block-2 bytes          |           checksum (4b)               |
+  ----------------------------------------------------------------------------
+  |           block-n bytes          |           checksum (4b)               |
+  ----------------------------------------------------------------------------
+  |                           #blocks (uvarint)                              |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  |                          checksum(from #blocks)                          |
+  ----------------------------------------------------------------------------
+  | #structuredMetadata len (uvarint) | #structuredMetadata offset (uvarint) |
+  ----------------------------------------------------------------------------
+  |     #blocks len (uvarint)         |       #blocks offset (uvarint)      |
+  ----------------------------------------------------------------------------
 ```
 
 `mint` and `maxt` describe the minimum and maximum Unix nanosecond timestamp,
 respectively.
+
+The `structuredMetadata` section stores non-repeated strings. It is used to store label names and label values from
+[structured metadata]({{< relref "./labels/structured-metadata" >}}).
+Note that the labels strings and lengths within the `structuredMetadata` section are stored compressed.
 
 ### Block Format
 
 A block is comprised of a series of entries, each of which is an individual log
 line.
 
-Note that the bytes of a block are stored compressed using Gzip. The following
-is their form when uncompressed:
+Note that the bytes of a block are stored compressed. The following is their form when uncompressed:
 
 ```
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-1 bytes      |
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-2 bytes      |
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-3 bytes      |
-  -------------------------------------------------------------------
-  |    ts (varint)    |     len (uvarint)    |     log-n bytes      |
-  -------------------------------------------------------------------
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-1 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-2 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-3 bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+|  ts (varint)  |  len (uvarint)  |  log-n bytes  |  len(from #symbols)  |  #symbols (uvarint)  |  symbol-1 (uvarint)  | symbol-n*2 (uvarint) |
+-----------------------------------------------------------------------------------------------------------------------------------------------
 ```
 
 `ts` is the Unix nanosecond timestamp of the logs, while len is the length in
 bytes of the log entry.
+
+Symbols store references to the actual strings containing label names and values in the
+`structuredMetadata` section of the chunk.
 
 ## Storage
 
