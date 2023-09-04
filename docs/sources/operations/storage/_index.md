@@ -3,6 +3,7 @@ title: Grafana Loki Storage
 description: Grafana Loki Storage
 weight: 40
 ---
+
 # Grafana Loki Storage
 
 [High level storage overview here]({{< relref "../../storage/_index.md" >}})
@@ -31,7 +32,7 @@ For more information:
 The following are supported for the index:
 
 - [TSDB]({{< relref "./tsdb" >}}) index store which stores TSDB index files in the object store. This is the recommended index store for Loki 2.8 and newer.
-- [Single Store (boltdb-shipper)]({{< relref "./boltdb-shipper" >}}) index store which stores boltdb index files in the object store. 
+- [Single Store (boltdb-shipper)]({{< relref "./boltdb-shipper" >}}) index store which stores boltdb index files in the object store.
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
 - [Google Bigtable](https://cloud.google.com/bigtable)
 - [Apache Cassandra](https://cassandra.apache.org)
@@ -60,7 +61,6 @@ The following are deprecated for the chunks and will be removed in a future rele
 - [Amazon DynamoDB](https://aws.amazon.com/dynamodb). Support for this is deprecated and will be removed in a future release.
 - [Google Bigtable](https://cloud.google.com/bigtable). Support for this is deprecated and will be removed in a future release.
 - [Apache Cassandra](https://cassandra.apache.org). Support for this is deprecated and will be removed in a future release.
-
 
 ## Cloud Storage Permissions
 
@@ -128,12 +128,11 @@ Resources: `*`
 
 Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
-
 ### IBM Cloud Object Storage
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
 
-See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-object-storage" >}}) on the storage page for a detailed setup guide.
+See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-object-storage-cos" >}}) on the storage page for a detailed setup guide.
 
 ## Chunk Format
 
@@ -164,4 +163,3 @@ See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-o
   |           metasOffset - offset to the point with #blocks        |
   -------------------------------------------------------------------
 ```
-
