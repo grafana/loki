@@ -30,8 +30,8 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 	lbl := `{foo="bar", fizz="buzz"}`
 	lblWithLineFilter := `{foo="bar", fizz="buzz"} |= "filter"`
 
-	lblWithNonIndexedLabelsFilter := `{foo="bar", fizz="buzz"} | ping="pong"`
-	lblWithLineAndNonIndexedLabelsFilter := `{foo="bar", fizz="buzz"} | ping="pong" |= "filter"`
+	lblWithStructuredMetadataFilter := `{foo="bar", fizz="buzz"} | ping="pong"`
+	lblWithLineAndStructuredMetadataFilter := `{foo="bar", fizz="buzz"} | ping="pong" |= "filter"`
 
 	chunkEntry := retention.ChunkEntry{
 		ChunkRef: retention.ChunkRef{
@@ -84,18 +84,18 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 		},
 		{
-			name: "whole chunk deleted with non-indexed labels filter present",
+			name: "whole chunk deleted with structured metadata filter present",
 			deleteRequest: DeleteRequest{
 				UserID:    user1,
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-time.Hour),
-				Query:     lblWithNonIndexedLabelsFilter,
+				Query:     lblWithStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+					if labels.Labels(structuredMetadata).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
 						return true
 					}
 					return false
@@ -103,18 +103,18 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 		},
 		{
-			name: "whole chunk deleted with line and non-indexed labels filter present",
+			name: "whole chunk deleted with line and structured metadata filter present",
 			deleteRequest: DeleteRequest{
 				UserID:    user1,
 				StartTime: now.Add(-3 * time.Hour),
 				EndTime:   now.Add(-time.Hour),
-				Query:     lblWithLineAndNonIndexedLabelsFilter,
+				Query:     lblWithLineAndStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
+					if strings.Contains(s, "filter") && labels.Labels(structuredMetadata).Get(lblPing) == lblPong && now.Add(-3*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.Add(-time.Hour).UnixNano() {
 						return true
 					}
 					return false
@@ -179,18 +179,18 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 		},
 		{
-			name: "chunk deleted from end with non-indexed labels filter present",
+			name: "chunk deleted from end with structured metadata filter present",
 			deleteRequest: DeleteRequest{
 				UserID:    user1,
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now,
-				Query:     lblWithNonIndexedLabelsFilter,
+				Query:     lblWithStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+					if labels.Labels(structuredMetadata).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
 					}
 					return false
@@ -198,18 +198,18 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 			},
 		},
 		{
-			name: "chunk deleted from end with line and non-indexed labels filter present",
+			name: "chunk deleted from end with line and structured metadata filter present",
 			deleteRequest: DeleteRequest{
 				UserID:    user1,
 				StartTime: now.Add(-2 * time.Hour),
 				EndTime:   now,
-				Query:     lblWithLineAndNonIndexedLabelsFilter,
+				Query:     lblWithLineAndStructuredMetadataFilter,
 			},
 			expectedResp: resp{
 				isDeleted: true,
-				expectedFilter: func(ts time.Time, s string, nonIndexedLabels ...labels.Label) bool {
+				expectedFilter: func(ts time.Time, s string, structuredMetadata ...labels.Label) bool {
 					tsUnixNano := ts.UnixNano()
-					if strings.Contains(s, "filter") && labels.Labels(nonIndexedLabels).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
+					if strings.Contains(s, "filter") && labels.Labels(structuredMetadata).Get(lblPing) == lblPong && now.Add(-2*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= now.UnixNano() {
 						return true
 					}
 					return false
@@ -289,14 +289,14 @@ func TestDeleteRequest_IsDeleted(t *testing.T) {
 					line = "filter bar"
 				}
 
-				// mix of empty, ding=dong and ping=pong as non-indexed labels
-				var nonIndexedLabels []labels.Label
+				// mix of empty, ding=dong and ping=pong as structured metadata
+				var structuredMetadata []labels.Label
 				if start.Time().Minute()%3 == 0 {
-					nonIndexedLabels = []labels.Label{{Name: lblPing, Value: lblPong}}
+					structuredMetadata = []labels.Label{{Name: lblPing, Value: lblPong}}
 				} else if start.Time().Minute()%2 == 0 {
-					nonIndexedLabels = []labels.Label{{Name: "ting", Value: "tong"}}
+					structuredMetadata = []labels.Label{{Name: "ting", Value: "tong"}}
 				}
-				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, nonIndexedLabels...), filterFunc(start.Time(), line, nonIndexedLabels...), "line", line, "time", start.Time(), "now", now.Time())
+				require.Equal(t, tc.expectedResp.expectedFilter(start.Time(), line, structuredMetadata...), filterFunc(start.Time(), line, structuredMetadata...), "line", line, "time", start.Time(), "now", now.Time())
 			}
 		})
 	}
@@ -335,7 +335,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
 	})
 
-	t.Run("one line matching with non-indexed labels filter", func(t *testing.T) {
+	t.Run("one line matching with structured metadata filter", func(t *testing.T) {
 		dr := DeleteRequest{
 			Query:        `{foo="bar"} | ping="pong"`,
 			DeletedLines: 0,
@@ -358,7 +358,7 @@ func TestDeleteRequest_FilterFunction(t *testing.T) {
 		require.Equal(t, float64(1), testutil.ToFloat64(dr.Metrics.deletedLinesTotal))
 	})
 
-	t.Run("one line matching with line and non-indexed labels filter", func(t *testing.T) {
+	t.Run("one line matching with line and structured metadata filter", func(t *testing.T) {
 		dr := DeleteRequest{
 			Query:        `{foo="bar"} | ping="pong" |= "some"`,
 			DeletedLines: 0,
