@@ -322,7 +322,7 @@ func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 		from := int(chk.from) / int(time.Hour)
 		// This is only here because it's helpful for debugging.
 		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
-		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncNone, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0)
+		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
 		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
 		for i := 0; i < from; i++ {
 			_ = memChk.Append(&logproto.Entry{
