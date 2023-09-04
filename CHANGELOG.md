@@ -139,6 +139,7 @@
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 * [9978](https://github.com/grafana/loki/pull/9978) ****vlad-diachenko****: replaced deprecated `policy.v1beta1` with `policy.v1`.
+* [10442](https://github.com/grafana/loki/pull/10442) **liam-howe-maersk**: Allow use of both `use_boltdb_shipper` and `use_tsdb_shipper` to configure necessary config for both shippers.
 
 ## 2.8.3 (2023-07-21)
 
