@@ -13,6 +13,8 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                showMultiCluster:: true,
                                clusterLabel:: $._config.per_cluster_label,
 
+                               // TODO: Toggle on/off TSDB-related rows/panels once metrics
+                               // for TSBD shipper got implemented (https://github.com/grafana/loki/issues/9719)  
                                hiddenRows:: [
                                  'Cassandra',
                                ] + if !$._config.ssd.enabled then [] else [

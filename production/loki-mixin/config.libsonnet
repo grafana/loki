@@ -28,5 +28,11 @@
       // The prefix used to match the write and read pods on SSD mode.
       pod_prefix_matcher: '(loki|enterprise-logs)',
     },
+
+    // TSDB related configuration for dashboards.
+    show_tsdb_graphs: {
+      // Add TSDB related rows/panels when compiling dashboards.
+      enabled: true
+    }
   },
 }
