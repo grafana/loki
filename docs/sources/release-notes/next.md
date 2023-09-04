@@ -12,7 +12,9 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 ## Features and enhancements
 
--  **Query Language Improvements**: Several improvements to the query language that speed up line parsing and regex matching. [PR #8646](https://github.com/grafana/loki/pull/8646), [PR #8659](https://github.com/grafana/loki/pull/8659), [PR #8724](https://github.com/grafana/loki/pull/8724), [PR #8734](https://github.com/grafana/loki/pull/8734), [PR #8739](https://github.com/grafana/loki/pull/8739), [PR #8763](https://github.com/grafana/loki/pull/8763), [PR #8890](https://github.com/grafana/loki/pull/8890),[PR #8914](https://github.com/grafana/loki/pull/8914)
+-  **Query Language Improvements**: Several improvements to the query language that speed up line parsing and regex matching. [PR #8646](https://github.com/grafana/loki/pull/8646), [PR #8659](https://github.com/grafana/loki/pull/8659), [PR #8724](https://github.com/grafana/loki/pull/8724), [PR #8734](https://github.com/grafana/loki/pull/8734), [PR #8739](https://github.com/grafana/loki/pull/8739), [PR #8763](https://github.com/grafana/loki/pull/8763), [PR #8890](https://github.com/grafana/loki/pull/8890), [PR #8914](https://github.com/grafana/loki/pull/8914)
+ 
+-  **Remote rule evaluation**: Rule evaluation can now be handled by queriers to improve speed. [PR #8744](https://github.com/grafana/loki/pull/8744) [PR #8848](https://github.com/grafana/loki/pull/8848) ([LID #0002](https://grafana.com/docs/loki/latest/lids/0002-remoteruleevaluation/))
 
 -  **Multi-store Index support**: Loki now supports reading/writing indexes to multiple object stores which enables the use of different storage buckets across periods for storing index. [PR #7754](https://github.com/grafana/loki/pull/7754)], [PR #7447](https://github.com/grafana/loki/pull/7447)
 
@@ -21,6 +23,8 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 -  **New Storage Client**: Add support for IBM cloud object storage as storage client. [PR #8826](https://github.com/grafana/loki/pull/8826)
 
 -  **New Promtail Stage**: Add a Promtail stage for probabilistic sampling. [PR #7127](https://github.com/grafana/loki/pull/7127)
+
+-  **Block queries by hash**: Queries can now be blocked by a query hash. [PR #8953](https://github.com/grafana/loki/pull/8953)
 
 - **Deprecations**
   - Legacy index and chunk stores that are not "single store" (such as `tsdb`, `boltdb-shipper`) are deprecated. These storage backends are Cassandra (`cassandra`), DynamoDB (`aws`, `aws-dynamo`), BigTable (`bigtable`, `bigtable-hashed`), GCP (`gcp`, `gcp-columnkey`), and gRPC (`grpc`). See https://grafana.com/docs/loki/latest/storage/ for more information.
