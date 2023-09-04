@@ -185,6 +185,8 @@ func handler(ctx context.Context, ev map[string]interface{}) error {
 	}
 
 	switch evt := event.(type) {
+	case *events.CloudWatchEvent:
+		err = processEventBridgeEvent(ctx, evt, pClient, pClient.log)
 	case *events.S3Event:
 		err = processS3Event(ctx, evt, pClient, pClient.log)
 	case *events.CloudwatchLogsEvent:
