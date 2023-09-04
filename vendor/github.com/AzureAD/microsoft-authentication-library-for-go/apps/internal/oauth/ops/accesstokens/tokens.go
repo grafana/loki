@@ -148,10 +148,13 @@ func (c *ClientInfo) UnmarshalJSON(b []byte) error {
 
 // HomeAccountID creates the home account ID.
 func (c ClientInfo) HomeAccountID() string {
-	if c.UID == "" || c.UTID == "" {
+	if c.UID == "" {
 		return ""
+	} else if c.UTID == "" {
+		return fmt.Sprintf("%s.%s", c.UID, c.UID)
+	} else {
+		return fmt.Sprintf("%s.%s", c.UID, c.UTID)
 	}
-	return fmt.Sprintf("%s.%s", c.UID, c.UTID)
 }
 
 // Scopes represents scopes in a TokenResponse.

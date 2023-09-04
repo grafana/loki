@@ -23,6 +23,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/loc"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/pollers/op"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/internal/shared"
+	"github.com/Azure/azure-sdk-for-go/sdk/internal/poller"
 )
 
 // FinalStateVia is the enumerated type for the possible final-state-via values.
@@ -75,7 +76,7 @@ func NewPoller[T any](resp *http.Response, pl exported.Pipeline, options *NewPol
 	defer resp.Body.Close()
 	// this is a back-stop in case the swagger is incorrect (i.e. missing one or more status codes for success).
 	// ideally the codegen should return an error if the initial response failed and not even create a poller.
-	if !pollers.StatusCodeValid(resp) {
+	if !poller.StatusCodeValid(resp) {
 		return nil, errors.New("the operation failed or was cancelled")
 	}
 
@@ -146,7 +147,9 @@ func NewPollerFromResumeToken[T any](token string, pl exported.Pipeline, options
 
 	opr := options.Handler
 	// now rehydrate the poller based on the encoded poller type
-	if async.CanResume(asJSON) {
+	if opr != nil {
+		log.Writef(log.EventLRO, "Resuming custom poller %T.", opr)
+	} else if async.CanResume(asJSON) {
 		opr, _ = async.New[T](pl, nil, "")
 	} else if body.CanResume(asJSON) {
 		opr, _ = body.New[T](pl, nil)
@@ -154,8 +157,6 @@ func NewPollerFromResumeToken[T any](token string, pl exported.Pipeline, options
 		opr, _ = loc.New[T](pl, nil)
 	} else if op.CanResume(asJSON) {
 		opr, _ = op.New[T](pl, nil, "")
-	} else if opr != nil {
-		log.Writef(log.EventLRO, "Resuming custom poller %T.", opr)
 	} else {
 		return nil, fmt.Errorf("unhandled poller token %s", string(raw))
 	}

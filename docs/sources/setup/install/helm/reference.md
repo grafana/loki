@@ -74,7 +74,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -83,7 +83,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -102,6 +102,15 @@ false
 			<td>Target memory utilization percentage for the backend.</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for backend pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -975,6 +984,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether the gateway should be enabled</td>
@@ -1094,7 +1112,7 @@ false
 		<tr>
 			<td>gateway.ingress.hosts</td>
 			<td>list</td>
-			<td>Hosts configuration for the gateway ingress</td>
+			<td>Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1130,7 +1148,7 @@ false
 		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
-			<td>TLS configuration for the gateway ingress</td>
+			<td>TLS configuration for the gateway ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1482,11 +1500,13 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>ingress.hosts[0]</td>
-			<td>string</td>
-			<td></td>
+			<td>ingress.hosts</td>
+			<td>list</td>
+			<td>Hosts configuration for the ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"loki.example.com"
+[
+  "loki.example.com"
+]
 </pre>
 </td>
 		</tr>
@@ -1673,7 +1693,7 @@ false
 		<tr>
 			<td>ingress.tls</td>
 			<td>list</td>
-			<td></td>
+			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -2329,6 +2349,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -2969,6 +2998,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.pspAnnotations</td>
+			<td>object</td>
+			<td>Specify PSP annotations Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
@@ -3027,7 +3065,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the read</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -3036,7 +3074,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the read</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -3055,6 +3093,15 @@ false
 			<td>Target memory utilisation percentage for the read</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for read pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3410,6 +3457,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for single binary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.extraArgs</td>
 			<td>list</td>
 			<td>Labels for single binary service</td>
@@ -3658,6 +3714,15 @@ Hard node and soft zone anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config table-manager pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4046,7 +4111,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the write.</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -4055,7 +4120,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the write.</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -4074,6 +4139,15 @@ false
 			<td>Target memory utilization percentage for the write.</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for write pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>

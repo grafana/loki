@@ -185,7 +185,7 @@ func (c *Fetcher) FetchChunks(ctx context.Context, chunks []chunk.Chunk) ([]chun
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
 
-	// Extend the extendedHandoff to be 10% larger to allow for some overlap becasue this is a sliding window
+	// Extend the extendedHandoff to be 10% larger to allow for some overlap because this is a sliding window
 	// and the l1 cache may be oversized enough to allow for some extra chunks
 	extendedHandoff := c.l2CacheHandoff + (c.l2CacheHandoff / 10)
 

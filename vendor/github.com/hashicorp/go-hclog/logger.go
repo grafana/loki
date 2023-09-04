@@ -1,3 +1,6 @@
+// Copyright (c) HashiCorp, Inc.
+// SPDX-License-Identifier: MIT
+
 package hclog
 
 import (
@@ -88,6 +91,13 @@ const (
 	// the io.Writer is a tty or not.
 	ForceColor
 )
+
+// SupportsColor is an optional interface that can be implemented by the output
+// value. If implemented and SupportsColor() returns true, then AutoColor will
+// enable colorization.
+type SupportsColor interface {
+	SupportsColor() bool
+}
 
 // LevelFromString returns a Level type for the named log level, or "NoLevel" if
 // the level string is invalid. This facilitates setting the log level via
@@ -292,6 +302,13 @@ type LoggerOptions struct {
 	// logger will not affect any subloggers, and SetLevel on any subloggers
 	// will not affect the parent or sibling loggers.
 	IndependentLevels bool
+
+	// SubloggerHook registers a function that is called when a sublogger via
+	// Named, With, or ResetNamed is created. If defined, the function is passed
+	// the newly created Logger and the returned Logger is returned from the
+	// original function. This option allows customization via interception and
+	// wrapping of Logger instances.
+	SubloggerHook func(sub Logger) Logger
 }
 
 // InterceptLogger describes the interface for using a logger

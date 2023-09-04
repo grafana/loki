@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-kit/log/level"
+	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
@@ -25,7 +26,6 @@ import (
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	awscommon "github.com/weaveworks/common/aws"
 	"golang.org/x/time/rate"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
@@ -84,7 +84,7 @@ func (cfg *DynamoDBConfig) RegisterFlags(f *flag.FlagSet) {
 
 // StorageConfig specifies config for storing data on AWS.
 type StorageConfig struct {
-	DynamoDBConfig `yaml:"dynamodb"`
+	DynamoDBConfig `yaml:"dynamodb" doc:"description=Deprecated: Configures storing indexes in DynamoDB."`
 	S3Config       `yaml:",inline"`
 }
 
@@ -575,6 +575,10 @@ func (a dynamoDBStorageClient) DeleteChunk(ctx context.Context, userID, chunkID 
 }
 
 func (a dynamoDBStorageClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (a dynamoDBStorageClient) IsRetryableErr(_ error) bool {
 	return false
 }
 

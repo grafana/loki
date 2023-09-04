@@ -277,7 +277,6 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
-				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -336,7 +335,6 @@ memberlist:
 				assert.Equal(t, "def789", actual.SecretAccessKey.String())
 				assert.Equal(t, "456abc", actual.SessionToken.String())
 				assert.Equal(t, true, actual.Insecure)
-				assert.Equal(t, false, actual.SSEEncryption)
 				assert.Equal(t, 5*time.Minute, actual.HTTPConfig.ResponseHeaderTimeout)
 				assert.Equal(t, false, actual.HTTPConfig.InsecureSkipVerify)
 
@@ -858,6 +856,13 @@ query_range:
 	})
 }
 
+const defaultResulsCacheString = `---
+query_range:
+  results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
 func TestDefaultFIFOCacheBehavior(t *testing.T) {
 	t.Run("for the chunk cache config", func(t *testing.T) {
 		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
@@ -968,14 +973,7 @@ query_range:
 		})
 
 		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
-			configFileString := `---
-query_range:
-  results_cache:
-    cache:
-      memcached_client:
-        host: memcached.host.org`
-
-			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
 			assert.EqualValues(t, "memcached.host.org", config.QueryRange.ResultsCacheConfig.CacheConfig.MemcacheClient.Host)
 			assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EnableFifoCache)
 		})
@@ -1016,6 +1014,51 @@ query_range:
 		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
 			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
 			assert.True(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.StatsCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.StatsCacheConfig.CacheConfig.EnableFifoCache)
+		})
+	})
+
+	t.Run("for the volume results cache config", func(t *testing.T) {
+		t.Run("no FIFO cache enabled by default if Redis is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  volume_results_cache:
+    cache:
+      redis:
+        endpoint: endpoint.redis.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, config.QueryRange.VolumeCacheConfig.CacheConfig.Redis.Endpoint, "endpoint.redis.org")
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("no FIFO cache enabled by default if Memcache is set", func(t *testing.T) {
+			configFileString := `---
+query_range:
+  volume_results_cache:
+    cache:
+      memcached_client:
+        host: memcached.host.org`
+
+			config, _, _ := configWrapperFromYAML(t, configFileString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("FIFO cache is enabled by default if no other cache is set", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
+			assert.True(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
+		})
+
+		t.Run("gets results cache config if not configured directly", func(t *testing.T) {
+			config, _, _ := configWrapperFromYAML(t, defaultResulsCacheString, nil)
+			assert.EqualValues(t, "memcached.host.org", config.QueryRange.VolumeCacheConfig.CacheConfig.MemcacheClient.Host)
+			assert.False(t, config.QueryRange.VolumeCacheConfig.CacheConfig.EnableFifoCache)
 		})
 	})
 }

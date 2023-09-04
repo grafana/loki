@@ -3,7 +3,6 @@ package baidubce
 import (
 	"context"
 	"flag"
-
 	"io"
 	"time"
 
@@ -90,6 +89,19 @@ func (b *BOSObjectStorage) PutObject(ctx context.Context, objectKey string, obje
 	})
 }
 
+func (b *BOSObjectStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := instrument.CollectedRequest(ctx, "BOS.ObjectExists", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		var requestErr error
+		_, requestErr = b.client.GetObjectMeta(b.cfg.BucketName, objectKey)
+		return requestErr
+	})
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (b *BOSObjectStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var res *api.GetObjectResult
 	err := instrument.CollectedRequest(ctx, "BOS.GetObject", bosRequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
@@ -171,3 +183,6 @@ func (b *BOSObjectStorage) IsObjectNotFoundErr(err error) bool {
 }
 
 func (b *BOSObjectStorage) Stop() {}
+
+// TODO(dannyk): implement for client
+func (b *BOSObjectStorage) IsRetryableErr(error) bool { return false }

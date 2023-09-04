@@ -45,6 +45,10 @@ message Caches {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "statsResult"
   ];
+  Cache volumeResult = 5 [
+    (gogoproto.nullable) = false,
+    (gogoproto.jsontag) = "volumeResult"
+  ];
 }
 
 // Summary is the summary of a query statistics.
@@ -115,6 +119,9 @@ message Store {
     (gogoproto.nullable) = false,
     (gogoproto.jsontag) = "chunk"
   ];
+
+  // Time spent fetching chunk refs from index.
+  int64 chunkRefsFetchTime = 5 [(gogoproto.jsontag) = "chunkRefsFetchTime"];
 }
 
 message Chunk {

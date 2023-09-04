@@ -379,7 +379,10 @@ type CloudflareConfig struct {
 	// - minimal
 	// - extended
 	// - all
+	// - custom
 	FieldsType string `yaml:"fields_type"`
+	// The additional list of fields to supplement those provided via fields_type.
+	AdditionalFields []string `yaml:"additional_fields"`
 }
 
 // GcplogTargetConfig describes a scrape config to pull logs from any pubsub topic.

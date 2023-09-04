@@ -37,7 +37,7 @@ func TestMatrixStepper(t *testing.T) {
 		},
 	}
 
-	s := NewMatrixStepper(start, end, step, m)
+	s := NewMatrixStepEvaluator(start, end, step, m)
 
 	expected := []promql.Vector{
 		{
@@ -115,7 +115,7 @@ func Test_SingleStepMatrix(t *testing.T) {
 		},
 	}
 
-	s := NewMatrixStepper(start, end, step, m)
+	s := NewMatrixStepEvaluator(start, end, step, m)
 
 	ok, ts, vec := s.Next()
 	require.True(t, ok)

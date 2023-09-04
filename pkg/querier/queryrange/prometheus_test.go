@@ -18,6 +18,7 @@ var emptyStats = `"stats": {
 			"chunksDownloadTime": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
+			"chunkRefsFetchTime": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -40,6 +41,7 @@ var emptyStats = `"stats": {
 			"chunksDownloadTime": 0,
 			"totalChunksRef": 0,
 			"totalChunksDownloaded": 0,
+			"chunkRefsFetchTime": 0,
 			"chunk" :{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
@@ -73,6 +75,15 @@ var emptyStats = `"stats": {
 			"downloadTime": 0
 		},
 		"statsResult": {
+			"entriesFound": 0,
+			"entriesRequested": 0,
+			"entriesStored": 0,
+			"bytesReceived": 0,
+			"bytesSent": 0,
+			"requests": 0,
+			"downloadTime": 0
+		},
+		"volumeResult": {
 			"entriesFound": 0,
 			"entriesRequested": 0,
 			"entriesStored": 0,

@@ -14,9 +14,12 @@ func TestStreamsMap(t *testing.T) {
 	limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
 	require.NoError(t, err)
 	limiter := NewLimiter(limits, NilMetrics, &ringCountMock{count: 1}, 1)
+	chunkfmt, headfmt := defaultChunkFormat(t)
 
 	ss := []*stream{
 		newStream(
+			chunkfmt,
+			headfmt,
 			defaultConfig(),
 			limiter,
 			"fake",
@@ -30,6 +33,8 @@ func TestStreamsMap(t *testing.T) {
 			nil,
 		),
 		newStream(
+			chunkfmt,
+			headfmt,
 			defaultConfig(),
 			limiter,
 			"fake",

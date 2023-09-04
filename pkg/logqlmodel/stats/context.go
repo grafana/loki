@@ -55,11 +55,12 @@ type Context struct {
 type CacheType string
 
 const (
-	ChunkCache       CacheType = "chunk" //nolint:staticcheck
-	IndexCache                 = "index"
-	ResultCache                = "result"
-	StatsResultCache           = "stats-result"
-	WriteDedupeCache           = "write-dedupe"
+	ChunkCache        CacheType = "chunk" //nolint:staticcheck
+	IndexCache                  = "index"
+	ResultCache                 = "result"
+	StatsResultCache            = "stats-result"
+	VolumeResultCache           = "volume-result"
+	WriteDedupeCache            = "write-dedupe"
 )
 
 // NewContext creates a new statistics context
@@ -92,10 +93,11 @@ func (c *Context) Ingester() Ingester {
 // Caches returns the cache statistics accumulated so far.
 func (c *Context) Caches() Caches {
 	return Caches{
-		Chunk:       c.caches.Chunk,
-		Index:       c.caches.Index,
-		Result:      c.caches.Result,
-		StatsResult: c.caches.StatsResult,
+		Chunk:        c.caches.Chunk,
+		Index:        c.caches.Index,
+		Result:       c.caches.Result,
+		StatsResult:  c.caches.StatsResult,
+		VolumeResult: c.caches.VolumeResult,
 	}
 }
 
@@ -173,6 +175,7 @@ func (s *Store) Merge(m Store) {
 	s.TotalChunksRef += m.TotalChunksRef
 	s.TotalChunksDownloaded += m.TotalChunksDownloaded
 	s.ChunksDownloadTime += m.ChunksDownloadTime
+	s.ChunkRefsFetchTime += m.ChunkRefsFetchTime
 	s.Chunk.HeadChunkBytes += m.Chunk.HeadChunkBytes
 	s.Chunk.HeadChunkNonIndexedLabelsBytes += m.Chunk.HeadChunkNonIndexedLabelsBytes
 	s.Chunk.HeadChunkLines += m.Chunk.HeadChunkLines
@@ -206,6 +209,7 @@ func (c *Caches) Merge(m Caches) {
 	c.Index.Merge(m.Index)
 	c.Result.Merge(m.Result)
 	c.StatsResult.Merge(m.StatsResult)
+	c.VolumeResult.Merge(m.VolumeResult)
 }
 
 func (c *Cache) Merge(m Cache) {
@@ -245,6 +249,10 @@ func ConvertSecondsToNanoseconds(seconds float64) time.Duration {
 
 func (r Result) ChunksDownloadTime() time.Duration {
 	return time.Duration(r.Querier.Store.ChunksDownloadTime + r.Ingester.Store.ChunksDownloadTime)
+}
+
+func (r Result) ChunkRefsFetchTime() time.Duration {
+	return time.Duration(r.Querier.Store.ChunkRefsFetchTime + r.Ingester.Store.ChunkRefsFetchTime)
 }
 
 func (r Result) TotalDuplicates() int64 {
@@ -318,6 +326,10 @@ func (c *Context) AddDuplicates(i int64) {
 
 func (c *Context) AddChunksDownloadTime(i time.Duration) {
 	atomic.AddInt64(&c.store.ChunksDownloadTime, int64(i))
+}
+
+func (c *Context) AddChunkRefsFetchTime(i time.Duration) {
+	atomic.AddInt64(&c.store.ChunkRefsFetchTime, int64(i))
 }
 
 func (c *Context) AddChunksDownloaded(i int64) {
@@ -417,6 +429,8 @@ func (c *Context) getCacheStatsByType(t CacheType) *Cache {
 		stats = &c.caches.Result
 	case StatsResultCache:
 		stats = &c.caches.StatsResult
+	case VolumeResultCache:
+		stats = &c.caches.VolumeResult
 	default:
 		return nil
 	}
@@ -433,6 +447,7 @@ func (r Result) Log(log log.Logger) {
 		"Ingester.TotalChunksRef", r.Ingester.Store.TotalChunksRef,
 		"Ingester.TotalChunksDownloaded", r.Ingester.Store.TotalChunksDownloaded,
 		"Ingester.ChunksDownloadTime", time.Duration(r.Ingester.Store.ChunksDownloadTime),
+		"Ingester.ChunkRefsFetchTime", time.Duration(r.Ingester.Store.ChunkRefsFetchTime),
 		"Ingester.HeadChunkBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.HeadChunkBytes)),
 		"Ingester.HeadChunkLines", r.Ingester.Store.Chunk.HeadChunkLines,
 		"Ingester.DecompressedBytes", humanize.Bytes(uint64(r.Ingester.Store.Chunk.DecompressedBytes)),
@@ -444,6 +459,7 @@ func (r Result) Log(log log.Logger) {
 		"Querier.TotalChunksRef", r.Querier.Store.TotalChunksRef,
 		"Querier.TotalChunksDownloaded", r.Querier.Store.TotalChunksDownloaded,
 		"Querier.ChunksDownloadTime", time.Duration(r.Querier.Store.ChunksDownloadTime),
+		"Querier.ChunkRefsFetchTime", time.Duration(r.Querier.Store.ChunkRefsFetchTime),
 		"Querier.HeadChunkBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.HeadChunkBytes)),
 		"Querier.HeadChunkLines", r.Querier.Store.Chunk.HeadChunkLines,
 		"Querier.DecompressedBytes", humanize.Bytes(uint64(r.Querier.Store.Chunk.DecompressedBytes)),
@@ -490,6 +506,12 @@ func (c Caches) Log(log log.Logger) {
 		"Cache.StatsResult.EntriesStored", c.StatsResult.EntriesStored,
 		"Cache.StatsResult.BytesSent", humanize.Bytes(uint64(c.StatsResult.BytesSent)),
 		"Cache.StatsResult.BytesReceived", humanize.Bytes(uint64(c.StatsResult.BytesReceived)),
+		"Cache.VolumeResult.Requests", c.VolumeResult.Requests,
+		"Cache.VolumeResult.EntriesRequested", c.VolumeResult.EntriesRequested,
+		"Cache.VolumeResult.EntriesFound", c.VolumeResult.EntriesFound,
+		"Cache.VolumeResult.EntriesStored", c.VolumeResult.EntriesStored,
+		"Cache.VolumeResult.BytesSent", humanize.Bytes(uint64(c.VolumeResult.BytesSent)),
+		"Cache.VolumeResult.BytesReceived", humanize.Bytes(uint64(c.VolumeResult.BytesReceived)),
 		"Cache.Result.DownloadTime", c.Result.CacheDownloadTime(),
 		"Cache.Result.Requests", c.Result.Requests,
 		"Cache.Result.EntriesRequested", c.Result.EntriesRequested,

@@ -96,6 +96,15 @@ If you have a use-case that relies on strict parsing where you expect the parser
 logfmt parser doesn't include standalone keys(keys without a value) in the resulting label set anymore.
 You can use `--keep-empty` flag to retain them.
 
+#### deprecated configs are now removed
+1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
+2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
+4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
+5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+
 ### Jsonnet
 
 ##### Deprecated PodDisruptionBudget definition has been removed
@@ -411,7 +420,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/clients/promtail/stages/metrics/#counter)
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/send-data/promtail/stages/metrics/#counter)
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 
@@ -583,6 +592,8 @@ ingester:
   wal:
     enabled: true
 ```
+
+Using the write ahead log (WAL) is recommended and is now the default. However using the WAL is incompatible with chunk transfers, if you have explicitly configured `ingester.max-transfer-retries` to a non-zero value, you must set it to 0 to disable transfers.
 
 #### Memberlist config now automatically applies to all non-configured rings
 * [4400](https://github.com/grafana/loki/pull/4400) **trevorwhitney**: Config: automatically apply memberlist config too all rings when provided
@@ -927,7 +938,7 @@ If you happen to have `results_cache.max_freshness` set, use `limits_config.max_
 
 ### Promtail config removed
 
-The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../../clients/promtail/configuration#pipeline_stages" >}}) instead.
+The long deprecated `entry_parser` config in Promtail has been removed, use [pipeline_stages]({{< relref "../../send-data/promtail/configuration#pipeline_stages" >}}) instead.
 
 ### Upgrading schema to use boltdb-shipper and/or v11 schema
 

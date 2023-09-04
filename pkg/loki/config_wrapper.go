@@ -504,6 +504,12 @@ func applyStorageConfig(cfg, defaults *ConfigWrapper) error {
 		}
 	}
 
+	if !reflect.DeepEqual(cfg.Common.Storage.CongestionControl, defaults.StorageConfig.CongestionControl) {
+		applyConfig = func(r *ConfigWrapper) {
+			r.StorageConfig.CongestionControl = r.Common.Storage.CongestionControl
+		}
+	}
+
 	if configsFound > 1 {
 		return ErrTooManyStorageConfigs
 	}
@@ -574,6 +580,12 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 	if !cache.IsCacheConfigured(indexStatsCacheConfig) {
 		// We use the same config as the query range results cache.
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+	}
+
+	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(volumeCacheConfig) {
+		// We use the same config as the query range results cache.
+		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 	}
 }
 
