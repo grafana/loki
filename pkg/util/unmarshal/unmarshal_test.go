@@ -52,7 +52,7 @@ var pushTests = []struct {
 					{
 						Timestamp: time.Unix(0, 123456789012345),
 						Line:      "super line",
-						NonIndexedLabels: []logproto.LabelAdapter{
+						StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "a", Value: "1"},
 							{Name: "b", Value: "2"},
 						},
