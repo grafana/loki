@@ -27,6 +27,8 @@ type S3ObjectDetail struct {
 }
 
 func processEventBridgeEvent(ctx context.Context, ev *events.CloudWatchEvent, pc Client, log *log.Logger) error {
+	// lambda-promtail should only be used with S3 object creation events, since those indicate that a new file has been
+	// added to bucket, and need to be fetched and parsed accordingly.
 	if !(ev.Source == "aws.s3" && ev.DetailType == "Object Created") {
 		return fmt.Errorf("event bridge event type not supported")
 	}
