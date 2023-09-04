@@ -1,5 +1,5 @@
 ---
-menuTitle: Overview
+menuTitle: Loki overview
 title: Loki overview
 description: Loki product overview and features.
 weight: 200
@@ -7,70 +7,46 @@ aliases:
     - ../overview/
     - ../fundamentals/overview/
 ---
+
 # Loki overview
 
-Grafana Loki is a log aggregation tool,
-and it is the core of a fully-featured logging stack.
+Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by [Prometheus](https://prometheus.io/). Loki differs from Prometheus by focusing on logs instead of metrics, and collecting logs via push, instead of pull.
 
-Loki is a datastore optimized for efficiently holding log data.
-The efficient indexing of log data
-distinguishes Loki from other logging systems.
-Unlike other logging systems, a Loki index is built from labels,
-leaving the original log message unindexed.
+Loki is designed to be very cost effective and highly scalable. Unlike other logging systems, Loki does not index the contents of the logs, but only indexes metadata about your logs as a set of labels for each log stream. 
 
-![Loki overview](../loki-overview-1.png "Loki overview")
+A log stream is a set of logs which share the same labels. Labels help Loki to find a log stream within your data store, so having a quality set of labels is key to efficient query execution.
 
-An agent (also called a client) acquires logs,
-turns the logs into streams,
-and pushes the streams to Loki through an HTTP API.
-The Promtail agent is designed for Loki installations,
-but many other [Agents]({{< relref "../send-data" >}}) seamlessly integrate with Loki.
+Log data is then compressed and stored in chunks in an object store such as Amazon S3 or Google Cloud Storage, or even, for development or proof of concept, on the filesystem. A small index and highly compressed chunks simplifies the operation and significantly lowers the cost of Loki.
 
-![Loki agent interaction](../loki-overview-2.png "Loki agent interaction") 
+{{< figure  src="../loki-overview-2.png" caption="**Loki logging stack**" >}}
 
-Loki indexes streams.
-Each stream identifies a set of logs associated with a unique set of labels.
-A quality set of labels is key to the creation of an index that is both compact
-and allows for efficient query execution.
+A typical Loki-based logging stack consists of 3 components:
 
-[LogQL]({{< relref "../query" >}}) is the query language for Loki.
+- **Agent** - An agent or client, for example `promtail`, which is distributed with Loki, or the Grafana Agent. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
+
+- **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes]{{< relref "../get-started/deployment-modes/" >}}.
+  
+- **[Grafana](https://github.com/grafana/grafana)** for querying and displaying log data. You can also query logs from the command line, using [LogCLI]({{< relref "../query/logcli/" >}}) or using the Loki API directly.
 
 ## Loki features
 
--  **Efficient memory usage for indexing the logs**
+- **Scalability** - Loki is designed for scalability, and can scale from as small as running on a Raspberry Pi to ingesting petabytes a day. 
+In its most common deployment, “simple scalable mode”, Loki decouples requests into separate read and write paths, so that you can independently scale them, which leads to flexible large-scale installations that can quickly adapt to meet your workload at any given time.
+If needed, each of Loki's components can also be run as microservices designed to run statelessly and natively within Kubernetes.
 
-    By indexing on a set of labels, the index can be significantly smaller
-    than other log aggregation products.
-    Less memory makes it less expensive to operate.
+- **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant is completely isolated from the others.
+Multi-tenancy is [configured] (../operations/multi-tenancy) by assigning a tenant ID in the agent.
 
--  **Multi-tenancy**
+- **Third-party integrations** - Several third-party agents (clients) have support for Loki, via plugins. This lets you keep your existing observability setup while also shipping logs to Loki.
 
-    Loki allows multiple tenants to utilize a single Loki instance.
-    The data of distinct tenants is completely isolated from other tenants.
-    Multi-tenancy is configured by assigning a tenant ID in the agent.
+- **Efficient storage** - Loki stores log data in highly compressed chunks. 
+Similarly, the Loki index, because it indexes only the set of labels, is significantly smaller than other log aggregation tools.
+The compressed chunks, smaller index, and use of low-cost object storage, make Loki less expensive to operate.
 
--  **LogQL, Loki's query language**
+- **LogQL, Loki's query language** - [LogQL]({{< relref "../query" >}}) is the query language for Loki.  Users who are already familiar with the Prometheus query language, [PromQL](https://prometheus.io/docs/prometheus/latest/querying/basics/), will find LogQL familiar and flexible for generating queries against the logs.
+The language also facilitates the generation of metrics from log data,
+a powerful feature that goes well beyond log aggregation.
 
-    Users of the Prometheus query language, PromQL, will find LogQL familiar
-    and flexible for generating queries against the logs.
-    The language also facilitates the generation of metrics from log data,
-    a powerful feature that goes well beyond log aggregation.
+- **Alerting** - Loki includes a component called the [ruler]({{< relref "../alert" >}}), which can continually evaluate queries against your logs, and perform an action based on the result. This allows you to monitor your logs for anomalies or events. Loki integrates with [Prometheus Alertmanager](https://prometheus.io/docs/alerting/latest/alertmanager/), or the [alert manager](/docs/grafana/latest/alerting) within Grafana.
 
--  **Scalability**
-
-    Loki is designed for scalability,
-    as each of Loki's components can be run as microservices designed to run statelessly and natively within Kubernetes.
-    Loki's read and write path are decoupled meaning that you can independently scale read or write leading to flexible large-scale installations that can quickly adapt to meet your workload at any given time.
-
--  **Flexibility**
-
-    Many agents (clients) have plugin support.
-    This allows a current observability structure
-    to add Loki as their log aggregation tool without needing
-    to switch existing portions of the observability stack.
-
--  **Grafana integration**
-
-    Loki seamlessly integrates with Grafana,
-    providing a complete observability stack.
-
+- **Grafana integration** - Loki integrates with Grafana, Mimir, and Tempo, providing a complete observability stack, and seamless correlation between logs, metrics and traces.
