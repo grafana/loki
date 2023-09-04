@@ -32,6 +32,7 @@ type ChunkFetcher interface {
 
 type Store interface {
 	index.BaseReader
+	index.StatsReader
 	index.Filterable
 	ChunkWriter
 	ChunkFetcher

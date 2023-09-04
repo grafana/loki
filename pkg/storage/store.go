@@ -52,10 +52,14 @@ type SelectStore interface {
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
+type SchemaConfigProvider interface {
+	GetSchemaConfigs() []config.PeriodConfig
+}
+
 type Store interface {
 	stores.Store
 	SelectStore
-	GetSchemaConfigs() []config.PeriodConfig
+	SchemaConfigProvider
 }
 
 type LokiStore struct {

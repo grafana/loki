@@ -339,6 +339,10 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
+func (s *testStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return nil
+}
+
 func (s *testStore) IsLocal() bool {
 	return false
 }
@@ -348,6 +352,10 @@ func (s *testStore) SelectLogs(_ context.Context, _ logql.SelectLogParams) (iter
 }
 
 func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams) (iter.SampleIterator, error) {
+	return nil, nil
+}
+
+func (s *testStore) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	return nil, nil
 }
 

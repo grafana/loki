@@ -433,7 +433,7 @@ func (s *mockStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams)
 	return nil, nil
 }
 
-func (s *mockStore) GetSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *mockStore) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	return nil, nil
 }
 

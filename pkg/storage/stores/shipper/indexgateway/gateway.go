@@ -33,6 +33,7 @@ const (
 type IndexQuerier interface {
 	stores.ChunkFetcher
 	index.BaseReader
+	index.StatsReader
 	Stop()
 }
 
