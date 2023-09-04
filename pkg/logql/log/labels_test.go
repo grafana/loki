@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logqlmodel"
@@ -47,18 +48,21 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 		"already", "in",
 	)
 	require.Equal(t, expectedLbs, lbsWithErr)
-	require.Equal(t, lbsCatWithErr.Stream().Labels(), labels.FromStrings("already", "in"))
-	require.Equal(t, lbsCatWithErr.StructuredMetadata().Labels(), labels.EmptyLabels())
-	require.Equal(t, lbsCatWithErr.Parsed().Labels(), labels.FromStrings(logqlmodel.ErrorLabel, "err"))
+	require.Equal(t, labels.FromStrings("already", "in"), lbsCatWithErr.Stream())
+	require.Equal(t, labels.EmptyLabels(), lbsCatWithErr.StructuredMetadata())
+	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsCatWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
 }
 
 func TestLabelsBuilder_LabelsResult(t *testing.T) {
-	strs := []string{"namespace", "loki",
+	strs := []string{
+		"namespace", "loki",
 		"job", "us-central1/loki",
-		"cluster", "us-central1"}
+		"cluster", "us-central1",
+		"ToReplace", "text",
+	}
 	lbs := labels.FromStrings(strs...)
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 	b.Reset()
@@ -70,18 +74,35 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	b.Set(StructuredMetadataLabel, "foo", "bar")
 	b.Set(StreamLabel, "namespace", "tempo")
 	b.Set(ParsedLabel, "buzz", "fuzz")
+	b.Set(ParsedLabel, "ToReplace", "other")
 	b.Del("job")
-	expected := labels.FromStrings(logqlmodel.ErrorLabel, "err",
+
+	expectedStreamLbls := labels.FromStrings(
 		"namespace", "tempo",
 		"cluster", "us-central1",
-		"foo", "bar",
-		"buzz", "fuzz",
 	)
+	expectedStucturedMetadataLbls := labels.FromStrings(
+		"foo", "bar",
+	)
+	expectedParsedLbls := labels.FromStrings(
+		logqlmodel.ErrorLabel, "err",
+		"buzz", "fuzz",
+		"ToReplace", "other",
+	)
+	expected := make(labels.Labels, 0, len(expectedStreamLbls)+len(expectedStucturedMetadataLbls)+len(expectedParsedLbls))
+	expected = append(expected, expectedStreamLbls...)
+	expected = append(expected, expectedStucturedMetadataLbls...)
+	expected = append(expected, expectedParsedLbls...)
+	expected = labels.New(expected...)
+
 	assertLabelResult(t, expected, b.LabelsResult())
 	// cached.
 	assertLabelResult(t, expected, b.LabelsResult())
 
-	// TODO: Test categories with CategorizedLabelsResult
+	categorizedResult := b.CategorizedLabelsResult()
+	assert.Equal(t, expectedStreamLbls, categorizedResult.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, categorizedResult.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, categorizedResult.Parsed())
 }
 
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {

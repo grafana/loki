@@ -1212,9 +1212,9 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 				Labels: labels,
 				Hash:   baseHash,
 				CategorizedLabels: logproto.CategorizedLabels{
-					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream().Labels()),
-					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata().Labels()),
-					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed().Labels()),
+					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream()),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 				},
 			}
 			streams[labels] = stream
@@ -1619,9 +1619,9 @@ func (e *entryBufferedIterator) Labels() string {
 
 func (e *entryBufferedIterator) CategorizedLabels() logproto.CategorizedLabels {
 	return logproto.CategorizedLabels{
-		Stream:             logproto.FromLabelsToLabelAdapters(e.currLabels.Stream().Labels()),
-		StructuredMetadata: logproto.FromLabelsToLabelAdapters(e.currLabels.StructuredMetadata().Labels()),
-		Parsed:             logproto.FromLabelsToLabelAdapters(e.currLabels.Parsed().Labels()),
+		Stream:             logproto.FromLabelsToLabelAdapters(e.currLabels.Stream()),
+		StructuredMetadata: logproto.FromLabelsToLabelAdapters(e.currLabels.StructuredMetadata()),
+		Parsed:             logproto.FromLabelsToLabelAdapters(e.currLabels.Parsed()),
 	}
 }
 

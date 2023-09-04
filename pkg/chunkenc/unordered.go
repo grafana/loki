@@ -276,9 +276,9 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 					Labels: labels,
 					Hash:   baseHash,
 					CategorizedLabels: logproto.CategorizedLabels{
-						Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream().Labels()),
-						StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata().Labels()),
-						Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed().Labels()),
+						Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream()),
+						StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+						Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 					},
 				}
 				streams[labels] = stream

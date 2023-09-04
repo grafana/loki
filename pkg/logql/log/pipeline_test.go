@@ -16,13 +16,13 @@ func TestNoopPipeline(t *testing.T) {
 
 	l, lbr, matches := pipeline.ForStream(lbs).Process(0, []byte(""))
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), EmptyLabelsResult, EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := pipeline.ForStream(lbs).ProcessString(0, "")
 	require.Equal(t, "", ls)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), EmptyLabelsResult, EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
@@ -30,13 +30,13 @@ func TestNoopPipeline(t *testing.T) {
 	expectedLabelsResults := append(lbs, nonIndexedLabels...)
 	l, lbr, matches = pipeline.ForStream(lbs).Process(0, []byte(""), nonIndexedLabels...)
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(nonIndexedLabels, nonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches = pipeline.ForStream(lbs).ProcessString(0, "", nonIndexedLabels...)
 	require.Equal(t, "", ls)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(nonIndexedLabels, nonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
@@ -47,7 +47,7 @@ func TestNoopPipeline(t *testing.T) {
 		Name: "foo", Value: "baz",
 	})...)
 	require.Equal(t, []byte(""), l)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(expectedNonIndexedLabels, expectedNonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	// require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
 	require.Equal(t, true, matches)
@@ -65,13 +65,13 @@ func TestPipeline(t *testing.T) {
 
 	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"))
 	require.Equal(t, []byte("lbs bar"), l)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), EmptyLabelsResult, EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line")
 	require.Equal(t, "lbs bar", ls)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), EmptyLabelsResult, EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
@@ -87,12 +87,16 @@ func TestPipeline(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = CategorizedLabelsFromLabels(ParsedLabel, labels.FromStrings("baz", "blip"))
+	p.baseBuilder.add = map[LabelCategory]labels.Labels{
+		ParsedLabel: labels.FromStrings("baz", "blip"),
+	}
 
 	p.Reset()
 	require.Len(t, p.streamPipelines, 0)
 	require.Len(t, p.baseBuilder.del, 0)
-	require.Len(t, p.baseBuilder.add, 0)
+	for _, v := range p.baseBuilder.add {
+		require.Len(t, v, 0)
+	}
 }
 
 func TestPipelineWithNonIndexedLabels(t *testing.T) {
@@ -107,13 +111,13 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 
 	l, lbr, matches := p.ForStream(lbs).Process(0, []byte("line"), nonIndexedLabels...)
 	require.Equal(t, []byte("lbs bar bob"), l)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(nonIndexedLabels, nonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line", nonIndexedLabels...)
 	require.Equal(t, "lbs bar bob", ls)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(nonIndexedLabels, nonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
@@ -125,7 +129,7 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 		Name: "foo", Value: "baz",
 	})...)
 	require.Equal(t, []byte("lbs bar bob"), l)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(expectedNonIndexedLabels, expectedNonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
@@ -133,7 +137,7 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 		Name: "foo", Value: "baz",
 	})...)
 	require.Equal(t, "lbs bar bob", ls)
-	require.Equal(t, NewCategorizedLabelsResult(NewLabelsResult(lbs, lbs.Hash()), NewLabelsResult(expectedNonIndexedLabels, expectedNonIndexedLabels.Hash()), EmptyLabelsResult), lbr)
+	require.Equal(t, NewCategorizedLabelsResult(lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
 	require.Equal(t, true, matches)
 
@@ -159,12 +163,16 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = CategorizedLabelsFromLabels(ParsedLabel, labels.FromStrings("baz", "blip"))
+	p.baseBuilder.add = map[LabelCategory]labels.Labels{
+		ParsedLabel: labels.FromStrings("baz", "blip"),
+	}
 
 	p.Reset()
 	require.Len(t, p.streamPipelines, 0)
 	require.Len(t, p.baseBuilder.del, 0)
-	require.Len(t, p.baseBuilder.add, 0)
+	for _, v := range p.baseBuilder.add {
+		require.Len(t, v, 0)
+	}
 }
 
 func TestFilteringPipeline(t *testing.T) {
@@ -365,9 +373,10 @@ func TestDropLabelsPipeline(t *testing.T) {
 		for i, line := range tt.lines {
 			_, finalLbs, _ := sp.Process(0, line)
 			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-			require.Equal(t, EmptyLabelsResult, finalLbs.Stream())
-			require.Equal(t, EmptyLabelsResult, finalLbs.StructuredMetadata())
-			require.Equal(t, tt.wantLabels[i], finalLbs.Parsed().Labels())
+			require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
+			require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
+			require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
+			require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 		}
 	}
 
@@ -486,9 +495,10 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				finalLine, finalLbs, _ := sp.Process(0, line)
 				require.Equal(t, tt.wantLine[i], finalLine)
 				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-				require.Equal(t, EmptyLabelsResult, finalLbs.Stream())
-				require.Equal(t, EmptyLabelsResult, finalLbs.StructuredMetadata())
-				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed().Labels())
+				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
+				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
+				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
+				require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 			}
 		})
 	}

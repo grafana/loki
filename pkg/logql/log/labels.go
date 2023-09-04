@@ -11,12 +11,7 @@ import (
 
 const MaxInternedStrings = 1024
 
-var EmptyLabelsResult = NewLabelsResult(labels.Labels{}, labels.Labels{}.Hash())
-var EmptyCategorizedLabelsResult = categorizedLabelsResult{
-	stream:             EmptyLabelsResult,
-	structuredMetadata: EmptyLabelsResult,
-	parsed:             EmptyLabelsResult,
-}
+var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels(), labels.EmptyLabels().Hash())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
@@ -51,14 +46,21 @@ func (l labelsResult) Hash() uint64 {
 
 type CategorizedLabelsResult interface {
 	LabelsResult
-	Stream() LabelsResult
-	StructuredMetadata() LabelsResult
-	Parsed() LabelsResult
+	Stream() labels.Labels
+	StructuredMetadata() labels.Labels
+	Parsed() labels.Labels
 }
 
 // NewCategorizedLabelsResult creates a new NewCategorizedLabelsResult
-func NewCategorizedLabelsResult(stream, structuredMetadata, parsed LabelsResult) CategorizedLabelsResult {
+func NewCategorizedLabelsResult(stream, structuredMetadata, parsed labels.Labels) CategorizedLabelsResult {
+	allLbls := make(labels.Labels, 0, len(stream)+len(structuredMetadata)+len(parsed))
+	allLbls = append(allLbls, stream...)
+	allLbls = append(allLbls, structuredMetadata...)
+	allLbls = append(allLbls, parsed...)
+	sort.Sort(allLbls)
+
 	return &categorizedLabelsResult{
+		LabelsResult:       NewLabelsResult(allLbls, allLbls.Hash()),
 		stream:             stream,
 		structuredMetadata: structuredMetadata,
 		parsed:             parsed,
@@ -66,29 +68,26 @@ func NewCategorizedLabelsResult(stream, structuredMetadata, parsed LabelsResult)
 }
 
 type categorizedLabelsResult struct {
-	stream             LabelsResult
-	structuredMetadata LabelsResult
-	parsed             LabelsResult
+	LabelsResult
+	stream             labels.Labels
+	structuredMetadata labels.Labels
+	parsed             labels.Labels
 }
 
-func (g categorizedLabelsResult) Stream() LabelsResult {
+func (g categorizedLabelsResult) Stream() labels.Labels {
 	return g.stream
 }
 
-func (g categorizedLabelsResult) StructuredMetadata() LabelsResult {
+func (g categorizedLabelsResult) StructuredMetadata() labels.Labels {
 	return g.structuredMetadata
 }
 
-func (g categorizedLabelsResult) Parsed() LabelsResult {
+func (g categorizedLabelsResult) Parsed() labels.Labels {
 	return g.parsed
 }
 
 func (g categorizedLabelsResult) Labels() labels.Labels {
-	allLabels := make(labels.Labels, 0, len(g.stream.Labels())+len(g.structuredMetadata.Labels())+len(g.parsed.Labels()))
-	allLabels = append(allLabels, g.stream.Labels()...)
-	allLabels = append(allLabels, g.structuredMetadata.Labels()...)
-	allLabels = append(allLabels, g.parsed.Labels()...)
-	return labels.New(allLabels...)
+	return g.LabelsResult.Labels()
 }
 
 func (g categorizedLabelsResult) String() string {
@@ -120,47 +119,33 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 type LabelCategory string
 
 const (
+	// StreamLabel is reserved for stream labels.
 	StreamLabel             LabelCategory = "stream"
 	StructuredMetadataLabel LabelCategory = "structured_metadata"
 	ParsedLabel             LabelCategory = "parsed"
 	InvalidCategory         LabelCategory = ""
 )
 
-type CategorizedLabel struct {
-	labels.Label
-	Category LabelCategory
+var allCategories = []LabelCategory{
+	StreamLabel,
+	StructuredMetadataLabel,
+	ParsedLabel,
 }
 
-type CategorizedLabels []CategorizedLabel
-
-func (ls CategorizedLabels) Len() int           { return len(ls) }
-func (ls CategorizedLabels) Swap(i, j int)      { ls[i], ls[j] = ls[j], ls[i] }
-func (ls CategorizedLabels) Less(i, j int) bool { return ls[i].Name < ls[j].Name }
-
-func (ls CategorizedLabels) ToLabels() labels.Labels {
-	ret := make(labels.Labels, 0, len(ls))
-	for _, l := range ls {
-		ret = append(ret, l.Label)
+func categoriesContain(categories []LabelCategory, category LabelCategory) bool {
+	for _, c := range categories {
+		if c == category {
+			return true
+		}
 	}
-	return ret
-}
-
-func CategorizedLabelsFromLabels(category LabelCategory, lbs labels.Labels) CategorizedLabels {
-	ret := make(CategorizedLabels, 0, len(lbs))
-	for _, l := range lbs {
-		ret = append(ret, CategorizedLabel{
-			Label:    l,
-			Category: category,
-		})
-	}
-	return ret
+	return false
 }
 
 // BaseLabelsBuilder is a label builder used by pipeline and stages.
 // Only one base builder is used and it contains cache for each LabelsBuilders.
 type BaseLabelsBuilder struct {
 	del []string
-	add []CategorizedLabel
+	add map[LabelCategory]labels.Labels
 	// nolint:structcheck
 	// https://github.com/golangci/golangci-lint/issues/826
 	err string
@@ -179,7 +164,7 @@ type BaseLabelsBuilder struct {
 type LabelsBuilder struct {
 	base          labels.Labels
 	baseMap       map[string]string
-	buf           CategorizedLabels
+	buf           labels.Labels
 	currentResult LabelsResult
 	groupedResult LabelsResult
 
@@ -192,9 +177,13 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 		parserKeyHints = noParserHints
 	}
 
+	const labelsCapacity = 16
 	return &BaseLabelsBuilder{
-		del:            make([]string, 0, 5),
-		add:            make(CategorizedLabels, 0, 16),
+		del: make([]string, 0, 5),
+		add: map[LabelCategory]labels.Labels{
+			StructuredMetadataLabel: make(labels.Labels, 0, labelsCapacity),
+			ParsedLabel:             make(labels.Labels, 0, labelsCapacity),
+		},
 		resultCache:    make(map[uint64]LabelsResult),
 		hasher:         newHasher(),
 		groups:         groups,
@@ -233,7 +222,9 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 // Reset clears all current state for the builder.
 func (b *BaseLabelsBuilder) Reset() {
 	b.del = b.del[:0]
-	b.add = b.add[:0]
+	for k := range b.add {
+		b.add[k] = b.add[k][:0]
+	}
 	b.err = ""
 	b.errDetails = ""
 	b.parserKeyHints.Reset()
@@ -243,6 +234,27 @@ func (b *BaseLabelsBuilder) Reset() {
 // Returns nil when it's impossible to hint labels extractions.
 func (b *BaseLabelsBuilder) ParserLabelHints() ParserHint {
 	return b.parserKeyHints
+}
+
+func (b *BaseLabelsBuilder) hasDel() bool {
+	return len(b.del) > 0
+}
+
+func (b *BaseLabelsBuilder) hasAdd() bool {
+	for _, lbls := range b.add {
+		if len(lbls) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func (b *BaseLabelsBuilder) sizeAdd() int {
+	var length int
+	for _, lbls := range b.add {
+		length += len(lbls)
+	}
+	return length
 }
 
 // SetErr sets the error label.
@@ -291,9 +303,11 @@ func (b *LabelsBuilder) BaseHas(key string) bool {
 
 // Get returns the value of a labels key if it exists.
 func (b *LabelsBuilder) get(key string) (string, LabelCategory, bool) {
-	for _, a := range b.add {
-		if a.Name == key {
-			return a.Value, a.Category, true
+	for category, lbls := range b.add {
+		for _, l := range lbls {
+			if l.Name == key {
+				return l.Value, category, true
+			}
 		}
 	}
 	for _, d := range b.del {
@@ -322,9 +336,11 @@ func (b *LabelsBuilder) GetWithCategory(key string) (string, LabelCategory, bool
 // Del deletes the label of the given name.
 func (b *LabelsBuilder) Del(ns ...string) *LabelsBuilder {
 	for _, n := range ns {
-		for i, a := range b.add {
-			if a.Name == n {
-				b.add = append(b.add[:i], b.add[i+1:]...)
+		for category, lbls := range b.add {
+			for i, a := range lbls {
+				if a.Name == n {
+					b.add[category] = append(lbls[:i], lbls[i+1:]...)
+				}
 			}
 		}
 		b.del = append(b.del, n)
@@ -334,19 +350,13 @@ func (b *LabelsBuilder) Del(ns ...string) *LabelsBuilder {
 
 // Set the name/value pair as a label.
 func (b *LabelsBuilder) Set(category LabelCategory, n, v string) *LabelsBuilder {
-	for i, a := range b.add {
+	for i, a := range b.add[category] {
 		if a.Name == n {
-			b.add[i].Value = v
+			b.add[category][i].Value = v
 			return b
 		}
 	}
-	b.add = append(b.add, CategorizedLabel{
-		Label: labels.Label{
-			Name:  n,
-			Value: v,
-		},
-		Category: category,
-	})
+	b.add[category] = append(b.add[category], labels.Label{Name: n, Value: v})
 
 	// Sometimes labels are set and later modified. Only record
 	// each label once
@@ -369,92 +379,88 @@ func (b *LabelsBuilder) Add(category LabelCategory, labels ...labels.Label) *Lab
 
 // Labels returns the labels from the builder. If no modifications
 // were made, the original labels are returned.
-func (b *LabelsBuilder) labels() CategorizedLabels {
-	b.buf = b.UnsortedLabels(b.buf)
+func (b *LabelsBuilder) labels(categories ...LabelCategory) labels.Labels {
+	b.buf = b.UnsortedLabels(b.buf, categories...)
 	sort.Sort(b.buf)
 	return b.buf
 }
 
-func (b *LabelsBuilder) labelsForCategory(category LabelCategory) CategorizedLabels {
-	b.buf = b.UnsortedLabels(b.buf)
-	filteredLabels := make(CategorizedLabels, 0, len(b.buf))
-	for _, l := range b.buf {
-		if l.Category == category {
-			filteredLabels = append(filteredLabels, l)
-		}
-	}
-	sort.Sort(filteredLabels)
-	return filteredLabels
-}
-
-func (b *LabelsBuilder) appendErrors(buf CategorizedLabels) CategorizedLabels {
+func (b *LabelsBuilder) appendErrors(buf labels.Labels) labels.Labels {
 	if b.err != "" {
-		buf = append(buf, CategorizedLabel{
-			Label: labels.Label{
-				Name:  logqlmodel.ErrorLabel,
-				Value: b.err,
-			},
-			Category: ParsedLabel,
+		buf = append(buf, labels.Label{
+			Name:  logqlmodel.ErrorLabel,
+			Value: b.err,
 		})
 	}
 	if b.errDetails != "" {
-		buf = append(buf, CategorizedLabel{
-			Label: labels.Label{
-				Name:  logqlmodel.ErrorDetailsLabel,
-				Value: b.errDetails,
-			},
-			Category: ParsedLabel,
+		buf = append(buf, labels.Label{
+			Name:  logqlmodel.ErrorDetailsLabel,
+			Value: b.errDetails,
 		})
 	}
 	return buf
 }
 
-func (b *LabelsBuilder) UnsortedLabels(buf CategorizedLabels) CategorizedLabels {
-	if len(b.del) == 0 && len(b.add) == 0 {
+func (b *LabelsBuilder) UnsortedLabels(buf labels.Labels, categories ...LabelCategory) labels.Labels {
+	if categories == nil {
+		categories = allCategories
+	}
+
+	if !b.hasDel() && !b.hasAdd() && categoriesContain(categories, StreamLabel) {
 		if buf == nil {
-			buf = make(CategorizedLabels, 0, len(b.base)+1)
+			buf = make(labels.Labels, 0, len(b.base)+1) // +1 for error label.
 		} else {
 			buf = buf[:0]
 		}
-		for _, l := range b.base {
-			buf = append(buf, CategorizedLabel{
-				Label:    l,
-				Category: StreamLabel,
-			})
+		buf = append(buf, b.base...)
+		if categoriesContain(categories, ParsedLabel) {
+			buf = b.appendErrors(buf)
 		}
-		return b.appendErrors(buf)
+
+		return buf
 	}
 
 	// In the general case, labels are removed, modified or moved
 	// rather than added.
 	if buf == nil {
-		buf = make(CategorizedLabels, 0, len(b.base)+len(b.add)+1)
+		size := len(b.base) + b.sizeAdd() + 1
+		buf = make(labels.Labels, 0, size)
 	} else {
 		buf = buf[:0]
 	}
-Outer:
-	for _, l := range b.base {
-		for _, n := range b.del {
-			if l.Name == n {
-				continue Outer
+	if categoriesContain(categories, StreamLabel) {
+	Outer:
+		for _, l := range b.base {
+			// Skip stream labels to be deleted
+			for _, n := range b.del {
+				if l.Name == n {
+					continue Outer
+				}
 			}
-		}
-		for _, la := range b.add {
-			if l.Name == la.Name {
-				continue Outer
+			// Skip stream labels which value will be replaced
+			for _, lbls := range b.add {
+				for _, la := range lbls {
+					if l.Name == la.Name {
+						continue Outer
+					}
+				}
 			}
+			buf = append(buf, l)
 		}
-		buf = append(buf, CategorizedLabel{
-			Label:    l,
-			Category: StreamLabel,
-		})
 	}
-	buf = append(buf, b.add...)
-	return b.appendErrors(buf)
+
+	for _, category := range categories {
+		buf = append(buf, b.add[category]...)
+	}
+	if (b.HasErr() || b.HasErrorDetails()) && categoriesContain(categories, ParsedLabel) {
+		buf = b.appendErrors(buf)
+	}
+
+	return buf
 }
 
 func (b *LabelsBuilder) Map() map[string]string {
-	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
+	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		if b.baseMap == nil {
 			b.baseMap = b.base.Map()
 		}
@@ -474,34 +480,34 @@ func (b *LabelsBuilder) Map() map[string]string {
 // No grouping is applied and the cache is used when possible.
 func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	// unchanged path.
-	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
+	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		return b.currentResult
 	}
-	return b.toResult(b.labels())
+	return b.toResult(b.labels(allCategories...))
 }
 
 // CategorizedLabelsResult returns the LabelsResult from the builder.
 // No grouping is applied and the cache is used when possible.
 func (b *LabelsBuilder) CategorizedLabelsResult() CategorizedLabelsResult {
 	// unchanged path.
-	if len(b.del) == 0 && len(b.add) == 0 && b.err == "" {
-		return NewCategorizedLabelsResult(b.currentResult, EmptyLabelsResult, EmptyLabelsResult)
+	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
+		// TODO(salvacorts): Not sure if this is correct.
+		return NewCategorizedLabelsResult(b.base, labels.EmptyLabels(), labels.EmptyLabels())
 	}
 
 	return NewCategorizedLabelsResult(
-		b.toResult(b.labelsForCategory(StreamLabel)),
-		b.toResult(b.labelsForCategory(StructuredMetadataLabel)),
-		b.toResult(b.labelsForCategory(ParsedLabel)),
+		b.labels(StreamLabel).Copy(),
+		b.labels(StructuredMetadataLabel).Copy(),
+		b.labels(ParsedLabel).Copy(),
 	)
 }
 
-func (b *BaseLabelsBuilder) toResult(buf CategorizedLabels) LabelsResult {
-	lbls := buf.ToLabels()
-	hash := b.hasher.Hash(lbls)
+func (b *BaseLabelsBuilder) toResult(buf labels.Labels) LabelsResult {
+	hash := b.hasher.Hash(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
-	res := NewLabelsResult(lbls, hash)
+	res := NewLabelsResult(buf.Copy(), hash)
 	b.resultCache[hash] = res
 	return res
 }
@@ -509,7 +515,7 @@ func (b *BaseLabelsBuilder) toResult(buf CategorizedLabels) LabelsResult {
 // GroupedLabels returns the LabelsResult from the builder.
 // Groups are applied and the cache is used when possible.
 func (b *LabelsBuilder) GroupedLabels() LabelsResult {
-	if b.err != "" {
+	if b.HasErr() {
 		// We need to return now before applying grouping otherwise the error might get lost.
 		return b.LabelsResult()
 	}
@@ -517,7 +523,7 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 		return EmptyLabelsResult
 	}
 	// unchanged path.
-	if len(b.del) == 0 && len(b.add) == 0 {
+	if !b.hasDel() && !b.hasAdd() {
 		if len(b.groups) == 0 {
 			return b.currentResult
 		}
@@ -536,7 +542,7 @@ func (b *LabelsBuilder) GroupedLabels() LabelsResult {
 
 func (b *LabelsBuilder) withResult() LabelsResult {
 	if b.buf == nil {
-		b.buf = make(CategorizedLabels, 0, len(b.groups))
+		b.buf = make(labels.Labels, 0, len(b.groups))
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -548,17 +554,16 @@ Outer:
 			}
 		}
 		for _, la := range b.add {
-			if g == la.Name {
-				b.buf = append(b.buf, la)
-				continue Outer
+			for _, l := range la {
+				if g == l.Name {
+					b.buf = append(b.buf, l)
+					continue Outer
+				}
 			}
 		}
 		for _, l := range b.base {
 			if g == l.Name {
-				b.buf = append(b.buf, CategorizedLabel{
-					Label:    l,
-					Category: StreamLabel,
-				})
+				b.buf = append(b.buf, l)
 				continue Outer
 			}
 		}
@@ -568,11 +573,11 @@ Outer:
 
 func (b *LabelsBuilder) withoutResult() LabelsResult {
 	if b.buf == nil {
-		size := len(b.base) + len(b.add) - len(b.del) - len(b.groups)
+		size := len(b.base) + b.sizeAdd() - len(b.del) - len(b.groups)
 		if size < 0 {
 			size = 0
 		}
-		b.buf = make(CategorizedLabels, 0, size)
+		b.buf = make(labels.Labels, 0, size)
 	} else {
 		b.buf = b.buf[:0]
 	}
@@ -583,9 +588,11 @@ Outer:
 				continue Outer
 			}
 		}
-		for _, la := range b.add {
-			if l.Name == la.Name {
-				continue Outer
+		for _, lbls := range b.add {
+			for _, la := range lbls {
+				if l.Name == la.Name {
+					continue Outer
+				}
 			}
 		}
 		for _, lg := range b.groups {
@@ -593,19 +600,19 @@ Outer:
 				continue Outer
 			}
 		}
-		b.buf = append(b.buf, CategorizedLabel{
-			Label:    l,
-			Category: StreamLabel,
-		})
+		b.buf = append(b.buf, l)
 	}
-OuterAdd:
-	for _, la := range b.add {
-		for _, lg := range b.groups {
-			if la.Name == lg {
-				continue OuterAdd
+
+	for _, lbls := range b.add {
+	OuterAdd:
+		for _, la := range lbls {
+			for _, lg := range b.groups {
+				if la.Name == lg {
+					continue OuterAdd
+				}
 			}
+			b.buf = append(b.buf, la)
 		}
-		b.buf = append(b.buf, la)
 	}
 	sort.Sort(b.buf)
 	return b.toResult(b.buf)

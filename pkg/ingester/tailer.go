@@ -160,9 +160,9 @@ func (t *tailer) processStream(stream logproto.Stream, lbs labels.Labels) []*log
 			stream = &logproto.Stream{
 				Labels: parsedLbs.String(),
 				CategorizedLabels: logproto.CategorizedLabels{
-					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream().Labels()),
-					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata().Labels()),
-					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed().Labels()),
+					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream()),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
 				},
 			}
 			streams[parsedLbs.Hash()] = stream
