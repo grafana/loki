@@ -12,7 +12,6 @@ import (
 	dslog "github.com/grafana/dskit/log"
 	"github.com/prometheus/common/version"
 
-	"github.com/grafana/loki/pkg/util"
 	_ "github.com/grafana/loki/pkg/util/build"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -54,7 +53,7 @@ func main() {
 func newLogger(lvl dslog.Level) log.Logger {
 	// plugin logs must be stdout to appear.
 	logger := log.NewLogfmtLogger(log.NewSyncWriter(os.Stdout))
-	logger = level.NewFilter(logger, util.LogFilter(lvl.String()))
+	logger = level.NewFilter(logger, lvl.Option)
 	logger = log.With(logger, "ts", log.DefaultTimestampUTC)
 	logger = log.With(logger, "caller", log.Caller(3))
 	return logger
