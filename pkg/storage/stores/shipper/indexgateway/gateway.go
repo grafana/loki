@@ -195,7 +195,7 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 	if err != nil {
 		return nil, err
 	}
-	chunks, _, err := g.indexQuerier.GetChunkRefs(ctx, instanceID, req.From, req.Through, matchers...)
+	chunks, _, err := g.indexQuerier.GetChunks(ctx, instanceID, req.From, req.Through, matchers...)
 	if err != nil {
 		return nil, err
 	}
