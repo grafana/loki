@@ -26,7 +26,7 @@ You have the option to attach non-indexed labels to log lines in the push payloa
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
 
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach non-indexed labels to your log lines.
-See the [Promtail: Non-indexed labels stage]({{< relref "../../send-data/promtail/stages/non_indexed_labels" >}}) for more information.
+See the [Promtail: Non-indexed labels stage]({{< relref "../../clients/promtail/stages/non_indexed_labels" >}}) for more information.
 
 ## Querying non-indexed labels
 
