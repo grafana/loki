@@ -366,7 +366,6 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	toMerge := []middleware.Interface{
 		httpreq.ExtractQueryMetricsMiddleware(),
-		httpreq.ExtractEncodingFlagsMiddleware(),
 	}
 
 	logger := log.With(util_log.Logger, "component", "querier")

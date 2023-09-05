@@ -1,29 +1,30 @@
 package httpreq
 
 import (
-	"context"
 	"net/http"
 	"strings"
-
-	"github.com/grafana/dskit/middleware"
 )
 
 type EncodingFlag string
 
 const (
 	LokiEncodeFlagsHeader              = "X-Loki-Response-Encoding-Flags"
-	FlagGroupLabels       EncodingFlag = "group_labels"
+	FlagGroupLabels       EncodingFlag = "categorize-labels"
 
 	EncodeFlagsDelimiter = ","
 )
 
-func ExtractEncodeFlags(ctx context.Context) []EncodingFlag {
-	value := ExtractHeader(ctx, LokiEncodeFlagsHeader)
-	if value == "" {
-		return nil
+func ExtractEncodeFlags(req *http.Request) []EncodingFlag {
+	// We try to extract the flags from the header first.
+	// If the header is not set, we try to extract the flags from the context.
+	var rawValue string
+	if rawValue = req.Header.Get(LokiEncodeFlagsHeader); rawValue == "" {
+		if rawValue = ExtractHeader(req.Context(), LokiEncodeFlagsHeader); rawValue == "" {
+			return nil
+		}
 	}
 
-	rawFlags := strings.Split(value, EncodeFlagsDelimiter)
+	rawFlags := strings.Split(rawValue, EncodeFlagsDelimiter)
 	flags := make([]EncodingFlag, 0, len(rawFlags))
 	for _, rawFlag := range rawFlags {
 		flags = append(flags, EncodingFlag(rawFlag))
@@ -38,19 +39,4 @@ func EncodingFlagIsSet(flags []EncodingFlag, flag EncodingFlag) bool {
 		}
 	}
 	return false
-}
-
-func ExtractEncodingFlagsMiddleware() middleware.Interface {
-	return middleware.Func(func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			ctx := req.Context()
-			flags := req.Header.Get(LokiEncodeFlagsHeader)
-
-			if flags != "" {
-				ctx = context.WithValue(ctx, headerContextKey(LokiEncodeFlagsHeader), flags)
-				req = req.WithContext(ctx)
-			}
-			next.ServeHTTP(w, req)
-		})
-	})
 }

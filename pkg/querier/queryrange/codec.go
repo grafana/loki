@@ -699,7 +699,7 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 
 	// Default to JSON.
 	version := loghttp.GetVersion(req.RequestURI)
-	encodingFlags := httpreq.ExtractEncodeFlags(req.Context())
+	encodingFlags := httpreq.ExtractEncodeFlags(req)
 	return encodeResponseJSON(ctx, version, res, encodingFlags...)
 }
 

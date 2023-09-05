@@ -23,7 +23,7 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 	switch result := v.(type) {
 	case logqlmodel.Result:
 		version := loghttp.GetVersion(r.RequestURI)
-		encodeFlags := httpreq.ExtractEncodeFlags(r.Context())
+		encodeFlags := httpreq.ExtractEncodeFlags(r)
 		if version == loghttp.VersionV1 {
 			return WriteQueryResponseJSON(result, w, encodeFlags...)
 		}

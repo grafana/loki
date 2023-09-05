@@ -792,7 +792,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			},
 			streamsStringWithCategories, false,
 			map[string]string{
-				loghttp.EncodeFlags: string(httpreq.FlagGroupLabels),
+				httpreq.LokiEncodeFlagsHeader: string(httpreq.FlagGroupLabels),
 			},
 		},
 		{
@@ -858,18 +858,18 @@ func Test_codec_EncodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			v := url.Values{}
-			for flag, value := range tt.queryParams {
-				v.Set(flag, value)
+			h := http.Header{}
+			for k, v := range tt.queryParams {
+				h.Set(k, v)
 			}
 			u := &url.URL{
-				Path:     tt.path,
-				RawQuery: v.Encode(),
+				Path: tt.path,
 			}
 			req := &http.Request{
 				Method:     "GET",
 				RequestURI: u.String(),
 				URL:        u,
+				Header:     h,
 			}
 			got, err := DefaultCodec.EncodeResponse(context.TODO(), req, tt.res)
 			if (err != nil) != tt.wantErr {
