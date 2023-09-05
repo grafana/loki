@@ -133,7 +133,7 @@ Resources: `arn:aws:iam::<aws_account_id>:role/<role_name>`
 
 When using IBM Cloud Object Storage (COS) as object storage, IAM `Writer` role is needed.
 
-See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-cloud-object-storage" >}}) on the storage page for a detailed setup guide.
+See the [IBM Cloud Object Storage section]({{< relref "../../storage#ibm-deployment-cos-single-store" >}}) on the storage page for a detailed setup guide.
 
 ## Chunk Format
 

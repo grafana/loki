@@ -26,7 +26,7 @@ A typical Loki-based logging stack consists of 3 components:
 
 - **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes]{{< relref "../get-started/deployment-modes/" >}}.
   
-- **[Grafana](https://github.com/grafana/grafana)** for querying and displaying log data. You can also query logs from the command line, using [LogCLI]({{< relref "../query/logcli/" >}}) or using the Loki API directly.
+- **[Grafana](https://github.com/grafana/grafana)** for querying and displaying log data. You can also query logs from the command line, using [LogCLI]({{< relref "../query/logcli" >}}) or using the Loki API directly.
 
 ## Loki features
 
