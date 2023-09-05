@@ -42,8 +42,8 @@ message EntryAdapter {
     (gogoproto.jsontag) = "ts"
   ];
   string line = 2 [(gogoproto.jsontag) = "line"];
-  repeated LabelPairAdapter nonIndexedLabels = 3 [
+  repeated LabelPairAdapter structuredMetadata = 3 [
     (gogoproto.nullable) = false,
-    (gogoproto.jsontag) = "nonIndexedLabels,omitempty"
+    (gogoproto.jsontag) = "structuredMetadata,omitempty"
   ];
 }
