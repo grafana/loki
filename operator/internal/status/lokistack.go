@@ -43,7 +43,7 @@ var (
 	conditionDegradedNodeLabels = metav1.Condition{
 		Type:    string(lokiv1.ConditionDegraded),
 		Message: messageDegradedMissingNodes,
-		Reason:  string(lokiv1.ReasonZoneAwareEmptyLabel),
+		Reason:  string(lokiv1.ReasonZoneAwareNodesMissing),
 	}
 	conditionDegradedEmptyNodeLabel = metav1.Condition{
 		Type:    string(lokiv1.ConditionDegraded),
