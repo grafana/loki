@@ -1,9 +1,9 @@
 ---
-title: "XXXX: Index Gateway Sharding"
+title: "0004: Index Gateway Sharding"
 description: Loki Improvement Document for index gateway sharding.
 ---
 
-# XXXX: Index Gateway Sharding
+# 0004: Index Gateway Sharding
 
 **Author:** Christian Haudum (christian.haudum@grafana.com)
 
@@ -13,7 +13,7 @@ description: Loki Improvement Document for index gateway sharding.
 
 **Type:** Feature
 
-**Status:** Draft
+**Status:** Rejected / Not Implemented
 
 **Related issues/PRs:**
 
