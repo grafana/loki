@@ -836,7 +836,7 @@ github.com/gorilla/websocket
 # github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
 ## explicit; go 1.17
 github.com/grafana/cloudflare-go
-# github.com/grafana/dskit v0.0.0-20230823104051-002b55ecf009
+# github.com/grafana/dskit v0.0.0-20230829141140-06955c011ffd
 ## explicit; go 1.19
 github.com/grafana/dskit/aws
 github.com/grafana/dskit/backoff

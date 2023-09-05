@@ -350,7 +350,7 @@ func (s *storeMock) GetSchemaConfigs() []config.PeriodConfig {
 	panic("don't call me please")
 }
 
-func (s *storeMock) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *storeMock) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	args := s.Called(ctx, req)
 	res := args.Get(0)
 	if res == nil {

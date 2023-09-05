@@ -347,7 +347,8 @@ grpc_tls_config:
 # CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
-# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
+# Limit on the number of concurrent streams for gRPC calls per client connection
+# (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
