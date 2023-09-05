@@ -92,7 +92,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 					AllowStructuredMetadata: false,
 				},
 			},
-			logproto.Entry{Timestamp: testTime, Line: "12345678901", NonIndexedLabels: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
 			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabels),
 		},
 	}

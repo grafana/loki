@@ -93,7 +93,7 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
 	}
 
-	if !ctx.allowStructuredMetadata && len(entry.NonIndexedLabels) > 0 {
+	if !ctx.allowStructuredMetadata && len(entry.StructuredMetadata) > 0 {
 		validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Add(float64(len(entry.Line)))
 		return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
