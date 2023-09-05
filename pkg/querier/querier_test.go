@@ -243,7 +243,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -259,7 +259,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -272,7 +272,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			mkReq([]string{`{a="1"}`}),
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -290,7 +290,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "3"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "4"}},
 					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
@@ -315,7 +315,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "2"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "2"}},
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
@@ -825,7 +825,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 		},
 		"Series": {
 			ingesterMethod: "Series",
-			storeMethod:    "Series",
+			storeMethod:    "SelectSeries",
 		},
 	}
 
@@ -1100,7 +1100,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
-	store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 		{Labels: map[string]string{"foo": "1"}},
 	}, nil)
 

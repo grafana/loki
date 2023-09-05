@@ -2719,6 +2719,10 @@ shard_streams:
 # the deprecated -replication-factor for backwards compatibility reasons.
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
+
+# Allow user to send structured metadata (non-indexed labels) in push payload.
+# CLI flag: -validation.allow-structured-metadata
+[allow_structured_metadata: <boolean> | default = false]
 ```
 
 ### frontend_worker
