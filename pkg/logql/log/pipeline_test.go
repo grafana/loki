@@ -87,7 +87,7 @@ func TestPipeline(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = map[LabelCategory]labels.Labels{
+	p.baseBuilder.add = [numValidCategories]labels.Labels{
 		ParsedLabel: labels.FromStrings("baz", "blip"),
 	}
 
@@ -163,7 +163,7 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 
 	// Reset caches
 	p.baseBuilder.del = []string{"foo", "bar"}
-	p.baseBuilder.add = map[LabelCategory]labels.Labels{
+	p.baseBuilder.add = [numValidCategories]labels.Labels{
 		ParsedLabel: labels.FromStrings("baz", "blip"),
 	}
 

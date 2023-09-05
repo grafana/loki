@@ -116,14 +116,15 @@ func (h *hasher) Hash(lbs labels.Labels) uint64 {
 	return hash
 }
 
-type LabelCategory string
+type LabelCategory int
 
 const (
-	// StreamLabel is reserved for stream labels.
-	StreamLabel             LabelCategory = "stream"
-	StructuredMetadataLabel LabelCategory = "structured_metadata"
-	ParsedLabel             LabelCategory = "parsed"
-	InvalidCategory         LabelCategory = ""
+	StreamLabel LabelCategory = iota
+	StructuredMetadataLabel
+	ParsedLabel
+	InvalidCategory
+
+	numValidCategories = 3
 )
 
 var allCategories = []LabelCategory{
@@ -145,7 +146,7 @@ func categoriesContain(categories []LabelCategory, category LabelCategory) bool 
 // Only one base builder is used and it contains cache for each LabelsBuilders.
 type BaseLabelsBuilder struct {
 	del []string
-	add map[LabelCategory]labels.Labels
+	add [numValidCategories]labels.Labels
 	// nolint:structcheck
 	// https://github.com/golangci/golangci-lint/issues/826
 	err string
@@ -180,7 +181,8 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 	const labelsCapacity = 16
 	return &BaseLabelsBuilder{
 		del: make([]string, 0, 5),
-		add: map[LabelCategory]labels.Labels{
+		add: [numValidCategories]labels.Labels{
+			StreamLabel:             make(labels.Labels, 0, labelsCapacity),
 			StructuredMetadataLabel: make(labels.Labels, 0, labelsCapacity),
 			ParsedLabel:             make(labels.Labels, 0, labelsCapacity),
 		},
@@ -193,7 +195,7 @@ func NewBaseLabelsBuilderWithGrouping(groups []string, parserKeyHints ParserHint
 	}
 }
 
-// NewLabelsBuilder creates a new base labels builder.
+// NewBaseLabelsBuilder creates a new base labels builder.
 func NewBaseLabelsBuilder() *BaseLabelsBuilder {
 	return NewBaseLabelsBuilderWithGrouping(nil, noParserHints, false, false)
 }
@@ -306,7 +308,7 @@ func (b *LabelsBuilder) get(key string) (string, LabelCategory, bool) {
 	for category, lbls := range b.add {
 		for _, l := range lbls {
 			if l.Name == key {
-				return l.Value, category, true
+				return l.Value, LabelCategory(category), true
 			}
 		}
 	}
