@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	jsoniter "github.com/json-iterator/go"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	marshal_legacy "github.com/grafana/loki/pkg/util/marshal/legacy"
 )
 

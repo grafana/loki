@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
 	"github.com/stretchr/testify/assert"
@@ -17,6 +16,7 @@ import (
 	"github.com/grafana/loki/integration/cluster"
 
 	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/querylimits"
 )
 

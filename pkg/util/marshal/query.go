@@ -5,7 +5,6 @@ import (
 	"strconv"
 	"unsafe"
 
-	"github.com/grafana/loki/pkg/util/httpreq"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -16,6 +15,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 // NewResultValue constructs a ResultValue from a promql.Value

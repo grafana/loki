@@ -9,13 +9,13 @@ import (
 	"unsafe"
 
 	"github.com/buger/jsonparser"
-	"github.com/grafana/loki/pkg/util/httpreq"
 	json "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (

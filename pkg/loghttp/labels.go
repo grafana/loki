@@ -130,6 +130,7 @@ func (c *CategorizedLabelSet) ToLabelSet() LabelSet {
 func (c *CategorizedLabelSet) UnmarshalJSON(data []byte) error {
 	return jsonparser.ObjectEach(data, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
 		switch string(key) {
+		//nolint:goconst // Using a constant here would be less readable.
 		case "stream":
 			if err := c.Stream.UnmarshalJSON(val); err != nil {
 				return err
