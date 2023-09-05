@@ -383,8 +383,8 @@ func TestDropLabelsPipeline(t *testing.T) {
 		for i, line := range tt.lines {
 			_, finalLbs, _ := sp.Process(0, line)
 			require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-			require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
-			require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
+			require.Nil(t, finalLbs.Stream())
+			require.Nil(t, finalLbs.StructuredMetadata())
 			require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
 			require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 		}
@@ -465,7 +465,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				labels.FromStrings(
 					"level", "debug",
 				),
-				{},
+				labels.EmptyLabels(),
 			},
 		},
 		{
@@ -493,8 +493,8 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				labels.FromStrings(
 					"level", "info",
 				),
-				{},
-				{},
+				labels.EmptyLabels(),
+				labels.EmptyLabels(),
 			},
 		},
 	} {
@@ -505,9 +505,13 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				finalLine, finalLbs, _ := sp.Process(0, line)
 				require.Equal(t, tt.wantLine[i], finalLine)
 				require.Equal(t, tt.wantLabels[i], finalLbs.Labels())
-				require.Equal(t, labels.EmptyLabels(), finalLbs.Stream())
-				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
-				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
+				require.Nil(t, finalLbs.Stream())
+				require.Nil(t, finalLbs.StructuredMetadata())
+				if len(tt.wantLabels[i]) > 0 {
+					require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
+				} else {
+					require.Nil(t, finalLbs.Parsed())
+				}
 				require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
 				require.Equal(t, tt.wantLabels[i].String(), finalLbs.String())
 			}

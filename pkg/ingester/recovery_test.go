@@ -289,9 +289,7 @@ func TestSeriesRecoveryNoDuplicates(t *testing.T) {
 		{
 			Labels: lbls.String(),
 			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             logproto.FromLabelsToLabelAdapters(lbls),
-				StructuredMetadata: []logproto.LabelAdapter{},
-				Parsed:             []logproto.LabelAdapter{},
+				Stream: logproto.FromLabelsToLabelAdapters(lbls),
 			},
 			Entries: []logproto.Entry{
 				{

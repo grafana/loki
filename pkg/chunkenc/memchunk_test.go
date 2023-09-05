@@ -1755,22 +1755,18 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "a")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1785,7 +1781,6 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1801,12 +1796,10 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1821,7 +1814,6 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1837,12 +1829,10 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "a")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1857,7 +1847,6 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "123", "user", "d")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1875,22 +1864,18 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "c")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1906,24 +1891,17 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 					},
 					expectedCategorizedLabels: []logproto.CategorizedLabels{
 						{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 						},
 						{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 						},
 					},
 				},
@@ -1941,22 +1919,18 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "c")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -1974,22 +1948,18 @@ func TestMemChunk_IteratorWithStructuredMetadata(t *testing.T) {
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "456", "user", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("traceID", "789", "user", "c")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "d")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 					},
 				},
@@ -2152,12 +2122,10 @@ func TestMemChunk_IteratorCategorizedLabels(t *testing.T) {
 				{
 					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "a")),
-					Parsed:             []logproto.LabelAdapter{},
 				},
 				{
 					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("user", "b")),
-					Parsed:             []logproto.LabelAdapter{},
 				},
 			},
 		},

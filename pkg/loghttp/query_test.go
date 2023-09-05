@@ -188,7 +188,6 @@ func TestStreams_ToProto(t *testing.T) {
 					CategorizedLabels: logproto.CategorizedLabels{
 						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
 						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-						Parsed:             []logproto.LabelAdapter{},
 					},
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},

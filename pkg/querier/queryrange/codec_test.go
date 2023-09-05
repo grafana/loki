@@ -945,9 +945,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -957,9 +955,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 6), Line: "6"},
@@ -980,9 +976,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -993,9 +987,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 16), Line: "16"},
@@ -1018,9 +1010,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="error"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -1033,9 +1023,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 16), Line: "16"},
@@ -1063,9 +1051,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -1076,9 +1062,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 16), Line: "16"},
@@ -1099,9 +1083,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 2), Line: "2"},
@@ -1111,9 +1093,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 6), Line: "6"},
@@ -1136,9 +1116,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="error"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 10), Line: "10"},
@@ -1149,9 +1127,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 16), Line: "16"},
@@ -1178,9 +1154,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 1), Line: "1"},
@@ -1190,9 +1164,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 5), Line: "5"},
@@ -1213,9 +1185,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 9), Line: "9"},
@@ -1225,9 +1195,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 15), Line: "15"},
@@ -1251,9 +1219,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 5), Line: "5"},
@@ -1266,9 +1232,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="error"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 1), Line: "1"},
@@ -1296,9 +1260,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 1), Line: "1"},
@@ -1308,9 +1270,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 5), Line: "5"},
@@ -1331,9 +1291,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="error"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 9), Line: "9"},
@@ -1343,9 +1301,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 							{
 								Labels: `{foo="bar", level="debug"}`,
 								CategorizedLabels: logproto.CategorizedLabels{
-									Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-									StructuredMetadata: []logproto.LabelAdapter{},
-									Parsed:             []logproto.LabelAdapter{},
+									Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 								},
 								Entries: []logproto.Entry{
 									{Timestamp: time.Unix(0, 15), Line: "15"},
@@ -1369,9 +1325,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="debug"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 5), Line: "5"},
@@ -1381,9 +1335,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 						{
 							Labels: `{foo="bar", level="error"}`,
 							CategorizedLabels: logproto.CategorizedLabels{
-								Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-								StructuredMetadata: []logproto.LabelAdapter{},
-								Parsed:             []logproto.LabelAdapter{},
+								Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 							},
 							Entries: []logproto.Entry{
 								{Timestamp: time.Unix(0, 1), Line: "1"},
@@ -1757,11 +1709,6 @@ var (
 	logStreams = []logproto.Stream{
 		{
 			Labels: `{test="test"}`,
-			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             []logproto.LabelAdapter{},
-				StructuredMetadata: []logproto.LabelAdapter{},
-				Parsed:             []logproto.LabelAdapter{},
-			},
 			Entries: []logproto.Entry{
 				{
 					Line:      "super line",
@@ -1771,11 +1718,6 @@ var (
 		},
 		{
 			Labels: `{test="test2", x="a", y="b"}`,
-			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             []logproto.LabelAdapter{},
-				StructuredMetadata: []logproto.LabelAdapter{},
-				Parsed:             []logproto.LabelAdapter{},
-			},
 			Entries: []logproto.Entry{
 				{
 					Line:               "super line2",
@@ -1786,11 +1728,6 @@ var (
 		},
 		{
 			Labels: `{test="test3", x="a", y="b", z="text"}`,
-			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             []logproto.LabelAdapter{},
-				StructuredMetadata: []logproto.LabelAdapter{},
-				Parsed:             []logproto.LabelAdapter{},
-			},
 			Entries: []logproto.Entry{
 				{
 					Line:               "super line3 z=text",
@@ -1804,9 +1741,7 @@ var (
 		{
 			Labels: `{test="test"}`,
 			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-				StructuredMetadata: []logproto.LabelAdapter{},
-				Parsed:             []logproto.LabelAdapter{},
+				Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 			},
 			Entries: []logproto.Entry{
 				{
@@ -1820,7 +1755,6 @@ var (
 			CategorizedLabels: logproto.CategorizedLabels{
 				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test2")),
 				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
-				Parsed:             []logproto.LabelAdapter{},
 			},
 			Entries: []logproto.Entry{
 				{

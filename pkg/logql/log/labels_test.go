@@ -49,7 +49,7 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	)
 	require.Equal(t, expectedLbs, lbsWithErr)
 	require.Equal(t, labels.FromStrings("already", "in"), lbsCatWithErr.Stream())
-	require.Equal(t, labels.EmptyLabels(), lbsCatWithErr.StructuredMetadata())
+	require.Nil(t, lbsCatWithErr.StructuredMetadata())
 	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsCatWithErr.Parsed())
 
 	// make sure the original labels is unchanged.

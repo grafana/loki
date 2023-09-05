@@ -54,9 +54,7 @@ var (
 					{
 						Labels: `{foo="bar", level="debug"}`,
 						CategorizedLabels: logproto.CategorizedLabels{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
 						},
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(0, 6), Line: "6"},
@@ -80,9 +78,7 @@ var (
 					{
 						Labels: `{foo="bar", level="error"}`,
 						CategorizedLabels: logproto.CategorizedLabels{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
 						},
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(0, 2), Line: "2"},

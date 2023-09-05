@@ -152,9 +152,7 @@ var queryTests = []struct {
 				},
 				Labels: `{test="test"}`,
 				CategorizedLabels: logproto.CategorizedLabels{
-					Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-					StructuredMetadata: []logproto.LabelAdapter{},
-					Parsed:             []logproto.LabelAdapter{},
+					Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 				},
 			},
 		},
@@ -365,9 +363,7 @@ var tailTests = []struct {
 					},
 					Labels: "{test=\"test\"}",
 					CategorizedLabels: logproto.CategorizedLabels{
-						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-						StructuredMetadata: []logproto.LabelAdapter{},
-						Parsed:             []logproto.LabelAdapter{},
+						Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 					},
 				},
 			},
@@ -565,9 +561,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 		logproto.Stream{
 			Labels: `{test="test"}`,
 			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-				StructuredMetadata: []logproto.LabelAdapter{},
-				Parsed:             []logproto.LabelAdapter{},
+				Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 			},
 			Entries: []logproto.Entry{
 				{
@@ -581,7 +575,6 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 			CategorizedLabels: logproto.CategorizedLabels{
 				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-				Parsed:             []logproto.LabelAdapter{},
 			},
 			Entries: []logproto.Entry{
 				{
@@ -744,9 +737,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 					{
 						Labels: `{test="test"}`,
 						CategorizedLabels: logproto.CategorizedLabels{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 						},
 						Entries: []logproto.Entry{
 							{
@@ -805,7 +796,6 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 						CategorizedLabels: logproto.CategorizedLabels{
 							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
 							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-							Parsed:             []logproto.LabelAdapter{},
 						},
 						Entries: []logproto.Entry{
 							{

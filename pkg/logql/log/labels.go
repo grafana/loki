@@ -75,14 +75,23 @@ type categorizedLabelsResult struct {
 }
 
 func (g categorizedLabelsResult) Stream() labels.Labels {
+	if len(g.stream) == 0 {
+		return nil
+	}
 	return g.stream
 }
 
 func (g categorizedLabelsResult) StructuredMetadata() labels.Labels {
+	if len(g.structuredMetadata) == 0 {
+		return nil
+	}
 	return g.structuredMetadata
 }
 
 func (g categorizedLabelsResult) Parsed() labels.Labels {
+	if len(g.parsed) == 0 {
+		return nil
+	}
 	return g.parsed
 }
 

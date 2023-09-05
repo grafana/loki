@@ -69,6 +69,13 @@ func (l LabelSet) String() string {
 	return b.String()
 }
 
+func (l LabelSet) ToProto() []logproto.LabelAdapter {
+	if len(l) == 0 {
+		return nil
+	}
+	return logproto.FromLabelsToLabelAdapters(labels.FromMap(l.Map()))
+}
+
 // ParseLabelQuery parses a LabelRequest request from an http request.
 func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 	name, ok := mux.Vars(r)["name"]
@@ -100,9 +107,9 @@ func (c *CategorizedLabelSet) Empty() bool {
 
 func (c *CategorizedLabelSet) ToProto() logproto.CategorizedLabels {
 	return logproto.CategorizedLabels{
-		Stream:             logproto.FromLabelsToLabelAdapters(labels.FromMap(c.Stream.Map())),
-		StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromMap(c.StructuredMetadata.Map())),
-		Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromMap(c.Parsed.Map())),
+		Stream:             c.Stream.ToProto(),
+		StructuredMetadata: c.StructuredMetadata.ToProto(),
+		Parsed:             c.Parsed.ToProto(),
 	}
 }
 

@@ -53,9 +53,7 @@ func TestLazyChunkIterator(t *testing.T) {
 					Labels: fooLabelsWithName.String(),
 					Hash:   fooLabelsWithName.Hash(),
 					CategorizedLabels: logproto.CategorizedLabels{
-						Stream:             logproto.FromLabelsToLabelAdapters(fooLabelsWithName),
-						StructuredMetadata: []logproto.LabelAdapter{},
-						Parsed:             []logproto.LabelAdapter{},
+						Stream: logproto.FromLabelsToLabelAdapters(fooLabelsWithName),
 					},
 					Entries: []logproto.Entry{
 						{
@@ -69,9 +67,7 @@ func TestLazyChunkIterator(t *testing.T) {
 						Labels: fooLabels.String(),
 						Hash:   fooLabels.Hash(),
 						CategorizedLabels: logproto.CategorizedLabels{
-							Stream:             logproto.FromLabelsToLabelAdapters(fooLabels),
-							StructuredMetadata: []logproto.LabelAdapter{},
-							Parsed:             []logproto.LabelAdapter{},
+							Stream: logproto.FromLabelsToLabelAdapters(fooLabels),
 						},
 						Entries: []logproto.Entry{
 							{
