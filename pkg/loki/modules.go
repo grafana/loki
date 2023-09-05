@@ -215,7 +215,7 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
+		t.InternalServer.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 	}
 	return t.ring, nil
 }
@@ -320,7 +320,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 	}
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
@@ -979,7 +979,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
 
 		if t.Cfg.InternalServer.Enable {
-			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET").Handler(t.ruler)
+			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
 		}
 
 		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
@@ -1150,7 +1150,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET").Handler(t.compactor)
+		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
@@ -1240,7 +1240,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET").Handler(t.indexGatewayRingManager)
+		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
 	}
 
 	return t.indexGatewayRingManager, nil
@@ -1291,7 +1291,7 @@ func (t *Loki) initQuerySchedulerRing() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(t.querySchedulerRingManager)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET").Handler(t.querySchedulerRingManager)
+		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(t.querySchedulerRingManager)
 	}
 
 	return t.querySchedulerRingManager, nil
