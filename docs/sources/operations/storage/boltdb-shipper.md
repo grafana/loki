@@ -1,18 +1,24 @@
 ---
-title: Single Store (boltdb-shipper)
-description: Single Store (boltdb-shipper)
+title: Single store (boltdb-shipper)
+menuTitle:  Single store (BoltDB)
+description: Describes the deprecated boltdb-shipper single storage index.
+weight:  200
 ---
-# Single Store (boltdb-shipper)
+# Single store (boltdb-shipper)
 
-Note that single store (boltdb-shipper) is a legacy storage option and is not recommended for new deployments. It is recommended to use the [TSDB]({{< relref "./tsdb" >}}) index instead.
+{{% admonition type="note" %}}
+Note that single store BoltDB Shipper is a legacy storage option and is not recommended for new deployments. The [TSDB]({{< relref "./tsdb" >}}) index is the recommended index.
+{{% /admonition %}}
 
 BoltDB Shipper lets you run Grafana Loki without any dependency on NoSQL stores for storing index.
 It locally stores the index in BoltDB files instead and keeps shipping those files to a shared object store i.e the same object store which is being used for storing chunks.
 It also keeps syncing BoltDB files from shared object store to a configured local directory for getting index entries created by other services of same Loki cluster.
 This helps run Loki with one less dependency and also saves costs in storage since object stores are likely to be much cheaper compared to cost of a hosted NoSQL store or running a self hosted instance of Cassandra.
 
-**Note:** BoltDB shipper works best with 24h periodic index files. It is a requirement to have index period set to 24h for either active or upcoming usage of boltdb-shipper.
-          If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data then just add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+{{% admonition type="note" %}}
+BoltDB shipper works best with 24h periodic index files. It is a requirement to have the index period set to 24h for either active or upcoming usage of boltdb-shipper.
+If boltdb-shipper already has created index files with 7 days period, and you want to retain previous data, add a new schema config using boltdb-shipper with a future date and index files period set to 24h.
+{{% /admonition %}}
 
 ## Example Configuration
 

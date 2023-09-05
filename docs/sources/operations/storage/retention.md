@@ -1,8 +1,10 @@
 ---
-title: Retention
-description: Grafana Loki Storage Retention
+title: Log retention
+menuTitle:  Log retention
+description: Describes Grafana Loki Storage Retention
+weight:  600
 ---
-# Retention
+# Log retention
 
 Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#compactor).
 

@@ -1,11 +1,12 @@
 ---
-title: Troubleshooting
+title: Troubleshooting Loki
+menuTitle:  Troubleshooting
 description: Troubleshooting Grafana Loki
-weight: 80
+weight: 
 aliases:
     - /docs/loki/latest/getting-started/troubleshooting/
 ---
-# Troubleshooting
+# Troubleshooting Loki
 
 ## "Loki: Bad Gateway. 502"
 

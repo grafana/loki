@@ -1,7 +1,8 @@
 ---
 title: Observability
+menuTitle:  
 description: Observing Grafana Loki
-weight: 20
+weight: 
 ---
 # Observability
 

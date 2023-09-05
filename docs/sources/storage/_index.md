@@ -20,7 +20,7 @@ More detailed information can be found on the [operations page]({{< relref "../o
 
 Loki 2.8 adds TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki.
 
-Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
+You can find more storage information in the [manage section]({{< relref "../operations/storage/_index.md" >}}).
 
 ## Single Store
 
