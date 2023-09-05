@@ -347,7 +347,8 @@ grpc_tls_config:
 # CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
-# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
+# Limit on the number of concurrent streams for gRPC calls per client connection
+# (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
@@ -823,6 +824,23 @@ index_stats_results_cache:
   # Use compression in cache. The default is an empty value '', which disables
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache volume query results.
+# CLI flag: -querier.cache-volume-results
+[cache_volume_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_volume_results is true, the
+# config for the results cache is used.
+volume_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.volume-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
 ```
 
@@ -3906,6 +3924,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`

@@ -18,6 +18,7 @@ common:
       secret_access_key: supersecret
       s3forcepathstyle: true
   compactor_address: http://loki-write:3100
+  replication_factor: 3
 
 memberlist:
   join_members: ["loki-read", "loki-write"]

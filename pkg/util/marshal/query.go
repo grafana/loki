@@ -310,10 +310,10 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream) error {
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
-		if len(e.NonIndexedLabels) > 0 {
+		if len(e.StructuredMetadata) > 0 {
 			s.WriteMore()
 			s.WriteObjectStart()
-			for i, lbl := range e.NonIndexedLabels {
+			for i, lbl := range e.StructuredMetadata {
 				if i > 0 {
 					s.WriteMore()
 				}
