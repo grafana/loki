@@ -240,7 +240,7 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 					Labels: map[string]string{"topology-key": ""},
 				}},
 			},
-			wantCondition: conditionTopologyKeyNodeLabelsEmpty,
+			wantCondition: conditionDegradedEmptyNodeLabel,
 		},
 		{
 			desc:          "no nodes available",
