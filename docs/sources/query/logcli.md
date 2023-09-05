@@ -134,7 +134,7 @@ The output of `logcli help`:
 ```nohighlight
 usage: logcli [<flags>] <command> [<args> ...]
 
-A command-line for loki.
+A command-line for Loki.
 
 Flags:
       --help             Show context-sensitive help (also try --help-long and
