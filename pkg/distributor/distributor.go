@@ -13,7 +13,9 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/gogo/status"
 	"github.com/prometheus/prometheus/model/labels"
+	"google.golang.org/grpc/codes"
 
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/kv"
@@ -117,7 +119,7 @@ type Distributor struct {
 
 	// metrics
 	ingesterAppends        *prometheus.CounterVec
-	ingesterAppendFailures *prometheus.CounterVec
+	ingesterAppendTimeouts *prometheus.CounterVec
 	replicationFactor      prometheus.Gauge
 	streamShardCount       prometheus.Counter
 }
@@ -179,10 +181,10 @@ func New(
 			Name:      "distributor_ingester_appends_total",
 			Help:      "The total number of batch appends sent to ingesters.",
 		}, []string{"ingester"}),
-		ingesterAppendFailures: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
+		ingesterAppendTimeouts: promauto.With(registerer).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki",
-			Name:      "distributor_ingester_append_failures_total",
-			Help:      "The total number of failed batch appends sent to ingesters.",
+			Name:      "distributor_ingester_append_timeouts_total",
+			Help:      "The total number of failed batch appends sent to ingesters due to timeouts.",
 		}, []string{"ingester"}),
 		replicationFactor: promauto.With(registerer).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
@@ -645,7 +647,12 @@ func (d *Distributor) sendStreamsErr(ctx context.Context, ingester ring.Instance
 	_, err = c.(logproto.PusherClient).Push(ctx, req)
 	d.ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
-		d.ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()
+		if e, ok := status.FromError(err); ok {
+			switch e.Code() {
+			case codes.DeadlineExceeded:
+				d.ingesterAppendTimeouts.WithLabelValues(ingester.Addr).Inc()
+			}
+		}
 	}
 	return err
 }
