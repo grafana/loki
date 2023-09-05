@@ -383,4 +383,4 @@ var streamsFixture = []*logproto.Stream{
 		},
 	},
 }
-var storeFixture = newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, streamsFixture)
+var storeFixture = newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, streamsFixture)

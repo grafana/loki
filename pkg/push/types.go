@@ -23,9 +23,9 @@ type Stream struct {
 
 // Entry is a log entry with a timestamp.
 type Entry struct {
-	Timestamp        time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line             string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	NonIndexedLabels LabelsAdapter `protobuf:"bytes,3,opt,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
+	Timestamp          time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line               string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	StructuredMetadata LabelsAdapter `protobuf:"bytes,3,opt,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
 }
 
 // CategorizedLabels is a set of labels grouped by their type.
@@ -218,10 +218,10 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.NonIndexedLabels) > 0 {
-		for iNdEx := len(m.NonIndexedLabels) - 1; iNdEx >= 0; iNdEx-- {
+	if len(m.StructuredMetadata) > 0 {
+		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
 			{
-				size, err := (*LabelAdapter)(&m.NonIndexedLabels[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
+				size, err := (*LabelAdapter)(&m.StructuredMetadata[iNdEx]).MarshalToSizedBuffer(dAtA[:i])
 				if err != nil {
 					return 0, err
 				}
@@ -281,7 +281,7 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 		switch fieldNum {
 		case 1:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
 			}
 			var stringLen uint64
 			for shift := uint(0); ; shift += 7 {
@@ -518,7 +518,7 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -545,8 +545,8 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NonIndexedLabels = append(m.NonIndexedLabels, LabelAdapter{})
-			if err := m.NonIndexedLabels[len(m.NonIndexedLabels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.StructuredMetadata = append(m.StructuredMetadata, LabelAdapter{})
+			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -736,8 +736,8 @@ func (m *Entry) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
-	if len(m.NonIndexedLabels) > 0 {
-		for _, e := range m.NonIndexedLabels {
+	if len(m.StructuredMetadata) > 0 {
+		for _, e := range m.StructuredMetadata {
 			l = e.Size()
 			n += 1 + l + sovPush(uint64(l))
 		}
@@ -826,8 +826,8 @@ func (m *Entry) Equal(that interface{}) bool {
 	if m.Line != that1.Line {
 		return false
 	}
-	for i := range m.NonIndexedLabels {
-		if !m.NonIndexedLabels[i].Equal(that1.NonIndexedLabels[i]) {
+	for i := range m.StructuredMetadata {
+		if !m.StructuredMetadata[i].Equal(that1.StructuredMetadata[i]) {
 			return false
 		}
 	}

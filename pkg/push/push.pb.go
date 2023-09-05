@@ -284,9 +284,9 @@ func (m *LabelPairAdapter) GetValue() string {
 }
 
 type EntryAdapter struct {
-	Timestamp        time.Time          `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
-	Line             string             `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
-	NonIndexedLabels []LabelPairAdapter `protobuf:"bytes,3,rep,name=nonIndexedLabels,proto3" json:"nonIndexedLabels,omitempty"`
+	Timestamp          time.Time          `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
+	Line               string             `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
+	StructuredMetadata []LabelPairAdapter `protobuf:"bytes,3,rep,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
 }
 
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
@@ -335,9 +335,9 @@ func (m *EntryAdapter) GetLine() string {
 	return ""
 }
 
-func (m *EntryAdapter) GetNonIndexedLabels() []LabelPairAdapter {
+func (m *EntryAdapter) GetStructuredMetadata() []LabelPairAdapter {
 	if m != nil {
-		return m.NonIndexedLabels
+		return m.StructuredMetadata
 	}
 	return nil
 }
@@ -580,11 +580,11 @@ func (this *EntryAdapter) Equal(that interface{}) bool {
 	if this.Line != that1.Line {
 		return false
 	}
-	if len(this.NonIndexedLabels) != len(that1.NonIndexedLabels) {
+	if len(this.StructuredMetadata) != len(that1.StructuredMetadata) {
 		return false
 	}
-	for i := range this.NonIndexedLabels {
-		if !this.NonIndexedLabels[i].Equal(&that1.NonIndexedLabels[i]) {
+	for i := range this.StructuredMetadata {
+		if !this.StructuredMetadata[i].Equal(&that1.StructuredMetadata[i]) {
 			return false
 		}
 	}
@@ -677,12 +677,12 @@ func (this *EntryAdapter) GoString() string {
 	s = append(s, "&push.EntryAdapter{")
 	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
 	s = append(s, "Line: "+fmt.Sprintf("%#v", this.Line)+",\n")
-	if this.NonIndexedLabels != nil {
-		vs := make([]*LabelPairAdapter, len(this.NonIndexedLabels))
+	if this.StructuredMetadata != nil {
+		vs := make([]*LabelPairAdapter, len(this.StructuredMetadata))
 		for i := range vs {
-			vs[i] = &this.NonIndexedLabels[i]
+			vs[i] = &this.StructuredMetadata[i]
 		}
-		s = append(s, "NonIndexedLabels: "+fmt.Sprintf("%#v", vs)+",\n")
+		s = append(s, "StructuredMetadata: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -1017,10 +1017,10 @@ func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	if len(m.NonIndexedLabels) > 0 {
-		for iNdEx := len(m.NonIndexedLabels) - 1; iNdEx >= 0; iNdEx-- {
+	if len(m.StructuredMetadata) > 0 {
+		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
 			{
-				size, err := m.NonIndexedLabels[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				size, err := m.StructuredMetadata[iNdEx].MarshalToSizedBuffer(dAtA[:i])
 				if err != nil {
 					return 0, err
 				}
@@ -1164,8 +1164,8 @@ func (m *EntryAdapter) Size() (n int) {
 	if l > 0 {
 		n += 1 + l + sovPush(uint64(l))
 	}
-	if len(m.NonIndexedLabels) > 0 {
-		for _, e := range m.NonIndexedLabels {
+	if len(m.StructuredMetadata) > 0 {
+		for _, e := range m.StructuredMetadata {
 			l = e.Size()
 			n += 1 + l + sovPush(uint64(l))
 		}
@@ -1258,15 +1258,15 @@ func (this *EntryAdapter) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForNonIndexedLabels := "[]LabelPairAdapter{"
-	for _, f := range this.NonIndexedLabels {
-		repeatedStringForNonIndexedLabels += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	repeatedStringForStructuredMetadata := "[]LabelPairAdapter{"
+	for _, f := range this.StructuredMetadata {
+		repeatedStringForStructuredMetadata += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
 	}
-	repeatedStringForNonIndexedLabels += "}"
+	repeatedStringForStructuredMetadata += "}"
 	s := strings.Join([]string{`&EntryAdapter{`,
 		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Line:` + fmt.Sprintf("%v", this.Line) + `,`,
-		`NonIndexedLabels:` + repeatedStringForNonIndexedLabels + `,`,
+		`StructuredMetadata:` + repeatedStringForStructuredMetadata + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1958,7 +1958,7 @@ func (m *EntryAdapter) Unmarshal(dAtA []byte) error {
 			iNdEx = postIndex
 		case 3:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field NonIndexedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1985,8 +1985,8 @@ func (m *EntryAdapter) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.NonIndexedLabels = append(m.NonIndexedLabels, LabelPairAdapter{})
-			if err := m.NonIndexedLabels[len(m.NonIndexedLabels)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.StructuredMetadata = append(m.StructuredMetadata, LabelPairAdapter{})
+			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

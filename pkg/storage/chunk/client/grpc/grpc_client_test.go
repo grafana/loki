@@ -80,7 +80,7 @@ func TestGrpcStore(t *testing.T) {
 	newChunkData := func() chunk.Data {
 		return chunkenc.NewFacade(
 			chunkenc.NewMemChunk(
-				chunkenc.ChunkFormatV3, chunkenc.EncNone, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 256*1024, 0,
+				chunkenc.ChunkFormatV3, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0,
 			), 0, 0)
 	}
 

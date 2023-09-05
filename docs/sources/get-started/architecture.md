@@ -20,51 +20,51 @@ index and in stored chunks.
 ## Chunk Format
 
 ```
-  -----------------------------------------------------------------------
-  |                       |                    |                        |
-  |     MagicNumber(4b)   |    version(1b)     |      encoding (1b)     |
-  |                       |                    |                        |
-  -----------------------------------------------------------------------
-  |                     #nonIndexedLabels (uvarint)                     |
-  -----------------------------------------------------------------------
-  |      len(label-1) (uvarint)     |          label-1 (bytes)          |
-  -----------------------------------------------------------------------
-  |      len(label-2) (uvarint)     |          label-2 (bytes)          |
-  -----------------------------------------------------------------------
-  |      len(label-n) (uvarint)     |          label-n (bytes)          |
-  -----------------------------------------------------------------------
-  |                     checksum(from #nonIndexedLabels)                |
-  -----------------------------------------------------------------------
-  |           block-1 bytes         |           checksum (4b)           |
-  -----------------------------------------------------------------------
-  |           block-2 bytes         |           checksum (4b)           |
-  -----------------------------------------------------------------------
-  |           block-n bytes         |           checksum (4b)           |
-  -----------------------------------------------------------------------
-  |                          #blocks (uvarint)                          |
-  -----------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint)     |
-  -----------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint)     |
-  -----------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) | offset, len (uvarint)     |
-  -----------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint) |  offset, len (uvarint)    |
-  -----------------------------------------------------------------------
-  |                        checksum(from #blocks)                       |
-  -----------------------------------------------------------------------
-  | #nonIndexedLabels len (uvarint) | #nonIndexedLabels offset (uvarint)|
-  -----------------------------------------------------------------------
-  |     #blocks len (uvarint)       |     #blocks offset (uvarint)      |
-  -----------------------------------------------------------------------
+  ----------------------------------------------------------------------------
+  |                        |                       |                         |
+  |     MagicNumber(4b)    |     version(1b)       |      encoding (1b)      |
+  |                        |                       |                         |
+  ----------------------------------------------------------------------------
+  |                      #structuredMetadata (uvarint)                       |
+  ----------------------------------------------------------------------------
+  |      len(label-1) (uvarint)      |          label-1 (bytes)              |
+  ----------------------------------------------------------------------------
+  |      len(label-2) (uvarint)      |          label-2 (bytes)              |
+  ----------------------------------------------------------------------------
+  |      len(label-n) (uvarint)      |          label-n (bytes)              |
+  ----------------------------------------------------------------------------
+  |                      checksum(from #structuredMetadata)                  |
+  ----------------------------------------------------------------------------
+  |           block-1 bytes          |           checksum (4b)               |
+  ----------------------------------------------------------------------------
+  |           block-2 bytes          |           checksum (4b)               |
+  ----------------------------------------------------------------------------
+  |           block-n bytes          |           checksum (4b)               |
+  ----------------------------------------------------------------------------
+  |                           #blocks (uvarint)                              |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+  ----------------------------------------------------------------------------
+  |                          checksum(from #blocks)                          |
+  ----------------------------------------------------------------------------
+  | #structuredMetadata len (uvarint) | #structuredMetadata offset (uvarint) |
+  ----------------------------------------------------------------------------
+  |     #blocks len (uvarint)         |       #blocks offset (uvarint)      |
+  ----------------------------------------------------------------------------
 ```
 
 `mint` and `maxt` describe the minimum and maximum Unix nanosecond timestamp,
 respectively.
 
-The `nonIndexedLabels` section stores non-repeated strings. It is used to store label names and label values from
-[non-indexed labels]({{< relref "./labels/non-indexed-labels" >}}).
-Note that the labels strings and lengths within the `nonIndexedLabels` section are stored compressed.
+The `structuredMetadata` section stores non-repeated strings. It is used to store label names and label values from
+[structured metadata]({{< relref "./labels/structured-metadata" >}}).
+Note that the labels strings and lengths within the `structuredMetadata` section are stored compressed.
 
 ### Block Format
 
@@ -89,7 +89,7 @@ Note that the bytes of a block are stored compressed. The following is their for
 bytes of the log entry.
 
 Symbols store references to the actual strings containing label names and values in the
-`nonIndexedLabels` section of the chunk.
+`structuredMetadata` section of the chunk.
 
 ## Storage
 

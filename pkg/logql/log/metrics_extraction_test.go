@@ -11,14 +11,14 @@ import (
 
 func Test_labelSampleExtractor_Extract(t *testing.T) {
 	tests := []struct {
-		name             string
-		ex               SampleExtractor
-		in               labels.Labels
-		nonIndexedLabels labels.Labels
-		want             float64
-		wantLbs          labels.Labels
-		wantOk           bool
-		line             string
+		name               string
+		ex                 SampleExtractor
+		in                 labels.Labels
+		structuredMetadata labels.Labels
+		want               float64
+		wantLbs            labels.Labels
+		wantOk             bool
+		line               string
 	}{
 		{
 			name: "convert float",
@@ -71,48 +71,48 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantOk: true,
 		},
 		{
-			name: "convert float with non-indexed labels",
+			name: "convert float with structured metadata",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, nil, false, false, nil, NoopStage,
 			)),
-			in:               labels.EmptyLabels(),
-			nonIndexedLabels: labels.FromStrings("foo", "15.0"),
-			want:             15,
-			wantLbs:          labels.EmptyLabels(),
-			wantOk:           true,
+			in:                 labels.EmptyLabels(),
+			structuredMetadata: labels.FromStrings("foo", "15.0"),
+			want:               15,
+			wantLbs:            labels.EmptyLabels(),
+			wantOk:             true,
 		},
 		{
-			name: "convert float as vector with non-indexed labels with no grouping",
+			name: "convert float as vector with structured metadata with no grouping",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, nil, false, true, nil, NoopStage,
 			)),
-			in:               labels.FromStrings("bar", "buzz"),
-			nonIndexedLabels: labels.FromStrings("foo", "15.0", "buzz", "blip"),
-			want:             15,
-			wantLbs:          labels.EmptyLabels(),
-			wantOk:           true,
+			in:                 labels.FromStrings("bar", "buzz"),
+			structuredMetadata: labels.FromStrings("foo", "15.0", "buzz", "blip"),
+			want:               15,
+			wantLbs:            labels.EmptyLabels(),
+			wantOk:             true,
 		},
 		{
-			name: "convert float with non-indexed labels and grouping",
+			name: "convert float with structured metadata and grouping",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
-			in:               labels.FromStrings("bar", "buzz", "namespace", "dev"),
-			nonIndexedLabels: labels.FromStrings("foo", "15.0", "buzz", "blip"),
-			want:             15,
-			wantLbs:          labels.FromStrings("bar", "buzz", "buzz", "blip"),
-			wantOk:           true,
+			in:                 labels.FromStrings("bar", "buzz", "namespace", "dev"),
+			structuredMetadata: labels.FromStrings("foo", "15.0", "buzz", "blip"),
+			want:               15,
+			wantLbs:            labels.FromStrings("bar", "buzz", "buzz", "blip"),
+			wantOk:             true,
 		},
 		{
-			name: "convert float with non-indexed labels and grouping without",
+			name: "convert float with structured metadata and grouping without",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, []string{"bar", "buzz"}, true, false, nil, NoopStage,
 			)),
-			in:               labels.FromStrings("bar", "buzz", "namespace", "dev"),
-			nonIndexedLabels: labels.FromStrings("foo", "15.0", "buzz", "blip"),
-			want:             15,
-			wantLbs:          labels.FromStrings("namespace", "dev"),
-			wantOk:           true,
+			in:                 labels.FromStrings("bar", "buzz", "namespace", "dev"),
+			structuredMetadata: labels.FromStrings("foo", "15.0", "buzz", "blip"),
+			want:               15,
+			wantLbs:            labels.FromStrings("namespace", "dev"),
+			wantOk:             true,
 		},
 		{
 			name: "convert duration with",
@@ -131,7 +131,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantOk: true,
 		},
 		{
-			name: "convert duration with non-indexed labels",
+			name: "convert duration with structured metadata",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertDuration, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
@@ -139,8 +139,8 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 				"bar", "foo",
 				"namespace", "dev",
 			),
-			nonIndexedLabels: labels.FromStrings("foo", "500ms", "buzz", "blip"),
-			want:             0.5,
+			structuredMetadata: labels.FromStrings("foo", "500ms", "buzz", "blip"),
+			want:               0.5,
 			wantLbs: labels.FromStrings("bar", "foo",
 				"buzz", "blip",
 			),
@@ -163,7 +163,7 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantOk: true,
 		},
 		{
-			name: "convert bytes with non-indexed labels",
+			name: "convert bytes with structured metadata",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertBytes, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
@@ -171,8 +171,8 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 				"bar", "foo",
 				"namespace", "dev",
 			),
-			nonIndexedLabels: labels.FromStrings("foo", "13 MiB", "buzz", "blip"),
-			want:             13 * 1024 * 1024,
+			structuredMetadata: labels.FromStrings("foo", "13 MiB", "buzz", "blip"),
+			want:               13 * 1024 * 1024,
 			wantLbs: labels.FromStrings("bar", "foo",
 				"buzz", "blip",
 			),
@@ -194,12 +194,12 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 			wantOk: true,
 		},
 		{
-			name: "not convertable with non-indexed labels",
+			name: "not convertable with structured metadata",
 			ex: mustSampleExtractor(LabelExtractorWithStages(
 				"foo", ConvertFloat, []string{"bar", "buzz"}, false, false, nil, NoopStage,
 			)),
-			in:               labels.FromStrings("bar", "foo"),
-			nonIndexedLabels: labels.FromStrings("foo", "not_a_number"),
+			in:                 labels.FromStrings("bar", "foo"),
+			structuredMetadata: labels.FromStrings("foo", "not_a_number"),
 			wantLbs: labels.FromStrings("__error__", "SampleExtractionErr",
 				"__error_details__", "strconv.ParseFloat: parsing \"not_a_number\": invalid syntax",
 				"bar", "foo",
@@ -235,12 +235,12 @@ func Test_labelSampleExtractor_Extract(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.nonIndexedLabels...)
+			outval, outlbs, ok := tt.ex.ForStream(tt.in).Process(0, []byte(tt.line), tt.structuredMetadata...)
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())
 
-			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line, tt.nonIndexedLabels...)
+			outval, outlbs, ok = tt.ex.ForStream(tt.in).ProcessString(0, tt.line, tt.structuredMetadata...)
 			require.Equal(t, tt.wantOk, ok)
 			require.Equal(t, tt.want, outval)
 			require.Equal(t, tt.wantLbs, outlbs.Labels())
@@ -361,10 +361,10 @@ func TestNewLineSampleExtractor(t *testing.T) {
 	require.False(t, ok)
 }
 
-func TestNewLineSampleExtractorWithNonIndexedLabels(t *testing.T) {
+func TestNewLineSampleExtractorWithStructuredMetadata(t *testing.T) {
 	lbs := labels.FromStrings("foo", "bar")
-	nonIndexedLabels := labels.FromStrings("user", "bob")
-	expectedLabelsResults := append(lbs, nonIndexedLabels...)
+	structuredMetadata := labels.FromStrings("user", "bob")
+	expectedLabelsResults := append(lbs, structuredMetadata...)
 	se, err := NewLineSampleExtractor(CountExtractor, []Stage{
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "foo", "bar")),
 		NewStringLabelFilter(labels.MustNewMatcher(labels.MatchEqual, "user", "bob")),
@@ -372,29 +372,29 @@ func TestNewLineSampleExtractorWithNonIndexedLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	sse := se.ForStream(lbs)
-	f, l, ok := sse.Process(0, []byte(`foo`), nonIndexedLabels...)
+	f, l, ok := sse.Process(0, []byte(`foo`), structuredMetadata...)
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
 
-	f, l, ok = sse.ProcessString(0, `foo`, nonIndexedLabels...)
+	f, l, ok = sse.ProcessString(0, `foo`, structuredMetadata...)
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
 
-	// test duplicated non-indexed labels with stream labels
+	// test duplicated structured metadata with stream labels
 	expectedLabelsResults = append(lbs, labels.Label{
 		Name: "foo_extracted", Value: "baz",
 	})
-	expectedLabelsResults = append(expectedLabelsResults, nonIndexedLabels...)
-	f, l, ok = sse.Process(0, []byte(`foo`), append(nonIndexedLabels, labels.Label{
+	expectedLabelsResults = append(expectedLabelsResults, structuredMetadata...)
+	f, l, ok = sse.Process(0, []byte(`foo`), append(structuredMetadata, labels.Label{
 		Name: "foo", Value: "baz",
 	})...)
 	require.True(t, ok)
 	require.Equal(t, 1., f)
 	assertLabelResult(t, expectedLabelsResults, l)
 
-	f, l, ok = sse.ProcessString(0, `foo`, append(nonIndexedLabels, labels.Label{
+	f, l, ok = sse.ProcessString(0, `foo`, append(structuredMetadata, labels.Label{
 		Name: "foo", Value: "baz",
 	})...)
 	require.True(t, ok)
@@ -409,7 +409,7 @@ func TestNewLineSampleExtractorWithNonIndexedLabels(t *testing.T) {
 	require.NoError(t, err)
 
 	sse = se.ForStream(lbs)
-	f, l, ok = sse.Process(0, []byte(`foo`), nonIndexedLabels...)
+	f, l, ok = sse.Process(0, []byte(`foo`), structuredMetadata...)
 	require.True(t, ok)
 	require.Equal(t, 3., f)
 	assertLabelResult(t, labels.FromStrings("foo", "bar"), l)
@@ -427,12 +427,12 @@ func TestFilteringSampleExtractor(t *testing.T) {
 	}, newStubExtractor())
 
 	tt := []struct {
-		name             string
-		ts               int64
-		line             string
-		labels           labels.Labels
-		nonIndexedLabels labels.Labels
-		ok               bool
+		name               string
+		ts                 int64
+		line               string
+		labels             labels.Labels
+		structuredMetadata labels.Labels
+		ok                 bool
 	}{
 		{"it is after the timerange", 6, "line", labels.FromStrings("baz", "foo"), nil, true},
 		{"it is before the timerange", 1, "line", labels.FromStrings("baz", "foo"), nil, true},
@@ -440,17 +440,17 @@ func TestFilteringSampleExtractor(t *testing.T) {
 		{"it doesn't match all the selectors", 3, "line", labels.FromStrings("foo", "bar"), nil, true},
 		{"it doesn't match any selectors", 3, "line", labels.FromStrings("beep", "boop"), nil, true},
 		{"it matches all selectors", 3, "line", labels.FromStrings("foo", "bar", "bar", "baz"), nil, false},
-		{"it doesn't match all non-indexed labels", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "alice"), true},
-		{"it matches all non-indexed labels", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "bob"), false},
+		{"it doesn't match all structured metadata", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "alice"), true},
+		{"it matches all structured metadata", 3, "line", labels.FromStrings("foo", "baz"), labels.FromStrings("user", "bob"), false},
 		{"it tries all the filters", 5, "line", labels.FromStrings("baz", "foo"), nil, false},
 	}
 
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.nonIndexedLabels...)
+			_, _, ok := se.ForStream(test.labels).Process(test.ts, []byte(test.line), test.structuredMetadata...)
 			require.Equal(t, test.ok, ok)
 
-			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.nonIndexedLabels...)
+			_, _, ok = se.ForStream(test.labels).ProcessString(test.ts, test.line, test.structuredMetadata...)
 			require.Equal(t, test.ok, ok)
 		})
 	}

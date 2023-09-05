@@ -33,10 +33,10 @@ const emptyStats = `{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
 				"decompressedLines": 0,
-				"decompressedNonIndexedLabelsBytes": 0,
+				"decompressedStructuredMetadataBytes": 0,
 				"headChunkBytes": 0,
 				"headChunkLines": 0,
-				"headChunkNonIndexedLabelsBytes": 0,
+				"headChunkStructuredMetadataBytes": 0,
 				"postFilterLines": 0,
 				"totalDuplicates": 0
 			}
@@ -56,10 +56,10 @@ const emptyStats = `{
 				"compressedBytes": 0,
 				"decompressedBytes": 0,
 				"decompressedLines": 0,
-				"decompressedNonIndexedLabelsBytes": 0,
+				"decompressedStructuredMetadataBytes": 0,
 				"headChunkBytes": 0,
 				"headChunkLines": 0,
-				"headChunkNonIndexedLabelsBytes": 0,
+				"headChunkStructuredMetadataBytes": 0,
 				"postFilterLines": 0,
 				"totalDuplicates": 0
 			}
@@ -123,7 +123,7 @@ const emptyStats = `{
 		"totalBytesProcessed": 0,
 		"totalEntriesReturned": 0,
 		"totalLinesProcessed": 0,
-		"totalNonIndexedLabelsBytesProcessed": 0,
+		"totalStructuredMetadataBytesProcessed": 0,
 		"totalPostFilterLines": 0
 	}
 }`
@@ -144,7 +144,7 @@ var queryTests = []struct {
 					{
 						Timestamp: time.Unix(0, 123456789012346),
 						Line:      "super line with labels",
-						NonIndexedLabels: []logproto.LabelAdapter{
+						StructuredMetadata: []logproto.LabelAdapter{
 							{Name: "foo", Value: "a"},
 							{Name: "bar", Value: "b"},
 						},
@@ -357,7 +357,7 @@ var tailTests = []struct {
 						{
 							Timestamp: time.Unix(0, 123456789012346),
 							Line:      "super line with labels",
-							NonIndexedLabels: []logproto.LabelAdapter{
+							StructuredMetadata: []logproto.LabelAdapter{
 								{Name: "foo", Value: "a"},
 								{Name: "bar", Value: "b"},
 							},
@@ -587,7 +587,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 				{
 					Timestamp: time.Unix(0, 123456789012346),
 					Line:      "super line with labels",
-					NonIndexedLabels: []logproto.LabelAdapter{
+					StructuredMetadata: []logproto.LabelAdapter{
 						{Name: "foo", Value: "a"},
 						{Name: "bar", Value: "b"},
 					},
@@ -605,7 +605,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 				{
 					Timestamp: time.Unix(0, 123456789012346),
 					Line:      "super line with labels msg=baz",
-					NonIndexedLabels: []logproto.LabelAdapter{
+					StructuredMetadata: []logproto.LabelAdapter{
 						{Name: "foo", Value: "a"},
 						{Name: "bar", Value: "b"},
 					},
@@ -811,7 +811,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 							{
 								Timestamp: time.Unix(0, 123456789012346),
 								Line:      "super line with labels",
-								NonIndexedLabels: []logproto.LabelAdapter{
+								StructuredMetadata: []logproto.LabelAdapter{
 									{Name: "foo", Value: "a"},
 									{Name: "bar", Value: "b"},
 								},
@@ -880,7 +880,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 							{
 								Timestamp: time.Unix(0, 123456789012346),
 								Line:      "super line with labels msg=baz",
-								NonIndexedLabels: []logproto.LabelAdapter{
+								StructuredMetadata: []logproto.LabelAdapter{
 									{Name: "foo", Value: "a"},
 									{Name: "bar", Value: "b"},
 								},

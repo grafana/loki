@@ -25,7 +25,7 @@ const (
 	// WALRecordEntriesV2 is the type for the WAL record for samples with an
 	// additional counter value for use in replaying without the ordering constraint.
 	WALRecordEntriesV2
-	// WALRecordEntriesV3 is the type for the WAL record for samples with non-indexed labels.
+	// WALRecordEntriesV3 is the type for the WAL record for samples with structured metadata.
 	WALRecordEntriesV3
 )
 
@@ -133,9 +133,9 @@ outer:
 			buf.PutString(s.Line)
 
 			if version >= WALRecordEntriesV3 {
-				// non-indexed labels
-				buf.PutUvarint(len(s.NonIndexedLabels))
-				for _, l := range s.NonIndexedLabels {
+				// structured metadata
+				buf.PutUvarint(len(s.StructuredMetadata))
+				for _, l := range s.StructuredMetadata {
 					buf.PutUvarint(len(l.Name))
 					buf.PutString(l.Name)
 					buf.PutUvarint(len(l.Value))
@@ -172,17 +172,17 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 			lineLength := dec.Uvarint()
 			line := dec.Bytes(lineLength)
 
-			var nonIndexedLabels []logproto.LabelAdapter
+			var structuredMetadata []logproto.LabelAdapter
 			if version >= WALRecordEntriesV3 {
-				nNonIndexedLabels := dec.Uvarint()
-				if nNonIndexedLabels > 0 {
-					nonIndexedLabels = make([]logproto.LabelAdapter, 0, nNonIndexedLabels)
-					for i := 0; dec.Err() == nil && i < nNonIndexedLabels; i++ {
+				nStructuredMetadata := dec.Uvarint()
+				if nStructuredMetadata > 0 {
+					structuredMetadata = make([]logproto.LabelAdapter, 0, nStructuredMetadata)
+					for i := 0; dec.Err() == nil && i < nStructuredMetadata; i++ {
 						nameLength := dec.Uvarint()
 						name := dec.Bytes(nameLength)
 						valueLength := dec.Uvarint()
 						value := dec.Bytes(valueLength)
-						nonIndexedLabels = append(nonIndexedLabels, logproto.LabelAdapter{
+						structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
 							Name:  string(name),
 							Value: string(value),
 						})
@@ -191,9 +191,9 @@ func DecodeEntries(b []byte, version RecordType, rec *Record) error {
 			}
 
 			refEntries.Entries = append(refEntries.Entries, logproto.Entry{
-				Timestamp:        time.Unix(0, baseTime+timeOffset),
-				Line:             string(line),
-				NonIndexedLabels: nonIndexedLabels,
+				Timestamp:          time.Unix(0, baseTime+timeOffset),
+				Line:               string(line),
+				StructuredMetadata: structuredMetadata,
 			})
 		}
 

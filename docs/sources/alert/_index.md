@@ -206,6 +206,7 @@ Creating these alerts in LogQL is attractive because these metrics can be extrac
 
 ## Interacting with the Ruler
 
+### Cortextool
 Because the rule files are identical to Prometheus rule files, we can interact with the Loki Ruler via [`cortextool`](https://github.com/grafana/cortex-tools#rules). The CLI is in early development, but it works with both Loki and Cortex. Pass the `--backend=loki` option when using it with Loki.
 
 > **Note:** Not all commands in cortextool currently support Loki.
@@ -228,6 +229,7 @@ cortextool rules sync --rule-dirs=./output --backend=loki
 cortextool rules print --backend=loki
 ```
 
+### Cortextool Github Actions
 There is also a [github action](https://github.com/grafana/cortex-rules-action) available for `cortex-tool`, so you can add it into your CI/CD pipelines!
 
 For instance, you can sync rules on master builds via
@@ -269,6 +271,58 @@ jobs:
         uses: grafana/cortex-rules-action@v0.4.0
         env:
           ACTION: 'print'
+```
+### Terraform
+
+With the [terraform-provider-loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), we can manage alerts and recording rules in terraform HCL format:
+
+```tf
+terraform {
+  required_providers {
+    loki = {
+      source = "fgouteroux/loki"
+    }
+  }
+}
+
+# Provider config
+provider "loki" {
+  uri = "http://127.0.0.1:3100"
+  org_id = "mytenant"
+}
+
+# Create an alert rule
+resource "loki_rule_group_alerting" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    alert       = "HighPercentageError"
+    expr        = <<EOT
+sum(rate({app="foo", env="production"} |= "error" [5m])) by (job)
+  /
+sum(rate({app="foo", env="production"}[5m])) by (job)
+  > 0.05
+EOT
+    for         = "10m"
+    labels      = {
+      severity = "warning"
+    }
+    annotations = {
+      summary = "High request latency"
+    }
+  }
+}
+
+# Create a recording rule
+resource "loki_rule_group_recording" "test" {
+  name      = "test1"
+  namespace = "namespace1"
+  rule {
+    expr   = "sum by (job) (http_inprogress_requests)"
+    record = "job:http_inprogress_requests:sum"
+  }
+}
+
 ```
 
 ## Scheduling and best practices
