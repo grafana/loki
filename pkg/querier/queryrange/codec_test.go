@@ -1778,9 +1778,9 @@ var (
 			},
 			Entries: []logproto.Entry{
 				{
-					Line:             "super line2",
-					Timestamp:        time.Unix(0, 123456789012346).UTC(),
-					NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+					Line:               "super line2",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
 				},
 			},
 		},
@@ -1793,9 +1793,9 @@ var (
 			},
 			Entries: []logproto.Entry{
 				{
-					Line:             "super line3 z=text",
-					Timestamp:        time.Unix(0, 123456789012346).UTC(),
-					NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+					Line:               "super line3 z=text",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
 				},
 			},
 		},
@@ -1824,9 +1824,9 @@ var (
 			},
 			Entries: []logproto.Entry{
 				{
-					Line:             "super line2",
-					Timestamp:        time.Unix(0, 123456789012346).UTC(),
-					NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+					Line:               "super line2",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
 				},
 			},
 		},
@@ -1839,9 +1839,9 @@ var (
 			},
 			Entries: []logproto.Entry{
 				{
-					Line:             "super line3 z=text",
-					Timestamp:        time.Unix(0, 123456789012346).UTC(),
-					NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
+					Line:               "super line3 z=text",
+					Timestamp:          time.Unix(0, 123456789012346).UTC(),
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("x", "a", "y", "b")),
 				},
 			},
 		},

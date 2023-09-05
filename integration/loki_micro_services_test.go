@@ -787,10 +787,10 @@ func TestCategorizedLabels(t *testing.T) {
 	cliIndexGateway.Now = now
 
 	require.NoError(t, cliDistributor.PushLogLine("lineA", map[string]string{"job": "fake"}))
-	require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineB", map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineB", map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
 	require.NoError(t, tIngester.Restart())
-	require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineC msg=foo", map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
-	require.NoError(t, cliDistributor.PushLogLineWithNonIndexedLabels("lineD msg=foo text=bar", map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineC msg=foo", map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineD msg=foo text=bar", map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
 
 	for _, tc := range []struct {
 		name                       string

@@ -2131,12 +2131,12 @@ func TestMemChunk_IteratorCategorizedLabels(t *testing.T) {
 	streamLabels := labels.Labels{
 		{Name: "job", Value: "fake"},
 	}
-	chk := newMemChunkWithFormat(ChunkFormatV4, EncNone, UnorderedWithNonIndexedLabelsHeadBlockFmt, testBlockSize, testTargetSize)
-	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(1, "msg=foo name=text", []logproto.LabelAdapter{
+	chk := newMemChunkWithFormat(ChunkFormatV4, EncNone, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
+	require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(1, "msg=foo name=text", []logproto.LabelAdapter{
 		{Name: "user", Value: "a"},
 	})))
 	require.NoError(t, chk.cut())
-	require.NoError(t, chk.Append(logprotoEntryWithNonIndexedLabels(3, "msg=bar name=book", []logproto.LabelAdapter{
+	require.NoError(t, chk.Append(logprotoEntryWithStructuredMetadata(3, "msg=bar name=book", []logproto.LabelAdapter{
 		{Name: "user", Value: "b"},
 	})))
 

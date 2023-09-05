@@ -59,7 +59,7 @@ func (m *Stream) MarshalJSON() ([]byte, error) {
 func (m *Entry) MarshalJSON() ([]byte, error) {
 	type raw Entry
 	e := raw(*m)
-	e.NonIndexedLabels = nil
+	e.StructuredMetadata = nil
 	return json.Marshal(e)
 }
 
