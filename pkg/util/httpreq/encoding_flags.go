@@ -8,18 +8,18 @@ import (
 type EncodingFlag string
 
 const (
-	LokiEncodeFlagsHeader              = "X-Loki-Response-Encoding-Flags"
-	FlagGroupLabels       EncodingFlag = "categorize-labels"
+	LokiEncodingFlagsHeader              = "X-Loki-Response-Encoding-Flags"
+	FlagCategorizeLabels    EncodingFlag = "categorize-labels"
 
 	EncodeFlagsDelimiter = ","
 )
 
-func ExtractEncodeFlags(req *http.Request) []EncodingFlag {
+func ExtractEncodingFlags(req *http.Request) []EncodingFlag {
 	// We try to extract the flags from the header first.
 	// If the header is not set, we try to extract the flags from the context.
 	var rawValue string
-	if rawValue = req.Header.Get(LokiEncodeFlagsHeader); rawValue == "" {
-		if rawValue = ExtractHeader(req.Context(), LokiEncodeFlagsHeader); rawValue == "" {
+	if rawValue = req.Header.Get(LokiEncodingFlagsHeader); rawValue == "" {
+		if rawValue = ExtractHeader(req.Context(), LokiEncodingFlagsHeader); rawValue == "" {
 			return nil
 		}
 	}

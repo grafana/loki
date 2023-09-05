@@ -792,7 +792,7 @@ func Test_codec_EncodeResponse(t *testing.T) {
 			},
 			streamsStringWithCategories, false,
 			map[string]string{
-				httpreq.LokiEncodeFlagsHeader: string(httpreq.FlagGroupLabels),
+				httpreq.LokiEncodingFlagsHeader: string(httpreq.FlagCategorizeLabels),
 			},
 		},
 		{

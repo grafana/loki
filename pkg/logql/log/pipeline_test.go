@@ -18,12 +18,14 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := pipeline.ForStream(lbs).ProcessString(0, "")
 	require.Equal(t, "", ls)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	nonIndexedLabels := labels.FromStrings("y", "1", "z", "2")
@@ -32,12 +34,14 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches = pipeline.ForStream(lbs).ProcessString(0, "", nonIndexedLabels...)
 	require.Equal(t, "", ls)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	// test duplicated non-indexed labels with stream labels
@@ -49,7 +53,7 @@ func TestNoopPipeline(t *testing.T) {
 	require.Equal(t, []byte(""), l)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
-	// require.Equal(t, NewLabelsResult(expectedLabelsResults, expectedLabelsResults.Hash()), lbr)
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	pipeline.Reset()
@@ -67,12 +71,14 @@ func TestPipeline(t *testing.T) {
 	require.Equal(t, []byte("lbs bar"), l)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line")
 	require.Equal(t, "lbs bar", ls)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, labels.EmptyLabels(), labels.EmptyLabels()), lbr)
 	require.Equal(t, lbs.Hash(), lbr.Hash())
+	require.Equal(t, lbs.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	l, lbr, matches = p.ForStream(labels.EmptyLabels()).Process(0, []byte("line"))
@@ -113,12 +119,14 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 	require.Equal(t, []byte("lbs bar bob"), l)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches := p.ForStream(lbs).ProcessString(0, "line", nonIndexedLabels...)
 	require.Equal(t, "lbs bar bob", ls)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, nonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	// test duplicated non-indexed labels with stream labels
@@ -131,6 +139,7 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 	require.Equal(t, []byte("lbs bar bob"), l)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	ls, lbr, matches = p.ForStream(lbs).ProcessString(0, "line", append(nonIndexedLabels, labels.Label{
@@ -139,6 +148,7 @@ func TestPipelineWithNonIndexedLabels(t *testing.T) {
 	require.Equal(t, "lbs bar bob", ls)
 	require.Equal(t, NewCategorizedLabelsResult(lbs, expectedNonIndexedLabels, labels.EmptyLabels()), lbr)
 	require.Equal(t, expectedLabelsResults.Hash(), lbr.Hash())
+	require.Equal(t, expectedLabelsResults.String(), lbr.String())
 	require.Equal(t, true, matches)
 
 	l, lbr, matches = p.ForStream(lbs).Process(0, []byte("line"))
@@ -499,6 +509,7 @@ func TestKeepLabelsPipeline(t *testing.T) {
 				require.Equal(t, labels.EmptyLabels(), finalLbs.StructuredMetadata())
 				require.Equal(t, tt.wantLabels[i], finalLbs.Parsed())
 				require.Equal(t, tt.wantLabels[i].Hash(), finalLbs.Hash())
+				require.Equal(t, tt.wantLabels[i].String(), finalLbs.String())
 			}
 		})
 	}

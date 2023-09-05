@@ -303,8 +303,8 @@ func (b *LabelsBuilder) BaseHas(key string) bool {
 	return b.base.Has(key)
 }
 
-// Get returns the value of a labels key if it exists.
-func (b *LabelsBuilder) get(key string) (string, LabelCategory, bool) {
+// GetWithCategory returns the value and the category of a labels key if it exists.
+func (b *LabelsBuilder) GetWithCategory(key string) (string, LabelCategory, bool) {
 	for category, lbls := range b.add {
 		for _, l := range lbls {
 			if l.Name == key {
@@ -327,12 +327,8 @@ func (b *LabelsBuilder) get(key string) (string, LabelCategory, bool) {
 }
 
 func (b *LabelsBuilder) Get(key string) (string, bool) {
-	v, _, ok := b.get(key)
+	v, _, ok := b.GetWithCategory(key)
 	return v, ok
-}
-
-func (b *LabelsBuilder) GetWithCategory(key string) (string, LabelCategory, bool) {
-	return b.get(key)
 }
 
 // Del deletes the label of the given name.
@@ -493,7 +489,6 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 func (b *LabelsBuilder) CategorizedLabelsResult() CategorizedLabelsResult {
 	// unchanged path.
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
-		// TODO(salvacorts): Not sure if this is correct.
 		return NewCategorizedLabelsResult(b.base, labels.EmptyLabels(), labels.EmptyLabels())
 	}
 

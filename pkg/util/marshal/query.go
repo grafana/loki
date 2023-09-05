@@ -75,8 +75,8 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 	ret := make([]loghttp.Stream, len(s))
 
 	for i, stream := range s {
-		// We set the FlagGroupLabels to keep the categorized labels
-		ret[i], err = NewStream(stream, httpreq.FlagGroupLabels)
+		// We set the FlagCategorizeLabels to keep the categorized labels
+		ret[i], err = NewStream(stream, httpreq.FlagCategorizeLabels)
 
 		if err != nil {
 			return nil, err
@@ -323,7 +323,7 @@ func encodeCategorizedLabels(categorizedLabels logproto.CategorizedLabels, s *js
 }
 
 // encodeStream encodes a logproto.Stream to JSON.
-// If the FlagGroupLabels is set, the stream labels are grouped by their group name.
+// If the FlagCategorizeLabels is set, the stream labels are grouped by their group name.
 // Otherwise, the stream labels are written one after the other.
 func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	s.WriteObjectStart()
@@ -332,7 +332,7 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags ...htt
 	s.WriteObjectField("stream")
 	s.WriteObjectStart()
 
-	if httpreq.EncodingFlagIsSet(encodeFlags, httpreq.FlagGroupLabels) {
+	if httpreq.EncodingFlagIsSet(encodeFlags, httpreq.FlagCategorizeLabels) {
 		if err := encodeCategorizedLabels(stream.CategorizedLabels, s); err != nil {
 			return err
 		}

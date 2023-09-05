@@ -317,9 +317,9 @@ func (c Codec) EncodeRequest(ctx context.Context, r queryrangebase.Request) (*ht
 		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
 	}
 
-	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodeFlagsHeader)
+	encodingFlags := httpreq.ExtractHeader(ctx, httpreq.LokiEncodingFlagsHeader)
 	if encodingFlags != "" {
-		header.Set(httpreq.LokiEncodeFlagsHeader, encodingFlags)
+		header.Set(httpreq.LokiEncodingFlagsHeader, encodingFlags)
 	}
 
 	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
@@ -699,7 +699,7 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 
 	// Default to JSON.
 	version := loghttp.GetVersion(req.RequestURI)
-	encodingFlags := httpreq.ExtractEncodeFlags(req)
+	encodingFlags := httpreq.ExtractEncodingFlags(req)
 	return encodeResponseJSON(ctx, version, res, encodingFlags...)
 }
 
@@ -1284,7 +1284,7 @@ func getQueryTags(ctx context.Context) string {
 }
 
 func getEncodingFlags(ctx context.Context) string {
-	v, _ := ctx.Value(httpreq.LokiEncodeFlagsHeader).(string) // it's ok to be empty
+	v, _ := ctx.Value(httpreq.LokiEncodingFlagsHeader).(string) // it's ok to be empty
 	return v
 }
 

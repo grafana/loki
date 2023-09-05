@@ -854,7 +854,7 @@ func TestCategorizedLabels(t *testing.T) {
 			name:  "with header - no parser ",
 			query: `{job="fake"}`,
 			headers: []client.Header{
-				{Name: httpreq.LokiEncodeFlagsHeader, Value: string(httpreq.FlagGroupLabels)},
+				{Name: httpreq.LokiEncodingFlagsHeader, Value: string(httpreq.FlagCategorizeLabels)},
 			},
 			expectedStreams: nil,
 			expectedCategorizedStreams: []map[string]map[string]string{
@@ -896,7 +896,7 @@ func TestCategorizedLabels(t *testing.T) {
 			name:  "with header - with parser",
 			query: `{job="fake"} | logfmt`,
 			headers: []client.Header{
-				{Name: httpreq.LokiEncodeFlagsHeader, Value: string(httpreq.FlagGroupLabels)},
+				{Name: httpreq.LokiEncodingFlagsHeader, Value: string(httpreq.FlagCategorizeLabels)},
 			},
 			expectedCategorizedStreams: []map[string]map[string]string{
 				{

@@ -34,7 +34,6 @@ type SampleExtractor interface {
 // A StreamSampleExtractor never mutate the received line.
 type StreamSampleExtractor interface {
 	BaseLabels() LabelsResult
-	// TODO(salvacorts): Support categories in metric extraction.
 	Process(ts int64, line []byte, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool)
 	ProcessString(ts int64, line string, nonIndexedLabels ...labels.Label) (float64, LabelsResult, bool)
 }

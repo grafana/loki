@@ -274,15 +274,16 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 			// Try to get the "stream" field inside the stream object.
 			// If it's there, and it's an object, then it's a stream with categorized labels.
 			// Otherwise, if it's not there of it's a string, then it's a stream with labels as string.
-			// TODO(salvacorts): If we can just return two different keys (e.g. "stream" vs "labels") we could avoid checking which kind of object is it.
+			// TODO(salvacorts): If we can just return two different keys (e.g. "stream" vs "labels")
+			//  				 we could avoid checking which kind of object is it.
 			_, streamType, _, err := jsonparser.Get(value, "stream")
 			if err == nil && streamType == jsonparser.Object {
 				if err = s.CategorizedLabels.UnmarshalJSON(value); err != nil {
 					return err
 				}
 				s.Labels = s.CategorizedLabels.ToLabelSet()
-				s.EncodeFlags = append(s.EncodeFlags, httpreq.FlagGroupLabels)
-			} else if err == jsonparser.KeyPathNotFoundError || streamType == jsonparser.String {
+				s.EncodeFlags = append(s.EncodeFlags, httpreq.FlagCategorizeLabels)
+			} else if errors.Is(err, jsonparser.KeyPathNotFoundError) || streamType == jsonparser.String {
 				if err := s.Labels.UnmarshalJSON(value); err != nil {
 					return err
 				}
@@ -315,10 +316,9 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 }
 
 // MarshalJSON implements the json.Marshaler interface.
-// If the FlagGroupLabels encoding flag is set, the serialized "stream" field will be a map of groups to labels.
-// TODO(salvacorts): Maybe we can remove this method? We also have encodeStream and the push/pkg Stream.MarshalJSON
+// If the FlagCategorizeLabels encoding flag is set, the serialized "stream" field will be a map of groups to labels.
 func (s *Stream) MarshalJSON() ([]byte, error) {
-	if httpreq.EncodingFlagIsSet(s.EncodeFlags, httpreq.FlagGroupLabels) {
+	if httpreq.EncodingFlagIsSet(s.EncodeFlags, httpreq.FlagCategorizeLabels) {
 		return json.Marshal(struct {
 			CategorizedLabels CategorizedLabelSet `json:"stream"`
 			Entries           []Entry             `json:"values"`

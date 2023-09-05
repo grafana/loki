@@ -663,7 +663,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 		{
 			name: "categorized labels",
 			encodeFlags: []httpreq.EncodingFlag{
-				httpreq.FlagGroupLabels,
+				httpreq.FlagCategorizeLabels,
 			},
 			expected: fmt.Sprintf(`{
 				"status": "success",
@@ -777,7 +777,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				{
 					name: "group labels",
 					flags: []httpreq.EncodingFlag{
-						httpreq.FlagGroupLabels,
+						httpreq.FlagCategorizeLabels,
 					},
 					expected: `{
 						"streams": [
@@ -842,7 +842,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				{
 					name: "group labels",
 					flags: []httpreq.EncodingFlag{
-						httpreq.FlagGroupLabels,
+						httpreq.FlagCategorizeLabels,
 					},
 					expected: `{
 						"streams": [
@@ -912,7 +912,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 				{
 					name: "group labels",
 					flags: []httpreq.EncodingFlag{
-						httpreq.FlagGroupLabels,
+						httpreq.FlagCategorizeLabels,
 					},
 					expected: `{
 						"streams": [
@@ -1057,7 +1057,7 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
 		js := json.NewStream(json.ConfigFastest, &buf, 0)
-		err := encodeResult(w.Value, js, httpreq.FlagGroupLabels)
+		err := encodeResult(w.Value, js, httpreq.FlagCategorizeLabels)
 		require.NoError(t, err)
 		js.Flush()
 		actual := buf.String()
