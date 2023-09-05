@@ -35,20 +35,20 @@ Google Pubsub Topic will act as the queue to persist log messages which then can
 $ gcloud pubsub topics create $TOPIC_ID
 ```
 
-For example,
+For example:
 ```bash
 $ gcloud pubsub topics create cloud-logs
 ```
 
 ## Setup Log Router
 
-We create a log sink to forward cloud logs into pubsub topic created before
+We create a log sink to forward cloud logs into pubsub topic that we just created.
 
 ```bash
 $ gcloud logging sinks create $SINK_NAME $SINK_LOCATION $OPTIONAL_FLAGS
 ```
 
-e.g:
+For example: 
 ```bash
 $ gcloud logging sinks create cloud-logs pubsub.googleapis.com/projects/my-project/topics/cloud-logs \
 --log-filter='resource.type=("gcs_bucket")' \

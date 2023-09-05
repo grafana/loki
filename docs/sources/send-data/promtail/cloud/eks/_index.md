@@ -34,11 +34,14 @@ In this tutorial we'll use [eksctl][eksctl], a simple command line utility for c
 eksctl create cluster --name loki-promtail --managed
 ```
 
-You have time for a coffee ☕, this usually take 15minutes. When this is finished you should have `kubectl context` configured to communicate with your newly created cluster. Let's verify everything is fine:
+This usually takes about 15 minutes. When this is finished you should have `kubectl context` configured to communicate with your newly created cluster. To verify, run the following command: 
 
 ```bash
 kubectl version
+```
+You should see output similar to the following:
 
+```bash
 Client Version: version.Info{Major:"1", Minor:"18", GitVersion:"v1.18.5", GitCommit:"e6503f8d8f769ace2f338794c914a96fc335df0f", GitTreeState:"clean", BuildDate:"2020-07-04T15:01:15Z", GoVersion:"go1.14.4", Compiler:"gc", Platform:"darwin/amd64"}
 Server Version: version.Info{Major:"1", Minor:"16+", GitVersion:"v1.16.8-eks-fd1ea7", GitCommit:"fd1ea7c64d0e3ccbf04b124431c659f65330562a", GitTreeState:"clean", BuildDate:"2020-05-28T19:06:00Z", GoVersion:"go1.13.8", Compiler:"gc", Platform:"linux/amd64"}
 ```
@@ -49,14 +52,22 @@ To ship all your pods logs we're going to set up [Promtail]({{< relref "../../..
 
 What's nice about Promtail is that it uses the same [service discovery as Prometheus][prometheus conf], you should make sure the `scrape_configs` of Promtail matches the Prometheus one. Not only this is simpler to configure, but this also means Metrics and Logs will have the same metadata (labels) attached by the Prometheus service discovery. When querying Grafana you will be able to correlate metrics and logs very quickly, you can read more about this on our [blogpost][correlate].
 
-Let's add the Loki repository and list all available charts.
+Let's add the Loki repository and list all available charts. To add the repo, the following command:
 
 ```bash
 helm repo add loki https://grafana.github.io/loki/charts
+```
+You should see the following message.
+```bash
 "loki" has been added to your repositories
+```
+To list the available charts, run the following command:
 
+```bash
 helm search repo
-
+```
+You should see output similar to the following:
+```bash
 NAME                   CHART VERSION   APP VERSION     DESCRIPTION
 loki/fluent-bit 0.3.0           v1.6.0          Uses fluent-bit Loki go plugin for gathering lo...
 loki/loki       0.31.0          v1.6.0          Loki: like Prometheus, but for logs.
@@ -81,14 +92,24 @@ loki:
   password: <grafancloud apikey>
 ```
 
-Once you're ready let's create a new namespace monitoring and add Promtail to it:
+Once you're ready let's create a new namespace monitoring and add Promtail to it.  To create the namespace, run the following command:
 
 ```bash
 kubectl create namespace monitoring
+```
+
+You should see the following message.
+```bash
 namespace/monitoring created
+```
 
+To add Promtail, run the following command:
+```bash
 helm install promtail --namespace monitoring loki/promtail -f values.yaml
+```
 
+You should see output similar to the following:
+```bash
 NAME: promtail
 LAST DEPLOYED: Fri Jul 10 14:41:37 2020
 NAMESPACE: default
@@ -104,8 +125,11 @@ Verify the application is working by running these commands:
 Verify that Promtail pods are running. You should see only two since we're running a two nodes cluster.
 
 ```bash
-kubectl get -n monitoring pods
+kubectl get -n monitoring 
+```
 
+You should see output similar to the following:
+```bash
 NAME             READY   STATUS    RESTARTS   AGE
 promtail-87t62   1/1     Running   0          35s
 promtail-8c2r4   1/1     Running   0          35s
@@ -210,7 +234,9 @@ And deploy the `eventrouter` using:
 
 ```bash
 kubectl create -f https://raw.githubusercontent.com/grafana/loki/main/docs/sources/clients/aws/eks/eventrouter.yaml
-
+```
+You should see output similar to the following:
+```bash
 serviceaccount/eventrouter created
 clusterrole.rbac.authorization.k8s.io/eventrouter created
 clusterrolebinding.rbac.authorization.k8s.io/eventrouter created

@@ -100,8 +100,10 @@ port (`9080` or `3101` if using Helm) locally:
 
 ```bash
 $ kubectl port-forward loki-promtail-jrfg7 9080
-# Then, in a web browser, visit http://localhost:9080/service-discovery
-```
+``````
+
+Then, in a web browser, visit [http://localhost:9080/service-discovery](http://localhost:9080/service-discovery)
+
 
 ## Debug output
 
