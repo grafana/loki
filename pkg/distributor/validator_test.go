@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -82,6 +83,17 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			},
 			logproto.Entry{Timestamp: testTime, Line: "12345678901"},
 			fmt.Errorf(validation.LineTooLongErrorMsg, 10, testStreamLabels, 11),
+		},
+		{
+			"disallowed structured metadata",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata: false,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabels),
 		},
 	}
 	for _, tt := range tests {
