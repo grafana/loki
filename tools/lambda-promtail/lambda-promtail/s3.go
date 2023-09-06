@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"regexp"
+	"strconv"
 	"time"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -31,6 +33,8 @@ type parserConfig struct {
 	timestampRegex *regexp.Regexp
 	// time format to use to convert the timestamp to time.Time
 	timestampFormat string
+	// if the timestamp is a string that can be parsed or a Unix timestamp
+	timestampType string
 	// how many lines or jsonToken to skip at the beginning of the file
 	skipHeaderCount int
 	// key of the metadata label to use as a value for the__aws_<logType>_owner label
@@ -45,6 +49,7 @@ const (
 	CLOUDFRONT_LOG_TYPE        string = "cloudfront"
 	LB_NLB_TYPE                string = "net"
 	LB_ALB_TYPE                string = "app"
+	WAF_LOG_TYPE               string = "WAFLogs"
 )
 
 var (
@@ -66,11 +71,17 @@ var (
 	// CloudFront
 	// source https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/AccessLogs.html#AccessLogsFileNaming
 	// example: example-prefix/EMLARXS9EXAMPLE.2019-11-14-20.RT4KCN4SGK9.gz
+	// AWS WAF logs
+	// source: https://docs.aws.amazon.com/waf/latest/developerguide/logging-s3.html
+	// format: aws-waf-logs-suffix[/prefix]/AWSLogs/aws-account-id/WAFLogs/region/webacl-name/year/month/day/hour/minute/aws-account-id_waflogs_region_webacl-name_timestamp_hash.log.gz
+	// example: aws-waf-logs-test/AWSLogs/11111111111/WAFLogs/us-east-1/TEST-WEBACL/2021/10/28/19/50/11111111111_waflogs_us-east-1_TEST-WEBACL_20211028T1950Z_e0ca43b5.log.gz
 	defaultFilenameRegex     = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:elasticloadbalancing|vpcflowlogs)\_\w+-\w+-\d_(?:(?P<lb_type>app|net)\.*?)?(?P<src>[a-zA-Z0-9\-]+)`)
 	defaultTimestampRegex    = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+T\d+:\d+:\d+(?:\.\d+Z)?)`)
 	cloudtrailFilenameRegex  = regexp.MustCompile(`AWSLogs\/(?P<organization_id>o-[a-z0-9]{10,32})?\/?(?P<account_id>\d+)\/(?P<type>[a-zA-Z0-9_\-]+)\/(?P<region>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/\d+\_(?:CloudTrail|CloudTrail-Digest)\_\w+-\w+-\d_(?:(?:app|nlb|net)\.*?)?.+_(?P<src>[a-zA-Z0-9\-]+)`)
 	cloudfrontFilenameRegex  = regexp.MustCompile(`(?P<prefix>.*)\/(?P<src>[A-Z0-9]+)\.(?P<year>\d+)-(?P<month>\d+)-(?P<day>\d+)-(.+)`)
 	cloudfrontTimestampRegex = regexp.MustCompile(`(?P<timestamp>\d+-\d+-\d+\s\d+:\d+:\d+)`)
+	wafFilenameRegex         = regexp.MustCompile(`AWSLogs\/(?P<account_id>\d+)\/(?P<type>WAFLogs)\/(?P<region>[\w-]+)\/(?P<src>[\w-]+)\/(?P<year>\d+)\/(?P<month>\d+)\/(?P<day>\d+)\/(?P<hour>\d+)\/(?P<minute>\d+)\/\d+\_waflogs\_[\w-]+_[\w-]+_\d+T\d+Z_\w+`)
+	wafTimestampRegex        = regexp.MustCompile(`"timestamp":\s*(?P<timestamp>\d+),`)
 	parsers                  = map[string]parserConfig{
 		FLOW_LOG_TYPE: {
 			logTypeLabel:    "s3_vpc_flow",
@@ -78,6 +89,7 @@ var (
 			ownerLabelKey:   "account_id",
 			timestampRegex:  defaultTimestampRegex,
 			timestampFormat: time.RFC3339,
+			timestampType:   "string",
 			skipHeaderCount: 1,
 		},
 		LB_LOG_TYPE: {
@@ -86,6 +98,7 @@ var (
 			ownerLabelKey:   "account_id",
 			timestampFormat: time.RFC3339,
 			timestampRegex:  defaultTimestampRegex,
+			timestampType:   "string",
 		},
 		CLOUDTRAIL_LOG_TYPE: {
 			logTypeLabel:    "s3_cloudtrail",
@@ -99,7 +112,15 @@ var (
 			ownerLabelKey:   "prefix",
 			timestampRegex:  cloudfrontTimestampRegex,
 			timestampFormat: "2006-01-02\x0915:04:05",
+			timestampType:   "string",
 			skipHeaderCount: 2,
+		},
+		WAF_LOG_TYPE: {
+			logTypeLabel:   "s3_waf",
+			filenameRegex:  wafFilenameRegex,
+			ownerLabelKey:  "account_id",
+			timestampRegex: wafTimestampRegex,
+			timestampType:  "unix",
 		},
 	}
 )
@@ -120,7 +141,7 @@ func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 	return s3Client, nil
 }
 
-func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser) error {
+func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.ReadCloser, log *log.Logger) error {
 	parser, ok := parsers[labels["type"]]
 	if !ok {
 		if labels["type"] == CLOUDTRAIL_DIGEST_LOG_TYPE {
@@ -182,9 +203,21 @@ func parseS3Log(ctx context.Context, b *batch, labels map[string]string, obj io.
 				// NLB logs don't have .SSSSSSZ suffix. RFC3339 requires a TZ specifier, use UTC
 				match[1] += "Z"
 			}
-			timestamp, err = time.Parse(parser.timestampFormat, match[1])
-			if err != nil {
-				return err
+
+			switch parser.timestampType {
+			case "string":
+				timestamp, err = time.Parse(parser.timestampFormat, match[1])
+				if err != nil {
+					return err
+				}
+			case "unix":
+				sec, nsec, err := getUnixSecNsec(match[1])
+				if err != nil {
+					return err
+				}
+				timestamp = time.Unix(sec, nsec).UTC()
+			default:
+				level.Warn(*log).Log("msg", fmt.Sprintf("timestamp type of %s parser unknown, using current time", labels["type"]))
 			}
 		}
 
@@ -250,7 +283,7 @@ func processS3Event(ctx context.Context, ev *events.S3Event, pc Client, log *log
 		if err != nil {
 			return fmt.Errorf("Failed to get object %s from bucket %s on account %s\n, %s", labels["key"], labels["bucket"], labels["bucketOwner"], err)
 		}
-		err = parseS3Log(ctx, batch, labels, obj.Body)
+		err = parseS3Log(ctx, batch, labels, obj.Body, log)
 		if err != nil {
 			return err
 		}
@@ -300,4 +333,44 @@ func stringToRawEvent(body string) (map[string]interface{}, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// getUnixSecNsec returns the Unix time seconds and nanoseconds in the string s.
+// It assumes that the first 10 digits of the parsed int is the Unix time in seconds and the rest is the nanoseconds part.
+// This assumption will hold until 2286-11-20 17:46:40 UTC, so it's a safe assumption.
+// It also makes use of the fact that the log10 of a number in base 10 is its number of digits - 1.
+// It returns early if the fractional seconds is 0 because getting the log10 of 0 results in -Inf.
+// For example, given a string 1234567890123:
+//   iLog10 = 12  // the parsed int is 13 digits long
+//   multiplier = 0.001  // to get the seconds part it must be divided by 1000
+//   sec = 1234567890123 * 0.001 = 1234567890  // this is the seconds part of the Unix time
+//   fractionalSec = 123  // the rest of the parsed int
+//   fractionalSecLog10 = 2  // it is 3 digits long
+//   multiplier = 1000000  // nano is 10^-9, so the nanoseconds part is 9 digits long
+//   nsec = 123000000  // this is the nanoseconds part of the Unix time
+func getUnixSecNsec(s string) (sec int64, nsec int64, err error) {
+	const (
+		UNIX_SEC_LOG10     = 9
+		UNIX_NANOSEC_LOG10 = 8
+	)
+
+	i, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return sec, nsec, err
+	}
+
+	iLog10 := int(math.Log10(float64(i)))
+	multiplier := math.Pow10(UNIX_SEC_LOG10 - iLog10)
+	sec = int64(float64(i) * multiplier)
+
+	fractionalSec := float64(i % sec)
+	if fractionalSec == 0 {
+		return sec, 0, err
+	}
+
+	fractionalSecLog10 := int(math.Log10(fractionalSec))
+	multiplier = math.Pow10(UNIX_NANOSEC_LOG10 - fractionalSecLog10)
+	nsec = int64(fractionalSec * multiplier)
+
+	return sec, nsec, err
 }
