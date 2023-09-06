@@ -2,7 +2,7 @@
 title: Docker driver client
 menuTItle:  Docker driver
 description: Instructions to install, upgrade, and remove the Docker driver client to send logs to Loki.
-aliases: 
+aliases:
 - ../clients/docker-driver/
 weight:  400
 ---
@@ -19,7 +19,7 @@ Docker plugins are not supported on Windows; see the [Docker Engine managed plug
 Documentation on configuring the Loki Docker Driver can be found on the
 [configuration page]({{< relref "./configuration" >}}).
 
-If you have any questions or issues using the Docker plugin, open an issue in 
+If you have any questions or issues using the Docker plugin, open an issue in
 the [Loki repository](https://github.com/grafana/loki/issues).
 
 ## Install the Docker driver client
@@ -29,7 +29,7 @@ The Docker plugin must be installed on each Docker host that will be running con
 Run the following command to install the plugin, updating the release version if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:2.8.2 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:2.9.0 --alias loki --grant-all-permissions
 ```
 
 To check installed plugins, use the `docker plugin ls` command. Plugins that
@@ -50,7 +50,7 @@ re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:2.8.2 --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:2.9.0 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
