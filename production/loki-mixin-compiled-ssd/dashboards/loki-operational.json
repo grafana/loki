@@ -1799,7 +1799,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki|enterprise-logs)-write-.*\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki|enterprise-logs)-write.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
@@ -3006,7 +3006,7 @@
                   "steppedLine": false,
                   "targets": [
                      {
-                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki|enterprise-logs)-read-.*\"}[$__rate_interval]))",
+                        "expr": "sum by(pod) (rate(container_cpu_usage_seconds_total{cluster=~\"$cluster\", namespace=~\"$namespace\", pod=~\"(loki|enterprise-logs)-read.*\"}[$__rate_interval]))",
                         "intervalFactor": 3,
                         "legendFormat": "{{pod}}",
                         "refId": "A"
