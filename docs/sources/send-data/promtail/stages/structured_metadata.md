@@ -12,6 +12,10 @@ Structured metadata is an experimental feature and is subject to change in futur
 The `structured_metadata` stage is an action stage that takes data from the extracted map and
 modifies the [structured metadata]({{< relref "../../../get-started/labels/structured-metadata" >}}) that is sent to Loki with the log entry.
 
+{{% admonition type="warning" %}}
+Structured metadata will be rejected by Loki unless you enable the `allow_structured_metadata` per tenant configuration (in the `limits_config`).
+{{% /admonition %}}
+
 ## Schema
 
 ```yaml
