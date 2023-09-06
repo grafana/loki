@@ -274,7 +274,7 @@ jobs:
 ```
 ### Terraform
 
-With the [terraform-provider-loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), we can manage alerts and recording rules in terraform HCL format:
+With the [Terraform provider for Loki](https://registry.terraform.io/providers/fgouteroux/loki/latest), you can manage alerts and recording rules in Terraform HCL format:
 
 ```tf
 terraform {
