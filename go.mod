@@ -118,7 +118,7 @@ require (
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
 	github.com/axiomhq/hyperloglog v0.0.0-20230201085229-3ddf4bad03dc
 	github.com/fsnotify/fsnotify v1.6.0
-	github.com/grafana/loki/pkg/push v0.0.0-20230905102801-2cc80c59c4c7
+	github.com/grafana/loki/pkg/push v0.0.0-20230906103734-97d52d948d6e
 	github.com/heroku/x v0.0.61
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0

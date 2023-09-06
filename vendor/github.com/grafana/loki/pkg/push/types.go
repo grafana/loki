@@ -31,7 +31,7 @@ type Entry struct {
 // CategorizedLabels is a set of labels grouped by their type.
 // We are not using the proto generated version but this custom one so that we
 // can use LabelsAdapter instead of LabelsPairAdapter.
-// This type should be kept in sync with the proto generated version so we safely cast it.
+// This type should be kept in sync with the proto generated version so we can safely cast it.
 type CategorizedLabels struct {
 	Stream             LabelsAdapter `protobuf:"bytes,1,rep,name=stream,proto3" json:"stream"`
 	StructuredMetadata LabelsAdapter `protobuf:"bytes,2,rep,name=structuredMetadata,proto3" json:"structuredMetadata"`
@@ -55,7 +55,7 @@ func (m *Stream) MarshalJSON() ([]byte, error) {
 // MarshalJSON implements json.Marshaler.
 // In Loki, this method should only be used by the
 // Legacy encoder used when hitting the deprecated /api/promt/query endpoint.
-// We will ignore the non-indexed labels.
+// We will ignore the structured metadata.
 func (m *Entry) MarshalJSON() ([]byte, error) {
 	type raw Entry
 	e := raw(*m)
