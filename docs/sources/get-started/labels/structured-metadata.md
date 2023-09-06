@@ -6,7 +6,7 @@ description: Attaching metadata to logs.
 # What is structured metadata
 
 {{% admonition type="warning" %}}
-Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki.
+Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki. This feature is not yet available for Cloud Logs users.
 {{% /admonition %}}
 
 One of the powerful features of Loki is parsing logs at query time to extract metadata and build labels out of it.
