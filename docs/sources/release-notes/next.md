@@ -22,8 +22,6 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
 
 -  **New Storage Client**: Add support for IBM cloud object storage as storage client. [PR #8826](https://github.com/grafana/loki/pull/8826)
 
--  **New Promtail Stage**: Add a Promtail stage for probabilistic sampling. [PR #7127](https://github.com/grafana/loki/pull/7127)
-
 -  **Block queries by hash**: Queries can now be blocked by a query hash. [PR #8953](https://github.com/grafana/loki/pull/8953)
 
 -  **logfmt stage improvements**: logfmt parser now performs non-strict parsing by default which helps scan semi-structured log lines. [PR #9626](https://github.com/grafana/loki/pull/9626)
@@ -33,4 +31,4 @@ Grafana Labs is excited to announce the release of Loki ?.?. Here's a summary of
   - The `table-manager` target is deprecated, because it is not used by "single store" implementations.
   - The `-boltdb.shipper.compactor.*` CLI flags are deprecated in favor of `-compactor.*`.
   - The `-ingester.unordered-writes` CLI flag is deprecated and will always default to `true` in the next major release.
-  - For the full list of deprecations see CHANGELOG.md
+  - For the full list of deprecations, see CHANGELOG.md
