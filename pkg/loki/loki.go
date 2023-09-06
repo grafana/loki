@@ -295,7 +295,7 @@ type Loki struct {
 	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
 	querierAPI                *querier.QuerierAPI
 	ingesterQuerier           *querier.IngesterQuerier
-	Store                     *storage.LokiStore
+	Store                     storage.Store
 	tableManager              *index.TableManager
 	frontend                  Frontend
 	ruler                     *base_ruler.Ruler
