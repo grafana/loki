@@ -47,6 +47,23 @@ var (
 	// singleton for each period
 	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
 
+	supportedIndexTypes = []string{
+		config.BoltDBShipperType,
+		config.TSDBType,
+	}
+
+	deprecatedIndexTypes = []string{
+		config.StorageTypeAWS,
+		config.StorageTypeAWSDynamo,
+		config.StorageTypeBigTable,
+		config.StorageTypeBigTableHashed,
+		config.StorageTypeBoltDB,
+		config.StorageTypeCassandra,
+		config.StorageTypeGCP,
+		config.StorageTypeGCPColumnKey,
+		config.StorageTypeGrpc,
+	}
+
 	supportedStorageTypes = []string{
 		// local file system
 		config.StorageTypeFileSystem,
@@ -380,86 +397,101 @@ func (cfg *Config) Validate() error {
 	return cfg.NamedStores.validate()
 }
 
-// NewIndexClient makes a new index client of the desired type.
+// NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
 func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange, cfg Config, schemaCfg config.SchemaConfig, limits StoreLimits, cm ClientMetrics, shardingStrategy indexgateway.ShardingStrategy, registerer prometheus.Registerer, logger log.Logger) (index.Client, error) {
 
-	switch periodCfg.IndexType {
-	case config.StorageTypeInMemory:
-		store := testutils.NewMockStorage()
-		return store, nil
-	case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
+	switch true {
+	case util.StringsContain(testingStorageTypes, periodCfg.IndexType):
+		switch periodCfg.IndexType {
+		case config.StorageTypeInMemory:
+			store := testutils.NewMockStorage()
+			return store, nil
+		}
 
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
-		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
-		}
-		return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
-	case config.StorageTypeGCP:
-		level.Warn(util_log.Logger).Log("msg", "gcp is deprecated. Consider migrating to tsdb")
-		return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable:
-		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
-		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeBigTableHashed:
-		level.Warn(util_log.Logger).Log("msg", "bigtable-hashed is deprecated. Consider migrating to tsdb")
-		cfg.GCPStorageConfig.DistributeKeys = true
-		return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
-	case config.StorageTypeCassandra:
-		level.Warn(util_log.Logger).Log("msg", "cassandra is deprecated. Consider migrating to tsdb")
-		return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
-	case config.StorageTypeBoltDB:
-		level.Warn(util_log.Logger).Log("msg", "local boltdb index is deprecated. Consider migrating to tsdb")
-		return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
-	case config.StorageTypeGrpc:
-		level.Warn(util_log.Logger).Log("msg", "grpc-store is deprecated. Consider migrating to tsdb")
-		return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
-	case config.BoltDBShipperType:
-		if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
-			if indexGatewayClient != nil {
-				return indexGatewayClient, nil
+	case util.StringsContain(supportedIndexTypes, periodCfg.IndexType):
+		switch periodCfg.IndexType {
+		case config.BoltDBShipperType:
+			if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
+				if indexGatewayClient != nil {
+					return indexGatewayClient, nil
+				}
+
+				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
+				if err != nil {
+					return nil, err
+				}
+
+				indexGatewayClient = gateway
+				return gateway, nil
 			}
 
-			gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
+			if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
+				return client, nil
+			}
+
+			objectType := periodCfg.ObjectType
+			if cfg.BoltDBShipperConfig.SharedStoreType != "" {
+				objectType = cfg.BoltDBShipperConfig.SharedStoreType
+			}
+
+			objectClient, err := NewObjectClient(objectType, cfg, cm)
 			if err != nil {
 				return nil, err
 			}
 
-			indexGatewayClient = gateway
-			return gateway, nil
+			var filterFn downloads.TenantFilter
+			if shardingStrategy != nil {
+				filterFn = shardingStrategy.FilterTenants
+			}
+			shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+			if err != nil {
+				return nil, err
+			}
+
+			boltdbIndexClientsWithShipper[periodCfg.From] = shipper
+			return shipper, nil
+
+		case config.TSDBType:
+			// TODO(chaudum): Move TSDB index client creation into this code path
+			return nil, fmt.Errorf("code path not supported")
 		}
 
-		if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
-			return client, nil
-		}
+	case util.StringsContain(deprecatedIndexTypes, periodCfg.IndexType):
+		level.Warn(util_log.Logger).Log("msg", fmt.Sprintf("%s is deprecated. Consider migrating to tsdb", periodCfg.IndexType))
 
-		objectType := periodCfg.ObjectType
-		if cfg.BoltDBShipperConfig.SharedStoreType != "" {
-			objectType = cfg.BoltDBShipperConfig.SharedStoreType
-		}
+		switch periodCfg.IndexType {
+		case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
+			if cfg.AWSStorageConfig.DynamoDB.URL == nil {
+				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+			}
+			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
+			if len(path) > 0 {
+				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			}
+			return aws.NewDynamoDBIndexClient(cfg.AWSStorageConfig.DynamoDBConfig, schemaCfg, registerer)
 
-		objectClient, err := NewObjectClient(objectType, cfg, cm)
-		if err != nil {
-			return nil, err
-		}
+		case config.StorageTypeGCP:
+			return gcp.NewStorageClientV1(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 
-		var filterFn downloads.TenantFilter
-		if shardingStrategy != nil {
-			filterFn = shardingStrategy.FilterTenants
-		}
-		shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
-		if err != nil {
-			return nil, err
-		}
+		case config.StorageTypeGCPColumnKey, config.StorageTypeBigTable:
+			return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
 
-		boltdbIndexClientsWithShipper[periodCfg.From] = shipper
-		return shipper, nil
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v", periodCfg.IndexType, config.BoltDBShipperType, config.TSDBType)
+		case config.StorageTypeBigTableHashed:
+			cfg.GCPStorageConfig.DistributeKeys = true
+			return gcp.NewStorageClientColumnKey(context.Background(), cfg.GCPStorageConfig, schemaCfg)
+
+		case config.StorageTypeCassandra:
+			return cassandra.NewStorageClient(cfg.CassandraStorageConfig, schemaCfg, registerer)
+
+		case config.StorageTypeBoltDB:
+			return local.NewBoltDBIndexClient(cfg.BoltDBConfig)
+
+		case config.StorageTypeGrpc:
+			return grpc.NewStorageClient(cfg.GrpcConfig, schemaCfg)
+		}
 	}
+
+	return nil, fmt.Errorf("unrecognized index client type %s, choose one of: %s", periodCfg.IndexType, strings.Join(supportedIndexTypes, ","))
 }
 
 // NewChunkClient makes a new chunk.Client of the desired types.
