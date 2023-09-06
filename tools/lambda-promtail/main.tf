@@ -95,7 +95,7 @@ data "aws_iam_policy_document" "lambda_kms" {
 # S3
 
 resource "aws_iam_role_policy" "lambda_s3" {
-  count = length(var.bucket_names) > 0 ? 1 : 0
+  count = length(var.bucket_names) > 0 && var.s3_assume_role == "" ? 1 : 0
 
   name   = "s3"
   role   = aws_iam_role.this.name
@@ -103,7 +103,7 @@ resource "aws_iam_role_policy" "lambda_s3" {
 }
 
 data "aws_iam_policy_document" "lambda_s3" {
-  count = length(var.bucket_names) > 0 ? 1 : 0
+  count = length(var.bucket_names) > 0 && var.s3_assume_role == "" ? 1 : 0
 
   statement {
     actions = [
@@ -114,6 +114,27 @@ data "aws_iam_policy_document" "lambda_s3" {
     ]
   }
 
+}
+
+resource "aws_iam_role_policy" "lambda_s3_assume_role" {
+  count = length(var.bucket_names) > 0 && var.s3_assume_role != "" ? 1 : 0
+
+  name   = "s3_assume_role"
+  role   = aws_iam_role.this.name
+  policy = data.aws_iam_policy_document.lambda_s3_assume_role[0].json
+}
+
+data "aws_iam_policy_document" "lambda_s3_assume_role" {
+  count = length(var.bucket_names) > 0 && var.s3_assume_role != "" ? 1 : 0
+
+  statement {
+    actions = [
+      "sts:AssumeRole",
+    ]
+    resources = [
+      var.s3_assume_role,
+    ]
+  }
 }
 
 # Kinesis
@@ -178,6 +199,7 @@ resource "aws_lambda_function" "this" {
       TENANT_ID                = var.tenant_id
       SKIP_TLS_VERIFY          = var.skip_tls_verify
       PRINT_LOG_LINE           = var.print_log_line
+      S3_ASSUME_ROLE           = var.s3_assume_role
     }
   }
 

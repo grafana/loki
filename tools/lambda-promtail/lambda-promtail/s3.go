@@ -21,7 +21,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 type parserConfig struct {
@@ -134,6 +136,11 @@ func getS3Client(ctx context.Context, region string) (*s3.Client, error) {
 		cfg, err := config.LoadDefaultConfig(ctx, config.WithRegion(region))
 		if err != nil {
 			return nil, err
+		}
+		if s3AssumeRole != "" {
+			stsClient := sts.NewFromConfig(cfg)
+			creds := stscreds.NewAssumeRoleProvider(stsClient, s3AssumeRole)
+			cfg.Credentials = aws.NewCredentialsCache(creds)
 		}
 		s3Client = s3.NewFromConfig(cfg)
 		s3Clients[region] = s3Client

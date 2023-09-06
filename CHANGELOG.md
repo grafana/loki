@@ -31,6 +31,7 @@
 #### Promtail
 
 ##### Enhancements
+* [10464](https://github.com/grafana/loki/pull/10464) **lpugoy**: Lambda-Promtail: Enable assume role to get from S3
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
 
