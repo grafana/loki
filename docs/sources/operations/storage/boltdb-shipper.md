@@ -1,10 +1,10 @@
 ---
-title: Single store (boltdb-shipper)
-menuTitle:  Single store (BoltDB)
-description: Describes the deprecated boltdb-shipper single storage index.
-weight:  200
+title: Single Store BoltDB (boltdb-shipper)
+menuTitle: BoltDB Shipper
+description: Describes the deprecated boltdb-shipper single store usage.
+weight: 200
 ---
-# Single store (boltdb-shipper)
+# Single Store BoltDB (`boltdb-shipper`)
 
 {{% admonition type="note" %}}
 Note that single store BoltDB Shipper is a legacy storage option and is not recommended for new deployments. The [TSDB]({{< relref "./tsdb" >}}) index is the recommended index.
