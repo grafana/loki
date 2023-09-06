@@ -9,7 +9,7 @@
 #### Loki
 
 ##### Enhancements
-* [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Add support for WAF logs in S3
+* [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10324](https://github.com/grafana/loki/pull/10324) **ashwanthgoli**: Deprecate ingester.unordered-writes and a few unused configs(log.use-buffered, log.use-sync, frontend.forward-headers-list)
 
 * [10322](https://github.com/grafana/loki/pull/10322) **chaudum**: Deprecate misleading setting `-ruler.evaluation-delay-duration`.
