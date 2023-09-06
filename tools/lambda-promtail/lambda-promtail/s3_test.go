@@ -743,7 +743,7 @@ func TestGetUnixSecNsec(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sec, nsec, err := getUnixSecNsec(tt.args.s)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("toMicroseconds() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("getUnixSecNsec() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			require.Equal(t, tt.expectedSec, sec)
 			require.Equal(t, tt.expectedNsec, nsec)
