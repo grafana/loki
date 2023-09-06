@@ -1606,7 +1606,7 @@ type entryBufferedIterator struct {
 	iterOptions iter.EntryIteratorOptions
 
 	cur        logproto.Entry
-	currLabels log.CategorizedLabelsResult
+	currLabels log.LabelsResult
 }
 
 func (e *entryBufferedIterator) Entry() logproto.Entry {

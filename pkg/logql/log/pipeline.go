@@ -23,8 +23,8 @@ type StreamPipeline interface {
 	BaseLabels() LabelsResult
 	// Process processes a log line and returns the transformed line and the labels.
 	// The buffer returned for the log line can be reused on subsequent calls to Process and therefore must be copied.
-	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (resultLine []byte, resultLabels CategorizedLabelsResult, matches bool)
-	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (resultLine string, resultLabels CategorizedLabelsResult, matches bool)
+	Process(ts int64, line []byte, structuredMetadata ...labels.Label) (resultLine []byte, resultLabels LabelsResult, matches bool)
+	ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (resultLine string, resultLabels LabelsResult, matches bool)
 }
 
 // Stage is a single step of a Pipeline.
@@ -87,13 +87,13 @@ type noopStreamPipeline struct {
 	builder *LabelsBuilder
 }
 
-func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, CategorizedLabelsResult, bool) {
+func (n noopStreamPipeline) Process(_ int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	n.builder.Reset()
 	n.builder.Add(StructuredMetadataLabel, structuredMetadata...)
-	return line, n.builder.CategorizedLabelsResult(), true
+	return line, n.builder.LabelsResult(), true
 }
 
-func (n noopStreamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, CategorizedLabelsResult, bool) {
+func (n noopStreamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, LabelsResult, bool) {
 	_, lr, ok := n.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 	return line, lr, ok
 }
@@ -201,7 +201,7 @@ func (p *pipeline) Reset() {
 	}
 }
 
-func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, CategorizedLabelsResult, bool) {
+func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	var ok bool
 	p.builder.Reset()
 	p.builder.Add(StructuredMetadataLabel, structuredMetadata...)
@@ -212,10 +212,10 @@ func (p *streamPipeline) Process(ts int64, line []byte, structuredMetadata ...la
 			return nil, nil, false
 		}
 	}
-	return line, p.builder.CategorizedLabelsResult(), true
+	return line, p.builder.LabelsResult(), true
 }
 
-func (p *streamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, CategorizedLabelsResult, bool) {
+func (p *streamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, LabelsResult, bool) {
 	// Stages only read from the line.
 	lb, lr, ok := p.Process(ts, unsafeGetBytes(line), structuredMetadata...)
 	// but the returned line needs to be copied.
@@ -296,7 +296,7 @@ func (sp *filteringStreamPipeline) BaseLabels() LabelsResult {
 	return sp.pipeline.BaseLabels()
 }
 
-func (sp *filteringStreamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, CategorizedLabelsResult, bool) {
+func (sp *filteringStreamPipeline) Process(ts int64, line []byte, structuredMetadata ...labels.Label) ([]byte, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue
@@ -311,7 +311,7 @@ func (sp *filteringStreamPipeline) Process(ts int64, line []byte, structuredMeta
 	return sp.pipeline.Process(ts, line, structuredMetadata...)
 }
 
-func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, CategorizedLabelsResult, bool) {
+func (sp *filteringStreamPipeline) ProcessString(ts int64, line string, structuredMetadata ...labels.Label) (string, LabelsResult, bool) {
 	for _, filter := range sp.filters {
 		if ts < filter.start || ts > filter.end {
 			continue

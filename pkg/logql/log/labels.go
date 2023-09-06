@@ -11,25 +11,38 @@ import (
 
 const MaxInternedStrings = 1024
 
-var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels(), labels.EmptyLabels().Hash())
+var EmptyLabelsResult = NewLabelsResult(labels.EmptyLabels().String(), labels.EmptyLabels().Hash(), labels.EmptyLabels(), labels.EmptyLabels(), labels.EmptyLabels())
 
 // LabelsResult is a computed labels result that contains the labels set with associated string and hash.
 // The is mainly used for caching and returning labels computations out of pipelines and stages.
 type LabelsResult interface {
 	String() string
 	Labels() labels.Labels
+	Stream() labels.Labels
+	StructuredMetadata() labels.Labels
+	Parsed() labels.Labels
 	Hash() uint64
 }
 
-// NewLabelsResult creates a new LabelsResult from a labels set and a hash.
-func NewLabelsResult(lbs labels.Labels, hash uint64) LabelsResult {
-	return &labelsResult{lbs: lbs, s: lbs.String(), h: hash}
+// NewLabelsResult creates a new LabelsResult.
+// It takes the string representation of the labels, the hash of the labels and the labels categorized.
+func NewLabelsResult(allLabelsStr string, hash uint64, stream, structuredMetadata, parsed labels.Labels) LabelsResult {
+	return &labelsResult{
+		s:                  allLabelsStr,
+		h:                  hash,
+		stream:             stream,
+		structuredMetadata: structuredMetadata,
+		parsed:             parsed,
+	}
 }
 
 type labelsResult struct {
-	lbs labels.Labels
-	s   string
-	h   uint64
+	s string
+	h uint64
+
+	stream             labels.Labels
+	structuredMetadata labels.Labels
+	parsed             labels.Labels
 }
 
 func (l labelsResult) String() string {
@@ -37,74 +50,32 @@ func (l labelsResult) String() string {
 }
 
 func (l labelsResult) Labels() labels.Labels {
-	return l.lbs
+	return flattenLabels(nil, l.stream, l.structuredMetadata, l.parsed)
 }
 
 func (l labelsResult) Hash() uint64 {
 	return l.h
 }
 
-type CategorizedLabelsResult interface {
-	LabelsResult
-	Stream() labels.Labels
-	StructuredMetadata() labels.Labels
-	Parsed() labels.Labels
-}
-
-// NewCategorizedLabelsResult creates a new NewCategorizedLabelsResult
-func NewCategorizedLabelsResult(stream, structuredMetadata, parsed labels.Labels) CategorizedLabelsResult {
-	allLbls := make(labels.Labels, 0, len(stream)+len(structuredMetadata)+len(parsed))
-	allLbls = append(allLbls, stream...)
-	allLbls = append(allLbls, structuredMetadata...)
-	allLbls = append(allLbls, parsed...)
-	sort.Sort(allLbls)
-
-	return &categorizedLabelsResult{
-		LabelsResult:       NewLabelsResult(allLbls, allLbls.Hash()),
-		stream:             stream,
-		structuredMetadata: structuredMetadata,
-		parsed:             parsed,
-	}
-}
-
-type categorizedLabelsResult struct {
-	LabelsResult
-	stream             labels.Labels
-	structuredMetadata labels.Labels
-	parsed             labels.Labels
-}
-
-func (g categorizedLabelsResult) Stream() labels.Labels {
-	if len(g.stream) == 0 {
+func (l labelsResult) Stream() labels.Labels {
+	if len(l.stream) == 0 {
 		return nil
 	}
-	return g.stream
+	return l.stream
 }
 
-func (g categorizedLabelsResult) StructuredMetadata() labels.Labels {
-	if len(g.structuredMetadata) == 0 {
+func (l labelsResult) StructuredMetadata() labels.Labels {
+	if len(l.structuredMetadata) == 0 {
 		return nil
 	}
-	return g.structuredMetadata
+	return l.structuredMetadata
 }
 
-func (g categorizedLabelsResult) Parsed() labels.Labels {
-	if len(g.parsed) == 0 {
+func (l labelsResult) Parsed() labels.Labels {
+	if len(l.parsed) == 0 {
 		return nil
 	}
-	return g.parsed
-}
-
-func (g categorizedLabelsResult) Labels() labels.Labels {
-	return g.LabelsResult.Labels()
-}
-
-func (g categorizedLabelsResult) String() string {
-	return g.Labels().String()
-}
-
-func (g categorizedLabelsResult) Hash() uint64 {
-	return g.Labels().Hash()
+	return l.parsed
 }
 
 type hasher struct {
@@ -220,7 +191,7 @@ func (b *BaseLabelsBuilder) ForLabels(lbs labels.Labels, hash uint64) *LabelsBui
 		}
 		return res
 	}
-	labelResult := NewLabelsResult(lbs, hash)
+	labelResult := NewLabelsResult(lbs.String(), hash, lbs, labels.EmptyLabels(), labels.EmptyLabels())
 	b.resultCache[hash] = labelResult
 	res := &LabelsBuilder{
 		base:              lbs,
@@ -490,30 +461,45 @@ func (b *LabelsBuilder) LabelsResult() LabelsResult {
 	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
 		return b.currentResult
 	}
-	return b.toResult(b.labels(allCategories...))
-}
 
-// CategorizedLabelsResult returns the LabelsResult from the builder.
-// No grouping is applied and the cache is used when possible.
-func (b *LabelsBuilder) CategorizedLabelsResult() CategorizedLabelsResult {
-	// unchanged path.
-	if !b.hasDel() && !b.hasAdd() && !b.HasErr() {
-		return NewCategorizedLabelsResult(b.base, labels.EmptyLabels(), labels.EmptyLabels())
+	stream := b.labels(StreamLabel).Copy()
+	structuredMetadata := b.labels(StructuredMetadataLabel).Copy()
+	parsed := b.labels(ParsedLabel).Copy()
+	b.buf = flattenLabels(b.buf, stream, structuredMetadata, parsed)
+	hash := b.hasher.Hash(b.buf)
+	if cached, ok := b.resultCache[hash]; ok {
+		return cached
 	}
 
-	return NewCategorizedLabelsResult(
-		b.labels(StreamLabel).Copy(),
-		b.labels(StructuredMetadataLabel).Copy(),
-		b.labels(ParsedLabel).Copy(),
-	)
+	return NewLabelsResult(b.buf.String(), hash, stream, structuredMetadata, parsed)
 }
 
-func (b *BaseLabelsBuilder) toResult(buf labels.Labels) LabelsResult {
+func flattenLabels(buf labels.Labels, many ...labels.Labels) labels.Labels {
+	var size int
+	for _, lbls := range many {
+		size += len(lbls)
+	}
+
+	if buf == nil || cap(buf) < size {
+		buf = make(labels.Labels, 0, size)
+	} else {
+		buf = buf[:0]
+	}
+
+	for _, lbls := range many {
+		buf = append(buf, lbls...)
+	}
+	sort.Sort(buf)
+	return buf
+}
+
+func (b *BaseLabelsBuilder) toUncategorizedResult(buf labels.Labels) LabelsResult {
 	hash := b.hasher.Hash(buf)
 	if cached, ok := b.resultCache[hash]; ok {
 		return cached
 	}
-	res := NewLabelsResult(buf.Copy(), hash)
+
+	res := NewLabelsResult(buf.String(), hash, buf, nil, nil)
 	b.resultCache[hash] = res
 	return res
 }
@@ -574,7 +560,7 @@ Outer:
 			}
 		}
 	}
-	return b.toResult(b.buf)
+	return b.toUncategorizedResult(b.buf)
 }
 
 func (b *LabelsBuilder) withoutResult() LabelsResult {
@@ -621,7 +607,7 @@ Outer:
 		}
 	}
 	sort.Sort(b.buf)
-	return b.toResult(b.buf)
+	return b.toUncategorizedResult(b.buf)
 }
 
 func (b *LabelsBuilder) toBaseGroup() LabelsResult {
@@ -634,7 +620,7 @@ func (b *LabelsBuilder) toBaseGroup() LabelsResult {
 	} else {
 		lbs = labels.NewBuilder(b.base).Keep(b.groups...).Labels()
 	}
-	res := NewLabelsResult(lbs, lbs.Hash())
+	res := NewLabelsResult(lbs.String(), lbs.Hash(), lbs, nil, nil)
 	b.groupedResult = res
 	return res
 }

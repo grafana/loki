@@ -40,17 +40,18 @@ func TestLabelsBuilder_LabelsError(t *testing.T) {
 	b := NewBaseLabelsBuilder().ForLabels(lbs, lbs.Hash())
 	b.Reset()
 	b.SetErr("err")
-	lbsWithErr := b.LabelsResult().Labels()
-	lbsCatWithErr := b.CategorizedLabelsResult()
+	lbsWithErr := b.LabelsResult()
 
 	expectedLbs := labels.FromStrings(
 		logqlmodel.ErrorLabel, "err",
 		"already", "in",
 	)
-	require.Equal(t, expectedLbs, lbsWithErr)
-	require.Equal(t, labels.FromStrings("already", "in"), lbsCatWithErr.Stream())
-	require.Nil(t, lbsCatWithErr.StructuredMetadata())
-	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsCatWithErr.Parsed())
+	require.Equal(t, expectedLbs, lbsWithErr.Labels())
+	require.Equal(t, expectedLbs.String(), lbsWithErr.String())
+	require.Equal(t, expectedLbs.Hash(), lbsWithErr.Hash())
+	require.Equal(t, labels.FromStrings("already", "in"), lbsWithErr.Stream())
+	require.Nil(t, lbsWithErr.StructuredMetadata())
+	require.Equal(t, labels.FromStrings(logqlmodel.ErrorLabel, "err"), lbsWithErr.Parsed())
 
 	// make sure the original labels is unchanged.
 	require.Equal(t, labels.FromStrings("already", "in"), lbs)
@@ -95,14 +96,14 @@ func TestLabelsBuilder_LabelsResult(t *testing.T) {
 	expected = append(expected, expectedParsedLbls...)
 	expected = labels.New(expected...)
 
-	assertLabelResult(t, expected, b.LabelsResult())
+	actual := b.LabelsResult()
+	assertLabelResult(t, expected, actual)
 	// cached.
-	assertLabelResult(t, expected, b.LabelsResult())
+	assertLabelResult(t, expected, actual)
 
-	categorizedResult := b.CategorizedLabelsResult()
-	assert.Equal(t, expectedStreamLbls, categorizedResult.Stream())
-	assert.Equal(t, expectedStucturedMetadataLbls, categorizedResult.StructuredMetadata())
-	assert.Equal(t, expectedParsedLbls, categorizedResult.Parsed())
+	assert.Equal(t, expectedStreamLbls, actual.Stream())
+	assert.Equal(t, expectedStucturedMetadataLbls, actual.StructuredMetadata())
+	assert.Equal(t, expectedParsedLbls, actual.Parsed())
 }
 
 func TestLabelsBuilder_GroupedLabelsResult(t *testing.T) {
