@@ -113,6 +113,7 @@ require (
 
 require (
 	github.com/Azure/go-autorest/autorest v0.11.29
+	github.com/DataDog/sketches-go v1.4.2
 	github.com/DmitriyVTitov/size v1.5.0
 	github.com/IBM/go-sdk-core/v5 v5.13.1
 	github.com/IBM/ibm-cos-sdk-go v1.10.0
@@ -121,6 +122,7 @@ require (
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.61
 	github.com/influxdata/tdigest v0.0.1
+	github.com/montanaflynn/stats v0.7.1
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
