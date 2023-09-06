@@ -1649,7 +1649,7 @@ spec:
                 - /manager
                 env:
                 - name: RELATED_IMAGE_LOKI
-                  value: docker.io/grafana/loki:2.9.0
+                  value: docker.io/grafana/loki:2.8.3
                 - name: RELATED_IMAGE_GATEWAY
                   value: quay.io/observatorium/api:latest
                 - name: RELATED_IMAGE_OPA
@@ -1772,7 +1772,7 @@ spec:
   provider:
     name: Grafana Loki SIG Operator
   relatedImages:
-  - image: docker.io/grafana/loki:2.9.0
+  - image: docker.io/grafana/loki:2.8.3
     name: loki
   - image: quay.io/observatorium/api:latest
     name: gateway
