@@ -41,7 +41,7 @@ Action stages:
   - [static_labels]({{< relref "./static_labels" >}}): Add static-labels to the log entry. 
   - [metrics]({{< relref "./metrics" >}}): Calculate metrics based on extracted data.
   - [tenant]({{< relref "./tenant" >}}): Set the tenant ID value to use for the log entry.
-  - [non_indexed_labels]({{< relref "./non_indexed_labels" >}}): Add non-indexed labels to the log entry.
+  - [structured_metadata]({{< relref "./structured_metadata" >}}): Add structured metadata to the log entry.
 
 Filtering stages:
 
