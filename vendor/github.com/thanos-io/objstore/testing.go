@@ -309,6 +309,6 @@ func (d *delayingBucket) IsObjNotFoundErr(err error) bool {
 	return d.bkt.IsObjNotFoundErr(err)
 }
 
-func (d *delayingBucket) IsCustomerManagedKeyError(err error) bool {
-	return d.bkt.IsCustomerManagedKeyError(err)
+func (d *delayingBucket) IsAccessDeniedErr(err error) bool {
+	return d.bkt.IsAccessDeniedErr(err)
 }

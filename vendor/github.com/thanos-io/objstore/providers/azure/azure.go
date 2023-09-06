@@ -235,9 +235,12 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return bloberror.HasCode(err, bloberror.BlobNotFound) || bloberror.HasCode(err, bloberror.InvalidURI)
 }
 
-// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
-func (b *Bucket) IsCustomerManagedKeyError(_ error) bool {
-	return false
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *Bucket) IsAccessDeniedErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	return bloberror.HasCode(err, bloberror.AuthorizationPermissionMismatch) || bloberror.HasCode(err, bloberror.InsufficientAccountPermissions)
 }
 
 func (b *Bucket) getBlobReader(ctx context.Context, name string, httpRange blob.HTTPRange) (io.ReadCloser, error) {
