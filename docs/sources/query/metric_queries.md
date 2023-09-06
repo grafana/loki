@@ -59,7 +59,7 @@ Examples:
 
 ### Unwrapped range aggregations
 
-Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors]({{< relref ".#pipeline-errors" >}}).
+Unwrapped ranges uses extracted labels as sample values instead of log lines. However to select which label will be used within the aggregation, the log query must end with an unwrap expression and optionally a label filter expression to discard [errors]({{< relref "./log_queries#pipeline-errors" >}}).
 
 The unwrap expression is noted `| unwrap label_identifier` where the label identifier is the label name to use for extracting sample values.
 
@@ -96,6 +96,20 @@ Which can be used to aggregate over distinct labels dimensions by including a `w
 `without` removes the listed labels from the result vector, while all other labels are preserved the output. `by` does the opposite and drops labels that are not listed in the `by` clause, even if their label values are identical between all elements of the vector.
 
 See [Unwrap examples]({{< relref "./query_examples#unwrap-examples" >}}) for query examples that use the unwrap expression.
+
+>Metric queries cannot contain errors, in case errors are found during execution, Loki will return an error and appropriate status code.
+
+If you need to remove errors from an unwrap expression, place a relevant label filter expression `__error__ = ""` after unwrap to remove all or specific errors.
+
+```logql
+quantile_over_time(
+	0.99,
+	{container="ingress-nginx",service="hosted-grafana"}
+	| json
+	| unwrap response_latency_seconds
+	| __error__=""[1m]
+	) by (cluster)
+```
 
 ## Built-in aggregation operators
 

@@ -82,6 +82,23 @@ Regex log stream newlines:
 - `{name =~ "(?s).*mysql.*}`: match log label values with newline character
 - `{name =~ "[\S\s]*mysql[\S\s]*}`: match log label values with newline character
 
+## Comments
+
+LogQL queries can be commented using the `#` character:
+
+```logql
+{app="foo"} # anything that comes after will not be interpreted in your query
+```
+
+With multi-line LogQL queries, the query parser can exclude whole or partial lines using `#`:
+
+```logql
+{app="foo"}
+    | json
+    # this line will be ignored
+    | bar="baz" # this checks if bar = "baz"
+```
+
 ## Log pipeline
 
 A log pipeline can be appended to a log stream selector to further process and filter log streams. It is composed of a set of expressions. Each expression is executed in left to right sequence for each log line. If an expression filters out a log line, the pipeline will stop processing the current log line and start processing the next log line.
@@ -239,7 +256,7 @@ Using Duration, Number and Bytes will convert the label value prior to comparisi
 
 For instance, `logfmt | duration > 1m and bytes_consumed > 20MB`
 
-If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors]({{< relref "..#pipeline-errors" >}}) section.
+If the conversion of the label value fails, the log line is not filtered and an `__error__` label is added. To filters those errors see the [pipeline errors](#pipeline-errors) section.
 
 You can chain multiple predicates using `and` and `or` which respectively express the `and` and `or` binary operations. `and` can be equivalently expressed by a comma, a space or another pipe. Label filters can be place anywhere in a log pipeline.
 
@@ -694,3 +711,24 @@ the result will be
 {level="info"} {"app": "other-service", "level": "info", "method": "GET", "path": "/", "host": "grafana.net", "status": "200"}
 ```
 
+## Pipeline Errors
+
+There are multiple reasons which cause pipeline processing errors, such as:
+
+- A numeric label filter may fail to turn a label value into a number
+- A metric conversion for a label may fail.
+- A log line is not a valid json document.
+- etc...
+
+When those failures happen, Loki won't filter out those log lines. Instead they are passed into the next stage of the pipeline with a new system label named `__error__`. The only way to filter out errors is by using a label filter expressions. The `__error__` label can't be renamed via the language.
+
+For example to remove json errors:
+
+```logql
+  {cluster="ops-tools1",container="ingress-nginx"}
+    | json
+    | __error__ != "JSONParserErr"
+```
+
+Alternatively you can remove all error using a catch all matcher such as `__error__ = ""` or even show only errors using `__error__ != ""`.
+Note that the filter should be placed after the stage that generated this error.
