@@ -9,7 +9,6 @@ import (
 
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
@@ -218,7 +217,7 @@ func TestStreams_ToProto(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tt.s.ToProto(); !reflect.DeepEqual(got, tt.want) {
-				assert.Equal(t, tt.want, got)
+				t.Errorf("Streams.ToProto() = %v, want %v", got, tt.want)
 			}
 		})
 	}

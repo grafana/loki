@@ -1629,13 +1629,13 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, categorizedLabels, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
 		if !matches {
 			continue
 		}
 
 		e.stats.AddPostFilterLines(1)
-		e.currLabels = categorizedLabels
+		e.currLabels = lbs
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 

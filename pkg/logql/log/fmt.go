@@ -399,7 +399,6 @@ func (lf *LabelsFormatter) Process(ts int64, l []byte, lbs *LabelsBuilder) ([]by
 			lbs.SetErrorDetails(err.Error())
 			continue
 		}
-		// TODO(salvacorts): Not sure if this is correct
 		lbs.Set(ParsedLabel, f.Name, lf.buf.String())
 	}
 	return l, true

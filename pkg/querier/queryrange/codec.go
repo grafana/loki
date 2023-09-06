@@ -1283,11 +1283,6 @@ func getQueryTags(ctx context.Context) string {
 	return v
 }
 
-func getEncodingFlags(ctx context.Context) string {
-	v, _ := ctx.Value(httpreq.LokiEncodingFlagsHeader).(string) // it's ok to be empty
-	return v
-}
-
 func NewEmptyResponse(r queryrangebase.Request) (queryrangebase.Response, error) {
 	switch req := r.(type) {
 	case *LokiSeriesRequest:

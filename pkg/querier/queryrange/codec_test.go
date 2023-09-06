@@ -858,12 +858,10 @@ func Test_codec_EncodeResponse(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			u := &url.URL{Path: tt.path}
 			h := http.Header{}
 			for k, v := range tt.queryParams {
 				h.Set(k, v)
-			}
-			u := &url.URL{
-				Path: tt.path,
 			}
 			req := &http.Request{
 				Method:     "GET",
