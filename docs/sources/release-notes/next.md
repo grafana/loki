@@ -1,7 +1,8 @@
 ---
 title: V?.?
 description: Version ?.? release notes
-weight: 55
+weight: 10000
+draft: true
 ---
 
 # V?.?
@@ -14,4 +15,3 @@ Grafana Labs is excited to announce the release of Loki ?.?.? Here's a summary o
 ## Upgrade Considerations
 
 ## Bug fixes
->>>>>>> 7d93c3080 (Freeze v2.9.0 release notes on `main` (#10481))
