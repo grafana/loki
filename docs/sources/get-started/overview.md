@@ -12,17 +12,17 @@ aliases:
 
 Loki is a horizontally-scalable, highly-available, multi-tenant log aggregation system inspired by [Prometheus](https://prometheus.io/). Loki differs from Prometheus by focusing on logs instead of metrics, and collecting logs via push, instead of pull.
 
-Loki is designed to be very cost effective and highly scalable. Unlike other logging systems, Loki does not index the contents of the logs, but only indexes metadata about your logs as a set of labels for each log stream. 
+Loki is designed to be very cost effective and highly scalable. Unlike other logging systems, Loki does not index the contents of the logs, but only indexes metadata about your logs as a set of labels for each log stream.
 
 A log stream is a set of logs which share the same labels. Labels help Loki to find a log stream within your data store, so having a quality set of labels is key to efficient query execution.
 
-Log data is then compressed and stored in chunks in an object store such as Amazon S3 or Google Cloud Storage, or even, for development or proof of concept, on the filesystem. A small index and highly compressed chunks simplifies the operation and significantly lowers the cost of Loki.
+Log data is then compressed and stored in chunks in an object store such as Amazon Simple Storage Service (S3) or Google Cloud Storage (GCS), or even, for development or proof of concept, on the filesystem. A small index and highly compressed chunks simplify the operation and significantly lower the cost of Loki.
 
 {{< figure  src="../loki-overview-2.png" caption="**Loki logging stack**" >}}
 
 A typical Loki-based logging stack consists of 3 components:
 
-- **Agent** - An agent or client, for example `promtail`, which is distributed with Loki, or the Grafana Agent. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
+- **Agent** - An agent or client, for example Promtail, which is distributed with Loki, or the Grafana Agent. The agent scrapes logs, turns the logs into streams by adding labels, and pushes the streams to Loki through an HTTP API.
 
 - **Loki** - The main server, responsible for ingesting and storing logs and processing queries. It can be deployed in three different configurations, for more information see [deployment modes]{{< relref "../get-started/deployment-modes/" >}}.
   
@@ -32,7 +32,7 @@ A typical Loki-based logging stack consists of 3 components:
 
 - **Scalability** - Loki is designed for scalability, and can scale from as small as running on a Raspberry Pi to ingesting petabytes a day. 
 In its most common deployment, “simple scalable mode”, Loki decouples requests into separate read and write paths, so that you can independently scale them, which leads to flexible large-scale installations that can quickly adapt to meet your workload at any given time.
-If needed, each of Loki's components can also be run as microservices designed to run statelessly and natively within Kubernetes.
+If needed, each of Loki's components can also be run as microservices designed to run natively within Kubernetes.
 
 - **Multi-tenancy** - Loki allows multiple tenants to share a single Loki instance. With multi-tenancy, the data and requests of each tenant is completely isolated from the others.
 Multi-tenancy is [configured] (../operations/multi-tenancy) by assigning a tenant ID in the agent.
