@@ -4,7 +4,7 @@ menuTitle: TSDB
 description: Describes the tsdb single store usage.
 weight: 100
 ---
-# Single Store TSDB (`tsdb`)
+# Single Store TSDB (tsdb)
 
 Starting with Loki v2.8, TSDB is the recommended Loki index. It is heavily inspired by the Prometheus's TSDB [sub-project](https://github.com/prometheus/prometheus/tree/main/tsdb). For a deeper explanation you can read Loki maintainer Owen's [blog post](https://lokidex.com/posts/tsdb/). The short version is that this new index is more efficient, faster, and more scalable. It also resides in object storage like the [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) index which preceded it.
 
