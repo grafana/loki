@@ -2,7 +2,7 @@
 title: Upgrade Loki
 menuTitle:  Upgrade
 description: Upgrading Grafana Loki
-aliases: 
+aliases:
   - ../upgrading/
 weight: 400
 ---
@@ -34,7 +34,7 @@ The `tr -d '\r'` is likely not necessary for most people, seems like WSL2 was sn
 The output is incredibly verbose as it shows the entire internal config struct used to run Loki, you can play around with the diff command if you prefer to only show changes or a different style output.
 
 
-## Main / Unreleased
+## 2.9.0
 
 ### Loki
 
@@ -101,7 +101,7 @@ You can use `--keep-empty` flag to retain them.
 ##### Deprecated PodDisruptionBudget definition has been removed
 
 The `policy/v1beta1` API version of PodDisruptionBudget is no longer served as of Kubernetes v1.25.
-To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21. 
+To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21.
 
 No impact is expected if you use Kubernetes v1.21 or newer.
 
