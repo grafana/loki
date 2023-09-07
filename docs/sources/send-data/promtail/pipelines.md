@@ -203,5 +203,5 @@ given log entry.
 
 ## Stages
 
-Refer to the [Promtail Stages Configuration Reference]({{< relref "./stages/_index.md#stages" >}}) for the
+Refer to the [Promtail Stages Configuration Reference]({{< relref "./stages/_index.md#prometheus-pipeline-stages" >}}) for the
 schema on the various supported stages supported.

@@ -48,7 +48,7 @@ match:
     [<stages>...]
 ```
 
-Refer to the [Promtail Stages Configuration Reference]({{< relref "./_index.md#stages" >}}) for the
+Refer to the [Promtail Stages Configuration Reference]({{< relref "./_index.md#prometheus-pipeline-stages" >}}) for the
 schema on the various stages supported here.
 
 ### Example
