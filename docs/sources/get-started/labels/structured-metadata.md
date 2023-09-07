@@ -26,7 +26,7 @@ You have the option to attach structured metadata to log lines in the push paylo
 For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
 
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
-See the [Promtail: Structured metadata stage]({{< relref "../../clients/promtail/stages/structured_metadata" >}}) for more information.
+See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promtail/stages/structured_metadata" >}}) for more information.
 
 ## Querying structured metadata
 
