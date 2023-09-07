@@ -1,6 +1,8 @@
 ---
 title: Write Ahead Log
-description: Write Ahead Log
+menuTitle:  
+description: Describes the Loki Write Ahead Log (WAL).
+weight:  500
 ---
 
 # Write Ahead Log

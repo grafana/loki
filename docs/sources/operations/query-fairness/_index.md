@@ -2,7 +2,7 @@
 title: Query fairness within tenants
 menuTitle: Query fairness
 description: The scheduler can guarantee query fairness across multiple actors within a single tenant.
-weight: 101
+weight:
 ---
 
 # Query fairness within tenants

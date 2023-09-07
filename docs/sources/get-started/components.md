@@ -219,7 +219,7 @@ The query frontend splits larger queries into multiple smaller queries, executin
 
 #### Metric Queries
 
-The query frontend supports caching metric query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any loki caching backend (currently memcached, redis, and an in-memory cache).
+The query frontend supports caching metric query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any Loki caching backend (currently memcached, redis, and an in-memory cache).
 
 #### Log Queries - Coming soon!
 

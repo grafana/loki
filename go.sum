@@ -1472,7 +1472,7 @@ github.com/openzipkin/zipkin-go v0.1.6/go.mod h1:QgAqvLzwWbR/WpD4A3cGpPtJrZXNIiJ
 github.com/openzipkin/zipkin-go v0.2.1/go.mod h1:NaW6tEwdmWMaCDZzg8sh+IBNOxHMPnhQw8ySjnjRyN4=
 github.com/openzipkin/zipkin-go v0.2.2/go.mod h1:NaW6tEwdmWMaCDZzg8sh+IBNOxHMPnhQw8ySjnjRyN4=
 github.com/openzipkin/zipkin-go-opentracing v0.3.4/go.mod h1:js2AbwmHW0YD9DwIw2JhQWmbfFi/UnWyYwdVhqbCDOE=
-github.com/oracle/oci-go-sdk/v65 v65.13.0 h1:0+9ea5goYfhI3/MPfbIQU6yzHYWE6sCk6VuUepxk5Nk=
+github.com/oracle/oci-go-sdk/v65 v65.41.1 h1:+lbosOyNiib3TGJDvLq1HwEAuFqkOjPJDIkyxM15WdQ=
 github.com/ory/dockertest v3.3.4+incompatible/go.mod h1:1vX4m9wsvi00u5bseYwXaSnhNrne+V0E6LAcBILJdPs=
 github.com/oschwald/geoip2-golang v1.9.0 h1:uvD3O6fXAXs+usU+UGExshpdP13GAqp4GBrzN7IgKZc=
 github.com/oschwald/geoip2-golang v1.9.0/go.mod h1:BHK6TvDyATVQhKNbQBdrj9eAvuwOMi2zSFXizL3K81Y=
@@ -1675,8 +1675,8 @@ github.com/tbrandon/mbserver v0.0.0-20170611213546-993e1772cc62/go.mod h1:qUzPVl
 github.com/tedsuo/ifrit v0.0.0-20191009134036-9a97d0632f00/go.mod h1:eyZnKCc955uh98WQvzOm0dgAeLnf2O0Rz0LPoC5ze+0=
 github.com/tencentyun/cos-go-sdk-v5 v0.7.40 h1:W6vDGKCHe4wBACI1d2UgE6+50sJFhRWU4O8IB2ozzxM=
 github.com/tent/http-link-go v0.0.0-20130702225549-ac974c61c2f9/go.mod h1:RHkNRtSLfOK7qBTHaeSX1D6BNpI3qw7NTxsmNr4RvN8=
-github.com/thanos-io/objstore v0.0.0-20230727115635-d0c43443ecda h1:DtxaU/a7QRPiUhwtPrZFlS81y+9Mgny4KoLq65cu04U=
-github.com/thanos-io/objstore v0.0.0-20230727115635-d0c43443ecda/go.mod h1:IS7Z25+0KaknyU2P5PTP/5hwY6Yr/FzbInF88Yd5auU=
+github.com/thanos-io/objstore v0.0.0-20230816175749-20395bffdf26 h1:q1lin/af0lw+I3sS79ccHs2CLjFOPc190J9saeQ5qQ4=
+github.com/thanos-io/objstore v0.0.0-20230816175749-20395bffdf26/go.mod h1:oJ82xgcBDzGJrEgUsjlTj6n01+ZWUMMUR8BlZzX5xDE=
 github.com/tidwall/gjson v1.6.0/go.mod h1:P256ACg0Mn+j1RXIDXoss50DeIABTYK1PULOJHhxOls=
 github.com/tidwall/match v1.0.1/go.mod h1:LujAq0jyVjBy028G1WhWfIzbpQfMO8bBZ6Tyb0+pL9E=
 github.com/tidwall/pretty v1.0.0/go.mod h1:XNkn88O1ChpSDQmQeStsy+sBenx6DDtFZJxhVysOjyk=
