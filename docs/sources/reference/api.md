@@ -84,7 +84,7 @@ These endpoints are exposed by the compactor:
 - [`GET /loki/api/v1/delete`](#list-log-deletion-requests)
 - [`DELETE /loki/api/v1/delete`](#request-cancellation-of-a-delete-request)
 
-A [list of clients]({{< relref "../clients" >}}) can be found in the clients documentation.
+A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
 ## Matrix, vector, and streams
 
