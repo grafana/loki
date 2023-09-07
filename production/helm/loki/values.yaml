@@ -504,6 +504,8 @@ rbac:
   # seccomp.security.alpha.kubernetes.io/allowedProfileNames: '*'
   # seccomp.security.alpha.kubernetes.io/defaultProfileName: 'docker/default'
   # apparmor.security.beta.kubernetes.io/defaultProfileName: 'runtime/default'
+  # -- Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.
+  namespaced: false
 # -- Section for configuring optional Helm test
 test:
   enabled: true
@@ -1487,3 +1489,62 @@ extraObjects: []
 #               category: logs
 #             annotations:
 #               message: "loki has encountered errors"
+
+sidecar:
+  image:
+    # -- The Docker registry and image for the k8s sidecar
+    repository: kiwigrid/k8s-sidecar
+    # -- Docker image tag
+    tag: 1.24.3
+    # -- Docker image sha. If empty, no sha will be used
+    sha: ""
+    # -- Docker image pull policy
+    pullPolicy: IfNotPresent
+  # -- Resource requests and limits for the sidecar
+  resources: {}
+  #   limits:
+  #     cpu: 100m
+  #     memory: 100Mi
+  #   requests:
+  #     cpu: 50m
+  #     memory: 50Mi
+  # -- The SecurityContext for the sidecar.
+  securityContext: {}
+  # -- Set to true to skip tls verification for kube api calls.
+  skipTlsVerify: false
+  # -- Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.
+  enableUniqueFilenames: false
+  # -- Readiness probe definition. Probe is disabled on the sidecar by default.
+  readinessProbe: {}
+  # -- Liveness probe definition. Probe is disabled on the sidecar by default.
+  livenessProbe: {}
+  rules:
+    # -- Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.
+    enabled: true
+    # -- Label that the configmaps/secrets with rules will be marked with.
+    label: loki_rule
+    # -- Label value that the configmaps/secrets with rules will be set to.
+    labelValue: ""
+    # -- Folder into which the rules will be placed.
+    folder: /rules
+    # -- Comma separated list of namespaces. If specified, the sidecar will search for config-maps/secrets inside these namespaces.
+    # Otherwise the namespace in which the sidecar is running will be used.
+    # It's also possible to specify 'ALL' to search in all namespaces.
+    searchNamespace: null
+    # -- Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH request, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.
+    watchMethod: WATCH
+    # -- Search in configmap, secret, or both.
+    resource: both
+    # -- Absolute path to the shell script to execute after a configmap or secret has been reloaded.
+    script: null
+    # -- WatchServerTimeout: request to the server, asking it to cleanly close the connection after that.
+    # defaults to 60sec; much higher values like 3600 seconds (1h) are feasible for non-Azure K8S.
+    watchServerTimeout: 60
+    #
+    # -- WatchClientTimeout: is a client-side timeout, configuring your local socket.
+    # If you have a network outage dropping all packets with no RST/FIN,
+    # this is how long your client waits before realizing & dropping the connection.
+    # Defaults to 66sec.
+    watchClientTimeout: 60
+    # -- Log level of the sidecar container.
+    logLevel: INFO
