@@ -13,7 +13,7 @@
 * [10302](https://github.com/grafana/loki/pull/10302) **ashwanthgoli**: Removes already deprecated `-querier.engine.timeout` CLI flag and corresponding YAML setting as well as the `querier.query_timeout` YAML setting.
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: Promtail: users can now define `additional_fields` in cloudflare configuration.
 * [10308](https://github.com/grafana/loki/pull/10308) **bboreham** Tracing: elide small traces for Stats call.
-* [10373](https://github.com/grafana/loki/pull/10373) **jeschkies**  Loki: Shard `avg_over_time` range aggregations.
+* [10373](https://github.com/grafana/loki/pull/10373) **jeschkies** Shard `avg_over_time` range aggregations.
 * [10377](https://github.com/grafana/loki/pull/10377) **shantanualsi** Remove deprecated config `-s3.sse-encryption` in favor or `-s3.sse.*` settings.
 * [10378](https://github.com/grafana/loki/pull/10378) **shantanualsi** Remove deprecated `ruler.wal-cleaer.period`
 * [10380](https://github.com/grafana/loki/pull/10380) **shantanualsi** Remove `experimental.ruler.enable-api` in favour of `ruler.enable-api`
