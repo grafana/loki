@@ -1200,6 +1200,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
 					},
 				},
+				MaxParallelismTableOps: 50,
 			}
 			require.NoError(t, cfg.NamedStores.validate())
 
