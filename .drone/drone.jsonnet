@@ -370,7 +370,7 @@ local manifest(apps) = pipeline('manifest') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.4.0',
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest.tmpl
@@ -403,7 +403,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.4.0',
       volumes: [{
         name: 'dockerconf',
         path: '/.docker',
