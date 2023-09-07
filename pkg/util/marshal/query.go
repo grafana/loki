@@ -193,11 +193,33 @@ func EncodeResult(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...httpre
 	return nil
 }
 
+func encodeEncodingFlags(s *jsoniter.Stream, flags []httpreq.EncodingFlag) error {
+	s.WriteArrayStart()
+	defer s.WriteArrayEnd()
+
+	for i, flag := range flags {
+		if i > 0 {
+			s.WriteMore()
+		}
+		s.WriteString(string(flag))
+	}
+
+	return nil
+}
+
 func encodeData(v logqlmodel.Result, s *jsoniter.Stream, encodeFlags ...httpreq.EncodingFlag) error {
 	s.WriteObjectStart()
 
 	s.WriteObjectField("resultType")
 	s.WriteString(string(v.Data.Type()))
+
+	if len(encodeFlags) > 0 {
+		s.WriteMore()
+		s.WriteObjectField("encodingFlags")
+		if err := encodeEncodingFlags(s, encodeFlags); err != nil {
+			return err
+		}
+	}
 
 	s.WriteMore()
 	s.WriteObjectField("result")

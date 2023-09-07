@@ -358,17 +358,19 @@ func (a *VectorValues) UnmarshalJSON(b []byte) error {
 
 // DataType holds the result type and a list of StreamValues
 type DataType struct {
-	ResultType string
-	Stream     []StreamValues
-	Matrix     []MatrixValues
-	Vector     []VectorValues
+	ResultType    string
+	Stream        []StreamValues
+	Matrix        []MatrixValues
+	Vector        []VectorValues
+	EncodingFlags []string
 }
 
 func (a *DataType) UnmarshalJSON(b []byte) error {
 	// get the result type
 	var s struct {
-		ResultType string          `json:"resultType"`
-		Result     json.RawMessage `json:"result"`
+		ResultType    string          `json:"resultType"`
+		EncodingFlags []string        `json:"encodingFlags"`
+		Result        json.RawMessage `json:"result"`
 	}
 	if err := json.Unmarshal(b, &s); err != nil {
 		return err
@@ -391,6 +393,7 @@ func (a *DataType) UnmarshalJSON(b []byte) error {
 		return fmt.Errorf("unknown result type %s", s.ResultType)
 	}
 	a.ResultType = s.ResultType
+	a.EncodingFlags = s.EncodingFlags
 	return nil
 }
 

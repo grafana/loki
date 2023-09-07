@@ -662,6 +662,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 				"status": "success",
 				"data": {
 					"resultType": "streams",
+					"encodingFlags": ["%s"],
 					"result": [
 						{
 							"stream": {
@@ -707,7 +708,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 					],
 					"stats" : %s
 				}
-			}`, emptyStats),
+			}`, httpreq.FlagCategorizeLabels, emptyStats),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

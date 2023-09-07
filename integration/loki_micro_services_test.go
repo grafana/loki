@@ -795,7 +795,7 @@ func TestCategorizedLabels(t *testing.T) {
 	for _, tc := range []struct {
 		name                       string
 		query                      string
-		headers                    []client.Header
+		encodingFlags              []string
 		expectedStreams            []map[string]string
 		expectedCategorizedStreams []map[string]map[string]string
 	}{
@@ -853,8 +853,8 @@ func TestCategorizedLabels(t *testing.T) {
 		{
 			name:  "with header - no parser ",
 			query: `{job="fake"}`,
-			headers: []client.Header{
-				{Name: httpreq.LokiEncodingFlagsHeader, Value: string(httpreq.FlagCategorizeLabels)},
+			encodingFlags: []string{
+				string(httpreq.FlagCategorizeLabels),
 			},
 			expectedStreams: nil,
 			expectedCategorizedStreams: []map[string]map[string]string{
@@ -895,8 +895,8 @@ func TestCategorizedLabels(t *testing.T) {
 		{
 			name:  "with header - with parser",
 			query: `{job="fake"} | logfmt`,
-			headers: []client.Header{
-				{Name: httpreq.LokiEncodingFlagsHeader, Value: string(httpreq.FlagCategorizeLabels)},
+			encodingFlags: []string{
+				string(httpreq.FlagCategorizeLabels),
 			},
 			expectedCategorizedStreams: []map[string]map[string]string{
 				{
@@ -942,7 +942,15 @@ func TestCategorizedLabels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query, tc.headers...)
+			// Add header with encoding flags and expect them to be returned in the response.
+			var headers []client.Header
+			var expectedEncodingFlags []string
+			if len(tc.encodingFlags) > 0 {
+				headers = append(headers, client.Header{Name: httpreq.LokiEncodingFlagsHeader, Value: strings.Join(tc.encodingFlags, httpreq.EncodeFlagsDelimiter)})
+				expectedEncodingFlags = tc.encodingFlags
+			}
+
+			resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query, headers...)
 			require.NoError(t, err)
 			assert.Equal(t, "streams", resp.Data.ResultType)
 
@@ -964,6 +972,7 @@ func TestCategorizedLabels(t *testing.T) {
 			assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"}, lines)
 			assert.ElementsMatch(t, tc.expectedStreams, streams)
 			assert.ElementsMatch(t, tc.expectedCategorizedStreams, categorizedStreams)
+			assert.ElementsMatch(t, expectedEncodingFlags, resp.Data.EncodingFlags)
 		})
 	}
 }

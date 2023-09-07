@@ -1657,6 +1657,7 @@ var (
 		"data": {
 			` + statsResultString + `
 			"resultType": "streams",
+			"encodingFlags": ["` + string(httpreq.FlagCategorizeLabels) + `"],
 			"result": [
 				{
 					"stream": {
