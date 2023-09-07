@@ -18,7 +18,7 @@ func TestBoltDBShipperTableClient(t *testing.T) {
 	tempDir := t.TempDir()
 
 	cm := storage.NewClientMetrics()
-	objectClient, err := storage.NewObjectClient("filesystem", storage.Config{FSConfig: local.FSConfig{Directory: tempDir}}, cm)
+	objectClient, err := storage.NewObjectClient("filesystem", storage.Config{MaxParallelismTableOps: 50, FSConfig: local.FSConfig{Directory: tempDir}}, cm)
 	require.NoError(t, err)
 
 	// create a couple of folders with files

@@ -89,7 +89,7 @@ func newTestChunkStoreConfigWithMockStorage(t require.TestingT, schemaCfg config
 	}, nil)
 	require.NoError(t, err)
 
-	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
+	store, err := storage.NewStore(storage.Config{MaxChunkBatchSize: 1, MaxParallelismTableOps: 50}, storeCfg, schemaCfg, limits, cm, prometheus.NewRegistry(), log.NewNopLogger())
 	require.NoError(t, err)
 	tm, err := index.NewTableManager(tbmConfig, schemaCfg, 12*time.Hour, testutils.NewMockStorage(), nil, nil, nil)
 	require.NoError(t, err)

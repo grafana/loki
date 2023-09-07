@@ -120,6 +120,7 @@ type testObjectClient struct {
 
 func newTestObjectClient(path string, clientMetrics storage.ClientMetrics) client.ObjectClient {
 	c, err := storage.NewObjectClient("filesystem", storage.Config{
+		MaxParallelismTableOps: 50,
 		FSConfig: local.FSConfig{
 			Directory: path,
 		},
@@ -222,7 +223,8 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		FSConfig: local.FSConfig{
 			Directory: chunkDir,
 		},
-		MaxParallelGetChunk: 150,
+		MaxParallelGetChunk:    150,
+		MaxParallelismTableOps: 50,
 
 		BoltDBShipperConfig: shipper.Config{
 			Config: indexshipper.Config{

@@ -194,9 +194,10 @@ func getLocalStore(cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		BoltDBConfig:      local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:          local.FSConfig{Directory: "/tmp/benchmark/chunks"},
-		MaxChunkBatchSize: 10,
+		BoltDBConfig:           local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+		FSConfig:               local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		MaxChunkBatchSize:      10,
+		MaxParallelismTableOps: 50,
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -488,7 +489,8 @@ func Test_store_SelectLogs(t *testing.T) {
 			s := &store{
 				Store: storeFixture,
 				cfg: Config{
-					MaxChunkBatchSize: 10,
+					MaxChunkBatchSize:      10,
+					MaxParallelismTableOps: 50,
 				},
 				chunkMetrics: NilMetrics,
 			}
@@ -812,7 +814,8 @@ func Test_store_SelectSample(t *testing.T) {
 			s := &store{
 				Store: storeFixture,
 				cfg: Config{
-					MaxChunkBatchSize: 10,
+					MaxChunkBatchSize:      10,
+					MaxParallelismTableOps: 50,
 				},
 				chunkMetrics: NilMetrics,
 			}
@@ -848,7 +851,8 @@ func Test_ChunkFilterer(t *testing.T) {
 	s := &store{
 		Store: storeFixture,
 		cfg: Config{
-			MaxChunkBatchSize: 10,
+			MaxChunkBatchSize:      10,
+			MaxParallelismTableOps: 50,
 		},
 		chunkMetrics: NilMetrics,
 	}
@@ -938,7 +942,8 @@ func Test_store_GetSeries(t *testing.T) {
 			s := &store{
 				Store: newMockChunkStore(chunkfmt, headfmt, streamsFixture),
 				cfg: Config{
-					MaxChunkBatchSize: tt.batchSize,
+					MaxChunkBatchSize:      tt.batchSize,
+					MaxParallelismTableOps: 50,
 				},
 				chunkMetrics: NilMetrics,
 			}
@@ -1531,9 +1536,10 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbStartDate := parseDate("2019-01-02")
 
 	cfg := Config{
-		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		BoltDBShipperConfig: boltdbShipperConfig,
-		TSDBShipperConfig:   tsdb.IndexCfg{Config: tsdbShipperConfig},
+		FSConfig:               local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		BoltDBShipperConfig:    boltdbShipperConfig,
+		TSDBShipperConfig:      tsdb.IndexCfg{Config: tsdbShipperConfig},
+		MaxParallelismTableOps: 50,
 	}
 
 	schemaConfig := config.SchemaConfig{

@@ -1763,7 +1763,8 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	st := &store{
 		chunkMetrics: NilMetrics,
 		cfg: Config{
-			MaxChunkBatchSize: 50,
+			MaxChunkBatchSize:      50,
+			MaxParallelismTableOps: 50,
 		},
 		Store: newMockChunkStore(chunkfmt, headfmt, newOverlappingStreams(200, 200)),
 	}
