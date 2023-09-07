@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Description: >
   lambda-promtail:
 
@@ -6,9 +6,9 @@ Description: >
 
 Parameters:
   WriteAddress:
-    Description: 'Address to write to in the form of: http<s>://<location><:port>/loki/api/v1/push'
+    Description: "Address to write to in the form of: http<s>://<location><:port>/loki/api/v1/push"
     Type: String
-    Default: 'http://localhost:8080/loki/api/v1/push'
+    Default: "http://localhost:8080/loki/api/v1/push"
   ReservedConcurrency:
     Description: The maximum of concurrent executions you want to reserve for the function.
     Type: Number
@@ -57,26 +57,34 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
-        Version: '2012-10-17'
+        Version: "2012-10-17"
         Statement:
-        - Effect: Allow
-          Principal:
-            Service:
-            - lambda.amazonaws.com
-          Action:
-          - sts:AssumeRole
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
       Description: "Lambda Promtail Role"
       Policies:
-      - PolicyName: logs
-        PolicyDocument:
-          Version: '2012-10-17'
-          Statement:
-          - Effect: Allow
-            Action:
-            - logs:CreateLogGroup
-            - logs:CreateLogStream
-            - logs:PutLogEvents
-            Resource: arn:aws:logs:*:*:*
+        - PolicyName: logs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+        - PolicyName: s3
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: arn:aws:s3:::thepalbi-lambda-lb-access-logs/*
       RoleName: iam_for_lambda
   LambdaPromtailFunction:
     Type: AWS::Lambda::Function
@@ -101,32 +109,46 @@ Resources:
           OMIT_EXTRA_LABELS_PREFIX: !Ref OmitExtraLabelsPrefix
           TENANT_ID: !Ref TenantID
           SKIP_TLS_VERIFY: !Ref SkipTlsVerify
+
   LambdaPromtailVersion:
     Type: AWS::Lambda::Version
     Properties:
       FunctionName: !Ref LambdaPromtailFunction
-  LambdaPromtailPermissions:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !GetAtt LambdaPromtailFunction.Arn
-      Principal: !Sub
-        - logs.${Region}.amazonaws.com
-        - { Region: !Ref "AWS::Region" }
+
   LambdaPromtailEventInvokeConfig:
     Type: AWS::Lambda::EventInvokeConfig
     Properties:
       FunctionName: !Ref LambdaPromtailFunction
       MaximumRetryAttempts: 2
       Qualifier: !GetAtt LambdaPromtailVersion.Version
-  # Copy this block and modify as required to create Subscription Filters for
-  # additional CloudWatch Log Groups.
-  MainLambdaPromtailSubscriptionFilter:
-    Type: AWS::Logs::SubscriptionFilter
+
+  # EventBridge rule to route s3 object created events to lambda promtail
+  EventRule:
+    Type: AWS::Events::Rule
     Properties:
-      DestinationArn: !GetAtt LambdaPromtailFunction.Arn
-      FilterPattern: ""
-      LogGroupName: "/aws/lambda/some-lamda-log-group"
+      Description: EventRule
+      State: ENABLED
+      EventPattern: # https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-event-patterns.html#eb-filtering-data-
+        source:
+          - aws.s3
+        detail-type:
+          - "Object Created"
+        detail:
+          bucket:
+            name:
+              - thepalbi-lambda-lb-access-logs
+      Targets:
+        - Arn: !GetAtt LambdaPromtailFunction.Arn
+          Id: LambdaPromtailTarget
+
+  # Permission that allows EventBridge rule to trigger lambda promtail
+  EventRuleLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt LambdaPromtailFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt EventRule.Arn
 
 Outputs:
   LambdaPromtailFunction:
