@@ -7,18 +7,15 @@
 #### Loki
 
 ##### Enhancements
-* [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
 * [10302](https://github.com/grafana/loki/pull/10302) **ashwanthgoli**: Removes already deprecated `-querier.engine.timeout` CLI flag and corresponding YAML setting as well as the `querier.query_timeout` YAML setting.
-* [10301](https://github.com/grafana/loki/pull/10301) **wildum**: Promtail: users can now define `additional_fields` in cloudflare configuration.
 * [10308](https://github.com/grafana/loki/pull/10308) **bboreham** Tracing: elide small traces for Stats call.
 * [10373](https://github.com/grafana/loki/pull/10373) **jeschkies** Shard `avg_over_time` range aggregations.
 * [10377](https://github.com/grafana/loki/pull/10377) **shantanualsi** Remove deprecated config `-s3.sse-encryption` in favor or `-s3.sse.*` settings.
 * [10378](https://github.com/grafana/loki/pull/10378) **shantanualsi** Remove deprecated `ruler.wal-cleaer.period`
 * [10380](https://github.com/grafana/loki/pull/10380) **shantanualsi** Remove `experimental.ruler.enable-api` in favour of `ruler.enable-api`
 * [10395](https://github.com/grafana/loki/pull/10395/) **shantanualshi** Remove deprecated `split_queries_by_interval` and `forward_headers_list` configuration options in the `query_range` section
-* [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 * [10456](https://github.com/grafana/loki/pull/10456) **dannykopping** Add `loki_distributor_ingester_append_timeouts_total` metric, remove `loki_distributor_ingester_append_failures_total` metric
 
 ##### Fixes
@@ -28,10 +25,13 @@
 ##### Changes
 
 * [10366](https://github.com/grafana/loki/pull/10366) **shantanualsi** Upgrade thanos objstore, dskit and other modules
+* [10451](https://github.com/grafana/loki/pull/10451) **shantanualsi** Upgrade thanos `objstore`
 
 #### Promtail
 
 ##### Enhancements
+* [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
+* [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
 
 ##### Fixes
 
