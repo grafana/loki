@@ -56,6 +56,10 @@ loki:
   podAnnotations: {}
   # -- Common labels for all pods
   podLabels: {}
+  # -- Common annotations for all services
+  serviceAnnotations: {}
+  # -- Common labels for all services
+  serviceLabels: {}
   # -- The number of old ReplicaSets to retain to allow rollback
   revisionHistoryLimit: 10
   # -- The SecurityContext for Loki pods
@@ -651,6 +655,11 @@ monitoring:
     annotations: {}
     # -- Additional labels for each `loki-canary` pod
     podLabels: {}
+    service:
+      # -- Annotations for loki-canary Service
+      annotations: {}
+      # -- Additional labels for loki-canary Service
+      labels: {}
     # -- Additional CLI arguments for the `loki-canary' command
     extraArgs: []
     # -- Environment variables to add to the canary pods
@@ -730,8 +739,11 @@ write:
   podLabels: {}
   # -- Additional selector labels for each `write` pod
   selectorLabels: {}
-  # -- Labels for ingester service
-  serviceLabels: {}
+  service:
+    # -- Annotations for write Service
+    annotations: {}
+    # -- Additional labels for write Service
+    labels: {}
   # -- Comma-separated list of Loki modules to load for the write
   targetModule: "write"
   # -- Additional CLI args for the write
@@ -812,8 +824,11 @@ tableManager:
   annotations: {}
   # -- Annotations for table-manager pods
   podAnnotations: {}
-  # -- Labels for table-manager service
-  serviceLabels: {}
+  service:
+    # -- Annotations for table-manager Service
+    annotations: {}
+    # -- Additional labels for table-manager Service
+    labels: {}
   # -- Additional CLI args for the table-manager
   extraArgs: []
   # -- Environment variables to add to the table-manager pods
@@ -902,8 +917,11 @@ read:
   podLabels: {}
   # -- Additional selector labels for each `read` pod
   selectorLabels: {}
-  # -- Labels for read service
-  serviceLabels: {}
+  service:
+    # -- Annotations for read Service
+    annotations: {}
+    # -- Additional labels for read Service
+    labels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "read"
   # -- Whether or not to use the 2 target type simple scalable mode (read, write) or the
@@ -1002,8 +1020,11 @@ backend:
   podLabels: {}
   # -- Additional selector labels for each `backend` pod
   selectorLabels: {}
-  # -- Labels for ingester service
-  serviceLabels: {}
+  service:
+    # -- Annotations for backend Service
+    annotations: {}
+    # -- Additional labels for backend Service
+    labels: {}
   # -- Comma-separated list of Loki modules to load for the read
   targetModule: "backend"
   # -- Additional CLI args for the backend
@@ -1086,6 +1107,11 @@ singleBinary:
   podLabels: {}
   # -- Additional selector labels for each `single binary` pod
   selectorLabels: {}
+  service:
+    # -- Annotations for single binary Service
+    annotations: {}
+    # -- Additional labels for single binary Service
+    labels: {}
   # -- Comma-separated list of Loki modules to load for the single binary
   targetModule: "all"
   # -- Labels for single binary service

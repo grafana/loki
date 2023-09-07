@@ -2,7 +2,7 @@
 title: Caching 
 menuTitle: Caching 
 description: Enable and configure memcached for caching. 
-weight: 100
+weight: 
 keywords:
   - memcached
   - caching
