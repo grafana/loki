@@ -12,7 +12,7 @@ import (
 
 // GrpcRoundTripper is similar to http.RoundTripper, but works with HTTP requests converted to protobuf messages.
 type GrpcRoundTripper interface {
-	RoundTripGRPC(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
+	RoundTripGRPC(context.Context, *httpgrpc.DHTTPRequest) (*httpgrpc.DHTTPResponse, error)
 }
 
 func AdaptGrpcRoundTripperToHTTPRoundTripper(r GrpcRoundTripper) http.RoundTripper {

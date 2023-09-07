@@ -27,7 +27,7 @@ enum Type {
 }
 
 message FrontendToClient {
-  httpgrpc.HTTPRequest httpRequest = 1;
+  httpgrpc.DHTTPRequest httpRequest = 1;
   Type type = 2;
 
   // Whether query statistics tracking should be enabled. The response will include
@@ -36,7 +36,7 @@ message FrontendToClient {
 }
 
 message ClientToFrontend {
-  httpgrpc.HTTPResponse httpResponse = 1;
+  httpgrpc.DHTTPResponse httpResponse = 1;
   string clientID = 2;
   stats.Stats stats = 3;
 }

@@ -194,7 +194,7 @@ type schedulerRequest struct {
 	frontendAddress string
 	tenantID        string
 	queryID         uint64
-	request         *httpgrpc.HTTPRequest
+	request         *httpgrpc.DHTTPRequest
 	statsEnabled    bool
 
 	queueTime time.Time
@@ -428,7 +428,7 @@ func (s *Scheduler) QuerierLoop(querier schedulerpb.SchedulerForQuerier_QuerierL
 		r.queueSpan.Finish()
 
 		// Add HTTP header to the request containing the query queue time
-		r.request.Headers = append(r.request.Headers, &httpgrpc.Header{
+		r.request.Headers = append(r.request.Headers, &httpgrpc.DHeader{
 			Key:    textproto.CanonicalMIMEHeaderKey(string(lokihttpreq.QueryQueueTimeHTTPHeader)),
 			Values: []string{reqQueueTime.String()},
 		})
@@ -536,7 +536,7 @@ func (s *Scheduler) forwardErrorToFrontend(ctx context.Context, req *schedulerRe
 	userCtx := user.InjectOrgID(ctx, req.tenantID)
 	_, err = client.QueryResult(userCtx, &frontendv2pb.QueryResultRequest{
 		QueryID: req.queryID,
-		HttpResponse: &httpgrpc.HTTPResponse{
+		HttpResponse: &httpgrpc.DHTTPResponse{
 			Code: http.StatusInternalServerError,
 			Body: []byte(requestErr.Error()),
 		},

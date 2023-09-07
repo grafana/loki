@@ -68,14 +68,14 @@ type metrics struct {
 }
 
 type RemoteEvaluator struct {
-	client    httpgrpc.HTTPClient
+	client    httpgrpc.DHTTPClient
 	overrides RulesLimits
 	logger    log.Logger
 
 	metrics *metrics
 }
 
-func NewRemoteEvaluator(client httpgrpc.HTTPClient, overrides RulesLimits, logger log.Logger, registerer prometheus.Registerer) (*RemoteEvaluator, error) {
+func NewRemoteEvaluator(client httpgrpc.DHTTPClient, overrides RulesLimits, logger log.Logger, registerer prometheus.Registerer) (*RemoteEvaluator, error) {
 	return &RemoteEvaluator{
 		client:    client,
 		overrides: overrides,
@@ -167,7 +167,7 @@ func (r *RemoteEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*
 }
 
 // DialQueryFrontend creates and initializes a new httpgrpc.HTTPClient taking a QueryFrontendConfig configuration.
-func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
+func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.DHTTPClient, error) {
 	tlsDialOptions, err := cfg.TLS.GetGRPCDialOptions(cfg.TLSEnabled)
 	if err != nil {
 		return nil, err
@@ -196,11 +196,11 @@ func DialQueryFrontend(cfg *QueryFrontendConfig) (httpgrpc.HTTPClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return httpgrpc.NewHTTPClient(conn), nil
+	return httpgrpc.NewDHTTPClient(conn), nil
 }
 
 // Middleware provides a mechanism to inspect outgoing remote querier requests.
-type Middleware func(ctx context.Context, req *httpgrpc.HTTPRequest) error
+type Middleware func(ctx context.Context, req *httpgrpc.DHTTPRequest) error
 
 // Query performs a query for the given time.
 func (r *RemoteEvaluator) Query(ctx context.Context, ch chan<- queryResponse, orgID, qs string, t time.Time) {
@@ -221,11 +221,11 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	body := []byte(args.Encode())
 	hash := logql.HashedQuery(query)
 
-	req := httpgrpc.HTTPRequest{
+	req := httpgrpc.DHTTPRequest{
 		Method: http.MethodPost,
 		Url:    queryEndpointPath,
 		Body:   body,
-		Headers: []*httpgrpc.Header{
+		Headers: []*httpgrpc.DHeader{
 			{Key: textproto.CanonicalMIMEHeaderKey("User-Agent"), Values: []string{userAgent}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Type"), Values: []string{mimeTypeFormPost}},
 			{Key: textproto.CanonicalMIMEHeaderKey("Content-Length"), Values: []string{strconv.Itoa(len(body))}},
@@ -280,7 +280,7 @@ func (r *RemoteEvaluator) query(ctx context.Context, orgID, query string, ts tim
 	return r.decodeResponse(ctx, resp, orgID)
 }
 
-func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.HTTPResponse, orgID string) (*logqlmodel.Result, error) {
+func (r *RemoteEvaluator) decodeResponse(ctx context.Context, resp *httpgrpc.DHTTPResponse, orgID string) (*logqlmodel.Result, error) {
 	fullBody := resp.Body
 	// created a limited reader to avoid logging the entire response body should it be very large
 	limitedBody := io.LimitReader(bytes.NewReader(fullBody), 1024)

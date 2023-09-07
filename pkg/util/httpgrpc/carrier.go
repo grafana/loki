@@ -6,10 +6,10 @@ import (
 )
 
 // Used to transfer trace information from/to HTTP request.
-type HeadersCarrier weaveworks_httpgrpc.HTTPRequest
+type HeadersCarrier weaveworks_httpgrpc.DHTTPRequest
 
 func (c *HeadersCarrier) Set(key, val string) {
-	c.Headers = append(c.Headers, &weaveworks_httpgrpc.Header{
+	c.Headers = append(c.Headers, &weaveworks_httpgrpc.DHeader{
 		Key:    key,
 		Values: []string{val},
 	})
@@ -26,7 +26,7 @@ func (c *HeadersCarrier) ForeachKey(handler func(key, val string) error) error {
 	return nil
 }
 
-func GetParentSpanForRequest(tracer opentracing.Tracer, req *weaveworks_httpgrpc.HTTPRequest) (opentracing.SpanContext, error) {
+func GetParentSpanForRequest(tracer opentracing.Tracer, req *weaveworks_httpgrpc.DHTTPRequest) (opentracing.SpanContext, error) {
 	if tracer == nil {
 		return nil, nil
 	}

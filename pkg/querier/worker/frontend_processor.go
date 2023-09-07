@@ -94,7 +94,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 			// and cancel the query.  We don't actually handle queries in parallel
 			// here, as we're running in lock step with the server - each Recv is
 			// paired with a Send.
-			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error {
+			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.DHTTPResponse, stats *querier_stats.Stats) error {
 				return c.Send(&frontendv1pb.ClientToFrontend{
 					HttpResponse: response,
 					Stats:        stats,
@@ -113,7 +113,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	}
 }
 
-func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
+func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.DHTTPRequest, statsEnabled bool, sendHTTPResponse func(response *httpgrpc.DHTTPResponse, stats *querier_stats.Stats) error) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
@@ -124,7 +124,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 		var ok bool
 		response, ok = httpgrpc.HTTPResponseFromError(err)
 		if !ok {
-			response = &httpgrpc.HTTPResponse{
+			response = &httpgrpc.DHTTPResponse{
 				Code: http.StatusInternalServerError,
 				Body: []byte(err.Error()),
 			}
@@ -134,7 +134,7 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 	// Ensure responses that are too big are not retried.
 	if len(response.Body) >= fp.maxMessageSize {
 		errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), fp.maxMessageSize)
-		response = &httpgrpc.HTTPResponse{
+		response = &httpgrpc.DHTTPResponse{
 			Code: http.StatusRequestEntityTooLarge,
 			Body: []byte(errMsg),
 		}

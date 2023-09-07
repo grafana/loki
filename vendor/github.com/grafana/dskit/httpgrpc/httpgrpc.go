@@ -20,14 +20,14 @@ import (
 // gRPC, and can eventually be converted back to a HTTP response with
 // HTTPResponseFromError.
 func Errorf(code int, tmpl string, args ...interface{}) error {
-	return ErrorFromHTTPResponse(&HTTPResponse{
+	return ErrorFromHTTPResponse(&DHTTPResponse{
 		Code: int32(code),
 		Body: []byte(fmt.Sprintf(tmpl, args...)),
 	})
 }
 
 // ErrorFromHTTPResponse converts an HTTP response into a grpc error
-func ErrorFromHTTPResponse(resp *HTTPResponse) error {
+func ErrorFromHTTPResponse(resp *DHTTPResponse) error {
 	a, err := types.MarshalAny(resp)
 	if err != nil {
 		return err
@@ -41,7 +41,7 @@ func ErrorFromHTTPResponse(resp *HTTPResponse) error {
 }
 
 // HTTPResponseFromError converts a grpc error into an HTTP response
-func HTTPResponseFromError(err error) (*HTTPResponse, bool) {
+func HTTPResponseFromError(err error) (*DHTTPResponse, bool) {
 	s, ok := status.FromError(err)
 	if !ok {
 		return nil, false
@@ -52,7 +52,7 @@ func HTTPResponseFromError(err error) (*HTTPResponse, bool) {
 		return nil, false
 	}
 
-	var resp HTTPResponse
+	var resp DHTTPResponse
 	if err := types.UnmarshalAny(status.Details[0], &resp); err != nil {
 		level.Error(log.Global()).Log("msg", "got error containing non-response", "err", err)
 		return nil, false

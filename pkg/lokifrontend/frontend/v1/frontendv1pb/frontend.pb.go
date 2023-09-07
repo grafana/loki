@@ -57,7 +57,7 @@ func (Type) EnumDescriptor() ([]byte, []int) {
 }
 
 type FrontendToClient struct {
-	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,1,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
+	HttpRequest *httpgrpc.DHTTPRequest `protobuf:"bytes,1,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
 	Type        Type                  `protobuf:"varint,2,opt,name=type,proto3,enum=frontend.Type" json:"type,omitempty"`
 	// Whether query statistics tracking should be enabled. The response will include
 	// statistics only when this option is enabled.
@@ -96,7 +96,7 @@ func (m *FrontendToClient) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_FrontendToClient proto.InternalMessageInfo
 
-func (m *FrontendToClient) GetHttpRequest() *httpgrpc.HTTPRequest {
+func (m *FrontendToClient) GetHttpRequest() *httpgrpc.DHTTPRequest {
 	if m != nil {
 		return m.HttpRequest
 	}
@@ -118,7 +118,7 @@ func (m *FrontendToClient) GetStatsEnabled() bool {
 }
 
 type ClientToFrontend struct {
-	HttpResponse *httpgrpc.HTTPResponse `protobuf:"bytes,1,opt,name=httpResponse,proto3" json:"httpResponse,omitempty"`
+	HttpResponse *httpgrpc.DHTTPResponse `protobuf:"bytes,1,opt,name=httpResponse,proto3" json:"httpResponse,omitempty"`
 	ClientID     string                 `protobuf:"bytes,2,opt,name=clientID,proto3" json:"clientID,omitempty"`
 	Stats        *stats.Stats           `protobuf:"bytes,3,opt,name=stats,proto3" json:"stats,omitempty"`
 }
@@ -155,7 +155,7 @@ func (m *ClientToFrontend) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_ClientToFrontend proto.InternalMessageInfo
 
-func (m *ClientToFrontend) GetHttpResponse() *httpgrpc.HTTPResponse {
+func (m *ClientToFrontend) GetHttpResponse() *httpgrpc.DHTTPResponse {
 	if m != nil {
 		return m.HttpResponse
 	}
@@ -867,7 +867,7 @@ func (this *FrontendToClient) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&FrontendToClient{`,
-		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.DHTTPRequest", 1) + `,`,
 		`Type:` + fmt.Sprintf("%v", this.Type) + `,`,
 		`StatsEnabled:` + fmt.Sprintf("%v", this.StatsEnabled) + `,`,
 		`}`,
@@ -879,7 +879,7 @@ func (this *ClientToFrontend) String() string {
 		return "nil"
 	}
 	s := strings.Join([]string{`&ClientToFrontend{`,
-		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.HTTPResponse", 1) + `,`,
+		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.DHTTPResponse", 1) + `,`,
 		`ClientID:` + fmt.Sprintf("%v", this.ClientID) + `,`,
 		`Stats:` + strings.Replace(fmt.Sprintf("%v", this.Stats), "Stats", "stats.Stats", 1) + `,`,
 		`}`,
@@ -972,7 +972,7 @@ func (m *FrontendToClient) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.HttpRequest == nil {
-				m.HttpRequest = &httpgrpc.HTTPRequest{}
+				m.HttpRequest = &httpgrpc.DHTTPRequest{}
 			}
 			if err := m.HttpRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -1100,7 +1100,7 @@ func (m *ClientToFrontend) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.HttpResponse == nil {
-				m.HttpResponse = &httpgrpc.HTTPResponse{}
+				m.HttpResponse = &httpgrpc.DHTTPResponse{}
 			}
 			if err := m.HttpResponse.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err

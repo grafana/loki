@@ -33,7 +33,7 @@ const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
 type QueryResultRequest struct {
 	QueryID      uint64                 `protobuf:"varint,1,opt,name=queryID,proto3" json:"queryID,omitempty"`
-	HttpResponse *httpgrpc.HTTPResponse `protobuf:"bytes,2,opt,name=httpResponse,proto3" json:"httpResponse,omitempty"`
+	HttpResponse *httpgrpc.DHTTPResponse `protobuf:"bytes,2,opt,name=httpResponse,proto3" json:"httpResponse,omitempty"`
 	Stats        *stats.Stats           `protobuf:"bytes,3,opt,name=stats,proto3" json:"stats,omitempty"`
 }
 
@@ -76,7 +76,7 @@ func (m *QueryResultRequest) GetQueryID() uint64 {
 	return 0
 }
 
-func (m *QueryResultRequest) GetHttpResponse() *httpgrpc.HTTPResponse {
+func (m *QueryResultRequest) GetHttpResponse() *httpgrpc.DHTTPResponse {
 	if m != nil {
 		return m.HttpResponse
 	}
@@ -452,7 +452,7 @@ func (this *QueryResultRequest) String() string {
 	}
 	s := strings.Join([]string{`&QueryResultRequest{`,
 		`QueryID:` + fmt.Sprintf("%v", this.QueryID) + `,`,
-		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.HTTPResponse", 1) + `,`,
+		`HttpResponse:` + strings.Replace(fmt.Sprintf("%v", this.HttpResponse), "HTTPResponse", "httpgrpc.DHTTPResponse", 1) + `,`,
 		`Stats:` + strings.Replace(fmt.Sprintf("%v", this.Stats), "Stats", "stats.Stats", 1) + `,`,
 		`}`,
 	}, "")
@@ -553,7 +553,7 @@ func (m *QueryResultRequest) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.HttpResponse == nil {
-				m.HttpResponse = &httpgrpc.HTTPResponse{}
+				m.HttpResponse = &httpgrpc.DHTTPResponse{}
 			}
 			if err := m.HttpResponse.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err

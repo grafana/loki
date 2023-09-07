@@ -30,24 +30,24 @@ var _ = math.Inf
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion3 // please upgrade the proto package
 
-type HTTPRequest struct {
-	Method  string    `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
-	Url     string    `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
-	Headers []*Header `protobuf:"bytes,3,rep,name=headers,proto3" json:"headers,omitempty"`
-	Body    []byte    `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
+type DHTTPRequest struct {
+	Method  string     `protobuf:"bytes,1,opt,name=method,proto3" json:"method,omitempty"`
+	Url     string     `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	Headers []*DHeader `protobuf:"bytes,3,rep,name=headers,proto3" json:"headers,omitempty"`
+	Body    []byte     `protobuf:"bytes,4,opt,name=body,proto3" json:"body,omitempty"`
 }
 
-func (m *HTTPRequest) Reset()      { *m = HTTPRequest{} }
-func (*HTTPRequest) ProtoMessage() {}
-func (*HTTPRequest) Descriptor() ([]byte, []int) {
+func (m *DHTTPRequest) Reset()      { *m = DHTTPRequest{} }
+func (*DHTTPRequest) ProtoMessage() {}
+func (*DHTTPRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_c50820dbc814fcdd, []int{0}
 }
-func (m *HTTPRequest) XXX_Unmarshal(b []byte) error {
+func (m *DHTTPRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *HTTPRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DHTTPRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_HTTPRequest.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DHTTPRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -57,63 +57,63 @@ func (m *HTTPRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return b[:n], nil
 	}
 }
-func (m *HTTPRequest) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_HTTPRequest.Merge(m, src)
+func (m *DHTTPRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DHTTPRequest.Merge(m, src)
 }
-func (m *HTTPRequest) XXX_Size() int {
+func (m *DHTTPRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *HTTPRequest) XXX_DiscardUnknown() {
-	xxx_messageInfo_HTTPRequest.DiscardUnknown(m)
+func (m *DHTTPRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_DHTTPRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_HTTPRequest proto.InternalMessageInfo
+var xxx_messageInfo_DHTTPRequest proto.InternalMessageInfo
 
-func (m *HTTPRequest) GetMethod() string {
+func (m *DHTTPRequest) GetMethod() string {
 	if m != nil {
 		return m.Method
 	}
 	return ""
 }
 
-func (m *HTTPRequest) GetUrl() string {
+func (m *DHTTPRequest) GetUrl() string {
 	if m != nil {
 		return m.Url
 	}
 	return ""
 }
 
-func (m *HTTPRequest) GetHeaders() []*Header {
+func (m *DHTTPRequest) GetHeaders() []*DHeader {
 	if m != nil {
 		return m.Headers
 	}
 	return nil
 }
 
-func (m *HTTPRequest) GetBody() []byte {
+func (m *DHTTPRequest) GetBody() []byte {
 	if m != nil {
 		return m.Body
 	}
 	return nil
 }
 
-type HTTPResponse struct {
-	Code    int32     `protobuf:"varint,1,opt,name=Code,proto3" json:"Code,omitempty"`
-	Headers []*Header `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`
-	Body    []byte    `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
+type DHTTPResponse struct {
+	Code    int32      `protobuf:"varint,1,opt,name=Code,proto3" json:"Code,omitempty"`
+	Headers []*DHeader `protobuf:"bytes,2,rep,name=headers,proto3" json:"headers,omitempty"`
+	Body    []byte     `protobuf:"bytes,3,opt,name=body,proto3" json:"body,omitempty"`
 }
 
-func (m *HTTPResponse) Reset()      { *m = HTTPResponse{} }
-func (*HTTPResponse) ProtoMessage() {}
-func (*HTTPResponse) Descriptor() ([]byte, []int) {
+func (m *DHTTPResponse) Reset()      { *m = DHTTPResponse{} }
+func (*DHTTPResponse) ProtoMessage() {}
+func (*DHTTPResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_c50820dbc814fcdd, []int{1}
 }
-func (m *HTTPResponse) XXX_Unmarshal(b []byte) error {
+func (m *DHTTPResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *HTTPResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DHTTPResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_HTTPResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DHTTPResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -123,55 +123,55 @@ func (m *HTTPResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error)
 		return b[:n], nil
 	}
 }
-func (m *HTTPResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_HTTPResponse.Merge(m, src)
+func (m *DHTTPResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DHTTPResponse.Merge(m, src)
 }
-func (m *HTTPResponse) XXX_Size() int {
+func (m *DHTTPResponse) XXX_Size() int {
 	return m.Size()
 }
-func (m *HTTPResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_HTTPResponse.DiscardUnknown(m)
+func (m *DHTTPResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_DHTTPResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_HTTPResponse proto.InternalMessageInfo
+var xxx_messageInfo_DHTTPResponse proto.InternalMessageInfo
 
-func (m *HTTPResponse) GetCode() int32 {
+func (m *DHTTPResponse) GetCode() int32 {
 	if m != nil {
 		return m.Code
 	}
 	return 0
 }
 
-func (m *HTTPResponse) GetHeaders() []*Header {
+func (m *DHTTPResponse) GetHeaders() []*DHeader {
 	if m != nil {
 		return m.Headers
 	}
 	return nil
 }
 
-func (m *HTTPResponse) GetBody() []byte {
+func (m *DHTTPResponse) GetBody() []byte {
 	if m != nil {
 		return m.Body
 	}
 	return nil
 }
 
-type Header struct {
+type DHeader struct {
 	Key    string   `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
 	Values []string `protobuf:"bytes,2,rep,name=values,proto3" json:"values,omitempty"`
 }
 
-func (m *Header) Reset()      { *m = Header{} }
-func (*Header) ProtoMessage() {}
-func (*Header) Descriptor() ([]byte, []int) {
+func (m *DHeader) Reset()      { *m = DHeader{} }
+func (*DHeader) ProtoMessage() {}
+func (*DHeader) Descriptor() ([]byte, []int) {
 	return fileDescriptor_c50820dbc814fcdd, []int{2}
 }
-func (m *Header) XXX_Unmarshal(b []byte) error {
+func (m *DHeader) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Header) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *DHeader) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Header.Marshal(b, m, deterministic)
+		return xxx_messageInfo_DHeader.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalToSizedBuffer(b)
@@ -181,26 +181,26 @@ func (m *Header) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Header) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Header.Merge(m, src)
+func (m *DHeader) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_DHeader.Merge(m, src)
 }
-func (m *Header) XXX_Size() int {
+func (m *DHeader) XXX_Size() int {
 	return m.Size()
 }
-func (m *Header) XXX_DiscardUnknown() {
-	xxx_messageInfo_Header.DiscardUnknown(m)
+func (m *DHeader) XXX_DiscardUnknown() {
+	xxx_messageInfo_DHeader.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Header proto.InternalMessageInfo
+var xxx_messageInfo_DHeader proto.InternalMessageInfo
 
-func (m *Header) GetKey() string {
+func (m *DHeader) GetKey() string {
 	if m != nil {
 		return m.Key
 	}
 	return ""
 }
 
-func (m *Header) GetValues() []string {
+func (m *DHeader) GetValues() []string {
 	if m != nil {
 		return m.Values
 	}
@@ -208,44 +208,44 @@ func (m *Header) GetValues() []string {
 }
 
 func init() {
-	proto.RegisterType((*HTTPRequest)(nil), "httpgrpc.HTTPRequest")
-	proto.RegisterType((*HTTPResponse)(nil), "httpgrpc.HTTPResponse")
-	proto.RegisterType((*Header)(nil), "httpgrpc.Header")
+	proto.RegisterType((*DHTTPRequest)(nil), "httpgrpc.DHTTPRequest")
+	proto.RegisterType((*DHTTPResponse)(nil), "httpgrpc.DHTTPResponse")
+	proto.RegisterType((*DHeader)(nil), "httpgrpc.DHeader")
 }
 
 func init() { proto.RegisterFile("httpgrpc.proto", fileDescriptor_c50820dbc814fcdd) }
 
 var fileDescriptor_c50820dbc814fcdd = []byte{
-	// 301 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x91, 0xbd, 0x4e, 0xc3, 0x30,
-	0x14, 0x85, 0xed, 0xa6, 0x04, 0xea, 0x56, 0xa8, 0xb2, 0xa0, 0x8a, 0x3a, 0x5c, 0x55, 0x99, 0x22,
-	0x86, 0x22, 0x05, 0x16, 0x46, 0x60, 0xc9, 0x88, 0xac, 0xbe, 0x40, 0x42, 0xac, 0x44, 0x22, 0xd4,
-	0x21, 0x3f, 0xa0, 0x6e, 0x3c, 0x02, 0x8f, 0xc1, 0xa3, 0x30, 0x66, 0xec, 0x48, 0x9c, 0x85, 0xb1,
-	0x8f, 0x80, 0xec, 0xa4, 0x10, 0x31, 0xb1, 0x9d, 0x7b, 0xee, 0x51, 0xbe, 0x7b, 0x62, 0x72, 0x1c,
-	0x17, 0x45, 0x1a, 0x65, 0xe9, 0xfd, 0x32, 0xcd, 0x44, 0x21, 0xe8, 0xd1, 0x7e, 0x9e, 0x9f, 0x44,
-	0x22, 0x12, 0xda, 0x3c, 0x57, 0xaa, 0xdd, 0xdb, 0x2f, 0x64, 0xec, 0xad, 0x56, 0x77, 0x8c, 0x3f,
-	0x95, 0x3c, 0x2f, 0xe8, 0x8c, 0x98, 0x8f, 0xbc, 0x88, 0x45, 0x68, 0xe1, 0x05, 0x76, 0x46, 0xac,
-	0x9b, 0xe8, 0x94, 0x18, 0x65, 0x96, 0x58, 0x03, 0x6d, 0x2a, 0x49, 0xcf, 0xc8, 0x61, 0xcc, 0xfd,
-	0x90, 0x67, 0xb9, 0x65, 0x2c, 0x0c, 0x67, 0xec, 0x4e, 0x97, 0x3f, 0x68, 0x4f, 0x2f, 0xd8, 0x3e,
-	0x40, 0x29, 0x19, 0x06, 0x22, 0xdc, 0x58, 0xc3, 0x05, 0x76, 0x26, 0x4c, 0x6b, 0x3b, 0x20, 0x93,
-	0x16, 0x9c, 0xa7, 0x62, 0x9d, 0x73, 0x95, 0xb9, 0x15, 0x21, 0xd7, 0xdc, 0x03, 0xa6, 0x75, 0x9f,
-	0x31, 0xf8, 0x2f, 0xc3, 0xe8, 0x31, 0x5c, 0x62, 0xb6, 0x31, 0x75, 0xff, 0x03, 0xdf, 0x74, 0xa5,
-	0x94, 0x54, 0x4d, 0x9f, 0xfd, 0xa4, 0xe4, 0xed, 0xa7, 0x47, 0xac, 0x9b, 0xdc, 0x6b, 0x32, 0x54,
-	0x77, 0xd1, 0x2b, 0x62, 0x7a, 0xfe, 0x3a, 0x4c, 0x38, 0x3d, 0xed, 0x41, 0x7f, 0x7f, 0xd5, 0x7c,
-	0xf6, 0xd7, 0x6e, 0x8b, 0xd8, 0xe8, 0xe6, 0xb2, 0xaa, 0x01, 0x6d, 0x6b, 0x40, 0xbb, 0x1a, 0xf0,
-	0xab, 0x04, 0xfc, 0x2e, 0x01, 0x7f, 0x48, 0xc0, 0x95, 0x04, 0xfc, 0x29, 0x01, 0x7f, 0x49, 0x40,
-	0x3b, 0x09, 0xf8, 0xad, 0x01, 0x54, 0x35, 0x80, 0xb6, 0x0d, 0xa0, 0xc0, 0xd4, 0x0f, 0x72, 0xf1,
-	0x1d, 0x00, 0x00, 0xff, 0xff, 0x44, 0x0e, 0x7c, 0xff, 0xc2, 0x01, 0x00, 0x00,
+	// 303 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0xe2, 0xe2, 0xcb, 0x28, 0x29, 0x29,
+	0x48, 0x2f, 0x2a, 0x48, 0xd6, 0x2b, 0x28, 0xca, 0x2f, 0xc9, 0x17, 0xe2, 0x80, 0xf1, 0xa5, 0x44,
+	0xd2, 0xf3, 0xd3, 0xf3, 0xc1, 0x82, 0xfa, 0x20, 0x16, 0x44, 0x5e, 0xa9, 0x92, 0x8b, 0xc7, 0xc5,
+	0x23, 0x24, 0x24, 0x20, 0x28, 0xb5, 0xb0, 0x34, 0xb5, 0xb8, 0x44, 0x48, 0x8c, 0x8b, 0x2d, 0x37,
+	0xb5, 0x24, 0x23, 0x3f, 0x45, 0x82, 0x51, 0x81, 0x51, 0x83, 0x33, 0x08, 0xca, 0x13, 0x12, 0xe0,
+	0x62, 0x2e, 0x2d, 0xca, 0x91, 0x60, 0x02, 0x0b, 0x82, 0x98, 0x42, 0xda, 0x5c, 0xec, 0x19, 0xa9,
+	0x89, 0x29, 0xa9, 0x45, 0xc5, 0x12, 0xcc, 0x0a, 0xcc, 0x1a, 0xdc, 0x46, 0x82, 0x7a, 0x70, 0xbb,
+	0x5d, 0x3c, 0xc0, 0x32, 0x41, 0x30, 0x15, 0x42, 0x42, 0x5c, 0x2c, 0x49, 0xf9, 0x29, 0x95, 0x12,
+	0x2c, 0x0a, 0x8c, 0x1a, 0x3c, 0x41, 0x60, 0xb6, 0x52, 0x0a, 0x17, 0x2f, 0xd4, 0xea, 0xe2, 0x82,
+	0xfc, 0xbc, 0xe2, 0x54, 0x90, 0x22, 0xe7, 0xfc, 0x94, 0x54, 0xb0, 0xcd, 0xac, 0x41, 0x60, 0x36,
+	0xb2, 0x2d, 0x4c, 0x44, 0xdb, 0xc2, 0x8c, 0x64, 0x8b, 0x31, 0x17, 0x3b, 0x54, 0x1d, 0xc8, 0x0f,
+	0xd9, 0xa9, 0x95, 0x50, 0x8f, 0x81, 0x98, 0x20, 0xdf, 0x96, 0x25, 0xe6, 0x94, 0xa6, 0x42, 0x0c,
+	0xe7, 0x0c, 0x82, 0xf2, 0x8c, 0x5c, 0xb8, 0x58, 0xc1, 0x4e, 0x13, 0xb2, 0xe6, 0x62, 0xf3, 0x48,
+	0xcc, 0x4b, 0xc9, 0x49, 0x15, 0x12, 0x43, 0xb6, 0x17, 0x11, 0x60, 0x52, 0xe2, 0x18, 0xe2, 0x10,
+	0xdf, 0x28, 0x31, 0x38, 0x99, 0x5c, 0x78, 0x28, 0xc7, 0x70, 0xe3, 0xa1, 0x1c, 0xc3, 0x87, 0x87,
+	0x72, 0x8c, 0x0d, 0x8f, 0xe4, 0x18, 0x57, 0x3c, 0x92, 0x63, 0x3c, 0xf1, 0x48, 0x8e, 0xf1, 0xc2,
+	0x23, 0x39, 0xc6, 0x07, 0x8f, 0xe4, 0x18, 0x5f, 0x3c, 0x92, 0x63, 0xf8, 0xf0, 0x48, 0x8e, 0x71,
+	0xc2, 0x63, 0x39, 0x86, 0x0b, 0x8f, 0xe5, 0x18, 0x6e, 0x3c, 0x96, 0x63, 0x48, 0x62, 0x03, 0x47,
+	0x8c, 0x31, 0x20, 0x00, 0x00, 0xff, 0xff, 0x9b, 0x33, 0xb2, 0xfa, 0xca, 0x01, 0x00, 0x00,
 }
 
-func (this *HTTPRequest) Equal(that interface{}) bool {
+func (this *DHTTPRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*HTTPRequest)
+	that1, ok := that.(*DHTTPRequest)
 	if !ok {
-		that2, ok := that.(HTTPRequest)
+		that2, ok := that.(DHTTPRequest)
 		if ok {
 			that1 = &that2
 		} else {
@@ -276,14 +276,14 @@ func (this *HTTPRequest) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *HTTPResponse) Equal(that interface{}) bool {
+func (this *DHTTPResponse) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*HTTPResponse)
+	that1, ok := that.(*DHTTPResponse)
 	if !ok {
-		that2, ok := that.(HTTPResponse)
+		that2, ok := that.(DHTTPResponse)
 		if ok {
 			that1 = &that2
 		} else {
@@ -311,14 +311,14 @@ func (this *HTTPResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *Header) Equal(that interface{}) bool {
+func (this *DHeader) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*Header)
+	that1, ok := that.(*DHeader)
 	if !ok {
-		that2, ok := that.(Header)
+		that2, ok := that.(DHeader)
 		if ok {
 			that1 = &that2
 		} else {
@@ -343,12 +343,12 @@ func (this *Header) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *HTTPRequest) GoString() string {
+func (this *DHTTPRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 8)
-	s = append(s, "&httpgrpc.HTTPRequest{")
+	s = append(s, "&httpgrpc.DHTTPRequest{")
 	s = append(s, "Method: "+fmt.Sprintf("%#v", this.Method)+",\n")
 	s = append(s, "Url: "+fmt.Sprintf("%#v", this.Url)+",\n")
 	if this.Headers != nil {
@@ -358,12 +358,12 @@ func (this *HTTPRequest) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *HTTPResponse) GoString() string {
+func (this *DHTTPResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 7)
-	s = append(s, "&httpgrpc.HTTPResponse{")
+	s = append(s, "&httpgrpc.DHTTPResponse{")
 	s = append(s, "Code: "+fmt.Sprintf("%#v", this.Code)+",\n")
 	if this.Headers != nil {
 		s = append(s, "Headers: "+fmt.Sprintf("%#v", this.Headers)+",\n")
@@ -372,12 +372,12 @@ func (this *HTTPResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *Header) GoString() string {
+func (this *DHeader) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&httpgrpc.Header{")
+	s = append(s, "&httpgrpc.DHeader{")
 	s = append(s, "Key: "+fmt.Sprintf("%#v", this.Key)+",\n")
 	s = append(s, "Values: "+fmt.Sprintf("%#v", this.Values)+",\n")
 	s = append(s, "}")
@@ -400,79 +400,79 @@ var _ grpc.ClientConn
 // is compatible with the grpc package it is being compiled against.
 const _ = grpc.SupportPackageIsVersion4
 
-// HTTPClient is the client API for HTTP service.
+// DHTTPClient is the client API for DHTTP service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://godoc.org/google.golang.org/grpc#ClientConn.NewStream.
-type HTTPClient interface {
-	Handle(ctx context.Context, in *HTTPRequest, opts ...grpc.CallOption) (*HTTPResponse, error)
+type DHTTPClient interface {
+	Handle(ctx context.Context, in *DHTTPRequest, opts ...grpc.CallOption) (*DHTTPResponse, error)
 }
 
-type hTTPClient struct {
+type dHTTPClient struct {
 	cc *grpc.ClientConn
 }
 
-func NewHTTPClient(cc *grpc.ClientConn) HTTPClient {
-	return &hTTPClient{cc}
+func NewDHTTPClient(cc *grpc.ClientConn) DHTTPClient {
+	return &dHTTPClient{cc}
 }
 
-func (c *hTTPClient) Handle(ctx context.Context, in *HTTPRequest, opts ...grpc.CallOption) (*HTTPResponse, error) {
-	out := new(HTTPResponse)
-	err := c.cc.Invoke(ctx, "/httpgrpc.HTTP/Handle", in, out, opts...)
+func (c *dHTTPClient) Handle(ctx context.Context, in *DHTTPRequest, opts ...grpc.CallOption) (*DHTTPResponse, error) {
+	out := new(DHTTPResponse)
+	err := c.cc.Invoke(ctx, "/httpgrpc.DHTTP/Handle", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// HTTPServer is the server API for HTTP service.
-type HTTPServer interface {
-	Handle(context.Context, *HTTPRequest) (*HTTPResponse, error)
+// DHTTPServer is the server API for DHTTP service.
+type DHTTPServer interface {
+	Handle(context.Context, *DHTTPRequest) (*DHTTPResponse, error)
 }
 
-// UnimplementedHTTPServer can be embedded to have forward compatible implementations.
-type UnimplementedHTTPServer struct {
+// UnimplementedDHTTPServer can be embedded to have forward compatible implementations.
+type UnimplementedDHTTPServer struct {
 }
 
-func (*UnimplementedHTTPServer) Handle(ctx context.Context, req *HTTPRequest) (*HTTPResponse, error) {
+func (*UnimplementedDHTTPServer) Handle(ctx context.Context, req *DHTTPRequest) (*DHTTPResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Handle not implemented")
 }
 
-func RegisterHTTPServer(s *grpc.Server, srv HTTPServer) {
-	s.RegisterService(&_HTTP_serviceDesc, srv)
+func RegisterDHTTPServer(s *grpc.Server, srv DHTTPServer) {
+	s.RegisterService(&_DHTTP_serviceDesc, srv)
 }
 
-func _HTTP_Handle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(HTTPRequest)
+func _DHTTP_Handle_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DHTTPRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(HTTPServer).Handle(ctx, in)
+		return srv.(DHTTPServer).Handle(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/httpgrpc.HTTP/Handle",
+		FullMethod: "/httpgrpc.DHTTP/Handle",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(HTTPServer).Handle(ctx, req.(*HTTPRequest))
+		return srv.(DHTTPServer).Handle(ctx, req.(*DHTTPRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-var _HTTP_serviceDesc = grpc.ServiceDesc{
-	ServiceName: "httpgrpc.HTTP",
-	HandlerType: (*HTTPServer)(nil),
+var _DHTTP_serviceDesc = grpc.ServiceDesc{
+	ServiceName: "httpgrpc.DHTTP",
+	HandlerType: (*DHTTPServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Handle",
-			Handler:    _HTTP_Handle_Handler,
+			Handler:    _DHTTP_Handle_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "httpgrpc.proto",
 }
 
-func (m *HTTPRequest) Marshal() (dAtA []byte, err error) {
+func (m *DHTTPRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -482,12 +482,12 @@ func (m *HTTPRequest) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *HTTPRequest) MarshalTo(dAtA []byte) (int, error) {
+func (m *DHTTPRequest) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *HTTPRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DHTTPRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -530,7 +530,7 @@ func (m *HTTPRequest) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *HTTPResponse) Marshal() (dAtA []byte, err error) {
+func (m *DHTTPResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -540,12 +540,12 @@ func (m *HTTPResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *HTTPResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *DHTTPResponse) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *HTTPResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DHTTPResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -579,7 +579,7 @@ func (m *HTTPResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *Header) Marshal() (dAtA []byte, err error) {
+func (m *DHeader) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalToSizedBuffer(dAtA[:size])
@@ -589,12 +589,12 @@ func (m *Header) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Header) MarshalTo(dAtA []byte) (int, error) {
+func (m *DHeader) MarshalTo(dAtA []byte) (int, error) {
 	size := m.Size()
 	return m.MarshalToSizedBuffer(dAtA[:size])
 }
 
-func (m *Header) MarshalToSizedBuffer(dAtA []byte) (int, error) {
+func (m *DHeader) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	i := len(dAtA)
 	_ = i
 	var l int
@@ -629,7 +629,7 @@ func encodeVarintHttpgrpc(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return base
 }
-func (m *HTTPRequest) Size() (n int) {
+func (m *DHTTPRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -656,7 +656,7 @@ func (m *HTTPRequest) Size() (n int) {
 	return n
 }
 
-func (m *HTTPResponse) Size() (n int) {
+func (m *DHTTPResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -678,7 +678,7 @@ func (m *HTTPResponse) Size() (n int) {
 	return n
 }
 
-func (m *Header) Size() (n int) {
+func (m *DHeader) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -703,16 +703,16 @@ func sovHttpgrpc(x uint64) (n int) {
 func sozHttpgrpc(x uint64) (n int) {
 	return sovHttpgrpc(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (this *HTTPRequest) String() string {
+func (this *DHTTPRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForHeaders := "[]*Header{"
+	repeatedStringForHeaders := "[]*DHeader{"
 	for _, f := range this.Headers {
-		repeatedStringForHeaders += strings.Replace(f.String(), "Header", "Header", 1) + ","
+		repeatedStringForHeaders += strings.Replace(f.String(), "DHeader", "DHeader", 1) + ","
 	}
 	repeatedStringForHeaders += "}"
-	s := strings.Join([]string{`&HTTPRequest{`,
+	s := strings.Join([]string{`&DHTTPRequest{`,
 		`Method:` + fmt.Sprintf("%v", this.Method) + `,`,
 		`Url:` + fmt.Sprintf("%v", this.Url) + `,`,
 		`Headers:` + repeatedStringForHeaders + `,`,
@@ -721,16 +721,16 @@ func (this *HTTPRequest) String() string {
 	}, "")
 	return s
 }
-func (this *HTTPResponse) String() string {
+func (this *DHTTPResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	repeatedStringForHeaders := "[]*Header{"
+	repeatedStringForHeaders := "[]*DHeader{"
 	for _, f := range this.Headers {
-		repeatedStringForHeaders += strings.Replace(f.String(), "Header", "Header", 1) + ","
+		repeatedStringForHeaders += strings.Replace(f.String(), "DHeader", "DHeader", 1) + ","
 	}
 	repeatedStringForHeaders += "}"
-	s := strings.Join([]string{`&HTTPResponse{`,
+	s := strings.Join([]string{`&DHTTPResponse{`,
 		`Code:` + fmt.Sprintf("%v", this.Code) + `,`,
 		`Headers:` + repeatedStringForHeaders + `,`,
 		`Body:` + fmt.Sprintf("%v", this.Body) + `,`,
@@ -738,11 +738,11 @@ func (this *HTTPResponse) String() string {
 	}, "")
 	return s
 }
-func (this *Header) String() string {
+func (this *DHeader) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&Header{`,
+	s := strings.Join([]string{`&DHeader{`,
 		`Key:` + fmt.Sprintf("%v", this.Key) + `,`,
 		`Values:` + fmt.Sprintf("%v", this.Values) + `,`,
 		`}`,
@@ -757,7 +757,7 @@ func valueToStringHttpgrpc(v interface{}) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
 }
-func (m *HTTPRequest) Unmarshal(dAtA []byte) error {
+func (m *DHTTPRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -780,10 +780,10 @@ func (m *HTTPRequest) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: HTTPRequest: wiretype end group for non-group")
+			return fmt.Errorf("proto: DHTTPRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: HTTPRequest: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DHTTPRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -879,7 +879,7 @@ func (m *HTTPRequest) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Headers = append(m.Headers, &Header{})
+			m.Headers = append(m.Headers, &DHeader{})
 			if err := m.Headers[len(m.Headers)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -942,7 +942,7 @@ func (m *HTTPRequest) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *HTTPResponse) Unmarshal(dAtA []byte) error {
+func (m *DHTTPResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -965,10 +965,10 @@ func (m *HTTPResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: HTTPResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: DHTTPResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: HTTPResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DHTTPResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1019,7 +1019,7 @@ func (m *HTTPResponse) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			m.Headers = append(m.Headers, &Header{})
+			m.Headers = append(m.Headers, &DHeader{})
 			if err := m.Headers[len(m.Headers)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
@@ -1082,7 +1082,7 @@ func (m *HTTPResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Header) Unmarshal(dAtA []byte) error {
+func (m *DHeader) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1105,10 +1105,10 @@ func (m *Header) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Header: wiretype end group for non-group")
+			return fmt.Errorf("proto: DHeader: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Header: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: DHeader: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:

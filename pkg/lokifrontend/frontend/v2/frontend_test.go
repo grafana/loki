@@ -78,7 +78,7 @@ func setupFrontend(t *testing.T, schedulerReplyFunc func(f *Frontend, msg *sched
 	return f, ms
 }
 
-func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, queryID uint64, resp *httpgrpc.HTTPResponse) {
+func sendResponseWithDelay(f *Frontend, delay time.Duration, userID string, queryID uint64, resp *httpgrpc.DHTTPResponse) {
 	if delay > 0 {
 		time.Sleep(delay)
 	}
@@ -100,7 +100,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
 		// It first needs to be told that enqueuing has succeeded.
-		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.DHTTPResponse{
 			Code: 200,
 			Body: []byte(body),
 		})
@@ -108,7 +108,7 @@ func TestFrontendBasicWorkflow(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	})
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.DHTTPRequest{})
 	require.NoError(t, err)
 	require.Equal(t, int32(200), resp.Code)
 	require.Equal(t, []byte(body), resp.Body)
@@ -128,14 +128,14 @@ func TestFrontendRetryEnqueue(t *testing.T) {
 			return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 		}
 
-		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.HTTPResponse{
+		go sendResponseWithDelay(f, 100*time.Millisecond, userID, msg.QueryID, &httpgrpc.DHTTPResponse{
 			Code: 200,
 			Body: []byte(body),
 		})
 
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.OK}
 	})
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.HTTPRequest{})
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), userID), &httpgrpc.DHTTPRequest{})
 	require.NoError(t, err)
 }
 
@@ -144,7 +144,7 @@ func TestFrontendEnqueueFailure(t *testing.T) {
 		return &schedulerpb.SchedulerToFrontend{Status: schedulerpb.SHUTTING_DOWN}
 	})
 
-	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.HTTPRequest{})
+	_, err := f.RoundTripGRPC(user.InjectOrgID(context.Background(), "test"), &httpgrpc.DHTTPRequest{})
 	require.Error(t, err)
 	require.True(t, strings.Contains(err.Error(), "failed to enqueue request"))
 }
@@ -155,7 +155,7 @@ func TestFrontendCancellation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.DHTTPRequest{})
 	require.EqualError(t, err, context.DeadlineExceeded.Error())
 	require.Nil(t, resp)
 
@@ -191,7 +191,7 @@ func TestFrontendWorkerCancellation(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+			resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.DHTTPRequest{})
 			require.EqualError(t, err, context.DeadlineExceeded.Error())
 			require.Nil(t, resp)
 		}()
@@ -242,7 +242,7 @@ func TestFrontendFailedCancellation(t *testing.T) {
 	}()
 
 	// send request
-	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+	resp, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.DHTTPRequest{})
 	require.EqualError(t, err, context.Canceled.Error())
 	require.Nil(t, resp)
 
@@ -256,7 +256,7 @@ func TestFrontendStoppingWaitsForEmptyInflightRequests(t *testing.T) {
 	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
 		// It first needs to be told that enqueuing has succeeded.
-		go sendResponseWithDelay(f, 2*delayResponse, "test", msg.QueryID, &httpgrpc.HTTPResponse{
+		go sendResponseWithDelay(f, 2*delayResponse, "test", msg.QueryID, &httpgrpc.DHTTPResponse{
 			Code: 200,
 			Body: []byte("ok"),
 		})
@@ -272,7 +272,7 @@ func TestFrontendStoppingWaitsForEmptyInflightRequests(t *testing.T) {
 
 	for i := 0; i < inflightRequests; i++ {
 		go func() {
-			_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+			_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.DHTTPRequest{})
 			require.NoError(t, err)
 		}()
 	}
@@ -294,7 +294,7 @@ func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
 	f, _ := setupFrontend(t, func(f *Frontend, msg *schedulerpb.FrontendToScheduler) *schedulerpb.SchedulerToFrontend {
 		// We cannot call QueryResult directly, as Frontend is not yet waiting for the response.
 		// It first needs to be told that enqueuing has succeeded.
-		go sendResponseWithDelay(f, delayResponse, "test", msg.QueryID, &httpgrpc.HTTPResponse{
+		go sendResponseWithDelay(f, delayResponse, "test", msg.QueryID, &httpgrpc.DHTTPResponse{
 			Code: 200,
 			Body: []byte("ok"),
 		})
@@ -312,7 +312,7 @@ func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+		_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.DHTTPRequest{})
 		require.NoError(t, err)
 	}()
 
@@ -333,7 +333,7 @@ func TestFrontendShuttingDownLetsSubRequestsPass(t *testing.T) {
 	// This request still needs to be able to pass the RoundTripGRCP function,
 	// because it may be a sub-request of a query request that was split earlier
 	// into multiple sub-requests.
-	_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.HTTPRequest{})
+	_, err := f.RoundTripGRPC(user.InjectOrgID(ctx, "test"), &httpgrpc.DHTTPRequest{})
 	require.NoError(t, err)
 
 	wg.Wait()

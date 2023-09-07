@@ -74,9 +74,9 @@ type request struct {
 	queueSpan   opentracing.Span
 	originalCtx context.Context
 
-	request  *httpgrpc.HTTPRequest
+	request  *httpgrpc.DHTTPRequest
 	err      chan error
-	response chan *httpgrpc.HTTPResponse
+	response chan *httpgrpc.DHTTPResponse
 }
 
 // New creates a new frontend. Frontend implements service, and must be started and stopped.
@@ -144,7 +144,7 @@ func (f *Frontend) cleanupInactiveUserMetrics(user string) {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.DHTTPRequest) (*httpgrpc.DHTTPResponse, error) {
 	// Propagate trace context in gRPC too - this will be ignored if using HTTP.
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
 	if tracer != nil && span != nil {
@@ -163,7 +163,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		// of the Process stream, even if this goroutine goes away due to
 		// client context cancellation.
 		err:      make(chan error, 1),
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *httpgrpc.DHTTPResponse, 1),
 	}
 
 	if err := f.queueRequest(ctx, &request); err != nil {
@@ -283,7 +283,7 @@ func getQuerierID(server frontendv1pb.Frontend_ProcessServer) (string, error) {
 		Type: frontendv1pb.GET_ID,
 		// Old queriers don't support GET_ID, and will try to use the request.
 		// To avoid confusing them, include dummy request.
-		HttpRequest: &httpgrpc.HTTPRequest{
+		HttpRequest: &httpgrpc.DHTTPRequest{
 			Method: "GET",
 			Url:    "/invalid_request_sent_by_frontend",
 		},

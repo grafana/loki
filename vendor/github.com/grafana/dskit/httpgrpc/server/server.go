@@ -50,7 +50,7 @@ func (nopCloser) Close() error { return nil }
 func (n nopCloser) BytesBuffer() *bytes.Buffer { return n.Buffer }
 
 // Handle implements HTTPServer.
-func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (s Server) Handle(ctx context.Context, r *httpgrpc.DHTTPRequest) (*httpgrpc.DHTTPResponse, error) {
 	req, err := http.NewRequest(r.Method, r.Url, nopCloser{Buffer: bytes.NewBuffer(r.Body)})
 	if err != nil {
 		return nil, err
@@ -62,7 +62,7 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, req)
-	resp := &httpgrpc.HTTPResponse{
+	resp := &httpgrpc.DHTTPResponse{
 		Code:    int32(recorder.Code),
 		Headers: fromHeader(recorder.Header()),
 		Body:    recorder.Body.Bytes(),
@@ -75,7 +75,7 @@ func (s Server) Handle(ctx context.Context, r *httpgrpc.HTTPRequest) (*httpgrpc.
 
 // Client is a http.Handler that forwards the request over gRPC.
 type Client struct {
-	client httpgrpc.HTTPClient
+	client httpgrpc.DHTTPClient
 	conn   *grpc.ClientConn
 }
 
@@ -148,18 +148,18 @@ func NewClient(address string) (*Client, error) {
 	}
 
 	return &Client{
-		client: httpgrpc.NewHTTPClient(conn),
+		client: httpgrpc.NewDHTTPClient(conn),
 		conn:   conn,
 	}, nil
 }
 
 // HTTPRequest wraps an ordinary HTTPRequest with a gRPC one
-func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
+func HTTPRequest(r *http.Request) (*httpgrpc.DHTTPRequest, error) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
 	}
-	return &httpgrpc.HTTPRequest{
+	return &httpgrpc.DHTTPRequest{
 		Method:  r.Method,
 		Url:     r.RequestURI,
 		Body:    body,
@@ -168,7 +168,7 @@ func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
 }
 
 // WriteResponse converts an httpgrpc response to an HTTP one
-func WriteResponse(w http.ResponseWriter, resp *httpgrpc.HTTPResponse) error {
+func WriteResponse(w http.ResponseWriter, resp *httpgrpc.DHTTPResponse) error {
 	toHeader(resp.Headers, w.Header())
 	w.WriteHeader(int(resp.Code))
 	_, err := w.Write(resp.Body)
@@ -218,16 +218,16 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func toHeader(hs []*httpgrpc.Header, header http.Header) {
+func toHeader(hs []*httpgrpc.DHeader, header http.Header) {
 	for _, h := range hs {
 		header[h.Key] = h.Values
 	}
 }
 
-func fromHeader(hs http.Header) []*httpgrpc.Header {
-	result := make([]*httpgrpc.Header, 0, len(hs))
+func fromHeader(hs http.Header) []*httpgrpc.DHeader {
+	result := make([]*httpgrpc.DHeader, 0, len(hs))
 	for k, vs := range hs {
-		result = append(result, &httpgrpc.Header{
+		result = append(result, &httpgrpc.DHeader{
 			Key:    k,
 			Values: vs,
 		})

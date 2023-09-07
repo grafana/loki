@@ -37,7 +37,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			return nil, loopClient.Context().Err()
 		})
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.HTTPResponse{}, nil)
+		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.DHTTPResponse{}, nil)
 
 		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
 
@@ -81,7 +81,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 			// Intentionally slow down the query execution, to double check the worker waits until done.
 			time.Sleep(time.Second)
-		}).Return(&httpgrpc.HTTPResponse{}, nil)
+		}).Return(&httpgrpc.DHTTPResponse{}, nil)
 
 		startTime := time.Now()
 		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
@@ -113,7 +113,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			return nil, status.Error(codes.Unknown, schedulerpb.ErrSchedulerIsNotRunning.Error())
 		})
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.HTTPResponse{}, nil)
+		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.DHTTPResponse{}, nil)
 
 		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
 
@@ -221,7 +221,7 @@ type requestHandlerMock struct {
 	mock.Mock
 }
 
-func (m *requestHandlerMock) Handle(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (m *requestHandlerMock) Handle(ctx context.Context, req *httpgrpc.DHTTPRequest) (*httpgrpc.DHTTPResponse, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(*httpgrpc.HTTPResponse), args.Error(1)
+	return args.Get(0).(*httpgrpc.DHTTPResponse), args.Error(1)
 }

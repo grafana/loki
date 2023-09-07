@@ -515,7 +515,7 @@ func (s *Server) Run() error {
 
 	// Setup gRPC server
 	// for HTTP over gRPC, ensure we don't double-count the middleware
-	httpgrpc.RegisterHTTPServer(s.GRPC, httpgrpc_server.NewServer(s.HTTP))
+	httpgrpc.RegisterDHTTPServer(s.GRPC, httpgrpc_server.NewServer(s.HTTP))
 
 	go func() {
 		err := s.GRPC.Serve(s.grpcListener)

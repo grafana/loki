@@ -131,7 +131,7 @@ type SchedulerToQuerier struct {
 	// Query ID as reported by frontend. When querier sends the response back to frontend (using frontendAddress),
 	// it identifies the query by using this ID.
 	QueryID     uint64                `protobuf:"varint,1,opt,name=queryID,proto3" json:"queryID,omitempty"`
-	HttpRequest *httpgrpc.HTTPRequest `protobuf:"bytes,2,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
+	HttpRequest *httpgrpc.DHTTPRequest `protobuf:"bytes,2,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
 	// Where should querier send HTTP Response to (using FrontendForQuerier interface).
 	FrontendAddress string `protobuf:"bytes,3,opt,name=frontendAddress,proto3" json:"frontendAddress,omitempty"`
 	// User who initiated the request. Needed to send reply back to frontend.
@@ -180,7 +180,7 @@ func (m *SchedulerToQuerier) GetQueryID() uint64 {
 	return 0
 }
 
-func (m *SchedulerToQuerier) GetHttpRequest() *httpgrpc.HTTPRequest {
+func (m *SchedulerToQuerier) GetHttpRequest() *httpgrpc.DHTTPRequest {
 	if m != nil {
 		return m.HttpRequest
 	}
@@ -217,7 +217,7 @@ type FrontendToScheduler struct {
 	QueryID uint64 `protobuf:"varint,3,opt,name=queryID,proto3" json:"queryID,omitempty"`
 	// Following are used by ENQUEUE only.
 	UserID       string                `protobuf:"bytes,4,opt,name=userID,proto3" json:"userID,omitempty"`
-	HttpRequest  *httpgrpc.HTTPRequest `protobuf:"bytes,5,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
+	HttpRequest  *httpgrpc.DHTTPRequest `protobuf:"bytes,5,opt,name=httpRequest,proto3" json:"httpRequest,omitempty"`
 	StatsEnabled bool                  `protobuf:"varint,6,opt,name=statsEnabled,proto3" json:"statsEnabled,omitempty"`
 	// Path to queue to which the request will be enqueued.
 	QueuePath []string `protobuf:"bytes,7,rep,name=queuePath,proto3" json:"queuePath,omitempty"`
@@ -283,7 +283,7 @@ func (m *FrontendToScheduler) GetUserID() string {
 	return ""
 }
 
-func (m *FrontendToScheduler) GetHttpRequest() *httpgrpc.HTTPRequest {
+func (m *FrontendToScheduler) GetHttpRequest() *httpgrpc.DHTTPRequest {
 	if m != nil {
 		return m.HttpRequest
 	}
@@ -1456,7 +1456,7 @@ func (this *SchedulerToQuerier) String() string {
 	}
 	s := strings.Join([]string{`&SchedulerToQuerier{`,
 		`QueryID:` + fmt.Sprintf("%v", this.QueryID) + `,`,
-		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.DHTTPRequest", 1) + `,`,
 		`FrontendAddress:` + fmt.Sprintf("%v", this.FrontendAddress) + `,`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
 		`StatsEnabled:` + fmt.Sprintf("%v", this.StatsEnabled) + `,`,
@@ -1473,7 +1473,7 @@ func (this *FrontendToScheduler) String() string {
 		`FrontendAddress:` + fmt.Sprintf("%v", this.FrontendAddress) + `,`,
 		`QueryID:` + fmt.Sprintf("%v", this.QueryID) + `,`,
 		`UserID:` + fmt.Sprintf("%v", this.UserID) + `,`,
-		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.HTTPRequest", 1) + `,`,
+		`HttpRequest:` + strings.Replace(fmt.Sprintf("%v", this.HttpRequest), "HTTPRequest", "httpgrpc.DHTTPRequest", 1) + `,`,
 		`StatsEnabled:` + fmt.Sprintf("%v", this.StatsEnabled) + `,`,
 		`QueuePath:` + fmt.Sprintf("%v", this.QueuePath) + `,`,
 		`}`,
@@ -1681,7 +1681,7 @@ func (m *SchedulerToQuerier) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.HttpRequest == nil {
-				m.HttpRequest = &httpgrpc.HTTPRequest{}
+				m.HttpRequest = &httpgrpc.DHTTPRequest{}
 			}
 			if err := m.HttpRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
@@ -1956,7 +1956,7 @@ func (m *FrontendToScheduler) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.HttpRequest == nil {
-				m.HttpRequest = &httpgrpc.HTTPRequest{}
+				m.HttpRequest = &httpgrpc.DHTTPRequest{}
 			}
 			if err := m.HttpRequest.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err

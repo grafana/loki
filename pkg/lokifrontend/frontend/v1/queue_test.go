@@ -36,12 +36,12 @@ func testReq(ctx context.Context, reqID, user string) *request {
 	return &request{
 		originalCtx: ctx,
 		err:         make(chan error, 1),
-		request: &httpgrpc.HTTPRequest{
+		request: &httpgrpc.DHTTPRequest{
 			// Good enough for testing.
 			Method: user,
 			Url:    reqID,
 		},
-		response: make(chan *httpgrpc.HTTPResponse, 1),
+		response: make(chan *httpgrpc.DHTTPResponse, 1),
 	}
 }
 
@@ -133,7 +133,7 @@ type processServerMock struct {
 
 	response *frontendv1pb.ClientToFrontend
 
-	requests []*httpgrpc.HTTPRequest
+	requests []*httpgrpc.DHTTPRequest
 }
 
 func (p *processServerMock) Send(client *frontendv1pb.FrontendToClient) error {
@@ -144,7 +144,7 @@ func (p *processServerMock) Send(client *frontendv1pb.FrontendToClient) error {
 
 	case client.GetType() == frontendv1pb.HTTP_REQUEST:
 		p.requests = append(p.requests, client.HttpRequest)
-		p.response = &frontendv1pb.ClientToFrontend{HttpResponse: &httpgrpc.HTTPResponse{Code: 200}}
+		p.response = &frontendv1pb.ClientToFrontend{HttpResponse: &httpgrpc.DHTTPResponse{Code: 200}}
 		return nil
 
 	default:

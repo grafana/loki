@@ -57,7 +57,7 @@ func (cfg *Config) Validate() error {
 
 // Handler for HTTP requests wrapped in protobuf messages.
 type RequestHandler interface {
-	Handle(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
+	Handle(context.Context, *httpgrpc.DHTTPRequest) (*httpgrpc.DHTTPResponse, error)
 }
 
 // Single processor handles all streaming operations to query-frontend or query-scheduler to fetch queries

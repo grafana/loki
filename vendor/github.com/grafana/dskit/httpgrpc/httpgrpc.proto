@@ -12,24 +12,24 @@ option (gogoproto.goproto_unkeyed_all) = false;
 option (gogoproto.goproto_unrecognized_all) = false;
 option (gogoproto.goproto_sizecache_all) = false;
 
-service HTTP {
-  rpc Handle(HTTPRequest) returns (HTTPResponse) {};
+service DHTTP {
+  rpc Handle(DHTTPRequest) returns (DHTTPResponse) {};
 }
 
-message HTTPRequest {
+message DHTTPRequest {
   string method = 1;
   string url = 2;
-  repeated Header headers = 3;
+  repeated DHeader headers = 3;
   bytes body = 4;
 }
 
-message HTTPResponse {
+message DHTTPResponse {
   int32 Code = 1;
-  repeated Header headers = 2;
+  repeated DHeader headers = 2;
   bytes body = 3;
 }
 
-message Header {
+message DHeader {
   string key = 1;
   repeated string values = 2;
 }

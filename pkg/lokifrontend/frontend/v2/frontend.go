@@ -81,7 +81,7 @@ type Frontend struct {
 
 type frontendRequest struct {
 	queryID      uint64
-	request      *httpgrpc.HTTPRequest
+	request      *httpgrpc.DHTTPRequest
 	tenantID     string
 	actor        []string
 	statsEnabled bool
@@ -185,7 +185,7 @@ func (f *Frontend) stopping(_ error) error {
 }
 
 // RoundTripGRPC round trips a proto (instead of a HTTP request).
-func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.DHTTPRequest) (*httpgrpc.DHTTPResponse, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return nil, err

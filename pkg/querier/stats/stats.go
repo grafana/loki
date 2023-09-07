@@ -97,7 +97,7 @@ func (s *Stats) Merge(other *Stats) {
 	s.AddFetchedChunkBytes(other.LoadFetchedChunkBytes())
 }
 
-func ShouldTrackHTTPGRPCResponse(r *httpgrpc.HTTPResponse) bool {
+func ShouldTrackHTTPGRPCResponse(r *httpgrpc.DHTTPResponse) bool {
 	// Do no track statistics for requests failed because of a server error.
 	return r.Code < 500
 }

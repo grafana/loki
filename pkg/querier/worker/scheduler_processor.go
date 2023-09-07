@@ -161,7 +161,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
+func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.DHTTPRequest) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
@@ -172,7 +172,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		var ok bool
 		response, ok = httpgrpc.HTTPResponseFromError(err)
 		if !ok {
-			response = &httpgrpc.HTTPResponse{
+			response = &httpgrpc.DHTTPResponse{
 				Code: http.StatusInternalServerError,
 				Body: []byte(err.Error()),
 			}
@@ -186,7 +186,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		level.Error(logger).Log("msg", "response larger than max message size", "size", len(response.Body), "maxMessageSize", sp.maxMessageSize)
 
 		errMsg := fmt.Sprintf("response larger than the max message size (%d vs %d)", len(response.Body), sp.maxMessageSize)
-		response = &httpgrpc.HTTPResponse{
+		response = &httpgrpc.DHTTPResponse{
 			Code: http.StatusRequestEntityTooLarge,
 			Body: []byte(errMsg),
 		}
