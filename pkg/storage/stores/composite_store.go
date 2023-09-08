@@ -65,7 +65,7 @@ func (c *CompositeStore) AddStore(start model.Time, fetcher *fetcher.Fetcher, in
 		Store: &storeEntry{
 			fetcher:     fetcher,
 			indexReader: index,
-			ChunkWriter: writer,
+			chunkWriter: writer,
 			limits:      c.limits,
 			stop:        stop,
 		},

@@ -39,7 +39,22 @@ type storeEntry struct {
 	stop        func()
 	fetcher     *fetcher.Fetcher
 	indexReader index.Reader
-	ChunkWriter
+	chunkWriter ChunkWriter
+}
+
+// Enforce implementation of interface
+// TODO(chaudum): Remove once interfaces are cleaned up.
+var _ Store = &compositeStoreEntry{}
+var _ Store = &storeEntry{}
+
+// Put implements ChunkWriter.
+func (c *storeEntry) Put(ctx context.Context, chunks []chunk.Chunk) error {
+	return c.chunkWriter.Put(ctx, chunks)
+}
+
+// PutOne implements ChunkWriter.
+func (c *storeEntry) PutOne(ctx context.Context, from model.Time, through model.Time, chunk chunk.Chunk) error {
+	return c.chunkWriter.PutOne(ctx, from, through, chunk)
 }
 
 func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
