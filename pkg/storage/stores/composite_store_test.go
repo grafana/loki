@@ -311,7 +311,7 @@ func (m mockStoreVolume) Volume(_ context.Context, _ string, _, _ model.Time, _ 
 	return m.value, m.err
 }
 
-func TestVolume(t *testing.T) {
+func TestCompositeStore_Volume(t *testing.T) {
 	t.Run("it returns volumes from all stores", func(t *testing.T) {
 		cs := CompositeStore{
 			stores: []compositeStoreEntry{
@@ -343,5 +343,4 @@ func TestVolume(t *testing.T) {
 		require.Error(t, err, "something bad")
 		require.Nil(t, volumes)
 	})
-
 }

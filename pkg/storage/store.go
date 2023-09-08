@@ -209,7 +209,7 @@ func (s *LokiStore) init() error {
 	}
 
 	if s.cfg.EnableAsyncStore {
-		s.store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.store, s.schemaCfg)
+		s.store = stores.NewAsyncStore(s.cfg.AsyncStoreConfig, s.store, s.schemaCfg)
 	}
 
 	return nil

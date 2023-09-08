@@ -1,4 +1,4 @@
-package storage
+package stores
 
 import (
 	"context"
@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/util"
 )
 
@@ -23,7 +22,7 @@ import (
 // to control the behaviour of the store without really hitting any storage backend
 type storeMock struct {
 	// inherit store.Store to "guarantee explicit implementation"
-	stores.Store
+	Store
 	util.ExtendedMock
 }
 
@@ -318,7 +317,7 @@ func TestAsyncStore_QueryIngestersWithin(t *testing.T) {
 	}
 }
 
-func TestVolume(t *testing.T) {
+func TestAsyncStore_Volume(t *testing.T) {
 	store := newStoreMock()
 	store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(
 		&logproto.VolumeResponse{
