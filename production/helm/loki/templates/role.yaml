@@ -27,5 +27,10 @@ rules:
       - use
     resourceNames:
       - {{ include "loki.name" . }}
+  {{- if and .Values.rbac.namespaced .Values.sidecar.rules.enabled }}
+  - apiGroups: [""] # "" indicates the core API group
+    resources: ["configmaps", "secrets"]
+    verbs: ["get", "watch", "list"]
+  {{- end }}
 {{- end }}
 {{- end }}
