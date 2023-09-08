@@ -20,6 +20,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/log"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
 )
 
 var NilMetrics = NewChunkMetrics(nil, 0)
@@ -1010,7 +1011,7 @@ func Test_newLogBatchChunkIterator(t *testing.T) {
 					t.Fatalf("error reading batch %s", err)
 				}
 
-				assertStream(t, tt.expected, streams.Streams)
+				AssertStream(t, tt.expected, streams.Streams)
 			})
 		}
 	}
@@ -1429,7 +1430,7 @@ func Test_newSampleBatchChunkIterator(t *testing.T) {
 				t.Fatalf("error reading batch %s", err)
 			}
 
-			assertSeries(t, tt.expected, series.Series)
+			AssertSeries(t, tt.expected, series.Series)
 		})
 	}
 }
@@ -1660,7 +1661,7 @@ func TestBuildHeapIterator(t *testing.T) {
 			if err != nil {
 				t.Fatalf("error reading batch %s", err)
 			}
-			assertStream(t, tc.expected, streams.Streams)
+			AssertStream(t, tc.expected, streams.Streams)
 		})
 	}
 }
@@ -1765,7 +1766,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 		cfg: Config{
 			MaxChunkBatchSize: 50,
 		},
-		store: newMockChunkStore(chunkfmt, headfmt, newOverlappingStreams(200, 200)),
+		store: stores.NewMockChunkStore(chunkfmt, headfmt, newOverlappingStreams(200, 200)),
 	}
 	b.ResetTimer()
 	statsCtx, ctx := stats.NewContext(user.InjectOrgID(context.Background(), "fake"))
