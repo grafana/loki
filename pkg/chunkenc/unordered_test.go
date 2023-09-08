@@ -25,7 +25,7 @@ func iterEq(t *testing.T, exp []entry, got iter.EntryIterator) {
 			Timestamp: time.Unix(0, exp[i].t),
 			Line:      exp[i].s,
 		}, got.Entry())
-		require.Equal(t, exp[i].nonIndexedLabels.String(), got.Labels())
+		require.Equal(t, exp[i].structuredMetadata.String(), got.Labels())
 		i++
 	}
 	require.Equal(t, i, len(exp))
@@ -167,12 +167,12 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			for _, format := range []HeadBlockFmt{
 				UnorderedHeadBlockFmt,
-				UnorderedWithNonIndexedLabelsHeadBlockFmt,
+				UnorderedWithStructuredMetadataHeadBlockFmt,
 			} {
 				t.Run(format.String(), func(t *testing.T) {
 					hb := newUnorderedHeadBlock(format, newSymbolizer())
 					for _, e := range tc.input {
-						require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
+						require.Nil(t, hb.Append(e.t, e.s, e.structuredMetadata))
 					}
 
 					itr := hb.Iterator(
@@ -185,9 +185,9 @@ func Test_Unordered_InsertRetrieval(t *testing.T) {
 
 					expected := make([]entry, len(tc.exp))
 					copy(expected, tc.exp)
-					if format < UnorderedWithNonIndexedLabelsHeadBlockFmt {
+					if format < UnorderedWithStructuredMetadataHeadBlockFmt {
 						for i := range expected {
-							expected[i].nonIndexedLabels = nil
+							expected[i].structuredMetadata = nil
 						}
 					}
 
@@ -244,12 +244,12 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			for _, format := range []HeadBlockFmt{
 				UnorderedHeadBlockFmt,
-				UnorderedWithNonIndexedLabelsHeadBlockFmt,
+				UnorderedWithStructuredMetadataHeadBlockFmt,
 			} {
 				t.Run(format.String(), func(t *testing.T) {
 					hb := newUnorderedHeadBlock(format, newSymbolizer())
 					for _, e := range tc.input {
-						require.Nil(t, hb.Append(e.t, e.s, e.nonIndexedLabels))
+						require.Nil(t, hb.Append(e.t, e.s, e.structuredMetadata))
 					}
 
 					itr := hb.Iterator(
@@ -262,9 +262,9 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 
 					expected := make([]entry, len(tc.exp))
 					copy(expected, tc.exp)
-					if format < UnorderedWithNonIndexedLabelsHeadBlockFmt {
+					if format < UnorderedWithStructuredMetadataHeadBlockFmt {
 						for i := range expected {
-							expected[i].nonIndexedLabels = nil
+							expected[i].structuredMetadata = nil
 						}
 					}
 
@@ -277,11 +277,11 @@ func Test_UnorderedBoundedIter(t *testing.T) {
 
 func TestHeadBlockInterop(t *testing.T) {
 	unordered, ordered := newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil), &headBlock{}
-	unorderedWithNonIndexedLabels := newUnorderedHeadBlock(UnorderedWithNonIndexedLabelsHeadBlockFmt, newSymbolizer())
+	unorderedWithStructuredMetadata := newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer())
 	for i := 0; i < 100; i++ {
 		metaLabels := labels.Labels{{Name: "foo", Value: fmt.Sprint(99 - i)}}
 		require.Nil(t, unordered.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
-		require.Nil(t, unorderedWithNonIndexedLabels.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
+		require.Nil(t, unorderedWithStructuredMetadata.Append(int64(99-i), fmt.Sprint(99-i), metaLabels))
 		require.Nil(t, ordered.Append(int64(i), fmt.Sprint(i), labels.Labels{{Name: "foo", Value: fmt.Sprint(i)}}))
 	}
 
@@ -290,7 +290,7 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Nil(t, err)
 	unorderedCheckpointBytes, err := unordered.CheckpointBytes(nil)
 	require.Nil(t, err)
-	unorderedWithNonIndexedLabelsCheckpointBytes, err := unorderedWithNonIndexedLabels.CheckpointBytes(nil)
+	unorderedWithStructuredMetadataCheckpointBytes, err := unorderedWithStructuredMetadata.CheckpointBytes(nil)
 	require.Nil(t, err)
 
 	// Ensure we can recover ordered checkpoint into ordered headblock
@@ -303,11 +303,11 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
-	// Ensure we can recover ordered checkpoint into unordered headblock with non-indexed labels
-	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, nil)
+	// Ensure we can recover ordered checkpoint into unordered headblock with structured metadata
+	recovered, err = HeadFromCheckpoint(orderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, nil)
 	require.NoError(t, err)
 	require.Equal(t, &unorderedHeadBlock{
-		format: UnorderedWithNonIndexedLabelsHeadBlockFmt,
+		format: UnorderedWithStructuredMetadataHeadBlockFmt,
 		rt:     unordered.rt,
 		lines:  unordered.lines,
 		size:   unordered.size,
@@ -320,31 +320,31 @@ func TestHeadBlockInterop(t *testing.T) {
 	require.Nil(t, err)
 	require.Equal(t, unordered, recovered)
 
-	// Ensure trying to recover unordered checkpoint into unordered with non-indexed labels keeps it in unordered format
-	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, nil)
+	// Ensure trying to recover unordered checkpoint into unordered with structured metadata keeps it in unordered format
+	recovered, err = HeadFromCheckpoint(unorderedCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, nil)
 	require.NoError(t, err)
 	require.Equal(t, unordered, recovered)
 
-	// Ensure trying to recover unordered with non-indexed labels checkpoint into ordered headblock keeps it in unordered with non-indexed labels format
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, OrderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
+	// Ensure trying to recover unordered with structured metadata checkpoint into ordered headblock keeps it in unordered with structured metadata format
+	recovered, err = HeadFromCheckpoint(unorderedWithStructuredMetadataCheckpointBytes, OrderedHeadBlockFmt, unorderedWithStructuredMetadata.symbolizer)
 	require.Nil(t, err)
-	require.Equal(t, unorderedWithNonIndexedLabels, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+	require.Equal(t, unorderedWithStructuredMetadata, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
 
-	// Ensure trying to recover unordered with non-indexed labels checkpoint into unordered headblock keeps it in unordered with non-indexed labels format
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
+	// Ensure trying to recover unordered with structured metadata checkpoint into unordered headblock keeps it in unordered with structured metadata format
+	recovered, err = HeadFromCheckpoint(unorderedWithStructuredMetadataCheckpointBytes, UnorderedHeadBlockFmt, unorderedWithStructuredMetadata.symbolizer)
 	require.Nil(t, err)
-	require.Equal(t, unorderedWithNonIndexedLabels, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
+	require.Equal(t, unorderedWithStructuredMetadata, recovered) // we compare the data with unordered because unordered head block does not contain metaLabels.
 
-	// Ensure we can recover unordered with non-indexed checkpoint into unordered with non-indexed headblock
-	recovered, err = HeadFromCheckpoint(unorderedWithNonIndexedLabelsCheckpointBytes, UnorderedWithNonIndexedLabelsHeadBlockFmt, unorderedWithNonIndexedLabels.symbolizer)
+	// Ensure we can recover unordered with structured metadata checkpoint into unordered with structured metadata headblock
+	recovered, err = HeadFromCheckpoint(unorderedWithStructuredMetadataCheckpointBytes, UnorderedWithStructuredMetadataHeadBlockFmt, unorderedWithStructuredMetadata.symbolizer)
 	require.Nil(t, err)
-	require.Equal(t, unorderedWithNonIndexedLabels, recovered)
+	require.Equal(t, unorderedWithStructuredMetadata, recovered)
 }
 
 // ensure backwards compatibility from when chunk format
 // and head block format was split
 func TestChunkBlockFmt(t *testing.T) {
-	require.Equal(t, chunkFormatV3, byte(OrderedHeadBlockFmt))
+	require.Equal(t, ChunkFormatV3, byte(OrderedHeadBlockFmt))
 }
 
 func BenchmarkHeadBlockWrites(b *testing.B) {
@@ -388,7 +388,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 			unorderedWrites: true,
 		},
 	} {
-		for _, withNonIndexedLabels := range []bool{false, true} {
+		for _, withStructuredMetadata := range []bool{false, true} {
 			// build writes before we start benchmarking so random number generation, etc,
 			// isn't included in our timing info
 			writes := make([]entry, 0, nWrites)
@@ -399,27 +399,27 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 					ts = rnd.Int63()
 				}
 
-				var nonIndexedLabels labels.Labels
-				if withNonIndexedLabels {
-					nonIndexedLabels = labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}}
+				var structuredMetadata labels.Labels
+				if withStructuredMetadata {
+					structuredMetadata = labels.Labels{{Name: "foo", Value: fmt.Sprint(ts)}}
 				}
 
 				writes = append(writes, entry{
-					t:                ts,
-					s:                fmt.Sprint("line:", i),
-					nonIndexedLabels: nonIndexedLabels,
+					t:                  ts,
+					s:                  fmt.Sprint("line:", i),
+					structuredMetadata: structuredMetadata,
 				})
 			}
 
 			name := tc.desc
-			if withNonIndexedLabels {
-				name += " with non-indexed labels"
+			if withStructuredMetadata {
+				name += " with structured metadata"
 			}
 			b.Run(name, func(b *testing.B) {
 				for n := 0; n < b.N; n++ {
 					writeFn := tc.fn()
 					for _, w := range writes {
-						writeFn(w.t, w.s, w.nonIndexedLabels)
+						writeFn(w.t, w.s, w.structuredMetadata)
 					}
 				}
 			})
@@ -428,7 +428,7 @@ func BenchmarkHeadBlockWrites(b *testing.B) {
 }
 
 func TestUnorderedChunkIterators(t *testing.T) {
-	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for i := 0; i < 100; i++ {
 		// push in reverse order
 		require.Nil(t, c.Append(&logproto.Entry{
@@ -484,11 +484,11 @@ func TestUnorderedChunkIterators(t *testing.T) {
 }
 
 func BenchmarkUnorderedRead(b *testing.B) {
-	legacy := NewMemChunk(EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	legacy := NewMemChunk(ChunkFormatV3, EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkClose(legacy, false)
-	ordered := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	ordered := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkClose(ordered, false)
-	unordered := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	unordered := NewMemChunk(ChunkFormatV3, EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkRandomOrder(unordered, false)
 
 	tcs := []struct {
@@ -546,7 +546,7 @@ func BenchmarkUnorderedRead(b *testing.B) {
 }
 
 func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
-	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	fillChunkRandomOrder(c, false)
 
 	ct := 0
@@ -583,7 +583,7 @@ func TestUnorderedIteratorCountsAllEntries(t *testing.T) {
 }
 
 func chunkFrom(xs []logproto.Entry) ([]byte, error) {
-	c := NewMemChunk(EncSnappy, OrderedHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, x := range xs {
 		if err := c.Append(&x); err != nil {
 			return nil, err
@@ -643,7 +643,7 @@ func TestReorder(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+			c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 			for _, x := range tc.input {
 				require.Nil(t, c.Append(&x))
 			}
@@ -660,7 +660,7 @@ func TestReorder(t *testing.T) {
 }
 
 func TestReorderAcrossBlocks(t *testing.T) {
-	c := NewMemChunk(EncSnappy, UnorderedHeadBlockFmt, testBlockSize, testTargetSize)
+	c := NewMemChunk(ChunkFormatV4, EncSnappy, UnorderedWithStructuredMetadataHeadBlockFmt, testBlockSize, testTargetSize)
 	for _, batch := range [][]int{
 		// ensure our blocks have overlapping bounds and must be reordered
 		// before closing.
@@ -711,9 +711,9 @@ func Test_HeadIteratorHash(t *testing.T) {
 	}
 
 	for name, b := range map[string]HeadBlock{
-		"unordered":                         newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
-		"unordered with non-indexed labels": newUnorderedHeadBlock(UnorderedWithNonIndexedLabelsHeadBlockFmt, newSymbolizer()),
-		"ordered":                           &headBlock{},
+		"unordered":                          newUnorderedHeadBlock(UnorderedHeadBlockFmt, nil),
+		"unordered with structured metadata": newUnorderedHeadBlock(UnorderedWithStructuredMetadataHeadBlockFmt, newSymbolizer()),
+		"ordered":                            &headBlock{},
 	} {
 		t.Run(name, func(t *testing.T) {
 			require.NoError(t, b.Append(1, "foo", labels.Labels{{Name: "foo", Value: "bar"}}))

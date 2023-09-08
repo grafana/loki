@@ -73,6 +73,8 @@ RUN GO111MODULE=on go install github.com/jsonnet-bundler/jsonnet-bundler/cmd/jb@
 RUN GO111MODULE=on go install github.com/monitoring-mixins/mixtool/cmd/mixtool@bca3066
 RUN GO111MODULE=on go install github.com/google/go-jsonnet/cmd/jsonnet@v0.18.0
 
+FROM aquasec/trivy as trivy
+
 FROM golang:1.20.6-bullseye
 RUN apt-get update && \
     apt-get install -qy \
@@ -108,6 +110,7 @@ COPY --from=gotestsum /go/bin/gotestsum /usr/bin/gotestsum
 COPY --from=jsonnet /go/bin/jb /usr/bin/jb
 COPY --from=jsonnet /go/bin/mixtool /usr/bin/mixtool
 COPY --from=jsonnet /go/bin/jsonnet /usr/bin/jsonnet
+COPY --from=trivy /usr/local/bin/trivy /usr/bin/trivy
 
 # Install some necessary dependencies.
 # Forcing GO111MODULE=on is required to specify dependencies at specific versions using the go mod notation.

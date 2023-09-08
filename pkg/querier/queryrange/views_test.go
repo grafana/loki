@@ -217,7 +217,6 @@ func TestMergedViewMaterialize(t *testing.T) {
 	}
 	expected := []string{`{baz="woof", i="1"}`, `{baz="woof", i="3"}`, `{foo="bar", i="2"}`}
 	require.ElementsMatch(t, series, expected)
-
 }
 
 func TestMergedViewJSON(t *testing.T) {

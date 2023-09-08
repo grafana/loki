@@ -8,13 +8,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 
+	"github.com/go-kit/log/level"
 	otgrpc "github.com/opentracing-contrib/go-grpc"
 	"github.com/opentracing/opentracing-go"
 	"github.com/sercand/kuberesolver/v4"
@@ -154,7 +155,7 @@ func NewClient(address string) (*Client, error) {
 
 // HTTPRequest wraps an ordinary HTTPRequest with a gRPC one
 func HTTPRequest(r *http.Request) (*httpgrpc.HTTPRequest, error) {
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +190,7 @@ func (c *Client) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if tracer := opentracing.GlobalTracer(); tracer != nil {
 		if span := opentracing.SpanFromContext(r.Context()); span != nil {
 			if err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, opentracing.HTTPHeadersCarrier(r.Header)); err != nil {
-				log.Global().Warnf("Failed to inject tracing headers into request: %v", err)
+				level.Warn(log.Global()).Log("msg", "failed to inject tracing headers into request", "err", err)
 			}
 		}
 	}

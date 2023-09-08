@@ -25,14 +25,14 @@ var metadataStartMarker = []byte("\xAB\xCD\xEFMaxMind.com")
 // All of the methods on Reader are thread-safe. The struct may be safely
 // shared across goroutines.
 type Reader struct {
-	hasMappedFile     bool
-	buffer            []byte
 	nodeReader        nodeReader
+	buffer            []byte
 	decoder           decoder
 	Metadata          Metadata
 	ipv4Start         uint
 	ipv4StartBitDepth int
 	nodeOffsetMult    uint
+	hasMappedFile     bool
 }
 
 // Metadata holds the metadata decoded from the MaxMind DB file. In particular
@@ -40,13 +40,13 @@ type Reader struct {
 // type and description, the IP version supported, and a slice of the natural
 // languages included.
 type Metadata struct {
+	Description              map[string]string `maxminddb:"description"`
+	DatabaseType             string            `maxminddb:"database_type"`
+	Languages                []string          `maxminddb:"languages"`
 	BinaryFormatMajorVersion uint              `maxminddb:"binary_format_major_version"`
 	BinaryFormatMinorVersion uint              `maxminddb:"binary_format_minor_version"`
 	BuildEpoch               uint              `maxminddb:"build_epoch"`
-	DatabaseType             string            `maxminddb:"database_type"`
-	Description              map[string]string `maxminddb:"description"`
 	IPVersion                uint              `maxminddb:"ip_version"`
-	Languages                []string          `maxminddb:"languages"`
 	NodeCount                uint              `maxminddb:"node_count"`
 	RecordSize               uint              `maxminddb:"record_size"`
 }
@@ -130,7 +130,7 @@ func (r *Reader) setIPv4Start() {
 // because of type differences, an UnmarshalTypeError is returned. If the
 // database is invalid or otherwise cannot be read, an InvalidDatabaseError
 // is returned.
-func (r *Reader) Lookup(ip net.IP, result interface{}) error {
+func (r *Reader) Lookup(ip net.IP, result any) error {
 	if r.buffer == nil {
 		return errors.New("cannot call Lookup on a closed database")
 	}
@@ -152,7 +152,7 @@ func (r *Reader) Lookup(ip net.IP, result interface{}) error {
 // cannot be read, an InvalidDatabaseError is returned.
 func (r *Reader) LookupNetwork(
 	ip net.IP,
-	result interface{},
+	result any,
 ) (network *net.IPNet, ok bool, err error) {
 	if r.buffer == nil {
 		return nil, false, errors.New("cannot call Lookup on a closed database")
@@ -204,7 +204,7 @@ func (r *Reader) cidr(ip net.IP, prefixLength int) *net.IPNet {
 // Decode the record at |offset| into |result|. The result value pointed to
 // must be a data value that corresponds to a record in the database. This may
 // include a struct representation of the data, a map capable of holding the
-// data or an empty interface{} value.
+// data or an empty any value.
 //
 // If result is a pointer to a struct, the struct need not include a field
 // for every value that may be in the database. If a field is not present in
@@ -217,14 +217,14 @@ func (r *Reader) cidr(ip net.IP, prefixLength int) *net.IPNet {
 // the City database, all records of the same country will reference a
 // single representative record for that country. This uintptr behavior allows
 // clients to leverage this normalization in their own sub-record caching.
-func (r *Reader) Decode(offset uintptr, result interface{}) error {
+func (r *Reader) Decode(offset uintptr, result any) error {
 	if r.buffer == nil {
 		return errors.New("cannot call Decode on a closed database")
 	}
 	return r.decode(offset, result)
 }
 
-func (r *Reader) decode(offset uintptr, result interface{}) error {
+func (r *Reader) decode(offset uintptr, result any) error {
 	rv := reflect.ValueOf(result)
 	if rv.Kind() != reflect.Ptr || rv.IsNil() {
 		return errors.New("result param must be a pointer")
@@ -292,7 +292,7 @@ func (r *Reader) traverseTree(ip net.IP, node, bitCount uint) (uint, int) {
 	return node, int(i)
 }
 
-func (r *Reader) retrieveData(pointer uint, result interface{}) error {
+func (r *Reader) retrieveData(pointer uint, result any) error {
 	offset, err := r.resolveDataPointer(pointer)
 	if err != nil {
 		return err

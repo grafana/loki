@@ -124,6 +124,15 @@ func (s *SwiftObjectClient) Stop() {
 	s.hedgingConn.UnAuthenticate()
 }
 
+func (s *SwiftObjectClient) ObjectExists(_ context.Context, objectKey string) (bool, error) {
+	_, _, err := s.hedgingConn.Object(s.cfg.ContainerName, objectKey)
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // GetObject returns a reader and the size for the specified object key from the configured swift container.
 func (s *SwiftObjectClient) GetObject(_ context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var buf bytes.Buffer
@@ -188,3 +197,6 @@ func (s *SwiftObjectClient) DeleteObject(_ context.Context, objectKey string) er
 func (s *SwiftObjectClient) IsObjectNotFoundErr(err error) bool {
 	return errors.Is(err, swift.ObjectNotFound)
 }
+
+// TODO(dannyk): implement for client
+func (s *SwiftObjectClient) IsRetryableErr(error) bool { return false }

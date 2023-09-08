@@ -24,7 +24,7 @@ An agent (also called a client) acquires logs,
 turns the logs into streams,
 and pushes the streams to Loki through an HTTP API.
 The Promtail agent is designed for Loki installations,
-but many other [Agents]({{< relref "../clients" >}}) seamlessly integrate with Loki.
+but many other [Agents]({{< relref "../send-data" >}}) seamlessly integrate with Loki.
 
 ![Loki agent interaction](../loki-overview-2.png "Loki agent interaction") 
 

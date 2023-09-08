@@ -63,7 +63,7 @@ func NewTarget(
 	if err := validateConfig(config); err != nil {
 		return nil, err
 	}
-	fields, err := Fields(FieldsType(config.FieldsType))
+	fields, err := Fields(FieldsType(config.FieldsType), config.AdditionalFields)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func (t *Target) Ready() bool {
 }
 
 func (t *Target) Details() interface{} {
-	fields, _ := Fields(FieldsType(t.config.FieldsType))
+	fields, _ := Fields(FieldsType(t.config.FieldsType), t.config.AdditionalFields)
 	var errMsg string
 	if t.err != nil {
 		errMsg = t.err.Error()

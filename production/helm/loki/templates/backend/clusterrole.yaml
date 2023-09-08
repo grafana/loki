@@ -1,0 +1,20 @@
+{{- if and (not .Values.rbac.namespaced) (not .Values.rbac.useExistingRole) }}
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  labels:
+    {{- include "loki.labels" . | nindent 4 }}
+{{- with .Values.annotations }}
+  annotations:
+{{ toYaml . | indent 4 }}
+{{- end }}
+  name: {{ template "loki.fullname" . }}-clusterrole
+{{- if .Values.sidecar.rules.enabled }}
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["configmaps", "secrets"]
+  verbs: ["get", "watch", "list"]
+{{- else }}
+rules: []
+{{- end }}
+{{- end }}

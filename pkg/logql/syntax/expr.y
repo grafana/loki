@@ -42,9 +42,8 @@ import (
   LogfmtParser            *LogfmtParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
-  DistinctLabel           []string
+  OrFilter                *LineFilterExpr
   ParserFlags             []string
-  DistinctFilter          *DistinctFilterExpr
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
   BytesFilter             log.LabelFilterer
@@ -110,8 +109,7 @@ import (
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
 %type <LineFilter>            lineFilter
-%type <DistinctFilter>        distinctFilter
-%type <DistinctLabel>         distinctLabel
+%type <OrFilter>              orFilter
 %type <ParserFlags>           parserFlags
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
@@ -138,7 +136,7 @@ import (
 %token <duration> DURATION RANGE
 %token <val>      MATCHERS LABELS EQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE RATE_COUNTER SUM SORT SORT_DESC AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  BYTES_OVER_TIME BYTES_RATE BOOL JSON DISTINCT REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
+                  BYTES_OVER_TIME BYTES_RATE BOOL JSON REGEXP LOGFMT PIPE LINE_FMT LABEL_FMT UNWRAP AVG_OVER_TIME SUM_OVER_TIME MIN_OVER_TIME
                   MAX_OVER_TIME STDVAR_OVER_TIME STDDEV_OVER_TIME QUANTILE_OVER_TIME BYTES_CONV DURATION_CONV DURATION_SECONDS_CONV
                   FIRST_OVER_TIME LAST_OVER_TIME ABSENT_OVER_TIME VECTOR LABEL_REPLACE UNPACK OFFSET PATTERN IP ON IGNORING GROUP_LEFT GROUP_RIGHT
                   DECOLORIZE DROP KEEP
@@ -282,20 +280,27 @@ pipelineStage:
   | PIPE labelFormatExpr         { $$ = $2 }
   | PIPE dropLabelsExpr          { $$ = $2 }
   | PIPE keepLabelsExpr          { $$ = $2 }
-  | PIPE distinctFilter          { $$ = $2 }
- ;
+  ;
 
 filterOp:
   IP { $$ = OpFilterIP }
   ;
 
+orFilter:
+    STRING                                              { $$ = newLineFilterExpr(labels.MatchEqual, "", $1) }
+  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(labels.MatchEqual, $1, $3) }
+  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", $1), $3) }
+  ;
+
 lineFilter:
     filter STRING                                                   { $$ = newLineFilterExpr($1, "", $2) }
   | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
+  | filter STRING OR orFilter                                       { $$ = newOrLineFilter(newLineFilterExpr($1, "", $2), $4) }
   ;
 
 lineFilters:
     lineFilter                { $$ = $1 }
+  | lineFilter OR orFilter    { $$ = newOrLineFilter($1, $3)}
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 
@@ -341,14 +346,6 @@ labelsFormat:
 
 labelFormatExpr:
       LABEL_FMT labelsFormat { $$ = newLabelFmtExpr($2) };
-
-distinctLabel:
-    IDENTIFIER                     { $$ = []string{ $1 } }
-  | distinctLabel COMMA IDENTIFIER { $$ = append($1, $3) }
-  ;
-
-distinctFilter:
-      DISTINCT distinctLabel { $$ = newDistinctFilterExpr($2) };
 
 labelFilter:
       matcher                                        { $$ = log.NewStringLabelFilter($1) }

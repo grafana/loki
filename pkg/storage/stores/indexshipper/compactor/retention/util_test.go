@@ -84,6 +84,17 @@ var (
 				},
 				RowShards: 16,
 			},
+			{
+				From:       dayFromTime(start.Add(125 * time.Hour)),
+				IndexType:  "tsdb",
+				ObjectType: "filesystem",
+				Schema:     "v12",
+				IndexTables: config.PeriodicTableConfig{
+					Prefix: "index_",
+					Period: time.Hour * 24,
+				},
+				RowShards: 16,
+			},
 		},
 	}
 	allSchemas = []struct {
@@ -95,6 +106,7 @@ var (
 		{"v10", schemaCfg.Configs[1].From.Time, schemaCfg.Configs[1]},
 		{"v11", schemaCfg.Configs[2].From.Time, schemaCfg.Configs[2]},
 		{"v12", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[3]},
+		{"v13", schemaCfg.Configs[3].From.Time, schemaCfg.Configs[4]},
 	}
 
 	sweepMetrics = newSweeperMetrics(prometheus.DefaultRegisterer)

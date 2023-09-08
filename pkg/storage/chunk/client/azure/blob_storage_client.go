@@ -29,7 +29,6 @@ import (
 	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/util"
 	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
-	"github.com/grafana/loki/pkg/util/log"
 )
 
 const (
@@ -190,7 +189,6 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingCfg hedging.Config) (*BlobStorage, error) {
-	log.WarnExperimentalUse("Azure Blob Storage", log.Logger)
 	blobStorage := &BlobStorage{
 		cfg:     cfg,
 		metrics: metrics,
@@ -215,6 +213,24 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
+
+func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		if err != nil {
+			return err
+		}
+
+		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		return err
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
 
 // GetObject returns a reader and the size for the specified object key.
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
@@ -558,3 +574,6 @@ func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (b *BlobStorage) IsRetryableErr(error) bool { return false }

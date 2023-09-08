@@ -94,7 +94,22 @@ func (opts ListOpts) ToServerListQuery() (string, error) {
 	return q.String(), err
 }
 
-// List makes a request against the API to list servers accessible to you.
+// ListSimple makes a request against the API to list servers accessible to you.
+func ListSimple(client *gophercloud.ServiceClient, opts ListOptsBuilder) pagination.Pager {
+	url := listURL(client)
+	if opts != nil {
+		query, err := opts.ToServerListQuery()
+		if err != nil {
+			return pagination.Pager{Err: err}
+		}
+		url += query
+	}
+	return pagination.NewPager(client, url, func(r pagination.PageResult) pagination.Page {
+		return ServerPage{pagination.LinkedPageBase{PageResult: r}}
+	})
+}
+
+// List makes a request against the API to list servers details accessible to you.
 func List(client *gophercloud.ServiceClient, opts ListOptsBuilder) pagination.Pager {
 	url := listDetailURL(client)
 	if opts != nil {

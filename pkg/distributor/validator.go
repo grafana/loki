@@ -41,6 +41,8 @@ type validationContext struct {
 
 	incrementDuplicateTimestamps bool
 
+	allowStructuredMetadata bool
+
 	userID string
 }
 
@@ -56,6 +58,7 @@ func (v Validator) getValidationContextForTime(now time.Time, userID string) val
 		maxLabelNameLength:           v.MaxLabelNameLength(userID),
 		maxLabelValueLength:          v.MaxLabelValueLength(userID),
 		incrementDuplicateTimestamps: v.IncrementDuplicateTimestamps(userID),
+		allowStructuredMetadata:      v.AllowStructuredMetadata(userID),
 	}
 }
 
@@ -88,6 +91,12 @@ func (v Validator) ValidateEntry(ctx validationContext, labels string, entry log
 		validation.DiscardedSamples.WithLabelValues(validation.LineTooLong, ctx.userID).Inc()
 		validation.DiscardedBytes.WithLabelValues(validation.LineTooLong, ctx.userID).Add(float64(len(entry.Line)))
 		return fmt.Errorf(validation.LineTooLongErrorMsg, maxSize, labels, len(entry.Line))
+	}
+
+	if !ctx.allowStructuredMetadata && len(entry.StructuredMetadata) > 0 {
+		validation.DiscardedSamples.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Inc()
+		validation.DiscardedBytes.WithLabelValues(validation.DisallowedStructuredMetadata, ctx.userID).Add(float64(len(entry.Line)))
+		return fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, labels)
 	}
 
 	return nil

@@ -2,6 +2,7 @@ package fetcher
 
 import (
 	"context"
+	"fmt"
 	"strconv"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/slices"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -317,27 +319,32 @@ type c struct {
 func makeChunks(now time.Time, tpls ...c) []chunk.Chunk {
 	var chks []chunk.Chunk
 	for _, chk := range tpls {
+		from := int(chk.from) / int(time.Hour)
+		// This is only here because it's helpful for debugging.
+		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
+		memChk := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncNone, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
+		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
+		for i := 0; i < from; i++ {
+			_ = memChk.Append(&logproto.Entry{
+				Timestamp: time.Unix(int64(i), 0),
+				Line:      fmt.Sprintf("line ts=%d", i),
+			})
+		}
+		data := chunkenc.NewFacade(memChk, 0, 0)
 		c := chunk.Chunk{
 			ChunkRef: logproto.ChunkRef{
 				UserID:  "fake",
 				From:    model.TimeFromUnix(now.Add(-chk.from).UTC().Unix()),
 				Through: model.TimeFromUnix(now.Add(-chk.through).UTC().Unix()),
 			},
-		}
-		from := int(chk.from) / int(time.Hour)
-		// This is only here because it's helpful for debugging.
-		c.Metric = labels.Labels{labels.Label{Name: "start", Value: strconv.Itoa(from)}}
-		// This isn't even the write format for Loki but we dont' care for the sake of these tests.
-		c.Data = chunk.New()
-		// To make sure the fetcher doesn't swap keys and buffers each chunk is built with different, but deterministic data
-		for i := 0; i < from; i++ {
-			_, _ = c.Data.Add(model.SamplePair{
-				Timestamp: model.TimeFromUnix(int64(i)),
-				Value:     model.SampleValue(from),
-			})
+			Metric:   labels.Labels{labels.Label{Name: "start", Value: strconv.Itoa(from)}},
+			Data:     data,
+			Encoding: data.Encoding(),
 		}
 		// Encode to set the checksum
-		_ = c.Encode()
+		if err := c.Encode(); err != nil {
+			panic(err)
+		}
 		chks = append(chks, c)
 	}
 

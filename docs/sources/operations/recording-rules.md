@@ -1,6 +1,8 @@
 ---
 title: Recording Rules
+menuTitle:  
 description: Working with recording rules.
+weight:  
 ---
 
 # Recording Rules
@@ -49,8 +51,7 @@ excessively large due to truncation.
 
 ## Scaling
 
-See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/operators-guide/configuring/configuring-hash-rings/) for scaling the ruler using a ring.
-
+See Mimir's guide for [configuring Grafana Mimir hash rings](/docs/mimir/latest/configure/configure-hash-rings/) for scaling the ruler using a ring.
 Note: the `ruler` shards by rule _group_, not by individual rules. This is an artifact of the fact that Prometheus
 recording rules need to run in order since one recording rule can reuse another - but this is not possible in Loki.
 

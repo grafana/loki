@@ -70,9 +70,8 @@ var tokens = map[string]int{
 	OpFmtLine:  LINE_FMT,
 
 	// filter functions
-	OpFilterIP:       IP,
-	OpDecolorize:     DECOLORIZE,
-	OpFilterDistinct: DISTINCT,
+	OpFilterIP:   IP,
+	OpDecolorize: DECOLORIZE,
 
 	// drop labels
 	OpDrop: DROP,

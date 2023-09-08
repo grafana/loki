@@ -13,10 +13,59 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
+## 5.19.0
+
+- [FEATURE] Add optional sidecard to load rules from ConfigMaps and Secrets.
+  
+## 5.18.1
+
+- [ENHANCEMENT] #8627 Add service labels and annotations for all services.
+- [CHANGE] #8627 Move read, write and table manager labels from #component.serviceLabels to #component.service.labels to improve consistency.
+
+## 5.18.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
+
+## 5.17.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
+## 5.16.1
+
+- [BUGFIX] Increase default minReplicas to 2 and maxReplicas to 6
+
+## 5.16.0
+
+- [ENHANCEMENT] Add dnsConfig to values
+
+## 5.15.0
+
+- [ENHANCEMENT] Add rbac.pspAnnotations to define PSP annotations
+
+## 5.14.1
+
+- [BUGFIX] Use the correct name of the service inside the ingress.
+
+## 5.14.0
+
+- [ENHANCEMENT] Make table_manager configuration toggle.
+
+## 5.13.0
+
+- [ENHANCEMENT] Use "loki.clusterLabel" template for PodLogs cluster label
+
+## 5.12.0
+
+- [ENHANCEMENT] Use tpl function in ingress and gateway-ingress for hosts
+
+## 5.11.0
+
+- [CHANGE] Changed version of Loki to 2.8.4
+
 ## 5.10.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.7.3
-
 
 ## 5.9.2
 

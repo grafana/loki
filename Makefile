@@ -5,7 +5,7 @@ help:
 	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make <target>\n\nTargets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-45s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 .DEFAULT_GOAL := all
-.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary lint test clean yacc protos touch-protobuf-sources
+.PHONY: all images check-generated-files logcli loki loki-debug promtail promtail-debug loki-canary loki-canary-boringcrypto lint test clean yacc protos touch-protobuf-sources
 .PHONY: format check-format
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
@@ -37,7 +37,7 @@ DOCKER_IMAGE_DIRS := $(patsubst %/Dockerfile,%,$(DOCKERFILES))
 BUILD_IN_CONTAINER ?= true
 
 # ensure you run `make drone` after changing this
-BUILD_IMAGE_VERSION := 0.29.3
+BUILD_IMAGE_VERSION := 0.29.4
 
 # Docker image info
 IMAGE_PREFIX ?= grafana
@@ -169,6 +169,15 @@ loki-canary: cmd/loki-canary/loki-canary ## build loki-canary executable
 cmd/loki-canary/loki-canary:
 	CGO_ENABLED=0 go build $(GO_FLAGS) -o $@ ./$(@D)
 
+
+###############
+# Loki-Canary (BoringCrypto)#
+###############
+.PHONY: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto
+loki-canary-boringcrypto: cmd/loki-canary-boringcrypto/loki-canary-boringcrypto ## build loki-canary (BoringCrypto) executable
+
+cmd/loki-canary-boringcrypto/loki-canary-boringcrypto:
+	CGO_ENABLED=1 GOOS=linux GOARCH=$(GOARCH) GOEXPERIMENT=boringcrypto go build $(GO_FLAGS) -o $@ ./$(@D)/../loki-canary
 ###############
 # Helm #
 ###############
@@ -307,7 +316,7 @@ lint: ## run linters
 
 test: all ## run the unit tests
 	$(GOTEST) -covermode=atomic -coverprofile=coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee test_results.txt
-
+	cd tools/lambda-promtail/ && $(GOTEST) -covermode=atomic -coverprofile=lambda-promtail-coverage.txt -p=4 ./... | sed "s:$$: ${DRONE_STEP_NAME} ${DRONE_SOURCE_BRANCH}:" | tee lambda_promtail_test_results.txt
 compare-coverage:
 	./tools/diff_coverage.sh $(old) $(new) $(packages)
 
@@ -581,8 +590,12 @@ loki-canary-image: ## build the loki canary docker image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
 loki-canary-image-cross:
 	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile.cross .
+loki-canary-image-cross-boringcrypto:
+	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG) -f cmd/loki-canary-boringcrypto/Dockerfile .
 loki-canary-push: loki-canary-image-cross
 	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG)
+loki-canary-push-boringcrypto: loki-canary-image-cross-boringcrypto
+	$(SUDO) $(PUSH_OCI) $(IMAGE_PREFIX)/loki-canary-boringcrypto:$(IMAGE_TAG)
 helm-test-image: ## build the helm test image
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-helm-test:$(IMAGE_TAG) -f production/helm/loki/src/helm-test/Dockerfile .
 helm-test-push: helm-test-image ## push the helm test image
@@ -812,3 +825,7 @@ dev-k3d-enterprise-logs:
 
 dev-k3d-down:
 	$(MAKE) -C $(CURDIR)/tools/dev/k3d down
+
+# Trivy is used to scan images for vulnerabilities
+trivy: loki-image
+	trivy i $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)

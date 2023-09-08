@@ -1000,7 +1000,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 
 	// parse the request
 	start, end := util.RoundToMilliseconds(reqStart, req.End)
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1041,7 +1041,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 
 	var matchers []*labels.Matcher
 	if req.Query != "" {
-		matchers, err = syntax.ParseMatchers(req.Query)
+		matchers, err = syntax.ParseMatchers(req.Query, true)
 		if err != nil {
 			return nil, err
 		}
@@ -1081,7 +1081,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
 	if req.Values {
-		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 		if err != nil {
 			return nil, err
 		}
@@ -1124,7 +1124,7 @@ func (i *Ingester) GetStats(ctx context.Context, req *logproto.IndexStatsRequest
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil {
 		return nil, err
 	}
@@ -1181,7 +1181,7 @@ func (i *Ingester) GetVolume(ctx context.Context, req *logproto.VolumeRequest) (
 		return nil, err
 	}
 
-	matchers, err := syntax.ParseMatchers(req.Matchers)
+	matchers, err := syntax.ParseMatchers(req.Matchers, true)
 	if err != nil && req.Matchers != seriesvolume.MatchAny {
 		return nil, err
 	}

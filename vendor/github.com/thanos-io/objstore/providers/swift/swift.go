@@ -290,6 +290,11 @@ func (c *Container) IsObjNotFoundErr(err error) bool {
 	return errors.Is(err, swift.ObjectNotFound)
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (c *Container) IsAccessDeniedErr(err error) bool {
+	return errors.Is(err, swift.Forbidden)
+}
+
 // Upload writes the contents of the reader as an object into the container.
 func (c *Container) Upload(_ context.Context, name string, r io.Reader) (err error) {
 	size, err := objstore.TryToGetSize(r)

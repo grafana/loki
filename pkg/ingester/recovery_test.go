@@ -50,7 +50,7 @@ func (m *MemoryWALReader) Err() error { return nil }
 
 func (m *MemoryWALReader) Record() []byte { return m.xs[0] }
 
-func buildMemoryReader(users, totalStreams, entriesPerStream int, withNonIndexedLabels bool) (*MemoryWALReader, []*wal.Record) {
+func buildMemoryReader(users, totalStreams, entriesPerStream int, withStructuredMetadata bool) (*MemoryWALReader, []*wal.Record) {
 	var recs []*wal.Record
 	reader := &MemoryWALReader{}
 	for i := 0; i < totalStreams; i++ {
@@ -77,8 +77,8 @@ func buildMemoryReader(users, totalStreams, entriesPerStream int, withNonIndexed
 				Line:      fmt.Sprintf("%d", j),
 			}
 
-			if withNonIndexedLabels {
-				entry.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
+			if withStructuredMetadata {
+				entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(labels.FromStrings(
 					"traceID", strings.Repeat(fmt.Sprintf("%d", j), 10),
 					"userID", strings.Repeat(fmt.Sprintf("%d", j), 10),
 				))
@@ -172,8 +172,8 @@ func (r *MemRecoverer) Close() { close(r.done) }
 func (r *MemRecoverer) Done() <-chan struct{} { return r.done }
 
 func Test_InMemorySegmentRecover(t *testing.T) {
-	for _, withNonIndexedLabels := range []bool{true, false} {
-		t.Run(fmt.Sprintf("nonIndexedLabels=%t", withNonIndexedLabels), func(t *testing.T) {
+	for _, withStructuredMetadata := range []bool{true, false} {
+		t.Run(fmt.Sprintf("structuredMetadata=%t", withStructuredMetadata), func(t *testing.T) {
 			var (
 				users            = 10
 				streamsCt        = 1000
@@ -182,9 +182,9 @@ func Test_InMemorySegmentRecover(t *testing.T) {
 
 			// TODO: remove once we set v3 as current
 			if wal.CurrentEntriesRec < wal.WALRecordEntriesV3 {
-				withNonIndexedLabels = false
+				withStructuredMetadata = false
 			}
-			reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream, withNonIndexedLabels)
+			reader, recs := buildMemoryReader(users, streamsCt, entriesPerStream, withStructuredMetadata)
 
 			recoverer := NewMemRecoverer()
 

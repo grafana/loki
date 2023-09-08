@@ -38,7 +38,6 @@ import (
 )
 
 const (
-	DefaultEngineTimeout       = 5 * time.Minute
 	DefaultBlockedQueryMessage = "blocked by policy"
 )
 
@@ -114,10 +113,6 @@ type Querier interface {
 
 // EngineOpts is the list of options to use with the LogQL query engine.
 type EngineOpts struct {
-	// TODO: remove this after next release.
-	// Timeout for queries execution
-	Timeout time.Duration `yaml:"timeout" doc:"deprecated"`
-
 	// MaxLookBackPeriod is the maximum amount of time to look back for log lines.
 	// only used for instant log queries.
 	MaxLookBackPeriod time.Duration `yaml:"max_look_back_period"`
@@ -127,8 +122,6 @@ type EngineOpts struct {
 }
 
 func (opts *EngineOpts) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	// TODO: remove this configuration after next release.
-	f.DurationVar(&opts.Timeout, prefix+".engine.timeout", DefaultEngineTimeout, "Use querier.query-timeout instead. Timeout for query execution.")
 	f.DurationVar(&opts.MaxLookBackPeriod, prefix+".engine.max-lookback-period", 30*time.Second, "The maximum amount of time to look back for log lines. Used only for instant log queries.")
 	// Log executing query by default
 	opts.LogExecutingQuery = true
@@ -142,26 +135,23 @@ func (opts *EngineOpts) applyDefault() {
 
 // Engine is the LogQL engine.
 type Engine struct {
-	Timeout   time.Duration
-	logger    log.Logger
-	evaluator Evaluator
-	limits    Limits
-	opts      EngineOpts
+	logger           log.Logger
+	evaluatorFactory EvaluatorFactory
+	limits           Limits
+	opts             EngineOpts
 }
 
 // NewEngine creates a new LogQL Engine.
 func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine {
-	queryTimeout := opts.Timeout
 	opts.applyDefault()
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}
 	return &Engine{
-		logger:    logger,
-		evaluator: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
-		limits:    l,
-		Timeout:   queryTimeout,
-		opts:      opts,
+		logger:           logger,
+		evaluatorFactory: NewDefaultEvaluator(q, opts.MaxLookBackPeriod),
+		limits:           l,
+		opts:             opts,
 	}
 }
 
@@ -170,7 +160,7 @@ func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:    ng.logger,
 		params:    params,
-		evaluator: ng.evaluator,
+		evaluator: ng.evaluatorFactory,
 		parse: func(_ context.Context, query string) (syntax.Expr, error) {
 			return syntax.ParseExpr(query)
 		},
@@ -191,7 +181,7 @@ type query struct {
 	params       Params
 	parse        func(context.Context, string) (syntax.Expr, error)
 	limits       Limits
-	evaluator    Evaluator
+	evaluator    EvaluatorFactory
 	record       bool
 	logExecQuery bool
 }
@@ -296,7 +286,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return value, err
 
 	case syntax.LogSelectorExpr:
-		iter, err := q.evaluator.Iterator(ctx, e, q.params)
+		iter, err := q.evaluator.NewIterator(ctx, e, q.params)
 		if err != nil {
 			return nil, err
 		}
@@ -350,7 +340,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	stepEvaluator, err := q.evaluator.StepEvaluator(ctx, q.evaluator, expr, q.params)
+	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}

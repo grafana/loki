@@ -1,7 +1,8 @@
 ---
 title: Observability
+menuTitle:  
 description: Observing Grafana Loki
-weight: 20
+weight: 
 ---
 # Observability
 
@@ -15,8 +16,8 @@ All components of Loki expose the following metrics:
 
 | Metric Name                        | Metric Type | Description                                                                                                                  |
 | ---------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by loki itself. |
-| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by loki itself.                                                                         |
+| `loki_log_messages_total`          | Counter     | DEPRECATED. Use internal_log_messages_total for the same functionality. Total number of log messages created by Loki itself. |
+| `loki_internal_log_messages_total` | Counter     | Total number of log messages created by Loki itself.                                                                         |
 | `loki_request_duration_seconds`    | Histogram   | Number of received HTTP requests.                                                                                            |
 
 The Loki Distributors expose the following metrics:
@@ -91,7 +92,7 @@ Most of these metrics are counters and should continuously increase during norma
 
 If Promtail uses any pipelines with metrics stages, those metrics will also be
 exposed by Promtail at its `/metrics` endpoint. See Promtail's documentation on
-[Pipelines]({{< relref "../clients/promtail/pipelines" >}}) for more information.
+[Pipelines]({{< relref "../send-data/promtail/pipelines" >}}) for more information.
 
 An example Grafana dashboard was built by the community and is available as
 dashboard [10004](/dashboards/10004).

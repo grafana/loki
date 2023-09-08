@@ -52,6 +52,7 @@ var defaultPeriodConfigs = []config.PeriodConfig{
 	{
 		From:      MustParseDayTime("1900-01-01"),
 		IndexType: config.StorageTypeBigTable,
+		Schema:    "v13",
 	},
 }
 
@@ -295,7 +296,9 @@ func setupTestStreams(t *testing.T) (*instance, time.Time, int) {
 	for _, testStream := range testStreams {
 		stream, err := instance.getOrCreateStream(testStream, recordPool.GetRecord())
 		require.NoError(t, err)
-		chunk := newStream(cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
+		chunkfmt, headfmt, err := instance.chunkFormatAt(minTs(&testStream))
+		require.NoError(t, err)
+		chunk := newStream(chunkfmt, headfmt, cfg, limiter, "fake", 0, nil, true, NewStreamRateCalculator(), NilMetrics, nil).NewChunk()
 		for _, entry := range testStream.Entries {
 			err = chunk.Append(&entry)
 			require.NoError(t, err)
@@ -546,9 +549,13 @@ func Benchmark_instance_addNewTailer(b *testing.B) {
 		}
 	})
 	lbs := makeRandomLabels()
+
+	chunkfmt, headfmt, err := inst.chunkFormatAt(model.Now())
+	require.NoError(b, err)
+
 	b.Run("addTailersToNewStream", func(b *testing.B) {
 		for n := 0; n < b.N; n++ {
-			inst.addTailersToNewStream(newStream(nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
+			inst.addTailersToNewStream(newStream(chunkfmt, headfmt, nil, limiter, "fake", 0, lbs, true, NewStreamRateCalculator(), NilMetrics, nil))
 		}
 	})
 }
@@ -845,9 +852,15 @@ func TestInstance_Volume(t *testing.T) {
 		err := instance.Push(context.TODO(), &logproto.PushRequest{
 			Streams: []logproto.Stream{
 				{
-					Labels: `{host="other"}`,
+					Labels: `{fizz="buzz", host="other"}`,
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1e6), Line: `msg="other"`},
+					},
+				},
+				{
+					Labels: `{foo="bar", host="other", log_stream="worker"}`,
+					Entries: []logproto.Entry{
+						{Timestamp: time.Unix(0, 1e6), Line: `msg="other worker"`},
 					},
 				},
 			},
@@ -864,7 +877,7 @@ func TestInstance_Volume(t *testing.T) {
 				From:        0,
 				Through:     1.1 * 1e3, //milliseconds
 				Matchers:    "{}",
-				Limit:       3,
+				Limit:       5,
 				AggregateBy: seriesvolume.Series,
 			})
 			require.NoError(t, err)
@@ -872,7 +885,8 @@ func TestInstance_Volume(t *testing.T) {
 			require.Equal(t, []logproto.Volume{
 				{Name: `{host="agent", job="3", log_stream="dispatcher"}`, Volume: 90},
 				{Name: `{host="agent", job="3", log_stream="worker"}`, Volume: 70},
-				{Name: `{host="other"}`, Volume: 11},
+				{Name: `{foo="bar", host="other", log_stream="worker"}`, Volume: 18},
+				{Name: `{fizz="buzz", host="other"}`, Volume: 11},
 			}, volumes.Volumes)
 		})
 
@@ -882,7 +896,7 @@ func TestInstance_Volume(t *testing.T) {
 				From:        0,
 				Through:     1.1 * 1e3, //milliseconds
 				Matchers:    `{log_stream="dispatcher"}`,
-				Limit:       3,
+				Limit:       5,
 				AggregateBy: seriesvolume.Series,
 			})
 			require.NoError(t, err)
@@ -898,7 +912,7 @@ func TestInstance_Volume(t *testing.T) {
 				From:        5,
 				Through:     1.1 * 1e3, //milliseconds
 				Matchers:    "{}",
-				Limit:       3,
+				Limit:       5,
 				AggregateBy: seriesvolume.Series,
 			})
 			require.NoError(t, err)
@@ -932,7 +946,7 @@ func TestInstance_Volume(t *testing.T) {
 					From:         0,
 					Through:      1.1 * 1e3, //milliseconds
 					Matchers:     `{}`,
-					Limit:        3,
+					Limit:        5,
 					TargetLabels: []string{"log_stream"},
 					AggregateBy:  seriesvolume.Series,
 				})
@@ -940,7 +954,7 @@ func TestInstance_Volume(t *testing.T) {
 
 				require.Equal(t, []logproto.Volume{
 					{Name: `{log_stream="dispatcher"}`, Volume: 90},
-					{Name: `{log_stream="worker"}`, Volume: 70},
+					{Name: `{log_stream="worker"}`, Volume: 88},
 				}, volumes.Volumes)
 			})
 
@@ -950,7 +964,7 @@ func TestInstance_Volume(t *testing.T) {
 					From:         0,
 					Through:      1.1 * 1e3, //milliseconds
 					Matchers:     `{log_stream="dispatcher"}`,
-					Limit:        3,
+					Limit:        5,
 					TargetLabels: []string{"host"},
 					AggregateBy:  seriesvolume.Series,
 				})
@@ -967,7 +981,7 @@ func TestInstance_Volume(t *testing.T) {
 					From:         0,
 					Through:      1.1 * 1e3, //milliseconds
 					Matchers:     `{log_stream=~".+"}`,
-					Limit:        3,
+					Limit:        5,
 					TargetLabels: []string{"host", "job"},
 					AggregateBy:  seriesvolume.Series,
 				})
@@ -987,32 +1001,39 @@ func TestInstance_Volume(t *testing.T) {
 				From:        0,
 				Through:     1.1 * 1e3, //milliseconds
 				Matchers:    "{}",
-				Limit:       3,
+				Limit:       5,
 				AggregateBy: seriesvolume.Labels,
 			})
 			require.NoError(t, err)
 
 			require.Equal(t, []logproto.Volume{
-				{Name: `host`, Volume: 171},
+				{Name: `host`, Volume: 189},
+				{Name: `log_stream`, Volume: 178},
 				{Name: `job`, Volume: 160},
-				{Name: `log_stream`, Volume: 160},
+				{Name: `foo`, Volume: 18},
+				{Name: `fizz`, Volume: 11},
 			}, volumes.Volumes)
 		})
 
-		t.Run("with matchers", func(t *testing.T) {
+		t.Run("with matchers it returns intersecting labels", func(t *testing.T) {
 			instance := prepareInstance(t)
 			volumes, err := instance.GetVolume(context.Background(), &logproto.VolumeRequest{
 				From:        0,
 				Through:     1.1 * 1e3, //milliseconds
-				Matchers:    `{log_stream="dispatcher"}`,
-				Limit:       3,
+				Matchers:    `{log_stream="worker"}`,
+				Limit:       5,
 				AggregateBy: seriesvolume.Labels,
 			})
 			require.NoError(t, err)
 
 			require.Equal(t, []logproto.Volume{
-				{Name: `log_stream`, Volume: 90},
+				{Name: `host`, Volume: 88},
+				{Name: `log_stream`, Volume: 88},
+				{Name: `job`, Volume: 70},
+				{Name: `foo`, Volume: 18},
 			}, volumes.Volumes)
+
+			require.NotContains(t, volumes.Volumes, logproto.Volume{Name: `fizz`, Volume: 11})
 		})
 
 		t.Run("excludes streams outside of time bounds", func(t *testing.T) {
@@ -1021,7 +1042,7 @@ func TestInstance_Volume(t *testing.T) {
 				From:        5,
 				Through:     1.1 * 1e3, //milliseconds
 				Matchers:    "{}",
-				Limit:       3,
+				Limit:       5,
 				AggregateBy: seriesvolume.Labels,
 			})
 			require.NoError(t, err)
@@ -1045,7 +1066,7 @@ func TestInstance_Volume(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, []logproto.Volume{
-				{Name: `host`, Volume: 171},
+				{Name: `host`, Volume: 189},
 			}, volumes.Volumes)
 		})
 
@@ -1056,14 +1077,14 @@ func TestInstance_Volume(t *testing.T) {
 					From:         0,
 					Through:      1.1 * 1e3, //milliseconds
 					Matchers:     `{}`,
-					Limit:        3,
+					Limit:        5,
 					TargetLabels: []string{"host"},
 					AggregateBy:  seriesvolume.Labels,
 				})
 				require.NoError(t, err)
 
 				require.Equal(t, []logproto.Volume{
-					{Name: `host`, Volume: 171},
+					{Name: `host`, Volume: 189},
 				}, volumes.Volumes)
 			})
 
@@ -1073,7 +1094,7 @@ func TestInstance_Volume(t *testing.T) {
 					From:         0,
 					Through:      1.1 * 1e3, //milliseconds
 					Matchers:     `{log_stream="dispatcher"}`,
-					Limit:        3,
+					Limit:        5,
 					TargetLabels: []string{"host"},
 					AggregateBy:  seriesvolume.Labels,
 				})
@@ -1090,7 +1111,7 @@ func TestInstance_Volume(t *testing.T) {
 					From:         0,
 					Through:      1.1 * 1e3, //milliseconds
 					Matchers:     `{log_stream=~".+"}`,
-					Limit:        3,
+					Limit:        5,
 					TargetLabels: []string{"host", "job"},
 					AggregateBy:  seriesvolume.Labels,
 				})

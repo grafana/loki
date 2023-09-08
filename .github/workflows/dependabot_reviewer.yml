@@ -24,10 +24,11 @@ jobs:
         with:
           github-token: "${{ secrets.GITHUB_TOKEN }}"
 
-      - name: Approve the dependabot PR
+      - name: Approve and auto-merge the dependabot PR
         run: |
+          gh pr merge --auto --squash "$PR_URL"
           gh pr review $PR_URL \
           --approve -b "Auto approve dependencies bump PR"
         env:
           PR_URL: ${{github.event.pull_request.html_url}}
-          GITHUB_TOKEN: ${{secrets.GITHUB_TOKEN}}
+          GITHUB_TOKEN: ${{secrets.GH_BOT_ACCESS_TOKEN}}

@@ -847,13 +847,23 @@ func Test_codec_EncodeResponse(t *testing.T) {
 
 func Test_codec_MergeResponse(t *testing.T) {
 	tests := []struct {
-		name      string
-		responses []queryrangebase.Response
-		want      queryrangebase.Response
-		wantErr   bool
+		name         string
+		responses    []queryrangebase.Response
+		want         queryrangebase.Response
+		errorMessage string
 	}{
-		{"empty", []queryrangebase.Response{}, nil, true},
-		{"unknown response", []queryrangebase.Response{&badResponse{}}, nil, true},
+		{
+			"empty",
+			[]queryrangebase.Response{},
+			nil,
+			"merging responses requires at least one response",
+		},
+		{
+			"unknown response",
+			[]queryrangebase.Response{&badResponse{}},
+			nil,
+			"unknown response type (*queryrange.badResponse) in merging responses",
+		},
 		{
 			"prom",
 			[]queryrangebase.Response{
@@ -877,7 +887,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki backward",
@@ -965,7 +975,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki backward limited",
@@ -1050,7 +1060,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki forward",
@@ -1138,7 +1148,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki forward limited",
@@ -1222,7 +1232,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki series",
@@ -1268,7 +1278,7 @@ func Test_codec_MergeResponse(t *testing.T) {
 					},
 				},
 			},
-			false,
+			"",
 		},
 		{
 			"loki labels",
@@ -1295,15 +1305,14 @@ func Test_codec_MergeResponse(t *testing.T) {
 				Version:    1,
 				Data:       []string{"foo", "bar", "buzz", "blip", "blop"},
 			},
-			false,
+			"",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, err := DefaultCodec.MergeResponse(tt.responses...)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("codec.MergeResponse() error = %v, wantErr %v", err, tt.wantErr)
-				return
+			if tt.errorMessage != "" {
+				require.ErrorContains(t, err, tt.errorMessage)
 			}
 			require.Equal(t, tt.want, got)
 		})
@@ -1331,16 +1340,17 @@ var (
 					"compressedBytes": 1,
 					"decompressedBytes": 2,
 					"decompressedLines": 3,
-					"decompressedNonIndexedLabelsBytes": 0,
+					"decompressedStructuredMetadataBytes": 0,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
-					"headChunkNonIndexedLabelsBytes": 0,
+					"headChunkStructuredMetadataBytes": 0,
 					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
 				"chunksDownloadTime": 0,
 				"totalChunksRef": 0,
-				"totalChunksDownloaded": 0
+				"totalChunksDownloaded": 0,
+				"chunkRefsFetchTime": 0
 			},
 			"totalBatches": 6,
 			"totalChunksMatched": 7,
@@ -1353,16 +1363,17 @@ var (
 					"compressedBytes": 11,
 					"decompressedBytes": 12,
 					"decompressedLines": 13,
-					"decompressedNonIndexedLabelsBytes": 0,
+					"decompressedStructuredMetadataBytes": 0,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
-					"headChunkNonIndexedLabelsBytes": 0,
+					"headChunkStructuredMetadataBytes": 0,
                     "postFilterLines": 0,
 					"totalDuplicates": 19
 				},
 				"chunksDownloadTime": 16,
 				"totalChunksRef": 17,
-				"totalChunksDownloaded": 18
+				"totalChunksDownloaded": 18,
+				"chunkRefsFetchTime": 19
 			}
 		},
 		"cache": {
@@ -1384,7 +1395,16 @@ var (
 				"requests": 0,
 				"downloadTime": 0
 			},
-		    "statsResult": {
+		  "statsResult": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0
+			},
+		  "volumeResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,
@@ -1414,7 +1434,7 @@ var (
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25,
-			"totalNonIndexedLabelsBytesProcessed": 0,
+			"totalStructuredMetadataBytesProcessed": 0,
             "totalPostFilterLines": 0
 		}
 	},`
@@ -1598,6 +1618,7 @@ var (
 				ChunksDownloadTime:    16,
 				TotalChunksRef:        17,
 				TotalChunksDownloaded: 18,
+				ChunkRefsFetchTime:    19,
 			},
 		},
 
@@ -1620,9 +1641,11 @@ var (
 		},
 
 		Caches: stats.Caches{
-			Chunk:  stats.Cache{},
-			Index:  stats.Cache{},
-			Result: stats.Cache{},
+			Chunk:        stats.Cache{},
+			Index:        stats.Cache{},
+			StatsResult:  stats.Cache{},
+			VolumeResult: stats.Cache{},
+			Result:       stats.Cache{},
 		},
 	}
 )

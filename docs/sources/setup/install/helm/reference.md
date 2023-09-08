@@ -74,7 +74,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -83,7 +83,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the backend.</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -102,6 +102,15 @@ false
 			<td>Target memory utilization percentage for the backend.</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for backend pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -295,9 +304,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>backend.serviceLabels</td>
+			<td>backend.service.annotations</td>
 			<td>object</td>
-			<td>Labels for ingester service</td>
+			<td>Annotations for backend Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>backend.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for backend Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -975,6 +993,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>gateway.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for gateway pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>gateway.enabled</td>
 			<td>bool</td>
 			<td>Specifies whether the gateway should be enabled</td>
@@ -1094,7 +1121,7 @@ false
 		<tr>
 			<td>gateway.ingress.hosts</td>
 			<td>list</td>
-			<td>Hosts configuration for the gateway ingress</td>
+			<td>Hosts configuration for the gateway ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1130,7 +1157,7 @@ false
 		<tr>
 			<td>gateway.ingress.tls</td>
 			<td>list</td>
-			<td>TLS configuration for the gateway ingress</td>
+			<td>TLS configuration for the gateway ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 [
   {
@@ -1482,11 +1509,13 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>ingress.hosts[0]</td>
-			<td>string</td>
-			<td></td>
+			<td>ingress.hosts</td>
+			<td>list</td>
+			<td>Hosts configuration for the ingress, passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
-"loki.example.com"
+[
+  "loki.example.com"
+]
 </pre>
 </td>
 		</tr>
@@ -1673,7 +1702,7 @@ false
 		<tr>
 			<td>ingress.tls</td>
 			<td>list</td>
-			<td></td>
+			<td>TLS configuration for the ingress. Hosts passed through the `tpl` function to allow templating</td>
 			<td><pre lang="json">
 []
 </pre>
@@ -2110,6 +2139,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>loki.serviceAnnotations</td>
+			<td>object</td>
+			<td>Common annotations for all services</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.serviceLabels</td>
+			<td>object</td>
+			<td>Common labels for all services</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.storage</td>
 			<td>object</td>
 			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
@@ -2329,6 +2376,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.lokiCanary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for canary pods</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.lokiCanary.enabled</td>
 			<td>bool</td>
 			<td></td>
@@ -2464,6 +2520,24 @@ null
 			<td>monitoring.lokiCanary.resources</td>
 			<td>object</td>
 			<td>Resource requests and limits for the canary</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for loki-canary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>monitoring.lokiCanary.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for loki-canary Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -2969,6 +3043,24 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>rbac.namespaced</td>
+			<td>bool</td>
+			<td>Whether to install RBAC in the namespace only or cluster-wide. Useful if you want to watch ConfigMap globally.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>rbac.pspAnnotations</td>
+			<td>object</td>
+			<td>Specify PSP annotations Ref: https://kubernetes.io/docs/reference/access-authn-authz/psp-to-pod-security-standards/#podsecuritypolicy-annotations</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>rbac.pspEnabled</td>
 			<td>bool</td>
 			<td>If pspEnabled true, a PodSecurityPolicy is created for K8s that use psp.</td>
@@ -3027,7 +3119,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the read</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -3036,7 +3128,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the read</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -3055,6 +3147,15 @@ false
 			<td>Target memory utilisation percentage for the read</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for read pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3257,9 +3358,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>read.serviceLabels</td>
+			<td>read.service.annotations</td>
 			<td>object</td>
-			<td>Labels for read service</td>
+			<td>Annotations for read Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>read.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for read Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -3347,6 +3457,195 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>sidecar.enableUniqueFilenames</td>
+			<td>bool</td>
+			<td>Ensure that rule files aren't conflicting and being overwritten by prefixing their name with the namespace they are defined in.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.pullPolicy</td>
+			<td>string</td>
+			<td>Docker image pull policy</td>
+			<td><pre lang="json">
+"IfNotPresent"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.repository</td>
+			<td>string</td>
+			<td>The Docker registry and image for the k8s sidecar</td>
+			<td><pre lang="json">
+"kiwigrid/k8s-sidecar"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.sha</td>
+			<td>string</td>
+			<td>Docker image sha. If empty, no sha will be used</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.image.tag</td>
+			<td>string</td>
+			<td>Docker image tag</td>
+			<td><pre lang="json">
+"1.24.3"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.livenessProbe</td>
+			<td>object</td>
+			<td>Liveness probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.readinessProbe</td>
+			<td>object</td>
+			<td>Readiness probe definition. Probe is disabled on the sidecar by default.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.resources</td>
+			<td>object</td>
+			<td>Resource requests and limits for the sidecar</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.enabled</td>
+			<td>bool</td>
+			<td>Whether or not to create a sidecar to ingest rule from specific ConfigMaps and/or Secrets.</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.folder</td>
+			<td>string</td>
+			<td>Folder into which the rules will be placed.</td>
+			<td><pre lang="json">
+"/rules"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.label</td>
+			<td>string</td>
+			<td>Label that the configmaps/secrets with rules will be marked with.</td>
+			<td><pre lang="json">
+"loki_rule"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.labelValue</td>
+			<td>string</td>
+			<td>Label value that the configmaps/secrets with rules will be set to.</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.logLevel</td>
+			<td>string</td>
+			<td>Log level of the sidecar container.</td>
+			<td><pre lang="json">
+"INFO"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.resource</td>
+			<td>string</td>
+			<td>Search in configmap, secret, or both.</td>
+			<td><pre lang="json">
+"both"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.script</td>
+			<td>string</td>
+			<td>Absolute path to the shell script to execute after a configmap or secret has been reloaded.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.searchNamespace</td>
+			<td>string</td>
+			<td>Comma separated list of namespaces. If specified, the sidecar will search for config-maps/secrets inside these namespaces. Otherwise the namespace in which the sidecar is running will be used. It's also possible to specify 'ALL' to search in all namespaces.</td>
+			<td><pre lang="json">
+null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.watchClientTimeout</td>
+			<td>int</td>
+			<td>WatchClientTimeout: is a client-side timeout, configuring your local socket. If you have a network outage dropping all packets with no RST/FIN, this is how long your client waits before realizing & dropping the connection. Defaults to 66sec.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.watchMethod</td>
+			<td>string</td>
+			<td>Method to use to detect ConfigMap changes. With WATCH the sidecar will do a WATCH request, with SLEEP it will list all ConfigMaps, then sleep for 60 seconds.</td>
+			<td><pre lang="json">
+"WATCH"
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.rules.watchServerTimeout</td>
+			<td>int</td>
+			<td>WatchServerTimeout: request to the server, asking it to cleanly close the connection after that. defaults to 60sec; much higher values like 3600 seconds (1h) are feasible for non-Azure K8S.</td>
+			<td><pre lang="json">
+60
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.securityContext</td>
+			<td>object</td>
+			<td>The SecurityContext for the sidecar.</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>sidecar.skipTlsVerify</td>
+			<td>bool</td>
+			<td>Set to true to skip tls verification for kube api calls.</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.affinity</td>
 			<td>string</td>
 			<td>Affinity for single binary pods. Passed through `tpl` and, thus, to be configured as string</td>
@@ -3406,6 +3705,15 @@ false
 			<td>Target memory utilisation percentage for the single binary</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for single binary pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3608,6 +3916,24 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>singleBinary.service.annotations</td>
+			<td>object</td>
+			<td>Annotations for single binary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>singleBinary.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for single binary Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>singleBinary.targetModule</td>
 			<td>string</td>
 			<td>Comma-separated list of Loki modules to load for the single binary</td>
@@ -3658,6 +3984,15 @@ Hard node and soft zone anti-affinity
 			<td>Command to execute instead of defined in Docker image</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config table-manager pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -3815,9 +4150,18 @@ false
 </td>
 		</tr>
 		<tr>
-			<td>tableManager.serviceLabels</td>
+			<td>tableManager.service.annotations</td>
 			<td>object</td>
-			<td>Labels for table-manager service</td>
+			<td>Annotations for table-manager Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>tableManager.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for table-manager Service</td>
 			<td><pre lang="json">
 {}
 </pre>
@@ -4046,7 +4390,7 @@ false
 			<td>int</td>
 			<td>Maximum autoscaling replicas for the write.</td>
 			<td><pre lang="json">
-3
+6
 </pre>
 </td>
 		</tr>
@@ -4055,7 +4399,7 @@ false
 			<td>int</td>
 			<td>Minimum autoscaling replicas for the write.</td>
 			<td><pre lang="json">
-1
+2
 </pre>
 </td>
 		</tr>
@@ -4074,6 +4418,15 @@ false
 			<td>Target memory utilization percentage for the write.</td>
 			<td><pre lang="json">
 null
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.dnsConfig</td>
+			<td>object</td>
+			<td>DNS config for write pods</td>
+			<td><pre lang="json">
+{}
 </pre>
 </td>
 		</tr>
@@ -4285,9 +4638,18 @@ null
 </td>
 		</tr>
 		<tr>
-			<td>write.serviceLabels</td>
+			<td>write.service.annotations</td>
 			<td>object</td>
-			<td>Labels for ingester service</td>
+			<td>Annotations for write Service</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.service.labels</td>
+			<td>object</td>
+			<td>Additional labels for write Service</td>
 			<td><pre lang="json">
 {}
 </pre>

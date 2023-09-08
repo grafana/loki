@@ -1,8 +1,14 @@
 ---
 title: Table manager
-description: Table manager
+menuTitle:  
+description: Describes the Loki table manager component.
+weight:  
 ---
 # Table manager
+
+{{% admonition type="note" %}}
+Table manager is only needed if you are using a multi-store [backend]({{< relref "../../storage" >}}). If you are using either TSDB,(recommended) or BoltDB you do not need the Table Manager.
+{{% /admonition %}}
 
 Grafana Loki supports storing indexes and chunks in table-based data storages. When
 such a storage type is used, multiple tables are created over the time: each
@@ -29,10 +35,14 @@ The Table Manager supports the following backends:
   - [Apache Cassandra](https://cassandra.apache.org)
   - [BoltDB](https://github.com/boltdb/bolt) (primarily used for local environments)
 - **Chunk store**
-  - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-  - [Google Bigtable](https://cloud.google.com/bigtable)
-  - [Apache Cassandra](https://cassandra.apache.org)
   - Filesystem (primarily used for local environments)
+
+
+Loki does support the following backends for both index and chunk storage, but they are deprecated and will be removed in a future release:
+
+- [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
+- [Google Bigtable](https://cloud.google.com/bigtable)
+- [Apache Cassandra](https://cassandra.apache.org)
 
 The object storages - like Amazon S3 and Google Cloud Storage - supported by Loki
 to store chunks, are not managed by the Table Manager, and a custom bucket policy

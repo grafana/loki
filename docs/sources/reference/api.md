@@ -84,7 +84,7 @@ These endpoints are exposed by the compactor:
 - [`GET /loki/api/v1/delete`](#list-log-deletion-requests)
 - [`DELETE /loki/api/v1/delete`](#request-cancellation-of-a-delete-request)
 
-A [list of clients]({{< relref "../clients" >}}) can be found in the clients documentation.
+A [list of clients]({{< relref "../send-data" >}}) can be found in the clients documentation.
 
 ## Matrix, vector, and streams
 
@@ -590,6 +590,16 @@ JSON post body can be sent in the following format:
     }
   ]
 }
+```
+
+You can optionally attach [structured metadata]({{< relref "../get-started/labels/structured-metadata" >}}) to each log line by adding a JSON object to the end of the log line array.
+The JSON object must be a valid JSON object with string keys and string values. The JSON object should not contain any nested object.
+The JSON object must be set immediately after the log line. Here is an example of a log entry with some structured metadata attached:
+
+```
+"values": [
+    [ "<unix epoch in nanoseconds>", "<log line>", {"trace_id": "0242ac120002", "user_id": "superUser123"}]
+]
 ```
 
 You can set `Content-Encoding: gzip` request header and post gzipped JSON.
