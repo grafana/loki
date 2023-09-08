@@ -125,7 +125,7 @@ func fillStore(cm storage.ClientMetrics) error {
 					if flushCount >= maxChunks {
 						return
 					}
-					chunkEnc = chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncLZ4_64k, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, 262144, 1572864)
+					chunkEnc = chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncLZ4_64k, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 262144, 1572864)
 				}
 			}
 		}(i)

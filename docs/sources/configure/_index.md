@@ -2,10 +2,9 @@
 title: Grafana Loki configuration parameters
 menuTitle: Configure
 description: Configuration reference for the parameters used to configure Grafana Loki.
-aliases: 
-  - ../configuration
-  - ../configure
-weight: 400 
+aliases:
+  - ./configuration # /docs/loki/<LOKI_VERSION>/configuration/
+weight: 400
 ---
 
 # Grafana Loki configuration parameters
@@ -347,7 +346,8 @@ grpc_tls_config:
 # CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
-# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
+# Limit on the number of concurrent streams for gRPC calls per client connection
+# (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
@@ -775,10 +775,6 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures the query splitting and caching in the Loki query-frontend.
 
 ```yaml
-# Deprecated: Use -querier.split-queries-by-interval instead. CLI flag:
-# -querier.split-queries-by-day. Split queries by day and execute in parallel.
-[split_queries_by_interval: <duration>]
-
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]
@@ -807,11 +803,6 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
-# Deprecated. List of headers forwarded by the query Frontend to downstream
-# querier.
-# CLI flag: -frontend.forward-headers-list
-[forward_headers_list: <list of strings> | default = []]
-
 # The downstream querier is required to answer in the accepted format. Can be
 # 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
 # CLI flag: -frontend.required-query-response-format
@@ -832,6 +823,23 @@ index_stats_results_cache:
   # Use compression in cache. The default is an empty value '', which disables
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache volume query results.
+# CLI flag: -querier.cache-volume-results
+[cache_volume_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_volume_results is true, the
+# config for the results cache is used.
+volume_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.volume-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
 ```
 
@@ -1912,7 +1920,7 @@ hedging:
 
 congestion_control:
   # Use storage congestion control (default: disabled).
-  # CLI flag: -store.enabled
+  # CLI flag: -store.congestion-control.enabled
   [enabled: <boolean> | default = false]
 
   controller:
@@ -1939,11 +1947,11 @@ congestion_control:
   retry:
     # Congestion control retry strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.retry.strategy
+    # CLI flag: -store.congestion-control.retry.strategy
     [strategy: <string> | default = ""]
 
     # Maximum number of retries allowed.
-    # CLI flag: -store.retry.strategy.limited.limit
+    # CLI flag: -store.congestion-control.retry.strategy.limited.limit
     [limit: <int> | default = 2]
 
   hedging:
@@ -1956,7 +1964,7 @@ congestion_control:
 
     # Congestion control hedge strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.hedge.strategy
+    # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
 # The cache block configures the cache backend.
@@ -2710,6 +2718,10 @@ shard_streams:
 # the deprecated -replication-factor for backwards compatibility reasons.
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
+
+# Allow user to send structured metadata (non-indexed labels) in push payload.
+# CLI flag: -validation.allow-structured-metadata
+[allow_structured_metadata: <boolean> | default = false]
 ```
 
 ### frontend_worker
@@ -3199,7 +3211,7 @@ storage:
 
   congestion_control:
     # Use storage congestion control (default: disabled).
-    # CLI flag: -common.storage.enabled
+    # CLI flag: -common.storage.congestion-control.enabled
     [enabled: <boolean> | default = false]
 
     controller:
@@ -3226,11 +3238,11 @@ storage:
     retry:
       # Congestion control retry strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.retry.strategy
+      # CLI flag: -common.storage.congestion-control.retry.strategy
       [strategy: <string> | default = ""]
 
       # Maximum number of retries allowed.
-      # CLI flag: -common.storage.retry.strategy.limited.limit
+      # CLI flag: -common.storage.congestion-control.retry.strategy.limited.limit
       [limit: <int> | default = 2]
 
     hedging:
@@ -3243,7 +3255,7 @@ storage:
 
       # Congestion control hedge strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.hedge.strategy
+      # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
 [persist_tokens: <boolean>]
@@ -3911,6 +3923,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`

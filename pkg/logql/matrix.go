@@ -6,7 +6,7 @@ import (
 	"github.com/prometheus/prometheus/promql"
 )
 
-// MatrixStepper exposes a promql.Matrix as a StepEvaluator.
+// MatrixStepEvaluator exposes a promql.Matrix as a StepEvaluator.
 // Ensure that the resulting StepEvaluator maintains
 // the same shape that the parameters expect. For example,
 // it's possible that a downstream query returns matches no
@@ -15,14 +15,14 @@ import (
 // with another leg that may match series.
 // Therefore, we determine our steps from the parameters
 // and not the underlying Matrix.
-type MatrixStepper struct {
+type MatrixStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration
 	m              promql.Matrix
 }
 
-func NewMatrixStepper(start, end time.Time, step time.Duration, m promql.Matrix) *MatrixStepper {
-	return &MatrixStepper{
+func NewMatrixStepEvaluator(start, end time.Time, step time.Duration, m promql.Matrix) *MatrixStepEvaluator {
+	return &MatrixStepEvaluator{
 		start: start,
 		end:   end,
 		ts:    start.Add(-step), // will be corrected on first Next() call
@@ -31,7 +31,7 @@ func NewMatrixStepper(start, end time.Time, step time.Duration, m promql.Matrix)
 	}
 }
 
-func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
+func (m *MatrixStepEvaluator) Next() (bool, int64, promql.Vector) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
 		return false, 0, nil
@@ -58,6 +58,6 @@ func (m *MatrixStepper) Next() (bool, int64, promql.Vector) {
 	return true, ts, vec
 }
 
-func (m *MatrixStepper) Close() error { return nil }
+func (m *MatrixStepEvaluator) Close() error { return nil }
 
-func (m *MatrixStepper) Error() error { return nil }
+func (m *MatrixStepEvaluator) Error() error { return nil }

@@ -88,7 +88,8 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+	// IsAccessDeniedErr returns true if access to object is denied.
+	IsAccessDeniedErr(err error) bool
 ```
 
 Those interfaces represent the object storage operations your code can use from `objstore` clients.
@@ -578,7 +579,7 @@ prefix: ""
 
 ### Oracle Cloud Infrastructure Object Storage
 
-To configure Oracle Cloud Infrastructure (OCI) Object Storage as Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports either the default keypair or instance principal authentication.
+To configure Oracle Cloud Infrastructure (OCI) Object Storage as a Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports default keypair, instance principal, and OKE workload identity authentication.
 
 #### API Signing Key
 
@@ -641,6 +642,20 @@ config:
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
+
+#### OKE Workload Identity Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "oke-workload-identity"
+  bucket: ""
+  region: ""
+```
+
+The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
 
 ##### HuaweiCloud OBS
 

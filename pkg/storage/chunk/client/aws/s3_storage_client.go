@@ -299,6 +299,23 @@ func buckets(cfg S3Config) ([]string, error) {
 // Stop fulfills the chunk.ObjectClient interface
 func (a *S3ObjectClient) Stop() {}
 
+func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		headObjectInput := &s3.HeadObjectInput{
+			Bucket: aws.String(a.bucketFromKey(objectKey)),
+			Key:    aws.String(objectKey),
+		}
+		_, err := a.S3.HeadObject(headObjectInput)
+		return err
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {
 	return instrument.CollectedRequest(ctx, "S3.DeleteObject", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {

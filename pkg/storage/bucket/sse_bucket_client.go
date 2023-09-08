@@ -129,9 +129,9 @@ func (b *SSEBucketClient) ReaderWithExpectedErrs(fn objstore.IsOpFailureExpected
 	return b.WithExpectedErrs(fn)
 }
 
-// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
-func (b *SSEBucketClient) IsCustomerManagedKeyError(err error) bool {
-	return b.bucket.IsCustomerManagedKeyError(err)
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *SSEBucketClient) IsAccessDeniedErr(err error) bool {
+	return b.bucket.IsAccessDeniedErr(err)
 }
 
 // WithExpectedErrs implements objstore.Bucket.

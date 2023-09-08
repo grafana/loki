@@ -581,6 +581,12 @@ func applyFIFOCacheConfig(r *ConfigWrapper) {
 		// We use the same config as the query range results cache.
 		r.QueryRange.StatsCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
 	}
+
+	volumeCacheConfig := r.QueryRange.VolumeCacheConfig.CacheConfig
+	if !cache.IsCacheConfigured(volumeCacheConfig) {
+		// We use the same config as the query range results cache.
+		r.QueryRange.VolumeCacheConfig.CacheConfig = r.QueryRange.ResultsCacheConfig.CacheConfig
+	}
 }
 
 func applyIngesterFinalSleep(cfg *ConfigWrapper) {

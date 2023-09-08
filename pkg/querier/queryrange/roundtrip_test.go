@@ -70,6 +70,17 @@ var (
 				},
 			},
 		},
+		VolumeCacheConfig: VolumeCacheConfig{
+			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
+				CacheConfig: cache.Config{
+					EnableFifoCache: true,
+					Fifocache: cache.FifoCacheConfig{
+						MaxSizeItems: 1024,
+						TTL:          24 * time.Hour,
+					},
+				},
+			},
+		},
 	}
 	testEngineOpts = logql.EngineOpts{
 		MaxLookBackPeriod: 30 * time.Second,

@@ -1,6 +1,8 @@
 ---
 title: Recording Rules
+menuTitle:  
 description: Working with recording rules.
+weight:  
 ---
 
 # Recording Rules

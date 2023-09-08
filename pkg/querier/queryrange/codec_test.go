@@ -1340,10 +1340,10 @@ var (
 					"compressedBytes": 1,
 					"decompressedBytes": 2,
 					"decompressedLines": 3,
-					"decompressedNonIndexedLabelsBytes": 0,
+					"decompressedStructuredMetadataBytes": 0,
 					"headChunkBytes": 4,
 					"headChunkLines": 5,
-					"headChunkNonIndexedLabelsBytes": 0,
+					"headChunkStructuredMetadataBytes": 0,
 					"postFilterLines": 0,
 					"totalDuplicates": 8
 				},
@@ -1363,10 +1363,10 @@ var (
 					"compressedBytes": 11,
 					"decompressedBytes": 12,
 					"decompressedLines": 13,
-					"decompressedNonIndexedLabelsBytes": 0,
+					"decompressedStructuredMetadataBytes": 0,
 					"headChunkBytes": 14,
 					"headChunkLines": 15,
-					"headChunkNonIndexedLabelsBytes": 0,
+					"headChunkStructuredMetadataBytes": 0,
                     "postFilterLines": 0,
 					"totalDuplicates": 19
 				},
@@ -1395,7 +1395,16 @@ var (
 				"requests": 0,
 				"downloadTime": 0
 			},
-		    "statsResult": {
+		  "statsResult": {
+				"entriesFound": 0,
+				"entriesRequested": 0,
+				"entriesStored": 0,
+				"bytesReceived": 0,
+				"bytesSent": 0,
+				"requests": 0,
+				"downloadTime": 0
+			},
+		  "volumeResult": {
 				"entriesFound": 0,
 				"entriesRequested": 0,
 				"entriesStored": 0,
@@ -1425,7 +1434,7 @@ var (
 			"totalBytesProcessed": 24,
 			"totalEntriesReturned": 10,
 			"totalLinesProcessed": 25,
-			"totalNonIndexedLabelsBytesProcessed": 0,
+			"totalStructuredMetadataBytesProcessed": 0,
             "totalPostFilterLines": 0
 		}
 	},`
@@ -1632,9 +1641,11 @@ var (
 		},
 
 		Caches: stats.Caches{
-			Chunk:  stats.Cache{},
-			Index:  stats.Cache{},
-			Result: stats.Cache{},
+			Chunk:        stats.Cache{},
+			Index:        stats.Cache{},
+			StatsResult:  stats.Cache{},
+			VolumeResult: stats.Cache{},
+			Result:       stats.Cache{},
 		},
 	}
 )

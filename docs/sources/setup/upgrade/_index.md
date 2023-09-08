@@ -102,6 +102,13 @@ You can use `--keep-empty` flag to retain them.
 3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
 4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
 5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+
+#### Distributor metric changes
+
+The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
+This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
 
 ### Jsonnet
 
