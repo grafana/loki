@@ -64,7 +64,7 @@ type Store interface {
 }
 
 type LokiStore struct {
-	stores.Store
+	store stores.Store
 
 	cfg       Config
 	storeCfg  config.ChunkStoreConfig
@@ -88,6 +88,10 @@ type LokiStore struct {
 
 	metricsNamespace string
 }
+
+// Enforce implementation of interface
+// TODO(chaudum): Remove once interfaces are cleaned up.
+var _ Store = &LokiStore{}
 
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
@@ -148,10 +152,10 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading schema config")
 	}
-	stores := stores.NewCompositeStore(limits)
+	compositeStore := stores.NewCompositeStore(limits)
 
 	s := &LokiStore{
-		Store:     stores,
+		store:     compositeStore,
 		cfg:       cfg,
 		storeCfg:  storeCfg,
 		schemaCfg: schemaCfg,
@@ -201,11 +205,11 @@ func (s *LokiStore) init() error {
 		}
 
 		// s.Store is always assigned the CompositeStore implementation of the Store interface
-		s.Store.(*stores.CompositeStore).AddStore(p.From.Time, f, idx, w, stop)
+		s.store.(*stores.CompositeStore).AddStore(p.From.Time, f, idx, w, stop)
 	}
 
 	if s.cfg.EnableAsyncStore {
-		s.Store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.Store, s.schemaCfg)
+		s.store = NewAsyncStore(s.cfg.AsyncStoreConfig, s.store, s.schemaCfg)
 	}
 
 	return nil
@@ -378,7 +382,7 @@ func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Ma
 
 func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 	s.chunkFilterer = chunkFilterer
-	s.Store.SetChunkFilterer(chunkFilterer)
+	s.store.SetChunkFilterer(chunkFilterer)
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
@@ -448,7 +452,7 @@ func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams)
 			return nil, err
 		}
 	}
-	series, err := s.Store.GetSeries(ctx, userID, from, through, matchers...)
+	series, err := s.GetSeries(ctx, userID, from, through, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -541,6 +545,56 @@ func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSamplePar
 
 func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {
 	return s.schemaCfg.Configs
+}
+
+// GetChunkFetcher implements Store.
+func (s *LokiStore) GetChunkFetcher(tm model.Time) *fetcher.Fetcher {
+	return s.store.GetChunkFetcher(tm)
+}
+
+// GetChunks implements Store.
+func (s *LokiStore) GetChunks(ctx context.Context, userID string, from model.Time, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	return s.store.GetChunks(ctx, userID, from, through, matchers...)
+}
+
+// GetSeries implements Store.
+func (s *LokiStore) GetSeries(ctx context.Context, userID string, from model.Time, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+	return s.store.GetSeries(ctx, userID, from, through, matchers...)
+}
+
+// LabelNamesForMetricName implements Store.
+func (s *LokiStore) LabelNamesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string) ([]string, error) {
+	return s.store.LabelNamesForMetricName(ctx, userID, from, through, metricName)
+}
+
+// LabelValuesForMetricName implements Store.
+func (s *LokiStore) LabelValuesForMetricName(ctx context.Context, userID string, from model.Time, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+	return s.store.LabelValuesForMetricName(ctx, userID, from, through, metricName, labelName, matchers...)
+}
+
+// Put implements Store.
+func (s *LokiStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
+	return s.store.Put(ctx, chunks)
+}
+
+// PutOne implements Store.
+func (s *LokiStore) PutOne(ctx context.Context, from model.Time, through model.Time, chunk chunk.Chunk) error {
+	return s.store.PutOne(ctx, from, through, chunk)
+}
+
+// Stats implements Store.
+func (s *LokiStore) Stats(ctx context.Context, userID string, from model.Time, through model.Time, matchers ...*labels.Matcher) (*logproto.IndexStatsResponse, error) {
+	return s.store.Stats(ctx, userID, from, through, matchers...)
+}
+
+// Volume implements Store.
+func (s *LokiStore) Volume(ctx context.Context, userID string, from model.Time, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error) {
+	return s.store.Volume(ctx, userID, from, through, limit, targetLabels, aggregateBy, matchers...)
+}
+
+// Stop implements Store.
+func (s *LokiStore) Stop() {
+	s.store.Stop()
 }
 
 func filterChunksByTime(from, through model.Time, chunks []chunk.Chunk) []chunk.Chunk {
