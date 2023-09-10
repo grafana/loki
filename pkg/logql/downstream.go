@@ -426,6 +426,81 @@ func (e *ConcatStepEvaluator) Error() error {
 	}
 }
 
+// DownstreamTimestampSampleExpr is a SampleExpr which signals downstream computation for
+// queries that need timestamps on samples for correct merging of intermediate results
+type DownstreamTimestampSampleExpr struct {
+	shard *astmapper.ShardAnnotation
+	Expr  syntax.TimestampSampleExpr
+}
+
+func (d DownstreamTimestampSampleExpr) String() string {
+	fmt.Println("shard string: ", d.shard)
+	return fmt.Sprintf("downstream<%s, shard=%s>", d.Expr.String(), d.shard)
+}
+
+func (d DownstreamTimestampSampleExpr) Walk(f syntax.WalkFn) { f(d) }
+
+// TimestampSampleMergeExpr is an expr for concatenating multiple first or last over time queries
+type TimestampSampleMergeExpr struct {
+	Operation string
+	DownstreamTimestampSampleExpr
+	syntax.LogSelectorExpr
+	next *TimestampSampleMergeExpr
+}
+
+//
+//type TimestampSampleExpr interface {
+//	// Selector is the LogQL selector to apply when retrieving logs.
+//	Selector() (LogSelectorExpr, error)
+//	Extractor() (SampleExtractor, error)
+//	MatcherGroups() ([]MatcherRange, error)
+//	Expr
+//}
+
+func (c TimestampSampleMergeExpr) Selector() (syntax.LogSelectorExpr, error) {
+	return c.LogSelectorExpr, nil
+}
+
+func (c TimestampSampleMergeExpr) Extractor() (syntax.SampleExtractor, error) {
+	return nil, nil
+}
+
+func (c TimestampSampleMergeExpr) MatcherGroups() ([]syntax.MatcherRange, error) {
+	return nil, nil
+}
+
+func (c TimestampSampleMergeExpr) String() string {
+	fmt.Println("merge timestamps: ", c.Operation)
+	//fmt.Println("next is: ", c.next.String())
+	if c.next == nil {
+		fmt.Println("next is nil")
+		return c.DownstreamTimestampSampleExpr.String()
+	}
+	str := fmt.Sprintf("merge_timestamp(%s, %s)", c.DownstreamTimestampSampleExpr.String(), c.next.String())
+	if c.Operation != "" {
+		str = fmt.Sprintf("%s(%s)", c.Operation, str)
+	}
+	fmt.Println("str: ", str)
+	return str
+}
+
+// in order to not display huge queries with thousands of shards,
+// we can limit the number of stringified subqueries.
+func (c TimestampSampleMergeExpr) string(maxDepth int) string {
+	if c.next == nil {
+		return c.DownstreamTimestampSampleExpr.String()
+	}
+	if maxDepth <= 1 {
+		return fmt.Sprintf("%s, ...", c.DownstreamTimestampSampleExpr.String())
+	}
+	return fmt.Sprintf("%s, %s", c.DownstreamTimestampSampleExpr.String(), c.next.String())
+}
+
+func (c TimestampSampleMergeExpr) Walk(f syntax.WalkFn) {
+	f(c)
+	f(c.next)
+}
+
 // NewResultStepEvaluator coerces a downstream vector or matrix into a StepEvaluator
 func NewResultStepEvaluator(res logqlmodel.Result, params Params) (StepEvaluator, error) {
 	var (

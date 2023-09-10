@@ -394,6 +394,10 @@ func TestMappingStrings(t *testing.T) {
 			in:  `sum(count_over_time({a=~".+"}[1s]) * ignoring () count_over_time({a=~".+"}[1s]))`,
 			out: `sum(downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=0_of_2>++downstream<sum((count_over_time({a=~".+"}[1s])*count_over_time({a=~".+"}[1s]))),shard=1_of_2>)`,
 		},
+		{ // first over time
+			in:  `first_over_time({foo="bar"} | unwrap label_name[5m])`,
+			out: `first_over_timewithout()(merge_timestamp(downstream<first_over_time({foo="bar"}|unwraplabel_name[5m]),shard=0_of_2>,downstream<first_over_time({foo="bar"}|unwraplabel_name[5m]),shard=1_of_2>))`,
+		},
 	} {
 		t.Run(tc.in, func(t *testing.T) {
 			ast, err := syntax.ParseExpr(tc.in)
@@ -1321,6 +1325,50 @@ func TestMapping(t *testing.T) {
 								},
 							},
 							next: nil,
+						},
+					},
+				},
+			},
+		},
+		{
+			in: `first_over_time({foo="bar"} | unwrap label_name[5m])`,
+			expr: TimestampSampleMergeExpr{
+				Operation: syntax.OpRangeTypeFirst,
+				DownstreamTimestampSampleExpr: DownstreamTimestampSampleExpr{
+					shard: &astmapper.ShardAnnotation{
+						Shard: 0,
+						Of:    2,
+					},
+					Expr: &syntax.RangeAggregationExpr{
+						Operation: syntax.OpRangeTypeFirst,
+						Left: &syntax.LogRange{
+							Left: &syntax.MatchersExpr{
+								Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+							},
+							Interval: 5 * time.Minute,
+							Unwrap: &syntax.UnwrapExpr{
+								Identifier: "label_name",
+							},
+						},
+					},
+				},
+				next: &TimestampSampleMergeExpr{
+					DownstreamTimestampSampleExpr: DownstreamTimestampSampleExpr{
+						shard: &astmapper.ShardAnnotation{
+							Shard: 1,
+							Of:    2,
+						},
+						Expr: &syntax.RangeAggregationExpr{
+							Operation: syntax.OpRangeTypeFirst,
+							Left: &syntax.LogRange{
+								Left: &syntax.MatchersExpr{
+									Mts: []*labels.Matcher{mustNewMatcher(labels.MatchEqual, "foo", "bar")},
+								},
+								Interval: 5 * time.Minute,
+								Unwrap: &syntax.UnwrapExpr{
+									Identifier: "label_name",
+								},
+							},
 						},
 					},
 				},

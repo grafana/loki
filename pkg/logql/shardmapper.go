@@ -88,6 +88,9 @@ func (m ShardMapper) Map(expr syntax.Expr, r *downstreamRecorder) (syntax.Expr, 
 	case *syntax.LabelReplaceExpr:
 		return m.mapLabelReplaceExpr(e, r)
 	case *syntax.RangeAggregationExpr:
+		if e.Operation == syntax.OpRangeTypeFirst {
+			return m.mapTimestampSampleExpr(e, r)
+		}
 		return m.mapRangeAggregationExpr(e, r)
 	case *syntax.BinOpExpr:
 		lhsMapped, lhsBytesPerShard, err := m.Map(e.SampleExpr, r)
@@ -180,6 +183,61 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 	return head, bytesPerShard, nil
 }
 
+func (m ShardMapper) mapFirstOverTimeExpr(operation string, expr syntax.SampleExpr, r *downstreamRecorder) (TimestampSampleMergeExpr, uint64, error) {
+	fmt.Println("!!!!! map sample expr: ", expr)
+	var head *TimestampSampleMergeExpr
+	shards, bytesPerShard, err := m.shards.Shards(expr)
+	if err != nil {
+		return TimestampSampleMergeExpr{}, 0, err
+	}
+	if shards == 0 {
+		fmt.Println("zero shards")
+		return TimestampSampleMergeExpr{
+			Operation: operation,
+			DownstreamTimestampSampleExpr: DownstreamTimestampSampleExpr{
+				shard: nil,
+				Expr:  expr,
+			},
+		}, bytesPerShard, nil
+	}
+
+	fmt.Println("expression is: ", expr)
+	fmt.Println("1234  shards: ", shards)
+	head = &TimestampSampleMergeExpr{
+		Operation: operation,
+		DownstreamTimestampSampleExpr: DownstreamTimestampSampleExpr{
+			shard: &astmapper.ShardAnnotation{
+				Shard: 0,
+				Of:    shards,
+			},
+			Expr: expr,
+		},
+	}
+	var prev *TimestampSampleMergeExpr
+	for i := 1; i < shards; i++ {
+		cur := &TimestampSampleMergeExpr{
+			DownstreamTimestampSampleExpr: DownstreamTimestampSampleExpr{
+				shard: &astmapper.ShardAnnotation{
+					Shard: i,
+					Of:    shards,
+				},
+				Expr: expr,
+			},
+		}
+		fmt.Println("merge timestamp sample expr")
+
+		fmt.Println("head expr is: ", head.DownstreamTimestampSampleExpr.Expr)
+		if prev != nil {
+			prev.next = cur
+		}
+		prev = cur
+	}
+	head.next = prev
+	r.Add(shards, MetricsKey)
+
+	return *head, bytesPerShard, nil
+}
+
 // turn a vector aggr into a wrapped+sharded variant,
 // used as a subroutine in mapping
 func (m ShardMapper) wrappedShardedVectorAggr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder) (*syntax.VectorAggregationExpr, uint64, error) {
@@ -207,6 +265,17 @@ func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr
 			return m.wrappedShardedVectorAggr(expr, r)
 
 		case syntax.OpTypeMin, syntax.OpTypeMax:
+			if syntax.ReducesLabels(expr) {
+				// skip sharding optimizations at this level. If labels are reduced,
+				// the same series may exist on multiple shards and must be aggregated
+				// together before a max|min is applied
+				break
+			}
+			// max(x) -> max(max(x, shard=1) ++ max(x, shard=2)...)
+			// min(x) -> min(min(x, shard=1) ++ min(x, shard=2)...)
+			return m.wrappedShardedVectorAggr(expr, r)
+
+		case syntax.OpRangeTypeFirst:
 			if syntax.ReducesLabels(expr) {
 				// skip sharding optimizations at this level. If labels are reduced,
 				// the same series may exist on multiple shards and must be aggregated
@@ -327,6 +396,10 @@ var rangeMergeMap = map[string]string{
 	// min & max require taking the min|max of the shards
 	syntax.OpRangeTypeMin: syntax.OpTypeMin,
 	syntax.OpRangeTypeMax: syntax.OpTypeMax,
+
+	// first and last require checking the timestamp from each shards result
+	syntax.OpRangeTypeFirst: syntax.OpRangeTypeFirst,
+	syntax.OpRangeTypeLast:  syntax.OpRangeTypeLast,
 }
 
 func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
@@ -419,12 +492,70 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			Op:         syntax.OpTypeDiv,
 		}, bytesPerShard, nil
 
+	//case syntax.OpRangeTypeFirst:
+	//	mapped, bytes, err := m.mapFirstOverTimeExpr(expr, r)
+	//	// range aggregation groupings default to `without ()` behavior
+	//	// so we explicitly set the wrapping vector aggregation to this
+	//	// for parity when it's not explicitly set
+	//	grouping := expr.Grouping
+	//	if grouping == nil {
+	//		grouping = &syntax.Grouping{Without: true}
+	//	}
+	//
+	//	//first_over_time(_) -> first_over_time without() (first_over_time(_) ++ first_over_time(_))
+	//	merger, ok := rangeMergeMap[expr.Operation]
+	//	if !ok {
+	//		return nil, 0, fmt.Errorf(
+	//			"error while finding merge operation for %s", expr.Operation,
+	//		)
+	//	}
+	//
+	//	return &syntax.VectorAggregationExpr{
+	//		Left:      mapped,
+	//		Grouping:  grouping,
+	//		Operation: merger,
+	//	}, bytes, err
+	//	//return expr, 0, nil
 	default:
 		// don't shard if there's not an appropriate optimization
 		exprStats, err := m.shards.GetStats(expr)
 		if err != nil {
 			return nil, 0, err
 		}
+		return expr, exprStats.Bytes, nil
+	}
+}
+
+func (m ShardMapper) mapTimestampSampleExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.TimestampSampleExpr, uint64, error) {
+	fmt.Println("map range aggregation expr: ", expr)
+	if !expr.Shardable() {
+		exprStats, err := m.shards.GetStats(expr)
+		if err != nil {
+			return nil, 0, err
+		}
+		return expr, exprStats.Bytes, nil
+	}
+
+	switch expr.Operation {
+	case syntax.OpRangeTypeFirst:
+		mapped, bytes, err := m.mapFirstOverTimeExpr(expr.Operation, expr, r)
+		// range aggregation groupings default to `without ()` behavior
+		// so we explicitly set the wrapping vector aggregation to this
+		// for parity when it's not explicitly set
+		grouping := expr.Grouping
+		if grouping == nil {
+			grouping = &syntax.Grouping{Without: true}
+		}
+
+		return mapped, bytes, err
+		//return expr, 0, nil
+	default:
+		// don't shard if there's not an appropriate optimization
+		exprStats, err := m.shards.GetStats(expr)
+		if err != nil {
+			return nil, 0, err
+		}
+		// this should return an error
 		return expr, exprStats.Bytes, nil
 	}
 }

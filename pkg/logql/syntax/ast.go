@@ -2017,6 +2017,7 @@ var shardableOps = map[string]bool{
 	OpRangeTypeSum:       true,
 	OpRangeTypeMax:       true,
 	OpRangeTypeMin:       true,
+	OpRangeTypeFirst:     true,
 
 	// binops - arith
 	OpTypeAdd: true,
@@ -2117,4 +2118,14 @@ func ReducesLabels(e Expr) (conflict bool) {
 		}
 	})
 	return
+}
+
+// TimestampSampleExpr is a LogQL expression filtering logs and sample(s) with their timestamp(s).
+// Used for downstreaming of first and last over time queries.
+type TimestampSampleExpr interface {
+	// Selector is the LogQL selector to apply when retrieving logs.
+	Selector() (LogSelectorExpr, error)
+	Extractor() (SampleExtractor, error)
+	MatcherGroups() ([]MatcherRange, error)
+	Expr
 }
