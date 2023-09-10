@@ -339,6 +339,8 @@ The **json** parser operates in two modes:
    "request_method" => "GET"
    "request_host" => "foo.grafana.net"
    "request_size" => "55"
+   "request_headers_Accept" => "*/*"
+   "request_headers_User_Agent" => "curl/7.68.0"
    "response_status" => "401"
    "response_size" => "228"
    "response_latency_seconds" => "6.031"
