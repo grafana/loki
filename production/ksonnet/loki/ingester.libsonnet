@@ -18,9 +18,9 @@ local k = import 'ksonnet-util/kausal.libsonnet';
 
   local ingester_wal_pvc =
     pvc.new('ingester-wal') +
-    pvc.mixin.spec.resources.withRequests({ storage: '150Gi' }) +
+    pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_wal_disk_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_wal_class),
+    pvc.mixin.spec.withStorageClassName($._config.ingester_wal_disk_class),
 
   newIngesterStatefulSet(name, container, with_anti_affinity=true)::
     $.newLokiStatefulSet(name, 3, container, [ingester_data_pvc, ingester_wal_pvc]) +

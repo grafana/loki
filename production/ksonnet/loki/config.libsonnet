@@ -19,6 +19,14 @@
     ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
 
+    ingester_data_disk_size: self.ingester_pvc_size, // keep backwards compatibility
+    ingester_data_disk_class: self.ingester_pvc_class, // keep backwards compatibility
+
+    ingester_wal_disk_size: '150Gi',
+    ingester_wal_disk_class: 'fast',
+
+    ingester_allow_multiple_replicas_on_same_node: false,
+
     stateful_queriers: false,
     querier_pvc_size: '10Gi',
     querier_pvc_class: 'fast',
