@@ -39,6 +39,30 @@ func NewWithCompression(c float64) *TDigest {
 	return t
 }
 
+// Calculate number of bytes needed for a tdigest of size c,
+// where c is the compression value
+func ByteSizeForCompression(comp float64) int {
+	c := int(comp)
+	// // A centroid is 2 float64s, so we need 16 bytes for each centroid
+	// float_size := 8
+	// centroid_size := 2 * float_size
+
+	// // Unprocessed and processed can grow up to length c
+	// unprocessed_size := centroid_size * c
+	// processed_size := unprocessed_size
+
+	// // the cumulative field can also be of length c, but each item is a single float64
+	// cumulative_size := float_size * c // <- this could also be unprocessed_size / 2
+
+	// return unprocessed_size + processed_size + cumulative_size
+
+	// // or, more succinctly:
+	// return float_size * c * 5
+
+	// or even more succinctly
+	return c * 40
+}
+
 // Reset resets the distribution to its initial state.
 func (t *TDigest) Reset() {
 	t.processed = t.processed[:0]
@@ -52,31 +76,26 @@ func (t *TDigest) Reset() {
 
 // Add adds a value x with a weight w to the distribution.
 func (t *TDigest) Add(x, w float64) {
-	if math.IsNaN(x) {
-		return
-	}
 	t.AddCentroid(Centroid{Mean: x, Weight: w})
 }
 
 // AddCentroidList can quickly add multiple centroids.
 func (t *TDigest) AddCentroidList(c CentroidList) {
-	l := c.Len()
-	for i := 0; i < l; i++ {
-		diff := l - i
-		room := t.maxUnprocessed - t.unprocessed.Len()
-		mid := i + diff
-		if room < diff {
-			mid = i + room
-		}
-		for i < mid {
-			t.AddCentroid(c[i])
-			i++
-		}
+	// It's possible to optimize this by bulk-copying the slice, but this
+	// yields just a 1-2% speedup (most time is in process()), so not worth
+	// the complexity.
+	for i := range c {
+		t.AddCentroid(c[i])
 	}
 }
 
 // AddCentroid adds a single centroid.
+// Weights which are not a number or are <= 0 are ignored, as are NaN means.
 func (t *TDigest) AddCentroid(c Centroid) {
+	if math.IsNaN(c.Mean) || c.Weight <= 0 || math.IsNaN(c.Weight) || math.IsInf(c.Weight, 1) {
+		return
+	}
+
 	t.unprocessed = append(t.unprocessed, c)
 	t.unprocessedWeight += c.Weight
 
@@ -84,6 +103,14 @@ func (t *TDigest) AddCentroid(c Centroid) {
 		t.unprocessed.Len() > t.maxUnprocessed {
 		t.process()
 	}
+}
+
+// Merges the supplied digest into this digest. Functionally equivalent to
+// calling t.AddCentroidList(t2.Centroids(nil)), but avoids making an extra
+// copy of the CentroidList.
+func (t *TDigest) Merge(t2 *TDigest) {
+	t2.process()
+	t.AddCentroidList(t2.processed)
 }
 
 func (t *TDigest) process() {
@@ -116,7 +143,6 @@ func (t *TDigest) process() {
 		}
 		t.min = math.Min(t.min, t.processed[0].Mean)
 		t.max = math.Max(t.max, t.processed[t.processed.Len()-1].Mean)
-		t.updateCumulative()
 		t.unprocessed.Clear()
 	}
 }
@@ -124,24 +150,29 @@ func (t *TDigest) process() {
 // Centroids returns a copy of processed centroids.
 // Useful when aggregating multiple t-digests.
 //
-// Pass in the CentroidList as the buffer to write into.
-func (t *TDigest) Centroids() CentroidList {
+// Centroids are appended to the passed CentroidList; if you're re-using a
+// buffer, be sure to pass cl[:0].
+func (t *TDigest) Centroids(cl CentroidList) CentroidList {
 	t.process()
-	cl := make([]Centroid, len(t.processed))
-	copy(cl, t.processed)
-	return cl
+	return append(cl, t.processed...)
 }
 
 func (t *TDigest) Count() float64 {
 	t.process()
-	count := 0.0
-	for _, centroid := range t.processed {
-		count += centroid.Weight
-	}
-	return count
+
+	// t.process always updates t.processedWeight to the total count of all
+	// centroids, so we don't need to re-count here.
+	return t.processedWeight
 }
 
 func (t *TDigest) updateCumulative() {
+	// Weight can only increase, so the final cumulative value will always be
+	// either equal to, or less than, the total weight. If they are the same,
+	// then nothing has changed since the last update.
+	if len(t.cumulative) > 0 && t.cumulative[len(t.cumulative)-1] == t.processedWeight {
+		return
+	}
+
 	if n := t.processed.Len() + 1; n <= cap(t.cumulative) {
 		t.cumulative = t.cumulative[:n]
 	} else {
@@ -162,6 +193,7 @@ func (t *TDigest) updateCumulative() {
 // Returns NaN if Count is zero or bad inputs.
 func (t *TDigest) Quantile(q float64) float64 {
 	t.process()
+	t.updateCumulative()
 	if q < 0 || q > 1 || t.processed.Len() == 0 {
 		return math.NaN()
 	}
@@ -191,6 +223,7 @@ func (t *TDigest) Quantile(q float64) float64 {
 // CDF returns the cumulative distribution function for a given value x.
 func (t *TDigest) CDF(x float64) float64 {
 	t.process()
+	t.updateCumulative()
 	switch t.processed.Len() {
 	case 0:
 		return 0.0

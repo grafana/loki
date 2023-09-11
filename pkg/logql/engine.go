@@ -381,7 +381,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	return q.Join(stepEvaluator, maxSeries)
 }
 
-func(q *query) Join(stepEvaluator StepEvaluator[promql.Vector], maxSeries int) (promql_parser.Value, error) {
+func (q *query) Join(stepEvaluator StepEvaluator[promql.Vector], maxSeries int) (promql_parser.Value, error) {
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()

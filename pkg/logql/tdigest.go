@@ -2,6 +2,7 @@ package logql
 
 import (
 	"math"
+	"time"
 
 	"github.com/influxdata/tdigest"
 	"github.com/prometheus/prometheus/model/labels"
@@ -14,6 +15,27 @@ import (
 
 type TDigestVector []tdigestSample
 type TDigestMatrix []TDigestVector
+
+func (left TDigestVector) Merge(right TDigestVector) TDigestVector {
+	// labels hash to vector index map
+	groups := make(map[uint64]int)
+	for i, sample := range left {
+		// TODO(karsten): this might be slow.
+		groups[sample.Metric.Hash()] = i
+	}
+
+	for _, sample := range right {
+		i, ok := groups[sample.Metric.Hash()]
+		if !ok {
+			left = append(left, sample)
+			continue
+		}
+
+		left[i].F.Merge(sample.F)
+	}
+
+	return left
+}
 
 func (TDigestMatrix) String() string {
 	return "TDigestMatrix()"
@@ -53,23 +75,23 @@ func (r *TDigestStepEvaluator) Error() error {
 }
 
 func (r *TDigestStepEvaluator) Explain(parent Node) {
-	parent.Child("T-Digest")	
+	parent.Child("T-Digest")
 }
 
 func newTDigestIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end, offset int64) (RangeVectorIterator[TDigestVector]) {
-		inner := batchRangeVectorIterator{
-			iter:     it,
-			step:     step,
-			end:      end,
-			selRange: selRange,
-			metrics:  map[string]labels.Labels{},
-			window:   map[string]*promql.Series{},
-			agg:      nil,
-			current:  start - step, // first loop iteration will set it to start
-			offset:   offset,
-		}
+	selRange, step, start, end, offset int64) RangeVectorIterator[TDigestVector] {
+	inner := batchRangeVectorIterator{
+		iter:     it,
+		step:     step,
+		end:      end,
+		selRange: selRange,
+		metrics:  map[string]labels.Labels{},
+		window:   map[string]*promql.Series{},
+		agg:      nil,
+		current:  start - step, // first loop iteration will set it to start
+		offset:   offset,
+	}
 	return &tdigestBatchRangeVectorIterator{
 		batchRangeVectorIterator: inner,
 	}
@@ -106,7 +128,7 @@ func (r *tdigestBatchRangeVectorIterator) At() (int64, TDigestVector) {
 	return ts, r.at
 }
 
-func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) (*tdigest.TDigest) {
+func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) *tdigest.TDigest {
 	t := tdigest.New()
 	for _, v := range samples {
 		t.Add(v.F, 1)
@@ -114,6 +136,7 @@ func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) (*tdigest
 	return t
 }
 
+// JoinTDigest joins the results from stepEvaluator into a TDigestMatrix.
 func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (promql_parser.Value, error) {
 	// TODO(karsten): check if ts should be used
 	next, _, vec := stepEvaluator.Next()
@@ -126,7 +149,7 @@ func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (pro
 		stepCount = 1
 	}
 
-	result := make([]TDigestVector, 0)	
+	result := make([]TDigestVector, 0)
 
 	for next {
 		result = append(result, vec)
@@ -137,6 +160,137 @@ func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (pro
 		}
 	}
 
-
 	return TDigestMatrix(result), stepEvaluator.Error()
+}
+
+// TDigestMatrixStepEvaluator steps through a matrix of tdigest vectors, ie
+// sketches per time step.
+type TDigestMatrixStepEvaluator struct {
+	start, end, ts time.Time
+	step           time.Duration
+	m              TDigestMatrix
+}
+
+func NewTDigestMatrixStepEvaluator(m TDigestMatrix, params Params) *TDigestMatrixStepEvaluator {
+	var (
+		start = params.Start()
+		end   = params.End()
+		step  = params.Step()
+	)
+	return &TDigestMatrixStepEvaluator{
+		start: start,
+		end:   end,
+		ts:    start.Add(-step), // will be corrected on first Next() call
+		step:  step,
+		m:     m,
+	}
+}
+
+func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, TDigestVector) {
+	m.ts = m.ts.Add(m.step)
+	if m.ts.After(m.end) {
+		return false, 0, nil
+	}
+
+	ts := m.ts.UnixNano() / int64(time.Millisecond)
+
+	// TODO(karsten): test for empty matrix
+	vec := m.m[0]
+
+	// Reset for next step
+	m.m = m.m[1:]
+
+	return true, ts, vec
+}
+
+func (*TDigestMatrixStepEvaluator) Close() error { return nil }
+
+func (*TDigestMatrixStepEvaluator) Error() error { return nil }
+
+func (*TDigestMatrixStepEvaluator) Explain(parent Node) {
+	parent.Child("TDigestMatrix")
+}
+
+// TDigestMergeStepEvaluator merges multiple tdigest sketches into one for each
+// step.
+type TDigestMergeStepEvaluator struct {
+	evaluators []StepEvaluator[TDigestVector]
+}
+
+func NewTDigestMergeStepEvaluator(evaluators []StepEvaluator[TDigestVector]) *TDigestMergeStepEvaluator {
+	return &TDigestMergeStepEvaluator{
+		evaluators: evaluators,
+	}
+}
+
+func (e *TDigestMergeStepEvaluator) Next() (bool, int64, TDigestVector) {
+	// TODO(karsten): check that we have more than one
+	ok, ts, cur := e.evaluators[0].Next()
+	for _, eval := range e.evaluators[1:] {
+		// TODO(karsten): check ok and ts.
+		_, _, vec := eval.Next()
+		cur.Merge(vec)
+	}
+
+	return ok, ts, cur
+}
+
+func (*TDigestMergeStepEvaluator) Close() error { return nil }
+
+func (*TDigestMergeStepEvaluator) Error() error { return nil }
+
+func (e *TDigestMergeStepEvaluator) Explain(parent Node) {
+	b := parent.Child("TDigestMerge")
+	if len(e.evaluators) < 3 {
+		for _, child := range e.evaluators {
+			child.Explain(b)
+		}
+	} else {
+		e.evaluators[0].Explain(b)
+		b.Child("...")
+		e.evaluators[len(e.evaluators)-1].Explain(b)
+	}
+}
+
+// TDigestVectorStepEvaluator evaluates a tdigest qunatile sketch into a
+// promql.Vector.
+type TDigestVectorStepEvaluator struct {
+	inner    StepEvaluator[TDigestVector]
+	quantile float64
+}
+
+var _ StepEvaluator[promql.Vector] = NewTDigestVectorStepEvaluator(nil, 0)
+
+func NewTDigestVectorStepEvaluator(inner StepEvaluator[TDigestVector], quantile float64) *TDigestVectorStepEvaluator {
+	return &TDigestVectorStepEvaluator{
+		inner:    inner,
+		quantile: quantile,
+	}
+}
+
+func (m *TDigestVectorStepEvaluator) Next() (bool, int64, promql.Vector) {
+	ok, ts, tdigestVec := m.inner.Next()
+
+	vec := make(promql.Vector, len(tdigestVec))
+
+	for i, tdigest := range tdigestVec {
+		f := tdigest.F.Quantile(m.quantile)
+
+		vec[i] = promql.Sample{
+			T:      tdigest.T,
+			F:      f,
+			Metric: tdigest.Metric,
+		}
+	}
+
+	return ok, ts, vec
+}
+
+func (*TDigestVectorStepEvaluator) Close() error { return nil }
+
+func (*TDigestVectorStepEvaluator) Error() error { return nil }
+
+func (e *TDigestVectorStepEvaluator) Explain(parent Node) {
+	b := parent.Child("TDigestVector")
+	e.inner.Explain(b)
 }

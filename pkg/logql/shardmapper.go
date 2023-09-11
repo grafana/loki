@@ -163,11 +163,11 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 			},
 		}, bytesPerShard, nil
 	}
-	for i := shards - 1; i >= 0; i-- {
+	for shard := shards - 1; shard >= 0; shard-- {
 		head = &ConcatSampleExpr{
 			DownstreamSampleExpr: DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{
-					Shard: i,
+					Shard: shard,
 					Of:    shards,
 				},
 				SampleExpr: expr,
@@ -425,18 +425,34 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
-		_, bytesPerShard, err := m.shards.Shards(expr)
+		shards, bytesPerShard, err := m.shards.Shards(expr)
 		if err != nil {
 			return nil, 0, err
 		}
+		if shards == 0 {
+			return m.mapSampleExpr(expr, r)
+		}
 
-		// quantile_over_time() by (foo) -> tdigest_eval(tdigest_merge by (foo) (quantile_over_time() by (foo)))
+		// quantile_over_time() by (foo) ->
+		// quantile_sketch_eval(quantile_merge by (foo) (quantile_over_time() by (foo)))
 
-		return &TDigestEvalExpr{
-			tdigestExpr: &TDigestMergeExpr{
-				downstreams: nil,
+		downstreams := make([]DownstreamSampleExpr, 0, shards)
+		for shard := shards - 1; shard >= 0; shard-- {
+			downstreams = append(downstreams, DownstreamSampleExpr{
+				shard: &astmapper.ShardAnnotation{
+					Shard: shard,
+					Of:    shards,
+				},
+				SampleExpr: expr,
+			})
+		}
+
+		return &QuantileSketchEvalExpr{
+			quantileMergeExpr: &QuantileSketchMergeExpr{
+				downstreams: downstreams,
 			},
-		}, bytesPerShard, nil 
+			quantile: expr.Params,
+		}, bytesPerShard, nil
 
 	default:
 		// don't shard if there's not an appropriate optimization

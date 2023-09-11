@@ -157,21 +157,23 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
-type TDigestEvalExpr struct{
+type QuantileSketchEvalExpr struct {
 	syntax.SampleExpr
-	tdigestExpr *TDigestMergeExpr
+	quantileMergeExpr *QuantileSketchMergeExpr
+	quantile          *float64
 }
 
-func (e TDigestEvalExpr) String() string {
-	return fmt.Sprintf("tdigestEval<%s>", "???")
+func (e QuantileSketchEvalExpr) String() string {
+	return fmt.Sprintf("quantileSketchEval<%s>", "???")
 }
 
-type TDigestMergeExpr struct{
-	downstreams: []DownstreamSamDownstreamSampleExpr
+type QuantileSketchMergeExpr struct {
+	syntax.SampleExpr
+	downstreams []DownstreamSampleExpr
 }
 
-func (e TDigestMergeExpr) String() string {
-	return fmt.Sprintf("tdigestMerge<%s>", "???")
+func (e QuantileSketchMergeExpr) String() string {
+	return fmt.Sprintf("quantileSketchMerge<%s>", "???")
 }
 
 type Shards []astmapper.ShardAnnotation
@@ -329,6 +331,34 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 		}
 
 		return NewConcatStepEvaluator(xs), nil
+	case *QuantileSketchEvalExpr:
+		var queries []DownstreamQuery
+		for _, d := range e.quantileMergeExpr.downstreams {
+			qry := DownstreamQuery{
+				Expr:   d.SampleExpr,
+				Params: params,
+			}
+			if shard := d.shard; shard != nil {
+				qry.Shards = Shards{*shard}
+			}
+			queries = append(queries, qry)
+		}
+
+		results, err := ev.Downstream(ctx, queries)
+		if err != nil {
+			return nil, err
+		}
+
+		xs := make([]StepEvaluator[TDigestVector], 0, len(queries))
+		for _, res := range results {
+			// TODO(karsten): validate type or move into NewResultStepEvaluator.
+			stepper := NewTDigestMatrixStepEvaluator(res.Data.(TDigestMatrix), params)
+			xs = append(xs, stepper)
+		}
+
+		inner := NewTDigestMergeStepEvaluator(xs)
+
+		return NewTDigestVectorStepEvaluator(inner, *e.quantile), nil
 
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)

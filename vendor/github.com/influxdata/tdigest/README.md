@@ -35,8 +35,3 @@ func main() {
 	log.Println("CDF(5) = ", td.CDF(5))
 }
 ```
-
-## TODO
-
-Only the methods for a single TDigest have been implemented.
-The methods to merge two or more existing t-digests into a single t-digest have yet to be implemented.
