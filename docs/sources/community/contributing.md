@@ -22,7 +22,7 @@ $ cd $GOPATH/src/github.com/grafana/loki
 $ git remote add fork <FORK_URL>
 ```
 
-Make your changes, add your changes to a commit, and open a pull request(PR).
+Make your changes, add your changes to a commit, and open a pull request (PR).
 
 ```bash
 $ git add .
