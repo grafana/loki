@@ -320,7 +320,7 @@ loki:
   structuredConfig: {}
   # -- Additional query scheduler config
   query_scheduler: {}
-  # -- Additional storage config
+  # -- Additional storage config (see https://grafana.com/docs/loki/latest/configure/#storage_config)
   storage_config:
     hedging:
       at: "250ms"
