@@ -119,6 +119,18 @@ If it's already installed, run the following command to ensure it's the latest v
 choco upgrade golang
 ```
 
+## CloudFormation and S3 events
+
+Lambda-promtail allows one to send logs from different services that use S3 as their logs destination (ALB, VPC Flow, CloudFront access logs, etc.). For this, one needs to configure S3 bucket notifications to trigger the lambda-promtail deployment. However, when using CloudFormation to encode infrastructure, there is a [known issue](https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/79) when configuring `AWS::S3::BucketNotification` and the resource that will be triggered by the notification in the same stack.
+
+For tackling that, AWS introduced [S3 event notifications with Event Bridge](https://aws.amazon.com/blogs/aws/new-use-amazon-s3-event-notifications-with-amazon-eventbridge/). In that way, when an object get's created in a S3 bucket, this send an event to an EventBridge bus, and one can create a rule to send those event to Lambda-promtail.
+
+The [template-eventbridge.yaml](./template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge, for the use case mentioned above:
+
+```bash
+aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template-eventbridge.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=BearerToken,ParameterValue=<bearer-token> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag> ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2" ParameterKey=TenantID,ParameterValue=<value> ParameterKey=SkipTlsVerify,ParameterValue="false" ParameterKey=EventSourceS3Bucket,ParameterValue="alb-logs-bucket-name"
+```
+
 ## Limitations
 - Error handling: If promtail is unresponsive, `lambda-promtail` will drop logs after `retry_count`, which defaults to 2.
 - AWS CloudWatch [quotas](https://docs.aws.amazon.com/AmazonCloudWatch/latest/logs/cloudwatch_limits_cwl.html) state that the event size is limited to 256kb. `256 KB (maximum). This quota can't be changed.`
