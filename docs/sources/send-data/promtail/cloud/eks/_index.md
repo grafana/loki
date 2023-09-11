@@ -125,7 +125,7 @@ Verify the application is working by running these commands:
 Verify that Promtail pods are running. You should see only two since we're running a two nodes cluster.
 
 ```bash
-kubectl get -n monitoring 
+kubectl get -n monitoring pods
 ```
 
 You should see output similar to the following:
