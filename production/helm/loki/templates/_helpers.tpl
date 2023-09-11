@@ -273,7 +273,19 @@ azure:
   {{- with .endpointSuffix }}
   endpoint_suffix: {{ . }}
   {{- end }}
-{{- end -}}
+{{- end }}
+{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
+alibabacloud:
+  {{- toYaml .Values.loki.storage.alibabacloud | nindent 2 }}
+{{- else if eq .Values.loki.storage.type "cos" -}}
+cos:
+  {{- toYaml .Values.loki.storage.cos | nindent 2 }}
+{{- else if eq .Values.loki.storage.type "swift" -}}
+swift:
+  {{- toYaml .Values.loki.storage.swift | nindent 2 }}
+{{- else if eq .Values.loki.storage.type "bos" -}}
+bos:
+  {{- toYaml .Values.loki.storage.bos | nindent 2 }}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
 filesystem:
@@ -512,7 +524,7 @@ Create the service endpoint including port for MinIO.
 
 {{/* Determine if deployment is using object storage */}}
 {{- define "loki.isUsingObjectStorage" -}}
-{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") -}}
+{{- or (eq .Values.loki.storage.type "gcs") (eq .Values.loki.storage.type "s3") (eq .Values.loki.storage.type "azure") (eq .Values.loki.storage.type "alibabacloud") (eq .Values.loki.storage.type "cos") (eq .Values.loki.storage.type "swift") (eq .Values.loki.storage.type "bos") -}}
 {{- end -}}
 
 {{/* Configure the correct name for the memberlist service */}}
