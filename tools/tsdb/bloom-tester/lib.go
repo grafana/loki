@@ -64,7 +64,7 @@ func execute() {
 	tenants, tableName, err := helpers.ResolveTenants(objectClient, bucket, tableRanges)
 	helpers.ExitErr("resolving tenants", err)
 
-	sampler, err := NewProbabilisticSampler(0.00002)
+	sampler, err := NewProbabilisticSampler(0.00008)
 	helpers.ExitErr("creating sampler", err)
 
 	metrics := NewMetrics(prometheus.DefaultRegisterer)
@@ -89,27 +89,82 @@ var (
 )
 
 var experiments = []Experiment{
+	// n > error > skip > index
+
 	NewExperiment(
-		"token=3skip2_error=1%",
+		"token=3skip0_error=1%_indexchunks=true",
+		three,
+		true,
+		onePctError,
+	),
+	NewExperiment(
+		"token=3skip0_error=1%_indexchunks=false",
+		three,
+		false,
+		onePctError,
+	),
+
+	NewExperiment(
+		"token=3skip1_error=1%_indexchunks=true",
+		threeSkip1,
+		true,
+		onePctError,
+	),
+	NewExperiment(
+		"token=3skip1_error=1%_indexchunks=false",
+		threeSkip1,
+		false,
+		onePctError,
+	),
+
+	NewExperiment(
+		"token=3skip2_error=1%_indexchunks=true",
+		threeSkip2,
+		true,
+		onePctError,
+	),
+	NewExperiment(
+		"token=3skip2_error=1%_indexchunks=false",
 		threeSkip2,
 		false,
 		onePctError,
 	),
+
 	NewExperiment(
-		"token=3skip2_error=5%",
-		threeSkip2,
-		false,
+		"token=3skip0_error=5%_indexchunks=true",
+		three,
+		true,
 		fivePctError,
 	),
 	NewExperiment(
-		"token=3skip3_error=1%",
-		threeSkip3,
+		"token=3skip0_error=5%_indexchunks=false",
+		three,
 		false,
-		onePctError,
+		fivePctError,
+	),
+
+	NewExperiment(
+		"token=3skip1_error=5%_indexchunks=true",
+		threeSkip1,
+		true,
+		fivePctError,
 	),
 	NewExperiment(
-		"token=3skip3_error=5%",
-		threeSkip3,
+		"token=3skip1_error=5%_indexchunks=false",
+		threeSkip1,
+		false,
+		fivePctError,
+	),
+
+	NewExperiment(
+		"token=3skip2_error=5%_indexchunks=true",
+		threeSkip2,
+		true,
+		fivePctError,
+	),
+	NewExperiment(
+		"token=3skip2_error=5%_indexchunks=false",
+		threeSkip2,
 		false,
 		fivePctError,
 	),

@@ -102,7 +102,7 @@ func (w *WrappedTokenizer) Tokens(line string) []Token {
 	for _, tok := range toks {
 		res = append(res, w.f(tok))
 	}
-	return res
+	return append(res, toks...)
 }
 
 func ChunkIDTokenizer(chk logproto.ChunkRef, t Tokenizer) *WrappedTokenizer {
