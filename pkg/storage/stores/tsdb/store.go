@@ -31,11 +31,10 @@ type IndexWriter interface {
 
 type store struct {
 	index.Reader
-	indexShipper      indexshipper.IndexShipper
-	indexWriter       IndexWriter
-	backupIndexWriter index.Writer
-	logger            log.Logger
-	stopOnce          sync.Once
+	indexShipper indexshipper.IndexShipper
+	indexWriter  IndexWriter
+	logger       log.Logger
+	stopOnce     sync.Once
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -47,7 +46,6 @@ func NewStore(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
-	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
 	logger log.Logger,
 	idxCache cache.Cache,
@@ -56,13 +54,9 @@ func NewStore(
 	func(),
 	error,
 ) {
-	if backupIndexWriter == nil {
-		backupIndexWriter = noopBackupIndexWriter{}
-	}
 
 	storeInstance := &store{
-		backupIndexWriter: backupIndexWriter,
-		logger:            logger,
+		logger: logger,
 	}
 
 	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
@@ -182,8 +176,7 @@ func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.T
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}
-
-	return s.backupIndexWriter.IndexChunk(ctx, from, through, chk)
+	return nil
 }
 
 type failingIndexWriter struct{}
