@@ -184,9 +184,3 @@ type failingIndexWriter struct{}
 func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_index.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }
-
-type noopBackupIndexWriter struct{}
-
-func (n noopBackupIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
-	return nil
-}
