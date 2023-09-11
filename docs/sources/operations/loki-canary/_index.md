@@ -260,16 +260,23 @@ spec:
 If the other options are not sufficient for your use case, you can compile
 `loki-canary` yourself:
 
-```bash
-# clone the source tree
-$ git clone https://github.com/grafana/loki
+1. Clone the source tree.
 
-# build the binary
-$ make loki-canary
+    ```bash
+    $ git clone https://github.com/grafana/loki
+    ```
 
-# (optionally build the container image)
-$ make loki-canary-image
-```
+1. Build the binary.
+
+    ```bash
+    $ make loki-canary
+    ```
+
+1. Optional: Build the container image.
+
+    ```bash
+    $ make loki-canary-image
+    ```
 
 ## Configuration
 
