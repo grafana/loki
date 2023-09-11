@@ -52,7 +52,7 @@ To ship all your pods logs we're going to set up [Promtail]({{< relref "../../..
 
 What's nice about Promtail is that it uses the same [service discovery as Prometheus][prometheus conf], you should make sure the `scrape_configs` of Promtail matches the Prometheus one. Not only this is simpler to configure, but this also means Metrics and Logs will have the same metadata (labels) attached by the Prometheus service discovery. When querying Grafana you will be able to correlate metrics and logs very quickly, you can read more about this on our [blogpost][correlate].
 
-Let's add the Loki repository and list all available charts. To add the repo, the following command:
+Let's add the Loki repository and list all available charts. To add the repo, run the following command:
 
 ```bash
 helm repo add loki https://grafana.github.io/loki/charts
