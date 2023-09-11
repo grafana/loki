@@ -167,6 +167,11 @@ func (e QuantileSketchEvalExpr) String() string {
 	return fmt.Sprintf("quantileSketchEval<%s>", "???")
 }
 
+func (e QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	f(e.quantileMergeExpr)
+}
+
 type QuantileSketchMergeExpr struct {
 	syntax.SampleExpr
 	downstreams []DownstreamSampleExpr
@@ -174,6 +179,13 @@ type QuantileSketchMergeExpr struct {
 
 func (e QuantileSketchMergeExpr) String() string {
 	return fmt.Sprintf("quantileSketchMerge<%s>", "???")
+}
+
+func (e QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
+	f(e)
+	for _, d := range e.downstreams {
+		f(d)
+	}
 }
 
 type Shards []astmapper.ShardAnnotation

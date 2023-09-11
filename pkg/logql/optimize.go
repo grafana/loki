@@ -8,7 +8,7 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 	// we skip sharding AST for now, it's not easy to clone them since they are not part of the language.
 	expr.Walk(func(e interface{}) {
 		switch e.(type) {
-		case *ConcatSampleExpr, *DownstreamSampleExpr:
+		case *ConcatSampleExpr, *DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
 			skip = true
 			return
 		}
