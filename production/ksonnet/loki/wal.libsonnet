@@ -4,7 +4,6 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   local with(x) = if $._config.wal_enabled then x else {},
 
   _config+:: {
-    stateful_ingesters: if $._config.wal_enabled then true else super.stateful_ingesters,
     loki+: with({
       ingester+: {
         wal+: {

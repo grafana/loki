@@ -16,9 +16,7 @@
     query_scheduler_enabled: false,
     overrides_exporter_enabled: false,
 
-    // flags for running ingesters/queriers as a statefulset instead of deployment type.
-    // WAL enabled configurations automatically use statefulsets.
-    stateful_ingesters: false,
+    // flags for running queriers as a statefulset instead of deployment type.
     ingester_pvc_size: '10Gi',
     ingester_pvc_class: 'fast',
 

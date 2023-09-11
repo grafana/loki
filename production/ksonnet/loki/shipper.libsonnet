@@ -16,8 +16,6 @@
     boltdb_shipper_shared_store: error 'must define boltdb_shipper_shared_store when using_boltdb_shipper=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
     tsdb_shipper_shared_store: error 'must define tsdb_shipper_shared_store when using_tsdb_shipper=true. If this is not intentional, consider disabling it. shared_store is a backend key from the storage_config, such as (gcs) or (s3)',
 
-    // run ingesters and queriers as statefulsets when using boltdb-shipper to avoid using node disk for storing the index.
-    stateful_ingesters: if self.using_shipper_store then true else super.stateful_ingesters,
     stateful_queriers: if self.using_shipper_store && !self.use_index_gateway then true else super.stateful_queriers,
 
     compactor_pvc_size: '10Gi',
