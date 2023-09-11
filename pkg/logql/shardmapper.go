@@ -443,7 +443,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 					Shard: shard,
 					Of:    shards,
 				},
-				SampleExpr: expr,
+				SampleExpr: NewQuantileSketchExpr(expr),
 			})
 		}
 

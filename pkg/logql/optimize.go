@@ -11,6 +11,10 @@ func optimizeSampleExpr(expr syntax.SampleExpr) (syntax.SampleExpr, error) {
 		case *ConcatSampleExpr, *DownstreamSampleExpr, *QuantileSketchEvalExpr, *QuantileSketchMergeExpr:
 			skip = true
 			return
+		case *QuantileSketchExpr:
+			// TODO(karsten): maybe we need to optimize the embedded query.
+			skip = true
+			return
 		}
 	})
 	if skip {

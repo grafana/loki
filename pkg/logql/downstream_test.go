@@ -92,10 +92,10 @@ func TestMappingEquivalence(t *testing.T) {
 			shardedQry := sharded.Query(ctx, params, mapped)
 
 			res, err := qry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			shardedRes, err := shardedQry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			if tc.approximate {
 				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))

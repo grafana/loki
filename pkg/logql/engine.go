@@ -271,6 +271,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
+	// TODO(karsten): Query should return the parsed query instead.
 	expr, err := q.parse(ctx, q.params.Query())
 	if err != nil {
 		return nil, err
@@ -341,33 +342,29 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 
 	switch e := expr.(type) {
-	case *syntax.RangeAggregationExpr:
-		// TODO(karsten): we want a different expression for tdigest. This is
-		// just a hack for now.
-		if e.Operation == syntax.OpRangeTypeQuantile {
-			it, err := q.evaluator.(*DefaultEvaluator).querier.SelectSamples(ctx, SelectSampleParams{
-				&logproto.SampleQueryRequest{
-					Start:    q.params.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-					End:      q.params.End().Add(-e.Left.Offset),
-					Selector: expr.String(),
-					Shards:   q.params.Shards(),
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			iter := newTDigestIterator(
-				iter.NewPeekingSampleIterator(it),
-				e.Left.Interval.Nanoseconds(),
-				q.params.Step().Nanoseconds(),
-				q.params.Start().UnixNano(), q.params.End().UnixNano(), e.Left.Offset.Nanoseconds(),
-			)
-
-			ev := &TDigestStepEvaluator{
-				iter: iter,
-			}
-			return JoinTDigest(ev, q.params)
+	case *QuantileSketchExpr:
+		it, err := q.evaluator.(*DefaultEvaluator).querier.SelectSamples(ctx, SelectSampleParams{
+			&logproto.SampleQueryRequest{
+				Start:    q.params.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+				End:      q.params.End().Add(-e.Left.Offset),
+				Selector: e.RangeAggregationExpr.Left.String(),
+				Shards:   q.params.Shards(),
+			},
+		})
+		if err != nil {
+			return nil, err
 		}
+		iter := newTDigestIterator(
+			iter.NewPeekingSampleIterator(it),
+			e.Left.Interval.Nanoseconds(),
+			q.params.Step().Nanoseconds(),
+			q.params.Start().UnixNano(), q.params.End().UnixNano(), e.Left.Offset.Nanoseconds(),
+		)
+
+		ev := &TDigestStepEvaluator{
+			iter: iter,
+		}
+		return JoinTDigest(ev, q.params)
 	}
 
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
