@@ -12,7 +12,6 @@
 
     grpc_server_max_msg_size: 100 << 20,  // 100MB
 
-    wal_enabled: true,
     query_scheduler_enabled: false,
     overrides_exporter_enabled: false,
 
@@ -228,6 +227,16 @@
       ingester: {
         chunk_idle_period: '15m',
         chunk_block_size: 262144,
+
+        // disables transfers when running as statefulsets.
+        // pod rolling stragety will always fail transfers
+        // and the WAL supersedes this.
+        max_transfer_retries: 0,
+        wal+: {
+          enabled: true,
+          dir: '/loki/wal',
+          replay_memory_ceiling: '7GB',  // should be set upto ~50% of available memory
+        },
 
         lifecycler: {
           ring: {

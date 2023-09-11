@@ -11,14 +11,19 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   // The ingesters should persist TSDB blocks and WAL on a persistent
   // volume in order to be crash resilient.
   local ingester_data_pvc =
-    pvc.new() +
+    pvc.new('ingester-data') +
     pvc.mixin.spec.resources.withRequests({ storage: $._config.ingester_data_disk_size }) +
     pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
-    pvc.mixin.spec.withStorageClassName($._config.ingester_data_disk_class) +
-    pvc.mixin.metadata.withName('ingester-data'),
+    pvc.mixin.spec.withStorageClassName($._config.ingester_data_disk_class),
+
+  local ingester_wal_pvc =
+    pvc.new('ingester-wal') +
+    pvc.mixin.spec.resources.withRequests({ storage: '150Gi' }) +
+    pvc.mixin.spec.withAccessModes(['ReadWriteOnce']) +
+    pvc.mixin.spec.withStorageClassName($._config.ingester_wal_class),
 
   newIngesterStatefulSet(name, container, with_anti_affinity=true)::
-    $.newLokiStatefulSet(name, 3, container, ingester_data_pvc) +
+    $.newLokiStatefulSet(name, 3, container, [ingester_data_pvc, ingester_wal_pvc]) +
     // When the ingester needs to flush blocks to the storage, it may take quite a lot of time.
     // For this reason, we grant an high termination period (80 minutes).
     statefulSet.mixin.spec.template.spec.withTerminationGracePeriodSeconds(4800) +
@@ -41,11 +46,12 @@ local k = import 'ksonnet-util/kausal.libsonnet';
     container.mixin.readinessProbe.httpGet.withPort($._config.http_listen_port) +
     container.mixin.readinessProbe.withInitialDelaySeconds(15) +
     container.mixin.readinessProbe.withTimeoutSeconds(1) +
-    k.util.resourcesRequests('1', '5Gi') +
-    k.util.resourcesLimits('2', '10Gi') +
+    k.util.resourcesRequests('1', '7Gi') +
+    k.util.resourcesLimits('2', '14Gi') +
     container.withEnvMixin($._config.commonEnvs) +
     container.withVolumeMountsMixin([
       volumeMount.new('ingester-data', '/data'),
+      volumeMount.new('ingester-wal', $._config.loki.ingester.wal.dir),
     ]),
 
   ingester_statefulset:
