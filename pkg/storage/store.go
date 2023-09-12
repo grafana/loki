@@ -52,10 +52,14 @@ type SelectStore interface {
 	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
 }
 
+type SchemaConfigProvider interface {
+	GetSchemaConfigs() []config.PeriodConfig
+}
+
 type Store interface {
 	stores.Store
 	SelectStore
-	GetSchemaConfigs() []config.PeriodConfig
+	SchemaConfigProvider
 }
 
 type LokiStore struct {
@@ -306,11 +310,11 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 	}
 
 	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
-	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
-	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
+	monitoredReaderWriter := index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, monitoredReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 	return chunkWriter,
-		indexReaderWriter,
+		monitoredReaderWriter,
 		func() {
 			chunkClient.Stop()
 			f.Stop()
@@ -382,7 +386,7 @@ func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, 
 	stats := stats.FromContext(ctx)
 
 	start := time.Now()
-	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, matchers...)
 	stats.AddChunkRefsFetchTime(time.Since(start))
 
 	if err != nil {
