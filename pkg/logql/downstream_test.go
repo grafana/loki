@@ -22,7 +22,7 @@ var nilRangeMetrics = NewRangeMapperMetrics(nil)
 func TestMappingEquivalence(t *testing.T) {
 	var (
 		shards   = 3
-		nStreams = 1000
+		nStreams = 60
 		rounds   = 20
 		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
@@ -36,7 +36,6 @@ func TestMappingEquivalence(t *testing.T) {
 		query       string
 		approximate bool
 	}{
-		/*
 			{`1`, false},
 			{`1 + 1`, false},
 			{`{a="1"}`, false},
@@ -55,8 +54,6 @@ func TestMappingEquivalence(t *testing.T) {
 			{`sum(rate({a=~".+"} |= "foo" != "foo"[1s]) or vector(1))`, false},
 			{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
 			{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
-		*/
-		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -101,11 +98,72 @@ func TestMappingEquivalence(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.approximate {
-				//approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
-				relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), 0.02)
+				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
 			} else {
 				require.Equal(t, res.Data, shardedRes.Data)
 			}
+		})
+	}
+}
+
+func TestMappingEquivalenceSketches(t *testing.T) {
+	var (
+		shards   = 3
+		nStreams = 10000
+		rounds   = 20
+		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
+		start    = time.Unix(0, 0)
+		end      = time.Unix(0, int64(time.Second*time.Duration(rounds)))
+		step     = time.Second
+		interval = time.Duration(0)
+		limit    = 100
+	)
+
+	for _, tc := range []struct {
+		query         string
+		realtiveError float64
+	}{
+		{`quantile_over_time(0.70, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.03},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, 0.02},
+	} {
+		q := NewMockQuerier(
+			shards,
+			streams,
+		)
+
+		opts := EngineOpts{}
+		regular := NewEngine(opts, q, NoLimits, log.NewNopLogger())
+		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
+
+		t.Run(tc.query, func(t *testing.T) {
+			parsed, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
+			params := NewLiteralParams(
+				tc.query,
+				start,
+				end,
+				step,
+				interval,
+				logproto.FORWARD,
+				uint32(limit),
+				nil,
+			)
+			qry := regular.Query(params, parsed)
+			ctx := user.InjectOrgID(context.Background(), "fake")
+
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			_, _, mapped, err := mapper.Parse(tc.query)
+			require.NoError(t, err)
+
+			shardedQry := sharded.Query(ctx, params, mapped)
+
+			res, err := qry.Exec(ctx)
+			require.NoError(t, err)
+
+			shardedRes, err := shardedQry.Exec(ctx)
+			require.NoError(t, err)
+
+			relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), tc.realtiveError)
 		})
 	}
 }
