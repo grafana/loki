@@ -81,7 +81,7 @@ func ConfigureGatewayDeployment(
 			}
 
 			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
-				"--logs.extract-selector-labels=kubernetes_namespace_name",
+				fmt.Sprintf("--logs.extract-selector-labels=%s", opaDefaultLabelMatcher),
 			)
 		}
 	}
