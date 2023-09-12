@@ -27,20 +27,22 @@ func (p *PoolAllocator) Get(sz int) *[]byte {
 		*sl = slices.Grow(*sl, sz)
 	}
 
-	// TODO(dannyk): once we upgrade to go1.21, replace with clear(*sl)
-	//clear(*sl)
-
-	for i := range *sl {
-		(*sl)[i] = 1
-	}
-
 	*sl = (*sl)[:0:sz]
 
 	return sl
 }
 
 func (p *PoolAllocator) Put(b *[]byte) {
+	if *b == nil {
+		return
+	}
+
 	fmt.Printf("recycling %d bytes\n", cap(*b))
+
+	// TODO(dannyk): once we upgrade to go1.21, replace with clear()
+	for i := range *b {
+		(*b)[i] = 0
+	}
 
 	p.pool.Put(b)
 }

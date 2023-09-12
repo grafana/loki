@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"encoding/binary"
 	errs "errors"
+	"fmt"
 	"hash/crc32"
 	"reflect"
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 
 	"github.com/golang/snappy"
@@ -47,7 +49,9 @@ type Chunk struct {
 	Data     Data     `json:"-"`
 
 	// The encoded version of the chunk, held so we don't need to re-encode it
-	encoded []byte
+	encoded   []byte
+	fromCache atomic.Bool
+	closed    atomic.Bool
 }
 
 // NewChunk creates a new chunk
@@ -225,6 +229,14 @@ var writerPool = sync.Pool{
 	New: func() interface{} { return snappy.NewBufferedWriter(nil) },
 }
 
+func (c *Chunk) SetFromCache(v bool) {
+	c.fromCache.Store(v)
+}
+
+func (c *Chunk) Closed() bool {
+	return c.closed.Load()
+}
+
 // Encode writes the chunk into a buffer, and calculates the checksum.
 func (c *Chunk) Encode() error {
 	return c.EncodeTo(nil)
@@ -360,6 +372,15 @@ func (c *Chunk) Decode(decodeContext *DecodeContext, input []byte) error {
 }
 
 func (c *Chunk) Close() error {
+	if !c.fromCache.Load() {
+		fmt.Printf("NOT recycling bytes from %s/%x/%x:%x:%x (STORAGE)\n", c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum)
+
+		return nil
+	}
+
+	c.closed.Store(true)
+
+	fmt.Printf("recycling bytes from %s/%x/%x:%x:%x\n", c.UserID, c.Fingerprint, int64(c.From), int64(c.Through), c.Checksum)
 	util.ChunkAllocator.Put(&c.encoded)
 	return nil
 }

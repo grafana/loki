@@ -80,6 +80,7 @@ type decodeRequest struct {
 	chunk     chunk.Chunk
 	buf       []byte
 	responses chan decodeResponse
+	key       string
 }
 
 type decodeResponse struct {
@@ -292,6 +293,9 @@ func (c *Fetcher) WriteBackCache(ctx context.Context, chunks []chunk.Chunk) erro
 		var err error
 		if !c.cacheStubs {
 			encoded, err = chunks[i].Encoded()
+			if chunks[i].Closed() {
+				panic(">>>")
+			}
 			// TODO don't fail, just log and continue?
 			if err != nil {
 				return err
@@ -339,11 +343,15 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 	}
 
 	for i, ck := range chunks {
-		if b, ok := cm[c.schema.ExternalKey(ck.ChunkRef)]; ok {
+		key := c.schema.ExternalKey(ck.ChunkRef)
+		if b, ok := cm[key]; ok {
+			chunks[i].SetFromCache(true)
+
 			requests = append(requests, decodeRequest{
 				chunk:     chunks[i],
 				buf:       b,
 				responses: responses,
+				key:       key,
 			})
 		} else {
 			missing = append(missing, chunks[i])
