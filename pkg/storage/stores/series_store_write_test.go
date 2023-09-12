@@ -81,10 +81,6 @@ func TestChunkWriter_PutOne(t *testing.T) {
 		Schema: "v13",
 	}
 
-	schemaConfig := config.SchemaConfig{
-		Configs: []config.PeriodConfig{periodConfig},
-	}
-
 	chunkfmt, headfmt, err := periodConfig.ChunkFormat()
 	require.NoError(t, err)
 
@@ -144,7 +140,7 @@ func TestChunkWriter_PutOne(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			cache := &mockCache{}
 			if tc.populateCache {
-				cacheKey := schemaConfig.ExternalKey(chk.ChunkRef)
+				cacheKey := periodConfig.ExternalKey(chk.ChunkRef)
 				cache = &mockCache{
 					data: map[string]string{
 						cacheKey: "foo",
@@ -155,10 +151,10 @@ func TestChunkWriter_PutOne(t *testing.T) {
 			idx := &mockIndexWriter{}
 			client := &mockChunksClient{}
 
-			f, err := fetcher.New(cache, nil, false, schemaConfig, client, 1, 1, 0)
+			f, err := fetcher.New(cache, nil, false, periodConfig, client, 1, 1, 0)
 			require.NoError(t, err)
 
-			cw := NewChunkWriter(f, schemaConfig, idx, true)
+			cw := NewChunkWriter(f, periodConfig, idx, true)
 
 			err = cw.PutOne(context.Background(), tc.from, tc.through, chk)
 			require.NoError(t, err)

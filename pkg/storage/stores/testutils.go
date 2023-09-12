@@ -46,10 +46,18 @@ func NewMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams 
 }
 
 func NewMockChunkStoreWithChunks(chunks []chunk.Chunk) *MockChunkStore {
+	schemas := config.SchemaConfig{
+		Configs: []config.PeriodConfig{
+			{From: config.DayTime{Time: 0}, Schema: "v13"},
+		},
+	}
 	return &MockChunkStore{
-		schemas: config.SchemaConfig{},
+		schemas: schemas,
 		chunks:  chunks,
-		client:  &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}},
+		client: &mockChunkStoreClient{
+			chunks:  chunks,
+			schemas: schemas,
+		},
 	}
 }
 
@@ -113,10 +121,11 @@ func (m *MockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 }
 
 func (m *MockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+	periodCfg := m.schemas.Configs[0]
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
-		r, err := chunk.ParseExternalKey("fake", m.schemas.ExternalKey(c.ChunkRef))
+		r, err := chunk.ParseExternalKey("fake", periodCfg.ExternalKey(c.ChunkRef))
 		if err != nil {
 			panic(err)
 		}
@@ -128,7 +137,7 @@ func (m *MockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time,
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
+	f, err := fetcher.New(cache, nil, false, periodCfg, m.client, 10, 100, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -144,8 +153,8 @@ func (m *MockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ 
 }
 
 type mockChunkStoreClient struct {
-	chunks []chunk.Chunk
-	scfg   config.SchemaConfig
+	schemas config.SchemaConfig
+	chunks  []chunk.Chunk
 }
 
 func (m mockChunkStoreClient) Stop() {
@@ -161,7 +170,7 @@ func (m mockChunkStoreClient) GetChunks(_ context.Context, chunks []chunk.Chunk)
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
 			// only returns chunks requested using the external key
-			if m.scfg.ExternalKey(c.ChunkRef) == m.scfg.ExternalKey(sc.ChunkRef) {
+			if m.schemas.ExternalKey(c.ChunkRef) == m.schemas.ExternalKey(sc.ChunkRef) {
 				res = append(res, sc)
 			}
 		}

@@ -24,17 +24,13 @@ func TestBackground(t *testing.T) {
 		WriteBackSizeLimit:  flagext.ByteSize(limit),
 	}, cache.NewMockCache(), nil)
 
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
+	p := config.PeriodConfig{
+		From:      config.DayTime{Time: 0},
+		Schema:    "v11",
+		RowShards: 16,
 	}
 
-	keys, chunks := fillCache(t, s, c)
+	keys, chunks := fillCache(t, p, c)
 	cache.Flush(c)
 
 	testCacheSingle(t, c, keys, chunks)

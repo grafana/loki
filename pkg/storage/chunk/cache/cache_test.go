@@ -24,7 +24,7 @@ import (
 
 const userID = "1"
 
-func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
+func fillCache(t *testing.T, p config.PeriodConfig, cache cache.Cache) ([]string, []chunk.Chunk) {
 	const chunkLen = 13 * 3600 // in seconds
 
 	// put a set of chunks, larger than background batch size, with varying timestamps and values
@@ -74,7 +74,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 		err = cleanChunk.Decode(chunk.NewDecodeContext(), buf)
 		require.NoError(t, err)
 
-		keys = append(keys, scfg.ExternalKey(c.ChunkRef))
+		keys = append(keys, p.ExternalKey(c.ChunkRef))
 		bufs = append(bufs, buf)
 		chunks = append(chunks, cleanChunk)
 	}
@@ -120,37 +120,28 @@ func testCacheMultiple(t *testing.T, cache cache.Cache, keys []string, chunks []
 	require.Equal(t, chunks, result)
 }
 
-func testChunkFetcher(t *testing.T, c cache.Cache, chunks []chunk.Chunk) {
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
-	}
+func testChunkFetcher(t *testing.T, p config.PeriodConfig, c cache.Cache, chunks []chunk.Chunk) {
 
-	fetcher, err := fetcher.New(c, nil, false, s, nil, 10, 100, 0)
+	fetcher, err := fetcher.New(c, nil, false, p, nil, 10, 100, 0)
 	require.NoError(t, err)
 	defer fetcher.Stop()
 
 	found, err := fetcher.FetchChunks(context.Background(), chunks)
 	require.NoError(t, err)
-	sort.Sort(byExternalKey{found, s})
-	sort.Sort(byExternalKey{chunks, s})
+	sort.Sort(byExternalKey{found, p})
+	sort.Sort(byExternalKey{chunks, p})
 	require.Equal(t, chunks, found)
 }
 
 type byExternalKey struct {
 	chunks []chunk.Chunk
-	scfg   config.SchemaConfig
+	cfg    config.PeriodConfig
 }
 
 func (a byExternalKey) Len() int      { return len(a.chunks) }
 func (a byExternalKey) Swap(i, j int) { a.chunks[i], a.chunks[j] = a.chunks[j], a.chunks[i] }
 func (a byExternalKey) Less(i, j int) bool {
-	return a.scfg.ExternalKey(a.chunks[i].ChunkRef) < a.scfg.ExternalKey(a.chunks[j].ChunkRef)
+	return a.cfg.ExternalKey(a.chunks[i].ChunkRef) < a.cfg.ExternalKey(a.chunks[j].ChunkRef)
 }
 
 func testCacheMiss(t *testing.T, cache cache.Cache) {
@@ -164,16 +155,13 @@ func testCacheMiss(t *testing.T, cache cache.Cache) {
 }
 
 func testCache(t *testing.T, cache cache.Cache) {
-	s := config.SchemaConfig{
-		Configs: []config.PeriodConfig{
-			{
-				From:      config.DayTime{Time: 0},
-				Schema:    "v11",
-				RowShards: 16,
-			},
-		},
+	p := config.PeriodConfig{
+		From:      config.DayTime{Time: 0},
+		Schema:    "v11",
+		RowShards: 16,
 	}
-	keys, chunks := fillCache(t, s, cache)
+
+	keys, chunks := fillCache(t, p, cache)
 	t.Run("Single", func(t *testing.T) {
 		testCacheSingle(t, cache, keys, chunks)
 	})
@@ -184,7 +172,7 @@ func testCache(t *testing.T, cache cache.Cache) {
 		testCacheMiss(t, cache)
 	})
 	t.Run("Fetcher", func(t *testing.T) {
-		testChunkFetcher(t, cache, chunks)
+		testChunkFetcher(t, p, cache, chunks)
 	})
 }
 

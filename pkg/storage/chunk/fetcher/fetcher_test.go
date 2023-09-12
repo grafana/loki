@@ -193,7 +193,7 @@ func Test(t *testing.T) {
 			assert.NoError(t, chunkClient.PutChunks(context.Background(), test.storeStart))
 
 			// Build fetcher
-			f, err := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
+			f, err := New(c1, c2, false, sc.Configs[0], chunkClient, 1, 1, test.handoff)
 			assert.NoError(t, err)
 
 			// Run the test
@@ -290,7 +290,7 @@ func BenchmarkFetch(b *testing.B) {
 	_ = chunkClient.PutChunks(context.Background(), test.storeStart)
 
 	// Build fetcher
-	f, _ := New(c1, c2, false, sc, chunkClient, 1, 1, test.handoff)
+	f, _ := New(c1, c2, false, sc.Configs[0], chunkClient, 1, 1, test.handoff)
 
 	for i := 0; i < b.N; i++ {
 		_, err := f.FetchChunks(context.Background(), test.fetch)

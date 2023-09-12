@@ -241,6 +241,20 @@ func (cfg *SchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.fileName, "schema-config-file", "", "The path to the schema config file. The schema config is used only when running Cortex with the chunks storage.")
 }
 
+// Load the yaml file, or build the config from legacy command-line flags
+func (cfg *SchemaConfig) Load() error {
+	if len(cfg.Configs) > 0 {
+		return nil
+	}
+
+	// Load config from file.
+	if err := cfg.loadFromFile(); err != nil {
+		return err
+	}
+
+	return cfg.Validate()
+}
+
 // loadFromFile loads the schema config from a yaml file
 func (cfg *SchemaConfig) loadFromFile() error {
 	if cfg.fileName == "" {
@@ -448,20 +462,6 @@ func (cfg PeriodConfig) validate() error {
 	return nil
 }
 
-// Load the yaml file, or build the config from legacy command-line flags
-func (cfg *SchemaConfig) Load() error {
-	if len(cfg.Configs) > 0 {
-		return nil
-	}
-
-	// Load config from file.
-	if err := cfg.loadFromFile(); err != nil {
-		return err
-	}
-
-	return cfg.Validate()
-}
-
 func (cfg *PeriodConfig) VersionAsInt() (int, error) {
 	// Read memoized schema version. This is called during unmarshaling,
 	// but may be nil in the case of testware.
@@ -505,6 +505,15 @@ func ValidatePathPrefix(prefix string) error {
 	}
 
 	return nil
+}
+
+// Generate the appropriate external key based on cfg.Schema, chunk.Checksum, and chunk.From
+func (cfg *PeriodConfig) ExternalKey(ref logproto.ChunkRef) string {
+	v, err := cfg.VersionAsInt()
+	if err == nil && v >= 12 {
+		return newerExternalKey(ref)
+	}
+	return newExternalKey(ref)
 }
 
 // PeriodicTableConfig is configuration for a set of time-sharded tables.
@@ -672,11 +681,10 @@ func (cfg *PeriodicTableConfig) tableForPeriod(i int64) string {
 // Generate the appropriate external key based on cfg.Schema, chunk.Checksum, and chunk.From
 func (cfg SchemaConfig) ExternalKey(ref logproto.ChunkRef) string {
 	p, err := cfg.SchemaForTime(ref.From)
-	v, _ := p.VersionAsInt()
-	if err == nil && v >= 12 {
-		return newerExternalKey(ref)
+	if err != nil {
+		return newExternalKey(ref)
 	}
-	return newExternalKey(ref)
+	return p.ExternalKey(ref)
 }
 
 // VersionForChunk will return the schema version associated with the `From` timestamp of a chunk.
