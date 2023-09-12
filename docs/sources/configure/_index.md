@@ -2036,11 +2036,6 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -boltdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
-
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -2102,11 +2097,6 @@ tsdb_shipper:
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
-
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -tsdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
 
   [ingestername: <string> | default = ""]
 
