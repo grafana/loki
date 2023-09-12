@@ -574,50 +574,53 @@ func NewChunkClient(name string, cfg Config, schemaCfg config.SchemaConfig, cc c
 
 // NewTableClient makes a new table client based on the configuration.
 func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer prometheus.Registerer) (index.TableClient, error) {
-	switch name {
-	case config.StorageTypeInMemory:
-		return testutils.NewMockStorage(), nil
-	case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
-		if cfg.AWSStorageConfig.DynamoDB.URL == nil {
-			return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+
+	switch true {
+
+	case util.StringsContain(testingStorageTypes, name):
+		switch name {
+		case config.StorageTypeInMemory:
+			return testutils.NewMockStorage(), nil
 		}
-		path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
-		if len(path) > 0 {
-			level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+
+	case util.StringsContain(supportedIndexTypes, name):
+		var sharedStoreKeyPrefix string
+		switch name {
+		case config.BoltDBShipperType:
+			sharedStoreKeyPrefix = cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
+		case config.TSDBType:
+			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
 		}
-		return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
-	case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
-		return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
-	case config.StorageTypeCassandra:
-		return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
-	case config.StorageTypeBoltDB:
-		return local.NewTableClient(cfg.BoltDBConfig.Directory)
-	case config.StorageTypeGrpc:
-		return grpc.NewTableClient(cfg.GrpcConfig)
-	case config.BoltDBShipperType, config.TSDBType:
-		objectClient, err := NewObjectClient(cfg.BoltDBShipperConfig.SharedStoreType, cfg, cm)
+		objectClient, err := NewObjectClient(sharedStoreKeyPrefix, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
-		sharedStoreKeyPrefix := cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
-		if name == config.TSDBType {
-			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
-		}
 		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
-	default:
-		return nil, fmt.Errorf("Unrecognized storage client %v, choose one of: %v, %v, %v, %v, %v, %v, %v", name, config.StorageTypeAWS, config.StorageTypeCassandra, config.StorageTypeInMemory, config.StorageTypeGCP, config.StorageTypeBigTable, config.StorageTypeBigTableHashed, config.StorageTypeGrpc)
-	}
-}
 
-// // NewTableClient creates a TableClient for managing tables for index/chunk store.
-// // ToDo: Add support in Cortex for registering custom table client like index client.
-// func NewTableClient(name string, cfg Config) (chunk.TableClient, error) {
-// 	if name == shipper.BoltDBShipperType {
-// 		name = "boltdb"
-// 		cfg.FSConfig = chunk_local.FSConfig{Directory: cfg.BoltDBShipperConfig.ActiveIndexDirectory}
-// 	}
-// 	return storage.NewTableClient(name, cfg.Config, prometheus.DefaultRegisterer)
-// }
+	case util.StringsContain(deprecatedIndexTypes, name):
+		switch name {
+		case config.StorageTypeAWS, config.StorageTypeAWSDynamo:
+			if cfg.AWSStorageConfig.DynamoDB.URL == nil {
+				return nil, fmt.Errorf("Must set -dynamodb.url in aws mode")
+			}
+			path := strings.TrimPrefix(cfg.AWSStorageConfig.DynamoDB.URL.Path, "/")
+			if len(path) > 0 {
+				level.Warn(util_log.Logger).Log("msg", "ignoring DynamoDB URL path", "path", path)
+			}
+			return aws.NewDynamoDBTableClient(cfg.AWSStorageConfig.DynamoDBConfig, registerer)
+		case config.StorageTypeGCP, config.StorageTypeGCPColumnKey, config.StorageTypeBigTable, config.StorageTypeBigTableHashed:
+			return gcp.NewTableClient(context.Background(), cfg.GCPStorageConfig)
+		case config.StorageTypeCassandra:
+			return cassandra.NewTableClient(context.Background(), cfg.CassandraStorageConfig, registerer)
+		case config.StorageTypeBoltDB:
+			return local.NewTableClient(cfg.BoltDBConfig.Directory)
+		case config.StorageTypeGrpc:
+			return grpc.NewTableClient(cfg.GrpcConfig)
+		}
+	}
+
+	return nil, fmt.Errorf("unrecognized table client type %s, choose one of: %s", name, strings.Join(supportedIndexTypes, ", "))
+}
 
 // NewBucketClient makes a new bucket client based on the configuration.
 func NewBucketClient(storageConfig Config) (index.BucketClient, error) {
