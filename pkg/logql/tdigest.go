@@ -40,7 +40,7 @@ func (left QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketc
 		}
 
 		// TODO(karsten): handle error
-		left[i].F.Merge(sample.F)
+		left[i].F.Merge(sample.F) //nolint:errcheck
 	}
 
 	return left
@@ -278,14 +278,14 @@ func NewTDigestVectorStepEvaluator(inner StepEvaluator[QuantileSketchVector], qu
 	}
 }
 
-func (m *TDigestVectorStepEvaluator) Next() (bool, int64, promql.Vector) {
-	ok, ts, quantileSketchVec := m.inner.Next()
+func (e *TDigestVectorStepEvaluator) Next() (bool, int64, promql.Vector) {
+	ok, ts, quantileSketchVec := e.inner.Next()
 
 	vec := make(promql.Vector, len(quantileSketchVec))
 
 	for i, quantileSketch := range quantileSketchVec {
 		// TODO(karsten): check error
-		f, _ := quantileSketch.F.Quantile(m.quantile)
+		f, _ := quantileSketch.F.Quantile(e.quantile)
 
 		vec[i] = promql.Sample{
 			T:      quantileSketch.T,

@@ -55,7 +55,7 @@ func TestQuantiles(t *testing.T) {
 						p, _ := stats.Percentile(stats.Float64Data(counts), 99)
 						ddQuantile, _ := dd.Quantile(0.99)
 						tdQuantile, _ := td.Quantile(0.99)
-						w.WriteString(fmt.Sprintf("%.2f,%.2f,%d,%d,%.2f,%.2f,%.2f,%d,%d,%.2f,%.2f\n",
+						_, err := w.WriteString(fmt.Sprintf("%.2f,%.2f,%d,%d,%.2f,%.2f,%.2f,%d,%d,%.2f,%.2f\n",
 							s,
 							v,
 							seed,
@@ -67,6 +67,7 @@ func TestQuantiles(t *testing.T) {
 							size.Of(dd),
 							getPercentDiff(p, tdQuantile),
 							getPercentDiff(p, ddQuantile)))
+						require.NoError(t, err)
 					})
 				}
 
