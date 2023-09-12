@@ -95,6 +95,30 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
 			fmt.Errorf(validation.DisallowedStructuredMetadataErrorMsg, testStreamLabels),
 		},
+		{
+			"structured metadata too big",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:   true,
+					MaxStructuredMetadataSize: 4,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}}},
+			fmt.Errorf(validation.StructuredMetadataTooLargeErrorMsg, testStreamLabels, 6, 4),
+		},
+		{
+			"structured metadata too many",
+			"test",
+			fakeLimits{
+				&validation.Limits{
+					AllowStructuredMetadata:           true,
+					MaxStructuredMetadataEntriesCount: 1,
+				},
+			},
+			logproto.Entry{Timestamp: testTime, Line: "12345678901", StructuredMetadata: push.LabelsAdapter{{Name: "foo", Value: "bar"}, {Name: "too", Value: "many"}}},
+			fmt.Errorf(validation.StructuredMetadataTooManyErrorMsg, testStreamLabels, 2, 1),
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
