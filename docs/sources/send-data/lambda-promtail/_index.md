@@ -105,24 +105,48 @@ This workflow allows ingesting AWS VPC Flow logs from s3.
 
 One thing to be aware of with this is that the default flow log format doesn't have a timestamp, so the log timestamp will be set to the time the lambda starts processing the log file.
 
+If using CloudFormation to write your infrastructure code, you should consider the [EventBridge based solution](#s3-based-logging-and-cloudformation) for easier deployment.
+
 ### Loadbalancer logs
 
 This workflow allows ingesting AWS Application/Network Load Balancer logs stored on S3 to Loki.
 
+If using CloudFormation to write your infrastructure code, you should consider the [EventBridge based solution](#s3-based-logging-and-cloudformation) for easier deployment.
+
 ### Cloudtrail logs
 
 This workflow allows ingesting AWS Cloudtrail logs stored on S3 to Loki.
+
+If using CloudFormation to write your infrastructure code, you should consider the [EventBridge based solution](#s3-based-logging-and-cloudformation) for easier deployment.
 
 ### Cloudfront logs
 Cloudfront logs can be either batched or streamed in real time to Loki:
 + Logging can be activated on a Cloudfront distribution with an S3 bucket as the destination. In this case, the workflow is the same as for other services (VPC Flow logs, Loadbalancer logs, Cloudtrail logs).
 + Cloudfront [real-time logs](https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/real-time-logs.html) can be sent to a Kinesis data stream. The data stream can be mapped to be an [event source](https://docs.aws.amazon.com/lambda/latest/dg/invocation-eventsourcemapping.html) for lambda-promtail to deliver the logs to Loki.
 
+If using CloudFormation to write your infrastructure code, you should consider the [EventBridge based solution](#s3-based-logging-and-cloudformation) for easier deployment.
+
 ### Triggering Lambda-Promtail via SQS
 For AWS services supporting sending messages to SQS (for example, S3 with an S3 Notification to SQS), events can be processed through an [SQS queue using a lambda trigger](https://docs.aws.amazon.com/lambda/latest/dg/with-sqs.html) instead of directly configuring the source service to trigger lambda. Lambda-promtail will retrieve the nested events from the SQS messages' body and process them as if them came directly from the source service.
 
 ### On-Failure log recovery using SQS
 Triggering lambda-promtail through SQS allows handling on-failure recovery of the logs using a secondary SQS queue as a dead-letter-queue (DLQ). You can configure lambda so that unsuccessfully processed messages will be sent to the DLQ. After fixing the issue, operators will be able to reprocess the messages by sending back messages from the DLQ to the source queue using the [SQS DLQ redrive](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-configure-dead-letter-queue-redrive.html) feature.
+
+### S3 based logging and CloudFormation
+
+Lambda-promtail lets you send logs from different services that use S3 as their logs destination (ALB, VPC Flow, CloudFront access logs, etc.). For this, you need to configure S3 bucket notifications to trigger the lambda-promtail deployment. However, **when using CloudFormation** to encode infrastructure, there is a [known issue](https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/79) when configuring `AWS::S3::BucketNotification` and the resource that will be triggered by the notification in the same stack.
+
+To manage the issue, AWS introduced [S3 event notifications with Event Bridge](https://aws.amazon.com/blogs/aws/new-use-amazon-s3-event-notifications-with-amazon-eventbridge/). In that way, when an object gets created in a S3 bucket, this sends an event to an EventBridge bus, and you can create a rule to send those events to Lambda-promtail.
+
+The diagram below shows how notifications logs will be written from the source service into an S3 bucket. From there on, the S3 bucket will send an `Object created` notification into the EventBridge `default` bus, where we can configure a rule to trigger lambda promtail.
+
+![](https://grafana.com/media/docs/loki/lambda-promtail-with-eventbridge.png)
+
+The [template-eventbridge.yaml](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge, for the use case mentioned above:
+
+```bash
+aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template-eventbridge.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=BearerToken,ParameterValue=<bearer-token> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag> ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2" ParameterKey=TenantID,ParameterValue=<value> ParameterKey=SkipTlsVerify,ParameterValue="false" ParameterKey=EventSourceS3Bucket,ParameterValue="alb-logs-bucket-name"
+```
 
 ## Propagated Labels
 
