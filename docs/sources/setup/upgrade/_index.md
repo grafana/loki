@@ -38,7 +38,15 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 ### Loki
 
-#### deprecated configs are now removed
+#### Configuration `use_boltdb_shipper_as_backup` is removed
+
+The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.
+It was used to allow writing to both TSDB and BoltDB when TSDB was still highly experimental.
+Since TSDB is now stable and the recommended index type, the setting has become irrelevant and therefore was removed.
+The previous default value `false` is applied.
+
+#### Deprecated configuration options are removed
+
 1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
 2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
