@@ -269,17 +269,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
-	// TODO(karsten): Query should return the parsed query instead.
-	expr, err := q.parse(ctx, q.params.Query())
-	if err != nil {
-		return nil, err
-	}
-
 	if q.checkBlocked(ctx, tenants) {
 		return nil, logqlmodel.ErrBlocked
 	}
 
-	switch e := expr.(type) {
+	switch e := q.parsed.(type) {
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -345,7 +339,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 			&logproto.SampleQueryRequest{
 				Start:    q.params.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
 				End:      q.params.End().Add(-e.Left.Offset),
-				Selector: e.RangeAggregationExpr.Left.String(),
+				Selector: e.RangeAggregationExpr.String(),
 				Shards:   q.params.Shards(),
 			},
 		})

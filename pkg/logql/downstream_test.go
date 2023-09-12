@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -72,6 +73,8 @@ func TestMappingEquivalence(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
+			parsed, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
 			params := NewLiteralParams(
 				tc.query,
 				start,
@@ -82,12 +85,12 @@ func TestMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params)
+			qry := regular.Query(params, parsed)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
 			_, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			shardedQry := sharded.Query(ctx, params, mapped)
 
@@ -396,6 +399,8 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
+			parsed, err := syntax.ParseExpr(tc.query)
+			require.NoError(t, err)
 			params := NewLiteralParams(
 				tc.query,
 				start,
@@ -408,15 +413,15 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			)
 
 			// Regular engine
-			qry := regularEngine.Query(params)
+			qry := regularEngine.Query(params, parsed)
 			res, err := qry.Exec(ctx)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			// Downstream engine - split by range
 			rangeMapper, err := NewRangeMapper(tc.splitByInterval, nilRangeMetrics, NewMapperStats())
-			require.Nil(t, err)
+			require.NoError(t, err)
 			noop, rangeExpr, err := rangeMapper.Parse(tc.query)
-			require.Nil(t, err)
+			require.NoError(t, err)
 
 			require.False(t, noop, "downstream engine cannot execute noop")
 

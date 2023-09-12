@@ -68,7 +68,7 @@ func (ng *DownstreamEngine) Query(ctx context.Context, p Params, mapped syntax.E
 		params:    p,
 		evaluator: NewDownstreamEvaluator(ng.downstreamable.Downstreamer(ctx)),
 		parsed:    mapped,
-		limits: ng.limits,
+		limits:    ng.limits,
 	}
 }
 
@@ -171,7 +171,7 @@ func (e QuantileSketchExpr) String() string {
 	return fmt.Sprintf("quantileSketch<%s>", &e.RangeAggregationExpr)
 }
 
-func (e QuantileSketchExpr) Walk(f syntax.WalkFn) {
+func (e *QuantileSketchExpr) Walk(f syntax.WalkFn) {
 	f(e)
 	e.RangeAggregationExpr.Walk(f)
 }
@@ -186,9 +186,9 @@ func (e QuantileSketchEvalExpr) String() string {
 	return fmt.Sprintf("quantileSketchEval<%s>", "???")
 }
 
-func (e QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
+func (e *QuantileSketchEvalExpr) Walk(f syntax.WalkFn) {
 	f(e)
-	f(e.quantileMergeExpr)
+	e.quantileMergeExpr.Walk(f)
 }
 
 type QuantileSketchMergeExpr struct {
@@ -200,10 +200,10 @@ func (e QuantileSketchMergeExpr) String() string {
 	return fmt.Sprintf("quantileSketchMerge<%s>", "???")
 }
 
-func (e QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
+func (e *QuantileSketchMergeExpr) Walk(f syntax.WalkFn) {
 	f(e)
 	for _, d := range e.downstreams {
-		f(d)
+		d.Walk(f)
 	}
 }
 

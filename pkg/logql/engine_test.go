@@ -2547,6 +2547,10 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 			{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 		} {
+			parsed, err := syntax.ParseExpr(test.qs)
+			if err != nil {
+				b.Fatal(err)
+			}
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     start,
@@ -2554,7 +2558,7 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 				step:      60 * time.Second,
 				direction: test.direction,
 				limit:     1000,
-			})
+			}, parsed)
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				b.Fatal(err)
@@ -2582,7 +2586,7 @@ func TestHashingStability(t *testing.T) {
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
 		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
-		query := eng.Query(params)
+		query := eng.Query(params, nil)
 		_, err := query.Exec(ctx)
 		require.NoError(t, err)
 		return buf.String()
