@@ -9,6 +9,6 @@ spec:
         - name: manager
           env:
           - name: RELATED_IMAGE_LOKI
-            value: docker.io/grafana/loki:2.8.3
+            value: docker.io/grafana/loki:2.9.0
           - name: RELATED_IMAGE_GATEWAY
             value: quay.io/observatorium/api:latest
