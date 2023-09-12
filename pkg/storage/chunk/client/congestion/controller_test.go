@@ -266,8 +266,8 @@ func (m *mockObjectClient) IsObjectNotFoundErr(error) bool { return false }
 func (m *mockObjectClient) IsRetryableErr(error) bool      { return !m.nonRetryableErrs }
 func (m *mockObjectClient) Stop()                          {}
 
-func newMockObjectClient(start requestFailer) *mockObjectClient {
-	return &mockObjectClient{strategy: start}
+func newMockObjectClient(strat requestFailer) *mockObjectClient {
+	return &mockObjectClient{strategy: strat}
 }
 
 type requestFailer interface {
