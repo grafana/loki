@@ -26,7 +26,8 @@ func NewDDSketch() QuantileSketch {
 }
 
 func (d *DDSketchQuantile) Add(count float64) {
-	d.sketch.Add(count)
+	// TODO(karsten): check error and propagate to iterator.
+	d.sketch.Add(count) //nolint:errcheck
 }
 
 func (d *DDSketchQuantile) Quantile(quantile float64) (float64, error) {
@@ -57,8 +58,7 @@ func NewTDigestSketch() QuantileSketch {
 }
 
 func (d *TDigestQuantile) Add(count float64) {
-	// TODO(karsten): check error and propagate to iterator.
-	d.sketch.Add(count, 1) //nolint:errcheck
+	d.sketch.Add(count, 1)
 }
 
 func (d *TDigestQuantile) Quantile(quantile float64) (float64, error) {
