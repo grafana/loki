@@ -110,7 +110,7 @@ func TestMappingEquivalence(t *testing.T) {
 func TestMappingEquivalenceSketches(t *testing.T) {
 	var (
 		shards   = 3
-		nStreams = 10000
+		nStreams = 10_000
 		rounds   = 20
 		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
