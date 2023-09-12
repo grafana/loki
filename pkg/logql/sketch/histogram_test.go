@@ -3,13 +3,14 @@ package sketch
 import (
 	"bufio"
 	"fmt"
-	"github.com/DmitriyVTitov/size"
-	"github.com/montanaflynn/stats"
-	"github.com/stretchr/testify/require"
 	"math/rand"
 	"os"
 	"sort"
 	"testing"
+
+	"github.com/DmitriyVTitov/size"
+	"github.com/montanaflynn/stats"
+	"github.com/stretchr/testify/require"
 )
 
 // I used this test to generate what is essentially CSV data to then import into a google sheet
