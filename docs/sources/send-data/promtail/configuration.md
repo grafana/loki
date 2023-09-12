@@ -341,6 +341,8 @@ external_labels:
 [timeout: <duration> | default = 10s]
 ```
 
+Note: The port specified for URL will need to be allowed access through the firewall for this to work
+
 ## positions
 
 The `positions` block configures where Promtail will save a file
