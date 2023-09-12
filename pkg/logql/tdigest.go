@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"math"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -152,11 +151,6 @@ func JoinTDigest(stepEvaluator StepEvaluator[QuantileSketchVector], params Param
 	next, _, vec := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
-	}
-
-	stepCount := int(math.Ceil(float64(params.End().Sub(params.Start()).Nanoseconds()) / float64(params.Step().Nanoseconds())))
-	if stepCount <= 0 {
-		stepCount = 1
 	}
 
 	result := make([]QuantileSketchVector, 0)
