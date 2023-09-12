@@ -2719,9 +2719,17 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Allow user to send structured metadata (non-indexed labels) in push payload.
+# Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
+
+# Maximum size accepted for structured metadata per log line.
+# CLI flag: -limits.max-structured-metadata-size
+[max_structured_metadata_size: <int> | default = 64KB]
+
+# Maximum number of structured metadata entries per log line.
+# CLI flag: -limits.max-structured-metadata-entries-count
+[max_structured_metadata_entries_count: <int> | default = 128]
 ```
 
 ### frontend_worker
