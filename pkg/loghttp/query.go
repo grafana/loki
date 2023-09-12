@@ -69,15 +69,8 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
-			labels := make(LabelSet)
-			err := jsonparser.ObjectEach(val, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
-				if dataType != jsonparser.String {
-					return jsonparser.MalformedStringError
-				}
-				labels[string(key)] = string(val)
-				return nil
-			})
-			if err != nil {
+			var labels LabelSet
+			if err := labels.UnmarshalJSON(val); err != nil {
 				return err
 			}
 			s.Labels = labels.String()
