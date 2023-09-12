@@ -276,16 +276,16 @@ azure:
 {{- end }}
 {{- else if eq .Values.loki.storage.type "alibabacloud" -}}
 alibabacloud:
-  {{- toYaml .Values.loki.storage.alibabacloud | nindent 2 }}
+  {{- toYaml (merge (dict "bucket" $.Values.loki.storage.bucketNames.chunks) .Values.loki.storage.alibabacloud) | nindent 2 }}
 {{- else if eq .Values.loki.storage.type "cos" -}}
 cos:
-  {{- toYaml .Values.loki.storage.cos | nindent 2 }}
+  {{- toYaml (merge (dict "bucketnames" $.Values.loki.storage.bucketNames.chunks) .Values.loki.storage.cos) | nindent 2 }}
 {{- else if eq .Values.loki.storage.type "swift" -}}
 swift:
-  {{- toYaml .Values.loki.storage.swift | nindent 2 }}
+  {{- toYaml (merge (dict "container_name" $.Values.loki.storage.bucketNames.chunks) .Values.loki.storage.swift) | nindent 2 }}
 {{- else if eq .Values.loki.storage.type "bos" -}}
 bos:
-  {{- toYaml .Values.loki.storage.bos | nindent 2 }}
+  {{- toYaml (merge (dict "bucket_name" $.Values.loki.storage.bucketNames.chunks) .Values.loki.storage.bos) | nindent 2 }}
 {{- else -}}
 {{- with .Values.loki.storage.filesystem }}
 filesystem:
@@ -356,6 +356,18 @@ azure:
   endpoint_suffix: {{ . }}
   {{- end }}
 {{- end -}}
+{{- else if eq .Values.loki.storage.type "alibabacloud" -}}
+alibabacloud:
+  {{- toYaml (merge (dict "bucket" $.Values.loki.storage.bucketNames.ruler) .Values.loki.storage.alibabacloud) | nindent 2 }}
+{{- else if eq .Values.loki.storage.type "cos" -}}
+cos:
+  {{- toYaml (merge (dict "bucketnames" $.Values.loki.storage.bucketNames.ruler) .Values.loki.storage.cos) | nindent 2 }}
+{{- else if eq .Values.loki.storage.type "swift" -}}
+swift:
+  {{- toYaml (merge (dict "container_name" $.Values.loki.storage.bucketNames.ruler) .Values.loki.storage.swift) | nindent 2 }}
+{{- else if eq .Values.loki.storage.type "bos" -}}
+bos:
+  {{- toYaml (merge (dict "bucket_name" $.Values.loki.storage.bucketNames.ruler) .Values.loki.storage.bos) | nindent 2 }}
 {{- else }}
 type: "local"
 {{- end -}}
