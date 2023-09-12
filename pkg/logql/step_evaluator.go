@@ -5,7 +5,7 @@ import (
 )
 
 type StepResult interface {
-	promql.Vector | TDigestVector
+	promql.Vector | QuantileSketchVector
 }
 
 // StepEvaluator evaluate a single step of a query.

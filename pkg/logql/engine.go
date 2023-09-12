@@ -288,7 +288,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
-		return nil, errors.New("Unexpected type (%T): cannot evaluate")
+		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
 }
 

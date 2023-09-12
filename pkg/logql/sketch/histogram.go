@@ -2,6 +2,8 @@ package sketch
 
 import (
 	"errors"
+	"fmt"
+
 	"github.com/influxdata/tdigest"
 
 	"github.com/DataDog/sketches-go/ddsketch"
@@ -10,6 +12,7 @@ import (
 type QuantileSketch interface {
 	Add(float64)
 	Quantile(float64) (float64, error)
+	Merge(QuantileSketch) (QuantileSketch, error)
 }
 
 type DDSketchQuantile struct {
@@ -33,6 +36,16 @@ func (d *DDSketchQuantile) Quantile(quantile float64) (float64, error) {
 	return d.sketch.GetValueAtQuantile(quantile)
 }
 
+func (d *DDSketchQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
+	cast, ok := other.(*DDSketchQuantile)
+	if !ok {
+		return nil, fmt.Errorf("invalid sketch type: want %T, got %T", d, cast)
+	}
+
+	err := d.sketch.MergeWith(cast.sketch)
+	return d, err
+}
+
 type TDigestQuantile struct {
 	sketch *tdigest.TDigest
 }
@@ -52,4 +65,14 @@ func (d *TDigestQuantile) Quantile(quantile float64) (float64, error) {
 		return 0.0, errors.New("invalid quantile value, must be between 0.0 and 1.0 ")
 	}
 	return d.sketch.Quantile(quantile), nil
+}
+
+func (d *TDigestQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
+	cast, ok := other.(*TDigestQuantile)
+	if !ok {
+		return nil, fmt.Errorf("invalid sketch type: want %T, got %T", d, cast)
+	}
+
+	d.sketch.Merge(cast.sketch)
+	return d, nil
 }

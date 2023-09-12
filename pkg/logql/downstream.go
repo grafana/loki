@@ -380,10 +380,10 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			return nil, err
 		}
 
-		xs := make([]StepEvaluator[TDigestVector], 0, len(queries))
+		xs := make([]StepEvaluator[QuantileSketchVector], 0, len(queries))
 		for _, res := range results {
 			// TODO(karsten): validate type or move into NewResultStepEvaluator.
-			stepper := NewTDigestMatrixStepEvaluator(res.Data.(TDigestMatrix), params)
+			stepper := NewTDigestMatrixStepEvaluator(res.Data.(QuantileSketchMatrix), params)
 			xs = append(xs, stepper)
 		}
 

@@ -4,19 +4,27 @@ import (
 	"math"
 	"time"
 
-	"github.com/influxdata/tdigest"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/promql"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
 
-type TDigestVector []tdigestSample
-type TDigestMatrix []TDigestVector
+type QuantileSketchVector []quantileSketchSample
+type QuantileSketchMatrix []QuantileSketchVector
 
-func (left TDigestVector) Merge(right TDigestVector) TDigestVector {
+func (left QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVector {
+	/*
+		var groupingKey uint64
+		if e.expr.Grouping.Without {
+			groupingKey, e.buf = metric.HashWithoutLabels(e.buf, e.expr.Grouping.Groups...)
+		} else {
+			groupingKey, e.buf = metric.HashForLabels(e.buf, e.expr.Grouping.Groups...)
+		}
+	*/
 	// labels hash to vector index map
 	groups := make(map[uint64]int)
 	for i, sample := range left {
@@ -31,35 +39,36 @@ func (left TDigestVector) Merge(right TDigestVector) TDigestVector {
 			continue
 		}
 
+		// TODO(karsten): handle error
 		left[i].F.Merge(sample.F)
 	}
 
 	return left
 }
 
-func (TDigestMatrix) String() string {
+func (QuantileSketchMatrix) String() string {
 	return "TDigestMatrix()"
 }
 
-func (TDigestMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
+func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
 
 type TDigestStepEvaluator struct {
-	iter RangeVectorIterator[TDigestVector]
+	iter RangeVectorIterator[QuantileSketchVector]
 
 	err error
 }
 
-func (r *TDigestStepEvaluator) Next() (bool, int64, TDigestVector) {
+func (r *TDigestStepEvaluator) Next() (bool, int64, QuantileSketchVector) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, TDigestVector{}
+		return false, 0, QuantileSketchVector{}
 	}
 	ts, vec := r.iter.At()
 	for _, s := range vec {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, TDigestVector{}
+			return false, 0, QuantileSketchVector{}
 		}
 	}
 	return true, ts, vec
@@ -80,7 +89,7 @@ func (r *TDigestStepEvaluator) Explain(parent Node) {
 
 func newTDigestIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end, offset int64) RangeVectorIterator[TDigestVector] {
+	selRange, step, start, end, offset int64) RangeVectorIterator[QuantileSketchVector] {
 	inner := batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -99,27 +108,27 @@ func newTDigestIterator(
 
 //batch
 
-type tdigestSample struct {
+type quantileSketchSample struct {
 	T int64
-	F *tdigest.TDigest
+	F sketch.QuantileSketch
 
 	Metric labels.Labels
 }
 
 type tdigestBatchRangeVectorIterator struct {
 	batchRangeVectorIterator
-	at []tdigestSample
+	at []quantileSketchSample
 }
 
-func (r *tdigestBatchRangeVectorIterator) At() (int64, TDigestVector) {
+func (r *tdigestBatchRangeVectorIterator) At() (int64, QuantileSketchVector) {
 	if r.at == nil {
-		r.at = make([]tdigestSample, 0, len(r.window))
+		r.at = make([]quantileSketchSample, 0, len(r.window))
 	}
 	r.at = r.at[:0]
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current/1e+6 + r.offset/1e+6
 	for _, series := range r.window {
-		r.at = append(r.at, tdigestSample{
+		r.at = append(r.at, quantileSketchSample{
 			F:      r.agg(series.Floats),
 			T:      ts,
 			Metric: series.Metric,
@@ -128,16 +137,17 @@ func (r *tdigestBatchRangeVectorIterator) At() (int64, TDigestVector) {
 	return ts, r.at
 }
 
-func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) *tdigest.TDigest {
-	t := tdigest.New()
+func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
+	s := sketch.NewTDigestSketch()
+	//s := sketch.NewDDSketch()
 	for _, v := range samples {
-		t.Add(v.F, 1)
+		s.Add(v.F)
 	}
-	return t
+	return s
 }
 
 // JoinTDigest joins the results from stepEvaluator into a TDigestMatrix.
-func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (promql_parser.Value, error) {
+func JoinTDigest(stepEvaluator StepEvaluator[QuantileSketchVector], params Params) (promql_parser.Value, error) {
 	// TODO(karsten): check if ts should be used
 	next, _, vec := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
@@ -149,7 +159,7 @@ func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (pro
 		stepCount = 1
 	}
 
-	result := make([]TDigestVector, 0)
+	result := make([]QuantileSketchVector, 0)
 
 	for next {
 		result = append(result, vec)
@@ -160,7 +170,7 @@ func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (pro
 		}
 	}
 
-	return TDigestMatrix(result), stepEvaluator.Error()
+	return QuantileSketchMatrix(result), stepEvaluator.Error()
 }
 
 // TDigestMatrixStepEvaluator steps through a matrix of tdigest vectors, ie
@@ -168,10 +178,10 @@ func JoinTDigest(stepEvaluator StepEvaluator[TDigestVector], params Params) (pro
 type TDigestMatrixStepEvaluator struct {
 	start, end, ts time.Time
 	step           time.Duration
-	m              TDigestMatrix
+	m              QuantileSketchMatrix
 }
 
-func NewTDigestMatrixStepEvaluator(m TDigestMatrix, params Params) *TDigestMatrixStepEvaluator {
+func NewTDigestMatrixStepEvaluator(m QuantileSketchMatrix, params Params) *TDigestMatrixStepEvaluator {
 	var (
 		start = params.Start()
 		end   = params.End()
@@ -186,7 +196,7 @@ func NewTDigestMatrixStepEvaluator(m TDigestMatrix, params Params) *TDigestMatri
 	}
 }
 
-func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, TDigestVector) {
+func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, QuantileSketchVector) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
 		return false, 0, nil
@@ -214,16 +224,16 @@ func (*TDigestMatrixStepEvaluator) Explain(parent Node) {
 // TDigestMergeStepEvaluator merges multiple tdigest sketches into one for each
 // step.
 type TDigestMergeStepEvaluator struct {
-	evaluators []StepEvaluator[TDigestVector]
+	evaluators []StepEvaluator[QuantileSketchVector]
 }
 
-func NewTDigestMergeStepEvaluator(evaluators []StepEvaluator[TDigestVector]) *TDigestMergeStepEvaluator {
+func NewTDigestMergeStepEvaluator(evaluators []StepEvaluator[QuantileSketchVector]) *TDigestMergeStepEvaluator {
 	return &TDigestMergeStepEvaluator{
 		evaluators: evaluators,
 	}
 }
 
-func (e *TDigestMergeStepEvaluator) Next() (bool, int64, TDigestVector) {
+func (e *TDigestMergeStepEvaluator) Next() (bool, int64, QuantileSketchVector) {
 	// TODO(karsten): check that we have more than one
 	ok, ts, cur := e.evaluators[0].Next()
 	for _, eval := range e.evaluators[1:] {
@@ -255,13 +265,13 @@ func (e *TDigestMergeStepEvaluator) Explain(parent Node) {
 // TDigestVectorStepEvaluator evaluates a tdigest qunatile sketch into a
 // promql.Vector.
 type TDigestVectorStepEvaluator struct {
-	inner    StepEvaluator[TDigestVector]
+	inner    StepEvaluator[QuantileSketchVector]
 	quantile float64
 }
 
 var _ StepEvaluator[promql.Vector] = NewTDigestVectorStepEvaluator(nil, 0)
 
-func NewTDigestVectorStepEvaluator(inner StepEvaluator[TDigestVector], quantile float64) *TDigestVectorStepEvaluator {
+func NewTDigestVectorStepEvaluator(inner StepEvaluator[QuantileSketchVector], quantile float64) *TDigestVectorStepEvaluator {
 	return &TDigestVectorStepEvaluator{
 		inner:    inner,
 		quantile: quantile,
@@ -269,17 +279,18 @@ func NewTDigestVectorStepEvaluator(inner StepEvaluator[TDigestVector], quantile 
 }
 
 func (m *TDigestVectorStepEvaluator) Next() (bool, int64, promql.Vector) {
-	ok, ts, tdigestVec := m.inner.Next()
+	ok, ts, quantileSketchVec := m.inner.Next()
 
-	vec := make(promql.Vector, len(tdigestVec))
+	vec := make(promql.Vector, len(quantileSketchVec))
 
-	for i, tdigest := range tdigestVec {
-		f := tdigest.F.Quantile(m.quantile)
+	for i, quantileSketch := range quantileSketchVec {
+		// TODO(karsten): check error
+		f, _ := quantileSketch.F.Quantile(m.quantile)
 
 		vec[i] = promql.Sample{
-			T:      tdigest.T,
+			T:      quantileSketch.T,
 			F:      f,
-			Metric: tdigest.Metric,
+			Metric: quantileSketch.Metric,
 		}
 	}
 

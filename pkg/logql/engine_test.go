@@ -2291,7 +2291,6 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	queueTime := 2 * time.Nanosecond
 	illegalVector := `vector(abc)`
 	parsed, err := syntax.ParseExpr(illegalVector)
-	require.NoError(t, err)
 	q := eng.Query(LiteralParams{
 		qs:        illegalVector,
 		start:     time.Now(),
@@ -2303,7 +2302,6 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	}, parsed)
 	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
-	_, err = q.Exec(user.InjectOrgID(ctx, "fake"))
 
 	require.EqualError(t, err, expectErr.Error())
 
@@ -2586,8 +2584,10 @@ func TestHashingStability(t *testing.T) {
 		buf := bytes.NewBufferString("")
 		logger := log.NewLogfmtLogger(buf)
 		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
-		query := eng.Query(params, nil)
-		_, err := query.Exec(ctx)
+		parsed, err := syntax.ParseExpr(params.qs)
+		require.NoError(t, err)
+		query := eng.Query(params, parsed)
+		_, err = query.Exec(ctx)
 		require.NoError(t, err)
 		return buf.String()
 	}

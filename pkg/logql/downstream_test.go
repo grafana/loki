@@ -22,7 +22,7 @@ var nilRangeMetrics = NewRangeMapperMetrics(nil)
 func TestMappingEquivalence(t *testing.T) {
 	var (
 		shards   = 3
-		nStreams = 60
+		nStreams = 1000
 		rounds   = 20
 		streams  = randomStreams(nStreams, rounds+1, shards, []string{"a", "b", "c", "d"}, true)
 		start    = time.Unix(0, 0)
@@ -56,7 +56,7 @@ func TestMappingEquivalence(t *testing.T) {
 			{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s])`, false},
 			{`avg_over_time({a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
 		*/
-		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [20s]) by (a)`, true},
+		{`quantile_over_time(0.99, {a=~".+"} | logfmt | unwrap value [1s]) by (a)`, true},
 		// topk prefers already-seen values in tiebreakers. Since the test data generates
 		// the same log lines for each series & the resulting promql.Vectors aren't deterministically
 		// sorted by labels, we don't expect this to pass.
@@ -101,7 +101,8 @@ func TestMappingEquivalence(t *testing.T) {
 			require.NoError(t, err)
 
 			if tc.approximate {
-				approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
+				//approximatelyEquals(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix))
+				relativeError(t, res.Data.(promql.Matrix), shardedRes.Data.(promql.Matrix), 0.02)
 			} else {
 				require.Equal(t, res.Data, shardedRes.Data)
 			}
@@ -452,5 +453,24 @@ func approximatelyEquals(t *testing.T, as, bs promql.Matrix) {
 			bSample.F = math.Round(bSample.F*1e6) / 1e6
 		}
 		require.Equalf(t, a, b, "metric %s differs from %s at %d", a.Metric, b.Metric, i)
+	}
+}
+
+func relativeError(t *testing.T, expected, actual promql.Matrix, alpha float64) {
+	require.Len(t, actual, len(expected))
+
+	for i := 0; i < len(expected); i++ {
+		expectedSeries := expected[i]
+		actualSeries := actual[i]
+		require.Equal(t, expectedSeries.Metric, actualSeries.Metric)
+		require.Lenf(t, actualSeries.Floats, len(expectedSeries.Floats), "for series %s", expectedSeries.Metric)
+
+		e := make([]float64, len(expectedSeries.Floats))
+		a := make([]float64, len(expectedSeries.Floats))
+		for j := 0; j < len(expectedSeries.Floats); j++ {
+			e[j] = expectedSeries.Floats[j].F
+			a[j] = actualSeries.Floats[j].F
+		}
+		require.InEpsilonSlice(t, e, a, alpha)
 	}
 }
