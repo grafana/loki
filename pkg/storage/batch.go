@@ -160,6 +160,7 @@ func (it *batchChunkIterator) Close() error {
 func (it *batchChunkIterator) loop() {
 	it.wg.Add(1)
 
+outer:
 	for {
 		if it.chunks.Len() == 0 {
 			break
@@ -167,7 +168,7 @@ func (it *batchChunkIterator) loop() {
 
 		select {
 		case <-it.ctx.Done():
-			break
+			break outer
 		case it.next <- it.nextBatch():
 		}
 	}
@@ -355,6 +356,8 @@ type logBatchIterator struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	pipeline syntax.Pipeline
+
+	origChunks []*LazyChunk
 }
 
 func newLogBatchIterator(
@@ -374,6 +377,7 @@ func newLogBatchIterator(
 		pipeline:           pipeline,
 		ctx:                ctx,
 		cancel:             cancel,
+		origChunks:         chunks,
 		batchChunkIterator: newBatchChunkIterator(ctx, schemas, chunks, batchSize, direction, start, end, metrics, matchers, chunkFilterer),
 	}, nil
 }
@@ -401,10 +405,19 @@ func (it *logBatchIterator) Error() error {
 
 func (it *logBatchIterator) Close() error {
 	it.cancel()
-	if it.curr != nil {
-		return it.curr.Close()
+
+	var err multierror.MultiError
+
+	err.Add(it.batchChunkIterator.Close())
+
+	for _, c := range it.origChunks {
+		err.Add(c.Close())
 	}
-	return nil
+
+	if it.curr != nil {
+		err.Add(it.curr.Close())
+	}
+	return err.Err()
 }
 
 func (it *logBatchIterator) Entry() logproto.Entry {

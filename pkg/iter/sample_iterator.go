@@ -30,8 +30,6 @@ type peekingSampleIterator struct {
 
 	cache *sampleWithLabels
 	next  *sampleWithLabels
-
-	closed atomic.Bool
 }
 
 type sampleWithLabels struct {
@@ -61,7 +59,6 @@ func NewPeekingSampleIterator(iter SampleIterator) PeekingSampleIterator {
 }
 
 func (it *peekingSampleIterator) Close() error {
-	it.closed.Store(true)
 
 	return it.iter.Close()
 }

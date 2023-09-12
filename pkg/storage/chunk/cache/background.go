@@ -141,6 +141,8 @@ func (c *backgroundCache) Store(ctx context.Context, keys []string, bufs [][]byt
 			num = len(keys)
 		}
 
+		// TODO we're clearing out the chunks before we write them back to cache
+		// discriminate between cache hits/misses; don't close chunks that were fetched from the store
 		bgWrite := backgroundWrite{
 			keys: keys[:num],
 			bufs: bufs[:num],
