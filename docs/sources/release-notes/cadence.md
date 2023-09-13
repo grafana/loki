@@ -51,8 +51,7 @@ Once your PR is merged to `main`, you can expect it to become available in the n
 
 `tools/which-release.sh`
 
-For example, [this PR](https://github.com/grafana/loki/pull/7472) was [merged](https://github.com/grafana/loki/pull/7472#event-8431624850)
-into the commit named `d434e80`. Using the tool above, we can see that is part of release 2.8 and several weekly releases:
+For example, [this PR](https://github.com/grafana/loki/pull/7472) was [merged](https://github.com/grafana/loki/pull/7472#event-8431624850) into the commit named `d434e80`. Using the tool above, we can see that is part of release 2.8 and several weekly releases:
 
 ```bash
 $ ./tools/which-release.sh d434e80                                 
