@@ -2246,6 +2246,21 @@ Alternatively the public pod IP can be used in case private networks (RFC 1918 a
 are not available.</p>
 </td>
 </tr>
+<tr>
+<td>
+<code>enableIPv6</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EnableIPv6 defines a flag to enable/disable IPv6 support for the memberlist
+based hash ring. Enabling this flag will update all Services to accept
+both IP families (IPv4, IPv6) and prefer dual stack configurations on the
+cluster.</p>
+</td>
+</tr>
 </tbody>
 </table>
 
