@@ -370,10 +370,11 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	return q.Join(stepEvaluator, maxSeries)
 }
 
-func (q *query) Join(stepEvaluator StepEvaluator[promql.Vector], maxSeries int) (promql_parser.Value, error) {
+func (q *query) Join(stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, vec := stepEvaluator.Next()
+	next, ts, r := stepEvaluator.Next()
+	vec := r.PromVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -400,6 +401,7 @@ func (q *query) Join(stepEvaluator StepEvaluator[promql.Vector], maxSeries int) 
 	}
 
 	for next {
+		vec = r.PromVec()
 		for _, p := range vec {
 			var (
 				series *promql.Series
@@ -424,7 +426,7 @@ func (q *query) Join(stepEvaluator StepEvaluator[promql.Vector], maxSeries int) 
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
-		next, ts, vec = stepEvaluator.Next()
+		next, ts, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}

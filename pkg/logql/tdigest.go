@@ -45,6 +45,14 @@ func (left QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketc
 	return left
 }
 
+func (QuantileSketchVector) PromVec() promql.Vector {
+	return promql.Vector{}
+}
+
+func (q QuantileSketchVector) QuantileSketchVec() QuantileSketchVector {
+	return q
+}
+
 func (QuantileSketchMatrix) String() string {
 	return "TDigestMatrix()"
 }
@@ -52,21 +60,22 @@ func (QuantileSketchMatrix) String() string {
 func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
 
 type TDigestStepEvaluator struct {
-	iter RangeVectorIterator[QuantileSketchVector]
+	iter RangeVectorIterator
 
 	err error
 }
 
-func (r *TDigestStepEvaluator) Next() (bool, int64, QuantileSketchVector) {
-	next := r.iter.Next()
+func (e *TDigestStepEvaluator) Next() (bool, int64, StepResult) {
+	next := e.iter.Next()
 	if !next {
 		return false, 0, QuantileSketchVector{}
 	}
-	ts, vec := r.iter.At()
+	ts, r := e.iter.At()
+	vec := r.QuantileSketchVec()
 	for _, s := range vec {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != "true" {
-			r.err = logqlmodel.NewPipelineErr(s.Metric)
+			e.err = logqlmodel.NewPipelineErr(s.Metric)
 			return false, 0, QuantileSketchVector{}
 		}
 	}
@@ -88,7 +97,7 @@ func (r *TDigestStepEvaluator) Explain(parent Node) {
 
 func newTDigestIterator(
 	it iter.PeekingSampleIterator,
-	selRange, step, start, end, offset int64) RangeVectorIterator[QuantileSketchVector] {
+	selRange, step, start, end, offset int64) RangeVectorIterator {
 	inner := batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
@@ -119,7 +128,7 @@ type tdigestBatchRangeVectorIterator struct {
 	at []quantileSketchSample
 }
 
-func (r *tdigestBatchRangeVectorIterator) At() (int64, QuantileSketchVector) {
+func (r *tdigestBatchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]quantileSketchSample, 0, len(r.window))
 	}
@@ -133,7 +142,7 @@ func (r *tdigestBatchRangeVectorIterator) At() (int64, QuantileSketchVector) {
 			Metric: series.Metric,
 		})
 	}
-	return ts, r.at
+	return ts, QuantileSketchVector(r.at)
 }
 
 func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.QuantileSketch {
@@ -146,9 +155,10 @@ func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.Qu
 }
 
 // JoinTDigest joins the results from stepEvaluator into a TDigestMatrix.
-func JoinTDigest(stepEvaluator StepEvaluator[QuantileSketchVector], params Params) (promql_parser.Value, error) {
+func JoinTDigest(stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	// TODO(karsten): check if ts should be used
-	next, _, vec := stepEvaluator.Next()
+	next, _, r := stepEvaluator.Next()
+	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
@@ -158,7 +168,8 @@ func JoinTDigest(stepEvaluator StepEvaluator[QuantileSketchVector], params Param
 	for next {
 		result = append(result, vec)
 
-		next, _, vec = stepEvaluator.Next()
+		next, _, r = stepEvaluator.Next()
+		vec = r.QuantileSketchVec()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
@@ -190,7 +201,7 @@ func NewTDigestMatrixStepEvaluator(m QuantileSketchMatrix, params Params) *TDige
 	}
 }
 
-func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, QuantileSketchVector) {
+func (m *TDigestMatrixStepEvaluator) Next() (bool, int64, StepResult) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
 		return false, 0, nil
@@ -218,22 +229,32 @@ func (*TDigestMatrixStepEvaluator) Explain(parent Node) {
 // TDigestMergeStepEvaluator merges multiple tdigest sketches into one for each
 // step.
 type TDigestMergeStepEvaluator struct {
-	evaluators []StepEvaluator[QuantileSketchVector]
+	evaluators []StepEvaluator
 }
 
-func NewTDigestMergeStepEvaluator(evaluators []StepEvaluator[QuantileSketchVector]) *TDigestMergeStepEvaluator {
+func NewTDigestMergeStepEvaluator(evaluators []StepEvaluator) *TDigestMergeStepEvaluator {
 	return &TDigestMergeStepEvaluator{
 		evaluators: evaluators,
 	}
 }
 
-func (e *TDigestMergeStepEvaluator) Next() (bool, int64, QuantileSketchVector) {
+func (e *TDigestMergeStepEvaluator) Next() (bool, int64, StepResult) {
 	// TODO(karsten): check that we have more than one
-	ok, ts, cur := e.evaluators[0].Next()
+	ok, ts, r := e.evaluators[0].Next()
+	var cur QuantileSketchVector
+	if ok {
+		cur = r.QuantileSketchVec()
+	}
 	for _, eval := range e.evaluators[1:] {
 		// TODO(karsten): check ok and ts.
-		_, _, vec := eval.Next()
-		cur.Merge(vec)
+		ok, _, vec := eval.Next()
+		if ok {
+			if cur == nil {
+				cur = vec.QuantileSketchVec()
+			} else {
+				cur.Merge(vec.QuantileSketchVec())
+			}
+		}
 	}
 
 	return ok, ts, cur
@@ -259,21 +280,22 @@ func (e *TDigestMergeStepEvaluator) Explain(parent Node) {
 // TDigestVectorStepEvaluator evaluates a tdigest qunatile sketch into a
 // promql.Vector.
 type TDigestVectorStepEvaluator struct {
-	inner    StepEvaluator[QuantileSketchVector]
+	inner    StepEvaluator
 	quantile float64
 }
 
-var _ StepEvaluator[promql.Vector] = NewTDigestVectorStepEvaluator(nil, 0)
+var _ StepEvaluator = NewTDigestVectorStepEvaluator(nil, 0)
 
-func NewTDigestVectorStepEvaluator(inner StepEvaluator[QuantileSketchVector], quantile float64) *TDigestVectorStepEvaluator {
+func NewTDigestVectorStepEvaluator(inner StepEvaluator, quantile float64) *TDigestVectorStepEvaluator {
 	return &TDigestVectorStepEvaluator{
 		inner:    inner,
 		quantile: quantile,
 	}
 }
 
-func (e *TDigestVectorStepEvaluator) Next() (bool, int64, promql.Vector) {
-	ok, ts, quantileSketchVec := e.inner.Next()
+func (e *TDigestVectorStepEvaluator) Next() (bool, int64, StepResult) {
+	ok, ts, r := e.inner.Next()
+	quantileSketchVec := r.QuantileSketchVec()
 
 	vec := make(promql.Vector, len(quantileSketchVec))
 
@@ -288,7 +310,7 @@ func (e *TDigestVectorStepEvaluator) Next() (bool, int64, promql.Vector) {
 		}
 	}
 
-	return ok, ts, vec
+	return ok, ts, PromVec(vec)
 }
 
 func (*TDigestVectorStepEvaluator) Close() error { return nil }

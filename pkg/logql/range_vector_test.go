@@ -65,7 +65,7 @@ func newPoint(t time.Time, v float64) promql.FPoint {
 func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 
 	// no overlap test case.
-	buildStreamingIt := func() (RangeVectorIterator[promql.Vector], error) {
+	buildStreamingIt := func() (RangeVectorIterator, error) {
 		tt := struct {
 			selRange   int64
 			step       int64
@@ -107,7 +107,7 @@ func Benchmark_RangeVectorIteratorCompare(b *testing.B) {
 		return it, nil
 	}
 
-	buildBatchIt := func() (RangeVectorIterator[promql.Vector], error) {
+	buildBatchIt := func() (RangeVectorIterator, error) {
 		tt := struct {
 			selRange   int64
 			step       int64
@@ -413,7 +413,7 @@ func Test_InstantQueryRangeVectorAggregations(t *testing.T) {
 			for it.Next() {
 			}
 			_, value := it.At()
-			require.Equal(t, tt.expectedValue, value[0].F)
+			require.Equal(t, tt.expectedValue, value.PromVec()[0].F)
 		})
 	}
 }

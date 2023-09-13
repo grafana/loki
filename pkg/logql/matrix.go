@@ -31,7 +31,7 @@ func NewMatrixStepEvaluator(start, end time.Time, step time.Duration, m promql.M
 	}
 }
 
-func (m *MatrixStepEvaluator) Next() (bool, int64, promql.Vector) {
+func (m *MatrixStepEvaluator) Next() (bool, int64, StepResult) {
 	m.ts = m.ts.Add(m.step)
 	if m.ts.After(m.end) {
 		return false, 0, nil
@@ -55,7 +55,7 @@ func (m *MatrixStepEvaluator) Next() (bool, int64, promql.Vector) {
 		m.m[i].Floats = m.m[i].Floats[1:]
 	}
 
-	return true, ts, vec
+	return true, ts, PromVec(vec)
 }
 
 func (m *MatrixStepEvaluator) Close() error { return nil }
