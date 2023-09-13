@@ -26,6 +26,20 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
       } else {}
     ),
 
+    local replaceLabelFormat = function(title, fmt, replacement)
+      function(p) p + (
+        if p.title == title then {
+          targets: [
+            t + (
+              if t.legendFormat == fmt then {
+                legendFormat: replacement,
+              } else {}
+            )
+            for t in p.targets
+          ],
+        } else {}
+      ),
+
     local defaultLokiTags = function(t)
       std.uniq(t + ['logging', 'loki-mixin']),
 
@@ -83,6 +97,10 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         if !std.member(dropList, r.record)
       ],
 
+    local dropHeatMaps = function(p)
+      local elems = std.filter(function(p) p.type == 'heatmap', p.panels);
+      std.length(elems) == 0,
+
     prometheusRules+: {
       local dropList = [
         'cluster_job:loki_request_duration_seconds:99quantile',
@@ -111,10 +129,6 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         for g in super.groups
       ],
     },
-
-    local dropHistograms = function(p)
-      local elems = std.filter(function(p) p.type == 'heatmap', p.panels);
-      std.length(elems) == 0,
 
     grafanaDashboards+: {
       'loki-retention.json'+: {
@@ -148,7 +162,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         labelsSelector:: 'namespace="$namespace", job=~".+-ingester-http"',
         rows: [
           r
-          for r in dropPanels(super.rows, dropList, dropHistograms)
+          for r in dropPanels(super.rows, dropList, dropHeatMaps)
         ],
         templating+: {
           list: mapTemplateParameters(super.list),
@@ -183,7 +197,12 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
             utils.selector.re('job', '.+-index-gateway-http'),
           ],
         },
-        rows: dropPanels(super.rows, dropList, function(p) true),
+        rows: [
+          r {
+            panels: mapPanels([replaceLabelFormat('Per Pod Latency (p99)', '__auto', '{{pod}}')], r.panels),
+          }
+          for r in dropPanels(super.rows, dropList, function(p) true)
+        ],
         templating+: {
           list: mapTemplateParameters(super.list),
         },
