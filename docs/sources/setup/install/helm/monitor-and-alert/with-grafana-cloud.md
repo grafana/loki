@@ -20,7 +20,7 @@ This topic will walk you through using Grafana Cloud to monitor a Loki installat
 
 - Helm 3 or above. See [Installing Helm](https://helm.sh/docs/intro/install/).
 - A Grafana Cloud account and stack (including Cloud Grafana, Cloud Metrics, and Cloud Logs).
-- [Grafana Kubernetes Monitoring using Agent Flow](/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/config-k8s-agent-flow) configured for the Kubernetes cluster.
+- [Grafana Kubernetes Monitoring using Agent Flow](/docs/grafana-cloud/monitor-infrastructure/kubernetes-monitoring/configuration/config-k8s-agent-flow/) configured for the Kubernetes cluster.
 - A running Loki deployment installed in that Kubernetes cluster via the Helm chart.
 
 **Prequisites for Monitoring Loki:**
