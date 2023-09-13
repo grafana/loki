@@ -5,6 +5,7 @@ import (
 	"github.com/imdario/mergo"
 	openshiftconfigv1 "github.com/openshift/api/config/v1"
 	"github.com/openshift/library-go/pkg/crypto"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
@@ -59,6 +60,19 @@ func BuildAll(opts Options) ([]client.Object, error) {
 	res = append(res, queryFrontendObjs...)
 	res = append(res, indexGatewayObjs...)
 	res = append(res, BuildLokiGossipRingService(opts.Name))
+
+	if opts.Stack.HashRing != nil && opts.Stack.HashRing.MemberList != nil && opts.Stack.HashRing.MemberList.EnableIPv6 {
+		for _, obj := range res {
+			svc, ok := obj.(*corev1.Service)
+			if !ok {
+				continue
+			}
+
+			if err := configureIPv6(svc); err != nil {
+				return nil, err
+			}
+		}
+	}
 
 	if opts.Stack.Rules != nil && opts.Stack.Rules.Enabled {
 		rulesCMShards, err := RulesConfigMapShards(&opts)

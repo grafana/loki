@@ -116,6 +116,7 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    enable_inet6: {{ .GossipRing.EnableIPv6 }}
     ring:
       replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0

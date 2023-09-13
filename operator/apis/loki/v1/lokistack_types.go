@@ -437,6 +437,16 @@ type MemberListSpec struct {
 	// +kubebuilder:validation:optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:default","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
 	InstanceAddrType InstanceAddrType `json:"instanceAddrType,omitempty"`
+
+	// EnableIPv6 defines a flag to enable/disable IPv6 support for the memberlist
+	// based hash ring. Enabling this flag will update all Services to accept
+	// both IP families (IPv4, IPv6) and prefer dual stack configurations on the
+	// cluster.
+	//
+	// +optional
+	// +kubebuilder:validation:Optional
+	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable IPv6"
+	EnableIPv6 bool `json:"enableIPv6"`
 }
 
 // HashRingSpec defines the hash ring configuration

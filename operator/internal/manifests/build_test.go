@@ -207,6 +207,40 @@ func TestApplyTLSSettings_OverrideDefaults(t *testing.T) {
 	}
 }
 
+func TestBuildAll_EnableIPv6(t *testing.T) {
+	opts := Options{
+		Name:      "test",
+		Namespace: "test",
+		Stack: lokiv1.LokiStackSpec{
+			Size: lokiv1.SizeOneXSmall,
+			HashRing: &lokiv1.HashRingSpec{
+				Type: lokiv1.HashRingMemberList,
+				MemberList: &lokiv1.MemberListSpec{
+					EnableIPv6: true,
+				},
+			},
+		},
+	}
+
+	err := ApplyDefaultSettings(&opts)
+	require.NoError(t, err)
+
+	objs, err := BuildAll(opts)
+	require.NoError(t, err)
+	require.NotEmpty(t, objs)
+
+	for _, obj := range objs {
+		svc, ok := obj.(*corev1.Service)
+		if !ok {
+			continue
+		}
+
+		require.Contains(t, svc.Spec.IPFamilies, corev1.IPv4Protocol)
+		require.Contains(t, svc.Spec.IPFamilies, corev1.IPv6Protocol)
+		require.Equal(t, &preferDualStack, svc.Spec.IPFamilyPolicy)
+	}
+}
+
 func TestBuildAll_WithFeatureGates_ServiceMonitors(t *testing.T) {
 	type test struct {
 		desc         string

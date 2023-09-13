@@ -259,7 +259,10 @@ func alertManagerConfig(spec *lokiv1.AlertManagerSpec) *config.AlertManagerConfi
 }
 
 func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, replication *lokiv1.ReplicationSpec) config.GossipRing {
-	var instanceAddr string
+	var (
+		instanceAddr string
+		enableIPv6   bool
+	)
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
@@ -269,9 +272,15 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		default:
 			// Do nothing use loki defaults
 		}
+
+		if spec.MemberList.EnableIPv6 {
+			instanceAddr = "['::']"
+			enableIPv6 = true
+		}
 	}
 
 	return config.GossipRing{
+		EnableIPv6:                     enableIPv6,
 		InstanceAddr:                   instanceAddr,
 		InstancePort:                   grpcPort,
 		BindPort:                       gossipPort,
