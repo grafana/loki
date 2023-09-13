@@ -34,7 +34,7 @@ type RangeStreamingAgg interface {
 // To fetch the current vector use `At` with a `BatchRangeVectorAggregator` or `RangeStreamingAgg`.
 type RangeVectorIterator interface {
 	Next() bool
-	At() (int64, promql.Vector)
+	At() (int64, StepResult)
 	Close() error
 	Error() error
 }
@@ -186,7 +186,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		_ = r.iter.Next()
 	}
 }
-func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
+func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
 	}
@@ -200,7 +200,7 @@ func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
 			Metric: series.Metric,
 		})
 	}
-	return ts, r.at
+	return ts, PromVec(r.at)
 }
 
 var seriesPool sync.Pool
@@ -580,7 +580,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 	}
 }
 
-func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
+func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.windowRangeAgg))
 	}
@@ -594,7 +594,7 @@ func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
 			Metric: r.metrics[lbs],
 		})
 	}
-	return ts, r.at
+	return ts, PromVec(r.at)
 }
 
 func streamingAggregator(r *syntax.RangeAggregationExpr) (RangeStreamingAgg, error) {

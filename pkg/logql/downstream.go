@@ -391,11 +391,18 @@ func NewConcatStepEvaluator(evaluators []StepEvaluator) *ConcatStepEvaluator {
 	return &ConcatStepEvaluator{evaluators}
 }
 
-func (e *ConcatStepEvaluator) Next() (ok bool, ts int64, vec promql.Vector) {
-	var cur promql.Vector
+func (e *ConcatStepEvaluator) Next() (bool, int64, StepResult) {
+	var (
+		cur StepResult
+		ok  bool
+		ts  int64
+	)
+	vec := PromVec{}
 	for _, eval := range e.evaluators {
 		ok, ts, cur = eval.Next()
-		vec = append(vec, cur...)
+		if ok {
+			vec = append(vec, cur.PromVec()...)
+		}
 	}
 	return ok, ts, vec
 }
