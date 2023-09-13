@@ -168,7 +168,7 @@ func (t *testStore) GetChunks(userID string, from, through model.Time, metric la
 		matchers = append(matchers, labels.MustNewMatcher(labels.MatchEqual, l.Name, l.Value))
 	}
 	ctx := user.InjectOrgID(context.Background(), userID)
-	chunks, fetchers, err := t.Store.GetChunkRefs(ctx, userID, from, through, matchers...)
+	chunks, fetchers, err := t.Store.GetChunks(ctx, userID, from, through, matchers...)
 	require.NoError(t.t, err)
 	fetchedChunk := []chunk.Chunk{}
 	for _, f := range fetchers {
