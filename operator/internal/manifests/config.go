@@ -274,7 +274,7 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		}
 
 		if spec.MemberList.EnableIPv6 {
-			instanceAddr = "['::']"
+			instanceAddr = "'::'"
 			enableIPv6 = true
 		}
 	}

@@ -116,7 +116,9 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
-    enable_inet6: {{ .GossipRing.EnableIPv6 }}
+    {{- if .GossipRing.EnableIPv6 }}
+    enable_inet6: true
+    {{- end}}
     ring:
       replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
@@ -188,8 +190,10 @@ limits_config:
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
+  {{- if not .EnableIPv6}}
   {{- with .InstanceAddr }}
   advertise_addr: {{ . }}
+  {{- end }}
   {{- end }}
   advertise_port: {{ .BindPort }}
   bind_port: {{ .BindPort }}
