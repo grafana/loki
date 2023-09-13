@@ -329,7 +329,8 @@ func (q *QuerierAPI) TailHandler(w http.ResponseWriter, r *http.Request) {
 		case response = <-responseChan:
 			var err error
 			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, conn)
+				encodingFlags := httpreq.ExtractEncodingFlags(r)
+				err = marshal.WriteTailResponseJSON(*response, conn, encodingFlags)
 			} else {
 				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
 			}

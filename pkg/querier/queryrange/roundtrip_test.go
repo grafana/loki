@@ -1495,7 +1495,7 @@ func promqlResult(v parser.Value) (*int, http.Handler) {
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		lock.Lock()
 		defer lock.Unlock()
-		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w); err != nil {
+		if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: v}, w, nil); err != nil {
 			panic(err)
 		}
 		count++

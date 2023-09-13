@@ -700,10 +700,10 @@ func (Codec) EncodeResponse(ctx context.Context, req *http.Request, res queryran
 	// Default to JSON.
 	version := loghttp.GetVersion(req.RequestURI)
 	encodingFlags := httpreq.ExtractEncodingFlags(req)
-	return encodeResponseJSON(ctx, version, res, encodingFlags...)
+	return encodeResponseJSON(ctx, version, res, encodingFlags)
 }
 
-func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags ...httpreq.EncodingFlag) (*http.Response, error) {
+func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryrangebase.Response, encodeFlags httpreq.EncodingFlags) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 	var buf bytes.Buffer
@@ -730,7 +730,7 @@ func encodeResponseJSON(ctx context.Context, version loghttp.Version, res queryr
 				return nil, err
 			}
 		} else {
-			if err := marshal.WriteQueryResponseJSON(result, &buf, encodeFlags...); err != nil {
+			if err := marshal.WriteQueryResponseJSON(result, &buf, encodeFlags); err != nil {
 				return nil, err
 			}
 		}

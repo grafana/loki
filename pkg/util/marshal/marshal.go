@@ -25,7 +25,7 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 		version := loghttp.GetVersion(r.RequestURI)
 		encodeFlags := httpreq.ExtractEncodingFlags(r)
 		if version == loghttp.VersionV1 {
-			return WriteQueryResponseJSON(result, w, encodeFlags...)
+			return WriteQueryResponseJSON(result, w, encodeFlags)
 		}
 
 		return marshal_legacy.WriteQueryResponseJSON(result, w)
@@ -48,10 +48,10 @@ func WriteResponseJSON(r *http.Request, v any, w http.ResponseWriter) error {
 
 // WriteQueryResponseJSON marshals the promql.Value to v1 loghttp JSON and then
 // writes it to the provided io.Writer.
-func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer, encodeFlags ...httpreq.EncodingFlag) error {
+func WriteQueryResponseJSON(v logqlmodel.Result, w io.Writer, encodeFlags httpreq.EncodingFlags) error {
 	s := jsoniter.ConfigFastest.BorrowStream(w)
 	defer jsoniter.ConfigFastest.ReturnStream(s)
-	err := EncodeResult(v, s, encodeFlags...)
+	err := EncodeResult(v, s, encodeFlags)
 	if err != nil {
 		return fmt.Errorf("could not write JSON response: %w", err)
 	}
@@ -81,8 +81,8 @@ type WebsocketWriter interface {
 
 // WriteTailResponseJSON marshals the legacy.TailResponse to v1 loghttp JSON and
 // then writes it to the provided connection.
-func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter) error {
-	v1Response, err := NewTailResponse(r)
+func WriteTailResponseJSON(r legacy.TailResponse, c WebsocketWriter, encodeFlags httpreq.EncodingFlags) error {
+	v1Response, err := NewTailResponse(r, encodeFlags)
 	if err != nil {
 		return err
 	}

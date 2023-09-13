@@ -339,6 +339,7 @@ var labelTests = []struct {
 }
 
 // covers responses from /loki/api/v1/tail
+// TODO(salvacorts): test encoding flags
 var tailTests = []struct {
 	actual   legacy.TailResponse
 	expected string
@@ -401,7 +402,7 @@ var tailTests = []struct {
 func Test_WriteQueryResponseJSON(t *testing.T) {
 	for i, queryTest := range queryTests {
 		var b bytes.Buffer
-		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b)
+		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b, nil)
 		require.NoError(t, err)
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
@@ -433,14 +434,14 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 		},
 	}
 	var b bytes.Buffer
-	err := WriteQueryResponseJSON(broken, &b)
+	err := WriteQueryResponseJSON(broken, &b, nil)
 	require.Error(t, err)
 }
 
 func Test_MarshalTailResponse(t *testing.T) {
 	for i, tailTest := range tailTests {
 		// convert logproto to model objects
-		model, err := NewTailResponse(tailTest.actual)
+		model, err := NewTailResponse(tailTest.actual, nil)
 		require.NoError(t, err)
 
 		// marshal model object
@@ -609,7 +610,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 
 	for _, tc := range []struct {
 		name        string
-		encodeFlags []httpreq.EncodingFlag
+		encodeFlags httpreq.EncodingFlags
 		expected    string
 	}{
 		{
@@ -654,10 +655,8 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 			}`, emptyStats),
 		},
 		{
-			name: "categorized labels",
-			encodeFlags: []httpreq.EncodingFlag{
-				httpreq.FlagCategorizeLabels,
-			},
+			name:        "categorized labels",
+			encodeFlags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
 			expected: fmt.Sprintf(`{
 				"status": "success",
 				"data": {
@@ -713,7 +712,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var b bytes.Buffer
-			err := WriteQueryResponseJSON(logqlmodel.Result{Data: inputStream}, &b, tc.encodeFlags...)
+			err := WriteQueryResponseJSON(logqlmodel.Result{Data: inputStream}, &b, tc.encodeFlags)
 			require.NoError(t, err)
 			require.JSONEq(t, tc.expected, b.String())
 		})
@@ -723,7 +722,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 	type withEncFlags struct {
 		name     string
-		flags    []httpreq.EncodingFlag
+		flags    httpreq.EncodingFlags
 		expected string
 	}
 	for _, tc := range []struct {
@@ -767,10 +766,8 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 					}`,
 				},
 				{
-					name: "group labels",
-					flags: []httpreq.EncodingFlag{
-						httpreq.FlagCategorizeLabels,
-					},
+					name:  "group labels",
+					flags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
 					expected: `{
 						"streams": [
 							{
@@ -831,10 +828,8 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 					}`,
 				},
 				{
-					name: "group labels",
-					flags: []httpreq.EncodingFlag{
-						httpreq.FlagCategorizeLabels,
-					},
+					name:  "group labels",
+					flags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
 					expected: `{
 						"streams": [
 							{
@@ -901,10 +896,8 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 					}`,
 				},
 				{
-					name: "group labels",
-					flags: []httpreq.EncodingFlag{
-						httpreq.FlagCategorizeLabels,
-					},
+					name:  "group labels",
+					flags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
 					expected: `{
 						"streams": [
 							{
@@ -933,7 +926,7 @@ func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, subTc := range tc.withEncFlags {
 				t.Run(subTc.name, func(t *testing.T) {
-					model, err := NewTailResponse(tc.input, subTc.flags...)
+					model, err := NewTailResponse(tc.input, subTc.flags)
 					require.NoError(t, err)
 
 					// marshal model object
@@ -1048,7 +1041,7 @@ func Test_EncodeResult_And_ResultValue_Parity(t *testing.T) {
 	f := func(w wrappedValue) bool {
 		var buf bytes.Buffer
 		js := json.NewStream(json.ConfigFastest, &buf, 0)
-		err := encodeResult(w.Value, js, httpreq.FlagCategorizeLabels)
+		err := encodeResult(w.Value, js, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
 		require.NoError(t, err)
 		js.Flush()
 		actual := buf.String()
@@ -1074,7 +1067,7 @@ func Benchmark_Encode(b *testing.B) {
 
 	for n := 0; n < b.N; n++ {
 		for _, queryTest := range queryTests {
-			require.NoError(b, WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, buf))
+			require.NoError(b, WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, buf, nil))
 			buf.Reset()
 		}
 	}
@@ -1098,6 +1091,7 @@ func Test_WriteTailResponseJSON(t *testing.T) {
 				require.Equal(t, `{"streams":[{"stream":{"app":"foo"},"values":[["1","foobar"]]}],"dropped_entries":[{"timestamp":"2","labels":{"app":"dropped"}}]}`, string(b))
 				return nil
 			}),
+			nil,
 		),
 	)
 }

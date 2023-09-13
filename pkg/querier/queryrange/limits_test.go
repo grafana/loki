@@ -104,7 +104,7 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: matrix}, rw); err != nil {
+			if err := marshal.WriteQueryResponseJSON(logqlmodel.Result{Data: matrix}, rw, nil); err != nil {
 				panic(err)
 			}
 			return
@@ -131,7 +131,7 @@ func Test_seriesLimiter(t *testing.T) {
 					},
 				},
 			},
-		}, rw); err != nil {
+		}, rw, nil); err != nil {
 			panic(err)
 		}
 	})

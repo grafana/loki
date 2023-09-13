@@ -1,11 +1,35 @@
 package httpreq
 
 import (
+	"context"
 	"net/http"
 	"strings"
 )
 
 type EncodingFlag string
+
+type EncodingFlags map[EncodingFlag]struct{}
+
+func NewEncodingFlags(flags ...EncodingFlag) EncodingFlags {
+	var ef EncodingFlags
+	ef.Set(flags...)
+	return ef
+}
+
+func (ef *EncodingFlags) Set(flags ...EncodingFlag) {
+	if *ef == nil {
+		*ef = make(EncodingFlags, len(flags))
+	}
+
+	for _, flag := range flags {
+		(*ef)[flag] = struct{}{}
+	}
+}
+
+func (ef *EncodingFlags) Has(flag EncodingFlag) bool {
+	_, ok := (*ef)[flag]
+	return ok
+}
 
 const (
 	LokiEncodingFlagsHeader              = "X-Loki-Response-Encoding-Flags"
@@ -14,29 +38,29 @@ const (
 	EncodeFlagsDelimiter = ","
 )
 
-func ExtractEncodingFlags(req *http.Request) []EncodingFlag {
-	// We try to extract the flags from the header first.
-	// If the header is not set, we try to extract the flags from the context.
-	var rawValue string
-	if rawValue = req.Header.Get(LokiEncodingFlagsHeader); rawValue == "" {
-		if rawValue = ExtractHeader(req.Context(), LokiEncodingFlagsHeader); rawValue == "" {
-			return nil
-		}
+func ExtractEncodingFlags(req *http.Request) EncodingFlags {
+	rawValue := req.Header.Get(LokiEncodingFlagsHeader)
+	if rawValue == "" {
+		return nil
 	}
 
-	rawFlags := strings.Split(rawValue, EncodeFlagsDelimiter)
-	flags := make([]EncodingFlag, 0, len(rawFlags))
-	for _, rawFlag := range rawFlags {
-		flags = append(flags, EncodingFlag(rawFlag))
-	}
-	return flags
+	return parseEncodingFlags(rawValue)
 }
 
-func EncodingFlagIsSet(flags []EncodingFlag, flag EncodingFlag) bool {
-	for _, f := range flags {
-		if f == flag {
-			return true
-		}
+func ExtractEncodingFlagsFromCtx(ctx context.Context) EncodingFlags {
+	rawValue := ExtractHeader(ctx, LokiEncodingFlagsHeader)
+	if rawValue == "" {
+		return nil
 	}
-	return false
+
+	return parseEncodingFlags(rawValue)
+}
+
+func parseEncodingFlags(rawFlags string) EncodingFlags {
+	split := strings.Split(rawFlags, EncodeFlagsDelimiter)
+	flags := make(EncodingFlags, len(split))
+	for _, rawFlag := range split {
+		flags.Set(EncodingFlag(rawFlag))
+	}
+	return flags
 }

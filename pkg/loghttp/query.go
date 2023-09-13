@@ -258,7 +258,7 @@ type Stream struct {
 	CategorizedLabels CategorizedLabelSet `json:"-"`
 	Entries           []Entry             `json:"values"`
 
-	EncodeFlags []httpreq.EncodingFlag `json:"-"`
+	EncodeFlags httpreq.EncodingFlags `json:"-"`
 }
 
 func (s *Stream) UnmarshalJSON(data []byte) error {
@@ -282,7 +282,7 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 					return err
 				}
 				s.Labels = s.CategorizedLabels.ToLabelSet()
-				s.EncodeFlags = append(s.EncodeFlags, httpreq.FlagCategorizeLabels)
+				s.EncodeFlags.Set(httpreq.FlagCategorizeLabels)
 			} else if errors.Is(err, jsonparser.KeyPathNotFoundError) || streamType == jsonparser.String {
 				if err := s.Labels.UnmarshalJSON(value); err != nil {
 					return err
@@ -318,7 +318,7 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 // MarshalJSON implements the json.Marshaler interface.
 // If the FlagCategorizeLabels encoding flag is set, the serialized "stream" field will be a map of groups to labels.
 func (s *Stream) MarshalJSON() ([]byte, error) {
-	if httpreq.EncodingFlagIsSet(s.EncodeFlags, httpreq.FlagCategorizeLabels) {
+	if s.EncodeFlags.Has(httpreq.FlagCategorizeLabels) {
 		return json.Marshal(struct {
 			CategorizedLabels CategorizedLabelSet `json:"stream"`
 			Entries           []Entry             `json:"values"`
