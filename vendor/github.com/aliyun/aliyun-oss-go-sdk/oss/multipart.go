@@ -16,7 +16,7 @@ import (
 // objectKey    object name
 // options    the object constricts for upload. The valid options are CacheControl, ContentDisposition, ContentEncoding, Expires,
 //            ServerSideEncryption, Meta, check out the following link:
-//            https://help.aliyun.com/document_detail/oss/api-reference/multipart-upload/InitiateMultipartUpload.html
+//            https://www.alibabacloud.com/help/en/object-storage-service/latest/initiatemultipartupload
 //
 // InitiateMultipartUploadResult    the return value of the InitiateMultipartUpload, which is used for calls later on such as UploadPartFromFile,UploadPartCopy.
 // error    it's nil if the operation succeeds, otherwise it's an error object.
@@ -145,7 +145,7 @@ func (bucket Bucket) DoUploadPart(request *UploadPartRequest, options []Option) 
 // partNumber    the part number, ranges from 1 to 10,000. If it exceeds the range OSS returns InvalidArgument error.
 // options    the constraints of source object for the copy. The copy happens only when these contraints are met. Otherwise it returns error.
 //            CopySourceIfNoneMatch, CopySourceIfModifiedSince  CopySourceIfUnmodifiedSince, check out the following link for the detail
-//            https://help.aliyun.com/document_detail/oss/api-reference/multipart-upload/UploadPartCopy.html
+//            https://www.alibabacloud.com/help/en/object-storage-service/latest/uploadpartcopy
 //
 // UploadPart    the return value consists of PartNumber and ETag.
 // error    it's nil if the operation succeeds, otherwise it's an error object.
@@ -290,7 +290,7 @@ func (bucket Bucket) ListMultipartUploads(options ...Option) (ListMultipartUploa
 	}
 	params["uploads"] = nil
 
-	resp, err := bucket.do("GET", "", params, options, nil, nil)
+	resp, err := bucket.doInner("GET", "", params, options, nil, nil)
 	if err != nil {
 		return out, err
 	}

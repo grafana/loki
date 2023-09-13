@@ -1,6 +1,6 @@
 /*
  * MinIO Go Library for Amazon S3 Compatible Cloud Storage
- * Copyright 2019 MinIO, Inc.
+ * Copyright 2019-2022 MinIO, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,9 +22,10 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -122,12 +123,14 @@ func getClientGrantsCredentials(clnt *http.Client, endpoint string,
 	if err != nil {
 		return AssumeRoleWithClientGrantsResponse{}, err
 	}
-	u.RawQuery = v.Encode()
 
-	req, err := http.NewRequest(http.MethodPost, u.String(), nil)
+	req, err := http.NewRequest(http.MethodPost, u.String(), strings.NewReader(v.Encode()))
 	if err != nil {
 		return AssumeRoleWithClientGrantsResponse{}, err
 	}
+
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
 	resp, err := clnt.Do(req)
 	if err != nil {
 		return AssumeRoleWithClientGrantsResponse{}, err
@@ -135,7 +138,7 @@ func getClientGrantsCredentials(clnt *http.Client, endpoint string,
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		var errResp ErrorResponse
-		buf, err := ioutil.ReadAll(resp.Body)
+		buf, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return AssumeRoleWithClientGrantsResponse{}, err
 		}

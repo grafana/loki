@@ -10,10 +10,10 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/protobuf/types"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -103,14 +103,14 @@ func mkExtent(start, end int64) Extent {
 
 func mkExtentWithStep(start, end, step int64) Extent {
 	res := mkAPIResponse(start, end, step)
-	any, err := types.MarshalAny(res)
+	anyRes, err := types.MarshalAny(res)
 	if err != nil {
 		panic(err)
 	}
 	return Extent{
 		Start:    start,
 		End:      end,
-		Response: any,
+		Response: anyRes,
 	}
 }
 
@@ -767,14 +767,14 @@ func TestResultsCache(t *testing.T) {
 		nil,
 		nil,
 		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism("fake")
+			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
 		nil,
 	)
 	require.NoError(t, err)
 
-	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+	rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 		calls++
 		return parsedResponse, nil
 	}))
@@ -813,7 +813,7 @@ func TestResultsCacheRecent(t *testing.T) {
 		nil,
 		nil,
 		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism("fake")
+			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
 		nil,
@@ -881,7 +881,7 @@ func TestResultsCacheMaxFreshness(t *testing.T) {
 				nil,
 				nil,
 				func(_ context.Context, tenantIDs []string, r Request) int {
-					return tc.fakeLimits.MaxQueryParallelism("fake")
+					return tc.fakeLimits.MaxQueryParallelism(context.Background(), "fake")
 				},
 				false,
 				nil,
@@ -924,7 +924,7 @@ func Test_resultsCache_MissingData(t *testing.T) {
 		nil,
 		nil,
 		func(_ context.Context, tenantIDs []string, r Request) int {
-			return mockLimits{}.MaxQueryParallelism("fake")
+			return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 		},
 		false,
 		nil,
@@ -1005,7 +1005,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 		},
 		{
 			name: "always no cache",
-			shouldCache: func(r Request) bool {
+			shouldCache: func(_ context.Context, _ Request) bool {
 				return false
 			},
 			requests:     []Request{parsedRequest, parsedRequest},
@@ -1013,7 +1013,7 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 		},
 		{
 			name: "check cache based on request",
-			shouldCache: func(r Request) bool {
+			shouldCache: func(_ context.Context, r Request) bool {
 				return !r.GetCachingOptions().Disabled
 			},
 			requests:     []Request{noCacheRequest, noCacheRequest},
@@ -1039,13 +1039,13 @@ func TestResultsCacheShouldCacheFunc(t *testing.T) {
 				nil,
 				tc.shouldCache,
 				func(_ context.Context, tenantIDs []string, r Request) int {
-					return mockLimits{}.MaxQueryParallelism("fake")
+					return mockLimits{}.MaxQueryParallelism(context.Background(), "fake")
 				},
 				false,
 				nil,
 			)
 			require.NoError(t, err)
-			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, req Request) (Response, error) {
+			rc := rcm.Wrap(HandlerFunc(func(_ context.Context, _ Request) (Response, error) {
 				calls++
 				return parsedResponse, nil
 			}))
@@ -1067,7 +1067,7 @@ func newMockCacheGenNumberLoader() CacheGenNumberLoader {
 	return mockCacheGenNumberLoader{}
 }
 
-func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(tenantIDs []string) string {
+func (mockCacheGenNumberLoader) GetResultsCacheGenNumber(_ []string) string {
 	return ""
 }
 

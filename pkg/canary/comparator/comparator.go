@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/canary/reader"
 )
@@ -249,8 +249,8 @@ func (c *Comparator) run() {
 	t := time.NewTicker(c.pruneInterval)
 	// Use a random tick up to the interval for the first tick
 	firstMt := true
-	rand.Seed(time.Now().UnixNano())
-	mt := time.NewTicker(time.Duration(rand.Int63n(c.metricTestInterval.Nanoseconds())))
+	randomGenerator := rand.New(rand.NewSource(time.Now().UnixNano()))
+	mt := time.NewTicker(time.Duration(randomGenerator.Int63n(c.metricTestInterval.Nanoseconds())))
 	sc := time.NewTicker(c.spotCheckQueryRate)
 	defer func() {
 		t.Stop()

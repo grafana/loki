@@ -5,11 +5,12 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"go.uber.org/atomic"
 	"net/http"
 	"os"
 	rt "runtime"
 	"time"
+
+	"go.uber.org/atomic"
 
 	"github.com/fatih/color"
 	"github.com/felixge/fgprof"
@@ -17,21 +18,21 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcutil"
 	"github.com/grafana/dskit/kv/memberlist"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/modules"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/runtimeconfig"
+	"github.com/grafana/dskit/server"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/signals"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/middleware"
-	"github.com/weaveworks/common/server"
-	"github.com/weaveworks/common/signals"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
-	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/loki/common"
 	"github.com/grafana/loki/pkg/lokifrontend"
 	"github.com/grafana/loki/pkg/querier"
@@ -53,9 +54,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/tracing"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/fakeauth"
+	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/validation"
@@ -93,11 +94,11 @@ type Config struct {
 	LimitsConfig        validation.Limits           `yaml:"limits_config,omitempty"`
 	Worker              worker.Config               `yaml:"frontend_worker,omitempty"`
 	TableManager        index.TableManagerConfig    `yaml:"table_manager,omitempty"`
-	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist" doc:"hidden"`
+	MemberlistKV        memberlist.KVConfig         `yaml:"memberlist"`
 
 	RuntimeConfig runtimeconfig.Config `yaml:"runtime_config,omitempty"`
 	Tracing       tracing.Config       `yaml:"tracing"`
-	UsageReport   usagestats.Config    `yaml:"analytics"`
+	Analytics     analytics.Config     `yaml:"analytics"`
 
 	LegacyReadTarget bool `yaml:"legacy_read_target,omitempty" doc:"hidden"`
 
@@ -131,8 +132,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 			"The ballast will not consume physical memory, because it is never read from. "+
 			"It will, however, distort metrics, because it is counted as live memory. ",
 	)
-	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Uses a line-buffered logger to improve performance.")
-	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Forces all lines logged to hold a mutex to serialize writes.")
+	f.BoolVar(&c.UseBufferedLogger, "log.use-buffered", true, "Deprecated. Uses a line-buffered logger to improve performance.")
+	f.BoolVar(&c.UseSyncLogger, "log.use-sync", true, "Deprecated. Forces all lines logged to hold a mutex to serialize writes.")
 
 	//TODO(trevorwhitney): flip this to false with Loki 3.0
 	f.BoolVar(&c.LegacyReadTarget, "legacy-read-mode", true, "Set to false to disable the legacy read mode and use new scalable mode with 3rd backend target. "+
@@ -163,7 +164,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
-	c.UsageReport.RegisterFlags(f)
+	c.Analytics.RegisterFlags(f)
 }
 
 func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
@@ -189,6 +190,8 @@ func (c *Config) registerServerFlagsWithChangedDefaultValues(fs *flag.FlagSet) {
 
 		fs.Var(f.Value, f.Name, f.Usage)
 	})
+
+	c.Server.DisableRequestSuccessLog = true
 }
 
 // Clone takes advantage of pass-by-value semantics to return a distinct *Config.
@@ -226,7 +229,7 @@ func (c *Config) Validate() error {
 	if err := c.LimitsConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid limits config")
 	}
-	if err := c.Worker.Validate(util_log.Logger); err != nil {
+	if err := c.Worker.Validate(); err != nil {
 		return errors.Wrap(err, "invalid frontend-worker config")
 	}
 	if err := c.StorageConfig.BoltDBShipperConfig.Validate(); err != nil {
@@ -251,69 +254,11 @@ func (c *Config) Validate() error {
 		return err
 	}
 
-	if err := AdjustForTimeoutsMigration(c); err != nil {
-		return err
-	}
-
 	// Honor the legacy scalable deployment topology
 	if c.LegacyReadTarget {
 		if c.isModuleEnabled(Backend) {
 			return fmt.Errorf("invalid target, cannot run backend target with legacy read mode")
 		}
-	}
-
-	return nil
-}
-
-// AdjustForTimeoutsMigration will adjust Loki timeouts configuration to be in accordance with the next major release.
-//
-// We're preparing to unify the querier:engine:timeout and querier:query_timeout into a single timeout named limits_config:query_timeout.
-// The migration encompasses of:
-// - If limits_config:query_timeout is explicitly configured, use it everywhere as it is a new configuration and by
-// configuring it, users are expressing that they're willing of using it.
-// - If none are explicitly configured, use the default engine:timeout everywhere as it is longer than the default limits_config:query_timeout
-// and otherwise users would start to experience shorter timeouts without expecting it.
-// - If only the querier:engine:timeout was explicitly configured, warn the user and use it everywhere.
-func AdjustForTimeoutsMigration(c *Config) error {
-	engineTimeoutIsDefault := c.Querier.Engine.Timeout == logql.DefaultEngineTimeout
-	perTenantTimeoutIsDefault := c.LimitsConfig.QueryTimeout.String() == validation.DefaultPerTenantQueryTimeout
-	if engineTimeoutIsDefault && perTenantTimeoutIsDefault {
-		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
-			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
-		}
-		level.Warn(util_log.Logger).Log("msg",
-			fmt.Sprintf(
-				"per-tenant timeout not configured, using default engine timeout (%q). This behavior will change in the next major to always use the default per-tenant timeout (%q).",
-				c.Querier.Engine.Timeout.String(),
-				c.LimitsConfig.QueryTimeout.String(),
-			),
-		)
-		return nil
-	}
-
-	if !perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
-		level.Warn(util_log.Logger).Log("msg",
-			fmt.Sprintf(
-				"using configured per-tenant timeout (%q) as the default (can be overridden per-tenant in the limits_config). Configured engine timeout (%q) is deprecated and will be ignored.",
-				c.LimitsConfig.QueryTimeout.String(),
-				c.Querier.Engine.Timeout.String(),
-			),
-		)
-		return nil
-	}
-
-	if perTenantTimeoutIsDefault && !engineTimeoutIsDefault {
-		if err := c.LimitsConfig.QueryTimeout.Set(c.Querier.Engine.Timeout.String()); err != nil {
-			return fmt.Errorf("couldn't set per-tenant query_timeout as the engine timeout value: %w", err)
-		}
-		level.Warn(util_log.Logger).Log("msg",
-			fmt.Sprintf(
-				"using configured engine timeout (%q) as the default (can be overridden per-tenant in the limits_config). Be aware that engine timeout (%q) is deprecated and will be removed in the next major version.",
-				c.Querier.Engine.Timeout.String(),
-				c.LimitsConfig.QueryTimeout.String(),
-			),
-		)
-		return nil
 	}
 
 	return nil
@@ -338,32 +283,34 @@ type Loki struct {
 	deps          map[string][]string
 	SignalHandler *signals.Handler
 
-	Server                   *server.Server
-	InternalServer           *server.Server
-	ring                     *ring.Ring
-	overrides                *validation.Overrides
-	tenantConfigs            *runtime.TenantConfigs
-	TenantLimits             validation.TenantLimits
-	distributor              *distributor.Distributor
-	Ingester                 ingester.Interface
-	Querier                  querier.Querier
-	cacheGenerationLoader    queryrangebase.CacheGenNumberLoader
-	querierAPI               *querier.QuerierAPI
-	ingesterQuerier          *querier.IngesterQuerier
-	Store                    storage.Store
-	tableManager             *index.TableManager
-	frontend                 Frontend
-	ruler                    *base_ruler.Ruler
-	RulerStorage             rulestore.RuleStore
-	rulerAPI                 *base_ruler.API
-	stopper                  queryrange.Stopper
-	runtimeConfig            *runtimeconfig.Manager
-	MemberlistKV             *memberlist.KVInitService
-	compactor                *compactor.Compactor
-	QueryFrontEndTripperware basetripper.Tripperware
-	queryScheduler           *scheduler.Scheduler
-	usageReport              *usagestats.Reporter
-	indexGatewayRingManager  *indexgateway.RingManager
+	Server                    *server.Server
+	InternalServer            *server.Server
+	ring                      *ring.Ring
+	Overrides                 limiter.CombinedLimits
+	tenantConfigs             *runtime.TenantConfigs
+	TenantLimits              validation.TenantLimits
+	distributor               *distributor.Distributor
+	Ingester                  ingester.Interface
+	Querier                   querier.Querier
+	cacheGenerationLoader     queryrangebase.CacheGenNumberLoader
+	querierAPI                *querier.QuerierAPI
+	ingesterQuerier           *querier.IngesterQuerier
+	Store                     storage.Store
+	tableManager              *index.TableManager
+	frontend                  Frontend
+	ruler                     *base_ruler.Ruler
+	ruleEvaluator             ruler.Evaluator
+	RulerStorage              rulestore.RuleStore
+	rulerAPI                  *base_ruler.API
+	stopper                   queryrange.Stopper
+	runtimeConfig             *runtimeconfig.Manager
+	MemberlistKV              *memberlist.KVInitService
+	compactor                 *compactor.Compactor
+	QueryFrontEndTripperware  basetripper.Tripperware
+	queryScheduler            *scheduler.Scheduler
+	querySchedulerRingManager *scheduler.RingManager
+	usageReport               *analytics.Reporter
+	indexGatewayRingManager   *indexgateway.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -378,7 +325,7 @@ func New(cfg Config) (*Loki, error) {
 		clientMetrics:       storage.NewClientMetrics(),
 		deleteClientMetrics: deletion.NewDeleteRequestClientMetrics(prometheus.DefaultRegisterer),
 	}
-	usagestats.Edition("oss")
+	analytics.Edition("oss")
 	loki.setupAuthMiddleware()
 	loki.setupGRPCRecoveryMiddleware()
 	if err := loki.setupModuleManager(); err != nil {
@@ -478,6 +425,8 @@ func (t *Loki) Run(opts RunOpts) error {
 		t.InternalServer.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
 	}
 	t.Server.HTTP.Path("/ready").Methods("GET").Handler(t.readyHandler(sm, shutdownRequested))
+
+	t.Server.HTTP.Path("/log_level").Methods("GET", "POST").Handler(util_log.LevelHandler(&t.Cfg.Server.LogLevel))
 
 	grpc_health_v1.RegisterHealthServer(t.Server.GRPC, grpcutil.NewHealthCheck(sm))
 
@@ -623,12 +572,15 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(QueryFrontend, t.initQueryFrontend)
 	mm.RegisterModule(RulerStorage, t.initRulerStorage, modules.UserInvisibleModule)
 	mm.RegisterModule(Ruler, t.initRuler)
+	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
-	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
-	mm.RegisterModule(UsageReport, t.initUsageReport)
+	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
+	mm.RegisterModule(QueryScheduler, t.initQueryScheduler)
+	mm.RegisterModule(QuerySchedulerRing, t.initQuerySchedulerRing, modules.UserInvisibleModule)
+	mm.RegisterModule(Analytics, t.initAnalytics)
 	mm.RegisterModule(CacheGenerationLoader, t.initCacheGenerationLoader)
 
 	mm.RegisterModule(All, nil)
@@ -639,28 +591,63 @@ func (t *Loki) setupModuleManager() error {
 	// Add dependencies
 	deps := map[string][]string{
 		Ring:                     {RuntimeConfig, Server, MemberlistKV},
-		UsageReport:              {},
+		Analytics:                {},
 		Overrides:                {RuntimeConfig},
 		OverridesExporter:        {Overrides, Server},
 		TenantConfigs:            {RuntimeConfig},
-		Distributor:              {Ring, Server, Overrides, TenantConfigs, UsageReport},
+		Distributor:              {Ring, Server, Overrides, TenantConfigs, Analytics},
 		Store:                    {Overrides, IndexGatewayRing},
-		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, UsageReport},
-		Querier:                  {Store, Ring, Server, IngesterQuerier, TenantConfigs, UsageReport, CacheGenerationLoader},
+		Ingester:                 {Store, Server, MemberlistKV, TenantConfigs, Analytics},
+		Querier:                  {Store, Ring, Server, IngesterQuerier, Overrides, Analytics, CacheGenerationLoader, QuerySchedulerRing},
 		QueryFrontendTripperware: {Server, Overrides, TenantConfigs},
-		QueryFrontend:            {QueryFrontendTripperware, UsageReport, CacheGenerationLoader},
-		QueryScheduler:           {Server, Overrides, MemberlistKV, UsageReport},
-		Ruler:                    {Ring, Server, Store, RulerStorage, IngesterQuerier, Overrides, TenantConfigs, UsageReport},
-		TableManager:             {Server, UsageReport},
-		Compactor:                {Server, Overrides, MemberlistKV, UsageReport},
-		IndexGateway:             {Server, Store, Overrides, UsageReport, MemberlistKV, IndexGatewayRing},
+		QueryFrontend:            {QueryFrontendTripperware, Analytics, CacheGenerationLoader, QuerySchedulerRing},
+		QueryScheduler:           {Server, Overrides, MemberlistKV, Analytics, QuerySchedulerRing},
+		Ruler:                    {Ring, Server, RulerStorage, RuleEvaluator, Overrides, TenantConfigs, Analytics},
+		RuleEvaluator:            {Ring, Server, Store, IngesterQuerier, Overrides, TenantConfigs, Analytics},
+		TableManager:             {Server, Analytics},
+		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
+		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing, IndexGatewayInterceptors},
 		IngesterQuerier:          {Ring},
-		IndexGatewayRing:         {RuntimeConfig, Server, MemberlistKV},
+		QuerySchedulerRing:       {Overrides, Server, MemberlistKV},
+		IndexGatewayRing:         {Overrides, Server, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryFrontend, Querier},
 		Write:                    {Ingester, Distributor},
 		Backend:                  {QueryScheduler, Ruler, Compactor, IndexGateway},
 		MemberlistKV:             {Server},
+	}
+
+	if t.Cfg.Querier.PerRequestLimitsEnabled {
+		level.Debug(util_log.Logger).Log("msg", "per-query request limits support enabled")
+		mm.RegisterModule(QueryLimiter, t.initQueryLimiter, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsInterceptors, t.initQueryLimitsInterceptors, modules.UserInvisibleModule)
+		mm.RegisterModule(QueryLimitsTripperware, t.initQueryLimitsTripperware, modules.UserInvisibleModule)
+
+		// Ensure query limiter embeds overrides after they've been
+		// created.
+		deps[QueryLimiter] = []string{Overrides}
+		deps[QueryLimitsInterceptors] = []string{}
+
+		// Ensure query limits tripperware embeds the query frontend
+		// tripperware after it's been created. Any additional
+		// middleware/tripperware you want to add to the querier or
+		// frontend must happen inject a dependence on the query limits
+		// tripperware.
+		deps[QueryLimitsTripperware] = []string{QueryFrontendTripperware}
+
+		deps[Querier] = append(deps[Querier], QueryLimiter)
+
+		// The frontend receives a tripperware. Make sure it uses the
+		// wrapped one.
+		deps[QueryFrontend] = append(deps[QueryFrontend], QueryLimitsTripperware)
+
+		// query frontend tripperware uses t.Overrides. Make sure it
+		// uses the one wrapped by query limiter.
+		deps[QueryFrontendTripperware] = append(deps[QueryFrontendTripperware], QueryLimiter)
+
+		if err := mm.AddDependency(Server, QueryLimitsInterceptors); err != nil {
+			return err
+		}
 	}
 
 	// Add IngesterQuerier as a dependency for store when target is either querier, ruler, read, or backend.
@@ -715,7 +702,7 @@ func (t *Loki) setupModuleManager() error {
 	t.ModuleManager = mm
 
 	if t.isModuleActive(Ingester) {
-		if err := mm.AddDependency(UsageReport, Ring); err != nil {
+		if err := mm.AddDependency(Analytics, Ring); err != nil {
 			return err
 		}
 	}

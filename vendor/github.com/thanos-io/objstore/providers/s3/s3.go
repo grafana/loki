@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"runtime"
@@ -17,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/efficientgo/tools/core/pkg/logerrcapture"
+	"github.com/efficientgo/core/logerrcapture"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/minio/minio-go/v7"
@@ -96,6 +95,9 @@ const (
 	// NOTE: we're using a context value only because it's a very specific S3 option. If SSE will
 	// be available to wider set of backends we should probably add a variadic option to Get() and Upload().
 	sseConfigKey = ctxKey(0)
+
+	// Storage class header.
+	amzStorageClass = "X-Amz-Storage-Class"
 )
 
 var DefaultConfig = Config{
@@ -128,6 +130,7 @@ type Config struct {
 	Insecure           bool               `yaml:"insecure"`
 	SignatureV2        bool               `yaml:"signature_version2"`
 	SecretKey          string             `yaml:"secret_key"`
+	SessionToken       string             `yaml:"session_token"`
 	PutUserMetadata    map[string]string  `yaml:"put_user_metadata"`
 	HTTPConfig         exthttp.HTTPConfig `yaml:"http_config"`
 	TraceConfig        TraceConfig        `yaml:"trace"`
@@ -141,7 +144,7 @@ type Config struct {
 }
 
 // SSEConfig deals with the configuration of SSE for Minio. The following options are valid:
-// kmsencryptioncontext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
+// KMSEncryptionContext == https://docs.aws.amazon.com/kms/latest/developerguide/services-s3.html#s3-encryption-context
 type SSEConfig struct {
 	Type                 string            `yaml:"type"`
 	KMSKeyID             string            `yaml:"kms_key_id"`
@@ -160,6 +163,7 @@ type Bucket struct {
 	client          *minio.Client
 	defaultSSE      encrypt.ServerSide
 	putUserMetadata map[string]string
+	storageClass    string
 	partSize        uint64
 	listObjectsV1   bool
 }
@@ -225,6 +229,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 			Value: credentials.Value{
 				AccessKeyID:     config.AccessKey,
 				SecretAccessKey: config.SecretKey,
+				SessionToken:    config.SessionToken,
 				SignerType:      credentials.SignatureV4,
 			},
 		})}
@@ -282,7 +287,7 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 			}
 
 		case SSEC:
-			key, err := ioutil.ReadFile(config.SSEConfig.EncryptionKey)
+			key, err := os.ReadFile(config.SSEConfig.EncryptionKey)
 			if err != nil {
 				return nil, err
 			}
@@ -310,12 +315,23 @@ func NewBucketWithConfig(logger log.Logger, config Config, component string) (*B
 		return nil, errors.Errorf("Initialize s3 client list objects version: Unsupported version %q was provided. Supported values are v1, v2", config.ListObjectsVersion)
 	}
 
+	var storageClass string
+	amzStorageClassLower := strings.ToLower(amzStorageClass)
+	for k, v := range config.PutUserMetadata {
+		if strings.ToLower(k) == amzStorageClassLower {
+			delete(config.PutUserMetadata, k)
+			storageClass = v
+			break
+		}
+	}
+
 	bkt := &Bucket{
 		logger:          logger,
 		name:            config.Bucket,
 		client:          client,
 		defaultSSE:      sse,
 		putUserMetadata: config.PutUserMetadata,
+		storageClass:    storageClass,
 		partSize:        config.PartSize,
 		listObjectsV1:   config.ListObjectsVersion == "v1",
 	}
@@ -399,7 +415,7 @@ func (b *Bucket) Iter(ctx context.Context, dir string, f func(string) error, opt
 		}
 	}
 
-	return nil
+	return ctx.Err()
 }
 
 func (b *Bucket) getRange(ctx context.Context, name string, off, length int64) (io.ReadCloser, error) {
@@ -486,6 +502,7 @@ func (b *Bucket) Upload(ctx context.Context, name string, r io.Reader) error {
 			PartSize:             partSize,
 			ServerSideEncryption: sse,
 			UserMetadata:         b.putUserMetadata,
+			StorageClass:         b.storageClass,
 			// 4 is what minio-go have as the default. To be certain we do micro benchmark before any changes we
 			// ensure we pin this number to four.
 			// TODO(bwplotka): Consider adjusting this number to GOMAXPROCS or to expose this in config if it becomes bottleneck.
@@ -521,6 +538,11 @@ func (b *Bucket) IsObjNotFoundErr(err error) bool {
 	return minio.ToErrorResponse(errors.Cause(err)).Code == "NoSuchKey"
 }
 
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *Bucket) IsAccessDeniedErr(err error) bool {
+	return minio.ToErrorResponse(errors.Cause(err)).Code == "AccessDenied"
+}
+
 func (b *Bucket) Close() error { return nil }
 
 // getServerSideEncryption returns the SSE to use.
@@ -537,10 +559,11 @@ func (b *Bucket) getServerSideEncryption(ctx context.Context) (encrypt.ServerSid
 
 func configFromEnv() Config {
 	c := Config{
-		Bucket:    os.Getenv("S3_BUCKET"),
-		Endpoint:  os.Getenv("S3_ENDPOINT"),
-		AccessKey: os.Getenv("S3_ACCESS_KEY"),
-		SecretKey: os.Getenv("S3_SECRET_KEY"),
+		Bucket:       os.Getenv("S3_BUCKET"),
+		Endpoint:     os.Getenv("S3_ENDPOINT"),
+		AccessKey:    os.Getenv("S3_ACCESS_KEY"),
+		SecretKey:    os.Getenv("S3_SECRET_KEY"),
+		SessionToken: os.Getenv("S3_SESSION_TOKEN"),
 	}
 
 	c.Insecure, _ = strconv.ParseBool(os.Getenv("S3_INSECURE"))

@@ -11,6 +11,26 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
+      path: /validate-loki-grafana-com-v1-alertingrule
+  failurePolicy: Fail
+  name: valertingrule.loki.grafana.com
+  rules:
+  - apiGroups:
+    - loki.grafana.com
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - alertingrules
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
       path: /validate-loki-grafana-com-v1-lokistack
   failurePolicy: Fail
   name: vlokistack.loki.grafana.com
@@ -31,34 +51,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-loki-grafana-com-v1beta1-alertingrule
-  failurePolicy: Fail
-  name: valertingrule.loki.grafana.com
-  rules:
-  - apiGroups:
-    - loki.grafana.com
-    apiVersions:
-    - v1beta1
-    operations:
-    - CREATE
-    - UPDATE
-    resources:
-    - alertingrules
-  sideEffects: None
-- admissionReviewVersions:
-  - v1
-  clientConfig:
-    service:
-      name: webhook-service
-      namespace: system
-      path: /validate-loki-grafana-com-v1beta1-recordingrule
+      path: /validate-loki-grafana-com-v1-recordingrule
   failurePolicy: Fail
   name: vrecordingrule.loki.grafana.com
   rules:
   - apiGroups:
     - loki.grafana.com
     apiVersions:
-    - v1beta1
+    - v1
     operations:
     - CREATE
     - UPDATE
@@ -71,14 +71,14 @@ webhooks:
     service:
       name: webhook-service
       namespace: system
-      path: /validate-loki-grafana-com-v1beta1-rulerconfig
+      path: /validate-loki-grafana-com-v1-rulerconfig
   failurePolicy: Fail
   name: vrulerconfig.loki.grafana.com
   rules:
   - apiGroups:
     - loki.grafana.com
     apiVersions:
-    - v1beta1
+    - v1
     operations:
     - CREATE
     - UPDATE

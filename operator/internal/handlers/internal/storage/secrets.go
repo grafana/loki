@@ -2,10 +2,10 @@ package storage
 
 import (
 	"github.com/ViaQ/logerr/v2/kverrors"
+	corev1 "k8s.io/api/core/v1"
+
 	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 	"github.com/grafana/loki/operator/internal/manifests/storage"
-
-	corev1 "k8s.io/api/core/v1"
 )
 
 // ExtractSecret reads a k8s secret into a manifest object storage struct if valid.
@@ -25,6 +25,8 @@ func ExtractSecret(s *corev1.Secret, secretType lokiv1.ObjectStorageSecretType) 
 		storageOpts.S3, err = extractS3ConfigSecret(s)
 	case lokiv1.ObjectStorageSecretSwift:
 		storageOpts.Swift, err = extractSwiftConfigSecret(s)
+	case lokiv1.ObjectStorageSecretAlibabaCloud:
+		storageOpts.AlibabaCloud, err = extractAlibabaCloudConfigSecret(s)
 	default:
 		return nil, kverrors.New("unknown secret type", "type", secretType)
 	}
@@ -173,5 +175,33 @@ func extractSwiftConfigSecret(s *corev1.Secret) (*storage.SwiftStorageConfig, er
 		ProjectDomainName: string(projectDomainName),
 		Region:            string(region),
 		Container:         string(containerName),
+	}, nil
+}
+
+func extractAlibabaCloudConfigSecret(s *corev1.Secret) (*storage.AlibabaCloudStorageConfig, error) {
+	// Extract and validate mandatory fields
+	endpoint := s.Data["endpoint"]
+	if len(endpoint) == 0 {
+		return nil, kverrors.New("missing secret field", "field", "endpoint")
+	}
+	bucket := s.Data["bucket"]
+	if len(bucket) == 0 {
+		return nil, kverrors.New("missing secret field", "field", "bucket")
+	}
+	// TODO buckets are comma-separated list
+	id := s.Data["access_key_id"]
+	if len(id) == 0 {
+		return nil, kverrors.New("missing secret field", "field", "access_key_id")
+	}
+	secret := s.Data["secret_access_key"]
+	if len(secret) == 0 {
+		return nil, kverrors.New("missing secret field", "field", "secret_access_key")
+	}
+
+	return &storage.AlibabaCloudStorageConfig{
+		Endpoint:        string(endpoint),
+		Bucket:          string(bucket),
+		AccessKeyID:     string(id),
+		SecretAccessKey: string(secret),
 	}, nil
 }

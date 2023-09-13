@@ -17,11 +17,13 @@ import (
 	"context"
 	"fmt"
 	"hash/crc32"
+	"math"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -30,8 +32,10 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/encoding"
+	tsdb_enc "github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/util/testutil"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 func TestMain(m *testing.M) {
@@ -125,7 +129,7 @@ func TestIndexRW_Create_Open(t *testing.T) {
 	fn := filepath.Join(dir, IndexFilename)
 
 	// An empty index must still result in a readable file.
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 	require.NoError(t, iw.Close())
 
@@ -149,7 +153,7 @@ func TestIndexRW_Postings(t *testing.T) {
 
 	fn := filepath.Join(dir, IndexFilename)
 
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 
 	series := []labels.Labels{
@@ -185,7 +189,7 @@ func TestIndexRW_Postings(t *testing.T) {
 	var c []ChunkMeta
 
 	for i := 0; p.Next(); i++ {
-		_, err := ir.Series(p.At(), &l, &c)
+		_, err := ir.Series(p.At(), 0, math.MaxInt64, &l, &c)
 
 		require.NoError(t, err)
 		require.Equal(t, 0, len(c))
@@ -200,7 +204,7 @@ func TestIndexRW_Postings(t *testing.T) {
 			return errors.Errorf("unexpected key length for label indices table %d", len(key))
 		}
 
-		d := encoding.NewDecbufAt(ir.b, int(off), castagnoliTable)
+		d := tsdb_enc.NewDecbufAt(ir.b, int(off), castagnoliTable)
 		vals := []string{}
 		nc := d.Be32int()
 		if nc != 1 {
@@ -229,7 +233,7 @@ func TestPostingsMany(t *testing.T) {
 
 	fn := filepath.Join(dir, IndexFilename)
 
-	iw, err := NewWriter(context.Background(), fn)
+	iw, err := NewWriter(context.Background(), FormatV3, fn)
 	require.NoError(t, err)
 
 	// Create a label in the index which has 999 values.
@@ -304,7 +308,7 @@ func TestPostingsMany(t *testing.T) {
 		var lbls labels.Labels
 		var metas []ChunkMeta
 		for it.Next() {
-			_, err := ir.Series(it.At(), &lbls, &metas)
+			_, err := ir.Series(it.At(), 0, math.MaxInt64, &lbls, &metas)
 			require.NoError(t, err)
 			got = append(got, lbls.Get("i"))
 		}
@@ -363,7 +367,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 		})
 	}
 
-	iw, err := NewWriter(context.Background(), filepath.Join(dir, IndexFilename))
+	iw, err := NewWriter(context.Background(), FormatV3, filepath.Join(dir, IndexFilename))
 	require.NoError(t, err)
 
 	syms := []string{}
@@ -420,7 +424,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 
 			ref := gotp.At()
 
-			_, err := ir.Series(ref, &lset, &chks)
+			_, err := ir.Series(ref, 0, math.MaxInt64, &lset, &chks)
 			require.NoError(t, err)
 
 			err = mi.Series(expp.At(), &explset, &expchks)
@@ -467,7 +471,7 @@ func TestPersistence_index_e2e(t *testing.T) {
 func TestDecbufUvarintWithInvalidBuffer(t *testing.T) {
 	b := RealByteSlice([]byte{0x81, 0x81, 0x81, 0x81, 0x81, 0x81})
 
-	db := encoding.NewDecbufUvarintAt(b, 0, castagnoliTable)
+	db := tsdb_enc.NewDecbufUvarintAt(b, 0, castagnoliTable)
 	require.Error(t, db.Err())
 }
 
@@ -543,4 +547,396 @@ func TestSymbols(t *testing.T) {
 func TestDecoder_Postings_WrongInput(t *testing.T) {
 	_, _, err := (&Decoder{}).Postings([]byte("the cake is a lie"))
 	require.Error(t, err)
+}
+
+func TestDecoder_ChunkSamples(t *testing.T) {
+	dir := t.TempDir()
+
+	lbls := []labels.Labels{
+		{{Name: "fizz", Value: "buzz"}},
+		{{Name: "ping", Value: "pong"}},
+	}
+
+	symbols := map[string]struct{}{}
+	for _, lset := range lbls {
+		for _, l := range lset {
+			symbols[l.Name] = struct{}{}
+			symbols[l.Value] = struct{}{}
+		}
+	}
+
+	now := model.Now()
+
+	for name, tc := range map[string]struct {
+		chunkMetas           []ChunkMeta
+		expectedChunkSamples []chunkSample
+	}{
+		"no overlapping chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(40 * time.Minute)),
+					MaxTime: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(90 * time.Minute)),
+					MaxTime: int64(now.Add(120 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(130 * time.Minute)),
+					MaxTime: int64(now.Add(150 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(30 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(120 * time.Minute)),
+					idx:           2,
+					prevChunkMaxt: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(150 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(120 * time.Minute)),
+				},
+			},
+		},
+		"overlapping chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(20 * time.Minute)),
+					MaxTime: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(70 * time.Minute)),
+					MaxTime: int64(now.Add(120 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(100 * time.Minute)),
+					MaxTime: int64(now.Add(110 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(30 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(120 * time.Minute)),
+					idx:           2,
+					prevChunkMaxt: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(120 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(120 * time.Minute)),
+				},
+			},
+		},
+		"first chunk overlapping all chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(180 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(20 * time.Minute)),
+					MaxTime: int64(now.Add(80 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(70 * time.Minute)),
+					MaxTime: int64(now.Add(120 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(110 * time.Minute)),
+					MaxTime: int64(now.Add(150 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(180 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(180 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(120 * time.Minute)),
+				},
+			},
+		},
+		"large gaps between chunks": {
+			chunkMetas: []ChunkMeta{
+				{
+					MinTime: int64(now),
+					MaxTime: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(200 * time.Minute)),
+					MaxTime: int64(now.Add(280 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(500 * time.Minute)),
+					MaxTime: int64(now.Add(520 * time.Minute)),
+				},
+				{
+					MinTime: int64(now.Add(800 * time.Minute)),
+					MaxTime: int64(now.Add(835 * time.Minute)),
+				},
+			},
+			expectedChunkSamples: []chunkSample{
+				{
+					largestMaxt:   int64(now.Add(30 * time.Minute)),
+					idx:           0,
+					prevChunkMaxt: 0,
+				},
+				{
+					largestMaxt:   int64(now.Add(280 * time.Minute)),
+					idx:           1,
+					prevChunkMaxt: int64(now.Add(30 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(520 * time.Minute)),
+					idx:           2,
+					prevChunkMaxt: int64(now.Add(280 * time.Minute)),
+				},
+				{
+					largestMaxt:   int64(now.Add(835 * time.Minute)),
+					idx:           3,
+					prevChunkMaxt: int64(now.Add(520 * time.Minute)),
+				},
+			},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			iw, err := NewWriterWithVersion(context.Background(), FormatV2, filepath.Join(dir, name))
+			require.NoError(t, err)
+
+			syms := []string{}
+			for s := range symbols {
+				syms = append(syms, s)
+			}
+			sort.Strings(syms)
+			for _, s := range syms {
+				require.NoError(t, iw.AddSymbol(s))
+			}
+
+			for i, l := range lbls {
+				err = iw.AddSeries(storage.SeriesRef(i), l, model.Fingerprint(l.Hash()), tc.chunkMetas...)
+				require.NoError(t, err)
+			}
+
+			err = iw.Close()
+			require.NoError(t, err)
+
+			ir, err := NewFileReader(filepath.Join(dir, name))
+			require.NoError(t, err)
+
+			postings, err := ir.Postings("fizz", nil, "buzz")
+			require.NoError(t, err)
+
+			require.True(t, postings.Next())
+			var lset labels.Labels
+			var chks []ChunkMeta
+
+			// there should be no chunk samples
+			require.Nil(t, ir.dec.chunksSample[postings.At()])
+
+			// read series so that chunk samples get built
+			_, err = ir.Series(postings.At(), 0, math.MaxInt64, &lset, &chks)
+			require.NoError(t, err)
+
+			require.Equal(t, tc.chunkMetas, chks)
+			require.Equal(t, lset, lbls[0])
+
+			// there should be chunk samples for only the series we read
+			require.Len(t, ir.dec.chunksSample, 1)
+			require.NotNil(t, ir.dec.chunksSample[postings.At()])
+			require.Len(t, ir.dec.chunksSample[postings.At()].chunks, len(tc.expectedChunkSamples))
+
+			// build decoder for the series we read to verify the samples
+			offset := postings.At() * 16
+			d := encoding.DecWrap(tsdb_enc.NewDecbufUvarintAt(ir.b, int(offset), castagnoliTable))
+			require.NoError(t, d.Err())
+
+			// read chunk metadata to positing the decoder at the beginning of first chunk
+			d.Be64()
+			k := d.Uvarint()
+
+			for i := 0; i < k; i++ {
+				d.Uvarint()
+				d.Uvarint()
+			}
+			require.Equal(t, len(tc.chunkMetas), d.Uvarint())
+			for i, cs := range ir.dec.chunksSample[postings.At()].chunks {
+				require.Equal(t, tc.expectedChunkSamples[i].idx, cs.idx)
+				require.Equal(t, tc.expectedChunkSamples[i].largestMaxt, cs.largestMaxt)
+				require.Equal(t, tc.expectedChunkSamples[i].prevChunkMaxt, cs.prevChunkMaxt)
+
+				dw := encoding.DecWrap(tsdb_enc.Decbuf{B: d.Get()})
+				dw.Skip(cs.offset)
+				chunkMeta := ChunkMeta{}
+				require.NoError(t, readChunkMeta(&dw, cs.prevChunkMaxt, &chunkMeta))
+				require.Equal(t, tc.chunkMetas[tc.expectedChunkSamples[i].idx], chunkMeta)
+			}
+
+			require.NoError(t, ir.Close())
+		})
+	}
+}
+
+func TestChunkSamples_getChunkSampleForQueryStarting(t *testing.T) {
+	for name, tc := range map[string]struct {
+		chunkSamples           *chunkSamples
+		queryMint              int64
+		expectedChunkSampleIdx int
+	}{
+		"mint greater than largestMaxt": {
+			chunkSamples: &chunkSamples{
+				chunks: []chunkSample{
+					{
+						largestMaxt:   100,
+						idx:           0,
+						offset:        0,
+						prevChunkMaxt: 0,
+					},
+					{
+						largestMaxt:   200,
+						idx:           5,
+						offset:        5,
+						prevChunkMaxt: 50,
+					},
+				},
+			},
+			queryMint:              250,
+			expectedChunkSampleIdx: -1,
+		},
+		"mint smaller than first largestMaxt": {
+			chunkSamples: &chunkSamples{
+				chunks: []chunkSample{
+					{
+						largestMaxt:   100,
+						idx:           0,
+						offset:        0,
+						prevChunkMaxt: 0,
+					},
+					{
+						largestMaxt:   200,
+						idx:           5,
+						offset:        5,
+						prevChunkMaxt: 50,
+					},
+				},
+			},
+			queryMint:              50,
+			expectedChunkSampleIdx: 0,
+		},
+		"intermediate chunk sample": {
+			chunkSamples: &chunkSamples{
+				chunks: []chunkSample{
+					{
+						largestMaxt:   100,
+						idx:           0,
+						offset:        0,
+						prevChunkMaxt: 0,
+					},
+					{
+						largestMaxt:   200,
+						idx:           5,
+						offset:        5,
+						prevChunkMaxt: 50,
+					},
+					{
+						largestMaxt:   350,
+						idx:           7,
+						offset:        7,
+						prevChunkMaxt: 150,
+					},
+					{
+						largestMaxt:   500,
+						idx:           9,
+						offset:        9,
+						prevChunkMaxt: 250,
+					},
+				},
+			},
+			queryMint:              250,
+			expectedChunkSampleIdx: 1,
+		},
+		"mint matching samples largestMaxt": {
+			chunkSamples: &chunkSamples{
+				chunks: []chunkSample{
+					{
+						largestMaxt:   100,
+						idx:           0,
+						offset:        0,
+						prevChunkMaxt: 0,
+					},
+					{
+						largestMaxt:   200,
+						idx:           5,
+						offset:        5,
+						prevChunkMaxt: 50,
+					},
+					{
+						largestMaxt:   350,
+						idx:           7,
+						offset:        7,
+						prevChunkMaxt: 150,
+					},
+					{
+						largestMaxt:   500,
+						idx:           9,
+						offset:        9,
+						prevChunkMaxt: 250,
+					},
+				},
+			},
+			queryMint:              350,
+			expectedChunkSampleIdx: 1,
+		},
+		"same chunk sampled": {
+			chunkSamples: &chunkSamples{
+				chunks: []chunkSample{
+					{
+						largestMaxt:   100,
+						idx:           0,
+						offset:        0,
+						prevChunkMaxt: 0,
+					},
+					{
+						largestMaxt:   100,
+						idx:           0,
+						offset:        0,
+						prevChunkMaxt: 0,
+					},
+				},
+			},
+			queryMint:              50,
+			expectedChunkSampleIdx: 0,
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			chunkSample := tc.chunkSamples.getChunkSampleForQueryStarting(tc.queryMint)
+			if tc.expectedChunkSampleIdx == -1 {
+				require.Nil(t, chunkSample)
+				return
+			}
+
+			require.NotNil(t, chunkSample)
+			require.Equal(t, tc.chunkSamples.chunks[tc.expectedChunkSampleIdx], *chunkSample)
+		})
+	}
 }

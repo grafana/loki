@@ -58,7 +58,7 @@ func (r *bucketLocationCache) Get(bucketName string) (location string, ok bool) 
 }
 
 // Set - Will persist a value into cache.
-func (r *bucketLocationCache) Set(bucketName string, location string) {
+func (r *bucketLocationCache) Set(bucketName, location string) {
 	r.Lock()
 	defer r.Unlock()
 	r.items[bucketName] = location
@@ -190,12 +190,11 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 		}
 	}
 
-	isVirtualHost := s3utils.IsVirtualHostSupported(targetURL, bucketName)
+	isVirtualStyle := c.isVirtualHostStyleRequest(targetURL, bucketName)
 
 	var urlStr string
 
-	// only support Aliyun OSS for virtual hosted path,  compatible  Amazon & Google Endpoint
-	if isVirtualHost && s3utils.IsAliyunOSSEndpoint(targetURL) {
+	if isVirtualStyle {
 		urlStr = c.endpointURL.Scheme + "://" + bucketName + "." + targetURL.Host + "/?location"
 	} else {
 		targetURL.Path = path.Join(bucketName, "") + "/"
@@ -241,9 +240,7 @@ func (c *Client) getBucketLocationRequest(ctx context.Context, bucketName string
 	}
 
 	if signerType.IsV2() {
-		// Get Bucket Location calls should be always path style
-		isVirtualHost := false
-		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualHost)
+		req = signer.SignV2(*req, accessKeyID, secretAccessKey, isVirtualStyle)
 		return req, nil
 	}
 

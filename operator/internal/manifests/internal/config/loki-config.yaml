@@ -45,7 +45,29 @@ common:
       region_name: {{ .Region }}
       container_name: {{ .Container }}
     {{- end }}
+    {{- with .ObjectStorage.AlibabaCloud}}
+    alibabacloud:
+      bucket: {{ .Bucket }}
+      endpoint: {{ .Endpoint }}
+      access_key_id: {{ .AccessKeyID }}
+      secret_access_key: {{ .SecretAccessKey }}
+    {{- end }}
   compactor_grpc_address: {{ .Compactor.FQDN }}:{{ .Compactor.Port }}
+  {{- with .GossipRing }}
+  ring:
+    kvstore:
+      store: memberlist
+    heartbeat_period: 5s
+    heartbeat_timeout: 1m
+    {{- with .InstanceAddr }}
+    instance_addr: {{ . }}
+    {{- end }}
+    instance_port: {{ .InstancePort }}
+    {{- if .EnableInstanceAvailabilityZone }}
+    zone_awareness_enabled: true
+    instance_availability_zone: ${INSTANCE_AVAILABILITY_ZONE}
+    {{- end }}
+  {{- end }}
 compactor:
   compaction_interval: 2h
   working_directory: {{ .StorageDirectory }}/compactor
@@ -92,12 +114,10 @@ ingester:
   max_chunk_age: 2h
   lifecycler:
     final_sleep: 0s
-    heartbeat_period: 5s
     join_after: 30s
     num_tokens: 512
     ring:
-      replication_factor: {{ .Stack.ReplicationFactor }}
-      heartbeat_timeout: 1m
+      replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
   wal:
     enabled: true
@@ -146,7 +166,7 @@ limits_config:
   max_query_length: 721h
   max_query_parallelism: 32
   max_query_series: {{ .Stack.Limits.Global.QueryLimits.MaxQuerySeries }}
-  cardinality_limit: 100000
+  cardinality_limit: {{ .Stack.Limits.Global.QueryLimits.CardinalityLimit }}
   max_streams_matchers_per_query: 1000
   query_timeout: {{ .Stack.Limits.Global.QueryLimits.QueryTimeout }}
 {{- if .Retention.Enabled }}{{- with .Stack.Limits.Global.Retention }}
@@ -161,21 +181,26 @@ limits_config:
 {{- end }}
 {{- end }}{{- end }}
   max_cache_freshness_per_query: 10m
-  per_stream_rate_limit: 3MB
-  per_stream_rate_limit_burst: 15MB
+  per_stream_rate_limit: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimit }}MB
+  per_stream_rate_limit_burst: {{ .Stack.Limits.Global.IngestionLimits.PerStreamRateLimitBurst }}MB
   split_queries_by_interval: 30m
+{{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
-  bind_port: {{ .GossipRing.Port }}
+  {{- with .InstanceAddr }}
+  advertise_addr: {{ . }}
+  {{- end }}
+  advertise_port: {{ .BindPort }}
+  bind_port: {{ .BindPort }}
   join_members:
-    - {{ .GossipRing.FQDN }}:{{ .GossipRing.Port }}
+    - {{ .MembersDiscoveryAddr }}:{{ .BindPort }}
   max_join_backoff: 1m
   max_join_retries: 10
   min_join_backoff: 1s
+{{- end }}
 querier:
   engine:
     max_look_back_period: 30s
-    timeout: 3m
   extra_query_delay: 0s
   query_ingesters_within: 3h
   tail_max_duration: 1h
@@ -401,8 +426,9 @@ server:
   grpc_server_max_recv_msg_size: 104857600
   grpc_server_max_send_msg_size: 104857600
   http_listen_port: 3100
-  http_server_idle_timeout: 120s
-  http_server_write_timeout: 1m
+  http_server_idle_timeout: {{ .HTTPTimeouts.IdleTimeout }}
+  http_server_read_timeout: {{ .HTTPTimeouts.ReadTimeout }}
+  http_server_write_timeout: {{ .HTTPTimeouts.WriteTimeout }}
 {{- if or .Gates.HTTPEncryption .Gates.GRPCEncryption }}
   tls_min_version: {{ .TLS.MinTLSVersion }}
   tls_cipher_suites: {{ .TLS.CipherSuitesString }}

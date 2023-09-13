@@ -94,6 +94,7 @@ func (c *deleteRequestsClient) Stop() {
 
 func (c *deleteRequestsClient) updateLoop() {
 	t := time.NewTicker(c.cacheDuration)
+	defer t.Stop()
 	for {
 		select {
 		case <-t.C:

@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"text/scanner"
 
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -53,7 +52,7 @@ type parser struct {
 
 func (p *parser) Parse() (Expr, error) {
 	p.lexer.errs = p.lexer.errs[:0]
-	p.lexer.Scanner.Error = func(_ *scanner.Scanner, msg string) {
+	p.lexer.Scanner.Error = func(_ *Scanner, msg string) {
 		p.lexer.Error(msg)
 	}
 	e := p.p.Parse(p)
@@ -122,8 +121,18 @@ func validateMatchers(matchers []*labels.Matcher) error {
 
 // ParseMatchers parses a string and returns labels matchers, if the expression contains
 // anything else it will return an error.
-func ParseMatchers(input string) ([]*labels.Matcher, error) {
-	expr, err := ParseExpr(input)
+func ParseMatchers(input string, validate bool) ([]*labels.Matcher, error) {
+	var (
+		expr Expr
+		err  error
+	)
+
+	if validate {
+		expr, err = ParseExpr(input)
+	} else {
+		expr, err = ParseExprWithoutValidation(input)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -246,5 +255,5 @@ func ParseLabels(lbs string) (labels.Labels, error) {
 	// Therefore we must normalize early in the write path.
 	// See https://github.com/grafana/loki/pull/7355
 	// for more information
-	return labels.NewBuilder(ls).Labels(nil), nil
+	return labels.NewBuilder(ls).Labels(), nil
 }

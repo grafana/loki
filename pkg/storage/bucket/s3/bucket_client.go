@@ -7,6 +7,11 @@ import (
 	"github.com/thanos-io/objstore/providers/s3"
 )
 
+const (
+	// Applied to PUT operations to denote the desired storage class for S3 Objects
+	awsStorageClassHeader = "X-Amz-Storage-Class"
+)
+
 // NewBucketClient creates a new S3 bucket client
 func NewBucketClient(cfg Config, name string, logger log.Logger) (objstore.Bucket, error) {
 	s3Cfg, err := newS3Config(cfg)
@@ -34,13 +39,15 @@ func newS3Config(cfg Config) (s3.Config, error) {
 	}
 
 	return s3.Config{
-		Bucket:    cfg.BucketName,
-		Endpoint:  cfg.Endpoint,
-		Region:    cfg.Region,
-		AccessKey: cfg.AccessKeyID,
-		SecretKey: cfg.SecretAccessKey.String(),
-		Insecure:  cfg.Insecure,
-		SSEConfig: sseCfg,
+		Bucket:          cfg.BucketName,
+		Endpoint:        cfg.Endpoint,
+		Region:          cfg.Region,
+		AccessKey:       cfg.AccessKeyID,
+		SecretKey:       cfg.SecretAccessKey.String(),
+		SessionToken:    cfg.SessionToken.String(),
+		Insecure:        cfg.Insecure,
+		SSEConfig:       sseCfg,
+		PutUserMetadata: map[string]string{awsStorageClassHeader: cfg.StorageClass},
 		HTTPConfig: s3.HTTPConfig{
 			IdleConnTimeout:       model.Duration(cfg.HTTP.IdleConnTimeout),
 			ResponseHeaderTimeout: model.Duration(cfg.HTTP.ResponseHeaderTimeout),
@@ -52,7 +59,5 @@ func newS3Config(cfg Config) (s3.Config, error) {
 			MaxConnsPerHost:       cfg.HTTP.MaxConnsPerHost,
 			Transport:             cfg.HTTP.Transport,
 		},
-		// Enforce signature version 2 if CLI flag is set
-		SignatureV2: cfg.SignatureVersion == SignatureVersionV2,
 	}, nil
 }

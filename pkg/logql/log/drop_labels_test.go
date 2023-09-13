@@ -1,7 +1,6 @@
 package log
 
 import (
-	"sort"
 	"testing"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -33,14 +32,11 @@ func Test_DropLabels(t *testing.T) {
 			},
 			"",
 			"",
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-			labels.Labels{
-				{Name: "pod_uuid", Value: "foo"},
-			},
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("pod_uuid", "foo"),
 		},
 		{
 			"drop by __error__",
@@ -56,16 +52,14 @@ func Test_DropLabels(t *testing.T) {
 			},
 			errJSON,
 			"json error",
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
 		},
 		{
 			"drop with wrong __error__ value",
@@ -77,18 +71,16 @@ func Test_DropLabels(t *testing.T) {
 			},
 			errJSON,
 			"json error",
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-				{Name: logqlmodel.ErrorLabel, Value: errJSON},
-				{Name: logqlmodel.ErrorDetailsLabel, Value: "json error"},
-			},
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+				logqlmodel.ErrorLabel, errJSON,
+				logqlmodel.ErrorDetailsLabel, "json error",
+			),
 		},
 		{
 			"drop by __error_details__",
@@ -104,16 +96,14 @@ func Test_DropLabels(t *testing.T) {
 			},
 			errJSON,
 			"expecting json object but it is not",
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
 		},
 		{
 			"drop labels with names and matcher",
@@ -137,24 +127,22 @@ func Test_DropLabels(t *testing.T) {
 			},
 			errJSON,
 			"json error",
-			labels.Labels{
-				{Name: "app", Value: "foo"},
-				{Name: "namespace", Value: "prod"},
-				{Name: "pod_uuid", Value: "foo"},
-			},
-			labels.Labels{
-				{Name: "pod_uuid", Value: "foo"},
-			},
+			labels.FromStrings("app", "foo",
+				"namespace", "prod",
+				"pod_uuid", "foo",
+			),
+			labels.FromStrings("pod_uuid", "foo"),
 		},
 	}
 	for _, tt := range tests {
-		dropLabels := NewDropLabels(tt.dropLabels)
-		lbls := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
-		lbls.Reset()
-		lbls.SetErr(tt.err)
-		lbls.SetErrorDetails(tt.errDetails)
-		dropLabels.Process(0, []byte(""), lbls)
-		sort.Sort(tt.want)
-		require.Equal(t, tt.want, lbls.LabelsResult().Labels())
+		t.Run(tt.Name, func(t *testing.T) {
+			dropLabels := NewDropLabels(tt.dropLabels)
+			lbls := NewBaseLabelsBuilder().ForLabels(tt.lbs, tt.lbs.Hash())
+			lbls.Reset()
+			lbls.SetErr(tt.err)
+			lbls.SetErrorDetails(tt.errDetails)
+			dropLabels.Process(0, []byte(""), lbls)
+			require.Equal(t, tt.want, lbls.LabelsResult().Labels())
+		})
 	}
 }

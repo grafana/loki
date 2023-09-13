@@ -1,7 +1,9 @@
-local apps = ['loki', 'loki-canary', 'logcli'];
+local apps = ['loki', 'loki-canary', 'loki-canary-boringcrypto', 'logcli'];
 local archs = ['amd64', 'arm64', 'arm'];
 
 local build_image_version = std.extVar('__build-image-version');
+
+local drone_updater_plugin_image = 'us.gcr.io/kubernetes-dev/drone/plugins/updater@sha256:cbcb09c74f96a34c528f52bf9b4815a036b11fed65f685be216e0c8b8e84285b';
 
 local onPRs = {
   event: ['pull_request'],
@@ -9,6 +11,10 @@ local onPRs = {
 
 local onTagOrMain = {
   event: ['push', 'tag'],
+};
+
+local onTag = {
+  event: ['tag'],
 };
 
 local onPath(path) = {
@@ -44,10 +50,12 @@ local gpg_private_key = secret('gpg_private_key', 'infra/data/ci/packages-publis
 
 // Injected in a secret because this is a public repository and having the config here would leak our environment names
 local updater_config_template = secret('updater_config_template', 'secret/data/common/loki_ci_autodeploy', 'updater-config-template.json');
+local helm_chart_auto_update_config_template = secret('helm-chart-update-config-template', 'secret/data/common/loki-helm-chart-auto-update', 'on-loki-release-config.json');
 
-local run(name, commands, env={}) = {
+
+local run(name, commands, env={}, image='grafana/loki-build-image:%s' % build_image_version) = {
   name: name,
-  image: 'grafana/loki-build-image:%s' % build_image_version,
+  image: image,
   commands: commands,
   environment: env,
 };
@@ -59,6 +67,21 @@ local make(target, container=true, args=[]) = run(target, [
     target,
   ] + args),
 ]);
+
+// The only indication we have that we're running in a fork is the presence of a secret.
+// If a secret is blank, it means we're running in a fork.
+local skipMissingSecretPipelineStep(secretName) = run(
+  'skip pipeline if missing secret',
+  [
+    'if [ "$${#TEST_SECRET}" -eq 0 ]; then',
+    '  echo "Missing a secret to run this pipeline. This branch needs to be re-pushed as a branch in main grafana/loki repository in order to run." && exit 78',
+    'fi',
+  ],
+  image='alpine',
+  env={
+    TEST_SECRET: { from_secret: secretName },
+  },
+);
 
 local docker(arch, app) = {
   name: '%s-image' % if $.settings.dry_run then 'build-' + app else 'publish-' + app,
@@ -176,10 +199,10 @@ local querytee() = pipeline('querytee-amd64') + arch_image('amd64', 'main') {
   depends_on: ['check'],
 };
 
-local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
+local fluentbit(arch) = pipeline('fluent-bit-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onPRs,
       settings+: {
@@ -189,7 +212,7 @@ local fluentbit() = pipeline('fluent-bit-amd64') + arch_image('amd64', 'main') {
     },
   ] + [
     // publish for tag or main
-    clients_docker('amd64', 'fluent-bit') {
+    clients_docker(arch, 'fluent-bit') {
       depends_on: ['image-tag'],
       when: onTagOrMain,
       settings+: {
@@ -270,10 +293,13 @@ local promtail(arch) = pipeline('promtail-' + arch) + arch_image(arch) {
 };
 
 local lambda_promtail(arch) = pipeline('lambda-promtail-' + arch) + arch_image(arch) {
+  local skipStep = skipMissingSecretPipelineStep(ecr_key.name),  // Needs ECR secrets to run
+
   steps+: [
+    skipStep,
     // dry run for everything that is not tag or main
     lambda_promtail_ecr('lambda-promtail') {
-      depends_on: ['image-tag'],
+      depends_on: ['image-tag', skipStep.name],
       when: onPRs,
       settings+: {
         dry_run: true,
@@ -304,7 +330,9 @@ local lokioperator(arch) = pipeline('lokioperator-' + arch) + arch_image(arch) {
     // publish for tag or main
     docker_operator(arch, 'loki-operator') {
       depends_on: ['image-tag'],
-      when: onTagOrMain,
+      when: onTagOrMain {
+        ref: ['refs/heads/main', 'refs/tags/operator/v*'],
+      },
       settings+: {},
     },
   ],
@@ -363,7 +391,7 @@ local manifest(apps) = pipeline('manifest') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.4.0',
       settings: {
         // the target parameter is abused for the app's name,
         // as it is unused in spec mode. See docker-manifest.tmpl
@@ -389,14 +417,39 @@ local manifest(apps) = pipeline('manifest') {
   ] + [
     'promtail-%s' % arch
     for arch in archs
+  ] + [
+    'fluent-bit-%s' % arch
+    for arch in archs
   ],
 };
+
+local manifest_operator(app) = pipeline('manifest-operator') {
+  steps: [{
+    name: 'manifest-' + app,
+    image: 'plugins/manifest:1.4.0',
+    settings: {
+      // the target parameter is abused for the app's name,
+      // as it is unused in spec mode. See docker-manifest-operator.tmpl
+      target: app,
+      spec: '.drone/docker-manifest-operator.tmpl',
+      ignore_missing: false,
+      username: { from_secret: docker_username_secret.name },
+      password: { from_secret: docker_password_secret.name },
+    },
+    depends_on: ['clone'],
+  }],
+  depends_on: [
+    'lokioperator-%s' % arch
+    for arch in archs
+  ],
+};
+
 
 local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   steps: std.foldl(
     function(acc, app) acc + [{
       name: 'manifest-' + app,
-      image: 'plugins/manifest',
+      image: 'plugins/manifest:1.4.0',
       volumes: [{
         name: 'dockerconf',
         path: '/.docker',
@@ -446,7 +499,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
 
 [
   pipeline('loki-build-image') {
-    local build_image_tag = '0.27.1',
+    local build_image_tag = '0.29.3-golangci.1.51.2',
     workspace: {
       base: '/src',
       path: 'loki',
@@ -525,7 +578,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
         'cd -',
       ]) { depends_on: ['clone'], when: onPRs },
       make('test', container=false) { depends_on: ['clone-target-branch', 'check-generated-files'] },
-      run('test-target-branch', commands=['cd ../loki-target-branch', 'BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
+      run('test-target-branch', commands=['cd ../loki-target-branch && BUILD_IN_CONTAINER=false make test']) { depends_on: ['clone-target-branch'], when: onPRs },
       make('compare-coverage', container=false, args=[
         'old=../loki-target-branch/test_results.txt',
         'new=test_results.txt',
@@ -551,6 +604,9 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       make('loki', container=false) { depends_on: ['check-generated-files'] },
       make('check-doc', container=false) { depends_on: ['loki'] },
+      make('check-format', container=false, args=[
+        'GIT_TARGET_BRANCH="$DRONE_TARGET_BRANCH"',
+      ]) { depends_on: ['loki'], when: onPRs },
       make('validate-example-configs', container=false) { depends_on: ['loki'] },
       make('check-example-config-doc', container=false) { depends_on: ['clone'] },
       {
@@ -622,19 +678,39 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   )
   for arch in archs
 ] + [
-  lokioperator(arch)
+  lokioperator(arch) {
+    trigger+: {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+        'refs/pull/*/head',
+      ],
+    },
+  }
   for arch in archs
 ] + [
-  fluentbit(),
+  fluentbit(arch)
+  for arch in archs
+] + [
   fluentd(),
   logstash(),
   querytee(),
-  manifest(['promtail', 'loki', 'loki-canary', 'loki-operator']) {
+  manifest(['promtail', 'loki', 'loki-canary', 'loki-canary-boringcrypto', 'fluent-bit-plugin-loki']) {
     trigger+: onTagOrMain,
+  },
+  manifest_operator('loki-operator') {
+    trigger+: onTagOrMain {
+      ref: [
+        'refs/heads/main',
+        'refs/tags/operator/v*',
+      ],
+    },
   },
   pipeline('deploy') {
     local configFileName = 'updater-config.json',
-    trigger+: onTagOrMain,
+    trigger: onTagOrMain {
+      ref: ['refs/heads/main', 'refs/tags/v*'],
+    },
     depends_on: ['manifest'],
     image_pull_secrets: [pull_secret.name],
     steps: [
@@ -665,12 +741,62 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       },
       {
         name: 'trigger',
-        image: 'us.gcr.io/kubernetes-dev/drone/plugins/updater',
+        image: drone_updater_plugin_image,
         settings: {
           github_token: { from_secret: github_secret.name },
           config_file: configFileName,
         },
         depends_on: ['prepare-updater-config'],
+      },
+    ],
+  },
+  pipeline('update-loki-helm-chart-on-loki-release') {
+    local configFileName = 'updater-config.json',
+    depends_on: ['manifest'],
+    image_pull_secrets: [pull_secret.name],
+    trigger: {
+      // wee need to run it only on Loki tags that starts with `v`.
+      ref: ['refs/tags/v*'],
+    },
+    steps: [
+      {
+        name: 'check-version-is-latest',
+        image: 'alpine',
+        when: onTag,
+        commands: [
+          'apk add --no-cache bash git',
+          'git fetch --tags',
+          "latest_version=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -n 1 | sed 's/v//g')",
+          'RELEASE_TAG=$(./tools/image-tag)',
+          'if [ "$RELEASE_TAG" != "$latest_version" ]; then echo "Current version $RELEASE_TAG is not the latest version of Loki. The latest version is $latest_version" && exit 78; fi',
+        ],
+      },
+      {
+        name: 'prepare-helm-chart-update-config',
+        image: 'alpine',
+        depends_on: ['check-version-is-latest'],
+        commands: [
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
+          'RELEASE_TAG=$(./tools/image-tag)',
+          'echo $PLUGIN_CONFIG_TEMPLATE > %s' % configFileName,
+          // replace placeholders with RELEASE TAG
+          'sed -i -E "s/\\{\\{release\\}\\}/$RELEASE_TAG/g" %s' % configFileName,
+        ],
+        settings: {
+          config_template: { from_secret: helm_chart_auto_update_config_template.name },
+        },
+      },
+      {
+        name: 'trigger-helm-chart-update',
+        image: drone_updater_plugin_image,
+        settings: {
+          github_token: {
+            from_secret: github_secret.name,
+          },
+          config_file: configFileName,
+        },
+        depends_on: ['prepare-helm-chart-update-config'],
       },
     ],
   },
@@ -723,6 +849,15 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
     // Package and test the packages
     steps: [
+      skipMissingSecretPipelineStep(gpg_private_key.name),  // Needs GPG keys to run
+      {
+        name: 'fetch-tags',
+        image: 'alpine',
+        commands: [
+          'apk add --no-cache bash git',
+          'git fetch origin --tags',
+        ],
+      },
       run('write-key',
           commands=['printf "%s" "$NFPM_SIGNING_KEY" > $NFPM_SIGNING_KEY_FILE'],
           env={
@@ -818,6 +953,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
   ecr_key,
   ecr_secret_key,
   updater_config_template,
+  helm_chart_auto_update_config_template,
   gpg_passphrase,
   gpg_private_key,
 ]

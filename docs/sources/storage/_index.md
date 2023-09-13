@@ -1,7 +1,7 @@
 ---
 title: Storage
 description: Storage
-weight: 1010
+weight: 475
 ---
 # Storage
 
@@ -11,82 +11,110 @@ is then compressed and stored in chunks in object stores such as S3 or GCS, or
 even locally on the filesystem. A small index and highly compressed chunks
 simplifies the operation and significantly lowers the cost of Loki.
 
-Until Loki 2.0, index data was stored in a separate index.
+Prior to Loki 2.0, chunks and index data were stored in separate backends:
+object storage (or filesystem) for chunk data and NoSQL/Key-Value databases for index data.
 
-Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call Single Store Loki.
-This index type only requires one store, the object store, for both the index and chunks.
+Loki 2.0 brings an index mechanism named 'boltdb-shipper' and is what we now call [Single Store](#single-store).
+This type only requires one store, the object store, for both the index and chunks.
 More detailed information can be found on the [operations page]({{< relref "../operations/storage/boltdb-shipper.md" >}}).
 
-Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
+Loki 2.8 adds TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki.
 
-## Implementations - Chunks
+You can find more storage information in the [manage section]({{< relref "../operations/storage/_index.md" >}}).
 
-### Cassandra
+## Single Store
 
-Cassandra is a popular database and one of Loki's possible chunk stores and is production safe.
+Single Store refers to using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
 
-### GCS
+### TSDB (recommended)
 
-GCS is a hosted object store offered by Google. It is a good candidate for a managed object store, especially when you're already running on GCP, and is production safe.
+Starting in Loki 2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
 
-### File System
-
-The file system is the simplest backend for chunks, although it's also susceptible to data loss as it's unreplicated. This is common for single binary deployments though, as well as for those trying out loki or doing local development on the project. It is similar in concept to many Prometheus deployments where a single Prometheus is responsible for monitoring a fleet.
-
-### S3
-
-S3 is AWS's hosted object store. It is a good candidate for a managed object store, especially when you're already running on AWS, and is production safe.
-
-### Azure Blob Storage
-
-Blob Storage is Microsoft Azure's hosted object store. It is a good candidate for a managed object store, especially when you're already running on Azure, and is production safe.
-You can authenticate Blob Storage access by using a storage account name and key or by using a Service Principal.
-
-### Notable Mentions
-
-You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
-
-## Implementations - Index
-
-### Single-Store
-
-Single-Store refers to the using object storage as the storage medium for both Loki's index as well as its data ("chunks"). There are two supported modes:
-
-#### tsdb (recommended)
-
-Starting in Loki v2.8, the [TSDB index store]({{< relref "../operations/storage/tsdb" >}}) improves query performance, reduces TCO and has the same feature parity as "boltdb-shipper".
-
-#### BoltDB (deprecated)
+### BoltDB (deprecated)
 
 Also known as "boltdb-shipper" during development (and is still the schema `store` name). The single store configurations for Loki utilize the chunk store for both chunks and the index, requiring just one store to run Loki.
 
 Performance is comparable to a dedicated index type while providing a much less expensive and less complicated deployment.
+When using Single Store, no extra [Chunk storage](#chunk-storage) and [Index storage](#index-storage) are necessary.
 
-### Cassandra
+### Supported storage backends
 
-Cassandra can also be utilized for the index store and aside from the [boltdb-shipper]({{<relref "../operations/storage/boltdb-shipper">}}), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
+See [Object Storage](#object-storage) for supported backends.
 
-### BigTable
+## Chunk storage
 
-Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to it's heavy fixed costs) or wish to run in GCP.
+### File system
 
-### DynamoDB
+The file system is the simplest backend for chunks, although it's also susceptible to data loss as it's unreplicated. This is common for single binary deployments though, as well as for those trying out loki or doing local development on the project. It is similar in concept to many Prometheus deployments where a single Prometheus is responsible for monitoring a fleet.
+
+### Object storage
+
+#### Google Cloud Storage (GCS)
+
+GCS is a hosted object store offered by Google. It is a good candidate for a managed object store, especially when you're already running on GCP, and is production safe.
+
+#### Amazon Simple Storage Storage (S3)
+
+S3 is AWS's hosted object store. It is a good candidate for a managed object store, especially when you're already running on AWS, and is production safe.
+
+#### Azure Blob Storage
+
+Blob Storage is Microsoft Azure's hosted object store. It is a good candidate for a managed object store, especially when you're already running on Azure, and is production safe.
+You can authenticate Blob Storage access by using a storage account name and key or by using a Service Principal.
+
+#### IBM Cloud Object Storage (COS)
+
+[COS](https://www.ibm.com/cloud/object-storage) is IBM Cloud hosted object store. It is a good candidate for a managed object store, especially when you're already running on IBM Cloud, and is production safe.
+
+#### Baidu Object Storage (BOS)
+
+[BOS](https://intl.cloud.baidu.com/product/bos.html) is the Baidu CLoud hosted object storage.
+
+#### Alibaba Object Storage Service (OSS)
+
+[OSS](https://www.alibabacloud.com/product/object-storage-service) is the Alibaba Cloud hosted object storage.
+
+#### Other notable mentions
+
+You may use any substitutable services, such as those that implement the S3 API like [MinIO](https://min.io/).
+
+### Cassandra (deprecated)
+
+Cassandra is a popular database and one of Loki's possible chunk stores and is production safe.
+
+> **Note:** This storage type for chunks is deprecated and may be removed in future major versions of Loki.
+
+## Index storage
+
+### Cassandra (deprecated)
+
+Cassandra can also be utilized for the index store and aside from the [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}), it's the only non-cloud offering that can be used for the index that's horizontally scalable and has configurable replication. It's a good candidate when you already run Cassandra, are running on-prem, or do not wish to use a managed cloud offering.
+
+> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+
+### BigTable (deprecated)
+
+Bigtable is a cloud database offered by Google. It is a good candidate for a managed index store if you're already using it (due to its heavy fixed costs) or wish to run in GCP.
+
+> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+
+### DynamoDB (deprecated)
 
 DynamoDB is a cloud database offered by AWS. It is a good candidate for a managed index store, especially if you're already running in AWS.
 
-#### Rate Limiting
+> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
+
+#### Rate limiting
 
 DynamoDB is susceptible to rate limiting, particularly due to overconsuming what is called [provisioned capacity](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html). This can be controlled via the [provisioning](#provisioning) configs in the table manager.
 
-### BoltDB
+### BoltDB (deprecated)
 
-BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper]({{<relref "../operations/storage/boltdb-shipper">}}) aims to support clustered deployments using `boltdb` as an index.
+BoltDB is an embedded database on disk. It is not replicated and thus cannot be used for high availability or clustered Loki deployments, but is commonly paired with a `filesystem` chunk store for proof of concept deployments, trying out Loki, and development. The [boltdb-shipper]({{< relref "../operations/storage/boltdb-shipper" >}}) aims to support clustered deployments using `boltdb` as an index.
 
-### Azure Storage Account
+> **Note:** This storage type for indexes is deprecated and may be removed in future major versions of Loki.
 
-An Azure storage account contains all of your Azure Storage data objects: blobs, file shares, queues, tables, and disks.
-
-## Schema Configs
+## Schema Config
 
 Loki aims to be backwards compatible and over the course of its development has had many internal changes that facilitate better and more efficient storage/querying. Loki allows incrementally upgrading to these new storage _schemas_ and can query across them transparently. This makes upgrading a breeze. For instance, this is what it looks like when migrating from the v10 -> v11 schemas starting 2020-07-01:
 
@@ -109,11 +137,11 @@ schema_config:
         period: 168h
 ```
 
-For all data ingested before 2020-07-01, Loki used the v10 schema and then switched after that point to the more effective v11. This dramatically simplifies upgrading, ensuring it's simple to take advantages of new storage optimizations. These configs should be immutable for as long as you care about retention.
+For all data ingested before 2020-07-01, Loki used the v10 schema and then switched after that point to the more effective v11. This dramatically simplifies upgrading, ensuring it's simple to take advantage of new storage optimizations. These configs should be immutable for as long as you care about retention.
 
-## Table Manager
+## Table Manager (deprecated)
 
-One of the subcomponents in Loki is the `table-manager`. It is responsible for pre-creating and expiring index tables. This helps partition the writes and reads in loki across a set of distinct indices in order to prevent unbounded growth.
+One of the subcomponents in Loki is the `table-manager`. It is responsible for pre-creating and expiring index tables. This helps partition the writes and reads in Loki across a set of distinct indices in order to prevent unbounded growth.
 
 ```yaml
 table_manager:
@@ -124,7 +152,7 @@ table_manager:
   retention_period: 2520h
 ```
 
-For more information, see the [table manager]({{<relref "../operations/storage/table-manager">}}) documentation.
+For more information, see the [table manager]({{< relref "../operations/storage/table-manager" >}}) documentation.
 
 ### Provisioning
 
@@ -143,13 +171,13 @@ table_manager:
     inactive_read_throughput: <int> | Default = 300
 ```
 
-Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration]({{<relref "../configuration/#table_manager">}}) in the `table_manager` block documentation for more information.
+Note, there are a few other DynamoDB provisioning options including DynamoDB autoscaling and on-demand capacity. See the [provisioning configuration]({{< relref "../configure#table_manager" >}}) in the `table_manager` block documentation for more information.
 
 ## Upgrading Schemas
 
 When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query & merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
 
-First, you'll want to create a new [period_config]({{<relref "../configuration#period_config">}}) entry in your [schema_config]({{<relref "../configuration#schema_config">}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
+First, you'll want to create a new [period_config]({{< relref "../configure#period_config" >}}) entry in your [schema_config]({{< relref "../configure#schema_config" >}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
 As an example, let's say it's 2020-07-14 and we want to start using the `v11` schema on the 20th:
 ```yaml
@@ -179,14 +207,14 @@ With the exception of the `filesystem` chunk store, Loki will not delete old chu
 
 We're interested in adding targeted deletion in future Loki releases (think tenant or stream level granularity) and may include other strategies as well.
 
-For more information, see the [retention configuration]({{<relref "../operations/storage/retention">}}) documentation.
+For more information, see the [retention configuration]({{< relref "../operations/storage/retention" >}}) documentation.
 
 
 ## Examples
 
 ### Single machine/local development (boltdb+filesystem)
 
-[The repo contains a working example](https://github.com/grafana/loki/blob/master/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
+[The repo contains a working example](https://github.com/grafana/loki/blob/main/cmd/loki/loki-local-config.yaml), you may want to checkout a tag of the repo to make sure you get a compatible example.
 
 ### GCP deployment (GCS Single Store)
 
@@ -305,63 +333,7 @@ This guide assumes a provisioned EKS cluster.
    `bucket_name` variable.
 
 
-### On prem deployment (Cassandra+Cassandra)
-
-**Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
-
-```yaml
-storage_config:
-  cassandra:
-    addresses: <comma-separated-IPs-or-hostnames>
-    keyspace: <keyspace>
-    auth: <true|false>
-    username: <username> # only applicable when auth=true
-    password: <password> # only applicable when auth=true
-
-schema_config:
-  configs:
-    - from: 2020-07-01
-      store: cassandra
-      object_store: cassandra
-      schema: v11
-      index:
-        prefix: index_
-        period: 168h
-      chunks:
-        prefix: chunk_
-        period: 168h
-
-```
-
-### On prem deployment (MinIO Single Store)
-
-We configure MinIO by using the AWS config because MinIO implements the S3 API:
-
-```yaml
-storage_config:
-  aws:
-    # Note: use a fully qualified domain name, like localhost.
-    # full example: http://loki:supersecret@localhost.:9000
-    s3: http<s>://<username>:<secret>@<fqdn>:<port>
-    s3forcepathstyle: true
-  boltdb_shipper:
-    active_index_directory: /loki/boltdb-shipper-active
-    cache_location: /loki/boltdb-shipper-cache
-    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
-    shared_store: s3
-
-schema_config:
-  configs:
-    - from: 2020-07-01
-      store: boltdb-shipper
-      object_store: aws
-      schema: v11
-      index:
-        prefix: index_
-        period: 24h
-```
-
-### Azure Storage Account
+### Azure deployment (Azure Blob Storage Single Store)
 
 #### Using account name and key
 
@@ -429,4 +401,85 @@ storage_config:
     shared_store: azure
   filesystem:
     directory: /data/loki/chunks
+```
+
+### IBM Deployment (COS Single Store)
+
+```yaml
+schema_config:
+  configs:
+    - from: 2020-10-01
+      index:
+        period: 24h
+        prefix: loki_index_
+      object_store: "cos"
+      schema: v11
+      store: "boltdb-shipper"
+
+storage_config:
+  cos:
+    bucketnames: <bucket1, bucket2>
+    endpoint: <endpoint>
+    api_key: <api_key_to_authenticate_with_cos>
+    region: <region>
+    service_instance_id: <cos_service_instance_id>
+    auth_endpoint: <iam_endpoint_for_authentication>
+```
+
+### On premise deployment (Cassandra+Cassandra)
+
+> **Note:** Cassandra as storage backend for chunks and indexes is deprecated.
+
+**Keeping this for posterity, but this is likely not a common config. Cassandra should work and could be faster in some situations but is likely much more expensive.**
+
+```yaml
+storage_config:
+  cassandra:
+    addresses: <comma-separated-IPs-or-hostnames>
+    keyspace: <keyspace>
+    auth: <true|false>
+    username: <username> # only applicable when auth=true
+    password: <password> # only applicable when auth=true
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: cassandra
+      object_store: cassandra
+      schema: v11
+      index:
+        prefix: index_
+        period: 168h
+      chunks:
+        prefix: chunk_
+        period: 168h
+
+```
+
+### On premise deployment (MinIO Single Store)
+
+We configure MinIO by using the AWS config because MinIO implements the S3 API:
+
+```yaml
+storage_config:
+  aws:
+    # Note: use a fully qualified domain name, like localhost.
+    # full example: http://loki:supersecret@localhost.:9000
+    s3: http<s>://<username>:<secret>@<fqdn>:<port>
+    s3forcepathstyle: true
+  boltdb_shipper:
+    active_index_directory: /loki/boltdb-shipper-active
+    cache_location: /loki/boltdb-shipper-cache
+    cache_ttl: 24h         # Can be increased for faster performance over longer query periods, uses more disk space
+    shared_store: s3
+
+schema_config:
+  configs:
+    - from: 2020-07-01
+      store: boltdb-shipper
+      object_store: aws
+      schema: v11
+      index:
+        prefix: index_
+        period: 24h
 ```

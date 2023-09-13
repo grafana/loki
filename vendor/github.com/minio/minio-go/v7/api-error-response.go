@@ -22,8 +22,8 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 /* **** SAMPLE ERROR RESPONSE ****
@@ -67,14 +67,14 @@ type ErrorResponse struct {
 //
 // For example:
 //
-//   import s3 "github.com/minio/minio-go/v7"
-//   ...
-//   ...
-//   reader, stat, err := s3.GetObject(...)
-//   if err != nil {
-//      resp := s3.ToErrorResponse(err)
-//   }
-//   ...
+//	import s3 "github.com/minio/minio-go/v7"
+//	...
+//	...
+//	reader, stat, err := s3.GetObject(...)
+//	if err != nil {
+//	   resp := s3.ToErrorResponse(err)
+//	}
+//	...
 func ToErrorResponse(err error) ErrorResponse {
 	switch err := err.(type) {
 	case ErrorResponse:
@@ -108,7 +108,7 @@ const (
 func xmlDecodeAndBody(bodyReader io.Reader, v interface{}) ([]byte, error) {
 	// read the whole body (up to 1MB)
 	const maxBodyLength = 1 << 20
-	body, err := ioutil.ReadAll(io.LimitReader(bodyReader, maxBodyLength))
+	body, err := io.ReadAll(io.LimitReader(bodyReader, maxBodyLength))
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +189,15 @@ func httpRespToErrorResponse(resp *http.Response, bucketName, objectName string)
 		}
 	}
 
+	code := resp.Header.Get("x-minio-error-code")
+	if code != "" {
+		errResp.Code = code
+	}
+	desc := resp.Header.Get("x-minio-error-desc")
+	if desc != "" {
+		errResp.Message = strings.Trim(desc, `"`)
+	}
+
 	// Save hostID, requestID and region information
 	// from headers if not available through error XML.
 	if errResp.RequestID == "" {
@@ -250,26 +259,6 @@ func errUnexpectedEOF(totalRead, totalSize int64, bucketName, objectName string)
 		Message:    msg,
 		BucketName: bucketName,
 		Key:        objectName,
-	}
-}
-
-// errInvalidBucketName - Invalid bucket name response.
-func errInvalidBucketName(message string) error {
-	return ErrorResponse{
-		StatusCode: http.StatusBadRequest,
-		Code:       "InvalidBucketName",
-		Message:    message,
-		RequestID:  "minio",
-	}
-}
-
-// errInvalidObjectName - Invalid object name response.
-func errInvalidObjectName(message string) error {
-	return ErrorResponse{
-		StatusCode: http.StatusNotFound,
-		Code:       "NoSuchKey",
-		Message:    message,
-		RequestID:  "minio",
 	}
 }
 

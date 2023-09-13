@@ -7,20 +7,32 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
 
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/syntax"
+	"github.com/grafana/loki/pkg/push"
 	"github.com/grafana/loki/pkg/storage"
 )
 
+type pushRequest struct {
+	stream  map[string]string
+	entries []logproto.Entry
+}
+
 func TestMicroServicesDeleteRequest(t *testing.T) {
-	clu := cluster.New()
+	storage.ResetBoltDBIndexClientsWithShipper()
+	clu := cluster.New(nil, cluster.SchemaWithBoltDBAndBoltDB, func(c *cluster.Cluster) {
+		c.SetSchemaVer("v13")
+	})
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 	}()
 
 	// initially, run only compactor, index-gateway and distributor.
@@ -88,68 +100,128 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	cliCompactor := client.New(tenantID, "", tCompactor.HTTPURL())
 	cliCompactor.Now = now
 
+	var pushRequests []pushRequest
 	var expectedStreams []client.StreamValues
 	for _, deletionType := range []string{"filter", "filter_no_match", "nothing", "partially_by_time", "whole"} {
-		expectedStreams = append(expectedStreams, client.StreamValues{
-			Stream: map[string]string{
+		pushRequests = append(pushRequests, pushRequest{
+			stream: map[string]string{
 				"job":           "fake",
 				"deletion_type": deletionType,
 			},
-			Values: [][]string{
+			entries: []logproto.Entry{
 				{
-					strconv.FormatInt(now.Add(-45*time.Minute).UnixNano(), 10),
-					"lineA",
+					Timestamp: now.Add(-48 * time.Hour),
+					Line:      "lineA",
 				},
 				{
-					strconv.FormatInt(now.Add(-45*time.Minute).UnixNano(), 10),
-					"lineB",
+					Timestamp: now.Add(-48 * time.Hour),
+					Line:      "lineB",
 				},
 				{
-					strconv.FormatInt(now.Add(-time.Minute).UnixNano(), 10),
-					"lineC",
+					Timestamp: now.Add(-time.Minute),
+					Line:      "lineC",
 				},
 				{
-					strconv.FormatInt(now.Add(-time.Minute).UnixNano(), 10),
-					"lineD",
+					Timestamp: now.Add(-time.Minute),
+					Line:      "lineD",
 				},
 			},
 		})
 	}
 
+	pushRequests = append(pushRequests, pushRequest{
+		stream: map[string]string{
+			"job":           "fake",
+			"deletion_type": "with_structured_metadata",
+		},
+		entries: []logproto.Entry{
+			{
+				Timestamp: now.Add(-48 * time.Hour),
+				Line:      "AlineA",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "line",
+						Value: "A",
+					},
+				},
+			},
+			{
+				Timestamp: now.Add(-48 * time.Hour),
+				Line:      "AlineB",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "line",
+						Value: "B",
+					},
+				},
+			},
+			{
+				Timestamp: now.Add(-time.Minute),
+				Line:      "AlineC",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "line",
+						Value: "C",
+					},
+				},
+			},
+			{
+				Timestamp: now.Add(-time.Minute),
+				Line:      "AlineD",
+				StructuredMetadata: push.LabelsAdapter{
+					{
+						Name:  "line",
+						Value: "D",
+					},
+				},
+			},
+		},
+	})
+
+	for _, pr := range pushRequests {
+		expectedStreams = append(expectedStreams, pushRequestToClientStreamValues(t, pr)...)
+	}
+
 	expectedDeleteRequests := []client.DeleteRequest{
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
 			Query:     `{deletion_type="filter"} |= "lineB"`,
 			Status:    "received",
 		},
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
 			Query:     `{deletion_type="filter_no_match"} |= "foo"`,
 			Status:    "received",
 		},
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Add(-10 * time.Minute).Unix(),
 			Query:     `{deletion_type="partially_by_time"}`,
 			Status:    "received",
 		},
 		{
-			StartTime: now.Add(-time.Hour).Unix(),
+			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
 			Query:     `{deletion_type="whole"}`,
 			Status:    "received",
 		},
+		{
+			StartTime: now.Add(-48 * time.Hour).Unix(),
+			EndTime:   now.Unix(),
+			Query:     `{deletion_type="with_structured_metadata"} | line="A"`,
+			Status:    "received",
+		},
 	}
 
-	validateQueryResponse := func(resp *client.Response) {
+	validateQueryResponse := func(expectedStreams []client.StreamValues, resp *client.Response) {
 		t.Helper()
 		assert.Equal(t, "streams", resp.Data.ResultType)
 
 		require.Len(t, resp.Data.Stream, len(expectedStreams))
 		sort.Slice(resp.Data.Stream, func(i, j int) bool {
-			return resp.Data.Stream[i].Stream["deletion_type"] < resp.Data.Stream[j].Stream["deletion_type"]
+			return labels.FromMap(resp.Data.Stream[i].Stream).String() < labels.FromMap(resp.Data.Stream[j].Stream).String()
 		})
 		for _, stream := range resp.Data.Stream {
 			sort.Slice(stream.Values, func(i, j int) bool {
@@ -161,11 +233,14 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 
 	t.Run("ingest-logs", func(t *testing.T) {
 		// ingest some log lines
-		for _, stream := range expectedStreams {
-			for _, val := range stream.Values {
-				tsNs, err := strconv.ParseInt(val[0], 10, 64)
-				require.NoError(t, err)
-				require.NoError(t, cliDistributor.PushLogLineWithTimestamp(val[1], time.Unix(0, tsNs), stream.Stream))
+		for _, pr := range pushRequests {
+			for _, entry := range pr.entries {
+				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata(
+					entry.Line,
+					entry.Timestamp,
+					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),
+					pr.stream,
+				))
 			}
 		}
 	})
@@ -173,7 +248,26 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("query", func(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
-		validateQueryResponse(resp)
+
+		// given default value of query_ingesters_within is 3h, older samples won't be present in the response
+		var es []client.StreamValues
+		for _, stream := range expectedStreams {
+			s := client.StreamValues{
+				Stream: stream.Stream,
+				Values: nil,
+			}
+			for _, sv := range stream.Values {
+				tsNs, err := strconv.ParseInt(sv[0], 10, 64)
+				require.NoError(t, err)
+				if !time.Unix(0, tsNs).Before(now.Add(-3 * time.Hour)) {
+					s.Values = append(s.Values, sv)
+				}
+			}
+			if len(s.Values) > 0 {
+				es = append(es, s)
+			}
+		}
+		validateQueryResponse(es, resp)
 	})
 
 	t.Run("flush-logs-and-restart-ingester-querier", func(t *testing.T) {
@@ -184,10 +278,10 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		cliIngester.Now = now
 		metrics, err := cliIngester.Metrics()
 		require.NoError(t, err)
-		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 5)
+		checkMetricValue(t, "loki_ingester_chunks_flushed_total", metrics, 6)
 
 		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 	})
 
@@ -195,7 +289,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	t.Run("query again to verify logs being served from storage", func(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
-		validateQueryResponse(resp)
+		validateQueryResponse(expectedStreams, resp)
 	})
 
 	t.Run("add-delete-requests", func(t *testing.T) {
@@ -218,19 +312,19 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	// Query lines
 	t.Run("verify query time filtering", func(t *testing.T) {
 		// reset boltdb-shipper client and restart querier
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		// update expectedStreams as per the issued requests
 		expectedStreams[0].Values = append(expectedStreams[0].Values[:1], expectedStreams[0].Values[2:]...)
 		expectedStreams[3].Values = expectedStreams[3].Values[2:]
-		expectedStreams = expectedStreams[:4]
+		expectedStreams = append(expectedStreams[:4], expectedStreams[6:]...)
 
 		// query and verify that we get the resp which matches expectedStreams
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 
-		validateQueryResponse(resp)
+		validateQueryResponse(expectedStreams, resp)
 	})
 
 	// Wait until delete request is finished
@@ -264,7 +358,10 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		metrics, err := cliCompactor.Metrics()
 		require.NoError(t, err)
 		checkUserLabelAndMetricValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, float64(len(expectedDeleteRequests)))
-		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 1)
+
+		// ideally this metric should be equal to 2 given that a single line matches the line filter and structured metadata filter
+		// but the same chunks are indexed in 3 tables
+		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 6)
 	})
 
 	// Query lines
@@ -275,7 +372,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, tQuerier.SetTenantLimits(tenantID, tenantLimits))
 
 		// restart querier to make it sync the index
-		storage.ResetBoltDBIndexClientWithShipper()
+		storage.ResetBoltDBIndexClientsWithShipper()
 		require.NoError(t, tQuerier.Restart())
 
 		// ensure the deletion-mode limit is updated
@@ -284,7 +381,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), `{job="fake"}`)
 		require.NoError(t, err)
 
-		validateQueryResponse(resp)
+		validateQueryResponse(expectedStreams, resp)
 	})
 }
 
@@ -301,7 +398,44 @@ func checkUserLabelAndMetricValue(t *testing.T, metricName, metrics, tenantID st
 
 func checkMetricValue(t *testing.T, metricName, metrics string, expectedValue float64) {
 	t.Helper()
+	require.Equal(t, expectedValue, getMetricValue(t, metricName, metrics))
+}
+
+func getMetricValue(t *testing.T, metricName, metrics string) float64 {
+	t.Helper()
 	val, _, err := extractMetric(metricName, metrics)
 	require.NoError(t, err)
-	require.Equal(t, expectedValue, val)
+	return val
+}
+
+func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.StreamValues {
+	logsByStream := map[string][][]string{}
+	for _, entry := range p.entries {
+		lb := labels.NewBuilder(labels.FromMap(p.stream))
+		for _, l := range entry.StructuredMetadata {
+			lb.Set(l.Name, l.Value)
+		}
+		stream := lb.Labels().String()
+		logsByStream[stream] = append(logsByStream[stream], []string{
+			strconv.FormatInt(entry.Timestamp.UnixNano(), 10),
+			entry.Line,
+		})
+	}
+
+	var svs []client.StreamValues
+	for stream, values := range logsByStream {
+		parsedLabels, err := syntax.ParseLabels(stream)
+		require.NoError(t, err)
+
+		svs = append(svs, client.StreamValues{
+			Stream: parsedLabels.Map(),
+			Values: values,
+		})
+	}
+
+	sort.Slice(svs, func(i, j int) bool {
+		return labels.FromMap(svs[i].Stream).String() < labels.FromMap(svs[j].Stream).String()
+	})
+
+	return svs
 }

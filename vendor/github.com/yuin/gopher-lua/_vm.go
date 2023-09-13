@@ -840,7 +840,7 @@ func luaModulo(lhs, rhs LNumber) LNumber {
 	flhs := float64(lhs)
 	frhs := float64(rhs)
 	v := math.Mod(flhs, frhs)
-	if flhs < 0 || frhs < 0 && !(flhs < 0 && frhs < 0) {
+	if frhs > 0 && v < 0 || frhs < 0 && v > 0 {
 		v += frhs
 	}
 	return LNumber(v)

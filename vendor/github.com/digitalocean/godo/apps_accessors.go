@@ -110,6 +110,14 @@ func (a *App) GetOwnerUUID() string {
 	return a.OwnerUUID
 }
 
+// GetPendingDeployment returns the PendingDeployment field.
+func (a *App) GetPendingDeployment() *Deployment {
+	if a == nil {
+		return nil
+	}
+	return a.PendingDeployment
+}
+
 // GetPinnedDeployment returns the PinnedDeployment field.
 func (a *App) GetPinnedDeployment() *Deployment {
 	if a == nil {
@@ -356,6 +364,14 @@ func (a *AppBuildConfigCNBVersioning) GetBuildpacks() []*Buildpack {
 		return nil
 	}
 	return a.Buildpacks
+}
+
+// GetStackID returns the StackID field.
+func (a *AppBuildConfigCNBVersioning) GetStackID() string {
+	if a == nil {
+		return ""
+	}
+	return a.StackID
 }
 
 // GetAllowCredentials returns the AllowCredentials field.
@@ -790,6 +806,126 @@ func (a *AppIngressSpec) GetLoadBalancerSize() int64 {
 	return a.LoadBalancerSize
 }
 
+// GetRules returns the Rules field.
+func (a *AppIngressSpec) GetRules() []*AppIngressSpecRule {
+	if a == nil {
+		return nil
+	}
+	return a.Rules
+}
+
+// GetComponent returns the Component field.
+func (a *AppIngressSpecRule) GetComponent() *AppIngressSpecRuleRoutingComponent {
+	if a == nil {
+		return nil
+	}
+	return a.Component
+}
+
+// GetCORS returns the CORS field.
+func (a *AppIngressSpecRule) GetCORS() *AppCORSPolicy {
+	if a == nil {
+		return nil
+	}
+	return a.CORS
+}
+
+// GetMatch returns the Match field.
+func (a *AppIngressSpecRule) GetMatch() *AppIngressSpecRuleMatch {
+	if a == nil {
+		return nil
+	}
+	return a.Match
+}
+
+// GetRedirect returns the Redirect field.
+func (a *AppIngressSpecRule) GetRedirect() *AppIngressSpecRuleRoutingRedirect {
+	if a == nil {
+		return nil
+	}
+	return a.Redirect
+}
+
+// GetPath returns the Path field.
+func (a *AppIngressSpecRuleMatch) GetPath() *AppIngressSpecRuleStringMatch {
+	if a == nil {
+		return nil
+	}
+	return a.Path
+}
+
+// GetName returns the Name field.
+func (a *AppIngressSpecRuleRoutingComponent) GetName() string {
+	if a == nil {
+		return ""
+	}
+	return a.Name
+}
+
+// GetPreservePathPrefix returns the PreservePathPrefix field.
+func (a *AppIngressSpecRuleRoutingComponent) GetPreservePathPrefix() bool {
+	if a == nil {
+		return false
+	}
+	return a.PreservePathPrefix
+}
+
+// GetRewrite returns the Rewrite field.
+func (a *AppIngressSpecRuleRoutingComponent) GetRewrite() string {
+	if a == nil {
+		return ""
+	}
+	return a.Rewrite
+}
+
+// GetAuthority returns the Authority field.
+func (a *AppIngressSpecRuleRoutingRedirect) GetAuthority() string {
+	if a == nil {
+		return ""
+	}
+	return a.Authority
+}
+
+// GetPort returns the Port field.
+func (a *AppIngressSpecRuleRoutingRedirect) GetPort() int64 {
+	if a == nil {
+		return 0
+	}
+	return a.Port
+}
+
+// GetRedirectCode returns the RedirectCode field.
+func (a *AppIngressSpecRuleRoutingRedirect) GetRedirectCode() int64 {
+	if a == nil {
+		return 0
+	}
+	return a.RedirectCode
+}
+
+// GetScheme returns the Scheme field.
+func (a *AppIngressSpecRuleRoutingRedirect) GetScheme() string {
+	if a == nil {
+		return ""
+	}
+	return a.Scheme
+}
+
+// GetUri returns the Uri field.
+func (a *AppIngressSpecRuleRoutingRedirect) GetUri() string {
+	if a == nil {
+		return ""
+	}
+	return a.Uri
+}
+
+// GetPrefix returns the Prefix field.
+func (a *AppIngressSpecRuleStringMatch) GetPrefix() string {
+	if a == nil {
+		return ""
+	}
+	return a.Prefix
+}
+
 // GetCPUs returns the CPUs field.
 func (a *AppInstanceSize) GetCPUs() string {
 	if a == nil {
@@ -892,6 +1028,14 @@ func (a *AppJobSpec) GetDockerfilePath() string {
 		return ""
 	}
 	return a.DockerfilePath
+}
+
+// GetEnvironmentSlug returns the EnvironmentSlug field.
+func (a *AppJobSpec) GetEnvironmentSlug() string {
+	if a == nil {
+		return ""
+	}
+	return a.EnvironmentSlug
 }
 
 // GetEnvs returns the Envs field.
@@ -1318,6 +1462,14 @@ func (a *AppServiceSpec) GetDockerfilePath() string {
 	return a.DockerfilePath
 }
 
+// GetEnvironmentSlug returns the EnvironmentSlug field.
+func (a *AppServiceSpec) GetEnvironmentSlug() string {
+	if a == nil {
+		return ""
+	}
+	return a.EnvironmentSlug
+}
+
 // GetEnvs returns the Envs field.
 func (a *AppServiceSpec) GetEnvs() []*AppVariableDefinition {
 	if a == nil {
@@ -1638,6 +1790,14 @@ func (a *AppStaticSiteSpec) GetDockerfilePath() string {
 	return a.DockerfilePath
 }
 
+// GetEnvironmentSlug returns the EnvironmentSlug field.
+func (a *AppStaticSiteSpec) GetEnvironmentSlug() string {
+	if a == nil {
+		return ""
+	}
+	return a.EnvironmentSlug
+}
+
 // GetEnvs returns the Envs field.
 func (a *AppStaticSiteSpec) GetEnvs() []*AppVariableDefinition {
 	if a == nil {
@@ -1828,6 +1988,14 @@ func (a *AppWorkerSpec) GetDockerfilePath() string {
 		return ""
 	}
 	return a.DockerfilePath
+}
+
+// GetEnvironmentSlug returns the EnvironmentSlug field.
+func (a *AppWorkerSpec) GetEnvironmentSlug() string {
+	if a == nil {
+		return ""
+	}
+	return a.EnvironmentSlug
 }
 
 // GetEnvs returns the Envs field.
@@ -2100,6 +2268,14 @@ func (d *Deployment) GetTierSlug() string {
 		return ""
 	}
 	return d.TierSlug
+}
+
+// GetTiming returns the Timing field.
+func (d *Deployment) GetTiming() *DeploymentTiming {
+	if d == nil {
+		return nil
+	}
+	return d.Timing
 }
 
 // GetUpdatedAt returns the UpdatedAt field.
@@ -2510,6 +2686,70 @@ func (d *DeploymentStaticSite) GetSourceCommitHash() string {
 	return d.SourceCommitHash
 }
 
+// GetBuildBillable returns the BuildBillable field.
+func (d *DeploymentTiming) GetBuildBillable() string {
+	if d == nil {
+		return ""
+	}
+	return d.BuildBillable
+}
+
+// GetBuildTotal returns the BuildTotal field.
+func (d *DeploymentTiming) GetBuildTotal() string {
+	if d == nil {
+		return ""
+	}
+	return d.BuildTotal
+}
+
+// GetComponents returns the Components field.
+func (d *DeploymentTiming) GetComponents() []*DeploymentTimingComponent {
+	if d == nil {
+		return nil
+	}
+	return d.Components
+}
+
+// GetDatabaseProvision returns the DatabaseProvision field.
+func (d *DeploymentTiming) GetDatabaseProvision() string {
+	if d == nil {
+		return ""
+	}
+	return d.DatabaseProvision
+}
+
+// GetDeploying returns the Deploying field.
+func (d *DeploymentTiming) GetDeploying() string {
+	if d == nil {
+		return ""
+	}
+	return d.Deploying
+}
+
+// GetPending returns the Pending field.
+func (d *DeploymentTiming) GetPending() string {
+	if d == nil {
+		return ""
+	}
+	return d.Pending
+}
+
+// GetBuildBillable returns the BuildBillable field.
+func (d *DeploymentTimingComponent) GetBuildBillable() string {
+	if d == nil {
+		return ""
+	}
+	return d.BuildBillable
+}
+
+// GetName returns the Name field.
+func (d *DeploymentTimingComponent) GetName() string {
+	if d == nil {
+		return ""
+	}
+	return d.Name
+}
+
 // GetBuildpacks returns the Buildpacks field.
 func (d *DeploymentWorker) GetBuildpacks() []*Buildpack {
 	if d == nil {
@@ -2644,6 +2884,14 @@ func (d *DetectResponseComponent) GetDockerfiles() []string {
 		return nil
 	}
 	return d.Dockerfiles
+}
+
+// GetEnvironmentSlug returns the EnvironmentSlug field.
+func (d *DetectResponseComponent) GetEnvironmentSlug() string {
+	if d == nil {
+		return ""
+	}
+	return d.EnvironmentSlug
 }
 
 // GetEnvVars returns the EnvVars field.
@@ -2884,6 +3132,14 @@ func (i *ImageSourceSpecDeployOnPush) GetEnabled() bool {
 		return false
 	}
 	return i.Enabled
+}
+
+// GetBuildpacks returns the Buildpacks field.
+func (l *ListBuildpacksResponse) GetBuildpacks() []*Buildpack {
+	if l == nil {
+		return nil
+	}
+	return l.Buildpacks
 }
 
 // GetAffectedComponents returns the AffectedComponents field.

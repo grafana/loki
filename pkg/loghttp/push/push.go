@@ -17,10 +17,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/prometheus/model/labels"
 
+	"github.com/grafana/loki/pkg/analytics"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
-	"github.com/grafana/loki/pkg/usagestats"
 	"github.com/grafana/loki/pkg/util"
 	loki_util "github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/unmarshal"
@@ -33,7 +33,12 @@ var (
 	bytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
 		Name:      "distributor_bytes_received_total",
-		Help:      "The total number of uncompressed bytes received per tenant",
+		Help:      "The total number of uncompressed bytes received per tenant. Includes structured metadata bytes.",
+	}, []string{"tenant", "retention_hours"})
+	structuredMetadataBytesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
+		Namespace: "loki",
+		Name:      "distributor_structured_metadata_bytes_received_total",
+		Help:      "The total number of uncompressed bytes received per tenant for entries' structured metadata",
 	}, []string{"tenant", "retention_hours"})
 	linesIngested = promauto.NewCounterVec(prometheus.CounterOpts{
 		Namespace: "loki",
@@ -41,8 +46,9 @@ var (
 		Help:      "The total number of lines received per tenant",
 	}, []string{"tenant"})
 
-	bytesReceivedStats = usagestats.NewCounter("distributor_bytes_received")
-	linesReceivedStats = usagestats.NewCounter("distributor_lines_received")
+	bytesReceivedStats                   = analytics.NewCounter("distributor_bytes_received")
+	structuredMetadataBytesReceivedStats = analytics.NewCounter("distributor_structured_metadata_bytes_received")
+	linesReceivedStats                   = analytics.NewCounter("distributor_lines_received")
 )
 
 const applicationJSON = "application/json"
@@ -82,10 +88,11 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 
 	contentType := r.Header.Get(contentType)
 	var (
-		entriesSize      int64
-		streamLabelsSize int64
-		totalEntries     int64
-		req              logproto.PushRequest
+		entriesSize            int64
+		structuredMetadataSize int64
+		streamLabelsSize       int64
+		totalEntries           int64
+		req                    logproto.PushRequest
 	)
 
 	contentType, _ /* params */, err := mime.ParseMediaType(contentType)
@@ -126,15 +133,23 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		if tenantsRetention != nil {
 			lbs, err := syntax.ParseLabels(s.Labels)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("couldn't parse labels: %w", err)
 			}
 			retentionHours = fmt.Sprintf("%d", int64(math.Floor(tenantsRetention.RetentionPeriodFor(userID, lbs).Hours())))
 		}
 		for _, e := range s.Entries {
 			totalEntries++
-			entriesSize += int64(len(e.Line))
-			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(int64(len(e.Line))))
-			bytesReceivedStats.Inc(int64(len(e.Line)))
+			var entryLabelsSize int64
+			for _, l := range e.StructuredMetadata {
+				entryLabelsSize += int64(len(l.Name) + len(l.Value))
+			}
+			entrySize := int64(len(e.Line)) + entryLabelsSize
+			entriesSize += entrySize
+			structuredMetadataSize += entryLabelsSize
+			bytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entrySize))
+			structuredMetadataBytesIngested.WithLabelValues(userID, retentionHours).Add(float64(entryLabelsSize))
+			bytesReceivedStats.Inc(entrySize)
+			structuredMetadataBytesReceivedStats.Inc(entryLabelsSize)
 			if e.Timestamp.After(mostRecentEntry) {
 				mostRecentEntry = e.Timestamp
 			}
@@ -157,6 +172,7 @@ func ParseRequest(logger log.Logger, userID string, r *http.Request, tenantsRete
 		"entries", totalEntries,
 		"streamLabelsSize", humanize.Bytes(uint64(streamLabelsSize)),
 		"entriesSize", humanize.Bytes(uint64(entriesSize)),
+		"structuredMetadataSize", humanize.Bytes(uint64(structuredMetadataSize)),
 		"totalSize", humanize.Bytes(uint64(entriesSize+streamLabelsSize)),
 		"mostRecentLagMs", time.Since(mostRecentEntry).Milliseconds(),
 	)

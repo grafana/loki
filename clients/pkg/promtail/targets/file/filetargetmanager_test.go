@@ -70,7 +70,7 @@ func newTestFileTargetManager(logger log.Logger, client api.EntryHandler, positi
 	}
 
 	metrics := NewMetrics(nil)
-	ftm, err := NewFileTargetManager(metrics, logger, positions, client, []scrapeconfig.Config{sc}, tc)
+	ftm, err := NewFileTargetManager(metrics, logger, positions, client, []scrapeconfig.Config{sc}, tc, DefaultWatchConig)
 	if err != nil {
 		return nil, err
 	}

@@ -12,9 +12,9 @@ import (
 	"github.com/grafana/dskit/kv"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/user"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
@@ -132,7 +132,7 @@ func (f *testIngesterFactory) getIngester(joinAfter time.Duration, t *testing.T)
 	cfg.TargetChunkSize = 24
 	cfg.ChunkEncoding = chunkenc.EncNone.String()
 
-	cfg.ingesterClientFactory = func(cfg client.Config, addr string) (client.HealthAndIngesterClient, error) {
+	cfg.ingesterClientFactory = func(_ client.Config, addr string) (client.HealthAndIngesterClient, error) {
 		ingester, ok := f.ingesters[addr]
 		if !ok {
 			return nil, fmt.Errorf("no ingester %s", addr)

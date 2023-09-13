@@ -6,13 +6,13 @@ import (
 
 	"github.com/go-kit/log/level"
 	"github.com/gorilla/mux"
+	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
+	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
 	"github.com/opentracing-contrib/go-stdlib/nethttp"
 	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/client_golang/prometheus"
-	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
-	"github.com/weaveworks/common/middleware"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -47,6 +47,7 @@ type WorkerServiceConfig struct {
 func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
+	queryRouterPathPrefix string,
 	queryRoutesToHandlers map[string]http.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
@@ -64,6 +65,9 @@ func InitWorkerService(
 	)
 
 	internalRouter := mux.NewRouter()
+	if queryRouterPathPrefix != "" {
+		internalRouter = internalRouter.PathPrefix(queryRouterPathPrefix).Subrouter()
+	}
 	for route, handler := range queryRoutesToHandlers {
 		internalRouter.Path(route).Methods("GET", "POST").Handler(handler)
 	}
@@ -93,9 +97,9 @@ func InitWorkerService(
 			externalRouter.Path(route).Methods("GET", "POST").Handler(handlerMiddleware.Wrap(internalRouter))
 		}
 
-		//If no frontend or scheduler address has been configured, then there is no place for the
+		//If no scheduler ring or frontend or scheduler address has been configured, then there is no place for the
 		//querier worker to request work from, so no need to start a worker service
-		if (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
+		if cfg.SchedulerRing == nil && (*cfg.QuerierWorkerConfig).FrontendAddress == "" && (*cfg.QuerierWorkerConfig).SchedulerAddress == "" {
 			return nil, nil
 		}
 

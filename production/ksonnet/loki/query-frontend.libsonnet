@@ -47,17 +47,17 @@ local k = import 'ksonnet-util/kausal.libsonnet';
   // so if the intention is to use the k8s service for load balancing,
   // it is advised to use the below `query-frontend` service instead.
   query_frontend_headless_service:
-    $.util.grpclbServiceFor($.query_frontend_deployment) +
-    // Make sure that query frontend worker, running in the querier, do resolve
-    // each query-frontend pod IP and NOT the service IP. To make it, we do NOT
-    // use the service cluster IP so that when the service DNS is resolved it
-    // returns the set of query-frontend IPs.
-    service.mixin.spec.withClusterIp('None') +
-    // Query frontend will not become ready until at least one querier connects
-    // which creates a chicken and egg scenario if we don't publish the
-    // query-frontend address before it's ready.
-    service.mixin.spec.withPublishNotReadyAddresses(true) +
-    service.mixin.metadata.withName('query-frontend-headless'),
+    // headlessService will make ensure two things:
+    //   1. Set clusterIP to "None": this makes it so that query frontend worker,
+    //      running in the querier, resolve each query-frontend pod IP instead
+    //      of the service IP. clusterIP set to "None" allow this by making it
+    //      so that when the service DNS is resolved it returns the set of
+    //      query-frontend IPs.
+    //   2. Set withPublishNotReadyAddresses to true: query frontend will not
+    //      become ready until at least one querier connects which creates a
+    //      chicken and egg scenario if we don't publish the query-frontend
+    //      address before it's ready.
+    $.util.headlessService($.query_frontend_deployment, 'query-frontend-headless'),
 
   query_frontend_service:
     $.util.grpclbServiceFor($.query_frontend_deployment),

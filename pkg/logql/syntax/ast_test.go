@@ -34,11 +34,15 @@ func Test_logSelectorExpr_String(t *testing.T) {
 		{`{foo="bar", bar!="baz"} |~ "" |= "" |~ ".*"`, false},
 		{`{foo="bar", bar!="baz"} != "bip" !~ ".+bop" | json`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | unpack | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | pattern "<foo> bar <buzz>" | foo>5`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b>=10GB`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1")`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict b="foo" | b=ip("127.0.0.1") | level="error"`, true},
+		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt --strict --keep-empty b="foo" | b=ip("127.0.0.1") | level="error"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | logfmt | b=ip("127.0.0.1") | level="error" | c=ip("::1")`, true}, // chain inside label filters.
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)"`, true},
 		{`{foo="bar"} |= "baz" |~ "blip" != "flip" !~ "flap" | regexp "(?P<foo>foo|bar)" | ( ( foo<5.01 , bar>20ms ) or foo="bar" ) | line_format "blip{{.boop}}bap" | label_format foo=bar,bar="blip{{.blop}}"`, true},
@@ -82,7 +86,7 @@ func Test_SampleExpr_String(t *testing.T) {
 		`sum(count_over_time({job="mysql"} | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | json [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | logfmt [5m]))`,
-		`sum(count_over_time({job="mysql"} | logfmt [5m] offset 10m))`,
+		`sum(count_over_time({job="mysql"} | logfmt --strict [5m] offset 10m))`,
 		`sum(count_over_time({job="mysql"} | pattern "<foo> bar <buzz>" | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | unpack | json [5m]))`,
 		`sum(count_over_time({job="mysql"} | regexp "(?P<foo>foo|bar)" [5m]))`,
@@ -178,6 +182,7 @@ func Test_SampleExpr_String(t *testing.T) {
 				((sum by(typename,pool,commandname,colo)(sum_over_time({_namespace_="appspace", _schema_="appspace-15min", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 15) / 60)) 
 				or on ()  
 				((sum by(typename,pool,commandname,colo) (sum_over_time({_namespace_="appspace", _schema_="appspace-1h", pool=~"r1testlvs", colo=~"slc|lvs|rno", env!~"(pre-production|sandbox)"} | logfmt | status!="0" | ( ( type=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" or typename=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) or status=~"(?i)^(Error|Exception|Fatal|ERRPAGE|ValidationError)$" ) | commandname=~"(?i).*|UNSET" | unwrap sumcount[5m])) / 60) / 60))`,
+		`{app="foo"} | logfmt code="response.code", IPAddress="host"`,
 	} {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
@@ -351,11 +356,53 @@ func Test_FilterMatcher(t *testing.T) {
 			[]linecheck{{"foo", true}, {"bar", false}, {"foobar", true}},
 		},
 		{
+			`{app="foo"} |~ "foo\\.bar\\.baz"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"foo.bar.baz", true}},
+		},
+		{
+			"{app=\"foo\"} | logfmt | field =~ `foo\\.bar`",
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"field=foo", false}, {"field=bar", false}, {"field=foo.bar", true}},
+		},
+		{
 			`{app="foo"} | logfmt | duration > 1s and total_bytes < 1GB`,
 			[]*labels.Matcher{
 				mustNewMatcher(labels.MatchEqual, "app", "foo"),
 			},
 			[]linecheck{{"duration=5m total_bytes=5kB", true}, {"duration=1s total_bytes=256B", false}, {"duration=0s", false}},
+		},
+		{
+			`{app="foo"} |= "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} != "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
+		},
+		{
+			`{app="foo"} |~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", true}, {"bar", true}, {"none", false}},
+		},
+		{
+			`{app="foo"} !~ "foo" or "bar"`,
+			[]*labels.Matcher{
+				mustNewMatcher(labels.MatchEqual, "app", "foo"),
+			},
+			[]linecheck{{"foo", false}, {"bar", false}, {"none", true}},
 		},
 	} {
 		tt := tt
@@ -375,6 +422,25 @@ func Test_FilterMatcher(t *testing.T) {
 					assert.Equalf(t, lc.e, matches, "query for line '%s' was %v and not %v", lc.l, matches, lc.e)
 				}
 			}
+		})
+	}
+}
+
+func TestOrLineFilterTypes(t *testing.T) {
+	for _, tt := range []struct {
+		ty labels.MatchType
+	}{
+		{labels.MatchEqual},
+		{labels.MatchNotEqual},
+		{labels.MatchRegexp},
+		{labels.MatchNotRegexp},
+	} {
+		t.Run("right inherits left's type", func(t *testing.T) {
+			left := &LineFilterExpr{Ty: tt.ty, Match: "something"}
+			right := &LineFilterExpr{Ty: labels.MatchEqual, Match: "something"}
+
+			_ = newOrLineFilter(left, right)
+			require.Equal(t, tt.ty, right.Ty)
 		})
 	}
 }
@@ -494,7 +560,6 @@ func Test_parserExpr_Parser(t *testing.T) {
 	}{
 		{"json", OpParserTypeJSON, "", log.NewJSONParser(), false, false},
 		{"unpack", OpParserTypeUnpack, "", log.NewUnpackParser(), false, false},
-		{"logfmt", OpParserTypeLogfmt, "", log.NewLogfmtParser(), false, false},
 		{"pattern", OpParserTypePattern, "<foo> bar <buzz>", mustNewPatternParser("<foo> bar <buzz>"), false, false},
 		{"pattern err", OpParserTypePattern, "bar", nil, true, true},
 		{"regexp", OpParserTypeRegexp, "(?P<foo>foo)", mustNewRegexParser("(?P<foo>foo)"), false, false},
@@ -534,7 +599,6 @@ func Test_parserExpr_String(t *testing.T) {
 		{"empty regexp", OpParserTypeRegexp, "", `| regexp ""`},
 		{"valid pattern", OpParserTypePattern, "buzz", `| pattern "buzz"`},
 		{"empty pattern", OpParserTypePattern, "", `| pattern ""`},
-		{"valid logfmt", OpParserTypeLogfmt, "", `| logfmt`},
 		{"valid json", OpParserTypeJSON, "", `| json`},
 	}
 
@@ -604,12 +668,8 @@ func Test_canInjectVectorGrouping(t *testing.T) {
 func Test_MergeBinOpVectors_Filter(t *testing.T) {
 	res, err := MergeBinOp(
 		OpTypeGT,
-		&promql.Sample{
-			Point: promql.Point{V: 2},
-		},
-		&promql.Sample{
-			Point: promql.Point{V: 0},
-		},
+		&promql.Sample{F: 2},
+		&promql.Sample{F: 0},
 		true,
 		true,
 	)
@@ -617,7 +677,95 @@ func Test_MergeBinOpVectors_Filter(t *testing.T) {
 
 	// ensure we return the left hand side's value (2) instead of the
 	// comparison operator's result (1: the truthy answer)
-	require.Equal(t, &promql.Sample{
-		Point: promql.Point{V: 2},
-	}, res)
+	require.Equal(t, &promql.Sample{F: 2}, res)
+}
+
+func TestFilterReodering(t *testing.T) {
+	t.Run("it makes sure line filters are as early in the pipeline stages as possible", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "foo" |= "next" | logfmt |="bar" |="baz" | line_format "{{.foo}}" |="1" |="2" | logfmt |="3"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 5)
+		require.Equal(t, `|= "foo" |= "next" |= "bar" |= "baz" | logfmt | line_format "{{.foo}}" |= "1" |= "2" |= "3" | logfmt`, MultiStageExpr(stages).String())
+	})
+
+	t.Run("unpack test", func(t *testing.T) {
+		logExpr := `{container_name="app"} |= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`
+		l, err := ParseExpr(logExpr)
+		require.NoError(t, err)
+
+		stages := l.(*PipelineExpr).MultiStages.reorderStages()
+		require.Len(t, stages, 5)
+		require.Equal(t, `|= "06497595" | unpack != "message" | json | line_format "new log: {{.foo}}"`, MultiStageExpr(stages).String())
+	})
+}
+
+var result bool
+
+func BenchmarkReorderedPipeline(b *testing.B) {
+	logfmtLine := []byte(`level=info ts=2020-12-14T21:25:20.947307459Z caller=metrics.go:83 org_id=29 traceID=c80e691e8db08e2 latency=fast query="sum by (object_name) (rate(({container=\"metrictank\", cluster=\"hm-us-east2\"} |= \"PANIC\")[5m]))" query_type=metric range_type=range length=5m0s step=15s duration=322.623724ms status=200 throughput=1.2GB total_bytes=375MB`)
+
+	logExpr := `{container_name="app"} | logfmt |= "slow"`
+	l, err := ParseLogSelector(logExpr, true)
+	require.NoError(b, err)
+
+	p, err := l.Pipeline()
+	require.NoError(b, err)
+
+	sp := p.ForStream(labels.EmptyLabels())
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		_, _, result = sp.Process(0, logfmtLine)
+	}
+}
+
+func TestParseLargeQuery(t *testing.T) {
+	// This query originally failed to parse because there was a function
+	// definition at 1024 bytes whichcaused the lexer scanner to become
+	// out of sync with it's underlying reader due to shared state
+	line := `((sum(count_over_time({foo="bar"} |~ "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" [6h])) / sum(count_over_time({foo="bar"} |~ "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" [6h]))) * 100)`
+
+	_, err := ParseExpr(line)
+	require.NoError(t, err)
+}
+
+func TestGroupingString(t *testing.T) {
+	g := Grouping{
+		Groups:  []string{"a", "b"},
+		Without: false,
+	}
+	require.Equal(t, " by (a,b)", g.String())
+
+	g = Grouping{
+		Groups:  []string{},
+		Without: false,
+	}
+	require.Equal(t, " by ()", g.String())
+
+	g = Grouping{
+		Groups:  nil,
+		Without: false,
+	}
+	require.Equal(t, " by ()", g.String())
+
+	g = Grouping{
+		Groups:  []string{"a", "b"},
+		Without: true,
+	}
+	require.Equal(t, " without (a,b)", g.String())
+
+	g = Grouping{
+		Groups:  []string{},
+		Without: true,
+	}
+	require.Equal(t, " without ()", g.String())
+
+	g = Grouping{
+		Groups:  nil,
+		Without: true,
+	}
+	require.Equal(t, " without ()", g.String())
 }

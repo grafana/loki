@@ -2,30 +2,26 @@ package query
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"sort"
-	"strings"
-	"text/tabwriter"
+	"sync"
 	"time"
 
-	"github.com/fatih/color"
-	json "github.com/json-iterator/go"
+	"github.com/grafana/dskit/multierror"
+	"github.com/grafana/dskit/user"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/user"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/loki/pkg/logcli/client"
 	"github.com/grafana/loki/pkg/logcli/output"
+	"github.com/grafana/loki/pkg/logcli/print"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logqlmodel"
-	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	chunk "github.com/grafana/loki/pkg/storage/chunk/client"
@@ -38,11 +34,6 @@ import (
 )
 
 const schemaConfigFilename = "schemaconfig"
-
-type streamEntryPair struct {
-	entry  loghttp.Entry
-	labels loghttp.LabelSet
-}
 
 // Query contains all necessary fields to execute instant and range queries and print the results.
 type Query struct {
@@ -62,6 +53,31 @@ type Query struct {
 	ColoredOutput          bool
 	LocalConfig            string
 	FetchSchemaFromStorage bool
+
+	// Parallelization parameters.
+
+	// The duration of each part/job.
+	ParallelDuration time.Duration
+
+	// Number of workers to start.
+	ParallelMaxWorkers int
+
+	// Path prefix of the name for each part file.
+	// The idea for this is to allow the user to download many different queries at the same
+	// time, and/or give a directory for the part files to be placed.
+	PartPathPrefix string
+
+	// By default (false value), if the part file has finished downloading, and another job with
+	// the same filename is run, it will skip the completed files. This will remove the completed
+	// files as each worker gets to that part file, so the part will be downloaded again.
+	OverwriteCompleted bool
+
+	// If true, the part files will be read in order, and the data will be output to stdout.
+	MergeParts bool
+
+	// If MergeParts is false, this parameter has no effect, part files will be kept.
+	// Otherwise, if this is true, the part files will not be deleted once they have been merged.
+	KeepParts bool
 }
 
 // DoQuery executes the query and prints out the results
@@ -82,15 +98,35 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 	var resp *loghttp.QueryResponse
 	var err error
 
+	var partFile *PartFile
+	if q.PartPathPrefix != "" {
+		var shouldSkip bool
+		partFile, shouldSkip = q.createPartFile()
+
+		// createPartFile will return true if the part file exists and
+		// OverwriteCompleted is false, therefor, we should exit the function
+		// here because we have nothing to do.
+		if shouldSkip {
+			return
+		}
+	}
+
+	if partFile != nil {
+		defer partFile.Close()
+		out = out.WithWriter(partFile)
+	}
+
+	result := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
+
 	if q.isInstant() {
 		resp, err = c.Query(q.QueryString, q.Limit, q.Start, d, q.Quiet)
 		if err != nil {
 			log.Fatalf("Query failed: %+v", err)
 		}
 		if statistics {
-			q.printStats(resp.Data.Statistics)
+			result.PrintStats(resp.Data.Statistics)
 		}
-		_, _ = q.printResult(resp.Data.Result, out, nil)
+		_, _ = result.PrintResult(resp.Data.Result, out, nil)
 	} else {
 		unlimited := q.Limit == 0
 
@@ -119,10 +155,10 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 			}
 
 			if statistics {
-				q.printStats(resp.Data.Statistics)
+				result.PrintStats(resp.Data.Statistics)
 			}
 
-			resultLength, lastEntry = q.printResult(resp.Data.Result, out, lastEntry)
+			resultLength, lastEntry = result.PrintResult(resp.Data.Result, out, lastEntry)
 			// Was not a log stream query, or no results, no more batching
 			if resultLength <= 0 {
 				break
@@ -160,27 +196,201 @@ func (q *Query) DoQuery(c client.Client, out output.LogOutput, statistics bool) 
 				// fudge the timestamp forward in time to make sure to get the last entry from this batch in the next query
 				end = lastEntry[0].Timestamp.Add(1 * time.Nanosecond)
 			}
+		}
+	}
 
+	if partFile != nil {
+		if err := partFile.Finalize(); err != nil {
+			log.Fatalln(err)
 		}
 	}
 }
 
-func (q *Query) printResult(value loghttp.ResultValue, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
-	length := -1
-	var entry []*loghttp.Entry
-	switch value.Type() {
-	case logqlmodel.ValueTypeStreams:
-		length, entry = q.printStream(value.(loghttp.Streams), out, lastEntry)
-	case loghttp.ResultTypeScalar:
-		q.printScalar(value.(loghttp.Scalar))
-	case loghttp.ResultTypeMatrix:
-		q.printMatrix(value.(loghttp.Matrix))
-	case loghttp.ResultTypeVector:
-		q.printVector(value.(loghttp.Vector))
-	default:
-		log.Fatalf("Unable to print unsupported type: %v", value.Type())
+func (q *Query) outputFilename() string {
+	return fmt.Sprintf(
+		"%s_%s_%s.part",
+		q.PartPathPrefix,
+		q.Start.UTC().Format("20060102T150405"),
+		q.End.UTC().Format("20060102T150405"),
+	)
+}
+
+// createPartFile returns a PartFile.
+// The bool value shows if the part file already exists, and this range should be skipped.
+func (q *Query) createPartFile() (*PartFile, bool) {
+	partFile := NewPartFile(q.outputFilename())
+
+	if !q.OverwriteCompleted {
+		// If we already have the completed file, no need to download it again.
+		// The user can delete the files if they want to download parts again.
+		exists, err := partFile.Exists()
+		if err != nil {
+			log.Fatalf("Query failed: %s\n", err)
+		}
+		if exists {
+			log.Printf("Skip range: %s - %s: already downloaded\n", q.Start, q.End)
+			return nil, true
+		}
 	}
-	return length, entry
+
+	if err := partFile.CreateTempFile(); err != nil {
+		log.Fatalf("Query failed: %s\n", err)
+	}
+
+	return partFile, false
+}
+
+// rounds up duration d by the multiple m, and then divides by m.
+func ceilingDivision(d, m time.Duration) int64 {
+	return int64((d + m - 1) / m)
+}
+
+// Returns the next job's start and end times.
+func (q *Query) nextJob(start, end time.Time) (time.Time, time.Time) {
+	if q.Forward {
+		start = end
+		return start, minTime(start.Add(q.ParallelDuration), q.End)
+	}
+
+	end = start
+	return maxTime(end.Add(-q.ParallelDuration), q.Start), end
+}
+
+type parallelJob struct {
+	q    *Query
+	done chan struct{}
+}
+
+func newParallelJob(q *Query) *parallelJob {
+	return &parallelJob{
+		q:    q,
+		done: make(chan struct{}, 1),
+	}
+}
+
+func (j *parallelJob) run(c client.Client, out output.LogOutput, statistics bool) {
+	j.q.DoQuery(c, out, statistics)
+	j.done <- struct{}{}
+}
+
+func (q *Query) parallelJobs() []*parallelJob {
+	nJobs := ceilingDivision(q.End.Sub(q.Start), q.ParallelDuration)
+	jobs := make([]*parallelJob, nJobs)
+
+	// Normally `nextJob` will swap the start/end to get the next job. Here, we swap them
+	// on input so that we calculate the starting job instead of the next job.
+	start, end := q.nextJob(q.End, q.Start)
+
+	// Queue up jobs
+	for i := range jobs {
+		rq := *q
+		rq.Start = start
+		rq.End = end
+
+		jobs[i] = newParallelJob(&rq)
+
+		start, end = q.nextJob(start, end)
+	}
+
+	return jobs
+}
+
+// Waits for each job to finish in order, reads the part file and copies it to stdout
+func (q *Query) mergeJobs(jobs []*parallelJob) error {
+	if !q.MergeParts {
+		return nil
+	}
+
+	for _, job := range jobs {
+		// wait for the next job to finish
+		<-job.done
+
+		f, err := os.Open(job.q.outputFilename())
+		if err != nil {
+			return fmt.Errorf("open file error: %w", err)
+		}
+		defer f.Close()
+
+		_, err = io.Copy(os.Stdout, f)
+		if err != nil {
+			return fmt.Errorf("copying file error: %w", err)
+		}
+
+		if !q.KeepParts {
+			err := os.Remove(job.q.outputFilename())
+			if err != nil {
+				return fmt.Errorf("removing file error: %w", err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// Starts `ParallelMaxWorkers` number of workers to process all of the `parallelJob`s
+// This function is non-blocking. The caller should `Wait` on the returned `WaitGroup`.
+func (q *Query) startWorkers(
+	jobs []*parallelJob,
+	c client.Client,
+	out output.LogOutput,
+	statistics bool,
+) *sync.WaitGroup {
+	wg := sync.WaitGroup{}
+	jobsChan := make(chan *parallelJob, len(jobs))
+
+	// Queue up the jobs
+	// There is a possible optimization here to use an unbuffered channel,
+	// But the memory and CPU overhead for yet another go routine makes me
+	// think that this optimization is not worth it. So I used a buffered
+	// channel instead.
+	for _, job := range jobs {
+		jobsChan <- job
+	}
+	close(jobsChan)
+
+	// Start workers
+	for w := 0; w < q.ParallelMaxWorkers; w++ {
+		wg.Add(1)
+
+		go func() {
+			defer wg.Done()
+			for job := range jobsChan {
+				job.run(c, out, statistics)
+			}
+		}()
+	}
+
+	return &wg
+}
+
+func (q *Query) DoQueryParallel(c client.Client, out output.LogOutput, statistics bool) {
+	if q.ParallelDuration < 1 {
+		log.Fatalf("Parallel duration has to be a positive value\n")
+	}
+
+	jobs := q.parallelJobs()
+
+	wg := q.startWorkers(jobs, c, out, statistics)
+
+	if err := q.mergeJobs(jobs); err != nil {
+		log.Fatalf("Merging part files error: %s\n", err)
+	}
+
+	wg.Wait()
+}
+
+func minTime(t1, t2 time.Time) time.Time {
+	if t1.Before(t2) {
+		return t1
+	}
+	return t2
+}
+
+func maxTime(t1, t2 time.Time) time.Time {
+	if t1.After(t2) {
+		return t1
+	}
+	return t2
 }
 
 // DoLocalQuery executes the query against the local store using a Loki configuration file.
@@ -223,6 +433,8 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	}
 	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
 	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
@@ -263,8 +475,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
+	resPrinter := print.NewQueryResultPrinter(q.ShowLabelsKey, q.IgnoreLabelsKey, q.Quiet, q.FixedLabelsLen, q.Forward)
 	if statistics {
-		q.printStats(result.Statistics)
+		resPrinter.PrintStats(result.Statistics)
 	}
 
 	value, err := marshal.NewResultValue(result.Data)
@@ -272,7 +485,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 		return err
 	}
 
-	q.printResult(value, out, nil)
+	resPrinter.PrintResult(value, out, nil)
 	return nil
 }
 
@@ -294,14 +507,14 @@ type schemaConfigSection struct {
 
 // LoadSchemaUsingObjectClient returns the loaded schema from the first found object
 func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*config.SchemaConfig, error) {
-	errors := multierror.New()
+	errs := multierror.New()
 	for _, name := range names {
 		schema, err := func(name string) (*config.SchemaConfig, error) {
-			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(5*time.Second))
+			ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(1*time.Minute))
 			defer cancel()
 			rdr, _, err := oc.GetObject(ctx, name)
 			if err != nil {
-				return nil, err
+				return nil, errors.Wrapf(err, "failed to load schema object '%s'", name)
 			}
 			defer rdr.Close()
 
@@ -317,12 +530,12 @@ func LoadSchemaUsingObjectClient(oc chunk.ObjectClient, names ...string) (*confi
 		}(name)
 
 		if err != nil {
-			errors = append(errors, err)
+			errs = append(errs, err)
 			continue
 		}
 		return schema, nil
 	}
-	return nil, errors.Err()
+	return nil, errs.Err()
 }
 
 // SetInstant makes the Query an instant type
@@ -333,159 +546,6 @@ func (q *Query) SetInstant(time time.Time) {
 
 func (q *Query) isInstant() bool {
 	return q.Start == q.End && q.Step == 0
-}
-
-func (q *Query) printStream(streams loghttp.Streams, out output.LogOutput, lastEntry []*loghttp.Entry) (int, []*loghttp.Entry) {
-	common := commonLabels(streams)
-
-	// Remove the labels we want to show from common
-	if len(q.ShowLabelsKey) > 0 {
-		common = matchLabels(false, common, q.ShowLabelsKey)
-	}
-
-	if len(common) > 0 && !q.Quiet {
-		log.Println("Common labels:", color.RedString(common.String()))
-	}
-
-	if len(q.IgnoreLabelsKey) > 0 && !q.Quiet {
-		log.Println("Ignoring labels key:", color.RedString(strings.Join(q.IgnoreLabelsKey, ",")))
-	}
-
-	if len(q.ShowLabelsKey) > 0 && !q.Quiet {
-		log.Println("Print only labels key:", color.RedString(strings.Join(q.ShowLabelsKey, ",")))
-	}
-
-	// Remove ignored and common labels from the cached labels and
-	// calculate the max labels length
-	maxLabelsLen := q.FixedLabelsLen
-	for i, s := range streams {
-		// Remove common labels
-		ls := subtract(s.Labels, common)
-
-		if len(q.ShowLabelsKey) > 0 {
-			ls = matchLabels(true, ls, q.ShowLabelsKey)
-		}
-
-		// Remove ignored labels
-		if len(q.IgnoreLabelsKey) > 0 {
-			ls = matchLabels(false, ls, q.IgnoreLabelsKey)
-		}
-
-		// Overwrite existing Labels
-		streams[i].Labels = ls
-
-		// Update max labels length
-		len := len(ls.String())
-		if maxLabelsLen < len {
-			maxLabelsLen = len
-		}
-	}
-
-	// sort and display entries
-	allEntries := make([]streamEntryPair, 0)
-
-	for _, s := range streams {
-		for _, e := range s.Entries {
-			allEntries = append(allEntries, streamEntryPair{
-				entry:  e,
-				labels: s.Labels,
-			})
-		}
-	}
-
-	if len(allEntries) == 0 {
-		return 0, nil
-	}
-
-	if q.Forward {
-		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.Before(allEntries[j].entry.Timestamp) })
-	} else {
-		sort.Slice(allEntries, func(i, j int) bool { return allEntries[i].entry.Timestamp.After(allEntries[j].entry.Timestamp) })
-	}
-
-	printed := 0
-	for _, e := range allEntries {
-		// Skip the last entry if it overlaps, this happens because batching includes the last entry from the last batch
-		if len(lastEntry) > 0 && e.entry.Timestamp == lastEntry[0].Timestamp {
-			skip := false
-			// Because many logs can share a timestamp in the unlucky event a batch ends with a timestamp
-			// shared by multiple entries we have to check all that were stored to see if we've already
-			// printed them.
-			for _, le := range lastEntry {
-				if e.entry.Line == le.Line {
-					skip = true
-				}
-			}
-			if skip {
-				continue
-			}
-		}
-		out.FormatAndPrintln(e.entry.Timestamp, e.labels, maxLabelsLen, e.entry.Line)
-		printed++
-	}
-
-	// Loki allows multiple entries at the same timestamp, this is a bit of a mess if a batch ends
-	// with an entry that shared multiple timestamps, so we need to keep a list of all these entries
-	// because the next query is going to contain them too and we want to not duplicate anything already
-	// printed.
-	lel := []*loghttp.Entry{}
-	// Start with the timestamp of the last entry
-	le := allEntries[len(allEntries)-1].entry
-	for i, e := range allEntries {
-		// Save any entry which has this timestamp (most of the time this will only be the single last entry)
-		if e.entry.Timestamp.Equal(le.Timestamp) {
-			lel = append(lel, &allEntries[i].entry)
-		}
-	}
-
-	return printed, lel
-}
-
-func (q *Query) printMatrix(matrix loghttp.Matrix) {
-	// yes we are effectively unmarshalling and then immediately marshalling this object back to json.  we are doing this b/c
-	// it gives us more flexibility with regard to output types in the future.  initially we are supporting just formatted json but eventually
-	// we might add output options such as render to an image file on disk
-	bytes, err := json.MarshalIndent(matrix, "", "  ")
-	if err != nil {
-		log.Fatalf("Error marshalling matrix: %v", err)
-	}
-
-	fmt.Print(string(bytes))
-}
-
-func (q *Query) printVector(vector loghttp.Vector) {
-	bytes, err := json.MarshalIndent(vector, "", "  ")
-	if err != nil {
-		log.Fatalf("Error marshalling vector: %v", err)
-	}
-
-	fmt.Print(string(bytes))
-}
-
-func (q *Query) printScalar(scalar loghttp.Scalar) {
-	bytes, err := json.MarshalIndent(scalar, "", "  ")
-	if err != nil {
-		log.Fatalf("Error marshalling scalar: %v", err)
-	}
-
-	fmt.Print(string(bytes))
-}
-
-type kvLogger struct {
-	*tabwriter.Writer
-}
-
-func (k kvLogger) Log(keyvals ...interface{}) error {
-	for i := 0; i < len(keyvals); i += 2 {
-		fmt.Fprintln(k.Writer, color.BlueString("%s", keyvals[i]), "\t", fmt.Sprintf("%v", keyvals[i+1]))
-	}
-	k.Flush()
-	return nil
-}
-
-func (q *Query) printStats(stats stats.Result) {
-	writer := tabwriter.NewWriter(os.Stderr, 0, 8, 0, '\t', 0)
-	stats.Log(kvLogger{Writer: writer})
 }
 
 func (q *Query) resultsDirection() logproto.Direction {

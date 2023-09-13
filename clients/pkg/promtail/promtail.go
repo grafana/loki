@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/clients/pkg/promtail/targets/target"
 	"github.com/grafana/loki/clients/pkg/promtail/utils"
 	"github.com/grafana/loki/clients/pkg/promtail/wal"
+
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -146,45 +147,44 @@ func (p *Promtail) reloadConfig(cfg *config.Config) error {
 	var entryHandlers = []api.EntryHandler{}
 
 	// TODO: Refactor all client instantiation inside client.Manager
+	cfg.PositionsConfig.ReadOnly = cfg.PositionsConfig.ReadOnly || p.dryRun
 	if p.dryRun {
 		p.client, err = client.NewLogger(p.metrics, p.logger, cfg.ClientConfigs...)
 		if err != nil {
 			return err
 		}
 		cfg.PositionsConfig.ReadOnly = true
-	} else if cfg.WAL.Enabled {
+	} else {
+		var notifier client.WriterEventsNotifier = client.NilNotifier
+		if cfg.WAL.Enabled {
+			p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
+			if err != nil {
+				return fmt.Errorf("failed to create wal writer: %w", err)
+			}
+
+			// If WAL is enabled, the walWriter should notify the manager of new WAL writes, and it should as well
+			// be an entry handler where the processing pipeline writes to
+			notifier = p.walWriter
+			entryHandlers = append(entryHandlers, p.walWriter)
+		}
 		p.client, err = client.NewManager(
 			p.metrics,
 			p.logger,
-			cfg.LimitsConfig.MaxStreams,
-			cfg.LimitsConfig.MaxLineSize.Val(),
-			cfg.LimitsConfig.MaxLineSizeTruncate,
+			cfg.LimitsConfig,
 			p.reg,
 			cfg.WAL,
+			notifier,
 			cfg.ClientConfigs...,
 		)
 		if err != nil {
-			return err
-		}
-
-		p.walWriter, err = wal.NewWriter(cfg.WAL, p.logger, p.reg)
-		if err != nil {
-			return fmt.Errorf("failed to create wal writer: %w", err)
-		}
-		// If wal is enabled, the walWriter should be a target for scraped entries as well as the remote-write client,
-		// at least until we implement the wal reader side (https://github.com/grafana/loki/pull/8302).
-		entryHandlers = append(entryHandlers, p.walWriter)
-	} else {
-		p.client, err = client.NewMulti(p.metrics, p.logger, cfg.LimitsConfig.MaxStreams, cfg.LimitsConfig.MaxLineSize.Val(), cfg.LimitsConfig.MaxLineSizeTruncate, cfg.ClientConfigs...)
-		if err != nil {
-			return err
+			return fmt.Errorf("failed to create client manager: %w", err)
 		}
 	}
 
 	entryHandlers = append(entryHandlers, p.client)
 	p.entriesFanout = utils.NewFanoutEntryHandler(timeoutUntilFanoutHardStop, entryHandlers...)
 
-	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig)
+	tms, err := targets.NewTargetManagers(p, p.reg, p.logger, cfg.PositionsConfig, p.entriesFanout, cfg.ScrapeConfig, &cfg.TargetConfig, cfg.Global.FileWatch)
 	if err != nil {
 		return err
 	}
@@ -251,7 +251,6 @@ func (p *Promtail) ActiveTargets() map[string][]target.Target {
 
 func (p *Promtail) watchConfig() {
 	// Reload handler.
-	// Make sure that sighup handler is registered with a redirect to the channel before the potentially
 	if p.newConfig == nil {
 		level.Warn(p.logger).Log("msg", "disable watchConfig", "reason", "Promtail newConfig func is Empty")
 		return

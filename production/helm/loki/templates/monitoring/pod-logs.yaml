@@ -41,7 +41,7 @@ spec:
       sourceLabels:
         - __meta_kubernetes_pod_container_name
       targetLabel: container
-    - replacement: "{{ include "loki.fullname" $ }}"
+    - replacement: "{{ include "loki.clusterLabel" $ }}"
       targetLabel: cluster
     {{- with .relabelings }}
     {{- toYaml . | nindent 4 }}

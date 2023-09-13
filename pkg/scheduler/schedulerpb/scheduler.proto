@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package schedulerpb;
 
-import "github.com/weaveworks/common/httpgrpc/httpgrpc.proto";
+import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
 
 option go_package = "schedulerpb";
@@ -77,6 +77,8 @@ message FrontendToScheduler {
   string userID = 4;
   httpgrpc.HTTPRequest httpRequest = 5;
   bool statsEnabled = 6;
+  // Path to queue to which the request will be enqueued.
+  repeated string queuePath = 7;
 }
 
 enum SchedulerToFrontendStatus {

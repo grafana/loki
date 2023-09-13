@@ -16,6 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/validation"
 )
 
@@ -43,7 +44,7 @@ overrides:
               period: 24h
               priority: 5
 `)
-	require.Equal(t, 31*24*time.Hour, overrides.RetentionPeriod("1"))    // default
+	require.Equal(t, time.Duration(0), overrides.RetentionPeriod("1"))   // default
 	require.Equal(t, 2*30*24*time.Hour, overrides.RetentionPeriod("29")) // overrides
 	require.Equal(t, []validation.StreamRetention(nil), overrides.StreamRetention("1"))
 	require.Equal(t, []validation.StreamRetention{
@@ -81,6 +82,65 @@ overrides:
               priority: 10
 `))
 	require.Equal(t, "invalid override for tenant 29: retention period must be >= 24h was 5h", err.Error())
+}
+
+func Test_DefaultConfig(t *testing.T) {
+	runtimeGetter := newTestRuntimeconfig(t,
+		`
+default:
+    log_push_request: true
+    limited_log_push_errors: false
+configs:
+    "1":
+        log_push_request: false
+        limited_log_push_errors: false
+    "2":
+        log_push_request: true
+`)
+
+	user1 := runtimeGetter("1")
+	user2 := runtimeGetter("2")
+	user3 := runtimeGetter("3")
+
+	require.Equal(t, false, user1.LogPushRequest)
+	require.Equal(t, false, user1.LimitedLogPushErrors)
+	require.Equal(t, false, user2.LimitedLogPushErrors)
+	require.Equal(t, true, user2.LogPushRequest)
+	require.Equal(t, false, user3.LimitedLogPushErrors)
+	require.Equal(t, true, user3.LogPushRequest)
+}
+
+func newTestRuntimeconfig(t *testing.T, yaml string) runtime.TenantConfig {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "bar")
+	require.NoError(t, err)
+	path := f.Name()
+	// fake loader to load from string instead of file.
+	loader := func(_ io.Reader) (interface{}, error) {
+		return loadRuntimeConfig(strings.NewReader(yaml))
+	}
+	cfg := runtimeconfig.Config{
+		ReloadPeriod: 1 * time.Second,
+		Loader:       loader,
+		LoadPath:     []string{path},
+	}
+	flagset := flag.NewFlagSet("", flag.PanicOnError)
+	var defaults validation.Limits
+	defaults.RegisterFlags(flagset)
+	require.NoError(t, flagset.Parse(nil))
+
+	reg := prometheus.NewPedanticRegistry()
+	runtimeConfig, err := runtimeconfig.New(cfg, prometheus.WrapRegistererWithPrefix("loki_", reg), log.NewNopLogger())
+	require.NoError(t, err)
+
+	require.NoError(t, runtimeConfig.StartAsync(context.Background()))
+	require.NoError(t, runtimeConfig.AwaitRunning(context.Background()))
+	defer func() {
+		runtimeConfig.StopAsync()
+		require.NoError(t, runtimeConfig.AwaitTerminated(context.Background()))
+	}()
+
+	return tenantConfigFromRuntimeConfig(runtimeConfig)
 }
 
 func newTestOverrides(t *testing.T, yaml string) *validation.Overrides {

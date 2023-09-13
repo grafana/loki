@@ -8,10 +8,10 @@ import (
 	"runtime"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/version"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/tracing"
 
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/util"
@@ -44,11 +44,12 @@ func main() {
 	validation.SetDefaultLimitsForYAMLUnmarshalling(config.LimitsConfig)
 
 	// Init the logger which will honor the log level set in config.Server
-	if reflect.DeepEqual(&config.Server.LogLevel, &logging.Level{}) {
+	if reflect.DeepEqual(&config.Server.LogLevel, &log.Level{}) {
 		level.Error(util_log.Logger).Log("msg", "invalid log level")
 		exit(1)
 	}
-	util_log.InitLogger(&config.Server, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
+	serverCfg := &config.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, config.UseBufferedLogger, config.UseSyncLogger)
 
 	// Validate the config once both the config file has been loaded
 	// and CLI flags parsed.

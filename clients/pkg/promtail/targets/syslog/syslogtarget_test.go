@@ -361,8 +361,8 @@ func TestSyslogTarget(t *testing.T) {
 		protocol string
 		fmtFunc  formatFunc
 	}{
-		{"tpc newline separated", protocolTCP, fmtNewline},
-		{"tpc octetcounting", protocolTCP, fmtOctetCounting},
+		{"tcp newline separated", protocolTCP, fmtNewline},
+		{"tcp octetcounting", protocolTCP, fmtOctetCounting},
 		{"udp newline separated", protocolUDP, fmtNewline},
 		{"udp octetcounting", protocolUDP, fmtOctetCounting},
 	} {
@@ -478,8 +478,8 @@ func TestSyslogTarget_RFC5424Messages(t *testing.T) {
 		protocol string
 		fmtFunc  formatFunc
 	}{
-		{"tpc newline separated", protocolTCP, fmtNewline},
-		{"tpc octetcounting", protocolTCP, fmtOctetCounting},
+		{"tcp newline separated", protocolTCP, fmtNewline},
+		{"tcp octetcounting", protocolTCP, fmtOctetCounting},
 	} {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
@@ -757,7 +757,7 @@ func testSyslogTargetWithTLSVerifyClientCertificate(t *testing.T, fmtFunc format
 
 		buf := make([]byte, 1)
 		_, err = c.Read(buf)
-		require.EqualError(t, err, "remote error: tls: bad certificate")
+		require.EqualError(t, err, badCertificateErrorMessage)
 	})
 
 	t.Run("WithClientCertificate", func(t *testing.T) {

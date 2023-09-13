@@ -48,6 +48,14 @@ var (
 	// Buckets [0.5KB,1KB,2KB,4KB,8KB]
 	BytesBufferPool = pool.New(1<<9, 1<<13, 2, func(size int) interface{} { return make([]byte, 0, size) })
 
+	// LabelsPool is a matrix of bytes buffers used to store label names and values.
+	// Buckets [8, 16, 32, 64, 128, 256].
+	// Since we store label names and values, the number of labels we can store is the half the bucket size.
+	// So we will be able to store from 0 to 128 labels.
+	LabelsPool = pool.New(1<<3, 1<<8, 2, func(size int) interface{} { return make([][]byte, 0, size) })
+
+	SymbolsPool = pool.New(1<<3, 1<<8, 2, func(size int) interface{} { return make([]symbol, 0, size) })
+
 	// SamplesPool pooling array of samples [512,1024,...,16k]
 	SamplesPool = pool.New(1<<9, 1<<14, 2, func(size int) interface{} { return make([]logproto.Sample, 0, size) })
 
@@ -367,7 +375,7 @@ func (pool *NoopPool) GetReader(src io.Reader) (io.Reader, error) {
 }
 
 // PutReader places back in the pool a CompressionReader
-func (pool *NoopPool) PutReader(reader io.Reader) {}
+func (pool *NoopPool) PutReader(_ io.Reader) {}
 
 type noopCloser struct {
 	io.Writer
@@ -381,4 +389,4 @@ func (pool *NoopPool) GetWriter(dst io.Writer) io.WriteCloser {
 }
 
 // PutWriter places back in the pool a CompressionWriter
-func (pool *NoopPool) PutWriter(writer io.WriteCloser) {}
+func (pool *NoopPool) PutWriter(_ io.WriteCloser) {}

@@ -4,14 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	lokiv1beta1 "github.com/grafana/loki/operator/apis/loki/v1beta1"
-
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
 )
 
 var _ admission.CustomValidator = &RulerConfigValidator{}
@@ -23,7 +23,7 @@ type RulerConfigValidator struct{}
 // with the controller-runtime manager or returns an error.
 func (v *RulerConfigValidator) SetupWebhookWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewWebhookManagedBy(mgr).
-		For(&lokiv1beta1.RulerConfig{}).
+		For(&lokiv1.RulerConfig{}).
 		WithValidator(v).
 		Complete()
 }
@@ -45,7 +45,7 @@ func (v *RulerConfigValidator) ValidateDelete(_ context.Context, _ runtime.Objec
 }
 
 func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object) error {
-	rulerConfig, ok := obj.(*lokiv1beta1.RulerConfig)
+	rulerConfig, ok := obj.(*lokiv1.RulerConfig)
 	if !ok {
 		return apierrors.NewBadRequest(fmt.Sprintf("object is not of type RulerConfig: %t", obj))
 	}
@@ -61,12 +61,12 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("spec", "alertmanager", "client", "headerAuth", "credentials"),
 				ha.Credentials,
-				lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
+				lokiv1.ErrHeaderAuthCredentialsConflict.Error(),
 			))
 			allErrs = append(allErrs, field.Invalid(
 				field.NewPath("spec", "alertmanager", "client", "headerAuth", "credentialsFile"),
 				ha.CredentialsFile,
-				lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
+				lokiv1.ErrHeaderAuthCredentialsConflict.Error(),
 			))
 		}
 	}
@@ -81,12 +81,12 @@ func (v *RulerConfigValidator) validate(ctx context.Context, obj runtime.Object)
 				allErrs = append(allErrs, field.Invalid(
 					field.NewPath("spec", "overrides", tenant, "alertmanager", "client", "headerAuth", "credentials"),
 					oha.Credentials,
-					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
+					lokiv1.ErrHeaderAuthCredentialsConflict.Error(),
 				))
 				allErrs = append(allErrs, field.Invalid(
 					field.NewPath("spec", "overrides", tenant, "alertmanager", "client", "headerAuth", "credentialsFile"),
 					oha.CredentialsFile,
-					lokiv1beta1.ErrHeaderAuthCredentialsConflict.Error(),
+					lokiv1.ErrHeaderAuthCredentialsConflict.Error(),
 				))
 			}
 		}

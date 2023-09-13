@@ -78,23 +78,23 @@ func assertSeries(t *testing.T, expected, actual []logproto.Series) {
 	}
 }
 
-func newLazyChunk(stream logproto.Stream) *LazyChunk {
+func newLazyChunk(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, stream logproto.Stream) *LazyChunk {
 	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: true,
-		Chunk:   newChunk(stream),
+		Chunk:   newChunk(chunkFormat, headfmt, stream),
 	}
 }
 
-func newLazyInvalidChunk(stream logproto.Stream) *LazyChunk {
+func newLazyInvalidChunk(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, stream logproto.Stream) *LazyChunk {
 	return &LazyChunk{
 		Fetcher: nil,
 		IsValid: false,
-		Chunk:   newChunk(stream),
+		Chunk:   newChunk(chunkFormat, headfmt, stream),
 	}
 }
 
-func newChunk(stream logproto.Stream) chunk.Chunk {
+func newChunk(chunkFormat byte, headBlockFmt chunkenc.HeadBlockFmt, stream logproto.Stream) chunk.Chunk {
 	lbs, err := syntax.ParseLabels(stream.Labels)
 	if err != nil {
 		panic(err)
@@ -102,10 +102,10 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 	if !lbs.Has(labels.MetricName) {
 		builder := labels.NewBuilder(lbs)
 		builder.Set(labels.MetricName, "logs")
-		lbs = builder.Labels(nil)
+		lbs = builder.Labels()
 	}
 	from, through := loki_util.RoundToMilliseconds(stream.Entries[0].Timestamp, stream.Entries[len(stream.Entries)-1].Timestamp)
-	chk := chunkenc.NewMemChunk(chunkenc.EncGZIP, chunkenc.UnorderedHeadBlockFmt, 256*1024, 0)
+	chk := chunkenc.NewMemChunk(chunkFormat, chunkenc.EncGZIP, headBlockFmt, 256*1024, 0)
 	for _, e := range stream.Entries {
 		_ = chk.Append(&e)
 	}
@@ -119,7 +119,7 @@ func newChunk(stream logproto.Stream) chunk.Chunk {
 }
 
 func newMatchers(matchers string) []*labels.Matcher {
-	res, err := syntax.ParseMatchers(matchers)
+	res, err := syntax.ParseMatchers(matchers, true)
 	if err != nil {
 		panic(err)
 	}
@@ -165,20 +165,20 @@ var (
 	_ chunkclient.Client = &mockChunkStoreClient{}
 )
 
-func newMockChunkStore(streams []*logproto.Stream) *mockChunkStore {
+func newMockChunkStore(chunkFormat byte, headfmt chunkenc.HeadBlockFmt, streams []*logproto.Stream) *mockChunkStore {
 	chunks := make([]chunk.Chunk, 0, len(streams))
 	for _, s := range streams {
-		chunks = append(chunks, newChunk(*s))
+		chunks = append(chunks, newChunk(chunkFormat, headfmt, *s))
 	}
 	return &mockChunkStore{schemas: config.SchemaConfig{}, chunks: chunks, client: &mockChunkStoreClient{chunks: chunks, scfg: config.SchemaConfig{}}}
 }
 
-func (m *mockChunkStore) Put(ctx context.Context, chunks []chunk.Chunk) error { return nil }
-func (m *mockChunkStore) PutOne(ctx context.Context, from, through model.Time, chunk chunk.Chunk) error {
+func (m *mockChunkStore) Put(_ context.Context, _ []chunk.Chunk) error { return nil }
+func (m *mockChunkStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
 	return nil
 }
 
-func (m *mockChunkStore) GetSeries(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
+func (m *mockChunkStore) GetSeries(ctx context.Context, _ string, _, _ model.Time, matchers ...*labels.Matcher) ([]labels.Labels, error) {
 	result := make([]labels.Labels, 0, len(m.chunks))
 	unique := map[uint64]struct{}{}
 Outer:
@@ -189,7 +189,7 @@ Outer:
 					continue Outer
 				}
 			}
-			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels(nil)
+			l := labels.NewBuilder(c.Metric).Del(labels.MetricName).Labels()
 			if m.f != nil {
 				if m.f.ForRequest(ctx).ShouldFilter(l) {
 					continue
@@ -204,11 +204,11 @@ Outer:
 	return result, nil
 }
 
-func (m *mockChunkStore) LabelValuesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string, labelName string, matchers ...*labels.Matcher) ([]string, error) {
+func (m *mockChunkStore) LabelValuesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string, _ string, _ ...*labels.Matcher) ([]string, error) {
 	return nil, nil
 }
 
-func (m *mockChunkStore) LabelNamesForMetricName(ctx context.Context, userID string, from, through model.Time, metricName string) ([]string, error) {
+func (m *mockChunkStore) LabelNamesForMetricName(_ context.Context, _ string, _, _ model.Time, _ string) ([]string, error) {
 	return nil, nil
 }
 
@@ -216,15 +216,15 @@ func (m *mockChunkStore) SetChunkFilterer(f chunk.RequestChunkFilterer) {
 	m.f = f
 }
 
-func (m *mockChunkStore) DeleteChunk(ctx context.Context, from, through model.Time, userID, chunkID string, metric labels.Labels, partiallyDeletedInterval *model.Interval) error {
+func (m *mockChunkStore) DeleteChunk(_ context.Context, _, _ model.Time, _, _ string, _ labels.Labels, _ *model.Interval) error {
 	return nil
 }
 
-func (m *mockChunkStore) DeleteSeriesIDs(ctx context.Context, from, through model.Time, userID string, metric labels.Labels) error {
+func (m *mockChunkStore) DeleteSeriesIDs(_ context.Context, _, _ model.Time, _ string, _ labels.Labels) error {
 	return nil
 }
 func (m *mockChunkStore) Stop() {}
-func (m *mockChunkStore) Get(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([]chunk.Chunk, error) {
+func (m *mockChunkStore) Get(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([]chunk.Chunk, error) {
 	return nil, nil
 }
 
@@ -232,7 +232,7 @@ func (m *mockChunkStore) GetChunkFetcher(_ model.Time) *fetcher.Fetcher {
 	return nil
 }
 
-func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (m *mockChunkStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	refs := make([]chunk.Chunk, 0, len(m.chunks))
 	// transform real chunks into ref chunks.
 	for _, c := range m.chunks {
@@ -248,14 +248,18 @@ func (m *mockChunkStore) GetChunkRefs(ctx context.Context, userID string, from, 
 		panic(err)
 	}
 
-	f, err := fetcher.New(cache, false, m.schemas, m.client, 10, 100)
+	f, err := fetcher.New(cache, nil, false, m.schemas, m.client, 10, 100, 0)
 	if err != nil {
 		panic(err)
 	}
 	return [][]chunk.Chunk{refs}, []*fetcher.Fetcher{f}, nil
 }
 
-func (m *mockChunkStore) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error) {
+func (m *mockChunkStore) Stats(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) (*index_stats.Stats, error) {
+	return nil, nil
+}
+
+func (m *mockChunkStore) Volume(_ context.Context, _ string, _, _ model.Time, _ int32, _ []string, _ string, _ ...*labels.Matcher) (*logproto.VolumeResponse, error) {
 	return nil, nil
 }
 
@@ -268,11 +272,11 @@ func (m mockChunkStoreClient) Stop() {
 	panic("implement me")
 }
 
-func (m mockChunkStoreClient) PutChunks(ctx context.Context, chunks []chunk.Chunk) error {
+func (m mockChunkStoreClient) PutChunks(_ context.Context, _ []chunk.Chunk) error {
 	return nil
 }
 
-func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
+func (m mockChunkStoreClient) GetChunks(_ context.Context, chunks []chunk.Chunk) ([]chunk.Chunk, error) {
 	var res []chunk.Chunk
 	for _, c := range chunks {
 		for _, sc := range m.chunks {
@@ -285,11 +289,15 @@ func (m mockChunkStoreClient) GetChunks(ctx context.Context, chunks []chunk.Chun
 	return res, nil
 }
 
-func (m mockChunkStoreClient) DeleteChunk(ctx context.Context, userID, chunkID string) error {
+func (m mockChunkStoreClient) DeleteChunk(_ context.Context, _, _ string) error {
 	return nil
 }
 
 func (m mockChunkStoreClient) IsChunkNotFoundErr(_ error) bool {
+	return false
+}
+
+func (m mockChunkStoreClient) IsRetryableErr(_ error) bool {
 	return false
 }
 
@@ -375,4 +383,4 @@ var streamsFixture = []*logproto.Stream{
 		},
 	},
 }
-var storeFixture = newMockChunkStore(streamsFixture)
+var storeFixture = newMockChunkStore(chunkenc.ChunkFormatV3, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, streamsFixture)

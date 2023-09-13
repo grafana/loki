@@ -5,19 +5,18 @@ import (
 	"os"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/log"
+	"github.com/grafana/dskit/server"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/weaveworks/common/logging"
-	"github.com/weaveworks/common/server"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/querytee"
 )
 
 type Config struct {
 	ServerMetricsPort int
-	LogLevel          logging.Level
+	LogLevel          log.Level
 	ProxyConfig       querytee.ProxyConfig
 }
 
@@ -64,7 +63,6 @@ func lokiReadRoutes(cfg Config) []querytee.Route {
 		UseRelativeError:  cfg.ProxyConfig.UseRelativeError,
 		SkipRecentSamples: cfg.ProxyConfig.SkipRecentSamples,
 	})
-	samplesComparator.RegisterSamplesType(loghttp.ResultTypeStream, compareStreams)
 
 	return []querytee.Route{
 		{Path: "/loki/api/v1/query_range", RouteName: "api_v1_query_range", Methods: []string{"GET"}, ResponseComparator: samplesComparator},

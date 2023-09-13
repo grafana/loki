@@ -4,26 +4,22 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
-	"path"
 	"sync"
-	"time"
 
+	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
-	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
 type Config struct {
@@ -59,38 +55,40 @@ type indexClient struct {
 	querier      index.Querier
 
 	metrics  *metrics
+	logger   log.Logger
 	stopOnce sync.Once
 }
 
 // NewShipper creates a shipper for syncing local objects with a store
 func NewShipper(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRanges config.TableRanges, registerer prometheus.Registerer) (series_index.Client, error) {
+	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (series_index.Client, error) {
 	i := indexClient{
 		cfg:     cfg,
 		metrics: newMetrics(registerer),
+		logger:  logger,
 	}
 
-	err := i.init(storageClient, limits, ownsTenantFn, tableRanges, registerer)
+	err := i.init(storageClient, limits, tenantFilter, tableRange, registerer)
 	if err != nil {
 		return nil, err
 	}
 
-	level.Info(util_log.Logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %s mode", cfg.Mode))
+	level.Info(i.logger).Log("msg", fmt.Sprintf("starting boltdb shipper in %s mode", cfg.Mode))
 
 	return &i, nil
 }
 
 func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.Limits,
-	ownsTenantFn downloads.IndexGatewayOwnsTenant, tableRanges config.TableRanges, registerer prometheus.Registerer) error {
+	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
-	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, ownsTenantFn,
-		indexfile.OpenIndexFile, tableRanges, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer))
+	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, tenantFilter,
+		indexfile.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
 	if err != nil {
 		return err
 	}
 
 	if i.cfg.Mode != indexshipper.ModeReadOnly {
-		uploader, err := i.getUploaderName()
+		uploader, err := i.cfg.GetUniqueUploaderName()
 		if err != nil {
 			return err
 		}
@@ -101,7 +99,7 @@ func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.L
 			DBRetainPeriod:       i.cfg.IngesterDBRetainPeriod,
 			MakePerTenantBuckets: i.cfg.BuildPerTenantIndex,
 		}
-		i.writer, err = index.NewTableManager(cfg, i.indexShipper, registerer)
+		i.writer, err = index.NewTableManager(cfg, i.indexShipper, tableRange, registerer, i.logger)
 		if err != nil {
 			return err
 		}
@@ -110,33 +108,6 @@ func (i *indexClient) init(storageClient client.ObjectClient, limits downloads.L
 	i.querier = index.NewQuerier(i.writer, i.indexShipper)
 
 	return nil
-}
-
-func (i *indexClient) getUploaderName() (string, error) {
-	uploader := fmt.Sprintf("%s-%d", i.cfg.IngesterName, time.Now().UnixNano())
-
-	uploaderFilePath := path.Join(i.cfg.ActiveIndexDirectory, "uploader", "name")
-	if err := util.EnsureDirectory(path.Dir(uploaderFilePath)); err != nil {
-		return "", err
-	}
-
-	_, err := os.Stat(uploaderFilePath)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		if err := os.WriteFile(uploaderFilePath, []byte(uploader), 0o666); err != nil {
-			return "", err
-		}
-	} else {
-		ub, err := os.ReadFile(uploaderFilePath)
-		if err != nil {
-			return "", err
-		}
-		uploader = string(ub)
-	}
-
-	return uploader, nil
 }
 
 func (i *indexClient) Stop() {

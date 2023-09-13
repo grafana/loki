@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"io/ioutil"
 	"sort"
 	"strings"
 	"sync"
@@ -35,10 +34,18 @@ func NewInMemBucket() *InMemBucket {
 	}
 }
 
-// Objects returns internally stored objects.
+// Objects returns a copy of the internally stored objects.
 // NOTE: For assert purposes.
 func (b *InMemBucket) Objects() map[string][]byte {
-	return b.objects
+	b.mtx.RLock()
+	defer b.mtx.RUnlock()
+
+	objs := make(map[string][]byte)
+	for k, v := range b.objects {
+		objs[k] = v
+	}
+
+	return objs
 }
 
 // Iter calls f for each entry in the given directory. The argument to f is the full
@@ -112,7 +119,7 @@ func (b *InMemBucket) Get(_ context.Context, name string) (io.ReadCloser, error)
 		return nil, errNotFound
 	}
 
-	return ioutil.NopCloser(bytes.NewReader(file)), nil
+	return io.NopCloser(bytes.NewReader(file)), nil
 }
 
 // GetRange returns a new range reader for the given object name and range.
@@ -129,15 +136,15 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 	}
 
 	if int64(len(file)) < off {
-		return ioutil.NopCloser(bytes.NewReader(nil)), nil
+		return io.NopCloser(bytes.NewReader(nil)), nil
 	}
 
 	if length == -1 {
-		return ioutil.NopCloser(bytes.NewReader(file[off:])), nil
+		return io.NopCloser(bytes.NewReader(file[off:])), nil
 	}
 
 	if length <= 0 {
-		return ioutil.NopCloser(bytes.NewReader(nil)), errors.New("length cannot be smaller or equal 0")
+		return io.NopCloser(bytes.NewReader(nil)), errors.New("length cannot be smaller or equal 0")
 	}
 
 	if int64(len(file)) <= off+length {
@@ -145,7 +152,7 @@ func (b *InMemBucket) GetRange(_ context.Context, name string, off, length int64
 		length = int64(len(file)) - off
 	}
 
-	return ioutil.NopCloser(bytes.NewReader(file[off : off+length])), nil
+	return io.NopCloser(bytes.NewReader(file[off : off+length])), nil
 }
 
 // Exists checks if the given directory exists in memory.
@@ -171,7 +178,7 @@ func (b *InMemBucket) Attributes(_ context.Context, name string) (ObjectAttribut
 func (b *InMemBucket) Upload(_ context.Context, name string, r io.Reader) error {
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
-	body, err := ioutil.ReadAll(r)
+	body, err := io.ReadAll(r)
 	if err != nil {
 		return err
 	}
@@ -198,6 +205,11 @@ func (b *InMemBucket) Delete(_ context.Context, name string) error {
 // IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 func (b *InMemBucket) IsObjNotFoundErr(err error) bool {
 	return errors.Is(err, errNotFound)
+}
+
+// IsAccessDeniedErr returns true if access to object is denied.
+func (b *InMemBucket) IsAccessDeniedErr(err error) bool {
+	return false
 }
 
 func (b *InMemBucket) Close() error { return nil }

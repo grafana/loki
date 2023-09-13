@@ -20,15 +20,15 @@ import (
 	"github.com/Azure/go-autorest/autorest/azure"
 	"github.com/Azure/go-autorest/autorest/azure/auth"
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/instrument"
 	"github.com/mattn/go-ieproxy"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/weaveworks/common/instrument"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 	client_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/util"
-	"github.com/grafana/loki/pkg/util/log"
+	loki_instrument "github.com/grafana/loki/pkg/util/instrument"
 )
 
 const (
@@ -53,7 +53,7 @@ var (
 
 	defaultAuthFunctions = authFunctions{
 		NewOAuthConfigFunc: adal.NewOAuthConfig,
-		NewServicePrincipalTokenFromFederatedTokenFunc: adal.NewServicePrincipalTokenFromFederatedToken,
+		NewServicePrincipalTokenFromFederatedTokenFunc: adal.NewServicePrincipalTokenFromFederatedToken, //nolint:staticcheck // SA1019: use of deprecated function.
 	}
 
 	// default Azure http client.
@@ -189,7 +189,6 @@ type BlobStorage struct {
 
 // NewBlobStorage creates a new instance of the BlobStorage struct.
 func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingCfg hedging.Config) (*BlobStorage, error) {
-	log.WarnExperimentalUse("Azure Blob Storage", log.Logger)
 	blobStorage := &BlobStorage{
 		cfg:     cfg,
 		metrics: metrics,
@@ -215,18 +214,36 @@ func NewBlobStorage(cfg *BlobStorageConfig, metrics BlobStorageMetrics, hedgingC
 // Stop is a no op, as there are no background workers with this driver currently
 func (b *BlobStorage) Stop() {}
 
+func (b *BlobStorage) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := loki_instrument.TimeRequest(ctx, "azure.ObjectExists", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		blockBlobURL, err := b.getBlobURL(objectKey, false)
+		if err != nil {
+			return err
+		}
+
+		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		return err
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 // GetObject returns a reader and the size for the specified object key.
 func (b *BlobStorage) GetObject(ctx context.Context, objectKey string) (io.ReadCloser, int64, error) {
 	var cancel context.CancelFunc = func() {}
 	if b.cfg.RequestTimeout > 0 {
-		ctx, cancel = context.WithTimeout(ctx, b.cfg.RequestTimeout)
+		ctx, cancel = context.WithTimeout(ctx, (time.Duration(b.cfg.MaxRetries)*b.cfg.RequestTimeout)+(time.Duration(b.cfg.MaxRetries-1)*b.cfg.MaxRetryDelay)) // timeout only after azure client's built in retries
 	}
 
 	var (
 		size int64
 		rc   io.ReadCloser
 	)
-	err := instrument.CollectedRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	err := loki_instrument.TimeRequest(ctx, "azure.GetObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		var err error
 		rc, size, err = b.getObject(ctx, objectKey)
 		return err
@@ -257,7 +274,7 @@ func (b *BlobStorage) getObject(ctx context.Context, objectKey string) (rc io.Re
 }
 
 func (b *BlobStorage) PutObject(ctx context.Context, objectKey string, object io.ReadSeeker) error {
-	return instrument.CollectedRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "azure.PutObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(objectKey, false)
 		if err != nil {
 			return err
@@ -471,7 +488,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 			return nil, nil, ctx.Err()
 		}
 
-		err := instrument.CollectedRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+		err := loki_instrument.TimeRequest(ctx, "azure.List", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 			listBlob, err := b.containerURL.ListBlobsHierarchySegment(ctx, marker, delimiter, azblob.ListBlobsSegmentOptions{Prefix: prefix})
 			if err != nil {
 				return err
@@ -504,7 +521,7 @@ func (b *BlobStorage) List(ctx context.Context, prefix, delimiter string) ([]cli
 }
 
 func (b *BlobStorage) DeleteObject(ctx context.Context, blobID string) error {
-	return instrument.CollectedRequest(ctx, "azure.DeleteObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
+	return loki_instrument.TimeRequest(ctx, "azure.DeleteObject", instrument.NewHistogramCollector(b.metrics.requestDuration), instrument.ErrorCode, func(ctx context.Context) error {
 		blockBlobURL, err := b.getBlobURL(blobID, false)
 		if err != nil {
 			return err
@@ -557,3 +574,6 @@ func (b *BlobStorage) IsObjectNotFoundErr(err error) bool {
 
 	return false
 }
+
+// TODO(dannyk): implement for client
+func (b *BlobStorage) IsRetryableErr(error) bool { return false }

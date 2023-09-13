@@ -36,7 +36,7 @@ func (i indexProcessor) NewTableCompactor(ctx context.Context, commonIndexSet co
 }
 
 func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableName, userID, workingDir string, periodConfig config.PeriodConfig, logger log.Logger) (compactor.CompactedIndex, error) {
-	indexFile, err := OpenShippableTSDB(path)
+	indexFile, err := OpenShippableTSDB(path, IndexOpts{})
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +47,13 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 		}
 	}()
 
-	builder := NewBuilder()
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	indexFormat, err := periodConfig.TSDBFormat()
+	if err != nil {
+		return nil, err
+	}
+
+	builder := NewBuilder(indexFormat)
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -100,7 +105,7 @@ func (t *tableCompactor) CompactTable() error {
 		}
 
 		downloadPaths[job] = downloadedAt
-		idx, err := OpenShippableTSDB(downloadedAt)
+		idx, err := OpenShippableTSDB(downloadedAt, IndexOpts{})
 		if err != nil {
 			return err
 		}
@@ -149,7 +154,12 @@ func (t *tableCompactor) CompactTable() error {
 			}
 		}
 
-		builder, err := setupBuilder(t.ctx, userID, existingUserIndexSet, multiTenantIndices)
+		indexType, err := t.periodConfig.TSDBFormat()
+		if err != nil {
+			return err
+		}
+
+		builder, err := setupBuilder(t.ctx, indexType, userID, existingUserIndexSet, multiTenantIndices)
 		if err != nil {
 			return err
 		}
@@ -169,7 +179,12 @@ func (t *tableCompactor) CompactTable() error {
 			continue
 		}
 
-		builder, err := setupBuilder(t.ctx, userID, srcIdxSet, []Index{})
+		indexType, err := t.periodConfig.TSDBFormat()
+		if err != nil {
+			return err
+		}
+
+		builder, err := setupBuilder(t.ctx, indexType, userID, srcIdxSet, []Index{})
 		if err != nil {
 			return err
 		}
@@ -191,13 +206,13 @@ func (t *tableCompactor) CompactTable() error {
 
 // setupBuilder creates a Builder for a single user.
 // It combines the users index from multiTenantIndexes and its existing compacted index(es)
-func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
+func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndexSet compactor.IndexSet, multiTenantIndexes []Index) (*Builder, error) {
 	sourceIndexes := sourceIndexSet.ListSourceFiles()
-	builder := NewBuilder()
+	builder := NewBuilder(indexType)
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
-		err := idx.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -218,7 +233,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 			}
 		}()
 
-		indexFile, err := OpenShippableTSDB(path)
+		indexFile, err := OpenShippableTSDB(path, IndexOpts{})
 		if err != nil {
 			return nil, err
 		}
@@ -229,7 +244,7 @@ func setupBuilder(ctx context.Context, userID string, sourceIndexSet compactor.I
 			}
 		}()
 
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).forSeries(ctx, nil, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
@@ -355,11 +370,17 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 	c.deleteChunks = nil
 
 	for _, chk := range c.indexChunks {
-		err := c.builder.InsertChunk(chk.Metric.String(), index.ChunkMeta{
+		// TSDB doesnt need the __name__="log" convention the old chunk store index used.
+		b := labels.NewBuilder(chk.Metric)
+		b.Del(labels.MetricName)
+		ls := b.Labels()
+
+		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
+		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
 			Checksum: chk.Checksum,
 			MinTime:  int64(chk.From),
 			MaxTime:  int64(chk.Through),
-			KB:       uint32(chk.Size()) / (1 << 10),
+			KB:       uint32(approxKB),
 			Entries:  uint32(chk.Data.Entries()),
 		})
 		if err != nil {
@@ -375,13 +396,13 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 			Through:  through,
 			Checksum: checksum,
 		}
-		return newPrefixedIdentifier(id, c.workingDir, "")
+		return NewPrefixedIdentifier(id, c.workingDir, "")
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	return NewShippableTSDBFile(id)
+	return NewShippableTSDBFile(id, IndexOpts{})
 }
 
 func getUnsafeBytes(s string) []byte {

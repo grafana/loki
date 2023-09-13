@@ -400,12 +400,14 @@ func (m *Miniredis) cmdSpop(c *server.Peer, cmd string, args []string) {
 		}
 
 		var deleted []string
+		members := db.setMembers(opts.key)
 		for i := 0; i < opts.count; i++ {
-			members := db.setMembers(opts.key)
 			if len(members) == 0 {
 				break
 			}
-			member := members[m.randIntn(len(members))]
+			i := m.randIntn(len(members))
+			member := members[i]
+			members = delElem(members, i)
 			db.setRem(opts.key, member)
 			deleted = append(deleted, member)
 		}
@@ -701,4 +703,13 @@ func (m *Miniredis) cmdSscan(c *server.Peer, cmd string, args []string) {
 		}
 
 	})
+}
+
+func delElem(ls []string, i int) []string {
+	// this swap+truncate is faster but changes behaviour:
+	// ls[i] = ls[len(ls)-1]
+	// ls = ls[:len(ls)-1]
+	// so we do the dumb thing:
+	ls = append(ls[:i], ls[i+1:]...)
+	return ls
 }

@@ -9,14 +9,14 @@ import (
 	"time"
 
 	"github.com/grafana/dskit/flagext"
+	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/ring"
 	ring_client "github.com/grafana/dskit/ring/client"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/httpgrpc"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
@@ -207,9 +207,9 @@ func TestQuerier_validateQueryRequest(t *testing.T) {
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
 	require.NoError(t, err)
 
-	request.Start = request.End.Add(-3 * time.Minute)
+	request.Start = request.End.Add(-3*time.Minute - 2*time.Second)
 	_, err = q.SelectLogs(ctx, logql.SelectLogParams{QueryRequest: &request})
-	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m0s, limit: 2m0s)"), err)
+	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "the query time range exceeds the limit (query length: 3m2s, limit: 2m)"), err)
 }
 
 func TestQuerier_SeriesAPI(t *testing.T) {
@@ -243,7 +243,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(nil, errors.New("tst-err"))
 
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -259,7 +259,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, context.DeadlineExceeded)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -272,7 +272,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 			mkReq([]string{`{a="1"}`}),
 			func(store *storeMock, querier *queryClientMock, ingester *querierClientMock, limits validation.Limits, req *logproto.SeriesRequest) {
 				ingester.On("Series", mock.Anything, req, mock.Anything).Return(mockSeriesResponse(nil), nil)
-				store.On("Series", mock.Anything, mock.Anything).Return(nil, nil)
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return(nil, nil)
 			},
 			func(t *testing.T, q *SingleTenantQuerier, req *logproto.SeriesRequest) {
 				ctx := user.InjectOrgID(context.Background(), "test")
@@ -290,7 +290,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "3"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "4"}},
 					{Labels: map[string]string{"a": "1", "b": "5"}},
 				}, nil)
@@ -315,7 +315,7 @@ func TestQuerier_SeriesAPI(t *testing.T) {
 					{"a": "1", "b": "2"},
 				}), nil)
 
-				store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+				store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 					{Labels: map[string]string{"a": "1", "b": "2"}},
 					{Labels: map[string]string{"a": "1", "b": "3"}},
 				}, nil)
@@ -825,7 +825,7 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 		},
 		"Series": {
 			ingesterMethod: "Series",
-			storeMethod:    "Series",
+			storeMethod:    "SelectSeries",
 		},
 	}
 
@@ -966,6 +966,116 @@ func TestQuerier_RequestingIngesters(t *testing.T) {
 	}
 }
 
+func TestQuerier_Volumes(t *testing.T) {
+	t.Run("it returns volumes from the store", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		store := newStoreMock()
+		store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-1 * time.Hour).Unix())
+		through := model.TimeFromUnix(now.Add(-35 * time.Minute).Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.Volume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+
+	t.Run("it returns volumes from the ingester", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-15 * time.Minute).Unix())
+		through := model.TimeFromUnix(now.Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.Volume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 38}}, resp.Volumes)
+	})
+
+	t.Run("it merges volumes from the store and ingester", func(t *testing.T) {
+		ret := &logproto.VolumeResponse{Volumes: []logproto.Volume{
+			{Name: "foo", Volume: 38},
+		}}
+
+		limits, err := validation.NewOverrides(defaultLimitsTestConfig(), nil)
+		require.NoError(t, err)
+
+		ingesterClient := newQuerierClientMock()
+		ingesterClient.On("GetVolume", mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		store := newStoreMock()
+		store.On("Volume", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(ret, nil)
+
+		conf := mockQuerierConfig()
+		conf.QueryIngestersWithin = time.Minute * 30
+		conf.IngesterQueryStoreMaxLookback = conf.QueryIngestersWithin
+
+		querier, err := newQuerier(
+			conf,
+			mockIngesterClientConfig(),
+			newIngesterClientMockFactory(ingesterClient),
+			mockReadRingWithOneActiveIngester(),
+			&mockDeleteGettter{},
+			store, limits)
+		require.NoError(t, err)
+
+		now := time.Now()
+		from := model.TimeFromUnix(now.Add(-time.Hour).Unix())
+		through := model.TimeFromUnix(now.Unix())
+		req := &logproto.VolumeRequest{From: from, Through: through, Matchers: `{}`, Limit: 10}
+		ctx := user.InjectOrgID(context.Background(), "test")
+		resp, err := querier.Volume(ctx, req)
+		require.NoError(t, err)
+		require.Equal(t, []logproto.Volume{{Name: "foo", Volume: 76}}, resp.Volumes)
+	})
+}
+
 func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*querierClientMock, *storeMock, *SingleTenantQuerier, error) {
 	queryClient := newQueryClientMock()
 	queryClient.On("Recv").Return(mockQueryResponse([]logproto.Stream{mockStream(1, 1)}), nil)
@@ -990,7 +1100,7 @@ func setupIngesterQuerierMocks(conf Config, limits *validation.Overrides) (*quer
 	store.On("SelectSamples", mock.Anything, mock.Anything).Return(mockSampleIterator(querySampleClient), nil)
 	store.On("LabelValuesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"1", "2", "3"}, nil)
 	store.On("LabelNamesForMetricName", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]string{"foo"}, nil)
-	store.On("Series", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
+	store.On("SelectSeries", mock.Anything, mock.Anything).Return([]logproto.SeriesIdentifier{
 		{Labels: map[string]string{"foo": "1"}},
 	}, nil)
 
@@ -1014,8 +1124,12 @@ type fakeTimeLimits struct {
 	maxQueryLength   time.Duration
 }
 
-func (f fakeTimeLimits) MaxQueryLookback(_ string) time.Duration { return f.maxQueryLookback }
-func (f fakeTimeLimits) MaxQueryLength(_ string) time.Duration   { return f.maxQueryLength }
+func (f fakeTimeLimits) MaxQueryLookback(_ context.Context, _ string) time.Duration {
+	return f.maxQueryLookback
+}
+func (f fakeTimeLimits) MaxQueryLength(_ context.Context, _ string) time.Duration {
+	return f.maxQueryLength
+}
 
 func Test_validateQueryTimeRangeLimits(t *testing.T) {
 	now := time.Now()
@@ -1184,7 +1298,7 @@ type mockDeleteGettter struct {
 	results []deletion.DeleteRequest
 }
 
-func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(ctx context.Context, userID string) ([]deletion.DeleteRequest, error) {
+func (d *mockDeleteGettter) GetAllDeleteRequestsForUser(_ context.Context, userID string) ([]deletion.DeleteRequest, error) {
 	d.user = userID
 	return d.results, nil
 }

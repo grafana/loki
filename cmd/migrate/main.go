@@ -8,21 +8,21 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/loki"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -93,9 +93,20 @@ func main() {
 	// Don't keep fetched index files for very long
 	sourceConfig.StorageConfig.BoltDBShipperConfig.CacheTTL = 30 * time.Minute
 
+	sourceConfig.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+
 	// Shorten these timers up so we resync a little faster and clear index files a little quicker
 	destConfig.StorageConfig.IndexCacheValidity = 1 * time.Minute
 	destConfig.StorageConfig.BoltDBShipperConfig.ResyncInterval = 1 * time.Minute
+	destConfig.StorageConfig.TSDBShipperConfig.ResyncInterval = 1 * time.Minute
+
+	// Don't want to use the index gateway for this, this makes sure the index files are properly uploaded when the store is stopped.
+	sourceConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+	sourceConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+
+	destConfig.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+	destConfig.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	// The long nature of queries requires stretching out the cardinality limit some and removing the query length limit
 	sourceConfig.LimitsConfig.CardinalityLimit = 1e9
@@ -142,7 +153,7 @@ func main() {
 	matchers := []*labels.Matcher{nameLabelMatcher}
 
 	if *match != "" {
-		m, err := syntax.ParseMatchers(*match)
+		m, err := syntax.ParseMatchers(*match, true)
 		if err != nil {
 			log.Println("Failed to parse log matcher:", err)
 			os.Exit(1)
@@ -299,7 +310,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			var totalBytes uint64
 			var totalChunks uint64
 			//log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
-			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
+			schemaGroups, fetchers, err := m.source.GetChunks(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
 				log.Println(threadID, "Error querying index for chunk refs:", err)
 				errCh <- err
@@ -318,39 +329,45 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 					chunks := schemaGroups[i][j:k]
 					//log.Printf("%v Processing chunks %v-%v of %v\n", threadID, j, k, len(schemaGroups[i]))
 
-					keys := make([]string, 0, len(chunks))
 					chks := make([]chunk.Chunk, 0, len(chunks))
 
-					// FetchChunks requires chunks to be ordered by external key.
-					sort.Slice(chunks, func(x, y int) bool {
-						return m.schema.ExternalKey(chunks[x].ChunkRef) < m.schema.ExternalKey(chunks[y].ChunkRef)
-					})
-					for _, chk := range chunks {
-						key := m.schema.ExternalKey(chk.ChunkRef)
-						keys = append(keys, key)
-						chks = append(chks, chk)
-					}
-					for retry := 10; retry >= 0; retry-- {
-						chks, err = f.FetchChunks(m.ctx, chks, keys)
-						if err != nil {
-							if retry == 0 {
-								log.Println(threadID, "Final error retrieving chunks, giving up:", err)
-								errCh <- err
-								return
+					chks = append(chks, chunks...)
+
+					finalChks, err := f.FetchChunks(m.ctx, chks)
+					if err != nil {
+						log.Println(threadID, "Error retrieving chunks, will go through them one by one:", err)
+						finalChks = make([]chunk.Chunk, 0, len(chunks))
+						for i := range chks {
+							onechunk := []chunk.Chunk{chunks[i]}
+							var retry int
+							for retry = 4; retry >= 0; retry-- {
+								onechunk, err = f.FetchChunks(m.ctx, onechunk)
+								if err != nil {
+									if retry == 0 {
+										log.Println(threadID, "Final error retrieving chunks, giving up:", err)
+									}
+									log.Println(threadID, "Error fetching chunks, will retry:", err)
+									onechunk = []chunk.Chunk{chunks[i]}
+									time.Sleep(5 * time.Second)
+								} else {
+									break
+								}
 							}
-							log.Println(threadID, "Error fetching chunks, will retry:", err)
-							time.Sleep(5 * time.Second)
-						} else {
-							break
+
+							if retry < 0 {
+								continue
+							}
+
+							finalChks = append(finalChks, onechunk[0])
 						}
 					}
 
-					totalChunks += uint64(len(chks))
+					totalChunks += uint64(len(finalChks))
 
-					output := make([]chunk.Chunk, 0, len(chks))
+					output := make([]chunk.Chunk, 0, len(finalChks))
 
 					// Calculate some size stats and change the tenant ID if necessary
-					for i, chk := range chks {
+					for i, chk := range finalChks {
 						if enc, err := chk.Encoded(); err == nil {
 							totalBytes += uint64(len(enc))
 						} else {
@@ -369,7 +386,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 							}
 							output = append(output, nc)
 						} else {
-							output = append(output, chks[i])
+							output = append(output, finalChks[i])
 						}
 
 					}

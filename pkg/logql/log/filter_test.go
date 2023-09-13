@@ -13,26 +13,31 @@ func Test_SimplifiedRegex(t *testing.T) {
 		"foo, 世界", allunicode(), "fooÏbar",
 	}
 	for _, test := range []struct {
-		re         string
+		re string
+
+		// Simplified is true when the regex is converted to non-regex filters
+		// or when the regex is rewritten to be non-greedy
 		simplified bool
-		expected   Filterer
-		match      bool
+
+		// Expected != nil when the regex is converted to non-regex filters
+		expected Filterer
+		match    bool
 	}{
 		// regex we intend to support.
 		{"foo", true, newContainsFilter([]byte("foo"), false), true},
-		{"not", true, newNotFilter(newContainsFilter([]byte("not"), false)), false},
+		{"not", true, NewNotFilter(newContainsFilter([]byte("not"), false)), false},
 		{"(foo)", true, newContainsFilter([]byte("foo"), false), true},
 		{"(foo|ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
 		{"(foo|ba|ar)", true, newOrFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), newContainsFilter([]byte("ar"), false)), true},
 		{"(foo|(ba|ar))", true, newOrFilter(newContainsFilter([]byte("foo"), false), newOrFilter(newContainsFilter([]byte("ba"), false), newContainsFilter([]byte("ar"), false))), true},
 		{"foo.*", true, newContainsFilter([]byte("foo"), false), true},
-		{".*foo", true, newNotFilter(newContainsFilter([]byte("foo"), false)), false},
+		{".*foo", true, NewNotFilter(newContainsFilter([]byte("foo"), false)), false},
 		{".*foo.*", true, newContainsFilter([]byte("foo"), false), true},
 		{"(.*)(foo).*", true, newContainsFilter([]byte("foo"), false), true},
 		{"(foo.*|.*ba)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("ba"), false)), true},
-		{"(foo.*|.*bar.*)", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
-		{".*foo.*|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
-		{".*foo|bar", true, newNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{"(foo.*|.*bar.*)", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo.*|bar", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
+		{".*foo|bar", true, NewNotFilter(newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false))), false},
 		// This construct is similar to (...), but won't create a capture group.
 		{"(?:.*foo.*|bar)", true, newOrFilter(newContainsFilter([]byte("foo"), false), newContainsFilter([]byte("bar"), false)), true},
 		// named capture group
@@ -61,28 +66,31 @@ func Test_SimplifiedRegex(t *testing.T) {
 		{"(?i)f|foo|foobar", true, newOrFilter(newContainsFilter([]byte("F"), true), newOrFilter(newContainsFilter([]byte("FOO"), true), newContainsFilter([]byte("FOOBAR"), true))), true},
 		{"(?i)f|fatal|e.*", true, newOrFilter(newOrFilter(newContainsFilter([]byte("F"), true), newContainsFilter([]byte("FATAL"), true)), newContainsFilter([]byte("E"), true)), true},
 		{"(?i).*foo.*", true, newContainsFilter([]byte("FOO"), true), true},
+		{".+", true, ExistsFilter, true},
 
-		// regex we are not supporting.
-		{"[a-z]+foo", true, nil, false},
-		{".+foo", true, nil, false},
-		{".*fo.*o", true, nil, false},
-		{`\d`, true, nil, false},
-		{`\sfoo`, true, nil, false},
-		{`foo?`, false, nil, false},
-		{`foo{1,2}bar{2,3}`, true, nil, false},
-		{`foo|\d*bar`, true, nil, false},
-		{`foo|fo{1,2}`, true, nil, false},
-		{`foo|fo\d*`, true, nil, false},
-		{`foo|fo\d+`, true, nil, false},
-		{`(\w\d+)`, true, nil, false},
-		{`.*f.*oo|fo{1,2}`, true, nil, false},
-		{"f|f(?i)oo", true, nil, false},
+		// These regexes are rewritten to be non-greedy but no new
+		// filter is generated.
+		{"[a-z]+foo", true, nil, true},
+		{".+foo", true, nil, true},
+		{".*fo.*o", true, nil, true},
+		{`\d`, true, nil, true},
+		{`\sfoo`, true, nil, true},
+		{`foo?`, false, nil, true},
+		{`foo{1,2}bar{2,3}`, true, nil, true},
+		{`foo|\d*bar`, true, nil, true},
+		{`foo|fo{1,2}`, true, nil, true},
+		{`foo|fo\d*`, true, nil, true},
+		{`foo|fo\d+`, true, nil, true},
+		{`(\w\d+)`, true, nil, true},
+		{`.*f.*oo|fo{1,2}`, true, nil, true},
+		{"f|f(?i)oo", true, nil, true},
+		{".foo+", true, nil, true},
 	} {
 		t.Run(test.re, func(t *testing.T) {
-			d, err := newRegexpFilter(test.re, test.match)
+			d, err := newRegexpFilter(test.re, test.re, test.match)
 			require.NoError(t, err, "invalid regex")
 
-			f, err := parseRegexpFilter(test.re, test.match)
+			f, err := parseRegexpFilter(test.re, test.match, false)
 			require.NoError(t, err)
 
 			// if we don't expect simplification then the filter should be the same as the default one.
@@ -90,11 +98,17 @@ func Test_SimplifiedRegex(t *testing.T) {
 				require.Equal(t, d, f)
 				return
 			}
+
 			// otherwise ensure we have different filter
 			require.NotEqual(t, f, d)
 			if test.expected != nil {
 				require.Equal(t, test.expected, f)
+			} else {
+				reFilter, ok := f.(regexpFilter)
+				require.True(t, ok)
+				require.Equal(t, test.re, reFilter.String())
 			}
+
 			// tests all lines with both filter, they should have the same result.
 			for _, line := range fixtures {
 				l := []byte(line)
@@ -120,7 +134,7 @@ func Test_TrueFilter(t *testing.T) {
 		expectTrue bool
 	}{
 		{"empty match", newContainsFilter(empty, false), true},
-		{"not empty match", newNotFilter(newContainsFilter(empty, true)), false},
+		{"not empty match", NewNotFilter(newContainsFilter(empty, true)), false},
 		{"match", newContainsFilter([]byte("foo"), false), false},
 		{"empty match and", NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
 		{"empty match or", newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)), true},
@@ -132,8 +146,8 @@ func Test_TrueFilter(t *testing.T) {
 		{"nil both or", newOrFilter(nil, nil), false},   // returns nil
 		{"empty match and chained", NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
 		{"empty match or chained", newOrFilter(newContainsFilter(empty, false), newOrFilter(newContainsFilter(empty, true), newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false)))), true},
-		{"empty match and", newNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
-		{"empty match or", newNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match and", NewNotFilter(NewAndFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
+		{"empty match or", NewNotFilter(newOrFilter(newContainsFilter(empty, false), newContainsFilter(empty, false))), false},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if test.expectTrue {
@@ -180,11 +194,11 @@ var res bool
 func benchmarkRegex(b *testing.B, re, line string, match bool) {
 	var m bool
 	l := []byte(line)
-	d, err := newRegexpFilter(re, match)
+	d, err := newRegexpFilter(re, re, match)
 	if err != nil {
 		b.Fatal(err)
 	}
-	s, err := parseRegexpFilter(re, match)
+	s, err := parseRegexpFilter(re, match, false)
 	if err != nil {
 		b.Fatal(err)
 	}

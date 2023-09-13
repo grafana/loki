@@ -79,6 +79,7 @@ func (c *StreamRateCalculator) updateRates() {
 					StreamHash:        streamRate.StreamHash,
 					StreamHashNoShard: streamRate.StreamHashNoShard,
 					Rate:              streamRate.Rate,
+					Pushes:            streamRate.Pushes,
 				})
 			}
 		}
@@ -112,6 +113,7 @@ func (c *StreamRateCalculator) Record(tenant string, streamHash, streamHashNoSha
 	streamRate.StreamHashNoShard = streamHashNoShard
 	streamRate.Tenant = tenant
 	streamRate.Rate += int64(bytes)
+	streamRate.Pushes++
 	tenantMap[streamHash] = streamRate
 
 	c.samples[i][tenant] = tenantMap

@@ -48,6 +48,7 @@ func NewGenNumberLoader(g CacheGenClient, registerer prometheus.Registerer) *Gen
 
 func (l *GenNumberLoader) loop() {
 	timer := time.NewTicker(reloadDuration)
+	defer timer.Stop()
 	for {
 		select {
 		case <-timer.C:

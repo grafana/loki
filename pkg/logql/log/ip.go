@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"unicode"
 
+	"net/netip"
+
 	"github.com/prometheus/prometheus/model/labels"
-	"inet.af/netaddr"
+	"go4.org/netipx"
 )
 
 var (
@@ -21,7 +23,7 @@ const (
 	IPv6Charset = "0123456789abcdefABCDEF:."
 )
 
-// Should be one of the netaddr.IP, netaddr.IPRange, netadd.IPPrefix.
+// Should be one of the netip.Addr, netip.Prefix, netipx.IPRange.
 type IPMatcher interface{}
 
 type IPLineFilter struct {
@@ -190,7 +192,7 @@ func (f *ipFilter) filter(line []byte) bool {
 		if iplen < 0 {
 			return false, 0
 		}
-		ip, err := netaddr.ParseIP(string(line[start : start+iplen]))
+		ip, err := netip.ParseAddr(string(line[start : start+iplen]))
 		if err == nil {
 			if containsIP(f.matcher, ip) {
 				return true, 0
@@ -223,13 +225,13 @@ func (f *ipFilter) filter(line []byte) bool {
 	return false
 }
 
-func containsIP(matcher IPMatcher, ip netaddr.IP) bool {
+func containsIP(matcher IPMatcher, ip netip.Addr) bool {
 	switch m := matcher.(type) {
-	case netaddr.IP:
+	case netip.Addr:
 		return m.Compare(ip) == 0
-	case netaddr.IPRange:
+	case netipx.IPRange:
 		return m.Contains(ip)
-	case netaddr.IPPrefix:
+	case netip.Prefix:
 		return m.Contains(ip)
 	}
 	return false
@@ -241,16 +243,16 @@ func getMatcher(pattern string) (IPMatcher, error) {
 		err     error
 	)
 
-	matcher, err = netaddr.ParseIP(pattern) // is it simple single IP?
+	matcher, err = netip.ParseAddr(pattern) // is it simple single IP?
 	if err == nil {
 		return matcher, nil
 	}
-	matcher, err = netaddr.ParseIPPrefix(pattern) // is it cidr format? (192.168.0.1/16)
+	matcher, err = netip.ParsePrefix(pattern) // is it cidr format? (192.168.0.1/16)
 	if err == nil {
 		return matcher, nil
 	}
 
-	matcher, err = netaddr.ParseIPRange(pattern) // is it IP range format? (192.168.0.1 - 192.168.4.5
+	matcher, err = netipx.ParseIPRange(pattern) // is it IP range format? (192.168.0.1 - 192.168.4.5
 	if err == nil {
 		return matcher, nil
 	}

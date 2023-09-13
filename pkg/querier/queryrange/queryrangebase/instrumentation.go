@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
+	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
-	"github.com/weaveworks/common/instrument"
 )
 
 // InstrumentMiddleware can be inserted into the middleware chain to expose timing information.
@@ -58,7 +58,7 @@ type NoopCollector struct{}
 func (c *NoopCollector) Register() {}
 
 // Before implements instrument.Collector.
-func (c *NoopCollector) Before(ctx context.Context, method string, start time.Time) {}
+func (c *NoopCollector) Before(_ context.Context, _ string, _ time.Time) {}
 
 // After implements instrument.Collector.
-func (c *NoopCollector) After(ctx context.Context, method, statusCode string, start time.Time) {}
+func (c *NoopCollector) After(_ context.Context, _, _ string, _ time.Time) {}

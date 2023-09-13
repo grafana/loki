@@ -349,7 +349,7 @@ func (b *cdsBalancer) handleWatchUpdate(update clusterHandlerUpdate) {
 	if b.childLB == nil {
 		childLB, err := newChildBalancer(b.ccw, b.bOpts)
 		if err != nil {
-			b.logger.Errorf("Failed to create child policy of type %s, %v", clusterresolver.Name, err)
+			b.logger.Errorf("Failed to create child policy of type %s: %v", clusterresolver.Name, err)
 			return
 		}
 		b.childLB = childLB

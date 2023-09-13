@@ -10,10 +10,10 @@ import (
 	"unicode"
 
 	"github.com/go-kit/log"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
-	"github.com/weaveworks/common/user"
 
 	"github.com/grafana/dskit/tenant"
 
@@ -245,7 +245,7 @@ func newMockEntryIterator(numLabels int) mockEntryIterator {
 	for i := 1; i <= numLabels; i++ {
 		builder.Set(fmt.Sprintf("label_%d", i), strconv.Itoa(i))
 	}
-	return mockEntryIterator{labels: builder.Labels(nil).String()}
+	return mockEntryIterator{labels: builder.Labels().String()}
 }
 
 func (it mockEntryIterator) Labels() string {
@@ -407,6 +407,43 @@ func TestMultiTenantQuerierSeries(t *testing.T) {
 	}
 }
 
+func TestVolume(t *testing.T) {
+	tenant.WithDefaultResolver(tenant.NewMultiResolver())
+
+	for _, tc := range []struct {
+		desc            string
+		orgID           string
+		expectedVolumes []logproto.Volume
+	}{
+		{
+			desc:  "multiple tenants are aggregated",
+			orgID: "1|2",
+			expectedVolumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 76},
+			},
+		},
+
+		{
+			desc:  "single tenant",
+			orgID: "2",
+			expectedVolumes: []logproto.Volume{
+				{Name: `{foo="bar"}`, Volume: 38},
+			},
+		},
+	} {
+		t.Run(tc.desc, func(t *testing.T) {
+			querier := newQuerierMock()
+			querier.On("Volume", mock.Anything, mock.Anything).Return(mockLabelValueResponse(), nil)
+			multiTenantQuerier := NewMultiTenantQuerier(querier, log.NewNopLogger())
+			ctx := user.InjectOrgID(context.Background(), tc.orgID)
+
+			resp, err := multiTenantQuerier.Volume(ctx, mockLabelValueRequest())
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedVolumes, resp.GetVolumes())
+		})
+	}
+}
+
 func mockSeriesRequest() *logproto.SeriesRequest {
 	return &logproto.SeriesRequest{
 		Start: time.Unix(0, 0),
@@ -430,6 +467,23 @@ func mockSeriesResponse() *logproto.SeriesResponse {
 				Labels: map[string]string{"a": "1", "b": "5"},
 			},
 		},
+	}
+}
+
+func mockLabelValueRequest() *logproto.VolumeRequest {
+	return &logproto.VolumeRequest{
+		From:     0,
+		Through:  1000,
+		Matchers: `{foo="bar"}`,
+		Limit:    10,
+	}
+}
+
+func mockLabelValueResponse() *logproto.VolumeResponse {
+	return &logproto.VolumeResponse{Volumes: []logproto.Volume{
+		{Name: `{foo="bar"}`, Volume: 38},
+	},
+		Limit: 10,
 	}
 }
 

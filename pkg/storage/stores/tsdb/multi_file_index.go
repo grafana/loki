@@ -336,3 +336,9 @@ func (i *MultiIndex) Stats(ctx context.Context, userID string, from, through mod
 		return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 	})
 }
+
+func (i *MultiIndex) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+	return i.forMatchingIndices(ctx, from, through, func(ctx context.Context, idx Index) error {
+		return idx.Volume(ctx, userID, from, through, acc, shard, shouldIncludeChunk, targetLabels, aggregateBy, matchers...)
+	})
+}

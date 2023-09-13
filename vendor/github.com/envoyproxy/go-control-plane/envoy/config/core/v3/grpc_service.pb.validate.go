@@ -120,9 +120,20 @@ func (m *GrpcService) validate(all bool) error {
 
 	}
 
-	switch m.TargetSpecifier.(type) {
-
+	oneofTargetSpecifierPresent := false
+	switch v := m.TargetSpecifier.(type) {
 	case *GrpcService_EnvoyGrpc_:
+		if v == nil {
+			err := GrpcServiceValidationError{
+				field:  "TargetSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTargetSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetEnvoyGrpc()).(type) {
@@ -154,6 +165,17 @@ func (m *GrpcService) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_:
+		if v == nil {
+			err := GrpcServiceValidationError{
+				field:  "TargetSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofTargetSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGoogleGrpc()).(type) {
@@ -185,6 +207,9 @@ func (m *GrpcService) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofTargetSpecifierPresent {
 		err := GrpcServiceValidationError{
 			field:  "TargetSpecifier",
 			reason: "value is required",
@@ -193,7 +218,6 @@ func (m *GrpcService) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -337,6 +361,35 @@ func (m *GrpcService_EnvoyGrpc) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
+	}
+
+	if all {
+		switch v := interface{}(m.GetRetryPolicy()).(type) {
+		case interface{ ValidateAll() error }:
+			if err := v.ValidateAll(); err != nil {
+				errors = append(errors, GrpcService_EnvoyGrpcValidationError{
+					field:  "RetryPolicy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		case interface{ Validate() error }:
+			if err := v.Validate(); err != nil {
+				errors = append(errors, GrpcService_EnvoyGrpcValidationError{
+					field:  "RetryPolicy",
+					reason: "embedded message failed validation",
+					cause:  err,
+				})
+			}
+		}
+	} else if v, ok := interface{}(m.GetRetryPolicy()).(interface{ Validate() error }); ok {
+		if err := v.Validate(); err != nil {
+			return GrpcService_EnvoyGrpcValidationError{
+				field:  "RetryPolicy",
+				reason: "embedded message failed validation",
+				cause:  err,
+			}
+		}
 	}
 
 	if len(errors) > 0 {
@@ -1022,9 +1075,20 @@ func (m *GrpcService_GoogleGrpc_ChannelCredentials) validate(all bool) error {
 
 	var errors []error
 
-	switch m.CredentialSpecifier.(type) {
-
+	oneofCredentialSpecifierPresent := false
+	switch v := m.CredentialSpecifier.(type) {
 	case *GrpcService_GoogleGrpc_ChannelCredentials_SslCredentials:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_ChannelCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetSslCredentials()).(type) {
@@ -1056,6 +1120,17 @@ func (m *GrpcService_GoogleGrpc_ChannelCredentials) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_ChannelCredentials_GoogleDefault:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_ChannelCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGoogleDefault()).(type) {
@@ -1087,6 +1162,17 @@ func (m *GrpcService_GoogleGrpc_ChannelCredentials) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_ChannelCredentials_LocalCredentials:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_ChannelCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetLocalCredentials()).(type) {
@@ -1118,6 +1204,9 @@ func (m *GrpcService_GoogleGrpc_ChannelCredentials) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofCredentialSpecifierPresent {
 		err := GrpcService_GoogleGrpc_ChannelCredentialsValidationError{
 			field:  "CredentialSpecifier",
 			reason: "value is required",
@@ -1126,7 +1215,6 @@ func (m *GrpcService_GoogleGrpc_ChannelCredentials) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -1235,12 +1323,33 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 
 	var errors []error
 
-	switch m.CredentialSpecifier.(type) {
-
+	oneofCredentialSpecifierPresent := false
+	switch v := m.CredentialSpecifier.(type) {
 	case *GrpcService_GoogleGrpc_CallCredentials_AccessToken:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 		// no validation rules for AccessToken
-
 	case *GrpcService_GoogleGrpc_CallCredentials_GoogleComputeEngine:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGoogleComputeEngine()).(type) {
@@ -1272,9 +1381,30 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_CallCredentials_GoogleRefreshToken:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 		// no validation rules for GoogleRefreshToken
-
 	case *GrpcService_GoogleGrpc_CallCredentials_ServiceAccountJwtAccess:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetServiceAccountJwtAccess()).(type) {
@@ -1306,6 +1436,17 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_CallCredentials_GoogleIam:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetGoogleIam()).(type) {
@@ -1337,6 +1478,17 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_CallCredentials_FromPlugin:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetFromPlugin()).(type) {
@@ -1368,6 +1520,17 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 		}
 
 	case *GrpcService_GoogleGrpc_CallCredentials_StsService_:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
+				field:  "CredentialSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofCredentialSpecifierPresent = true
 
 		if all {
 			switch v := interface{}(m.GetStsService()).(type) {
@@ -1399,6 +1562,9 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 		}
 
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofCredentialSpecifierPresent {
 		err := GrpcService_GoogleGrpc_CallCredentialsValidationError{
 			field:  "CredentialSpecifier",
 			reason: "value is required",
@@ -1407,7 +1573,6 @@ func (m *GrpcService_GoogleGrpc_CallCredentials) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {
@@ -1916,9 +2081,18 @@ func (m *GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPlugin) v
 
 	// no validation rules for Name
 
-	switch m.ConfigType.(type) {
-
+	switch v := m.ConfigType.(type) {
 	case *GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPlugin_TypedConfig:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPluginValidationError{
+				field:  "ConfigType",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
 
 		if all {
 			switch v := interface{}(m.GetTypedConfig()).(type) {
@@ -1949,6 +2123,8 @@ func (m *GrpcService_GoogleGrpc_CallCredentials_MetadataCredentialsFromPlugin) v
 			}
 		}
 
+	default:
+		_ = v // ensures v is used
 	}
 
 	if len(errors) > 0 {
@@ -2217,15 +2393,38 @@ func (m *GrpcService_GoogleGrpc_ChannelArgs_Value) validate(all bool) error {
 
 	var errors []error
 
-	switch m.ValueSpecifier.(type) {
-
+	oneofValueSpecifierPresent := false
+	switch v := m.ValueSpecifier.(type) {
 	case *GrpcService_GoogleGrpc_ChannelArgs_Value_StringValue:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_ChannelArgs_ValueValidationError{
+				field:  "ValueSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofValueSpecifierPresent = true
 		// no validation rules for StringValue
-
 	case *GrpcService_GoogleGrpc_ChannelArgs_Value_IntValue:
+		if v == nil {
+			err := GrpcService_GoogleGrpc_ChannelArgs_ValueValidationError{
+				field:  "ValueSpecifier",
+				reason: "oneof value cannot be a typed-nil",
+			}
+			if !all {
+				return err
+			}
+			errors = append(errors, err)
+		}
+		oneofValueSpecifierPresent = true
 		// no validation rules for IntValue
-
 	default:
+		_ = v // ensures v is used
+	}
+	if !oneofValueSpecifierPresent {
 		err := GrpcService_GoogleGrpc_ChannelArgs_ValueValidationError{
 			field:  "ValueSpecifier",
 			reason: "value is required",
@@ -2234,7 +2433,6 @@ func (m *GrpcService_GoogleGrpc_ChannelArgs_Value) validate(all bool) error {
 			return err
 		}
 		errors = append(errors, err)
-
 	}
 
 	if len(errors) > 0 {

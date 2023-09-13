@@ -7,15 +7,15 @@ import (
 	"path"
 	"strings"
 
-	configv1 "github.com/grafana/loki/operator/apis/config/v1"
-	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
-	"github.com/grafana/loki/operator/internal/manifests"
-	"github.com/grafana/loki/operator/internal/manifests/storage"
-
 	"github.com/ViaQ/logerr/v2/log"
 	"github.com/go-logr/logr"
 	openshiftv1 "github.com/openshift/api/config/v1"
 	"sigs.k8s.io/yaml"
+
+	configv1 "github.com/grafana/loki/operator/apis/config/v1"
+	lokiv1 "github.com/grafana/loki/operator/apis/loki/v1"
+	"github.com/grafana/loki/operator/internal/manifests"
+	"github.com/grafana/loki/operator/internal/manifests/storage"
 )
 
 // Define the manifest options here as structured objects
@@ -49,7 +49,7 @@ func (c *config) registerFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.featureFlags.ServiceMonitorTLSEndpoints, "with-service-monitor-tls-endpoints", false, "Enable TLS endpoint for service monitors.")
 	f.BoolVar(&c.featureFlags.LokiStackAlerts, "with-lokistack-alerts", false, "Enables prometheus alerts")
 	f.BoolVar(&c.featureFlags.LokiStackGateway, "with-lokistack-gateway", false, "Enables the manifest creation for the entire lokistack-gateway.")
-	f.BoolVar(&c.featureFlags.RuntimeSeccompProfile, "with-runtime-seccomp-profile", false, "Enables the usage of the runtime/default seccomp profile for pods and containers.")
+	f.BoolVar(&c.featureFlags.RestrictedPodSecurityStandard, "with-restricted-pod-security-standard", false, "Enable restricted security standard settings")
 	// Object storage options
 	c.objectStorage = storage.Options{
 		S3: &storage.S3StorageConfig{},
