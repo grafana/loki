@@ -11,12 +11,12 @@ import (
 
 var Closed atomic.Bool
 
-//var ChunkAllocator = NewPoolAllocator(2 << 10) // 2KiB
+// var ChunkAllocator = NewPoolAllocator(2 << 10) // 2KiB
 var ChunkAllocator = NewSlabAllocator()
 
 // TODO comment
 type PoolAllocator struct {
-	pool    *sync.Pool
+	pool *sync.Pool
 }
 
 func (p *PoolAllocator) Get(sz int) *[]byte {
@@ -65,10 +65,11 @@ type SlabAllocator struct {
 }
 
 func (p *SlabAllocator) Get(sz int) *[]byte {
-	sl := p.pool.Get(sz).(*[]byte)
-	*sl = (*sl)[:0:sz]
+	get := p.pool.Get(sz)
+	sl := get.([]uint8)
+	sl = (sl)[:sz]
 
-	return sl
+	return &sl
 }
 
 func (p *SlabAllocator) Put(b *[]byte) {
@@ -83,15 +84,15 @@ func (p *SlabAllocator) Put(b *[]byte) {
 		(*b)[i] = 0
 	}
 
-	p.pool.Put(b)
+	p.pool.Put(*b)
 }
 
 func NewSlabAllocator() *SlabAllocator {
 	return &SlabAllocator{
-		pool: pool.New(2 << 10, 2 << 20, 2, func(size int) any {
+		pool: pool.New(2<<10, 2<<20, 2, func(size int) any {
 			fmt.Println("allocating...")
 			bytes := make([]byte, 0, size)
-			return &bytes
+			return bytes
 		}),
 	}
 }

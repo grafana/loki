@@ -345,8 +345,6 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 	for i, ck := range chunks {
 		key := c.schema.ExternalKey(ck.ChunkRef)
 		if b, ok := cm[key]; ok {
-			chunks[i].SetFromCache(true)
-
 			requests = append(requests, decodeRequest{
 				chunk:     chunks[i],
 				buf:       b,
@@ -375,6 +373,7 @@ func (c *Fetcher) processCacheResponse(ctx context.Context, chunks []chunk.Chunk
 		if response.err != nil {
 			err = response.err
 		} else {
+			response.chunk.SetFromCache(true)
 			found = append(found, response.chunk)
 		}
 	}
