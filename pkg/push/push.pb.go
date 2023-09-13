@@ -104,78 +104,18 @@ func (m *PushResponse) XXX_DiscardUnknown() {
 
 var xxx_messageInfo_PushResponse proto.InternalMessageInfo
 
-type CategorizedLabelsAdapter struct {
-	Stream             []LabelPairAdapter `protobuf:"bytes,1,rep,name=stream,proto3" json:"stream"`
-	StructuredMetadata []LabelPairAdapter `protobuf:"bytes,2,rep,name=structuredMetadata,proto3" json:"structuredMetadata"`
-	Parsed             []LabelPairAdapter `protobuf:"bytes,3,rep,name=parsed,proto3" json:"parsed"`
-}
-
-func (m *CategorizedLabelsAdapter) Reset()      { *m = CategorizedLabelsAdapter{} }
-func (*CategorizedLabelsAdapter) ProtoMessage() {}
-func (*CategorizedLabelsAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{2}
-}
-func (m *CategorizedLabelsAdapter) XXX_Unmarshal(b []byte) error {
-	return m.Unmarshal(b)
-}
-func (m *CategorizedLabelsAdapter) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
-	if deterministic {
-		return xxx_messageInfo_CategorizedLabelsAdapter.Marshal(b, m, deterministic)
-	} else {
-		b = b[:cap(b)]
-		n, err := m.MarshalToSizedBuffer(b)
-		if err != nil {
-			return nil, err
-		}
-		return b[:n], nil
-	}
-}
-func (m *CategorizedLabelsAdapter) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_CategorizedLabelsAdapter.Merge(m, src)
-}
-func (m *CategorizedLabelsAdapter) XXX_Size() int {
-	return m.Size()
-}
-func (m *CategorizedLabelsAdapter) XXX_DiscardUnknown() {
-	xxx_messageInfo_CategorizedLabelsAdapter.DiscardUnknown(m)
-}
-
-var xxx_messageInfo_CategorizedLabelsAdapter proto.InternalMessageInfo
-
-func (m *CategorizedLabelsAdapter) GetStream() []LabelPairAdapter {
-	if m != nil {
-		return m.Stream
-	}
-	return nil
-}
-
-func (m *CategorizedLabelsAdapter) GetStructuredMetadata() []LabelPairAdapter {
-	if m != nil {
-		return m.StructuredMetadata
-	}
-	return nil
-}
-
-func (m *CategorizedLabelsAdapter) GetParsed() []LabelPairAdapter {
-	if m != nil {
-		return m.Parsed
-	}
-	return nil
-}
-
 type StreamAdapter struct {
 	Labels  string         `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
 	Entries []EntryAdapter `protobuf:"bytes,2,rep,name=entries,proto3" json:"entries"`
 	// hash contains the original hash of the stream.
-	Hash uint64 `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
-	// group contains the grouped labels of the stream.
-	CategorizedLabels CategorizedLabelsAdapter `protobuf:"bytes,4,opt,name=categorizedLabels,proto3" json:"categorizedLabels"`
+	Hash      uint64             `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
+	LabelsMap []LabelPairAdapter `protobuf:"bytes,4,rep,name=labelsMap,proto3" json:"labelsMap,omitempty"`
 }
 
 func (m *StreamAdapter) Reset()      { *m = StreamAdapter{} }
 func (*StreamAdapter) ProtoMessage() {}
 func (*StreamAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{3}
+	return fileDescriptor_35ec442956852c9e, []int{2}
 }
 func (m *StreamAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -225,11 +165,11 @@ func (m *StreamAdapter) GetHash() uint64 {
 	return 0
 }
 
-func (m *StreamAdapter) GetCategorizedLabels() CategorizedLabelsAdapter {
+func (m *StreamAdapter) GetLabelsMap() []LabelPairAdapter {
 	if m != nil {
-		return m.CategorizedLabels
+		return m.LabelsMap
 	}
-	return CategorizedLabelsAdapter{}
+	return nil
 }
 
 type LabelPairAdapter struct {
@@ -240,7 +180,7 @@ type LabelPairAdapter struct {
 func (m *LabelPairAdapter) Reset()      { *m = LabelPairAdapter{} }
 func (*LabelPairAdapter) ProtoMessage() {}
 func (*LabelPairAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{4}
+	return fileDescriptor_35ec442956852c9e, []int{3}
 }
 func (m *LabelPairAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -287,12 +227,13 @@ type EntryAdapter struct {
 	Timestamp          time.Time          `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line               string             `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
 	StructuredMetadata []LabelPairAdapter `protobuf:"bytes,3,rep,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
+	Parsed             []LabelPairAdapter `protobuf:"bytes,4,rep,name=parsed,proto3" json:"parsed,omitempty"`
 }
 
 func (m *EntryAdapter) Reset()      { *m = EntryAdapter{} }
 func (*EntryAdapter) ProtoMessage() {}
 func (*EntryAdapter) Descriptor() ([]byte, []int) {
-	return fileDescriptor_35ec442956852c9e, []int{5}
+	return fileDescriptor_35ec442956852c9e, []int{4}
 }
 func (m *EntryAdapter) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
@@ -342,10 +283,16 @@ func (m *EntryAdapter) GetStructuredMetadata() []LabelPairAdapter {
 	return nil
 }
 
+func (m *EntryAdapter) GetParsed() []LabelPairAdapter {
+	if m != nil {
+		return m.Parsed
+	}
+	return nil
+}
+
 func init() {
 	proto.RegisterType((*PushRequest)(nil), "logproto.PushRequest")
 	proto.RegisterType((*PushResponse)(nil), "logproto.PushResponse")
-	proto.RegisterType((*CategorizedLabelsAdapter)(nil), "logproto.CategorizedLabelsAdapter")
 	proto.RegisterType((*StreamAdapter)(nil), "logproto.StreamAdapter")
 	proto.RegisterType((*LabelPairAdapter)(nil), "logproto.LabelPairAdapter")
 	proto.RegisterType((*EntryAdapter)(nil), "logproto.EntryAdapter")
@@ -354,44 +301,41 @@ func init() {
 func init() { proto.RegisterFile("pkg/push/push.proto", fileDescriptor_35ec442956852c9e) }
 
 var fileDescriptor_35ec442956852c9e = []byte{
-	// 590 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x54, 0xc1, 0x4f, 0xd4, 0x4e,
-	0x14, 0xee, 0x2c, 0xcb, 0x02, 0x03, 0x3f, 0x7e, 0x3a, 0x02, 0x96, 0x0d, 0x99, 0x6e, 0x1a, 0x0f,
-	0x7b, 0xd0, 0x36, 0xc1, 0x83, 0x17, 0x2f, 0xd4, 0x98, 0x70, 0xd0, 0x84, 0x8c, 0x46, 0x13, 0x6f,
-	0xb3, 0xec, 0xd0, 0x6d, 0x68, 0x3b, 0x75, 0x66, 0x6a, 0x82, 0x27, 0xcf, 0x9e, 0xf8, 0x33, 0xfc,
-	0x53, 0x38, 0x72, 0x24, 0x1e, 0xaa, 0x94, 0x0b, 0xd9, 0x13, 0x7f, 0x81, 0x31, 0x9d, 0x4e, 0x59,
-	0x64, 0xd7, 0xe0, 0xa5, 0xf3, 0xcd, 0xd7, 0xf7, 0xbd, 0xaf, 0xf3, 0xde, 0x9b, 0xc2, 0x07, 0xd9,
-	0x61, 0xe8, 0x67, 0xb9, 0x1c, 0xe9, 0x87, 0x97, 0x09, 0xae, 0x38, 0x5a, 0x8c, 0x79, 0xa8, 0x51,
-	0x77, 0x2d, 0xe4, 0x21, 0xd7, 0xd0, 0xaf, 0x50, 0xfd, 0xbe, 0xeb, 0x84, 0x9c, 0x87, 0x31, 0xf3,
-	0xf5, 0x6e, 0x90, 0x1f, 0xf8, 0x2a, 0x4a, 0x98, 0x54, 0x34, 0xc9, 0xea, 0x00, 0xf7, 0x3d, 0x5c,
-	0xde, 0xcb, 0xe5, 0x88, 0xb0, 0x8f, 0x39, 0x93, 0x0a, 0xed, 0xc2, 0x05, 0xa9, 0x04, 0xa3, 0x89,
-	0xb4, 0x41, 0x6f, 0xae, 0xbf, 0xbc, 0xfd, 0xd0, 0x6b, 0x1c, 0xbc, 0x37, 0xfa, 0xc5, 0xce, 0x90,
-	0x66, 0x8a, 0x89, 0x60, 0xfd, 0x7b, 0xe1, 0x74, 0x6a, 0x6a, 0x5c, 0x38, 0x8d, 0x8a, 0x34, 0xc0,
-	0x5d, 0x85, 0x2b, 0x75, 0x62, 0x99, 0xf1, 0x54, 0x32, 0xf7, 0x6b, 0x0b, 0xda, 0x2f, 0xa8, 0x62,
-	0x21, 0x17, 0xd1, 0x67, 0x36, 0x7c, 0x45, 0x07, 0x2c, 0x96, 0x26, 0x19, 0x0a, 0x60, 0xa7, 0xd6,
-	0x19, 0xd7, 0xee, 0xc4, 0x55, 0x07, 0xee, 0xd1, 0x48, 0x34, 0xc6, 0xab, 0x27, 0x85, 0x63, 0x8d,
-	0x0b, 0xc7, 0x28, 0x88, 0x59, 0xd1, 0x01, 0x44, 0x52, 0x89, 0x7c, 0x5f, 0xe5, 0x82, 0x0d, 0x5f,
-	0x33, 0x45, 0x87, 0x54, 0x51, 0xbb, 0x75, 0x67, 0xbe, 0xae, 0xc9, 0x37, 0x43, 0x4d, 0x66, 0x70,
-	0xd5, 0xb7, 0x66, 0x54, 0x48, 0x36, 0xb4, 0xe7, 0xfe, 0xfd, 0x5b, 0x6b, 0x05, 0x31, 0xab, 0xfb,
-	0x0b, 0xc0, 0xff, 0xfe, 0x28, 0x27, 0x72, 0x61, 0x27, 0xd6, 0x25, 0xb1, 0x41, 0x0f, 0xf4, 0x97,
-	0x02, 0x58, 0xa9, 0x6a, 0x86, 0x98, 0x15, 0xed, 0xc0, 0x05, 0x96, 0x2a, 0x11, 0x31, 0x69, 0x8e,
-	0xb5, 0x31, 0xb1, 0x7e, 0x99, 0x2a, 0x71, 0xd4, 0xd8, 0xfe, 0x6f, 0x6c, 0x9b, 0x70, 0xd2, 0x00,
-	0xb4, 0x09, 0xdb, 0x23, 0x2a, 0x47, 0xf6, 0x5c, 0x0f, 0xf4, 0xdb, 0xc1, 0xfc, 0xb8, 0x70, 0xc0,
-	0x13, 0xa2, 0x29, 0x74, 0x08, 0xef, 0xef, 0xdf, 0xee, 0x8f, 0xdd, 0xee, 0x81, 0xfe, 0xf2, 0xb6,
-	0x3b, 0xf1, 0xf9, 0x5b, 0x0b, 0x83, 0x4d, 0xe3, 0x39, 0x9d, 0x84, 0x4c, 0x53, 0xee, 0x73, 0x78,
-	0xef, 0x76, 0xb1, 0x10, 0x82, 0xed, 0x94, 0x26, 0xac, 0x2e, 0x00, 0xd1, 0x18, 0xad, 0xc1, 0xf9,
-	0x4f, 0x34, 0xce, 0x99, 0xdd, 0xd2, 0x64, 0xbd, 0x71, 0x2f, 0x01, 0x5c, 0xb9, 0x79, 0x60, 0xb4,
-	0x0b, 0x97, 0xae, 0x07, 0x5b, 0xeb, 0xab, 0xb6, 0xd4, 0xa3, 0xef, 0x35, 0xa3, 0xef, 0xbd, 0x6d,
-	0x22, 0xae, 0xdb, 0xd2, 0x52, 0xf2, 0xf8, 0x87, 0x03, 0xc8, 0x44, 0x8c, 0xb6, 0x60, 0x3b, 0x8e,
-	0x52, 0xe3, 0x17, 0x2c, 0x8e, 0x0b, 0x47, 0xef, 0x89, 0x7e, 0xa2, 0x6c, 0xe6, 0x8c, 0xdd, 0x3d,
-	0x07, 0x8f, 0x8c, 0xe1, 0xd6, 0xb4, 0xfa, 0x31, 0x4f, 0x22, 0xc5, 0x92, 0x4c, 0x1d, 0xcd, 0x9a,
-	0xb6, 0xed, 0x1d, 0xd8, 0xa9, 0xae, 0x11, 0x13, 0xe8, 0x19, 0x6c, 0x57, 0x08, 0xad, 0x4f, 0x7c,
-	0x6e, 0xdc, 0xdc, 0xee, 0xc6, 0x6d, 0xda, 0xdc, 0x3b, 0x2b, 0x78, 0x77, 0x7a, 0x8e, 0xad, 0xb3,
-	0x73, 0x6c, 0x5d, 0x9d, 0x63, 0xf0, 0xa5, 0xc4, 0xe0, 0x5b, 0x89, 0xc1, 0x49, 0x89, 0xc1, 0x69,
-	0x89, 0xc1, 0xcf, 0x12, 0x83, 0xcb, 0x12, 0x5b, 0x57, 0x25, 0x06, 0xc7, 0x17, 0xd8, 0x3a, 0xbd,
-	0xc0, 0xd6, 0xd9, 0x05, 0xb6, 0x3e, 0xf4, 0xc2, 0x48, 0x8d, 0xf2, 0x81, 0xb7, 0xcf, 0x13, 0x3f,
-	0x14, 0xf4, 0x80, 0xa6, 0xd4, 0x8f, 0xf9, 0x61, 0xe4, 0x37, 0xbf, 0xa1, 0x41, 0x47, 0xbb, 0x3d,
-	0xfd, 0x1d, 0x00, 0x00, 0xff, 0xff, 0xee, 0x2d, 0xe8, 0xc6, 0x99, 0x04, 0x00, 0x00,
+	// 544 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x8c, 0x53, 0xcd, 0x6e, 0xd3, 0x30,
+	0x1c, 0x8f, 0xdb, 0xac, 0x5b, 0xbd, 0x31, 0x26, 0xef, 0x83, 0x50, 0x26, 0xa7, 0x8a, 0x38, 0xf4,
+	0x00, 0x89, 0x34, 0x0e, 0x5c, 0xb8, 0x34, 0x12, 0xd2, 0x0e, 0x9b, 0x34, 0x85, 0x2f, 0x89, 0x9b,
+	0xbb, 0x7a, 0x69, 0xb4, 0x24, 0x0e, 0xb6, 0x83, 0xb4, 0x1b, 0x8f, 0xb0, 0xc7, 0xe0, 0x09, 0x78,
+	0x86, 0x1d, 0x7b, 0x9c, 0x38, 0x04, 0x9a, 0x5e, 0xa6, 0x9e, 0xf6, 0x08, 0x28, 0x4e, 0xb2, 0x94,
+	0x81, 0x04, 0x17, 0xe7, 0xe7, 0xbf, 0xfd, 0xfb, 0xb0, 0xfd, 0x0f, 0xdc, 0x4e, 0xce, 0x7d, 0x27,
+	0x49, 0xc5, 0x44, 0x0d, 0x76, 0xc2, 0x99, 0x64, 0x68, 0x2d, 0x64, 0xbe, 0x42, 0xbd, 0x1d, 0x9f,
+	0xf9, 0x4c, 0x41, 0xa7, 0x40, 0xe5, 0x7a, 0xcf, 0xf4, 0x19, 0xf3, 0x43, 0xea, 0xa8, 0xd9, 0x28,
+	0x3d, 0x73, 0x64, 0x10, 0x51, 0x21, 0x49, 0x94, 0x94, 0x1b, 0xac, 0x0f, 0x70, 0xfd, 0x24, 0x15,
+	0x13, 0x8f, 0x7e, 0x4a, 0xa9, 0x90, 0xe8, 0x10, 0xae, 0x0a, 0xc9, 0x29, 0x89, 0x84, 0x01, 0xfa,
+	0xed, 0xc1, 0xfa, 0xc1, 0x23, 0xbb, 0x76, 0xb0, 0xdf, 0xa8, 0x85, 0xe1, 0x98, 0x24, 0x92, 0x72,
+	0x77, 0xf7, 0x7b, 0x66, 0x76, 0xca, 0xd2, 0x22, 0x33, 0x6b, 0x96, 0x57, 0x03, 0x6b, 0x13, 0x6e,
+	0x94, 0xc2, 0x22, 0x61, 0xb1, 0xa0, 0xd6, 0x0d, 0x80, 0x0f, 0x7e, 0x53, 0x40, 0x16, 0xec, 0x84,
+	0x64, 0x44, 0xc3, 0xc2, 0x0a, 0x0c, 0xba, 0x2e, 0x5c, 0x64, 0x66, 0x55, 0xf1, 0xaa, 0x2f, 0x1a,
+	0xc2, 0x55, 0x1a, 0x4b, 0x1e, 0x50, 0x61, 0xb4, 0x54, 0x9e, 0xbd, 0x26, 0xcf, 0xeb, 0x58, 0xf2,
+	0x8b, 0x3a, 0xce, 0xc3, 0xab, 0xcc, 0xd4, 0x8a, 0x20, 0xd5, 0x76, 0xaf, 0x06, 0xe8, 0x31, 0xd4,
+	0x27, 0x44, 0x4c, 0x8c, 0x76, 0x1f, 0x0c, 0x74, 0x77, 0x65, 0x91, 0x99, 0xe0, 0xb9, 0xa7, 0x4a,
+	0xe8, 0x1d, 0xec, 0x96, 0x3e, 0xc7, 0x24, 0x31, 0x74, 0xa5, 0xdf, 0x6b, 0xf4, 0x8f, 0x8a, 0xa5,
+	0x13, 0x12, 0xf0, 0xda, 0xe3, 0x49, 0xe5, 0xb1, 0x7d, 0x47, 0x7a, 0xc6, 0xa2, 0x40, 0xd2, 0x28,
+	0x91, 0x17, 0x5e, 0xa3, 0x64, 0xbd, 0x82, 0x5b, 0xf7, 0xb9, 0x08, 0x41, 0x3d, 0x26, 0x11, 0x2d,
+	0x8f, 0xea, 0x29, 0x8c, 0x76, 0xe0, 0xca, 0x67, 0x12, 0xa6, 0xd4, 0x68, 0xa9, 0x62, 0x39, 0xb1,
+	0xbe, 0xb5, 0xe0, 0xc6, 0xf2, 0xd1, 0xd0, 0x21, 0xec, 0xde, 0xbd, 0x9a, 0xe2, 0x17, 0x29, 0xcb,
+	0x77, 0xb5, 0xeb, 0x77, 0xb5, 0xdf, 0xd6, 0x3b, 0xdc, 0xcd, 0x2a, 0x65, 0x4b, 0x8a, 0xcb, 0x1f,
+	0x26, 0xf0, 0x1a, 0x32, 0xda, 0x87, 0x7a, 0x18, 0xc4, 0x95, 0x9f, 0xbb, 0xb6, 0xc8, 0x4c, 0x35,
+	0xf7, 0xd4, 0x88, 0x12, 0x88, 0x84, 0xe4, 0xe9, 0xa9, 0x4c, 0x39, 0x1d, 0x1f, 0x53, 0x49, 0xc6,
+	0x44, 0x12, 0xa3, 0xfd, 0xcf, 0x6b, 0x79, 0x5a, 0x19, 0xee, 0xff, 0xc9, 0x5e, 0xba, 0x9f, 0xbf,
+	0x68, 0xa3, 0x23, 0xd8, 0x49, 0x08, 0x17, 0x74, 0xfc, 0x1f, 0x97, 0x6f, 0x54, 0x2e, 0x5b, 0x25,
+	0x63, 0x49, 0xb9, 0xd2, 0x38, 0x18, 0xc2, 0x4e, 0xd1, 0x71, 0x94, 0xa3, 0x97, 0x50, 0x2f, 0x10,
+	0xda, 0x6d, 0xf4, 0x96, 0x9a, 0xbc, 0xb7, 0x77, 0xbf, 0x5c, 0xb5, 0xa8, 0xe6, 0xbe, 0x9f, 0xce,
+	0xb0, 0x76, 0x3d, 0xc3, 0xda, 0xed, 0x0c, 0x83, 0x2f, 0x39, 0x06, 0x5f, 0x73, 0x0c, 0xae, 0x72,
+	0x0c, 0xa6, 0x39, 0x06, 0x3f, 0x73, 0x0c, 0x6e, 0x72, 0xac, 0xdd, 0xe6, 0x18, 0x5c, 0xce, 0xb1,
+	0x36, 0x9d, 0x63, 0xed, 0x7a, 0x8e, 0xb5, 0x8f, 0x7d, 0x3f, 0x90, 0x93, 0x74, 0x64, 0x9f, 0xb2,
+	0xc8, 0xf1, 0x39, 0x39, 0x23, 0x31, 0x71, 0x42, 0x76, 0x1e, 0x38, 0xf5, 0x1f, 0x3b, 0xea, 0x28,
+	0xb7, 0x17, 0xbf, 0x02, 0x00, 0x00, 0xff, 0xff, 0xb1, 0x31, 0xcd, 0x74, 0xc4, 0x03, 0x00, 0x00,
 }
 
 func (this *PushRequest) Equal(that interface{}) bool {
@@ -444,51 +388,6 @@ func (this *PushResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *CategorizedLabelsAdapter) Equal(that interface{}) bool {
-	if that == nil {
-		return this == nil
-	}
-
-	that1, ok := that.(*CategorizedLabelsAdapter)
-	if !ok {
-		that2, ok := that.(CategorizedLabelsAdapter)
-		if ok {
-			that1 = &that2
-		} else {
-			return false
-		}
-	}
-	if that1 == nil {
-		return this == nil
-	} else if this == nil {
-		return false
-	}
-	if len(this.Stream) != len(that1.Stream) {
-		return false
-	}
-	for i := range this.Stream {
-		if !this.Stream[i].Equal(&that1.Stream[i]) {
-			return false
-		}
-	}
-	if len(this.StructuredMetadata) != len(that1.StructuredMetadata) {
-		return false
-	}
-	for i := range this.StructuredMetadata {
-		if !this.StructuredMetadata[i].Equal(&that1.StructuredMetadata[i]) {
-			return false
-		}
-	}
-	if len(this.Parsed) != len(that1.Parsed) {
-		return false
-	}
-	for i := range this.Parsed {
-		if !this.Parsed[i].Equal(&that1.Parsed[i]) {
-			return false
-		}
-	}
-	return true
-}
 func (this *StreamAdapter) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
@@ -522,8 +421,13 @@ func (this *StreamAdapter) Equal(that interface{}) bool {
 	if this.Hash != that1.Hash {
 		return false
 	}
-	if !this.CategorizedLabels.Equal(&that1.CategorizedLabels) {
+	if len(this.LabelsMap) != len(that1.LabelsMap) {
 		return false
+	}
+	for i := range this.LabelsMap {
+		if !this.LabelsMap[i].Equal(&that1.LabelsMap[i]) {
+			return false
+		}
 	}
 	return true
 }
@@ -587,6 +491,14 @@ func (this *EntryAdapter) Equal(that interface{}) bool {
 			return false
 		}
 	}
+	if len(this.Parsed) != len(that1.Parsed) {
+		return false
+	}
+	for i := range this.Parsed {
+		if !this.Parsed[i].Equal(&that1.Parsed[i]) {
+			return false
+		}
+	}
 	return true
 }
 func (this *PushRequest) GoString() string {
@@ -608,36 +520,6 @@ func (this *PushResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *CategorizedLabelsAdapter) GoString() string {
-	if this == nil {
-		return "nil"
-	}
-	s := make([]string, 0, 7)
-	s = append(s, "&push.CategorizedLabelsAdapter{")
-	if this.Stream != nil {
-		vs := make([]*LabelPairAdapter, len(this.Stream))
-		for i := range vs {
-			vs[i] = &this.Stream[i]
-		}
-		s = append(s, "Stream: "+fmt.Sprintf("%#v", vs)+",\n")
-	}
-	if this.StructuredMetadata != nil {
-		vs := make([]*LabelPairAdapter, len(this.StructuredMetadata))
-		for i := range vs {
-			vs[i] = &this.StructuredMetadata[i]
-		}
-		s = append(s, "StructuredMetadata: "+fmt.Sprintf("%#v", vs)+",\n")
-	}
-	if this.Parsed != nil {
-		vs := make([]*LabelPairAdapter, len(this.Parsed))
-		for i := range vs {
-			vs[i] = &this.Parsed[i]
-		}
-		s = append(s, "Parsed: "+fmt.Sprintf("%#v", vs)+",\n")
-	}
-	s = append(s, "}")
-	return strings.Join(s, "")
-}
 func (this *StreamAdapter) GoString() string {
 	if this == nil {
 		return "nil"
@@ -653,7 +535,13 @@ func (this *StreamAdapter) GoString() string {
 		s = append(s, "Entries: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "Hash: "+fmt.Sprintf("%#v", this.Hash)+",\n")
-	s = append(s, "CategorizedLabels: "+strings.Replace(this.CategorizedLabels.GoString(), `&`, ``, 1)+",\n")
+	if this.LabelsMap != nil {
+		vs := make([]*LabelPairAdapter, len(this.LabelsMap))
+		for i := range vs {
+			vs[i] = &this.LabelsMap[i]
+		}
+		s = append(s, "LabelsMap: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
@@ -672,7 +560,7 @@ func (this *EntryAdapter) GoString() string {
 	if this == nil {
 		return "nil"
 	}
-	s := make([]string, 0, 7)
+	s := make([]string, 0, 8)
 	s = append(s, "&push.EntryAdapter{")
 	s = append(s, "Timestamp: "+fmt.Sprintf("%#v", this.Timestamp)+",\n")
 	s = append(s, "Line: "+fmt.Sprintf("%#v", this.Line)+",\n")
@@ -682,6 +570,13 @@ func (this *EntryAdapter) GoString() string {
 			vs[i] = &this.StructuredMetadata[i]
 		}
 		s = append(s, "StructuredMetadata: "+fmt.Sprintf("%#v", vs)+",\n")
+	}
+	if this.Parsed != nil {
+		vs := make([]*LabelPairAdapter, len(this.Parsed))
+		for i := range vs {
+			vs[i] = &this.Parsed[i]
+		}
+		s = append(s, "Parsed: "+fmt.Sprintf("%#v", vs)+",\n")
 	}
 	s = append(s, "}")
 	return strings.Join(s, "")
@@ -835,71 +730,6 @@ func (m *PushResponse) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	return len(dAtA) - i, nil
 }
 
-func (m *CategorizedLabelsAdapter) Marshal() (dAtA []byte, err error) {
-	size := m.Size()
-	dAtA = make([]byte, size)
-	n, err := m.MarshalToSizedBuffer(dAtA[:size])
-	if err != nil {
-		return nil, err
-	}
-	return dAtA[:n], nil
-}
-
-func (m *CategorizedLabelsAdapter) MarshalTo(dAtA []byte) (int, error) {
-	size := m.Size()
-	return m.MarshalToSizedBuffer(dAtA[:size])
-}
-
-func (m *CategorizedLabelsAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
-	i := len(dAtA)
-	_ = i
-	var l int
-	_ = l
-	if len(m.Parsed) > 0 {
-		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Parsed[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintPush(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x1a
-		}
-	}
-	if len(m.StructuredMetadata) > 0 {
-		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.StructuredMetadata[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintPush(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0x12
-		}
-	}
-	if len(m.Stream) > 0 {
-		for iNdEx := len(m.Stream) - 1; iNdEx >= 0; iNdEx-- {
-			{
-				size, err := m.Stream[iNdEx].MarshalToSizedBuffer(dAtA[:i])
-				if err != nil {
-					return 0, err
-				}
-				i -= size
-				i = encodeVarintPush(dAtA, i, uint64(size))
-			}
-			i--
-			dAtA[i] = 0xa
-		}
-	}
-	return len(dAtA) - i, nil
-}
-
 func (m *StreamAdapter) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
@@ -920,16 +750,20 @@ func (m *StreamAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	{
-		size, err := m.CategorizedLabels.MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
+	if len(m.LabelsMap) > 0 {
+		for iNdEx := len(m.LabelsMap) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.LabelsMap[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
 		}
-		i -= size
-		i = encodeVarintPush(dAtA, i, uint64(size))
 	}
-	i--
-	dAtA[i] = 0x22
 	if m.Hash != 0 {
 		i = encodeVarintPush(dAtA, i, uint64(m.Hash))
 		i--
@@ -1016,6 +850,20 @@ func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Parsed) > 0 {
+		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Parsed[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
 	if len(m.StructuredMetadata) > 0 {
 		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -1037,12 +885,12 @@ func (m *EntryAdapter) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 		i--
 		dAtA[i] = 0x12
 	}
-	n2, err2 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
-	if err2 != nil {
-		return 0, err2
+	n1, err1 := github_com_gogo_protobuf_types.StdTimeMarshalTo(m.Timestamp, dAtA[i-github_com_gogo_protobuf_types.SizeOfStdTime(m.Timestamp):])
+	if err1 != nil {
+		return 0, err1
 	}
-	i -= n2
-	i = encodeVarintPush(dAtA, i, uint64(n2))
+	i -= n1
+	i = encodeVarintPush(dAtA, i, uint64(n1))
 	i--
 	dAtA[i] = 0xa
 	return len(dAtA) - i, nil
@@ -1083,33 +931,6 @@ func (m *PushResponse) Size() (n int) {
 	return n
 }
 
-func (m *CategorizedLabelsAdapter) Size() (n int) {
-	if m == nil {
-		return 0
-	}
-	var l int
-	_ = l
-	if len(m.Stream) > 0 {
-		for _, e := range m.Stream {
-			l = e.Size()
-			n += 1 + l + sovPush(uint64(l))
-		}
-	}
-	if len(m.StructuredMetadata) > 0 {
-		for _, e := range m.StructuredMetadata {
-			l = e.Size()
-			n += 1 + l + sovPush(uint64(l))
-		}
-	}
-	if len(m.Parsed) > 0 {
-		for _, e := range m.Parsed {
-			l = e.Size()
-			n += 1 + l + sovPush(uint64(l))
-		}
-	}
-	return n
-}
-
 func (m *StreamAdapter) Size() (n int) {
 	if m == nil {
 		return 0
@@ -1129,8 +950,12 @@ func (m *StreamAdapter) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(uint64(m.Hash))
 	}
-	l = m.CategorizedLabels.Size()
-	n += 1 + l + sovPush(uint64(l))
+	if len(m.LabelsMap) > 0 {
+		for _, e := range m.LabelsMap {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -1169,6 +994,12 @@ func (m *EntryAdapter) Size() (n int) {
 			n += 1 + l + sovPush(uint64(l))
 		}
 	}
+	if len(m.Parsed) > 0 {
+		for _, e := range m.Parsed {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
 	return n
 }
 
@@ -1197,33 +1028,6 @@ func (this *PushResponse) String() string {
 	}, "")
 	return s
 }
-func (this *CategorizedLabelsAdapter) String() string {
-	if this == nil {
-		return "nil"
-	}
-	repeatedStringForStream := "[]LabelPairAdapter{"
-	for _, f := range this.Stream {
-		repeatedStringForStream += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForStream += "}"
-	repeatedStringForStructuredMetadata := "[]LabelPairAdapter{"
-	for _, f := range this.StructuredMetadata {
-		repeatedStringForStructuredMetadata += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForStructuredMetadata += "}"
-	repeatedStringForParsed := "[]LabelPairAdapter{"
-	for _, f := range this.Parsed {
-		repeatedStringForParsed += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
-	}
-	repeatedStringForParsed += "}"
-	s := strings.Join([]string{`&CategorizedLabelsAdapter{`,
-		`Stream:` + repeatedStringForStream + `,`,
-		`StructuredMetadata:` + repeatedStringForStructuredMetadata + `,`,
-		`Parsed:` + repeatedStringForParsed + `,`,
-		`}`,
-	}, "")
-	return s
-}
 func (this *StreamAdapter) String() string {
 	if this == nil {
 		return "nil"
@@ -1233,11 +1037,16 @@ func (this *StreamAdapter) String() string {
 		repeatedStringForEntries += strings.Replace(strings.Replace(f.String(), "EntryAdapter", "EntryAdapter", 1), `&`, ``, 1) + ","
 	}
 	repeatedStringForEntries += "}"
+	repeatedStringForLabelsMap := "[]LabelPairAdapter{"
+	for _, f := range this.LabelsMap {
+		repeatedStringForLabelsMap += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForLabelsMap += "}"
 	s := strings.Join([]string{`&StreamAdapter{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`Entries:` + repeatedStringForEntries + `,`,
 		`Hash:` + fmt.Sprintf("%v", this.Hash) + `,`,
-		`CategorizedLabels:` + strings.Replace(strings.Replace(this.CategorizedLabels.String(), "CategorizedLabelsAdapter", "CategorizedLabelsAdapter", 1), `&`, ``, 1) + `,`,
+		`LabelsMap:` + repeatedStringForLabelsMap + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1262,10 +1071,16 @@ func (this *EntryAdapter) String() string {
 		repeatedStringForStructuredMetadata += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
 	}
 	repeatedStringForStructuredMetadata += "}"
+	repeatedStringForParsed := "[]LabelPairAdapter{"
+	for _, f := range this.Parsed {
+		repeatedStringForParsed += strings.Replace(strings.Replace(f.String(), "LabelPairAdapter", "LabelPairAdapter", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForParsed += "}"
 	s := strings.Join([]string{`&EntryAdapter{`,
 		`Timestamp:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Timestamp), "Timestamp", "types.Timestamp", 1), `&`, ``, 1) + `,`,
 		`Line:` + fmt.Sprintf("%v", this.Line) + `,`,
 		`StructuredMetadata:` + repeatedStringForStructuredMetadata + `,`,
+		`Parsed:` + repeatedStringForParsed + `,`,
 		`}`,
 	}, "")
 	return s
@@ -1418,161 +1233,6 @@ func (m *PushResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *CategorizedLabelsAdapter) Unmarshal(dAtA []byte) error {
-	l := len(dAtA)
-	iNdEx := 0
-	for iNdEx < l {
-		preIndex := iNdEx
-		var wire uint64
-		for shift := uint(0); ; shift += 7 {
-			if shift >= 64 {
-				return ErrIntOverflowPush
-			}
-			if iNdEx >= l {
-				return io.ErrUnexpectedEOF
-			}
-			b := dAtA[iNdEx]
-			iNdEx++
-			wire |= uint64(b&0x7F) << shift
-			if b < 0x80 {
-				break
-			}
-		}
-		fieldNum := int32(wire >> 3)
-		wireType := int(wire & 0x7)
-		if wireType == 4 {
-			return fmt.Errorf("proto: CategorizedLabelsAdapter: wiretype end group for non-group")
-		}
-		if fieldNum <= 0 {
-			return fmt.Errorf("proto: CategorizedLabelsAdapter: illegal tag %d (wire type %d)", fieldNum, wire)
-		}
-		switch fieldNum {
-		case 1:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Stream", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPush
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthPush
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthPush
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Stream = append(m.Stream, LabelPairAdapter{})
-			if err := m.Stream[len(m.Stream)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 2:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field StructuredMetadata", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPush
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthPush
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthPush
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.StructuredMetadata = append(m.StructuredMetadata, LabelPairAdapter{})
-			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		case 3:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field Parsed", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPush
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthPush
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthPush
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			m.Parsed = append(m.Parsed, LabelPairAdapter{})
-			if err := m.Parsed[len(m.Parsed)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
-		default:
-			iNdEx = preIndex
-			skippy, err := skipPush(dAtA[iNdEx:])
-			if err != nil {
-				return err
-			}
-			if skippy < 0 {
-				return ErrInvalidLengthPush
-			}
-			if (iNdEx + skippy) < 0 {
-				return ErrInvalidLengthPush
-			}
-			if (iNdEx + skippy) > l {
-				return io.ErrUnexpectedEOF
-			}
-			iNdEx += skippy
-		}
-	}
-
-	if iNdEx > l {
-		return io.ErrUnexpectedEOF
-	}
-	return nil
-}
 func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
@@ -1689,7 +1349,7 @@ func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 			}
 		case 4:
 			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CategorizedLabels", wireType)
+				return fmt.Errorf("proto: wrong wireType = %d for field LabelsMap", wireType)
 			}
 			var msglen int
 			for shift := uint(0); ; shift += 7 {
@@ -1716,7 +1376,8 @@ func (m *StreamAdapter) Unmarshal(dAtA []byte) error {
 			if postIndex > l {
 				return io.ErrUnexpectedEOF
 			}
-			if err := m.CategorizedLabels.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+			m.LabelsMap = append(m.LabelsMap, LabelPairAdapter{})
+			if err := m.LabelsMap[len(m.LabelsMap)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -1986,6 +1647,40 @@ func (m *EntryAdapter) Unmarshal(dAtA []byte) error {
 			}
 			m.StructuredMetadata = append(m.StructuredMetadata, LabelPairAdapter{})
 			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Parsed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Parsed = append(m.Parsed, LabelPairAdapter{})
+			if err := m.Parsed[len(m.Parsed)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex

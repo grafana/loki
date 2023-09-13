@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/buger/jsonparser"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/prometheus/model/labels"
 )
@@ -295,31 +296,40 @@ func (c *Client) GetDeleteRequests() (DeleteRequests, error) {
 	return deleteReqs, nil
 }
 
-// StreamValues holds a label key value pairs for the Stream and a list of a list of values
-type StreamValues struct {
-	Stream           map[string]string
-	StreamCategories map[string]map[string]string
-	Values           [][]string
+type Entry []string
+
+func (e *Entry) UnmarshalJSON(data []byte) error {
+	if *e == nil {
+		*e = make([]string, 0, 3)
+	}
+
+	var parseError error
+	_, err := jsonparser.ArrayEach(data, func(value []byte, t jsonparser.ValueType, _ int, _ error) {
+		// The TS and the lines are strings. The labels are a JSON object.
+		// but we will parse them as strings.
+		if t != jsonparser.String && t != jsonparser.Object {
+			parseError = jsonparser.MalformedStringError
+			return
+		}
+
+		v, err := jsonparser.ParseString(value)
+		if err != nil {
+			parseError = err
+			return
+		}
+		*e = append(*e, v)
+	})
+
+	if parseError != nil {
+		return parseError
+	}
+	return err
 }
 
-func (s *StreamValues) UnmarshalJSON(b []byte) error {
-	type streamWithCategories struct {
-		Stream map[string]map[string]string `json:"stream"`
-		Values [][]string                   `json:"values"`
-	}
-	var streamWithCategoriesValues streamWithCategories
-	if err := json.Unmarshal(b, &streamWithCategoriesValues); err == nil {
-		s.StreamCategories = streamWithCategoriesValues.Stream
-		s.Values = streamWithCategoriesValues.Values
-		return nil
-	}
-
-	type raw StreamValues
-	if err := json.Unmarshal(b, (*raw)(s)); err != nil {
-		return err
-	}
-
-	return nil
+// StreamValues holds a label key value pairs for the Stream and a list of a list of values
+type StreamValues struct {
+	Stream map[string]string
+	Values []Entry
 }
 
 // MatrixValues holds a label key value pairs for the metric and a list of a list of values

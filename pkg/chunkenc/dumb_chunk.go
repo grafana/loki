@@ -72,7 +72,7 @@ func (c *dumbChunk) Encoding() Encoding { return EncNone }
 
 // Returns an iterator that goes from _most_ recent to _least_ recent (ie,
 // backwards).
-func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ log.StreamPipeline, _ ...iter.EntryIteratorOption) (iter.EntryIterator, error) {
+func (c *dumbChunk) Iterator(_ context.Context, from, through time.Time, direction logproto.Direction, _ log.StreamPipeline) (iter.EntryIterator, error) {
 	i := sort.Search(len(c.entries), func(i int) bool {
 		return !from.After(c.entries[i].Timestamp)
 	})
@@ -152,10 +152,6 @@ func (i *dumbChunkIterator) Entry() logproto.Entry {
 
 func (i *dumbChunkIterator) Labels() string {
 	return ""
-}
-
-func (i *dumbChunkIterator) CategorizedLabels() logproto.CategorizedLabels {
-	return logproto.CategorizedLabels{}
 }
 
 func (i *dumbChunkIterator) StreamHash() uint64 {

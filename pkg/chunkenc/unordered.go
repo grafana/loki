@@ -41,7 +41,6 @@ type HeadBlock interface {
 		mint,
 		maxt int64,
 		pipeline log.StreamPipeline,
-		options ...iter.EntryIteratorOption,
 	) iter.EntryIterator
 	SampleIterator(
 		ctx context.Context,
@@ -244,12 +243,7 @@ func (hb *unorderedHeadBlock) forEntries(
 	return nil
 }
 
-func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) iter.EntryIterator {
-	var iterOptions iter.EntryIteratorOptions
-	for _, option := range options {
-		option(&iterOptions)
-	}
-
+func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	// We are doing a copy everytime, this is because b.entries could change completely,
 	// the alternate would be that we allocate a new b.entries everytime we cut a block,
 	// but the tradeoff is that queries to near-realtime data would be much lower than
@@ -262,8 +256,7 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 		mint,
 		maxt,
 		func(statsCtx *stats.Context, ts int64, line string, structuredMetadataSymbols symbols) error {
-			structuredMetadata := hb.symbolizer.Lookup(structuredMetadataSymbols)
-			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, structuredMetadata...)
+			newLine, parsedLbs, matches := pipeline.ProcessString(ts, line, hb.symbolizer.Lookup(structuredMetadataSymbols)...)
 			if !matches {
 				return nil
 			}
@@ -275,27 +268,16 @@ func (hb *unorderedHeadBlock) Iterator(ctx context.Context, direction logproto.D
 				stream = &logproto.Stream{
 					Labels: labels,
 					Hash:   baseHash,
-					CategorizedLabels: logproto.CategorizedLabels{
-						Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream()),
-						StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
-						Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
-					},
 				}
 				streams[labels] = stream
 			}
 
-			entry := logproto.Entry{
-				Timestamp: time.Unix(0, ts),
-				Line:      newLine,
-			}
-
-			// Most of the time, there is no need to send back the structured metadata, as they are already part of the labels results.
-			// Still it might be needed for example when appending entries from one chunk into another one.
-			if iterOptions.KeepStructuredMetdata {
-				entry.StructuredMetadata = logproto.FromLabelsToLabelAdapters(structuredMetadata)
-			}
-
-			stream.Entries = append(stream.Entries, entry)
+			stream.Entries = append(stream.Entries, logproto.Entry{
+				Timestamp:          time.Unix(0, ts),
+				Line:               newLine,
+				StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
+				Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
+			})
 			return nil
 		},
 	)

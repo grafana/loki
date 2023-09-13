@@ -2,12 +2,14 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
 
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/common/expfmt"
+	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
@@ -786,67 +788,95 @@ func TestCategorizedLabels(t *testing.T) {
 	cliIndexGateway := client.New(tenantID, "", tIndexGateway.HTTPURL())
 	cliIndexGateway.Now = now
 
-	require.NoError(t, cliDistributor.PushLogLine("lineA", map[string]string{"job": "fake"}))
-	require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineB", map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
+	now = time.Now()
+	require.NoError(t, cliDistributor.PushLogLineWithTimestamp("lineA", now.Add(-1*time.Second), map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata("lineB", now.Add(-2*time.Second), map[string]string{"traceID": "123", "user": "a"}, map[string]string{"job": "fake"}))
 	require.NoError(t, tIngester.Restart())
-	require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineC msg=foo", map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
-	require.NoError(t, cliDistributor.PushLogLineWithStructuredMetadata("lineD msg=foo text=bar", map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata("lineC msg=foo", now.Add(-3*time.Second), map[string]string{"traceID": "456", "user": "b"}, map[string]string{"job": "fake"}))
+	require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata("lineD msg=foo text=bar", now.Add(-4*time.Second), map[string]string{"traceID": "789", "user": "c"}, map[string]string{"job": "fake"}))
+
+	type expectedStream struct {
+		Stream            map[string]string
+		Lines             []string
+		CategorizedLabels []map[string]map[string]string
+	}
 
 	for _, tc := range []struct {
-		name                       string
-		query                      string
-		encodingFlags              []string
-		expectedStreams            []map[string]string
-		expectedCategorizedStreams []map[string]map[string]string
+		name            string
+		query           string
+		encodingFlags   []string
+		expectedStreams []expectedStream
 	}{
 		{
 			name:  "no header - no parser ",
 			query: `{job="fake"}`,
-			expectedStreams: []map[string]string{
+			expectedStreams: []expectedStream{
 				{
-					"job": "fake",
+					Stream: labels.FromStrings("job", "fake").Map(),
+					Lines:  []string{"lineA"},
 				},
 				{
-					"job":     "fake",
-					"traceID": "123",
-					"user":    "a",
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "123",
+						"user":    "a",
+					},
+					Lines: []string{"lineB"},
 				},
 				{
-					"job":     "fake",
-					"traceID": "456",
-					"user":    "b",
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "456",
+						"user":    "b",
+					},
+					Lines: []string{"lineC msg=foo"},
 				},
 				{
-					"job":     "fake",
-					"traceID": "789",
-					"user":    "c",
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "789",
+						"user":    "c",
+					},
+					Lines: []string{"lineD msg=foo text=bar"},
 				},
 			},
 		},
 		{
 			name:  "no header - with parser",
 			query: `{job="fake"} | logfmt`,
-			expectedStreams: []map[string]string{
+			expectedStreams: []expectedStream{
 				{
-					"job": "fake",
+					Stream: map[string]string{
+						"job": "fake",
+					},
+					Lines: []string{"lineA"},
 				},
 				{
-					"job":     "fake",
-					"traceID": "123",
-					"user":    "a",
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "123",
+						"user":    "a",
+					},
+					Lines: []string{"lineB"},
 				},
 				{
-					"job":     "fake",
-					"traceID": "456",
-					"user":    "b",
-					"msg":     "foo",
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "456",
+						"user":    "b",
+						"msg":     "foo",
+					},
+					Lines: []string{"lineC msg=foo"},
 				},
 				{
-					"job":     "fake",
-					"traceID": "789",
-					"user":    "c",
-					"msg":     "foo",
-					"text":    "bar",
+					Stream: map[string]string{
+						"job":     "fake",
+						"traceID": "789",
+						"user":    "c",
+						"msg":     "foo",
+						"text":    "bar",
+					},
+					Lines: []string{"lineD msg=foo text=bar"},
 				},
 			},
 		},
@@ -856,38 +886,31 @@ func TestCategorizedLabels(t *testing.T) {
 			encodingFlags: []string{
 				string(httpreq.FlagCategorizeLabels),
 			},
-			expectedStreams: nil,
-			expectedCategorizedStreams: []map[string]map[string]string{
+			expectedStreams: []expectedStream{
 				{
-					"stream": {
+					Stream: map[string]string{
 						"job": "fake",
 					},
-				},
-				{
-					"stream": {
-						"job": "fake",
-					},
-					"structuredMetadata": {
-						"traceID": "123",
-						"user":    "a",
-					},
-				},
-				{
-					"stream": {
-						"job": "fake",
-					},
-					"structuredMetadata": {
-						"traceID": "456",
-						"user":    "b",
-					},
-				},
-				{
-					"stream": {
-						"job": "fake",
-					},
-					"structuredMetadata": {
-						"traceID": "789",
-						"user":    "c",
+					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
+					CategorizedLabels: []map[string]map[string]string{
+						{
+							"structuredMetadata": {
+								"traceID": "123",
+								"user":    "a",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "456",
+								"user":    "b",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "789",
+								"user":    "c",
+							},
+						},
 					},
 				},
 			},
@@ -898,44 +921,38 @@ func TestCategorizedLabels(t *testing.T) {
 			encodingFlags: []string{
 				string(httpreq.FlagCategorizeLabels),
 			},
-			expectedCategorizedStreams: []map[string]map[string]string{
+			expectedStreams: []expectedStream{
 				{
-					"stream": {
+					Stream: map[string]string{
 						"job": "fake",
 					},
-				},
-				{
-					"stream": {
-						"job": "fake",
-					},
-					"structuredMetadata": {
-						"traceID": "123",
-						"user":    "a",
-					},
-				},
-				{
-					"stream": {
-						"job": "fake",
-					},
-					"structuredMetadata": {
-						"traceID": "456",
-						"user":    "b",
-					},
-					"parsed": {
-						"msg": "foo",
-					},
-				},
-				{
-					"stream": {
-						"job": "fake",
-					},
-					"structuredMetadata": {
-						"traceID": "789",
-						"user":    "c",
-					},
-					"parsed": {
-						"msg":  "foo",
-						"text": "bar",
+					Lines: []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"},
+					CategorizedLabels: []map[string]map[string]string{
+						{
+							"structuredMetadata": {
+								"traceID": "123",
+								"user":    "a",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "456",
+								"user":    "b",
+							},
+							"parsed": {
+								"msg": "foo",
+							},
+						},
+						{
+							"structuredMetadata": {
+								"traceID": "789",
+								"user":    "c",
+							},
+							"parsed": {
+								"msg":  "foo",
+								"text": "bar",
+							},
+						},
 					},
 				},
 			},
@@ -950,28 +967,34 @@ func TestCategorizedLabels(t *testing.T) {
 				expectedEncodingFlags = tc.encodingFlags
 			}
 
-			resp, err := cliQueryFrontend.RunRangeQuery(context.Background(), tc.query, headers...)
+			resp, err := cliQueryFrontend.RunQuery(context.Background(), tc.query, headers...)
 			require.NoError(t, err)
 			assert.Equal(t, "streams", resp.Data.ResultType)
 
-			var lines []string
-			var streams []map[string]string
-			var categorizedStreams []map[string]map[string]string
+			var streams []expectedStream
 			for _, stream := range resp.Data.Stream {
-				if len(stream.Stream) > 0 {
-					streams = append(streams, stream.Stream)
-				}
-				if len(stream.StreamCategories) > 0 {
-					categorizedStreams = append(categorizedStreams, stream.StreamCategories)
-				}
+				var lines []string
+				var categorizedLabels []map[string]map[string]string
+
 				for _, val := range stream.Values {
 					lines = append(lines, val[1])
+
+					var catLabels map[string]map[string]string
+					if len(val) >= 3 && val[2] != "" {
+						err = json.Unmarshal([]byte(val[2]), &catLabels)
+						require.NoError(t, err)
+						categorizedLabels = append(categorizedLabels, catLabels)
+					}
 				}
+
+				streams = append(streams, expectedStream{
+					Stream:            stream.Stream,
+					Lines:             lines,
+					CategorizedLabels: categorizedLabels,
+				})
 			}
 
-			assert.ElementsMatch(t, []string{"lineA", "lineB", "lineC msg=foo", "lineD msg=foo text=bar"}, lines)
 			assert.ElementsMatch(t, tc.expectedStreams, streams)
-			assert.ElementsMatch(t, tc.expectedCategorizedStreams, categorizedStreams)
 			assert.ElementsMatch(t, expectedEncodingFlags, resp.Data.EncodingFlags)
 		})
 	}

@@ -128,6 +128,79 @@ const emptyStats = `{
 	}
 }`
 
+var queryTestWithEncodingFlags = []struct {
+	actual        parser.Value
+	encodingFlags httpreq.EncodingFlags
+	expected      string
+}{
+	{
+		actual: logqlmodel.Streams{
+			logproto.Stream{
+				Entries: []logproto.Entry{
+					{
+						Timestamp: time.Unix(0, 123456789012345),
+						Line:      "super line",
+					},
+					{
+						Timestamp: time.Unix(0, 123456789012346),
+						Line:      "super line with labels",
+						StructuredMetadata: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+					},
+					{
+						Timestamp: time.Unix(0, 123456789012347),
+						Line:      "super line with labels msg=text",
+						StructuredMetadata: []logproto.LabelAdapter{
+							{Name: "foo", Value: "a"},
+							{Name: "bar", Value: "b"},
+						},
+						Parsed: []logproto.LabelAdapter{
+							{Name: "msg", Value: "text"},
+						},
+					},
+				},
+				Labels: `{test="test"}`,
+			},
+		},
+		encodingFlags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
+		expected: fmt.Sprintf(`{
+			"status": "success",
+			"data": {
+				"resultType": "streams",
+				"encodingFlags": ["%s"],
+				"result": [
+					{
+						"stream": {
+							"test": "test"
+						},
+						"values":[
+							[ "123456789012345", "super line"],
+							[ "123456789012346", "super line with labels", {
+								"structuredMetadata": {
+									"foo": "a",
+									"bar": "b" 
+								} 
+							}],
+							[ "123456789012347", "super line with labels msg=text", {
+								"structuredMetadata": {
+									"foo": "a",
+									"bar": "b" 
+								},
+								"parsed": {
+									"msg": "text"
+								}
+							}]
+						]
+					}
+				],
+				"stats" : %s
+			}
+		}`, httpreq.FlagCategorizeLabels, emptyStats),
+	},
+}
+
 // covers responses from /loki/api/v1/query_range and /loki/api/v1/query
 var queryTests = []struct {
 	actual   parser.Value
@@ -151,9 +224,6 @@ var queryTests = []struct {
 					},
 				},
 				Labels: `{test="test"}`,
-				CategorizedLabels: logproto.CategorizedLabels{
-					Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-				},
 			},
 		},
 		fmt.Sprintf(`{
@@ -167,7 +237,7 @@ var queryTests = []struct {
 						},
 						"values":[
 							[ "123456789012345", "super line"],
-							[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" } ]
+							[ "123456789012346", "super line with labels" ]
 						]
 					}
 				],
@@ -339,7 +409,7 @@ var labelTests = []struct {
 }
 
 // covers responses from /loki/api/v1/tail
-// TODO(salvacorts): test encoding flags
+// TODO(salvacorts): Support encoding flags. And fix serialized structured metadata labels which shouldn't be there unless the categorize flag is set.
 var tailTests = []struct {
 	actual   legacy.TailResponse
 	expected string
@@ -363,9 +433,6 @@ var tailTests = []struct {
 						},
 					},
 					Labels: "{test=\"test\"}",
-					CategorizedLabels: logproto.CategorizedLabels{
-						Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-					},
 				},
 			},
 			DroppedEntries: []legacy.DroppedEntry{
@@ -407,6 +474,13 @@ func Test_WriteQueryResponseJSON(t *testing.T) {
 
 		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
 	}
+	for i, queryTest := range queryTestWithEncodingFlags {
+		var b bytes.Buffer
+		err := WriteQueryResponseJSON(logqlmodel.Result{Data: queryTest.actual}, &b, queryTest.encodingFlags)
+		require.NoError(t, err)
+
+		require.JSONEqf(t, queryTest.expected, b.String(), "Query Test %d failed", i)
+	}
 }
 
 func Test_WriteLabelResponseJSON(t *testing.T) {
@@ -441,7 +515,7 @@ func Test_WriteQueryResponseJSONWithError(t *testing.T) {
 func Test_MarshalTailResponse(t *testing.T) {
 	for i, tailTest := range tailTests {
 		// convert logproto to model objects
-		model, err := NewTailResponse(tailTest.actual, nil)
+		model, err := NewTailResponse(tailTest.actual)
 		require.NoError(t, err)
 
 		// marshal model object
@@ -561,9 +635,6 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 	inputStream := logqlmodel.Streams{
 		logproto.Stream{
 			Labels: `{test="test"}`,
-			CategorizedLabels: logproto.CategorizedLabels{
-				Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-			},
 			Entries: []logproto.Entry{
 				{
 					Timestamp: time.Unix(0, 123456789012346),
@@ -573,36 +644,22 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 		},
 		logproto.Stream{
 			Labels: `{test="test", foo="a", bar="b"}`,
-			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-			},
 			Entries: []logproto.Entry{
 				{
-					Timestamp: time.Unix(0, 123456789012346),
-					Line:      "super line with labels",
-					StructuredMetadata: []logproto.LabelAdapter{
-						{Name: "foo", Value: "a"},
-						{Name: "bar", Value: "b"},
-					},
+					Timestamp:          time.Unix(0, 123456789012346),
+					Line:               "super line with labels",
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
 				},
 			},
 		},
 		logproto.Stream{
 			Labels: `{test="test", foo="a", bar="b", msg="baz"}`,
-			CategorizedLabels: logproto.CategorizedLabels{
-				Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-				StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-				Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
-			},
 			Entries: []logproto.Entry{
 				{
-					Timestamp: time.Unix(0, 123456789012346),
-					Line:      "super line with labels msg=baz",
-					StructuredMetadata: []logproto.LabelAdapter{
-						{Name: "foo", Value: "a"},
-						{Name: "bar", Value: "b"},
-					},
+					Timestamp:          time.Unix(0, 123456789012346),
+					Line:               "super line with labels msg=baz",
+					StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
+					Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
 				},
 			},
 		},
@@ -635,7 +692,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 								"bar": "b"
 							},
 							"values":[
-								[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
+								[ "123456789012346", "super line with labels"]
 							]
 						},
 						{
@@ -646,7 +703,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 								"msg": "baz"
 							},
 							"values":[
-								[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
+								[ "123456789012346", "super line with labels msg=baz"]
 							]
 						}
 					],
@@ -665,9 +722,7 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 					"result": [
 						{
 							"stream": {
-								"stream": {
-									"test": "test"
-								}
+								"test": "test"
 							},
 							"values":[
 								[ "123456789012346", "super line"]
@@ -675,33 +730,36 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 						},
 						{
 							"stream": {
-								"stream": {
-									"test": "test"
-								},
-								"structuredMetadata": {
-									"foo": "a",
-									"bar": "b"
-								}
+								"test": "test",
+								"foo": "a",
+								"bar": "b"
 							},
 							"values":[
-								[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
+								[ "123456789012346", "super line with labels", {
+									"structuredMetadata": {
+										"foo": "a",
+										"bar": "b"
+									}
+								}]
 							]
 						},
 						{
 							"stream": {
-								"stream": {
-									"test": "test"
-								},
-								"structuredMetadata": {
-									"foo": "a",
-									"bar": "b"
-								},
-								"parsed": {	
-									"msg": "baz"
-								}
+								"test": "test",
+								"foo": "a",
+								"bar": "b",
+								"msg": "baz"
 							},
 							"values":[
-								[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
+								[ "123456789012346", "super line with labels msg=baz", {
+									"structuredMetadata": {
+										"foo": "a",
+										"bar": "b"
+									},
+                                    "parsed": {
+										"msg": "baz"
+									}
+								}]
 							]
 						}
 					],
@@ -715,227 +773,6 @@ func Test_WriteQueryResponseJSON_EncodeFlags(t *testing.T) {
 			err := WriteQueryResponseJSON(logqlmodel.Result{Data: inputStream}, &b, tc.encodeFlags)
 			require.NoError(t, err)
 			require.JSONEq(t, tc.expected, b.String())
-		})
-	}
-}
-
-func Test_MarshalTailResponse_EncodeFlags(t *testing.T) {
-	type withEncFlags struct {
-		name     string
-		flags    httpreq.EncodingFlags
-		expected string
-	}
-	for _, tc := range []struct {
-		name         string
-		input        legacy.TailResponse
-		withEncFlags []withEncFlags
-	}{
-		{
-			name: "only stream labels",
-			input: legacy.TailResponse{
-				Streams: []logproto.Stream{
-					{
-						Labels: `{test="test"}`,
-						CategorizedLabels: logproto.CategorizedLabels{
-							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-						},
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345),
-								Line:      "super line",
-							},
-						},
-					},
-				},
-			},
-			withEncFlags: []withEncFlags{
-				{
-					name:  "no flags",
-					flags: nil,
-					expected: `{
-						"streams": [
-							{
-								"stream": {
-									"test": "test"
-								},
-								"values":[
-									[ "123456789012345", "super line"]
-								]
-							}
-						]
-					}`,
-				},
-				{
-					name:  "group labels",
-					flags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
-					expected: `{
-						"streams": [
-							{
-								"stream": {
-									"stream": {
-										"test": "test"
-									}
-								},
-								"values":[
-									[ "123456789012345", "super line"]
-								]
-							}
-						]
-					}`,
-				},
-			},
-		},
-		{
-			name: "with non-indexed labels",
-			input: legacy.TailResponse{
-				Streams: []logproto.Stream{
-					{
-						Labels: `{test="test", foo="a", bar="b"}`,
-						CategorizedLabels: logproto.CategorizedLabels{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-						},
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012346),
-								Line:      "super line with labels",
-								StructuredMetadata: []logproto.LabelAdapter{
-									{Name: "foo", Value: "a"},
-									{Name: "bar", Value: "b"},
-								},
-							},
-						},
-					},
-				},
-			},
-			withEncFlags: []withEncFlags{
-				{
-					name:  "no flags",
-					flags: nil,
-					expected: `{
-						"streams": [
-							{
-								"stream": {
-									"test": "test",
-									"foo": "a",
-									"bar": "b"
-								},
-								"values":[
-									[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
-								]
-							}
-						]
-					}`,
-				},
-				{
-					name:  "group labels",
-					flags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
-					expected: `{
-						"streams": [
-							{
-								"stream": {
-									"stream": {
-										"test": "test"
-									},
-									"structuredMetadata": {
-										"foo": "a",
-										"bar": "b"
-									}
-								},
-								"values":[
-									[ "123456789012346", "super line with labels", { "foo": "a", "bar": "b" }]
-								]
-							}
-						]
-					}`,
-				},
-			},
-		},
-		{
-			name: "with parsed labels",
-			input: legacy.TailResponse{
-				Streams: []logproto.Stream{
-					{
-						Labels: `{test="test", foo="a", bar="b", msg="baz"}`,
-						CategorizedLabels: logproto.CategorizedLabels{
-							Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("test", "test")),
-							StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-							Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("msg", "baz")),
-						},
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012346),
-								Line:      "super line with labels msg=baz",
-								StructuredMetadata: []logproto.LabelAdapter{
-									{Name: "foo", Value: "a"},
-									{Name: "bar", Value: "b"},
-								},
-							},
-						},
-					},
-				},
-			},
-			withEncFlags: []withEncFlags{
-				{
-					name:  "no flags",
-					flags: nil,
-					expected: `{
-						"streams": [
-							{
-								"stream": {
-									"test": "test",
-									"foo": "a",
-									"bar": "b",
-									"msg": "baz"
-								},
-								"values":[
-									[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
-								]
-							}
-						]
-					}`,
-				},
-				{
-					name:  "group labels",
-					flags: httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels),
-					expected: `{
-						"streams": [
-							{
-								"stream": {
-									"stream": {
-										"test": "test"
-									},
-									"structuredMetadata": {
-										"foo": "a",
-										"bar": "b"
-									},
-									"parsed": {
-										"msg": "baz"
-									}
-								},
-								"values":[
-									[ "123456789012346", "super line with labels msg=baz", { "foo": "a", "bar": "b" }]
-								]
-							}
-						]
-					}`,
-				},
-			},
-		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			for _, subTc := range tc.withEncFlags {
-				t.Run(subTc.name, func(t *testing.T) {
-					model, err := NewTailResponse(tc.input, subTc.flags)
-					require.NoError(t, err)
-
-					// marshal model object
-					b, err := json.Marshal(model)
-					require.NoError(t, err)
-
-					require.JSONEq(t, subTc.expected, string(b))
-				})
-			}
 		})
 	}
 }

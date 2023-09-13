@@ -1,6 +1,7 @@
 package loghttp
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 	"unsafe"
@@ -20,6 +21,7 @@ type Entry struct {
 	Timestamp          time.Time
 	Line               string
 	StructuredMetadata labels.Labels
+	Parsed             labels.Labels
 }
 
 func (e *Entry) UnmarshalJSON(data []byte) error {
@@ -52,26 +54,46 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 				return
 			}
 			e.Line = v
-		case 2: // labels
+		case 2: // structured metadata
 			if t != jsonparser.Object {
 				parseError = jsonparser.MalformedObjectError
 				return
 			}
+
 			var structuredMetadata labels.Labels
+			var parsed labels.Labels
 			if err := jsonparser.ObjectEach(value, func(key []byte, value []byte, dataType jsonparser.ValueType, _ int) error {
-				if dataType != jsonparser.String {
-					return jsonparser.MalformedStringError
+				if dataType == jsonparser.Object {
+					if string(key) == "structuredMetadata" {
+						lbls, err := parseLabels(value)
+						if err != nil {
+							return err
+						}
+						structuredMetadata = lbls
+					}
+					if string(key) == "parsed" {
+						lbls, err := parseLabels(value)
+						if err != nil {
+							return err
+						}
+						parsed = lbls
+					}
+					return nil
 				}
-				structuredMetadata = append(structuredMetadata, labels.Label{
-					Name:  string(key),
-					Value: string(value),
-				})
-				return nil
+				if dataType == jsonparser.String || t != jsonparser.Number {
+					structuredMetadata = append(structuredMetadata, labels.Label{
+						Name:  string(key),
+						Value: string(value),
+					})
+					return nil
+				}
+				return fmt.Errorf("could not parse structured metadata or parsed fileds")
 			}); err != nil {
 				parseError = err
 				return
 			}
 			e.StructuredMetadata = structuredMetadata
+			e.Parsed = parsed
 		}
 		i++
 	})
@@ -79,6 +101,27 @@ func (e *Entry) UnmarshalJSON(data []byte) error {
 		return parseError
 	}
 	return err
+}
+
+func parseLabels(data []byte) (labels.Labels, error) {
+	var lbls labels.Labels
+	err := jsonparser.ObjectEach(data, func(key []byte, value []byte, t jsonparser.ValueType, _ int) error {
+		if t != jsonparser.String && t != jsonparser.Number {
+			return fmt.Errorf("could not parse label value. Expected string or number, got %s", t)
+		}
+
+		val, err := jsonparser.ParseString(value)
+		if err != nil {
+			return err
+		}
+
+		lbls = append(lbls, labels.Label{
+			Name:  string(key),
+			Value: val,
+		})
+		return nil
+	})
+	return lbls, err
 }
 
 type jsonExtension struct {

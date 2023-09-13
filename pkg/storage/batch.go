@@ -340,10 +340,6 @@ func (it *logBatchIterator) Labels() string {
 	return it.curr.Labels()
 }
 
-func (it *logBatchIterator) CategorizedLabels() logproto.CategorizedLabels {
-	return it.curr.CategorizedLabels()
-}
-
 func (it *logBatchIterator) StreamHash() uint64 {
 	return it.curr.StreamHash()
 }

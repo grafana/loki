@@ -8,8 +8,6 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
-	"github.com/prometheus/prometheus/model/labels"
-
 	"github.com/grafana/loki/pkg/logproto"
 )
 
@@ -69,13 +67,6 @@ func (l LabelSet) String() string {
 	return b.String()
 }
 
-func (l LabelSet) ToProto() []logproto.LabelAdapter {
-	if len(l) == 0 {
-		return nil
-	}
-	return logproto.FromLabelsToLabelAdapters(labels.FromMap(l.Map()))
-}
-
 // ParseLabelQuery parses a LabelRequest request from an http request.
 func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 	name, ok := mux.Vars(r)["name"]
@@ -93,57 +84,4 @@ func ParseLabelQuery(r *http.Request) (*logproto.LabelRequest, error) {
 
 	req.Query = query(r)
 	return req, nil
-}
-
-type CategorizedLabelSet struct {
-	Stream             LabelSet `json:"stream,omitempty"`
-	StructuredMetadata LabelSet `json:"structuredMetadata,omitempty"`
-	Parsed             LabelSet `json:"parsed,omitempty"`
-}
-
-func (c *CategorizedLabelSet) Empty() bool {
-	return len(c.Stream) == 0 && len(c.StructuredMetadata) == 0 && len(c.Parsed) == 0
-}
-
-func (c *CategorizedLabelSet) ToProto() logproto.CategorizedLabels {
-	return logproto.CategorizedLabels{
-		Stream:             c.Stream.ToProto(),
-		StructuredMetadata: c.StructuredMetadata.ToProto(),
-		Parsed:             c.Parsed.ToProto(),
-	}
-}
-
-func (c *CategorizedLabelSet) ToLabelSet() LabelSet {
-	ret := make(LabelSet, len(c.Stream)+len(c.StructuredMetadata)+len(c.Parsed))
-	for k, v := range c.Stream {
-		ret[k] = v
-	}
-	for k, v := range c.StructuredMetadata {
-		ret[k] = v
-	}
-	for k, v := range c.Parsed {
-		ret[k] = v
-	}
-	return ret
-}
-
-func (c *CategorizedLabelSet) UnmarshalJSON(data []byte) error {
-	return jsonparser.ObjectEach(data, func(key, val []byte, _ jsonparser.ValueType, _ int) error {
-		switch string(key) {
-		//nolint:goconst // Using a constant here would be less readable.
-		case "stream":
-			if err := c.Stream.UnmarshalJSON(val); err != nil {
-				return err
-			}
-		case "structuredMetadata":
-			if err := c.StructuredMetadata.UnmarshalJSON(val); err != nil {
-				return err
-			}
-		case "parsed":
-			if err := c.Parsed.UnmarshalJSON(val); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
 }

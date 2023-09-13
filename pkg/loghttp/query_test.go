@@ -152,11 +152,6 @@ func TestStreams_ToProto(t *testing.T) {
 			[]Stream{
 				{
 					Labels: map[string]string{"job": "fake"},
-					CategorizedLabels: CategorizedLabelSet{
-						Stream:             map[string]string{"job": "fake"},
-						StructuredMetadata: map[string]string{"foo": "a", "bar": "b"},
-						Parsed:             nil,
-					},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
 						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: labels.Labels{
@@ -167,27 +162,19 @@ func TestStreams_ToProto(t *testing.T) {
 				},
 				{
 					Labels: map[string]string{"job": "fake", "lvl": "error"},
-					CategorizedLabels: CategorizedLabelSet{
-						Stream:             map[string]string{"job": "fake"},
-						StructuredMetadata: map[string]string{"foo": "a", "bar": "b"},
-						Parsed:             map[string]string{"lvl": "error"},
-					},
 					Entries: []Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
-						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: labels.Labels{
-							{Name: "foo", Value: "a"},
-							{Name: "bar", Value: "b"},
-						}},
+						{Timestamp: time.Unix(0, 4), Line: "4",
+							StructuredMetadata: labels.Labels{
+								{Name: "foo", Value: "a"},
+								{Name: "bar", Value: "b"},
+							}},
 					},
 				},
 			},
 			[]logproto.Stream{
 				{
 					Labels: `{job="fake"}`,
-					CategorizedLabels: logproto.CategorizedLabels{
-						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
-						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-					},
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 1), Line: "1"},
 						{Timestamp: time.Unix(0, 2), Line: "2", StructuredMetadata: []logproto.LabelAdapter{
@@ -198,11 +185,6 @@ func TestStreams_ToProto(t *testing.T) {
 				},
 				{
 					Labels: `{job="fake", lvl="error"}`,
-					CategorizedLabels: logproto.CategorizedLabels{
-						Stream:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("job", "fake")),
-						StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "a", "bar", "b")),
-						Parsed:             logproto.FromLabelsToLabelAdapters(labels.FromStrings("lvl", "error")),
-					},
 					Entries: []logproto.Entry{
 						{Timestamp: time.Unix(0, 3), Line: "3"},
 						{Timestamp: time.Unix(0, 4), Line: "4", StructuredMetadata: []logproto.LabelAdapter{

@@ -950,7 +950,7 @@ func (c *MemChunk) Bounds() (fromT, toT time.Time) {
 }
 
 // Iterator implements Chunk.
-func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) (iter.EntryIterator, error) {
+func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error) {
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
@@ -977,7 +977,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		}
 		lastMax = b.maxt
 
-		blockItrs = append(blockItrs, encBlock{c.encoding, c.format, c.symbolizer, b}.Iterator(ctx, pipeline, options...))
+		blockItrs = append(blockItrs, encBlock{c.encoding, c.format, c.symbolizer, b}.Iterator(ctx, pipeline))
 	}
 
 	if !c.head.IsEmpty() {
@@ -985,7 +985,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if from < lastMax {
 			ordered = false
 		}
-		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline, options...)
+		headIterator = c.head.Iterator(ctx, direction, mint, maxt, pipeline)
 	}
 
 	if direction == logproto.FORWARD {
@@ -1100,7 +1100,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepStructuredMetadata())
+	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}))
 	if err != nil {
 		return nil, err
 	}
@@ -1149,11 +1149,11 @@ type encBlock struct {
 	block
 }
 
-func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline, options ...iter.EntryIteratorOption) iter.EntryIterator {
+func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
 	if len(b.b) == 0 {
 		return iter.NoopIterator
 	}
-	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer, options...)
+	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline, b.format, b.symbolizer)
 }
 
 func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
@@ -1179,7 +1179,7 @@ func (b block) MaxTime() int64 {
 	return b.maxt
 }
 
-func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline, _ ...iter.EntryIteratorOption) iter.EntryIterator {
+func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
 	if hb.IsEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
@@ -1211,11 +1211,6 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			stream = &logproto.Stream{
 				Labels: labels,
 				Hash:   baseHash,
-				CategorizedLabels: logproto.CategorizedLabels{
-					Stream:             logproto.FromLabelsToLabelAdapters(parsedLbs.Stream()),
-					StructuredMetadata: logproto.FromLabelsToLabelAdapters(parsedLbs.StructuredMetadata()),
-					Parsed:             logproto.FromLabelsToLabelAdapters(parsedLbs.Parsed()),
-				},
 			}
 			streams[labels] = stream
 		}
@@ -1587,23 +1582,16 @@ func (si *bufferedIterator) close() {
 	si.origBytes = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer, options ...iter.EntryIteratorOption) iter.EntryIterator {
-	entryIter := &entryBufferedIterator{
+func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline, format byte, symbolizer *symbolizer) iter.EntryIterator {
+	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b, format, symbolizer),
 		pipeline:         pipeline,
 	}
-
-	for _, opt := range options {
-		opt(&entryIter.iterOptions)
-	}
-
-	return entryIter
 }
 
 type entryBufferedIterator struct {
 	*bufferedIterator
-	pipeline    log.StreamPipeline
-	iterOptions iter.EntryIteratorOptions
+	pipeline log.StreamPipeline
 
 	cur        logproto.Entry
 	currLabels log.LabelsResult
@@ -1615,14 +1603,6 @@ func (e *entryBufferedIterator) Entry() logproto.Entry {
 
 func (e *entryBufferedIterator) Labels() string {
 	return e.currLabels.String()
-}
-
-func (e *entryBufferedIterator) CategorizedLabels() logproto.CategorizedLabels {
-	return logproto.CategorizedLabels{
-		Stream:             logproto.FromLabelsToLabelAdapters(e.currLabels.Stream()),
-		StructuredMetadata: logproto.FromLabelsToLabelAdapters(e.currLabels.StructuredMetadata()),
-		Parsed:             logproto.FromLabelsToLabelAdapters(e.currLabels.Parsed()),
-	}
 }
 
 func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabels().Hash() }
@@ -1638,12 +1618,9 @@ func (e *entryBufferedIterator) Next() bool {
 		e.currLabels = lbs
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
+		e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(lbs.StructuredMetadata())
+		e.cur.Parsed = logproto.FromLabelsToLabelAdapters(lbs.Parsed())
 
-		// Most of the time, there is no need to send back the labels of structured metadata, as they are already part of the labels results.
-		// Still it might be needed for example when appending entries from one chunk into another one.
-		if e.iterOptions.KeepStructuredMetdata {
-			e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(e.currStructuredMetadata)
-		}
 		return true
 	}
 	return false

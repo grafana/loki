@@ -15,10 +15,9 @@ import (
 // We are not using the proto generated version but this custom one so that we
 // can improve serialization see benchmark.
 type Stream struct {
-	Labels            string            `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
-	Entries           []Entry           `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
-	Hash              uint64            `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
-	CategorizedLabels CategorizedLabels `protobuf:"bytes,4,opt,name=categorizedLabels,proto3" json:"categorizedLabels"`
+	Labels  string  `protobuf:"bytes,1,opt,name=labels,proto3" json:"labels"`
+	Entries []Entry `protobuf:"bytes,2,rep,name=entries,proto3,customtype=EntryAdapter" json:"entries"`
+	Hash    uint64  `protobuf:"varint,3,opt,name=hash,proto3" json:"-"`
 }
 
 // Entry is a log entry with a timestamp.
@@ -26,16 +25,7 @@ type Entry struct {
 	Timestamp          time.Time     `protobuf:"bytes,1,opt,name=timestamp,proto3,stdtime" json:"ts"`
 	Line               string        `protobuf:"bytes,2,opt,name=line,proto3" json:"line"`
 	StructuredMetadata LabelsAdapter `protobuf:"bytes,3,opt,name=structuredMetadata,proto3" json:"structuredMetadata,omitempty"`
-}
-
-// CategorizedLabels is a set of labels grouped by their type.
-// We are not using the proto generated version but this custom one so that we
-// can use LabelsAdapter instead of LabelsPairAdapter.
-// This type should be kept in sync with the proto generated version so we can safely cast it.
-type CategorizedLabels struct {
-	Stream             LabelsAdapter `protobuf:"bytes,1,rep,name=stream,proto3" json:"stream"`
-	StructuredMetadata LabelsAdapter `protobuf:"bytes,2,rep,name=structuredMetadata,proto3" json:"structuredMetadata"`
-	Parsed             LabelsAdapter `protobuf:"bytes,3,rep,name=parsed,proto3" json:"parsed"`
+	Parsed             LabelsAdapter `protobuf:"bytes,4,opt,name=parsed,proto3" json:"parsed,omitempty"`
 }
 
 // MarshalJSON implements json.Marshaler.
@@ -159,16 +149,6 @@ func (m *Stream) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
-	{
-		size, err := (*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).MarshalToSizedBuffer(dAtA[:i])
-		if err != nil {
-			return 0, err
-		}
-		i -= size
-		i = encodeVarintPush(dAtA, i, uint64(size))
-	}
-	i--
-	dAtA[i] = 0x22
 	if m.Hash != 0 {
 		i = encodeVarintPush(dAtA, i, m.Hash)
 		i--
@@ -218,6 +198,20 @@ func (m *Entry) MarshalToSizedBuffer(dAtA []byte) (int, error) {
 	_ = i
 	var l int
 	_ = l
+	if len(m.Parsed) > 0 {
+		for iNdEx := len(m.Parsed) - 1; iNdEx >= 0; iNdEx-- {
+			{
+				size, err := m.Parsed[iNdEx].MarshalToSizedBuffer(dAtA[:i])
+				if err != nil {
+					return 0, err
+				}
+				i -= size
+				i = encodeVarintPush(dAtA, i, uint64(size))
+			}
+			i--
+			dAtA[i] = 0x22
+		}
+	}
 	if len(m.StructuredMetadata) > 0 {
 		for iNdEx := len(m.StructuredMetadata) - 1; iNdEx >= 0; iNdEx-- {
 			{
@@ -364,39 +358,6 @@ func (m *Stream) Unmarshal(dAtA []byte) error {
 					break
 				}
 			}
-		case 4:
-			if wireType != 2 {
-				return fmt.Errorf("proto: wrong wireType = %d for field CategorizedLabels", wireType)
-			}
-			var msglen int
-			for shift := uint(0); ; shift += 7 {
-				if shift >= 64 {
-					return ErrIntOverflowPush
-				}
-				if iNdEx >= l {
-					return io.ErrUnexpectedEOF
-				}
-				b := dAtA[iNdEx]
-				iNdEx++
-				msglen |= int(b&0x7F) << shift
-				if b < 0x80 {
-					break
-				}
-			}
-			if msglen < 0 {
-				return ErrInvalidLengthPush
-			}
-			postIndex := iNdEx + msglen
-			if postIndex < 0 {
-				return ErrInvalidLengthPush
-			}
-			if postIndex > l {
-				return io.ErrUnexpectedEOF
-			}
-			if err := (*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
-				return err
-			}
-			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipPush(dAtA[iNdEx:])
@@ -547,6 +508,40 @@ func (m *Entry) Unmarshal(dAtA []byte) error {
 			}
 			m.StructuredMetadata = append(m.StructuredMetadata, LabelAdapter{})
 			if err := m.StructuredMetadata[len(m.StructuredMetadata)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Parsed", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowPush
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := dAtA[iNdEx]
+				iNdEx++
+				msglen |= int(b&0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthPush
+			}
+			postIndex := iNdEx + msglen
+			if postIndex < 0 {
+				return ErrInvalidLengthPush
+			}
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Parsed = append(m.Parsed, LabelAdapter{})
+			if err := m.Parsed[len(m.Parsed)-1].Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
 			}
 			iNdEx = postIndex
@@ -719,8 +714,6 @@ func (m *Stream) Size() (n int) {
 	if m.Hash != 0 {
 		n += 1 + sovPush(m.Hash)
 	}
-	l = (*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).Size()
-	n += 1 + l + sovPush(uint64(l))
 	return n
 }
 
@@ -738,6 +731,12 @@ func (m *Entry) Size() (n int) {
 	}
 	if len(m.StructuredMetadata) > 0 {
 		for _, e := range m.StructuredMetadata {
+			l = e.Size()
+			n += 1 + l + sovPush(uint64(l))
+		}
+	}
+	if len(m.Parsed) > 0 {
+		for _, e := range m.Parsed {
 			l = e.Size()
 			n += 1 + l + sovPush(uint64(l))
 		}
@@ -795,9 +794,6 @@ func (m *Stream) Equal(that interface{}) bool {
 	if m.Hash != that1.Hash {
 		return false
 	}
-	if !(*(*CategorizedLabelsAdapter)(unsafe.Pointer(&m.CategorizedLabels))).Equal(that1.CategorizedLabels) {
-		return false
-	}
 	return true
 }
 
@@ -826,8 +822,19 @@ func (m *Entry) Equal(that interface{}) bool {
 	if m.Line != that1.Line {
 		return false
 	}
+	if len(m.StructuredMetadata) != len(that1.StructuredMetadata) {
+		return false
+	}
 	for i := range m.StructuredMetadata {
 		if !m.StructuredMetadata[i].Equal(that1.StructuredMetadata[i]) {
+			return false
+		}
+	}
+	if len(m.Parsed) != len(that1.Parsed) {
+		return false
+	}
+	for i := range m.Parsed {
+		if !m.Parsed[i].Equal(that1.Parsed[i]) {
 			return false
 		}
 	}

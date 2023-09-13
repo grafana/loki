@@ -291,8 +291,11 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 			return nil, err
 		}
 
+		encodingFlags := httpreq.ExtractEncodingFlagsFromCtx(ctx)
+		categorizeLabels := encodingFlags.Has(httpreq.FlagCategorizeLabels)
+
 		defer util.LogErrorWithContext(ctx, "closing iterator", iter.Close)
-		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
+		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval(), categorizeLabels)
 		return streams, err
 	default:
 		return nil, errors.New("Unexpected type (%T): cannot evaluate")
@@ -493,29 +496,54 @@ func PopulateMatrixFromScalar(data promql.Scalar, params Params) promql.Matrix {
 	return promql.Matrix{series}
 }
 
-func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration) (logqlmodel.Streams, error) {
+// readStreams reads the streams from the iterator and returns them sorted.
+// If categorizeLabels is true, the stream labels contains just the stream labels and entries inside each stream have their
+// structuredMetadata and parsed fields populated with structured metadata labels plus the parsed labels respectively.
+// Otherwise, the stream labels are the whole series labels including the stream labels, structured metadata labels and parsed labels.
+func readStreams(i iter.EntryIterator, size uint32, dir logproto.Direction, interval time.Duration, categorizeLabels bool) (logqlmodel.Streams, error) {
 	streams := map[string]*logproto.Stream{}
 	respSize := uint32(0)
 	// lastEntry should be a really old time so that the first comparison is always true, we use a negative
 	// value here because many unit tests start at time.Unix(0,0)
 	lastEntry := lastEntryMinTime
 	for respSize < size && i.Next() {
-		labels, categorizedLabels, entry := i.Labels(), i.CategorizedLabels(), i.Entry()
+		entry := i.Entry()
+
 		forwardShouldOutput := dir == logproto.FORWARD &&
-			(i.Entry().Timestamp.Equal(lastEntry.Add(interval)) || i.Entry().Timestamp.After(lastEntry.Add(interval)))
+			(entry.Timestamp.Equal(lastEntry.Add(interval)) || entry.Timestamp.After(lastEntry.Add(interval)))
 		backwardShouldOutput := dir == logproto.BACKWARD &&
-			(i.Entry().Timestamp.Equal(lastEntry.Add(-interval)) || i.Entry().Timestamp.Before(lastEntry.Add(-interval)))
+			(entry.Timestamp.Equal(lastEntry.Add(-interval)) || entry.Timestamp.Before(lastEntry.Add(-interval)))
+
 		// If step == 0 output every line.
 		// If lastEntry.Unix < 0 this is the first pass through the loop and we should output the line.
 		// Then check to see if the entry is equal to, or past a forward or reverse step
 		if interval == 0 || lastEntry.Unix() < 0 || forwardShouldOutput || backwardShouldOutput {
-			stream, ok := streams[labels]
+			streamLabels := i.Labels()
+
+			// If categorizeLabels is true, We need to remove the structured metadata labels and parsed labels from the stream labels.
+			if categorizeLabels && (len(entry.StructuredMetadata) > 0 || len(entry.Parsed) > 0) {
+				lbls, err := syntax.ParseLabels(streamLabels)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse series labels to categorize labels: %w", err)
+				}
+
+				builder := labels.NewBuilder(lbls)
+				for _, label := range entry.StructuredMetadata {
+					builder.Del(label.Name)
+				}
+				for _, label := range entry.Parsed {
+					builder.Del(label.Name)
+				}
+
+				streamLabels = builder.Labels().String()
+			}
+
+			stream, ok := streams[streamLabels]
 			if !ok {
 				stream = &logproto.Stream{
-					Labels:            labels,
-					CategorizedLabels: categorizedLabels,
+					Labels: streamLabels,
 				}
-				streams[labels] = stream
+				streams[streamLabels] = stream
 			}
 			stream.Entries = append(stream.Entries, entry)
 			lastEntry = i.Entry().Timestamp

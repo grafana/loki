@@ -76,7 +76,7 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 
 	for i, stream := range s {
 		// We set the FlagCategorizeLabels to keep the categorized labels
-		ret[i], err = NewStream(stream, httpreq.NewEncodingFlags(httpreq.FlagCategorizeLabels))
+		ret[i], err = NewStream(stream)
 
 		if err != nil {
 			return nil, err
@@ -87,7 +87,7 @@ func NewStreams(s logqlmodel.Streams) (loghttp.Streams, error) {
 }
 
 // NewStream constructs a Stream from a logproto.Stream
-func NewStream(s logproto.Stream, encodeFlags httpreq.EncodingFlags) (loghttp.Stream, error) {
+func NewStream(s logproto.Stream) (loghttp.Stream, error) {
 	labels, err := NewLabelSet(s.Labels)
 	if err != nil {
 		return loghttp.Stream{}, errors.Wrapf(err, "err while creating labelset for %s", s.Labels)
@@ -100,10 +100,8 @@ func NewStream(s logproto.Stream, encodeFlags httpreq.EncodingFlags) (loghttp.St
 	}
 
 	ret := loghttp.Stream{
-		Labels:            labels,
-		Entries:           entries,
-		CategorizedLabels: NewCategorizedLabelSet(s.CategorizedLabels),
-		EncodeFlags:       encodeFlags,
+		Labels:  labels,
+		Entries: entries,
 	}
 
 	return ret, nil
@@ -301,7 +299,7 @@ func encodeStreams(streams logqlmodel.Streams, s *jsoniter.Stream, encodeFlags h
 	return nil
 }
 
-func encodeLabels(labels []logproto.LabelAdapter, s *jsoniter.Stream) error {
+func encodeLabels(labels []logproto.LabelAdapter, s *jsoniter.Stream) {
 	for i, label := range labels {
 		if i > 0 {
 			s.WriteMore()
@@ -310,65 +308,25 @@ func encodeLabels(labels []logproto.LabelAdapter, s *jsoniter.Stream) error {
 		s.WriteObjectField(label.Name)
 		s.WriteString(label.Value)
 	}
-
-	return nil
-}
-
-func encodeCategorizedLabels(categorizedLabels logproto.CategorizedLabels, s *jsoniter.Stream) error {
-	writeGroup := func(name string, lbls []logproto.LabelAdapter) error {
-		s.WriteObjectField(name)
-		s.WriteObjectStart()
-		if err := encodeLabels(lbls, s); err != nil {
-			return err
-		}
-		s.WriteObjectEnd()
-		return nil
-	}
-
-	if len(categorizedLabels.Stream) > 0 {
-		if err := writeGroup("stream", categorizedLabels.Stream); err != nil {
-			return err
-		}
-	}
-	if len(categorizedLabels.StructuredMetadata) > 0 {
-		s.WriteMore()
-		if err := writeGroup("structuredMetadata", categorizedLabels.StructuredMetadata); err != nil {
-			return err
-		}
-	}
-	if len(categorizedLabels.Parsed) > 0 {
-		s.WriteMore()
-		if err := writeGroup("parsed", categorizedLabels.Parsed); err != nil {
-			return err
-		}
-	}
-	s.Flush()
-	return nil
 }
 
 // encodeStream encodes a logproto.Stream to JSON.
 // If the FlagCategorizeLabels is set, the stream labels are grouped by their group name.
 // Otherwise, the stream labels are written one after the other.
 func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpreq.EncodingFlags) error {
+	categorizeLabels := encodeFlags.Has(httpreq.FlagCategorizeLabels)
+
 	s.WriteObjectStart()
 	defer s.WriteObjectEnd()
 
 	s.WriteObjectField("stream")
 	s.WriteObjectStart()
 
-	if encodeFlags.Has(httpreq.FlagCategorizeLabels) {
-		if err := encodeCategorizedLabels(stream.CategorizedLabels, s); err != nil {
-			return err
-		}
-	} else {
-		lbls, err := parser.ParseMetric(stream.Labels)
-		if err != nil {
-			return err
-		}
-		if err = encodeLabels(logproto.FromLabelsToLabelAdapters(lbls), s); err != nil {
-			return err
-		}
+	lbls, err := parser.ParseMetric(stream.Labels)
+	if err != nil {
+		return err
 	}
+	encodeLabels(logproto.FromLabelsToLabelAdapters(lbls), s)
 
 	s.WriteObjectEnd()
 	s.Flush()
@@ -388,16 +346,30 @@ func encodeStream(stream logproto.Stream, s *jsoniter.Stream, encodeFlags httpre
 		s.WriteRaw(`"`)
 		s.WriteMore()
 		s.WriteStringWithHTMLEscaped(e.Line)
-		if len(e.StructuredMetadata) > 0 {
+
+		if categorizeLabels && (len(e.StructuredMetadata) > 0 || len(e.Parsed) > 0) {
 			s.WriteMore()
 			s.WriteObjectStart()
-			for i, lbl := range e.StructuredMetadata {
-				if i > 0 {
+
+			var writeMore bool
+			if len(e.StructuredMetadata) > 0 {
+				s.WriteObjectField("structuredMetadata")
+				s.WriteObjectStart()
+				encodeLabels(e.StructuredMetadata, s)
+				s.WriteObjectEnd()
+				writeMore = true
+			}
+
+			if len(e.Parsed) > 0 {
+				if writeMore {
 					s.WriteMore()
 				}
-				s.WriteObjectField(lbl.Name)
-				s.WriteString(lbl.Value)
+				s.WriteObjectField("parsed")
+				s.WriteObjectStart()
+				encodeLabels(e.Parsed, s)
+				s.WriteObjectEnd()
 			}
+
 			s.WriteObjectEnd()
 		}
 		s.WriteArrayEnd()

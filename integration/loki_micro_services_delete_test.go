@@ -408,7 +408,7 @@ func getMetricValue(t *testing.T, metricName, metrics string) float64 {
 }
 
 func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.StreamValues {
-	logsByStream := map[string][][]string{}
+	logsByStream := map[string][]client.Entry{}
 	for _, entry := range p.entries {
 		lb := labels.NewBuilder(labels.FromMap(p.stream))
 		for _, l := range entry.StructuredMetadata {

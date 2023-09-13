@@ -15,7 +15,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	"github.com/grafana/loki/pkg/util/httpreq"
 )
 
 var (
@@ -244,9 +243,8 @@ func (s Streams) ToProto() []logproto.Stream {
 	for _, s := range s {
 		entries := *(*[]logproto.Entry)(unsafe.Pointer(&s.Entries))
 		result = append(result, logproto.Stream{
-			Labels:            s.Labels.String(),
-			CategorizedLabels: s.CategorizedLabels.ToProto(),
-			Entries:           entries,
+			Labels:  s.Labels.String(),
+			Entries: entries,
 		})
 	}
 	return result
@@ -254,11 +252,8 @@ func (s Streams) ToProto() []logproto.Stream {
 
 // Stream represents a log stream.  It includes a set of log entries and their labels.
 type Stream struct {
-	Labels            LabelSet            `json:"stream"`
-	CategorizedLabels CategorizedLabelSet `json:"-"`
-	Entries           []Entry             `json:"values"`
-
-	EncodeFlags httpreq.EncodingFlags `json:"-"`
+	Labels  LabelSet `json:"stream"`
+	Entries []Entry  `json:"values"`
 }
 
 func (s *Stream) UnmarshalJSON(data []byte) error {
@@ -271,23 +266,7 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 	return jsonparser.ObjectEach(data, func(key, value []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
-			// Try to get the "stream" field inside the stream object.
-			// If it's there, and it's an object, then it's a stream with categorized labels.
-			// Otherwise, if it's not there of it's a string, then it's a stream with labels as string.
-			// TODO(salvacorts): If we can just return two different keys (e.g. "stream" vs "labels")
-			//  				 we could avoid checking which kind of object is it.
-			_, streamType, _, err := jsonparser.Get(value, "stream")
-			if err == nil && streamType == jsonparser.Object {
-				if err = s.CategorizedLabels.UnmarshalJSON(value); err != nil {
-					return err
-				}
-				s.Labels = s.CategorizedLabels.ToLabelSet()
-				s.EncodeFlags.Set(httpreq.FlagCategorizeLabels)
-			} else if errors.Is(err, jsonparser.KeyPathNotFoundError) || streamType == jsonparser.String {
-				if err := s.Labels.UnmarshalJSON(value); err != nil {
-					return err
-				}
-			} else {
+			if err := s.Labels.UnmarshalJSON(value); err != nil {
 				return err
 			}
 		case "values":
@@ -313,23 +292,6 @@ func (s *Stream) UnmarshalJSON(data []byte) error {
 		}
 		return nil
 	})
-}
-
-// MarshalJSON implements the json.Marshaler interface.
-// If the FlagCategorizeLabels encoding flag is set, the serialized "stream" field will be a map of groups to labels.
-func (s *Stream) MarshalJSON() ([]byte, error) {
-	if s.EncodeFlags.Has(httpreq.FlagCategorizeLabels) {
-		return json.Marshal(struct {
-			CategorizedLabels CategorizedLabelSet `json:"stream"`
-			Entries           []Entry             `json:"values"`
-		}{
-			CategorizedLabels: s.CategorizedLabels,
-			Entries:           s.Entries,
-		})
-	}
-
-	type raw Stream
-	return json.Marshal(raw(*s))
 }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.

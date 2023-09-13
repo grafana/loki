@@ -14,7 +14,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/loghttp"
@@ -53,9 +52,6 @@ var (
 				Result: []logproto.Stream{
 					{
 						Labels: `{foo="bar", level="debug"}`,
-						CategorizedLabels: logproto.CategorizedLabels{
-							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "debug")),
-						},
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(0, 6), Line: "6"},
 							{Timestamp: time.Unix(0, 5), Line: "5"},
@@ -77,9 +73,6 @@ var (
 				Result: []logproto.Stream{
 					{
 						Labels: `{foo="bar", level="error"}`,
-						CategorizedLabels: logproto.CategorizedLabels{
-							Stream: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", "bar", "level", "error")),
-						},
 						Entries: []logproto.Entry{
 							{Timestamp: time.Unix(0, 2), Line: "2"},
 							{Timestamp: time.Unix(0, 1), Line: "1"},
