@@ -5,11 +5,12 @@ import (
 )
 
 type StepResult interface {
-	PromVec()           promql.Vector
+	PromVec() promql.Vector
 	QuantileSketchVec() QuantileSketchVector
 }
 
 type PromVec promql.Vector
+
 var _ StepResult = PromVec{}
 
 func (p PromVec) PromVec() promql.Vector {

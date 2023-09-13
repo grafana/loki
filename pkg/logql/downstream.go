@@ -479,7 +479,7 @@ func (e *ConcatStepEvaluator) Next() (bool, int64, StepResult) {
 	for _, eval := range e.evaluators {
 		ok, ts, cur = eval.Next()
 		if ok {
-			vec = append(vec, cur.PromVec() ...)
+			vec = append(vec, cur.PromVec()...)
 		}
 	}
 	return ok, ts, vec

@@ -15,7 +15,7 @@ import (
 type QuantileSketchVector []quantileSketchSample
 type QuantileSketchMatrix []QuantileSketchVector
 
-func (left QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVector {
+func (q QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVector {
 	/*
 		var groupingKey uint64
 		if e.expr.Grouping.Without {
@@ -26,7 +26,7 @@ func (left QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketc
 	*/
 	// labels hash to vector index map
 	groups := make(map[uint64]int)
-	for i, sample := range left {
+	for i, sample := range q {
 		// TODO(karsten): this might be slow.
 		groups[sample.Metric.Hash()] = i
 	}
@@ -34,15 +34,15 @@ func (left QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketc
 	for _, sample := range right {
 		i, ok := groups[sample.Metric.Hash()]
 		if !ok {
-			left = append(left, sample)
+			q = append(q, sample)
 			continue
 		}
 
 		// TODO(karsten): handle error
-		left[i].F.Merge(sample.F) //nolint:errcheck
+		q[i].F.Merge(sample.F) //nolint:errcheck
 	}
 
-	return left
+	return q
 }
 
 func (QuantileSketchVector) PromVec() promql.Vector {
@@ -82,16 +82,16 @@ func (e *TDigestStepEvaluator) Next() (bool, int64, StepResult) {
 	return true, ts, vec
 }
 
-func (r *TDigestStepEvaluator) Close() error { return r.iter.Close() }
+func (e *TDigestStepEvaluator) Close() error { return e.iter.Close() }
 
-func (r *TDigestStepEvaluator) Error() error {
-	if r.err != nil {
-		return r.err
+func (e *TDigestStepEvaluator) Error() error {
+	if e.err != nil {
+		return e.err
 	}
-	return r.iter.Error()
+	return e.iter.Error()
 }
 
-func (r *TDigestStepEvaluator) Explain(parent Node) {
+func (e *TDigestStepEvaluator) Explain(parent Node) {
 	parent.Child("T-Digest")
 }
 
