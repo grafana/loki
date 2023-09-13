@@ -46,7 +46,7 @@ schema_config:
         prefix: index_tsdb_
         period: 24h
 `
-	tsdbShipperSchemaWithNonIndexedLabelsConfigTemplate = `
+	tsdbShipperSchemaWithStructuredMetadataConfigTemplate = `
 schema_config:
   configs:
     - from: {{.curPeriodStart}}
@@ -75,6 +75,6 @@ func SchemaWithBoltDBAndTSDB(c *Cluster) {
 	c.periodCfgs = append(c.periodCfgs, additionalBoltDBShipperSchemaConfigTemplate, tsdbShipperSchemaConfigTemplate)
 }
 
-func SchemaWithTDSBAndNonIndexedLabels(c *Cluster) {
-	c.periodCfgs = append(c.periodCfgs, tsdbShipperSchemaWithNonIndexedLabelsConfigTemplate)
+func SchemaWithTDSBAndStructuredMetadata(c *Cluster) {
+	c.periodCfgs = append(c.periodCfgs, tsdbShipperSchemaWithStructuredMetadataConfigTemplate)
 }

@@ -712,7 +712,7 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 }
 
 func TestCategorizedLabels(t *testing.T) {
-	clu := cluster.New(nil, cluster.SchemaWithTDSBAndNonIndexedLabels)
+	clu := cluster.New(nil, cluster.SchemaWithTDSBAndStructuredMetadata)
 
 	defer func() {
 		assert.NoError(t, clu.Cleanup())
