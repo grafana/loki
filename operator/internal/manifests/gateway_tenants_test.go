@@ -718,7 +718,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.extract-selector-labels=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
 									},
 								},
 								{
@@ -827,7 +827,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.extract-selector-labels=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
 									},
 								},
 								{
@@ -1164,7 +1164,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.extract-selector-labels=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
 									},
 								},
 								{
@@ -1261,7 +1261,7 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 								{
 									Name: gatewayContainerName,
 									Args: []string{
-										"--logs.extract-selector-labels=kubernetes_namespace_name",
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
 									},
 								},
 								{

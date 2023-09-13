@@ -81,7 +81,7 @@ func ConfigureGatewayDeployment(
 			}
 
 			d.Spec.Template.Spec.Containers[i].Args = append(d.Spec.Template.Spec.Containers[i].Args,
-				fmt.Sprintf("--logs.extract-selector-labels=%s", opaDefaultLabelMatcher),
+				fmt.Sprintf("--logs.auth.extract-selectors=%s", opaDefaultLabelMatcher),
 			)
 		}
 	}
