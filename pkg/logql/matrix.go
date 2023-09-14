@@ -55,7 +55,7 @@ func (m *MatrixStepEvaluator) Next() (bool, int64, StepResult) {
 		m.m[i].Floats = m.m[i].Floats[1:]
 	}
 
-	return true, ts, PromVec(vec)
+	return true, ts, SampleVector(vec)
 }
 
 func (m *MatrixStepEvaluator) Close() error { return nil }

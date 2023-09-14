@@ -397,11 +397,11 @@ func (e *ConcatStepEvaluator) Next() (bool, int64, StepResult) {
 		ok  bool
 		ts  int64
 	)
-	vec := PromVec{}
+	vec := SampleVector{}
 	for _, eval := range e.evaluators {
 		ok, ts, cur = eval.Next()
 		if ok {
-			vec = append(vec, cur.PromVec()...)
+			vec = append(vec, cur.SampleVector()...)
 		}
 	}
 	return ok, ts, vec
