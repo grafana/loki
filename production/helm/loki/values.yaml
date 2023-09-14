@@ -290,10 +290,10 @@ loki:
       userAssignedId: null
       requestTimeout: null
       endpointSuffix: null
-    alibabacloud: {} # See <alibabacloud_storage_config> at https://grafana.com/docs/loki/latest/configure/#alibabacloud_storage_config
-    cos: {} # See <cos_storage_config> at https://grafana.com/docs/loki/latest/configure/#cos_storage_config
-    swift: {} # See <swift_storage_config> at https://grafana.com/docs/loki/latest/configure/#swift_storage_config
-    bos: {} # See <swift_storage_config> at https://grafana.com/docs/loki/latest/configure/#bos_storage_config
+    alibabacloud: {}          # See <alibabacloud_storage_config> at https://grafana.com/docs/loki/latest/configure/#alibabacloud_storage_config
+    cos: {}                   # See <cos_storage_config> at https://grafana.com/docs/loki/latest/configure/#cos_storage_config
+    swift: {}                 # See <swift_storage_config> at https://grafana.com/docs/loki/latest/configure/#swift_storage_config
+    bos: {}                   # See <swift_storage_config> at https://grafana.com/docs/loki/latest/configure/#bos_storage_config
     filesystem:
       chunks_directory: /var/loki/chunks
       rules_directory: /var/loki/rules
