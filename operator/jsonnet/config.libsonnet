@@ -97,6 +97,7 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
         if !std.member(dropList, r.record)
       ],
 
+    // dropHeatMaps filter function that returns "true" if a panel is of type "heatmap". To be used with function "dropPanels"
     local dropHeatMaps = function(p)
       local elems = std.filter(function(p) p.type == 'heatmap', p.panels);
       std.length(elems) == 0,
