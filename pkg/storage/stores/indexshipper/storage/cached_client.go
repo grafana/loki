@@ -269,7 +269,7 @@ func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context, forceRefr
 	return nil
 }
 
-// getTable returns a table instance that contains common objects and user objects.
+// getCachedTable returns a table instance that contains common objects and user objects.
 // It only returns the table if it is in cache, otherwise it returns nil.
 func (c *cachedObjectClient) getCachedTable(tableName string) *table {
 	c.tablesMtx.RLock()
