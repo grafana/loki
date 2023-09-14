@@ -188,7 +188,7 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 				}
 
 				casted := idx.(*tsdb.TSDBFile).Index.(*tsdb.TSDBIndex)
-				casted.ForSeries(
+				_ = casted.ForSeries(
 					context.Background(),
 					nil, model.Earliest, model.Latest,
 					func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
