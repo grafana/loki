@@ -77,7 +77,8 @@ loki:
     allowPrivilegeEscalation: false
   # -- Should enableServiceLinks be enabled. Default to enable
   enableServiceLinks: true
-  # -- Specify if the configuration is consumed or generated. If true, overrides `loki.config`
+  # -- Set to "true" to use an external configuration resource or to "false" to use a generated resource with `loki.config` as its content.
+  # Resource type is defined by the `configStorageType` property.
   useExternalConfig: false
   # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
   # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).

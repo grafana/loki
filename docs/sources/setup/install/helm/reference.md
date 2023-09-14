@@ -2228,7 +2228,7 @@ null
 		<tr>
 			<td>loki.useExternalConfig</td>
 			<td>bool</td>
-			<td>Specify if the configuration is consumed or generated. If true, overrides `loki.config`</td>
+			<td>Set to "true" to use an external configuration resource or to "false" to use a generated resource with `loki.config` as its content. Resource type is defined by the `configStorageType` property.</td>
 			<td><pre lang="json">
 false
 </pre>
