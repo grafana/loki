@@ -51,6 +51,15 @@
 ##### Enhancements
 
 #### Jsonnet
+## Unreleased
+
+### All Changes
+
+#### Loki
+
+##### Fixes
+
+* [10585](https://github.com/grafana/loki/pull/10585) **ashwanthgoli** / **chaudum**: Fix bug in index object client that could result in not showing all ingested logs in query results.
 
 ## 2.9.0 (2023-09-06)
 

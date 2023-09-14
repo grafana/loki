@@ -56,6 +56,62 @@ func (m *mockObjectClient) List(ctx context.Context, prefix, delimiter string) (
 	return m.ObjectClient.List(ctx, prefix, delimiter)
 }
 
+func TestCachedObjectClient_List(t *testing.T) {
+	t.Run("refresh table name cache if requested table is not in cache", func(t *testing.T) {
+		ctx := context.Background()
+
+		oldObjectsInStorage := []string{
+			"table1/db.gz",
+		}
+
+		objectClient := newMockObjectClient(t, oldObjectsInStorage)
+		cachedObjectClient := newCachedObjectClient(objectClient)
+
+		// populate table names case with a List() operation
+		objects, commonPrefixes, err := cachedObjectClient.List(ctx, "", "/", false)
+		require.Nil(t, err)
+		require.Equal(t, objects, []client.StorageObject{})
+		require.Equal(t, commonPrefixes, []client.StorageCommonPrefix{"table1"})
+
+		newObjectsInStorage := []string{
+			"table1/db.gz",
+			"table2/db.gz",
+		}
+
+		// replace mock object client with one that returns more tables
+		cachedObjectClient.ObjectClient = newMockObjectClient(t, newObjectsInStorage)
+
+		objectKeys := func(items []client.StorageObject) []string {
+			keys := make([]string, 0, len(items))
+			for _, item := range items {
+				keys = append(keys, item.Key)
+			}
+			return keys
+		}
+
+		// list contents of a table that is in table name cache
+		objects, _, err = cachedObjectClient.listTable(ctx, "table1")
+		require.Nil(t, err)
+		require.Equal(t, []string{"table1/db.gz"}, objectKeys(objects))
+		objectsFromListCall, _, _ := cachedObjectClient.List(ctx, "table1/", "/", false)
+		require.Equal(t, objectsFromListCall, objects)
+
+		// list contents of a table that is not in table name cache but exists on object storage
+		objects, _, err = cachedObjectClient.listTable(ctx, "table2")
+		require.Nil(t, err)
+		require.Equal(t, []string{"table2/db.gz"}, objectKeys(objects))
+		objectsFromListCall, _, _ = cachedObjectClient.List(ctx, "table2/", "/", false)
+		require.Equal(t, objectsFromListCall, objects)
+
+		// list contents of a table that is not in table name cache and does not exist on object storage
+		objects, _, err = cachedObjectClient.listTable(ctx, "table3")
+		require.Nil(t, err)
+		require.Equal(t, []string{}, objectKeys(objects))
+		objectsFromListCall, _, _ = cachedObjectClient.List(ctx, "table3/", "/", false)
+		require.Equal(t, objectsFromListCall, objects)
+	})
+}
+
 func TestCachedObjectClient(t *testing.T) {
 	objectsInStorage := []string{
 		// table with just common dbs
@@ -129,14 +185,14 @@ func TestCachedObjectClient(t *testing.T) {
 	// list non-existent table
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table4/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 4, objectClient.listCallsCount)
+	require.Equal(t, 5, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 
 	// list non-existent user
 	objects, commonPrefixes, err = cachedObjectClient.List(context.Background(), "table3/user2/", "", false)
 	require.NoError(t, err)
-	require.Equal(t, 4, objectClient.listCallsCount)
+	require.Equal(t, 5, objectClient.listCallsCount)
 	require.Equal(t, []client.StorageObject{}, objects)
 	require.Equal(t, []client.StorageCommonPrefix{}, commonPrefixes)
 }
