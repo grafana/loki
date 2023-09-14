@@ -28,7 +28,7 @@ The Docker plugin must be installed on each Docker host that will be running con
 Run the following command to install the plugin, updating the release version if needed:
 
 ```bash
-docker plugin install grafana/loki-docker-driver:2.8.2 --alias loki --grant-all-permissions
+docker plugin install grafana/loki-docker-driver:2.8.5 --alias loki --grant-all-permissions
 ```
 
 To check installed plugins, use the `docker plugin ls` command. Plugins that
@@ -49,7 +49,7 @@ re-enabling and restarting Docker:
 
 ```bash
 docker plugin disable loki --force
-docker plugin upgrade loki grafana/loki-docker-driver:2.8.2 --grant-all-permissions
+docker plugin upgrade loki grafana/loki-docker-driver:2.8.5 --grant-all-permissions
 docker plugin enable loki
 systemctl restart docker
 ```
