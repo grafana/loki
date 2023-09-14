@@ -26,6 +26,8 @@ local utils = (import 'github.com/grafana/jsonnet-libs/mixin-utils/utils.libsonn
       } else {}
     ),
 
+    // replaceLabelFormat applies label format replaces on panel targets
+    // to maintain Grafana 6 compatibility (i.e. `__auto` not available)
     local replaceLabelFormat = function(title, fmt, replacement)
       function(p) p + (
         if p.title == title then {
