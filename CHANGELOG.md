@@ -182,6 +182,14 @@
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 * [9978](https://github.com/grafana/loki/pull/9978) ****vlad-diachenko****: replaced deprecated `policy.v1beta1` with `policy.v1`.
 
+## 2.8.5 (2023-09-14)
+
+#### Loki
+
+##### Security
+
+* [10573](https://github.com/grafana/loki/pull/10573) **DylanGuedes**: Bump Docker base images to Alpine version 3.18.3 to mitigate CVE-2022-48174
+
 ## 2.8.3 (2023-07-21)
 
 #### Loki
