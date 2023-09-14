@@ -2,19 +2,21 @@
 
 ### All Changes
 
-## 2.8.0 (2023-03-??)
+## 2.8.5 (2023-09-14)
 
-* [10188](https://github.com/grafana/loki/pull/10188) **shantanualsi**: Bump alpine version from 3.16.5 -> 3.16.7
+#### Loki
 
+##### Security
 
-## 2.8.4
+* [10573](https://github.com/grafana/loki/pull/10573) **DylanGuedes**: Bump Docker base images to Alpine version 3.18.3 to mitigate CVE-2022-48174
+
+## 2.8.4 (2023-08-11)
 
 #### Loki
 
 ##### Security
 
 * [10217](https://github.com/grafana/loki/pull/10217) *ashwanthgoli*: Fix CVE-2023-1255, CVE-2023-2650, CVE-2023-2975, CVE-2023-3446, CVE-2023-3817, and bump alpine image 3.18.2
-
 
 ## 2.8.3 (2023-07-21)
 
