@@ -24,6 +24,8 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+
+
 {{< responsive-table >}}
 <table>
 	<thead>
@@ -409,7 +411,7 @@ null
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"azure\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n"
+"{{- if .Values.enterprise.adminApi.enabled }}\n{{- if or .Values.minio.enabled (eq .Values.loki.storage.type \"gcs\") (eq .Values.loki.storage.type \"s3\") (eq .Values.loki.storage.type \"azure\") (eq .Values.loki.storage.type \"alibabacloud\") (eq .Values.loki.storage.type \"cos\") (eq .Values.loki.storage.type \"swift\") (eq .Values.loki.storage.type \"bos\") }}\nadmin_client:\n  storage:\n    s3:\n      bucket_name: {{ .Values.loki.storage.bucketNames.admin }}\n{{- end }}\n{{- end }}\nauth:\n  type: {{ .Values.enterprise.adminApi.enabled | ternary \"enterprise\" \"trust\" }}\nauth_enabled: {{ .Values.loki.auth_enabled }}\ncluster_name: {{ include \"loki.clusterName\" . }}\nlicense:\n  path: /etc/loki/license/license.jwt\n"
 </pre>
 </td>
 		</tr>
@@ -2162,6 +2164,7 @@ null
 			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
 			<td><pre lang="json">
 {
+  "alibabacloud": {},
   "azure": {
     "accountKey": null,
     "accountName": null,
@@ -2171,11 +2174,13 @@ null
     "useManagedIdentity": false,
     "userAssignedId": null
   },
+  "bos": {},
   "bucketNames": {
     "admin": "admin",
     "chunks": "chunks",
     "ruler": "ruler"
   },
+  "cos": {},
   "filesystem": {
     "chunks_directory": "/var/loki/chunks",
     "rules_directory": "/var/loki/rules"
@@ -2196,6 +2201,7 @@ null
     "secretAccessKey": null,
     "signatureVersion": null
   },
+  "swift": {},
   "type": "s3"
 }
 </pre>
@@ -2204,7 +2210,7 @@ null
 		<tr>
 			<td>loki.storage_config</td>
 			<td>object</td>
-			<td>Additional storage config</td>
+			<td>Additional storage config (see https://grafana.com/docs/loki/latest/configure/#storage_config)</td>
 			<td><pre lang="json">
 {
   "hedging": {
