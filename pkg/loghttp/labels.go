@@ -8,6 +8,7 @@ import (
 
 	"github.com/buger/jsonparser"
 	"github.com/gorilla/mux"
+
 	"github.com/grafana/loki/pkg/logproto"
 )
 
