@@ -2,6 +2,10 @@
 
 ### All Changes
 
+##### Security
+
+* [10573](https://github.com/grafana/loki/pull/10573) **DylanGuedes**: Bump Docker base images to Alpine version 3.18.7 to mitigate CVE-2022-48174
+
 #### Loki
 
 ##### Fixes
