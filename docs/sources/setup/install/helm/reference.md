@@ -2162,10 +2162,6 @@ null
 			<td>Storage config. Providing this will automatically populate all necessary storage configs in the templated config.</td>
 			<td><pre lang="json">
 {
-  "alibabacloud": {
-	// Default to {}
-	// See https://grafana.com/docs/loki/latest/configure/#alibabacloud_storage_config for available values
-  },
   "azure": {
     "accountKey": null,
     "accountName": null,
@@ -2175,18 +2171,10 @@ null
     "useManagedIdentity": false,
     "userAssignedId": null
   },
-  "bos": {
-	// Default to {}
-	// See https://grafana.com/docs/loki/latest/configure/#bos_storage_config for available values
-  },
   "bucketNames": {
     "admin": "admin",
     "chunks": "chunks",
     "ruler": "ruler"
-  },
-  "cos": {
-	// Default to {}
-	// See https://grafana.com/docs/loki/latest/configure/#cos_storage_config for available values
   },
   "filesystem": {
     "chunks_directory": "/var/loki/chunks",
@@ -2207,10 +2195,6 @@ null
     "s3ForcePathStyle": false,
     "secretAccessKey": null,
     "signatureVersion": null
-  },
-  "swift": {
-	// Default to {}
-	// See https://grafana.com/docs/loki/latest/configure/#swift_storage_config for available value
   },
   "type": "s3"
 }
