@@ -269,6 +269,8 @@ func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context, forceRefr
 	return nil
 }
 
+// getTable returns a table instance that contains common objects and user objects.
+// It only returns the table if it is in cache, otherwise it returns nil.
 func (c *cachedObjectClient) getCachedTable(tableName string) *table {
 	c.tablesMtx.RLock()
 	defer c.tablesMtx.RUnlock()
@@ -276,6 +278,10 @@ func (c *cachedObjectClient) getCachedTable(tableName string) *table {
 	return c.tables[tableName]
 }
 
+// getTable returns a table instance that contains common objects and user objects.
+// It tries to get read the table from cache first and refreshes the cache in
+// case was not found. It then returns the table from the refreshed cache.
+// It returns nil if the table was also not found after refreshing the cache.
 func (c *cachedObjectClient) getTable(ctx context.Context, tableName string) *table {
 	// First, get the table from tables cache.
 	if t := c.getCachedTable(tableName); t != nil {
