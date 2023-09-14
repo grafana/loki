@@ -886,7 +886,7 @@ github.com/grafana/go-gelf/v2/gelf
 # github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 ## explicit; go 1.18
 github.com/grafana/gomemcache/memcache
-# github.com/grafana/loki/pkg/push v0.0.0-20230913153301-f7bc8d39c064 => ./pkg/push
+# github.com/grafana/loki/pkg/push v0.0.0-20230914151313-81fae24ce2f4 => ./pkg/push
 ## explicit; go 1.19
 github.com/grafana/loki/pkg/push
 # github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
