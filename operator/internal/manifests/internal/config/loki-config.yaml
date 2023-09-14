@@ -190,7 +190,7 @@ limits_config:
 {{- with .GossipRing }}
 memberlist:
   abort_if_cluster_join_fails: true
-  {{- if not .EnableIPv6}}
+  {{- if not .EnableIPv6 }}
   {{- with .InstanceAddr }}
   advertise_addr: {{ . }}
   {{- end }}
