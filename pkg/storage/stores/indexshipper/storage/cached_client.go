@@ -90,17 +90,11 @@ func (c *cachedObjectClient) RefreshIndexTableNamesCache(ctx context.Context) {
 }
 
 func (c *cachedObjectClient) RefreshIndexTableCache(ctx context.Context, tableName string) {
-	tbl := c.getTable(tableName)
-	// if we did not find the table in the cache, let us force refresh the table names cache to see if we can find it.
+	tbl := c.getTable(ctx, tableName)
 	// It would be rare that a non-existent table name is being referred.
 	// Should happen only when a table got deleted by compactor due to retention policy or user issued delete requests.
 	if tbl == nil {
-		c.RefreshIndexTableNamesCache(ctx)
-		tbl = c.getTable(tableName)
-		// still can't find the table, let us return
-		if tbl == nil {
-			return
-		}
+		return
 	}
 
 	buildCacheOnce(&tbl.buildCacheWg, tbl.buildCacheChan, func() {
@@ -168,7 +162,7 @@ func (c *cachedObjectClient) listTableNames(ctx context.Context) ([]client.Stora
 }
 
 func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
-	tbl := c.getTable(tableName)
+	tbl := c.getTable(ctx, tableName)
 	if tbl == nil {
 		return []client.StorageObject{}, []client.StorageCommonPrefix{}, nil
 	}
@@ -194,7 +188,7 @@ func (c *cachedObjectClient) listTable(ctx context.Context, tableName string) ([
 }
 
 func (c *cachedObjectClient) listUserIndexInTable(ctx context.Context, tableName, userID string) ([]client.StorageObject, error) {
-	tbl := c.getTable(tableName)
+	tbl := c.getTable(ctx, tableName)
 	if tbl == nil {
 		return []client.StorageObject{}, nil
 	}
@@ -275,11 +269,27 @@ func (c *cachedObjectClient) buildTableNamesCache(ctx context.Context, forceRefr
 	return nil
 }
 
-func (c *cachedObjectClient) getTable(tableName string) *table {
+// getCachedTable returns a table instance that contains common objects and user objects.
+// It only returns the table if it is in cache, otherwise it returns nil.
+func (c *cachedObjectClient) getCachedTable(tableName string) *table {
 	c.tablesMtx.RLock()
 	defer c.tablesMtx.RUnlock()
 
 	return c.tables[tableName]
+}
+
+// getTable returns a table instance that contains common objects and user objects.
+// It tries to get read the table from cache first and refreshes the cache in
+// case was not found. It then returns the table from the refreshed cache.
+// It returns nil if the table was also not found after refreshing the cache.
+func (c *cachedObjectClient) getTable(ctx context.Context, tableName string) *table {
+	// First, get the table from tables cache.
+	if t := c.getCachedTable(tableName); t != nil {
+		return t
+	}
+	// If we did not find the table in the cache, let us force refresh the table names cache to see if we can find it.
+	c.RefreshIndexTableNamesCache(ctx)
+	return c.getCachedTable(tableName)
 }
 
 func (t *table) buildCache(ctx context.Context, objectClient client.ObjectClient, forceRefresh bool) (err error) {
