@@ -1847,15 +1847,6 @@ true
 </td>
 		</tr>
 		<tr>
-			<td>loki.existingSecretForConfig</td>
-			<td>string</td>
-			<td>Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`</td>
-			<td><pre lang="json">
-""
-</pre>
-</td>
-		</tr>
-		<tr>
 			<td>loki.externalConfigSecretName</td>
 			<td>string</td>
 			<td>Name of the Secret or ConfigMap that contains the configuration (used for naming even if config is internal).</td>
@@ -2231,6 +2222,15 @@ null
 			<td>Tenants list to be created on nginx htpasswd file, with name and password keys</td>
 			<td><pre lang="json">
 []
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>loki.useExternalConfig</td>
+			<td>bool</td>
+			<td>Specify if the configuration is consumed or generated. If true, overrides `loki.config`</td>
+			<td><pre lang="json">
+false
 </pre>
 </td>
 		</tr>

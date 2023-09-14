@@ -77,8 +77,8 @@ loki:
     allowPrivilegeEscalation: false
   # -- Should enableServiceLinks be enabled. Default to enable
   enableServiceLinks: true
-  # -- Specify an existing secret containing loki configuration. If non-empty, overrides `loki.config`
-  existingSecretForConfig: ""
+  # -- Specify if the configuration is consumed or generated. If true, overrides `loki.config`
+  useExternalConfig: false
   # -- Defines what kind of object stores the configuration, a ConfigMap or a Secret.
   # In order to move sensitive information (such as credentials) from the ConfigMap/Secret to a more secure location (e.g. vault), it is possible to use [environment variables in the configuration](https://grafana.com/docs/loki/latest/configuration/#use-environment-variables-in-the-configuration).
   # Such environment variables can be then stored in a separate Secret and injected via the global.extraEnvFrom value. For details about environment injection from a Secret please see [Secrets](https://kubernetes.io/docs/concepts/configuration/secret/#use-case-as-container-environment-variables).
