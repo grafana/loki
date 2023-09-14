@@ -37,6 +37,7 @@ var (
 	extraLabels                                               model.LabelSet
 	skipTlsVerify                                             bool
 	printLogLine                                              bool
+	s3AssumeRole                                              string
 )
 
 func setupArguments() {
@@ -99,6 +100,8 @@ func setupArguments() {
 	if strings.EqualFold(print, "false") {
 		printLogLine = false
 	}
+
+	s3AssumeRole = os.Getenv("S3_ASSUME_ROLE")
 	s3Clients = make(map[string]*s3.Client)
 }
 

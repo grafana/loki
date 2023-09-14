@@ -125,3 +125,9 @@ variable "sqs_queue_name_prefix" {
   description = "Name prefix for SQS queues"
   default     = "s3-to-lambda-promtail"
 }
+
+variable "s3_assume_role" {
+  type        = string
+  description = "Role to assume to get files from S3 buckets"
+  default     = ""
+}
