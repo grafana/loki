@@ -35,35 +35,43 @@ import (
 // respective slice. Thus, each element is described by exactly k bits, meaning
 // the distribution of false positives is uniform across all elements.
 type PartitionedBloomFilter struct {
-	partitions []*Buckets  // partitioned filter data
-	hash       hash.Hash64 // hash function (kernel for all k functions)
-	m          uint        // filter size (divided into k partitions)
-	k          uint        // number of hash functions (and partitions)
-	s          uint        // partition size (m / k)
-	count      uint        // number of items added
+	partitions     []*Buckets  // partitioned filter data
+	hash           hash.Hash64 // hash function (kernel for all k functions)
+	m              uint        // filter size (divided into k partitions)
+	k              uint        // number of hash functions (and partitions)
+	s              uint        // partition size (m / k)
+	estimatedCount uint        // number of distinct items added
+	optimalCount   uint        // optimal number of distinct items that can be stored in this filter
 }
 
-// NewPartitionedBloomFilter creates a new partitioned Bloom filter optimized
-// to store n items with a specified target false-positive rate.
-func NewPartitionedBloomFilter(n uint, fpRate float64) *PartitionedBloomFilter {
+// NewPartitionedBloomFilterWithEstimates creates a new partitioned Bloom filter
+// with a specific capacity
+func NewPartitionedBloomFilterWithCapacity(m uint, fpRate float64) *PartitionedBloomFilter {
 	var (
-		m          = OptimalM(n, fpRate)
-		k          = OptimalK(fpRate)
-		partitions = make([]*Buckets, k)
-		s          = uint(math.Ceil(float64(m) / float64(k)))
+		k = OptimalK(fpRate)
+		s = uint(math.Ceil(float64(m) / float64(k)))
 	)
+	partitions := make([]*Buckets, k)
 
 	for i := uint(0); i < k; i++ {
 		partitions[i] = NewBuckets(s, 1)
 	}
 
 	return &PartitionedBloomFilter{
-		partitions: partitions,
-		hash:       fnv.New64(),
-		m:          m,
-		k:          k,
-		s:          s,
+		partitions:   partitions,
+		hash:         fnv.New64(),
+		m:            m,
+		k:            k,
+		s:            s,
+		optimalCount: estimatedCount(m, fillRatio),
 	}
+}
+
+// NewPartitionedBloomFilter creates a new partitioned Bloom filter optimized
+// to store n items with a specified target false-positive rate.
+func NewPartitionedBloomFilter(n uint, fpRate float64) *PartitionedBloomFilter {
+	m := OptimalM(n, fpRate)
+	return NewPartitionedBloomFilterWithCapacity(m, fpRate)
 }
 
 // Capacity returns the Bloom filter capacity, m.
@@ -78,25 +86,45 @@ func (p *PartitionedBloomFilter) K() uint {
 
 // Count returns the number of items added to the filter.
 func (p *PartitionedBloomFilter) Count() uint {
-	return p.count
+	return p.estimatedCount
 }
 
 // EstimatedFillRatio returns the current estimated ratio of set bits.
 func (p *PartitionedBloomFilter) EstimatedFillRatio() float64 {
-	return 1 - math.Exp(-float64(p.count)/float64(p.s))
+	return 1 - math.Exp(-float64(p.estimatedCount)/float64(p.s))
 }
 
 // FillRatio returns the average ratio of set bits across all partitions.
 func (p *PartitionedBloomFilter) FillRatio() float64 {
 	t := float64(0)
 	for i := uint(0); i < p.k; i++ {
-		sum := uint32(0)
-		for j := uint(0); j < p.partitions[i].Count(); j++ {
-			sum += p.partitions[i].Get(j)
-		}
+		var sum int
+		sum += p.partitions[i].PopCount()
 		t += (float64(sum) / float64(p.s))
 	}
 	return t / float64(p.k)
+}
+
+// Since duplicates can be added to a bloom filter,
+// we update the count via the following formula via
+// https://gsd.di.uminho.pt/members/cbm/ps/dbloom.pdf
+//
+// n ≈ −m ln(1 − p).
+// This prevents the count from being off by a large
+// amount when duplicates are added.
+// NOTE: this calls FillRatio which calculates the hamming weight from
+// across all bits which can be relatively expensive.
+// Returns current exact fill ratio
+func (p *PartitionedBloomFilter) UpdateCount() float64 {
+	fillRatio := p.FillRatio()
+	p.estimatedCount = estimatedCount(p.m, fillRatio)
+	return fillRatio
+}
+
+// OptimalCount returns the optimal number of distinct items that can be stored
+// in this filter.
+func (p *PartitionedBloomFilter) OptimalCount() uint {
+	return p.optimalCount
 }
 
 // Test will test for membership of the data and returns true if it is a
@@ -127,7 +155,7 @@ func (p *PartitionedBloomFilter) Add(data []byte) Filter {
 		p.partitions[i].Set((uint(lower)+uint(upper)*i)%p.s, 1)
 	}
 
-	p.count++
+	p.estimatedCount++
 	return p
 }
 
@@ -146,7 +174,7 @@ func (p *PartitionedBloomFilter) TestAndAdd(data []byte) bool {
 		p.partitions[i].Set(idx, 1)
 	}
 
-	p.count++
+	p.estimatedCount++
 	return member
 }
 
@@ -180,7 +208,11 @@ func (p *PartitionedBloomFilter) WriteTo(stream io.Writer) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	err = binary.Write(stream, binary.BigEndian, uint64(p.count))
+	err = binary.Write(stream, binary.BigEndian, uint64(p.estimatedCount))
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(stream, binary.BigEndian, uint64(p.optimalCount))
 	if err != nil {
 		return 0, err
 	}
@@ -203,7 +235,7 @@ func (p *PartitionedBloomFilter) WriteTo(stream io.Writer) (int64, error) {
 // have been written by WriteTo()) from an i/o stream. It returns the number
 // of bytes read.
 func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
-	var m, k, s, count, len uint64
+	var m, k, s, estimatedCount, optimalCount, len uint64
 	err := binary.Read(stream, binary.BigEndian, &m)
 	if err != nil {
 		return 0, err
@@ -216,7 +248,11 @@ func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	err = binary.Read(stream, binary.BigEndian, &count)
+	err = binary.Read(stream, binary.BigEndian, &estimatedCount)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Read(stream, binary.BigEndian, &optimalCount)
 	if err != nil {
 		return 0, err
 	}
@@ -238,7 +274,8 @@ func (p *PartitionedBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	p.m = uint(m)
 	p.k = uint(k)
 	p.s = uint(s)
-	p.count = uint(count)
+	p.estimatedCount = uint(estimatedCount)
+	p.optimalCount = uint(optimalCount)
 	p.partitions = partitions
 	return numBytes + int64(5*binary.Size(uint64(0))), nil
 }

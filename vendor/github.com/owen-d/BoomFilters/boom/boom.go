@@ -41,6 +41,7 @@ import (
 	"math"
 )
 
+// optimal fill ratio
 const fillRatio = 0.5
 
 // Filter is a probabilistic data structure which is used to test the
@@ -70,6 +71,11 @@ func OptimalM(n uint, fpRate float64) uint {
 // filter based on the desired rate of false positives.
 func OptimalK(fpRate float64) uint {
 	return uint(math.Ceil(math.Log2(1 / fpRate)))
+}
+
+// n ≈ −m ln(1 − p).
+func estimatedCount(m uint, p float64) uint {
+	return uint(-float64(m) * math.Log(1-p))
 }
 
 // hashKernel returns the upper and lower base hash values from which the k

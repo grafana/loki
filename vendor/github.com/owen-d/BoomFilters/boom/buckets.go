@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
+	"math/bits"
 )
 
 // Buckets is a fast, space-efficient array of buckets where each bucket can
@@ -66,6 +67,13 @@ func (b *Buckets) Set(bucket uint, value uint8) *Buckets {
 // Get returns the value in the specified bucket.
 func (b *Buckets) Get(bucket uint) uint32 {
 	return b.getBits(bucket*uint(b.bucketSize), uint(b.bucketSize))
+}
+
+func (b *Buckets) PopCount() (count int) {
+	for _, x := range b.data {
+		count += bits.OnesCount8(uint8(x))
+	}
+	return count
 }
 
 // Reset restores the Buckets to the original state. Returns itself to allow

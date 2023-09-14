@@ -44,8 +44,22 @@ type ScalableBloomFilter struct {
 	r       float64                   // tightening ratio
 	fp      float64                   // target false-positive rate
 	p       float64                   // partition fill ratio
-	hint    uint                      // filter size hint
+	hint    uint                      // filter size hint for first filter
+	s       uint                      // space growth factor for successive filters. 2|4 recommended.
+
+	// number of additions since last fill ratio check,
+	// used to determine when to add a new filter.
+	// Since fill ratios are estimated based on number of additions
+	// and not actual fill ratio, this is used to amortize the cost
+	// of checking the fill ratio.
+	// Notably this is important when adding many duplicate keys to a filter
+	// which does not increase the number of set bits, but can artificially inflate the estimated fill ratio
+	// which tracks inserts.
+	// Reset on adding another filter
+	additionsSinceFillRatioCheck uint
 }
+
+const fillCheckFraction = 100
 
 // NewScalableBloomFilter creates a new Scalable Bloom Filter with the
 // specified target false-positive rate and tightening ratio. Use
@@ -58,6 +72,7 @@ func NewScalableBloomFilter(hint uint, fpRate, r float64) *ScalableBloomFilter {
 		fp:      fpRate,
 		p:       fillRatio,
 		hint:    hint,
+		s:       4,
 	}
 
 	s.addFilter()
@@ -81,18 +96,20 @@ func (s *ScalableBloomFilter) Capacity() uint {
 }
 
 // K returns the number of hash functions used in each Bloom filter.
+// Returns the highest value (the last filter)
 func (s *ScalableBloomFilter) K() uint {
-	// K is the same across every filter.
-	return s.filters[0].K()
+	return s.filters[len(s.filters)-1].K()
 }
 
 // FillRatio returns the average ratio of set bits across every filter.
 func (s *ScalableBloomFilter) FillRatio() float64 {
-	sum := 0.0
+	var sum, count float64
 	for _, filter := range s.filters {
-		sum += filter.FillRatio()
+		capacity := filter.Capacity()
+		sum += filter.FillRatio() * float64(capacity)
+		count += float64(capacity)
 	}
-	return sum / float64(len(s.filters))
+	return sum / count
 }
 
 // Test will test for membership of the data and returns true if it is a
@@ -116,12 +133,33 @@ func (s *ScalableBloomFilter) Add(data []byte) Filter {
 	idx := len(s.filters) - 1
 
 	// If the last filter has reached its fill ratio, add a new one.
-	if s.filters[idx].EstimatedFillRatio() >= s.p {
-		s.addFilter()
-		idx++
+	// While the estimated fill ratio is cheap to calculate, it overestimates how full a filter
+	// may be because it doesn't account for duplicate key inserts.
+	// Therefore, use the estimated fill ratio to determine when to add a new filter, but
+	// throttle this by only checking the actual fill ratio when we've
+	// performed inserts greater than some fraction of the filter's optimal cardinality
+	// capacity since the last check.
+	// This prevents us from running expensive fill ratio checks too often on both ends:
+	// 1. When the filter is under utilized and the estimated fill ratio
+	//    is below our target fill ratio
+	// 2. When the filter is close to it's target utilization, duplicates inserts
+	//    will quickly inflate the estimated fill ratio. By throttling this check to
+	//    every n inserts where n is some fraction of the total optimal key count,
+	//    we can amortize the cost of the fill ratio check.
+	if s.filters[idx].EstimatedFillRatio() >= s.p && s.additionsSinceFillRatioCheck >= s.filters[idx].OptimalCount()/fillCheckFraction {
+		s.additionsSinceFillRatioCheck = 0
+
+		// calculate the actual fill ratio & update the estimated count for the filter. If the actual fill ratio
+		// is above the target fill ratio, add a new filter.
+		if ratio := s.filters[idx].UpdateCount(); ratio >= s.p {
+			s.addFilter()
+			idx++
+		}
+
 	}
 
 	s.filters[idx].Add(data)
+	s.additionsSinceFillRatioCheck++
 	return s
 }
 
@@ -145,11 +183,22 @@ func (s *ScalableBloomFilter) Reset() *ScalableBloomFilter {
 // the Scalable Bloom Filter
 func (s *ScalableBloomFilter) addFilter() {
 	fpRate := s.fp * math.Pow(s.r, float64(len(s.filters)))
-	p := NewPartitionedBloomFilter(s.hint, fpRate)
+	var p *PartitionedBloomFilter
+
+	// first filter is created with a size determined by the hint.
+	// successive filters are created with a size determined by the
+	// previous filter's capacity and the space growth factor.
+	if len(s.filters) == 0 {
+		p = NewPartitionedBloomFilter(s.hint, fpRate)
+	} else {
+		p = NewPartitionedBloomFilterWithCapacity(s.filters[len(s.filters)-1].Capacity()*s.s, fpRate)
+	}
+
 	if len(s.filters) > 0 {
 		p.SetHash(s.filters[0].hash)
 	}
 	s.filters = append(s.filters, p)
+	s.additionsSinceFillRatioCheck = 0
 }
 
 // SetHash sets the hashing function used in the filter.
@@ -179,6 +228,14 @@ func (s *ScalableBloomFilter) WriteTo(stream io.Writer) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	err = binary.Write(stream, binary.BigEndian, uint64(s.s))
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Write(stream, binary.BigEndian, uint64(s.additionsSinceFillRatioCheck))
+	if err != nil {
+		return 0, err
+	}
 	err = binary.Write(stream, binary.BigEndian, uint64(len(s.filters)))
 	if err != nil {
 		return 0, err
@@ -199,7 +256,7 @@ func (s *ScalableBloomFilter) WriteTo(stream io.Writer) (int64, error) {
 // of bytes read.
 func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	var r, fp, p float64
-	var hint, len uint64
+	var hint, growthFactor, additions, len uint64
 	err := binary.Read(stream, binary.BigEndian, &r)
 	if err != nil {
 		return 0, err
@@ -213,6 +270,14 @@ func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 		return 0, err
 	}
 	err = binary.Read(stream, binary.BigEndian, &hint)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Read(stream, binary.BigEndian, &growthFactor)
+	if err != nil {
+		return 0, err
+	}
+	err = binary.Read(stream, binary.BigEndian, &additions)
 	if err != nil {
 		return 0, err
 	}
@@ -235,6 +300,8 @@ func (s *ScalableBloomFilter) ReadFrom(stream io.Reader) (int64, error) {
 	s.fp = fp
 	s.p = p
 	s.hint = uint(hint)
+	s.s = uint(growthFactor)
+	s.additionsSinceFillRatioCheck = uint(additions)
 	s.filters = filters
 	return numBytes + int64(5*binary.Size(uint64(0))), nil
 }
