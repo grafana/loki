@@ -136,7 +136,7 @@ The diagram below shows how notifications logs will be written from the source s
 
 ![](https://grafana.com/media/docs/loki/lambda-promtail-with-eventbridge.png)
 
-The [template-eventbridge.yaml](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge, for the use case mentioned above. To deploy the template, use the snippet below, completing appropriately the `ParameterValue` arguments.
+The [template-eventbridge.yaml](https://github.com/grafana/loki/blob/main/tools/lambda-promtail/template-eventbridge.yaml) CloudFormation template configures Lambda-promtail with EventBridge to address this known issue. To deploy the template, use the snippet below, completing appropriately the `ParameterValue` arguments.
 
 ```bash
 aws cloudformation create-stack --stack-name lambda-promtail-stack --template-body file://template-eventbridge.yaml --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM --region us-east-2 --parameters ParameterKey=WriteAddress,ParameterValue=https://your-loki-url/loki/api/v1/push ParameterKey=Username,ParameterValue=<basic-auth-username> ParameterKey=Password,ParameterValue=<basic-auth-pw> ParameterKey=BearerToken,ParameterValue=<bearer-token> ParameterKey=LambdaPromtailImage,ParameterValue=<ecr-repo>:<tag> ParameterKey=ExtraLabels,ParameterValue="name1,value1,name2,value2" ParameterKey=TenantID,ParameterValue=<value> ParameterKey=SkipTlsVerify,ParameterValue="false" ParameterKey=EventSourceS3Bucket,ParameterValue=<S3 where target logs are stored>
