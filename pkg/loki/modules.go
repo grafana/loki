@@ -215,7 +215,7 @@ func (t *Loki) initRing() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/ring").Methods("GET").Handler(t.ring)
+		t.InternalServer.HTTP.Path("/ring").Methods("GET", "POST").Handler(t.ring)
 	}
 	return t.ring, nil
 }
@@ -320,7 +320,7 @@ func (t *Loki) initDistributor() (services.Service, error) {
 	t.Server.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET").Handler(t.distributor)
+		t.InternalServer.HTTP.Path("/distributor/ring").Methods("GET", "POST").Handler(t.distributor)
 	}
 
 	t.Server.HTTP.Path("/api/prom/push").Methods("POST").Handler(pushHandler)
@@ -372,6 +372,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 	t.querierAPI = querier.NewQuerierAPI(t.Cfg.Querier, t.Querier, t.Overrides, logger)
 
 	indexStatsHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.IndexStats", t.querierAPI)
+	volumeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeInstant", t.querierAPI)
+	volumeRangeHTTPMiddleware := querier.WrapQuerySpanAndTimeout("query.VolumeRange", t.querierAPI)
 
 	if t.supportIndexDeleteRequest() && t.Cfg.CompactorConfig.RetentionEnabled {
 		toMerge = append(
@@ -382,6 +384,16 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		indexStatsHTTPMiddleware = middleware.Merge(
 			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
 			indexStatsHTTPMiddleware,
+		)
+
+		volumeHTTPMiddleware = middleware.Merge(
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+			volumeHTTPMiddleware,
+		)
+
+		volumeRangeHTTPMiddleware = middleware.Merge(
+			queryrangebase.CacheGenNumberHeaderSetterMiddleware(t.cacheGenerationLoader),
+			volumeRangeHTTPMiddleware,
 		)
 	}
 
@@ -417,8 +429,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 		"/loki/api/v1/series":             querier.WrapQuerySpanAndTimeout("query.Series", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.SeriesHandler)),
 		"/loki/api/v1/index/stats":        indexStatsHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.IndexStatsHandler)),
-		"/loki/api/v1/index/volume":       querier.WrapQuerySpanAndTimeout("query.VolumeInstant", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.VolumeInstantHandler)),
-		"/loki/api/v1/index/volume_range": querier.WrapQuerySpanAndTimeout("query.VolumeRange", t.querierAPI).Wrap(http.HandlerFunc(t.querierAPI.VolumeRangeHandler)),
+		"/loki/api/v1/index/volume":       volumeHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.VolumeInstantHandler)),
+		"/loki/api/v1/index/volume_range": volumeRangeHTTPMiddleware.Wrap(http.HandlerFunc(t.querierAPI.VolumeRangeHandler)),
 
 		"/api/prom/query": middleware.Merge(
 			httpMiddleware,
@@ -507,6 +519,8 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 }
 
 func (t *Loki) initTableManager() (services.Service, error) {
+	level.Warn(util_log.Logger).Log("msg", "table manager is deprecated. Consider migrating to tsdb index which relies on a compactor instead.")
+
 	err := t.Cfg.SchemaConfig.Load()
 	if err != nil {
 		return nil, err
@@ -977,7 +991,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.Server.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
 
 		if t.Cfg.InternalServer.Enable {
-			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET").Handler(t.ruler)
+			t.InternalServer.HTTP.Path("/ruler/ring").Methods("GET", "POST").Handler(t.ruler)
 		}
 
 		base_ruler.RegisterRulerServer(t.Server.GRPC, t.ruler)
@@ -1148,7 +1162,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET").Handler(t.compactor)
+		t.InternalServer.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 	}
 
 	if t.Cfg.CompactorConfig.RetentionEnabled {
@@ -1238,7 +1252,7 @@ func (t *Loki) initIndexGatewayRing() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET").Handler(t.indexGatewayRingManager)
+		t.InternalServer.HTTP.Path("/indexgateway/ring").Methods("GET", "POST").Handler(t.indexGatewayRingManager)
 	}
 
 	return t.indexGatewayRingManager, nil
@@ -1289,7 +1303,7 @@ func (t *Loki) initQuerySchedulerRing() (_ services.Service, err error) {
 	t.Server.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(t.querySchedulerRingManager)
 
 	if t.Cfg.InternalServer.Enable {
-		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET").Handler(t.querySchedulerRingManager)
+		t.InternalServer.HTTP.Path("/scheduler/ring").Methods("GET", "POST").Handler(t.querySchedulerRingManager)
 	}
 
 	return t.querySchedulerRingManager, nil

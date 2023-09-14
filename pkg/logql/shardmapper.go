@@ -311,6 +311,24 @@ func (m ShardMapper) mapLabelReplaceExpr(expr *syntax.LabelReplaceExpr, r *downs
 	return &cpy, bytesPerShard, nil
 }
 
+// These functions require a different merge strategy than the default
+// concatenation.
+// This is because the same label sets may exist on multiple shards when label-reducing parsing is applied or when
+// grouping by some subset of the labels. In this case, the resulting vector may have multiple values for the same
+// series and we need to combine them appropriately given a particular operation.
+var rangeMergeMap = map[string]string{
+	// all these may be summed
+	syntax.OpRangeTypeCount:     syntax.OpTypeSum,
+	syntax.OpRangeTypeRate:      syntax.OpTypeSum,
+	syntax.OpRangeTypeBytes:     syntax.OpTypeSum,
+	syntax.OpRangeTypeBytesRate: syntax.OpTypeSum,
+	syntax.OpRangeTypeSum:       syntax.OpTypeSum,
+
+	// min & max require taking the min|max of the shards
+	syntax.OpRangeTypeMin: syntax.OpTypeMin,
+	syntax.OpRangeTypeMax: syntax.OpTypeMax,
+}
+
 func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
 	if !expr.Shardable() {
 		exprStats, err := m.shards.GetStats(expr)
@@ -332,24 +350,6 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			return m.mapSampleExpr(expr, r)
 		}
 
-		// These functions require a different merge strategy than the default
-		// concatenation.
-		// This is because the same label sets may exist on multiple shards when label-reducing parsing is applied or when
-		// grouping by some subset of the labels. In this case, the resulting vector may have multiple values for the same
-		// series and we need to combine them appropriately given a particular operation.
-		mergeMap := map[string]string{
-			// all these may be summed
-			syntax.OpRangeTypeCount:     syntax.OpTypeSum,
-			syntax.OpRangeTypeRate:      syntax.OpTypeSum,
-			syntax.OpRangeTypeBytes:     syntax.OpTypeSum,
-			syntax.OpRangeTypeBytesRate: syntax.OpTypeSum,
-			syntax.OpRangeTypeSum:       syntax.OpTypeSum,
-
-			// min & max require taking the min|max of the shards
-			syntax.OpRangeTypeMin: syntax.OpTypeMin,
-			syntax.OpRangeTypeMax: syntax.OpTypeMax,
-		}
-
 		// range aggregation groupings default to `without ()` behavior
 		// so we explicitly set the wrapping vector aggregation to this
 		// for parity when it's not explicitly set
@@ -361,7 +361,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		mapped, bytes, err := m.mapSampleExpr(expr, r)
 		// max_over_time(_) -> max without() (max_over_time(_) ++ max_over_time(_)...)
 		// max_over_time(_) by (foo) -> max by (foo) (max_over_time(_) by (foo) ++ max_over_time(_) by (foo)...)
-		merger, ok := mergeMap[expr.Operation]
+		merger, ok := rangeMergeMap[expr.Operation]
 		if !ok {
 			return nil, 0, fmt.Errorf(
 				"error while finding merge operation for %s", expr.Operation,
@@ -372,6 +372,52 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 			Grouping:  grouping,
 			Operation: merger,
 		}, bytes, err
+
+	case syntax.OpRangeTypeAvg:
+		potentialConflict := syntax.ReducesLabels(expr)
+		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
+			return m.mapSampleExpr(expr, r)
+		}
+
+		// avg_overtime() by (foo) -> sum by (foo) (sum_over_time()) / sum by (foo) (count_over_time())
+		lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
+			Left: &syntax.RangeAggregationExpr{
+				Left:      expr.Left,
+				Operation: syntax.OpRangeTypeSum,
+			},
+			Grouping:  expr.Grouping,
+			Operation: syntax.OpTypeSum,
+		}, r)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Strip unwrap from log range
+		countOverTimeSelector, err := expr.Left.WithoutUnwrap()
+		if err != nil {
+			return nil, 0, err
+		}
+
+		rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
+			Left: &syntax.RangeAggregationExpr{
+				Left:      countOverTimeSelector,
+				Operation: syntax.OpRangeTypeCount,
+			},
+			Grouping:  expr.Grouping,
+			Operation: syntax.OpTypeSum,
+		}, r)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// We take the maximum bytes per shard of both sides of the operation
+		bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
+
+		return &syntax.BinOpExpr{
+			SampleExpr: lhs,
+			RHS:        rhs,
+			Op:         syntax.OpTypeDiv,
+		}, bytesPerShard, nil
 
 	default:
 		// don't shard if there's not an appropriate optimization

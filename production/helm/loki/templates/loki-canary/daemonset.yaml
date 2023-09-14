@@ -18,10 +18,10 @@ spec:
   {{- end }}
   template:
     metadata:
+      {{- with .annotations }}
       annotations:
-        {{- with .annotations }}
         {{- toYaml . | nindent 8 }}
-        {{- end }}
+      {{- end }}
       labels:
         {{- include "loki-canary.selectorLabels" $ | nindent 8 }}
         {{- with .podLabels }}
@@ -95,6 +95,10 @@ spec:
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+      {{- with .dnsConfig }}
+      dnsConfig:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

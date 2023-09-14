@@ -216,13 +216,13 @@ func createChunk(t testing.TB, userID string, lbs labels.Labels, from model.Time
 	labelsBuilder.Set(labels.MetricName, "logs")
 	metric := labelsBuilder.Labels()
 	fp := ingesterclient.Fingerprint(lbs)
-	chunkEnc := chunkenc.NewMemChunk(chunkenc.EncSnappy, chunkenc.DefaultHeadBlockFmt, blockSize, targetSize)
+	chunkEnc := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, blockSize, targetSize)
 
 	for ts := from; !ts.After(through); ts = ts.Add(1 * time.Minute) {
 		require.NoError(t, chunkEnc.Append(&logproto.Entry{
-			Timestamp:        ts.Time(),
-			Line:             ts.String(),
-			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
+			Timestamp:          ts.Time(),
+			Line:               ts.String(),
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(labels.FromStrings("foo", ts.String())),
 		}))
 	}
 
@@ -278,7 +278,7 @@ func labelsString(ls labels.Labels) string {
 func TestChunkRewriter(t *testing.T) {
 	minListMarkDelay = 1 * time.Second
 	now := model.Now()
-	schema := allSchemas[3]
+	schema := allSchemas[3] // v12
 	todaysTableInterval := ExtractIntervalFromTableName(schema.config.IndexTables.TableFor(now))
 	type tableResp struct {
 		mustDeleteLines  bool
@@ -295,7 +295,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "no rewrites",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(time.Hour)),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -305,7 +305,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "no rewrites with chunk spanning multiple tables",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-48*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, s string) bool {
+			filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
 				return false
 			},
 			expectedRespByTables: map[string]tableResp{
@@ -317,7 +317,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite first half",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, _ string) bool {
+			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
 					return true
@@ -339,9 +339,35 @@ func TestChunkRewriter(t *testing.T) {
 			},
 		},
 		{
+			name:  "rewrite first half using structured metadata",
+			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
+			filterFunc: func(ts time.Time, _ string, structuredMetadata ...labels.Label) bool {
+				tsUnixNano := ts.UnixNano()
+				if labels.Labels(structuredMetadata).Get("foo") == model.TimeFromUnixNano(ts.UnixNano()).String() &&
+					todaysTableInterval.Start.UnixNano() <= tsUnixNano &&
+					tsUnixNano <= todaysTableInterval.Start.Add(time.Hour).UnixNano() {
+					return true
+				}
+
+				return false
+			},
+			expectedRespByTables: map[string]tableResp{
+				schema.config.IndexTables.TableFor(todaysTableInterval.Start): {
+					mustDeleteLines:  true,
+					mustRewriteChunk: true,
+				},
+			},
+			retainedChunkIntervals: []model.Interval{
+				{
+					Start: todaysTableInterval.Start.Add(time.Hour).Add(time.Minute),
+					End:   todaysTableInterval.Start.Add(2 * time.Hour),
+				},
+			},
+		},
+		{
 			name:  "rewrite second half",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(2*time.Hour)),
-			filterFunc: func(ts time.Time, _ string) bool {
+			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.Add(time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano() {
 					return true
@@ -365,7 +391,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite multiple intervals",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.Start, todaysTableInterval.Start.Add(12*time.Hour)),
-			filterFunc: func(ts time.Time, _ string) bool {
+			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 				tsUnixNano := ts.UnixNano()
 				if (todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(2*time.Hour).UnixNano()) ||
 					(todaysTableInterval.Start.Add(5*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(9*time.Hour).UnixNano()) ||
@@ -395,7 +421,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals - delete partially for each day",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, _ string) bool {
+			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 				tsUnixNano := ts.UnixNano()
 				if (todaysTableInterval.End.Add(-71*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-47*time.Hour).UnixNano()) ||
 					(todaysTableInterval.End.Add(-40*time.Hour).UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.Add(-30*time.Hour).UnixNano()) ||
@@ -441,7 +467,7 @@ func TestChunkRewriter(t *testing.T) {
 		{
 			name:  "rewrite chunk spanning multiple days with multiple intervals - delete just one whole day",
 			chunk: createChunk(t, "1", labels.Labels{labels.Label{Name: "foo", Value: "bar"}}, todaysTableInterval.End.Add(-72*time.Hour), todaysTableInterval.End),
-			filterFunc: func(ts time.Time, _ string) bool {
+			filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 				tsUnixNano := ts.UnixNano()
 				if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.End.UnixNano() {
 					return true
@@ -518,20 +544,20 @@ func TestChunkRewriter(t *testing.T) {
 				require.Equal(t, expectedChunks[i][len(expectedChunks[i])-1].End, chunks[i].Through)
 
 				lokiChunk := chunks[i].Data.(*chunkenc.Facade).LokiChunk()
-				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepNonIndexedLabels())
+				newChunkItr, err := lokiChunk.Iterator(context.Background(), chunks[i].From.Time(), chunks[i].Through.Add(time.Minute).Time(), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepStructuredMetadata())
 				require.NoError(t, err)
 
 				for _, interval := range expectedChunks[i] {
 					for curr := interval.Start; curr <= interval.End; curr = curr.Add(time.Minute) {
-						expectedNonIndexedLabels := labels.FromStrings("foo", curr.String())
+						expectedStructuredMetadata := labels.FromStrings("foo", curr.String())
 
 						require.True(t, newChunkItr.Next())
 						require.Equal(t, logproto.Entry{
-							Timestamp:        curr.Time(),
-							Line:             curr.String(),
-							NonIndexedLabels: logproto.FromLabelsToLabelAdapters(expectedNonIndexedLabels),
+							Timestamp:          curr.Time(),
+							Line:               curr.String(),
+							StructuredMetadata: logproto.FromLabelsToLabelAdapters(expectedStructuredMetadata),
 						}, newChunkItr.Entry())
-						require.Equal(t, expectedNonIndexedLabels.String(), newChunkItr.Labels())
+						require.Equal(t, expectedStructuredMetadata.String(), newChunkItr.Labels())
 					}
 				}
 
@@ -636,7 +662,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string) bool {
+					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
 						return false
 					},
 				},
@@ -679,7 +705,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, _ string) bool {
+					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 						tsUnixNano := ts.UnixNano()
 						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
 							return true
@@ -735,7 +761,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 				},
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, _ string) bool {
+					filterFunc: func(ts time.Time, _ string, _ ...labels.Label) bool {
 						tsUnixNano := ts.UnixNano()
 						if todaysTableInterval.Start.UnixNano() <= tsUnixNano && tsUnixNano <= todaysTableInterval.Start.Add(15*time.Minute).UnixNano() {
 							return true
@@ -763,7 +789,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string) bool {
+					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.UnixNano()
 					},
 				},
@@ -786,7 +812,7 @@ func TestMarkForDelete_SeriesCleanup(t *testing.T) {
 			expiry: []chunkExpiry{
 				{
 					isExpired: true,
-					filterFunc: func(ts time.Time, s string) bool {
+					filterFunc: func(ts time.Time, s string, _ ...labels.Label) bool {
 						return ts.UnixNano() < todaysTableInterval.Start.Add(-30*time.Minute).UnixNano()
 					},
 				},

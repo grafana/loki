@@ -37,6 +37,7 @@ func NewMetrics(subsystem string, registerer prometheus.Registerer) *Metrics {
 			Subsystem: subsystem,
 			Name:      "querier_wait_seconds",
 			Help:      "Time spend waiting for new requests.",
+			Buckets:   []float64{.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10, 30, 60, 120, 240},
 		}, []string{"querier"}),
 	}
 }

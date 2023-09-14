@@ -90,8 +90,8 @@ func (c *Client) PushLogLine(line string, extraLabels ...map[string]string) erro
 	return c.pushLogLine(line, c.Now, nil, extraLabels...)
 }
 
-func (c *Client) PushLogLineWithNonIndexedLabels(line string, logLabels map[string]string, extraLabels ...map[string]string) error {
-	return c.PushLogLineWithTimestampAndNonIndexedLabels(line, c.Now, logLabels, extraLabels...)
+func (c *Client) PushLogLineWithStructuredMetadata(line string, structuredMetadata map[string]string, extraLabels ...map[string]string) error {
+	return c.PushLogLineWithTimestampAndStructuredMetadata(line, c.Now, structuredMetadata, extraLabels...)
 }
 
 // PushLogLineWithTimestamp creates a new logline at the given timestamp
@@ -100,15 +100,15 @@ func (c *Client) PushLogLineWithTimestamp(line string, timestamp time.Time, extr
 	return c.pushLogLine(line, timestamp, nil, extraLabels...)
 }
 
-func (c *Client) PushLogLineWithTimestampAndNonIndexedLabels(line string, timestamp time.Time, logLabels map[string]string, extraLabelList ...map[string]string) error {
-	// If the logLabels map is empty, labels.FromMap will allocate some empty slices.
+func (c *Client) PushLogLineWithTimestampAndStructuredMetadata(line string, timestamp time.Time, structuredMetadata map[string]string, extraLabelList ...map[string]string) error {
+	// If the structuredMetadata map is empty, labels.FromMap will allocate some empty slices.
 	// Since this code is executed for every log line we receive, as an optimization
 	// to avoid those allocations we'll call labels.FromMap only if the map is not empty.
-	var lbls labels.Labels
-	if len(logLabels) > 0 {
-		lbls = labels.FromMap(logLabels)
+	var metadata labels.Labels
+	if len(structuredMetadata) > 0 {
+		metadata = labels.FromMap(structuredMetadata)
 	}
-	return c.pushLogLine(line, timestamp, lbls, extraLabelList...)
+	return c.pushLogLine(line, timestamp, metadata, extraLabelList...)
 }
 
 func formatTS(ts time.Time) string {
@@ -121,7 +121,7 @@ type stream struct {
 }
 
 // pushLogLine creates a new logline
-func (c *Client) pushLogLine(line string, timestamp time.Time, logLabels labels.Labels, extraLabelList ...map[string]string) error {
+func (c *Client) pushLogLine(line string, timestamp time.Time, structuredMetadata labels.Labels, extraLabelList ...map[string]string) error {
 	apiEndpoint := fmt.Sprintf("%s/loki/api/v1/push", c.baseURL)
 
 	s := stream{
@@ -132,7 +132,7 @@ func (c *Client) pushLogLine(line string, timestamp time.Time, logLabels labels.
 			{
 				formatTS(timestamp),
 				line,
-				logLabels,
+				structuredMetadata,
 			},
 		},
 	}

@@ -222,7 +222,7 @@ Interval in seconds to wait before pushing a batch of records to Loki. This mean
 
 #### batch_size
 
-Maximum batch size to accrue before pushing to loki. Defaults to 102400 bytes
+Maximum batch size to accrue before pushing to Loki. Defaults to 102400 bytes
 
 #### Backoff config
 

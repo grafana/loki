@@ -28,12 +28,10 @@ import (
 
 const (
 	_ byte = iota
-	chunkFormatV1
-	chunkFormatV2
-	chunkFormatV3
-	chunkFormatV4
-
-	DefaultChunkFormat = chunkFormatV4 // the currently used chunk format
+	ChunkFormatV1
+	ChunkFormatV2
+	ChunkFormatV3
+	ChunkFormatV4
 
 	blocksPerChunk = 10
 	maxLineLength  = 1024 * 1024 * 1024
@@ -43,11 +41,11 @@ const (
 	// different block size in the new chunk which should be fine.
 	defaultBlockSize = 256 * 1024
 
-	chunkMetasSectionIdx            = 1
-	chunkNonIndexedLabelsSectionIdx = 2
+	chunkMetasSectionIdx              = 1
+	chunkStructuredMetadataSectionIdx = 2
 )
 
-var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithNonIndexedLabelsHeadBlockFmt}
+var HeadBlockFmts = []HeadBlockFmt{OrderedHeadBlockFmt, UnorderedHeadBlockFmt, UnorderedWithStructuredMetadataHeadBlockFmt}
 
 type HeadBlockFmt byte
 
@@ -59,8 +57,8 @@ func (f HeadBlockFmt) String() string {
 		return "ordered"
 	case f == UnorderedHeadBlockFmt:
 		return "unordered"
-	case f == UnorderedWithNonIndexedLabelsHeadBlockFmt:
-		return "unordered with non-indexed labels"
+	case f == UnorderedWithStructuredMetadataHeadBlockFmt:
+		return "unordered with structured metadata"
 	default:
 		return fmt.Sprintf("unknown: %v", byte(f))
 	}
@@ -83,10 +81,22 @@ const (
 	_
 	OrderedHeadBlockFmt
 	UnorderedHeadBlockFmt
-	UnorderedWithNonIndexedLabelsHeadBlockFmt
-
-	DefaultHeadBlockFmt = UnorderedWithNonIndexedLabelsHeadBlockFmt
+	UnorderedWithStructuredMetadataHeadBlockFmt
 )
+
+// ChunkHeadFormatFor returns corresponding head block format for the given `chunkfmt`.
+func ChunkHeadFormatFor(chunkfmt byte) HeadBlockFmt {
+	if chunkfmt < ChunkFormatV3 {
+		return OrderedHeadBlockFmt
+	}
+
+	if chunkfmt == ChunkFormatV3 {
+		return UnorderedHeadBlockFmt
+	}
+
+	// return the latest head format for all chunkformat >v3
+	return UnorderedWithStructuredMetadataHeadBlockFmt
+}
 
 var magicNumber = uint32(0x12EE56A)
 
@@ -293,7 +303,7 @@ func (hb *headBlock) LoadBytes(b []byte) error {
 		return errors.Wrap(db.err(), "verifying headblock header")
 	}
 	switch version {
-	case chunkFormatV1, chunkFormatV2, chunkFormatV3, chunkFormatV4:
+	case ChunkFormatV1, ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 	default:
 		return errors.Errorf("incompatible headBlock version (%v), only V1,V2,V3 is currently supported", version)
 	}
@@ -330,7 +340,7 @@ func (hb *headBlock) Convert(version HeadBlockFmt, symbolizer *symbolizer) (Head
 	out := version.NewBlock(symbolizer)
 
 	for _, e := range hb.entries {
-		if err := out.Append(e.t, e.s, e.nonIndexedLabels); err != nil {
+		if err := out.Append(e.t, e.s, e.structuredMetadata); err != nil {
 			return nil, err
 		}
 	}
@@ -338,22 +348,23 @@ func (hb *headBlock) Convert(version HeadBlockFmt, symbolizer *symbolizer) (Head
 }
 
 type entry struct {
-	t                int64
-	s                string
-	nonIndexedLabels labels.Labels
+	t                  int64
+	s                  string
+	structuredMetadata labels.Labels
 }
 
 // NewMemChunk returns a new in-mem chunk.
-func NewMemChunk(enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
-	return newMemChunkWithFormat(DefaultChunkFormat, enc, head, blockSize, targetSize)
+func NewMemChunk(chunkFormat byte, enc Encoding, head HeadBlockFmt, blockSize, targetSize int) *MemChunk {
+	return newMemChunkWithFormat(chunkFormat, enc, head, blockSize, targetSize)
 }
 
 func panicIfInvalidFormat(chunkFmt byte, head HeadBlockFmt) {
-	if chunkFmt == chunkFormatV2 && head != OrderedHeadBlockFmt {
+	if chunkFmt == ChunkFormatV2 && head != OrderedHeadBlockFmt {
 		panic("only OrderedHeadBlockFmt is supported for V2 chunks")
 	}
-	if chunkFmt == chunkFormatV4 && head != UnorderedWithNonIndexedLabelsHeadBlockFmt {
-		panic("only UnorderedWithNonIndexedLabelsHeadBlockFmt is supported for V4 chunks")
+	if chunkFmt == ChunkFormatV4 && head != UnorderedWithStructuredMetadataHeadBlockFmt {
+		fmt.Println("received head fmt", head.String())
+		panic("only UnorderedWithStructuredMetadataHeadBlockFmt is supported for V4 chunks")
 	}
 }
 
@@ -401,9 +412,9 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	}
 	bc.format = version
 	switch version {
-	case chunkFormatV1:
+	case ChunkFormatV1:
 		bc.encoding = EncGZIP
-	case chunkFormatV2, chunkFormatV3, chunkFormatV4:
+	case ChunkFormatV2, ChunkFormatV3, ChunkFormatV4:
 		// format v2+ has a byte for block encoding.
 		enc := Encoding(db.byte())
 		if db.err() != nil {
@@ -413,6 +424,9 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 	default:
 		return nil, errors.Errorf("invalid version %d", version)
 	}
+
+	// Set the correct headblock format based on chunk format
+	bc.headFmt = ChunkHeadFormatFor(version)
 
 	// readSectionLenAndOffset reads len and offset for different sections within the chunk.
 	// Starting from chunk version 4, we have started writing offset and length of various sections within the chunk.
@@ -427,7 +441,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 	metasOffset := uint64(0)
 	metasLen := uint64(0)
-	if version >= chunkFormatV4 {
+	if version >= ChunkFormatV4 {
 		// version >= 4 starts writing length of sections after their offsets
 		metasLen, metasOffset = readSectionLenAndOffset(chunkMetasSectionIdx)
 	} else {
@@ -458,7 +472,7 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 
 		// Read offset and length.
 		blk.offset = db.uvarint()
-		if version >= chunkFormatV3 {
+		if version >= ChunkFormatV3 {
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
@@ -481,12 +495,12 @@ func newByteChunk(b []byte, blockSize, targetSize int, fromCheckpoint bool) (*Me
 		}
 	}
 
-	if version >= chunkFormatV4 {
-		nonIndexedLabelsLen, nonIndexedLabelsOffset := readSectionLenAndOffset(chunkNonIndexedLabelsSectionIdx)
-		lb := b[nonIndexedLabelsOffset : nonIndexedLabelsOffset+nonIndexedLabelsLen] // non-indexed labels Offset + checksum
+	if version >= ChunkFormatV4 {
+		structuredMetadataLength, structuredMetadataOffset := readSectionLenAndOffset(chunkStructuredMetadataSectionIdx)
+		lb := b[structuredMetadataOffset : structuredMetadataOffset+structuredMetadataLength] // structured metadata offset + checksum
 		db = decbuf{b: lb}
 
-		expCRC := binary.BigEndian.Uint32(b[nonIndexedLabelsOffset+nonIndexedLabelsLen:])
+		expCRC := binary.BigEndian.Uint32(b[structuredMetadataOffset+structuredMetadataLength:])
 		if expCRC != db.crc32() {
 			return nil, ErrInvalidChecksum
 		}
@@ -526,7 +540,7 @@ func (c *MemChunk) Bytes() ([]byte, error) {
 func (c *MemChunk) BytesSize() int {
 	size := 4 // magic number
 	size++    // format
-	if c.format > chunkFormatV1 {
+	if c.format > ChunkFormatV1 {
 		size++ // chunk format v2+ has a byte for encoding.
 	}
 
@@ -538,7 +552,7 @@ func (c *MemChunk) BytesSize() int {
 		size += binary.MaxVarintLen64 // mint
 		size += binary.MaxVarintLen64 // maxt
 		size += binary.MaxVarintLen32 // offset
-		if c.format >= chunkFormatV3 {
+		if c.format >= ChunkFormatV3 {
 			size += binary.MaxVarintLen32 // uncompressed size
 		}
 		size += binary.MaxVarintLen32 // len(b)
@@ -550,13 +564,13 @@ func (c *MemChunk) BytesSize() int {
 	size += crc32.Size // metablock crc
 	size += 8          // metaoffset
 
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		size += 8 // metablock length
 
-		size += c.symbolizer.CheckpointSize() // non-indexed labels block
-		size += crc32.Size                    // non-indexed labels block crc
+		size += c.symbolizer.CheckpointSize() // structured metadata block
+		size += crc32.Size                    // structured metadata block crc
 
-		size += 8 + 8 // non-indexed labels offset and length
+		size += 8 + 8 // structured metadata offset and length
 	}
 	return size
 }
@@ -586,7 +600,7 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 	// Write the header (magicNum + version).
 	eb.putBE32(magicNumber)
 	eb.putByte(c.format)
-	if c.format > chunkFormatV1 {
+	if c.format > ChunkFormatV1 {
 		// chunk format v2+ has a byte for encoding.
 		eb.putByte(byte(c.encoding))
 	}
@@ -596,10 +610,10 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 		return offset, errors.Wrap(err, "write blockMeta #entries")
 	}
 	offset += int64(n)
-	nonIndexedLabelsOffset := offset
-	nonIndexedLabelsLen := 0
+	structuredMetadataOffset := offset
+	structuredMetadataLength := 0
 
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		var (
 			n       int
 			crcHash []byte
@@ -608,21 +622,21 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 			var err error
 			n, crcHash, err = c.symbolizer.CheckpointTo(w)
 			if err != nil {
-				return offset, errors.Wrap(err, "write non-indexed labels")
+				return offset, errors.Wrap(err, "write structured metadata")
 			}
 		} else {
 			var err error
 			n, crcHash, err = c.symbolizer.SerializeTo(w, getWriterPool(c.encoding))
 			if err != nil {
-				return offset, errors.Wrap(err, "write non-indexed labels")
+				return offset, errors.Wrap(err, "write structured metadata")
 			}
 		}
 		offset += int64(n)
-		nonIndexedLabelsLen = n
+		structuredMetadataLength = n
 
 		n, err = w.Write(crcHash)
 		if err != nil {
-			return offset, errors.Wrap(err, "write crc32 hash for non-indexed labels")
+			return offset, errors.Wrap(err, "write crc32 hash for structured metadata")
 		}
 		offset += int64(n)
 	}
@@ -655,7 +669,7 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 		eb.putVarint64(b.mint)
 		eb.putVarint64(b.maxt)
 		eb.putUvarint(b.offset)
-		if c.format >= chunkFormatV3 {
+		if c.format >= ChunkFormatV3 {
 			eb.putUvarint(b.uncompressedSize)
 		}
 		eb.putUvarint(len(b.b))
@@ -669,21 +683,21 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 	}
 	offset += int64(n)
 
-	if c.format >= chunkFormatV4 {
-		// Write non-indexed labels offset and length
+	if c.format >= ChunkFormatV4 {
+		// Write structured metadata offset and length
 		eb.reset()
-		eb.putBE64int(nonIndexedLabelsLen)
-		eb.putBE64int(int(nonIndexedLabelsOffset))
+		eb.putBE64int(structuredMetadataLength)
+		eb.putBE64int(int(structuredMetadataOffset))
 		n, err = w.Write(eb.get())
 		if err != nil {
-			return offset, errors.Wrap(err, "write non-indexed labels offset and length")
+			return offset, errors.Wrap(err, "write structured metadata offset and length")
 		}
 		offset += int64(n)
 	}
 
 	// Write the metasOffset.
 	eb.reset()
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		eb.putBE64int(metasLen)
 	}
 	eb.putBE64int(int(metasOffset))
@@ -702,10 +716,10 @@ func (c *MemChunk) writeTo(w io.Writer, forCheckpoint bool) (int64, error) {
 // In turn this allows us to maintain a more effective dedupe ratio in storage.
 func (c *MemChunk) SerializeForCheckpointTo(chk, head io.Writer) error {
 	// serialize the head before the MemChunk because:
-	// * We store non-indexed labels with chunks(using symbolizer) which are then referenced by blocks and head.
-	// * When a write request is received with some new non-indexed labels, we update symbolizer first and then append log entry to head.
+	// * We store structured metadata with chunks(using symbolizer) which are then referenced by blocks and head.
+	// * When a write request is received with some new labels of structured metadata, we update symbolizer first and then append log entry to head.
 	// * Labels stored in symbolizer are serialized with MemChunk.
-	// This means if we serialize the MemChunk before the head, we might miss writing some newly added non-indexed labels which are referenced by head.
+	// This means if we serialize the MemChunk before the head, we might miss writing some newly added structured metadata labels which are referenced by head.
 	err := c.head.CheckpointTo(head)
 	if err != nil {
 		return err
@@ -762,15 +776,15 @@ func (c *MemChunk) SpaceFor(e *logproto.Entry) bool {
 		// This is looking to see if the uncompressed lines will fit which is not
 		// a great check, but it will guarantee we are always under the target size
 		newHBSize := c.head.UncompressedSize() + len(e.Line)
-		nonIndexedLabelsSize := 0
-		if c.format >= chunkFormatV4 {
-			newHBSize += metaLabelsLen(logproto.FromLabelAdaptersToLabels(e.NonIndexedLabels))
-			// non-indexed labels are compressed while serializing the chunk so we don't know what their size would be after compression.
+		structuredMetadataSize := 0
+		if c.format >= ChunkFormatV4 {
+			newHBSize += metaLabelsLen(logproto.FromLabelAdaptersToLabels(e.StructuredMetadata))
+			// structured metadata is compressed while serializing the chunk so we don't know what their size would be after compression.
 			// As adoption increases, their overall size can be non-trivial so we can't ignore them while calculating chunk size.
 			// ToDo(Sandeep): See if we can just use some average compression ratio for each compression format we support and use it here
-			nonIndexedLabelsSize = c.symbolizer.UncompressedSize()
+			structuredMetadataSize = c.symbolizer.UncompressedSize()
 		}
-		return (nonIndexedLabelsSize + c.cutBlockSize + newHBSize) < c.targetSize
+		return (structuredMetadataSize + c.cutBlockSize + newHBSize) < c.targetSize
 	}
 	// if targetSize is not defined, default to the original behavior of fixed blocks per chunk
 	return len(c.blocks) < blocksPerChunk
@@ -786,7 +800,7 @@ func (c *MemChunk) UncompressedSize() int {
 		size += b.uncompressedSize
 	}
 
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		size += c.symbolizer.UncompressedSize()
 	}
 
@@ -802,7 +816,7 @@ func (c *MemChunk) CompressedSize() int {
 	size := 0
 	// Better to account for any uncompressed data than ignore it even though this isn't accurate.
 	size += c.head.UncompressedSize()
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		size += c.symbolizer.UncompressedSize() // length of each symbol
 	}
 
@@ -829,10 +843,10 @@ func (c *MemChunk) Append(entry *logproto.Entry) error {
 		return ErrOutOfOrder
 	}
 
-	if c.format < chunkFormatV4 {
-		entry.NonIndexedLabels = nil
+	if c.format < ChunkFormatV4 {
+		entry.StructuredMetadata = nil
 	}
-	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.NonIndexedLabels)); err != nil {
+	if err := c.head.Append(entryTimestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)); err != nil {
 		return err
 	}
 
@@ -940,12 +954,12 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 	mint, maxt := mintT.UnixNano(), maxtT.UnixNano()
 	blockItrs := make([]iter.EntryIterator, 0, len(c.blocks)+1)
 
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		stats := stats.FromContext(ctx)
 		stats.AddCompressedBytes(int64(c.symbolizer.CompressedSize()))
 		decompressedSize := int64(c.symbolizer.DecompressedSize())
 		stats.AddDecompressedBytes(decompressedSize)
-		stats.AddDecompressedNonIndexedLabelsBytes(decompressedSize)
+		stats.AddDecompressedStructuredMetadataBytes(decompressedSize)
 	}
 	var headIterator iter.EntryIterator
 
@@ -1025,12 +1039,12 @@ func (c *MemChunk) SampleIterator(ctx context.Context, from, through time.Time, 
 	mint, maxt := from.UnixNano(), through.UnixNano()
 	its := make([]iter.SampleIterator, 0, len(c.blocks)+1)
 
-	if c.format >= chunkFormatV4 {
+	if c.format >= ChunkFormatV4 {
 		stats := stats.FromContext(ctx)
 		stats.AddCompressedBytes(int64(c.symbolizer.CompressedSize()))
 		decompressedSize := int64(c.symbolizer.DecompressedSize())
 		stats.AddDecompressedBytes(decompressedSize)
-		stats.AddDecompressedNonIndexedLabelsBytes(decompressedSize)
+		stats.AddDecompressedStructuredMetadataBytes(decompressedSize)
 	}
 
 	var lastMax int64 // placeholder to check order across blocks
@@ -1086,7 +1100,7 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 // Rebound builds a smaller chunk with logs having timestamp from start and end(both inclusive)
 func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, error) {
 	// add a millisecond to end time because the Chunk.Iterator considers end time to be non-inclusive.
-	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepNonIndexedLabels())
+	itr, err := c.Iterator(context.Background(), start, end.Add(time.Millisecond), logproto.FORWARD, log.NewNoopPipeline().ForStream(labels.Labels{}), iter.WithKeepStructuredMetadata())
 	if err != nil {
 		return nil, err
 	}
@@ -1095,17 +1109,17 @@ func (c *MemChunk) Rebound(start, end time.Time, filter filter.Func) (Chunk, err
 	// as close as possible, respect the block/target sizes specified. However,
 	// if the blockSize is not set, use reasonable defaults.
 	if c.blockSize > 0 {
-		newChunk = NewMemChunk(c.Encoding(), DefaultHeadBlockFmt, c.blockSize, c.targetSize)
+		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, c.blockSize, c.targetSize)
 	} else {
 		// Using defaultBlockSize for target block size.
 		// The alternative here could be going over all the blocks and using the size of the largest block as target block size but I(Sandeep) feel that it is not worth the complexity.
 		// For target chunk size I am using compressed size of original chunk since the newChunk should anyways be lower in size than that.
-		newChunk = NewMemChunk(c.Encoding(), DefaultHeadBlockFmt, defaultBlockSize, c.CompressedSize())
+		newChunk = NewMemChunk(c.format, c.Encoding(), c.headFmt, defaultBlockSize, c.CompressedSize())
 	}
 
 	for itr.Next() {
 		entry := itr.Entry()
-		if filter != nil && filter(entry.Timestamp, entry.Line) {
+		if filter != nil && filter(entry.Timestamp, entry.Line, logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata)...) {
 			continue
 		}
 		if err := newChunk.Append(&entry); err != nil {
@@ -1185,7 +1199,7 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			return
 		}
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.nonIndexedLabels...)
+		newLine, parsedLbs, matches := pipeline.ProcessString(e.t, e.s, e.structuredMetadata...)
 		if !matches {
 			return
 		}
@@ -1201,9 +1215,9 @@ func (hb *headBlock) Iterator(ctx context.Context, direction logproto.Direction,
 			streams[labels] = stream
 		}
 		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp:        time.Unix(0, e.t),
-			Line:             newLine,
-			NonIndexedLabels: logproto.FromLabelsToLabelAdapters(e.nonIndexedLabels),
+			Timestamp:          time.Unix(0, e.t),
+			Line:               newLine,
+			StructuredMetadata: logproto.FromLabelsToLabelAdapters(e.structuredMetadata),
 		})
 	}
 
@@ -1238,7 +1252,7 @@ func (hb *headBlock) SampleIterator(ctx context.Context, mint, maxt int64, extra
 
 	for _, e := range hb.entries {
 		stats.AddHeadChunkBytes(int64(len(e.s)))
-		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.nonIndexedLabels...)
+		value, parsedLabels, ok := extractor.ProcessString(e.t, e.s, e.structuredMetadata...)
 		if !ok {
 			continue
 		}
@@ -1306,8 +1320,8 @@ type bufferedIterator struct {
 	currLine []byte // the current line, this is the same as the buffer but sliced the line size.
 	currTs   int64
 
-	symbolsBuf           []symbol      // The buffer for a single entry's symbols.
-	currNonIndexedLabels labels.Labels // The current labels.
+	symbolsBuf             []symbol      // The buffer for a single entry's symbols.
+	currStructuredMetadata labels.Labels // The current labels.
 
 	closed bool
 }
@@ -1340,7 +1354,7 @@ func (si *bufferedIterator) Next() bool {
 		}
 	}
 
-	ts, line, nonIndexedLabels, ok := si.moveNext()
+	ts, line, structuredMetadata, ok := si.moveNext()
 	if !ok {
 		si.Close()
 		return false
@@ -1348,14 +1362,14 @@ func (si *bufferedIterator) Next() bool {
 
 	si.currTs = ts
 	si.currLine = line
-	si.currNonIndexedLabels = nonIndexedLabels
+	si.currStructuredMetadata = structuredMetadata
 	return true
 }
 
 // moveNext moves the buffer to the next entry
 func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	var decompressedBytes int64
-	var decompressedNonIndexedLabelsBytes int64
+	var decompressedStructuredMetadataBytes int64
 	var ts int64
 	var tWidth, lWidth, lineSize, lastAttempt int
 	for lWidth == 0 { // Read until both varints have enough bytes.
@@ -1423,7 +1437,7 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 
 	decompressedBytes += int64(lineSize)
 
-	if si.format < chunkFormatV4 {
+	if si.format < ChunkFormatV4 {
 		si.stats.AddDecompressedBytes(decompressedBytes)
 		si.stats.AddDecompressedLines(1)
 		return ts, si.buf[:lineSize], nil, true
@@ -1455,9 +1469,9 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	}
 
 	// Number of labels
-	decompressedNonIndexedLabelsBytes += binary.MaxVarintLen64
+	decompressedStructuredMetadataBytes += binary.MaxVarintLen64
 	// Label symbols
-	decompressedNonIndexedLabelsBytes += int64(nSymbols * 2 * binary.MaxVarintLen64)
+	decompressedStructuredMetadataBytes += int64(nSymbols * 2 * binary.MaxVarintLen64)
 
 	// Shift down what is still left in the fixed-size read buffer, if any.
 	si.readBufValid = copy(si.readBuf[:], si.readBuf[symbolsSectionLengthWidth+nSymbolsWidth:si.readBufValid])
@@ -1533,8 +1547,8 @@ func (si *bufferedIterator) moveNext() (int64, []byte, labels.Labels, bool) {
 	}
 
 	si.stats.AddDecompressedLines(1)
-	si.stats.AddDecompressedNonIndexedLabelsBytes(decompressedNonIndexedLabelsBytes)
-	si.stats.AddDecompressedBytes(decompressedBytes + decompressedNonIndexedLabelsBytes)
+	si.stats.AddDecompressedStructuredMetadataBytes(decompressedStructuredMetadataBytes)
+	si.stats.AddDecompressedBytes(decompressedBytes + decompressedStructuredMetadataBytes)
 
 	return ts, si.buf[:lineSize], si.symbolizer.Lookup(si.symbolsBuf[:nSymbols]), true
 }
@@ -1600,7 +1614,7 @@ func (e *entryBufferedIterator) StreamHash() uint64 { return e.pipeline.BaseLabe
 
 func (e *entryBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
+		newLine, lbs, matches := e.pipeline.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
 		if !matches {
 			continue
 		}
@@ -1610,10 +1624,10 @@ func (e *entryBufferedIterator) Next() bool {
 		e.cur.Timestamp = time.Unix(0, e.currTs)
 		e.cur.Line = string(newLine)
 
-		// Most of the time, there is no need to send back the non-indexed labels, as they are already part of the labels results.
+		// Most of the time, there is no need to send back the labels of structured metadata, as they are already part of the labels results.
 		// Still it might be needed for example when appending entries from one chunk into another one.
-		if e.iterOptions.KeepNonIndexedLabels {
-			e.cur.NonIndexedLabels = logproto.FromLabelsToLabelAdapters(e.currNonIndexedLabels)
+		if e.iterOptions.KeepStructuredMetdata {
+			e.cur.StructuredMetadata = logproto.FromLabelsToLabelAdapters(e.currStructuredMetadata)
 		}
 		return true
 	}
@@ -1639,7 +1653,7 @@ type sampleBufferedIterator struct {
 
 func (e *sampleBufferedIterator) Next() bool {
 	for e.bufferedIterator.Next() {
-		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currNonIndexedLabels...)
+		val, labels, ok := e.extractor.Process(e.currTs, e.currLine, e.currStructuredMetadata...)
 		if !ok {
 			continue
 		}

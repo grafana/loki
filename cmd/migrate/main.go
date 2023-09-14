@@ -153,7 +153,7 @@ func main() {
 	matchers := []*labels.Matcher{nameLabelMatcher}
 
 	if *match != "" {
-		m, err := syntax.ParseMatchers(*match)
+		m, err := syntax.ParseMatchers(*match, true)
 		if err != nil {
 			log.Println("Failed to parse log matcher:", err)
 			os.Exit(1)
@@ -310,7 +310,7 @@ func (m *chunkMover) moveChunks(ctx context.Context, threadID int, syncRangeCh <
 			var totalBytes uint64
 			var totalChunks uint64
 			//log.Printf("%d processing sync range %d - Start: %v, End: %v\n", threadID, sr.number, time.Unix(0, sr.from).UTC(), time.Unix(0, sr.to).UTC())
-			schemaGroups, fetchers, err := m.source.GetChunkRefs(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
+			schemaGroups, fetchers, err := m.source.GetChunks(m.ctx, m.sourceUser, model.TimeFromUnixNano(sr.from), model.TimeFromUnixNano(sr.to), m.matchers...)
 			if err != nil {
 				log.Println(threadID, "Error querying index for chunk refs:", err)
 				errCh <- err

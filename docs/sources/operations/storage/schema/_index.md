@@ -1,6 +1,8 @@
 ---
 title: Storage schema
-description: Storage schema
+menuTitle:  
+description: Describes the Loki storage schema
+weight: 400
 ---
 # Storage schema
 

@@ -42,11 +42,11 @@ type storeEntry struct {
 	ChunkWriter
 }
 
-func (c *storeEntry) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (c *storeEntry) GetChunks(ctx context.Context, userID string, from, through model.Time, allMatchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	if ctx.Err() != nil {
 		return nil, nil, ctx.Err()
 	}
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunkRefs")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "GetChunks")
 	defer sp.Finish()
 	log := spanlogger.FromContext(ctx)
 	defer log.Span.Finish()
@@ -119,9 +119,6 @@ func (c *storeEntry) LabelValuesForMetricName(ctx context.Context, userID string
 }
 
 func (c *storeEntry) Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*stats.Stats, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "SeriesStore.Stats")
-	defer sp.Finish()
-
 	shortcut, err := c.validateQueryTimeRange(ctx, userID, &from, &through)
 	if err != nil {
 		return nil, err

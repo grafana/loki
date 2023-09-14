@@ -17,16 +17,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	v4 "github.com/aws/aws-sdk-go/aws/signer/v4"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	awscommon "github.com/grafana/dskit/aws"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/instrument"
-	"github.com/minio/minio-go/v7/pkg/signer"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -40,11 +37,10 @@ import (
 
 const (
 	SignatureVersionV4 = "v4"
-	SignatureVersionV2 = "v2"
 )
 
 var (
-	supportedSignatureVersions     = []string{SignatureVersionV4, SignatureVersionV2}
+	supportedSignatureVersions     = []string{SignatureVersionV4}
 	errUnsupportedSignatureVersion = errors.New("unsupported signature version")
 )
 
@@ -75,7 +71,6 @@ type S3Config struct {
 	SecretAccessKey  flagext.Secret      `yaml:"secret_access_key"`
 	SessionToken     flagext.Secret      `yaml:"session_token"`
 	Insecure         bool                `yaml:"insecure"`
-	SSEEncryption    bool                `yaml:"sse_encryption"`
 	HTTPConfig       HTTPConfig          `yaml:"http_config"`
 	SignatureVersion string              `yaml:"signature_version"`
 	StorageClass     string              `yaml:"storage_class"`
@@ -112,9 +107,6 @@ func (cfg *S3Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.Var(&cfg.SecretAccessKey, prefix+"s3.secret-access-key", "AWS Secret Access Key")
 	f.Var(&cfg.SessionToken, prefix+"s3.session-token", "AWS Session Token")
 	f.BoolVar(&cfg.Insecure, prefix+"s3.insecure", false, "Disable https on s3 connection.")
-
-	// TODO Remove in Cortex 1.10.0
-	f.BoolVar(&cfg.SSEEncryption, prefix+"s3.sse-encryption", false, "Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]")
 
 	cfg.SSEConfig.RegisterFlagsWithPrefix(prefix+"s3.sse.", f)
 
@@ -184,36 +176,7 @@ func buildSSEParsedConfig(cfg S3Config) (*SSEParsedConfig, error) {
 		return NewSSEParsedConfig(cfg.SSEConfig)
 	}
 
-	// deprecated, but if used it assumes SSE-S3 type
-	if cfg.SSEEncryption {
-		return NewSSEParsedConfig(bucket_s3.SSEConfig{
-			Type: bucket_s3.SSES3,
-		})
-	}
-
 	return nil, nil
-}
-
-func v2SignRequestHandler(cfg S3Config) request.NamedHandler {
-	return request.NamedHandler{
-		Name: "v2.SignRequestHandler",
-		Fn: func(req *request.Request) {
-			credentials, err := req.Config.Credentials.GetWithContext(req.Context())
-			if err != nil {
-				if err != nil {
-					req.Error = err
-					return
-				}
-			}
-
-			req.HTTPRequest = signer.SignV2(
-				*req.HTTPRequest,
-				credentials.AccessKeyID,
-				credentials.SecretAccessKey,
-				!cfg.S3ForcePathStyle,
-			)
-		},
-	}
 }
 
 func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S3, error) {
@@ -313,10 +276,6 @@ func buildS3Client(cfg S3Config, hedgingCfg hedging.Config, hedging bool) (*s3.S
 
 	s3Client := s3.New(sess)
 
-	if cfg.SignatureVersion == SignatureVersionV2 {
-		s3Client.Handlers.Sign.Swap(v4.SignRequestHandler.Name, v2SignRequestHandler(cfg))
-	}
-
 	return s3Client, nil
 }
 
@@ -339,6 +298,23 @@ func buckets(cfg S3Config) ([]string, error) {
 
 // Stop fulfills the chunk.ObjectClient interface
 func (a *S3ObjectClient) Stop() {}
+
+func (a *S3ObjectClient) ObjectExists(ctx context.Context, objectKey string) (bool, error) {
+	err := instrument.CollectedRequest(ctx, "S3.ObjectExists", s3RequestDuration, instrument.ErrorCode, func(ctx context.Context) error {
+		headObjectInput := &s3.HeadObjectInput{
+			Bucket: aws.String(a.bucketFromKey(objectKey)),
+			Key:    aws.String(objectKey),
+		}
+		_, err := a.S3.HeadObject(headObjectInput)
+		return err
+	})
+
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
 
 // DeleteObject deletes the specified objectKey from the appropriate S3 bucket
 func (a *S3ObjectClient) DeleteObject(ctx context.Context, objectKey string) error {

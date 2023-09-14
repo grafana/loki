@@ -46,16 +46,24 @@ var (
 	errWritingChunkUnsupported = errors.New("writing chunks is not supported while running store in read-only mode")
 )
 
-type Store interface {
-	stores.Store
-	stores.ChunkReader
-	index.Filterable
+type SelectStore interface {
+	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
+	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
+	SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error)
+}
+
+type SchemaConfigProvider interface {
 	GetSchemaConfigs() []config.PeriodConfig
 }
 
-type store struct {
+type Store interface {
 	stores.Store
-	composite *stores.CompositeStore
+	SelectStore
+	SchemaConfigProvider
+}
+
+type LokiStore struct {
+	stores.Store
 
 	cfg       Config
 	storeCfg  config.ChunkStoreConfig
@@ -81,7 +89,7 @@ type store struct {
 // NewStore creates a new Loki Store using configuration supplied.
 func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.SchemaConfig,
 	limits StoreLimits, clientMetrics ClientMetrics, registerer prometheus.Registerer, logger log.Logger,
-) (Store, error) {
+) (*LokiStore, error) {
 	if len(schemaCfg.Configs) != 0 {
 		if index := config.ActivePeriodConfig(schemaCfg.Configs); index != -1 && index < len(schemaCfg.Configs) {
 			indexTypeStats.Set(schemaCfg.Configs[index].IndexType)
@@ -134,9 +142,8 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	}
 	stores := stores.NewCompositeStore(limits)
 
-	s := &store{
+	s := &LokiStore{
 		Store:     stores,
-		composite: stores,
 		cfg:       cfg,
 		storeCfg:  storeCfg,
 		schemaCfg: schemaCfg,
@@ -162,7 +169,7 @@ func NewStore(cfg Config, storeCfg config.ChunkStoreConfig, schemaCfg config.Sch
 	return s, nil
 }
 
-func (s *store) init() error {
+func (s *LokiStore) init() error {
 	for i, p := range s.schemaCfg.Configs {
 		p := p
 		chunkClient, err := s.chunkClientForPeriod(p)
@@ -183,7 +190,8 @@ func (s *store) init() error {
 			return err
 		}
 
-		s.composite.AddStore(p.From.Time, f, idx, w, stop)
+		// s.Store is always assigned the CompositeStore implementation of the Store interface
+		s.Store.(*stores.CompositeStore).AddStore(p.From.Time, f, idx, w, stop)
 	}
 
 	if s.cfg.EnableAsyncStore {
@@ -193,7 +201,7 @@ func (s *store) init() error {
 	return nil
 }
 
-func (s *store) chunkClientForPeriod(p config.PeriodConfig) (client.Client, error) {
+func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, error) {
 	objectStoreType := p.ObjectType
 	if objectStoreType == "" {
 		objectStoreType = p.IndexType
@@ -234,7 +242,7 @@ func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
 	return true
 }
 
-func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
+func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.TableRange, chunkClient client.Client, f *fetcher.Fetcher) (stores.ChunkWriter, index.ReaderWriter, func(), error) {
 	indexClientReg := prometheus.WrapRegistererWith(
 		prometheus.Labels{
 			"component": fmt.Sprintf(
@@ -270,24 +278,8 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 			return nil, nil, nil, err
 		}
 
-		var backupIndexWriter index.Writer
-		backupStoreStop := func() {}
-		if s.cfg.TSDBShipperConfig.UseBoltDBShipperAsBackup {
-			pCopy := p
-			pCopy.IndexType = config.BoltDBShipperType
-			pCopy.IndexTables.Prefix = fmt.Sprintf("%sbackup_", pCopy.IndexTables.Prefix)
-
-			tableRange := tableRange
-			tableRange.PeriodConfig = &pCopy
-
-			_, backupIndexWriter, backupStoreStop, err = s.storeForPeriod(pCopy, tableRange, chunkClient, f)
-			if err != nil {
-				return nil, nil, nil, err
-			}
-		}
-
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(fmt.Sprintf("%s_%s", p.ObjectType, p.From.String()), s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits,
-			tableRange, backupIndexWriter, indexClientReg, indexClientLogger, s.indexReadCache)
+		name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
 		if err != nil {
 			return nil, nil, nil, err
 		}
@@ -301,7 +293,6 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 				chunkClient.Stop()
 				stopTSDBStoreFunc()
 				objectClient.Stop()
-				backupStoreStop()
 			}, nil
 	}
 
@@ -319,11 +310,11 @@ func (s *store) storeForPeriod(p config.PeriodConfig, tableRange config.TableRan
 	}
 
 	indexReaderWriter := series.NewIndexReaderWriter(s.schemaCfg, schema, idx, f, s.cfg.MaxChunkBatchSize, s.writeDedupeCache)
-	indexReaderWriter = index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
-	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, indexReaderWriter, s.storeCfg.DisableIndexDeduplication)
+	monitoredReaderWriter := index.NewMonitoredReaderWriter(indexReaderWriter, indexClientReg)
+	chunkWriter := stores.NewChunkWriter(f, s.schemaCfg, monitoredReaderWriter, s.storeCfg.DisableIndexDeduplication)
 
 	return chunkWriter,
-		indexReaderWriter,
+		monitoredReaderWriter,
 		func() {
 			chunkClient.Stop()
 			f.Stop()
@@ -380,13 +371,13 @@ func injectShardLabel(shards []string, matchers []*labels.Matcher) ([]*labels.Ma
 	return matchers, nil
 }
 
-func (s *store) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
+func (s *LokiStore) SetChunkFilterer(chunkFilterer chunk.RequestChunkFilterer) {
 	s.chunkFilterer = chunkFilterer
 	s.Store.SetChunkFilterer(chunkFilterer)
 }
 
 // lazyChunks is an internal function used to resolve a set of lazy chunks from the store without actually loading them. It's used internally by `LazyQuery` and `GetSeries`
-func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
+func (s *LokiStore) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from, through model.Time) ([]*LazyChunk, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -394,7 +385,10 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 
 	stats := stats.FromContext(ctx)
 
-	chks, fetchers, err := s.GetChunkRefs(ctx, userID, from, through, matchers...)
+	start := time.Now()
+	chks, fetchers, err := s.GetChunks(ctx, userID, from, through, matchers...)
+	stats.AddChunkRefsFetchTime(time.Since(start))
+
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +415,7 @@ func (s *store) lazyChunks(ctx context.Context, matchers []*labels.Matcher, from
 	return lazyChunks, nil
 }
 
-func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+func (s *LokiStore) SelectSeries(ctx context.Context, req logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
 	userID, err := tenant.TenantID(ctx)
 	if err != nil {
 		return nil, err
@@ -464,7 +458,7 @@ func (s *store) Series(ctx context.Context, req logql.SelectLogParams) ([]logpro
 
 // SelectLogs returns an iterator that will query the store for more chunks while iterating instead of fetching all chunks upfront
 // for that request.
-func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
+func (s *LokiStore) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error) {
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
@@ -502,7 +496,7 @@ func (s *store) SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter
 	return newLogBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, pipeline, req.Direction, req.Start, req.End, chunkFilterer)
 }
 
-func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
+func (s *LokiStore) SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error) {
 	matchers, from, through, err := decodeReq(req)
 	if err != nil {
 		return nil, err
@@ -540,7 +534,7 @@ func (s *store) SelectSamples(ctx context.Context, req logql.SelectSampleParams)
 	return newSampleBatchIterator(ctx, s.schemaCfg, s.chunkMetrics, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, extractor, req.Start, req.End, chunkFilterer)
 }
 
-func (s *store) GetSchemaConfigs() []config.PeriodConfig {
+func (s *LokiStore) GetSchemaConfigs() []config.PeriodConfig {
 	return s.schemaCfg.Configs
 }
 

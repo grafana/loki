@@ -69,15 +69,8 @@ func (s *LogProtoStream) UnmarshalJSON(data []byte) error {
 	err := jsonparser.ObjectEach(data, func(key, val []byte, ty jsonparser.ValueType, _ int) error {
 		switch string(key) {
 		case "stream":
-			labels := make(LabelSet)
-			err := jsonparser.ObjectEach(val, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
-				if dataType != jsonparser.String {
-					return jsonparser.MalformedStringError
-				}
-				labels[string(key)] = string(val)
-				return nil
-			})
-			if err != nil {
+			var labels LabelSet
+			if err := labels.UnmarshalJSON(val); err != nil {
 				return err
 			}
 			s.Labels = labels.String()
@@ -155,13 +148,13 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				return
 			}
 			e.Line = v
-		case 2: // nonIndexedLabels
-			var nonIndexedLabels []logproto.LabelAdapter
+		case 2: // structuredMetadata
+			var structuredMetadata []logproto.LabelAdapter
 			err := jsonparser.ObjectEach(value, func(key, val []byte, dataType jsonparser.ValueType, _ int) error {
 				if dataType != jsonparser.String {
 					return jsonparser.MalformedStringError
 				}
-				nonIndexedLabels = append(nonIndexedLabels, logproto.LabelAdapter{
+				structuredMetadata = append(structuredMetadata, logproto.LabelAdapter{
 					Name:  string(key),
 					Value: string(val),
 				})
@@ -171,7 +164,7 @@ func unmarshalHTTPToLogProtoEntry(data []byte) (logproto.Entry, error) {
 				parseError = err
 				return
 			}
-			e.NonIndexedLabels = nonIndexedLabels
+			e.StructuredMetadata = structuredMetadata
 		}
 		i++
 	})

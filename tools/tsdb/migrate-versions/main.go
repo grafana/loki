@@ -36,7 +36,7 @@ const (
 )
 
 var (
-	desiredVer               = tsdb_index.LiveFormat
+	desiredVer               = tsdb_index.FormatV3
 	tableNumMin, tableNumMax int64
 	newTablePrefix           string
 )
@@ -298,7 +298,8 @@ func setup() loki.Config {
 		os.Exit(1)
 	}
 
-	util_log.InitLogger(&c.Server, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
+	serverCfg := &c.Server
+	serverCfg.Log = util_log.InitLogger(serverCfg, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
 
 	if err := c.Validate(); err != nil {
 		level.Error(util_log.Logger).Log("msg", "validating config", "err", err.Error())
