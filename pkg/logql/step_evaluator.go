@@ -5,19 +5,19 @@ import (
 )
 
 type StepResult interface {
-	PromVec() promql.Vector
+	SampleVector() promql.Vector
 	QuantileSketchVec() QuantileSketchVector
 }
 
-type PromVec promql.Vector
+type SampleVector promql.Vector
 
-var _ StepResult = PromVec{}
+var _ StepResult = SampleVector{}
 
-func (p PromVec) PromVec() promql.Vector {
+func (p SampleVector) SampleVector() promql.Vector {
 	return promql.Vector(p)
 }
 
-func (p PromVec) QuantileSketchVec() QuantileSketchVector {
+func (p SampleVector) QuantileSketchVec() QuantileSketchVector {
 	return QuantileSketchVector{}
 }
 

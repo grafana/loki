@@ -200,7 +200,7 @@ func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 			Metric: series.Metric,
 		})
 	}
-	return ts, PromVec(r.at)
+	return ts, SampleVector(r.at)
 }
 
 var seriesPool sync.Pool
@@ -594,7 +594,7 @@ func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 			Metric: r.metrics[lbs],
 		})
 	}
-	return ts, PromVec(r.at)
+	return ts, SampleVector(r.at)
 }
 
 func streamingAggregator(r *syntax.RangeAggregationExpr) (RangeStreamingAgg, error) {

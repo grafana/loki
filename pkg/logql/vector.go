@@ -82,7 +82,7 @@ func NewVectorStepEvaluator(start time.Time, data promql.Vector) *VectorStepEval
 func (e *VectorStepEvaluator) Next() (bool, int64, StepResult) {
 	if !e.exhausted {
 		e.exhausted = true
-		return true, e.start.UnixNano() / int64(time.Millisecond), PromVec(e.data)
+		return true, e.start.UnixNano() / int64(time.Millisecond), SampleVector(e.data)
 	}
 	return false, 0, nil
 }

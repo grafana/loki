@@ -45,7 +45,7 @@ func (q QuantileSketchVector) Merge(right QuantileSketchVector) QuantileSketchVe
 	return q
 }
 
-func (QuantileSketchVector) PromVec() promql.Vector {
+func (QuantileSketchVector) SampleVector() promql.Vector {
 	return promql.Vector{}
 }
 
@@ -310,7 +310,7 @@ func (e *TDigestVectorStepEvaluator) Next() (bool, int64, StepResult) {
 		}
 	}
 
-	return ok, ts, PromVec(vec)
+	return ok, ts, SampleVector(vec)
 }
 
 func (*TDigestVectorStepEvaluator) Close() error { return nil }

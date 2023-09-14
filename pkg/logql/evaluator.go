@@ -274,13 +274,13 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r := e.nextEvaluator.Next()
 
 	if !next {
-		return false, 0, PromVec{}
+		return false, 0, SampleVector{}
 	}
-	vec := r.PromVec()
+	vec := r.SampleVector()
 	result := map[uint64]*groupedAggregation{}
 	if e.expr.Operation == syntax.OpTypeTopK || e.expr.Operation == syntax.OpTypeBottomK {
 		if e.expr.Params < 1 {
-			return next, ts, PromVec{}
+			return next, ts, SampleVector{}
 		}
 	}
 	for _, s := range vec {
@@ -463,7 +463,7 @@ func (e *VectorAggEvaluator) Next() (bool, int64, StepResult) {
 			F:      aggr.value,
 		})
 	}
-	return next, ts, PromVec(vec)
+	return next, ts, SampleVector(vec)
 }
 
 func (e *VectorAggEvaluator) Close() error {
@@ -514,14 +514,14 @@ type RangeVectorEvaluator struct {
 func (r *RangeVectorEvaluator) Next() (bool, int64, StepResult) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, PromVec{}
+		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec.PromVec() {
+	for _, s := range vec.SampleVector() {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, PromVec{}
+			return false, 0, SampleVector{}
 		}
 	}
 	return true, ts, vec
@@ -546,21 +546,21 @@ type AbsentRangeVectorEvaluator struct {
 func (r *AbsentRangeVectorEvaluator) Next() (bool, int64, StepResult) {
 	next := r.iter.Next()
 	if !next {
-		return false, 0, PromVec{}
+		return false, 0, SampleVector{}
 	}
 	ts, vec := r.iter.At()
-	for _, s := range vec.PromVec() {
+	for _, s := range vec.SampleVector() {
 		// Errors are not allowed in metrics unless they've been specifically requested.
 		if s.Metric.Has(logqlmodel.ErrorLabel) && s.Metric.Get(logqlmodel.PreserveErrorLabel) != trueString {
 			r.err = logqlmodel.NewPipelineErr(s.Metric)
-			return false, 0, PromVec{}
+			return false, 0, SampleVector{}
 		}
 	}
-	if len(vec.PromVec()) > 0 {
-		return next, ts, PromVec{}
+	if len(vec.SampleVector()) > 0 {
+		return next, ts, SampleVector{}
 	}
 	// values are missing.
-	return next, ts, PromVec{
+	return next, ts, SampleVector{
 		promql.Sample{
 			T:      ts,
 			F:      1.,
@@ -673,7 +673,7 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	if !next {
 		return next, ts, nil
 	}
-	rhs = r.PromVec()
+	rhs = r.SampleVector()
 	// build matching signature for each sample in right vector
 	rsigs := make([]uint64, len(rhs))
 	for i, sample := range rhs {
@@ -684,7 +684,7 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	if !next {
 		return next, ts, nil
 	}
-	lhs = r.PromVec()
+	lhs = r.SampleVector()
 	// build matching signature for each sample in left vector
 	lsigs := make([]uint64, len(lhs))
 	for i, sample := range lhs {
@@ -702,7 +702,7 @@ func (e *BinOpStepEvaluator) Next() (bool, int64, StepResult) {
 	default:
 		results, e.lastErr = vectorBinop(e.expr.Op, e.expr.Opts, lhs, rhs, lsigs, rsigs)
 	}
-	return true, ts, PromVec(results)
+	return true, ts, SampleVector(results)
 }
 
 func (e *BinOpStepEvaluator) Close() (lastError error) {
@@ -952,7 +952,7 @@ type LiteralStepEvaluator struct {
 
 func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.nextEv.Next()
-	vec := r.PromVec()
+	vec := r.SampleVector()
 	results := make(promql.Vector, 0, len(vec))
 	for _, sample := range vec {
 
@@ -982,7 +982,7 @@ func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 		}
 	}
 
-	return ok, ts, PromVec(results)
+	return ok, ts, SampleVector(results)
 }
 
 func (e *LiteralStepEvaluator) Close() error {
@@ -1023,7 +1023,7 @@ func (r *VectorIterator) Next() (bool, int64, StepResult) {
 	results := make(promql.Vector, 0)
 	vectorPoint := promql.Sample{T: r.currentMs, F: r.val}
 	results = append(results, vectorPoint)
-	return true, r.currentMs, PromVec(results)
+	return true, r.currentMs, SampleVector(results)
 }
 
 func (r *VectorIterator) Close() error {
@@ -1062,9 +1062,9 @@ type LabelReplaceEvaluator struct {
 
 func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 	next, ts, r := e.nextEvaluator.Next()
-	vec := r.PromVec()
+	vec := r.SampleVector()
 	if !next {
-		return false, 0, PromVec{}
+		return false, 0, SampleVector{}
 	}
 	if e.labelCache == nil {
 		e.labelCache = make(map[uint64]labels.Labels, len(vec))
@@ -1093,7 +1093,7 @@ func (e *LabelReplaceEvaluator) Next() (bool, int64, StepResult) {
 		e.labelCache[hash] = outLbs
 		vec[i].Metric = outLbs
 	}
-	return next, ts, PromVec(vec)
+	return next, ts, SampleVector(vec)
 }
 
 func (e *LabelReplaceEvaluator) Close() error {
