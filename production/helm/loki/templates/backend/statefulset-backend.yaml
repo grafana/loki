@@ -131,17 +131,17 @@ spec:
             {{- end }}
           {{- if .Values.sidecar.livenessProbe }}
           livenessProbe:
-          {{ toYaml .Values.livenessProbe | indent 6 }}
+            {{ toYaml .Values.livenessProbe | indent 12 }}
           {{- end }}
           {{- if .Values.sidecar.readinessProbe }}
           readinessProbe:
-          {{ toYaml .Values.readinessProbe | indent 6 }}
+            {{ toYaml .Values.readinessProbe | indent 12 }}
           {{- end }}
           resources:
-          {{ toYaml .Values.sidecar.resources | indent 6 }}
+            {{ toYaml .Values.sidecar.resources | indent 12 }}
           {{- if .Values.sidecar.securityContext }}
           securityContext:
-          {{- toYaml .Values.sidecar.securityContext | nindent 6 }}
+            {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: sc-rules-volume
