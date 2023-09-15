@@ -1,5 +1,9 @@
 ## Main
 
+- [10545](https://github.com/grafana/loki/pull/10545) **xperimental**: Update gateway arguments to enable namespace extraction
+- [10558](https://github.com/grafana/loki/pull/10558) **periklis**: Upgrade dashboards for for Loki v2.9.0
+- [10539](https://github.com/grafana/loki/pull/10539) **periklis**: Update Loki operand to v2.9.0
+- [10418](https://github.com/grafana/loki/pull/10418) **btaani**: Use a condition to warn when labels for zone-awareness are empty
 - [9468](https://github.com/grafana/loki/pull/9468) **periklis**: Add support for reconciling loki-mixin dashboards on OpenShift Console
 - [9942](https://github.com/grafana/loki/pull/9942) **btaani**: Use a condition to warn when there are no nodes with matching labels for zone-awareness
 

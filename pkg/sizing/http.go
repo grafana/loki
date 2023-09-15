@@ -94,7 +94,7 @@ func (h *Handler) Nodes(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) respondError(w http.ResponseWriter, err error) {
 	w.WriteHeader(http.StatusBadRequest)
-	_, err = w.Write([]byte(fmt.Sprintf("error: %v", err)))
+	_, err = w.Write([]byte(fmt.Sprintf("error: %q", err)))
 	if err != nil {
 		level.Error(h.logger).Log("msg", "could not write error message", "error", err)
 	}

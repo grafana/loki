@@ -1,9 +1,10 @@
 ---
-title: Scalability
-description: Scaling with Grafana Loki
-weight: 30
+title: Scale Loki
+menuTitle:  Scale
+description: Describes how to scale Grafana Loki
+weight: 
 ---
-# Scalability
+# Scale Loki
 
 When scaling Loki, operators should consider running several Loki processes
 partitioned by role (ingester, distributor, querier) rather than a single Loki

@@ -227,9 +227,20 @@ func TestGenerateCondition_ZoneAwareLokiStack(t *testing.T) {
 		{
 			desc: "nodes available",
 			nodes: []corev1.Node{
-				{},
+				{ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"topology-key": "value"},
+				}},
 			},
 			wantCondition: conditionPending,
+		},
+		{
+			desc: "nodes available but empty label value",
+			nodes: []corev1.Node{
+				{ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"topology-key": ""},
+				}},
+			},
+			wantCondition: conditionDegradedEmptyNodeLabel,
 		},
 		{
 			desc:          "no nodes available",

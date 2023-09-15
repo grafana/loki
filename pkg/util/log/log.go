@@ -28,14 +28,13 @@ var (
 	plogger *prometheusLogger
 )
 
-// InitLogger initialises the global gokit logger (util_log.Logger) and overrides the
-// default logger for the server.
-func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sync bool) {
-	l := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, buffered, sync)
-
+// InitLogger initialises the global gokit logger (util_log.Logger) and returns that logger.
+func InitLogger(cfg *server.Config, reg prometheus.Registerer, buffered bool, sync bool) log.Logger {
+	logger := newPrometheusLogger(cfg.LogLevel, cfg.LogFormat, reg, buffered, sync)
 	// when using util_log.Logger, skip 3 stack frames.
-	Logger = log.With(l, "caller", log.Caller(3))
-	cfg.Log = Logger
+	Logger = log.With(logger, "caller", log.Caller(3))
+
+	return Logger
 }
 
 type Flusher interface {
@@ -92,7 +91,7 @@ func LevelHandler(currentLogLevel *dslog.Level) http.HandlerFunc {
 					Status:  "failed",
 				}
 			} else {
-				plogger.Set(levelFilter(logLevel))
+				plogger.Set(currentLogLevel.Option)
 
 				msg := fmt.Sprintf("Log level set to %s", logLevel)
 				level.Info(Logger).Log("msg", msg)
@@ -159,7 +158,7 @@ func newPrometheusLogger(l dslog.Level, format string, reg prometheus.Registerer
 	}
 
 	baseLogger := dslog.NewGoKitWithWriter(format, writer)
-	logger := level.NewFilter(baseLogger, levelFilter(l.String()))
+	logger := level.NewFilter(baseLogger, l.Option)
 
 	plogger = &prometheusLogger{
 		baseLogger:          baseLogger,
@@ -223,20 +222,4 @@ func CheckFatal(location string, err error, logger log.Logger) {
 		fmt.Fprintln(os.Stderr, "Could not flush logger", err)
 	}
 	os.Exit(1)
-}
-
-// TODO: remove once weaveworks/common updates to go-kit/log, we can then revert to using Level.Gokit
-func levelFilter(l string) level.Option {
-	switch l {
-	case "debug":
-		return level.AllowDebug()
-	case "info":
-		return level.AllowInfo()
-	case "warn":
-		return level.AllowWarn()
-	case "error":
-		return level.AllowError()
-	default:
-		return level.AllowAll()
-	}
 }

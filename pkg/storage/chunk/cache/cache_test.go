@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"sort"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
@@ -31,13 +33,14 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 	chunks := []chunk.Chunk{}
 	for i := 0; i < 111; i++ {
 		ts := model.TimeFromUnix(int64(i * chunkLen))
-		promChunk := chunk.New()
-		nc, err := promChunk.Add(model.SamplePair{
-			Timestamp: ts,
-			Value:     model.SampleValue(i),
+
+		cs := chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncGZIP, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, 256*1024, 0)
+
+		err := cs.Append(&logproto.Entry{
+			Timestamp: ts.Time(),
+			Line:      fmt.Sprintf("line ts=%d", ts),
 		})
 		require.NoError(t, err)
-		require.Nil(t, nc)
 		c := chunk.NewChunk(
 			userID,
 			model.Fingerprint(1),
@@ -45,7 +48,7 @@ func fillCache(t *testing.T, scfg config.SchemaConfig, cache cache.Cache) ([]str
 				{Name: model.MetricNameLabel, Value: "foo"},
 				{Name: "bar", Value: "baz"},
 			},
-			promChunk,
+			chunkenc.NewFacade(cs, 0, 0),
 			ts,
 			ts.Add(chunkLen),
 		)

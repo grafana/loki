@@ -124,7 +124,7 @@ func buildChunkDecs(t testing.TB) []*chunkDesc {
 	for i := range res {
 		res[i] = &chunkDesc{
 			closed: true,
-			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithNonIndexedLabelsHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
+			chunk:  chunkenc.NewMemChunk(chunkenc.ChunkFormatV4, chunkenc.EncSnappy, chunkenc.UnorderedWithStructuredMetadataHeadBlockFmt, dummyConf().BlockSize, dummyConf().TargetChunkSize),
 		}
 		fillChunk(t, res[i].chunk)
 		require.NoError(t, res[i].chunk.Close())
@@ -339,6 +339,10 @@ func (s *testStore) Put(ctx context.Context, chunks []chunk.Chunk) error {
 	return nil
 }
 
+func (s *testStore) PutOne(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
+	return nil
+}
+
 func (s *testStore) IsLocal() bool {
 	return false
 }
@@ -351,7 +355,11 @@ func (s *testStore) SelectSamples(_ context.Context, _ logql.SelectSampleParams)
 	return nil, nil
 }
 
-func (s *testStore) GetChunkRefs(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
+func (s *testStore) SelectSeries(_ context.Context, _ logql.SelectLogParams) ([]logproto.SeriesIdentifier, error) {
+	return nil, nil
+}
+
+func (s *testStore) GetChunks(_ context.Context, _ string, _, _ model.Time, _ ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error) {
 	return nil, nil, nil
 }
 

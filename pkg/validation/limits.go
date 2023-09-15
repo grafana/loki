@@ -52,6 +52,9 @@ const (
 	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
+
+	defaultMaxStructuredMetadataSize  = "64kb"
+	defaultMaxStructuredMetadataCount = 128
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -179,6 +182,10 @@ type Limits struct {
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+
+	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
+	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
+	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 }
 
 type StreamRetention struct {
@@ -217,7 +224,9 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 
 	f.IntVar(&l.MaxLocalStreamsPerUser, "ingester.max-streams-per-user", 0, "Maximum number of active streams per user, per ingester. 0 to disable.")
 	f.IntVar(&l.MaxGlobalStreamsPerUser, "ingester.max-global-streams-per-user", 5000, "Maximum number of active streams per user, across the cluster. 0 to disable. When the global limit is enabled, each ingester is configured with a dynamic local limit based on the replication factor and the current number of healthy ingesters, and is kept updated whenever the number of ingesters change.")
-	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "When true, out-of-order writes are accepted.")
+
+	// TODO(ashwanth) Deprecated. This will be removed with the next major release and out-of-order writes would be accepted by default.
+	f.BoolVar(&l.UnorderedWrites, "ingester.unordered-writes", true, "Deprecated. When true, out-of-order writes are accepted.")
 
 	_ = l.PerStreamRateLimit.Set(strconv.Itoa(defaultPerStreamRateLimit))
 	f.Var(&l.PerStreamRateLimit, "ingester.per-stream-rate-limit", "Maximum byte rate per second per stream, also expressible in human readable forms (1MB, 256KB, etc).")
@@ -286,6 +295,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
+
+	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
+	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
+	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -759,6 +774,18 @@ func (o *Overrides) VolumeMaxSeries(userID string) int {
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
+}
+
+func (o *Overrides) AllowStructuredMetadata(userID string) bool {
+	return o.getOverridesForUser(userID).AllowStructuredMetadata
+}
+
+func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxStructuredMetadataSize.Val()
+}
+
+func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
+	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

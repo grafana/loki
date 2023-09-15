@@ -34,7 +34,7 @@ type RangeStreamingAgg interface {
 // To fetch the current vector use `At` with a `BatchRangeVectorAggregator` or `RangeStreamingAgg`.
 type RangeVectorIterator interface {
 	Next() bool
-	At() (int64, promql.Vector)
+	At() (int64, StepResult)
 	Close() error
 	Error() error
 }
@@ -186,7 +186,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		_ = r.iter.Next()
 	}
 }
-func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
+func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
 	}
@@ -200,7 +200,7 @@ func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
 			Metric: series.Metric,
 		})
 	}
-	return ts, r.at
+	return ts, SampleVector(r.at)
 }
 
 var seriesPool sync.Pool
@@ -422,6 +422,8 @@ func minOverTime(samples []promql.FPoint) float64 {
 	return min
 }
 
+// stdvarOverTime calculates the variance using Welford's online algorithm.
+// See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 func stdvarOverTime(samples []promql.FPoint) float64 {
 	var aux, count, mean float64
 	for _, v := range samples {
@@ -578,7 +580,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 	}
 }
 
-func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
+func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.windowRangeAgg))
 	}
@@ -592,7 +594,7 @@ func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
 			Metric: r.metrics[lbs],
 		})
 	}
-	return ts, r.at
+	return ts, SampleVector(r.at)
 }
 
 func streamingAggregator(r *syntax.RangeAggregationExpr) (RangeStreamingAgg, error) {

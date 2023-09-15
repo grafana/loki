@@ -16,6 +16,46 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.16.0
 
 - [ENHANCEMENT] Allow emptyDir data volumes for backend and write (via `X.persistence.volumeClaimsEnabled: false`)
+## 5.22.0
+
+- [CHANGE] Changed version of Loki to 2.9.1
+
+
+## 5.21.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.1
+
+
+## 5.20.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.0
+
+
+## 5.19.0
+
+- [FEATURE] Add optional sidecard to load rules from ConfigMaps and Secrets.
+  
+## 5.18.1
+
+- [ENHANCEMENT] #8627 Add service labels and annotations for all services.
+- [CHANGE] #8627 Move read, write and table manager labels from #component.serviceLabels to #component.service.labels to improve consistency.
+
+## 5.18.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
+
+## 5.17.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
+## 5.16.1
+
+- [BUGFIX] Increase default minReplicas to 2 and maxReplicas to 6
+
+## 5.16.0
+
+- [ENHANCEMENT] Add dnsConfig to values
 
 ## 5.15.0
 

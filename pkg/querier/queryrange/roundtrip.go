@@ -33,6 +33,8 @@ type Config struct {
 	Transformer            UserIDTransformer     `yaml:"-"`
 	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
 	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
+	CacheVolumeResults     bool                  `yaml:"cache_volume_results"`
+	VolumeCacheConfig      VolumeCacheConfig     `yaml:"volume_results_cache" doc:"description=If a cache config is not specified and cache_volume_results is true, the config for the results cache is used."`
 }
 
 // RegisterFlags adds the flags required to configure this flag set.
@@ -40,6 +42,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	cfg.Config.RegisterFlags(f)
 	f.BoolVar(&cfg.CacheIndexStatsResults, "querier.cache-index-stats-results", false, "Cache index stats query results.")
 	cfg.StatsCacheConfig.RegisterFlags(f)
+	f.BoolVar(&cfg.CacheVolumeResults, "querier.cache-volume-results", false, "Cache volume query results.")
+	cfg.VolumeCacheConfig.RegisterFlags(f)
 }
 
 // Validate validates the config.
@@ -105,6 +109,7 @@ func NewTripperware(
 	var (
 		resultsCache cache.Cache
 		statsCache   cache.Cache
+		volumeCache  cache.Cache
 		err          error
 	)
 
@@ -124,6 +129,20 @@ func NewTripperware(
 		}
 
 		statsCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.StatsResultCache)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	if cfg.CacheVolumeResults {
+		// If the volume cache is not configured, use the results cache config.
+		cacheCfg := cfg.VolumeCacheConfig.ResultsCacheConfig
+		if !cache.IsCacheConfigured(cacheCfg.CacheConfig) {
+			level.Debug(log).Log("msg", "using results cache config for volume cache")
+			cacheCfg = cfg.ResultsCacheConfig
+		}
+
+		volumeCache, err = newResultsCacheFromConfig(cacheCfg, registerer, log, stats.VolumeResultCache)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -173,7 +192,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, statsCache, cacheGenNumLoader, retentionEnabled, metrics)
+	seriesVolumeTripperware, err := NewVolumeTripperware(cfg, log, limits, schema, codec, volumeCache, cacheGenNumLoader, retentionEnabled, metrics)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -191,7 +210,7 @@ func NewTripperware(
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
-	}, StopperWrapper{resultsCache, statsCache}, nil
+	}, StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
 type roundTripper struct {
@@ -787,15 +806,56 @@ func NewVolumeTripperware(
 	retentionEnabled bool,
 	metrics *Metrics,
 ) (queryrangebase.Tripperware, error) {
-	labelVolumeCfg := cfg
-	labelVolumeCfg.CacheIndexStatsResults = false
-	statsTw, err := NewIndexStatsTripperware(labelVolumeCfg, log, limits, schema, codec, c, cacheGenNumLoader, retentionEnabled, metrics)
+	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
+	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
+	limits = WithSplitByLimits(limits, 24*time.Hour)
+	var cacheMiddleware queryrangebase.Middleware
+	if cfg.CacheVolumeResults {
+		var err error
+		cacheMiddleware, err = NewVolumeCacheMiddleware(
+			log,
+			limits,
+			codec,
+			c,
+			cacheGenNumLoader,
+			func(_ context.Context, r queryrangebase.Request) bool {
+				return !r.GetCachingOptions().Disabled
+			},
+			func(ctx context.Context, tenantIDs []string, r queryrangebase.Request) int {
+				return MinWeightedParallelism(
+					ctx,
+					tenantIDs,
+					schema.Configs,
+					limits,
+					model.Time(r.GetStart()),
+					model.Time(r.GetEnd()),
+				)
+			},
+			retentionEnabled,
+			cfg.Transformer,
+			metrics.ResultsCacheMetrics,
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	indexTw, err := sharedIndexTripperware(
+		cacheMiddleware,
+		cfg,
+		codec,
+		limits,
+		log,
+		metrics,
+		schema,
+	)
+
 	if err != nil {
 		return nil, err
 	}
 
 	return volumeFeatureFlagRoundTripper(
-		volumeRangeTripperware(codec, statsTw),
+		volumeRangeTripperware(codec, indexTw),
 		limits,
 	), nil
 }
@@ -895,6 +955,26 @@ func NewIndexStatsTripperware(
 		}
 	}
 
+	return sharedIndexTripperware(
+		cacheMiddleware,
+		cfg,
+		codec,
+		limits,
+		log,
+		metrics,
+		schema,
+	)
+}
+
+func sharedIndexTripperware(
+	cacheMiddleware queryrangebase.Middleware,
+	cfg Config,
+	codec queryrangebase.Codec,
+	limits Limits,
+	log log.Logger,
+	metrics *Metrics,
+	schema config.SchemaConfig,
+) (queryrangebase.Tripperware, error) {
 	return func(next http.RoundTripper) http.RoundTripper {
 		middlewares := []queryrangebase.Middleware{
 			NewLimitsMiddleware(limits),
@@ -902,7 +982,7 @@ func NewIndexStatsTripperware(
 			SplitByIntervalMiddleware(schema.Configs, limits, codec, splitByTime, metrics.SplitByMetrics),
 		}
 
-		if cfg.CacheIndexStatsResults {
+		if cacheMiddleware != nil {
 			middlewares = append(
 				middlewares,
 				queryrangebase.InstrumentMiddleware("log_results_cache", metrics.InstrumentMiddlewareMetrics),

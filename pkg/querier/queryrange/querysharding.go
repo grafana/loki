@@ -225,8 +225,9 @@ func (ast *astMapperware) Do(ctx context.Context, r queryrangebase.Request) (que
 		return nil, err
 	}
 
-	// Merge index stats result cache stats from shard resolver into the query stats.
+	// Merge index and volume stats result cache stats from shard resolver into the query stats.
 	res.Statistics.Caches.StatsResult.Merge(resolverStats.Caches().StatsResult)
+	res.Statistics.Caches.VolumeResult.Merge(resolverStats.Caches().VolumeResult)
 
 	value, err := marshal.NewResultValue(res.Data)
 	if err != nil {

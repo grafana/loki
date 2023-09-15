@@ -92,6 +92,10 @@ spec:
       affinity:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
+      {{- with .Values.tableManager.dnsConfig }}
+      dnsConfig:
+        {{- tpl . $ | nindent 8 }}
+      {{- end }}
       {{- with .Values.tableManager.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

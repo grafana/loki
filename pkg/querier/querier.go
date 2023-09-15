@@ -8,6 +8,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
@@ -29,7 +30,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	listutil "github.com/grafana/loki/pkg/util"
-	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	util_validation "github.com/grafana/loki/pkg/util/validation"
 )
@@ -58,7 +58,6 @@ type Config struct {
 	QueryStoreOnly                bool             `yaml:"query_store_only"`
 	QueryIngesterOnly             bool             `yaml:"query_ingester_only"`
 	MultiTenantQueriesEnabled     bool             `yaml:"multi_tenant_queries_enabled"`
-	QueryTimeout                  time.Duration    `yaml:"query_timeout" doc:"hidden"`
 	PerRequestLimitsEnabled       bool             `yaml:"per_request_limits_enabled"`
 }
 
@@ -102,10 +101,17 @@ type Limits interface {
 	MaxEntriesLimitPerQuery(context.Context, string) int
 }
 
+// Store is the store interface we need on the querier.
+type Store interface {
+	storage.SelectStore
+	index.BaseReader
+	index.StatsReader
+}
+
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg             Config
-	store           storage.Store
+	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
@@ -117,7 +123,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
@@ -380,11 +386,6 @@ func (q *SingleTenantQuerier) Label(ctx context.Context, req *logproto.LabelRequ
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	// TODO: remove this clause once we remove the deprecated query-timeout flag.
-	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "err", err, "call", "Label")
-		queryTimeout = q.cfg.QueryTimeout
-	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
@@ -474,11 +475,6 @@ func (q *SingleTenantQuerier) Tail(ctx context.Context, req *logproto.TailReques
 		return nil, errors.Wrap(err, "failed to load tenant")
 	}
 	queryTimeout := q.limits.QueryTimeout(tailCtx, tenantID)
-	// TODO: remove this clause once we remove the deprecated query-timeout flag.
-	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Tail")
-		queryTimeout = q.cfg.QueryTimeout
-	}
 	queryCtx, cancelQuery := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancelQuery()
 
@@ -523,11 +519,6 @@ func (q *SingleTenantQuerier) Series(ctx context.Context, req *logproto.SeriesRe
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	// TODO: remove this clause once we remove the deprecated query-timeout flag.
-	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Series")
-		queryTimeout = q.cfg.QueryTimeout
-	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
@@ -639,7 +630,7 @@ func (q *SingleTenantQuerier) seriesForMatchers(
 
 // seriesForMatcher fetches series from the store for a given matcher
 func (q *SingleTenantQuerier) seriesForMatcher(ctx context.Context, from, through time.Time, matcher string, shards []string) ([]logproto.SeriesIdentifier, error) {
-	ids, err := q.store.Series(ctx, logql.SelectLogParams{
+	ids, err := q.store.SelectSeries(ctx, logql.SelectLogParams{
 		QueryRequest: &logproto.QueryRequest{
 			Selector:  matcher,
 			Limit:     1,
@@ -752,11 +743,6 @@ func (q *SingleTenantQuerier) IndexStats(ctx context.Context, req *loghttp.Range
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-	// TODO: remove this clause once we remove the deprecated query-timeout flag.
-	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/IndexStats")
-		queryTimeout = q.cfg.QueryTimeout
-	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 
@@ -785,12 +771,6 @@ func (q *SingleTenantQuerier) Volume(ctx context.Context, req *logproto.VolumeRe
 
 	// Enforce the query timeout while querying backends
 	queryTimeout := q.limits.QueryTimeout(ctx, userID)
-
-	// TODO: remove this clause once we remove the deprecated query-timeout flag.
-	if q.cfg.QueryTimeout != 0 { // querier YAML configuration.
-		level.Warn(util_log.Logger).Log("msg", "deprecated querier:query_timeout YAML configuration identified. Please migrate to limits:query_timeout instead.", "call", "SingleTenantQuerier/Volume")
-		queryTimeout = q.cfg.QueryTimeout
-	}
 	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(queryTimeout))
 	defer cancel()
 

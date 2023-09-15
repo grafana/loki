@@ -9,6 +9,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: memberlist
     {{- include "loki.readLabels" . | nindent 4 }}
+  {{- if or (not (empty .Values.loki.annotations)) (not (empty .Values.backend.annotations))}}
   annotations:
     {{- with .Values.loki.annotations }}
     {{- toYaml . | nindent 4 }}
@@ -16,6 +17,7 @@ metadata:
     {{- with .Values.read.annotations }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- end }}
 spec:
   {{- if not .Values.read.autoscaling.enabled }}
   replicas: {{ .Values.read.replicas }}
@@ -115,6 +117,10 @@ spec:
             {{- toYaml .Values.read.resources | nindent 12 }}
       {{- with .Values.read.affinity }}
       affinity:
+        {{- tpl . $ | nindent 8 }}
+      {{- end }}
+      {{- with .Values.read.dnsConfig }}
+      dnsConfig:
         {{- tpl . $ | nindent 8 }}
       {{- end }}
       {{- with .Values.read.nodeSelector }}

@@ -2,10 +2,9 @@
 title: Grafana Loki configuration parameters
 menuTitle: Configure
 description: Configuration reference for the parameters used to configure Grafana Loki.
-aliases: 
-  - ../configuration
-  - ../configure
-weight: 400 
+aliases:
+  - ./configuration # /docs/loki/<LOKI_VERSION>/configuration/
+weight: 400
 ---
 
 # Grafana Loki configuration parameters
@@ -175,7 +174,8 @@ Pass the `-config.expand-env` flag at the command line to enable this way of set
 [schema_config: <schema_config>]
 
 # The compactor block configures the compactor component, which compacts index
-# shards for performance.
+# shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated,
+# please use `-compactor.` instead.
 [compactor: <compactor>]
 
 # The limits_config block configures global and per-tenant limits in Loki.
@@ -346,7 +346,8 @@ grpc_tls_config:
 # CLI flag: -server.grpc-max-send-msg-size-bytes
 [grpc_server_max_send_msg_size: <int> | default = 4194304]
 
-# Limit on the number of concurrent streams for gRPC calls (0 = unlimited)
+# Limit on the number of concurrent streams for gRPC calls per client connection
+# (0 = unlimited)
 # CLI flag: -server.grpc-max-concurrent-streams
 [grpc_server_max_concurrent_streams: <int> | default = 100]
 
@@ -538,10 +539,6 @@ Configures the `querier`. Only appropriate when running all modules or just the 
 [query_ingesters_within: <duration> | default = 3h]
 
 engine:
-  # Deprecated: Use querier.query-timeout instead. Timeout for query execution.
-  # CLI flag: -querier.engine.timeout
-  [timeout: <duration> | default = 5m]
-
   # The maximum amount of time to look back for log lines. Used only for instant
   # log queries.
   # CLI flag: -querier.engine.max-lookback-period
@@ -778,10 +775,6 @@ The `frontend` block configures the Loki query-frontend.
 The `query_range` block configures the query splitting and caching in the Loki query-frontend.
 
 ```yaml
-# Deprecated: Use -querier.split-queries-by-interval instead. CLI flag:
-# -querier.split-queries-by-day. Split queries by day and execute in parallel.
-[split_queries_by_interval: <duration>]
-
 # Mutate incoming queries to align their start and end with their step.
 # CLI flag: -querier.align-querier-with-step
 [align_queries_with_step: <boolean> | default = false]
@@ -810,10 +803,6 @@ results_cache:
 # CLI flag: -querier.parallelise-shardable-queries
 [parallelise_shardable_queries: <boolean> | default = true]
 
-# List of headers forwarded by the query Frontend to downstream querier.
-# CLI flag: -frontend.forward-headers-list
-[forward_headers_list: <list of strings> | default = []]
-
 # The downstream querier is required to answer in the accepted format. Can be
 # 'json' or 'protobuf'. Note: Both will still be routed over GRPC.
 # CLI flag: -frontend.required-query-response-format
@@ -834,6 +823,23 @@ index_stats_results_cache:
   # Use compression in cache. The default is an empty value '', which disables
   # compression. Supported values are: 'snappy' and ''.
   # CLI flag: -frontend.index-stats-results-cache.compression
+  [compression: <string> | default = ""]
+
+# Cache volume query results.
+# CLI flag: -querier.cache-volume-results
+[cache_volume_results: <boolean> | default = false]
+
+# If a cache config is not specified and cache_volume_results is true, the
+# config for the results cache is used.
+volume_results_cache:
+  # The cache block configures the cache backend.
+  # The CLI flags prefix for this block configuration is:
+  # frontend.volume-results-cache
+  [cache: <cache_config>]
+
+  # Use compression in cache. The default is an empty value '', which disables
+  # compression. Supported values are: 'snappy' and ''.
+  # CLI flag: -frontend.volume-results-cache.compression
   [compression: <string> | default = ""]
 ```
 
@@ -1167,9 +1173,6 @@ wal_cleaner:
   # CLI flag: -ruler.wal-cleaner.min-age
   [min_age: <duration> | default = 12h]
 
-  # Deprecated: CLI flag -ruler.wal-cleaer.period.
-  # Use -ruler.wal-cleaner.period instead.
-  # 
   # How often to run the WAL cleaner. 0 = disabled.
   # CLI flag: -ruler.wal-cleaner.period
   [period: <duration> | default = 0s]
@@ -1710,8 +1713,8 @@ The `storage_config` block configures one of many possible stores for both the i
 # (BOS) object storage backend.
 [bos: <bos_storage_config>]
 
-# Configures storing indexes in Bigtable. Required fields only required when
-# bigtable is defined in config.
+# Deprecated: Configures storing indexes in Bigtable. Required fields only
+# required when bigtable is defined in config.
 bigtable:
   # Bigtable project ID.
   # CLI flag: -bigtable.project
@@ -1740,7 +1743,7 @@ bigtable:
 # defined in config.
 [gcs: <gcs_storage_config>]
 
-# Configures storing chunks and/or the index in Cassandra.
+# Deprecated: Configures storing chunks and/or the index in Cassandra.
 cassandra:
   # Comma-separated hostnames or IPs of Cassandra instances.
   # CLI flag: -cassandra.addresses
@@ -1858,8 +1861,8 @@ cassandra:
   # CLI flag: -cassandra.table-options
   [table_options: <string> | default = ""]
 
-# Configures storing index in BoltDB. Required fields only required when boltdb
-# is present in the configuration.
+# Deprecated: Configures storing index in BoltDB. Required fields only required
+# when boltdb is present in the configuration.
 boltdb:
   # Location of BoltDB index files.
   # CLI flag: -boltdb.dir
@@ -1873,6 +1876,7 @@ boltdb:
 # Storage (Swift) object storage backend.
 [swift: <swift_storage_config>]
 
+# Deprecated:
 grpc_store:
   # Hostname or IP of the gRPC store instance.
   # CLI flag: -grpc-store.server-address
@@ -1916,7 +1920,7 @@ hedging:
 
 congestion_control:
   # Use storage congestion control (default: disabled).
-  # CLI flag: -store.enabled
+  # CLI flag: -store.congestion-control.enabled
   [enabled: <boolean> | default = false]
 
   controller:
@@ -1943,11 +1947,11 @@ congestion_control:
   retry:
     # Congestion control retry strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.retry.strategy
+    # CLI flag: -store.congestion-control.retry.strategy
     [strategy: <string> | default = ""]
 
     # Maximum number of retries allowed.
-    # CLI flag: -store.retry.strategy.limited.limit
+    # CLI flag: -store.congestion-control.retry.strategy.limited.limit
     [limit: <int> | default = 2]
 
   hedging:
@@ -1960,7 +1964,7 @@ congestion_control:
 
     # Congestion control hedge strategy to use (default: none, options:
     # 'limited').
-    # CLI flag: -store.hedge.strategy
+    # CLI flag: -store.congestion-control.hedge.strategy
     [strategy: <string> | default = ""]
 
 # The cache block configures the cache backend.
@@ -2032,11 +2036,6 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -boltdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
-
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -2099,11 +2098,6 @@ tsdb_shipper:
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -tsdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
-
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -2148,184 +2142,179 @@ Configures the chunk index schema and where it is stored.
 
 ### compactor
 
-The `compactor` block configures the compactor component, which compacts index shards for performance.
+The `compactor` block configures the compactor component, which compacts index shards for performance. `-boltdb.shipper.compactor.` prefix is deprecated, please use `-compactor.` instead.
 
 ```yaml
 # Directory where files can be downloaded for compaction.
-# CLI flag: -boltdb.shipper.compactor.working-directory
+# CLI flag: -compactor.working-directory
 [working_directory: <string> | default = ""]
 
 # The shared store used for storing boltdb files. Supported types: gcs, s3,
 # azure, swift, filesystem, bos, cos. If not set, compactor will be initialized
 # to operate on all the object stores that contain either boltdb-shipper or tsdb
 # index.
-# CLI flag: -boltdb.shipper.compactor.shared-store
+# CLI flag: -compactor.shared-store
 [shared_store: <string> | default = ""]
 
 # Prefix to add to object keys in shared store. Path separator(if any) should
 # always be a '/'. Prefix should never start with a separator but should always
 # end with it.
-# CLI flag: -boltdb.shipper.compactor.shared-store.key-prefix
+# CLI flag: -compactor.shared-store.key-prefix
 [shared_store_key_prefix: <string> | default = "index/"]
 
 # Interval at which to re-run the compaction operation.
-# CLI flag: -boltdb.shipper.compactor.compaction-interval
+# CLI flag: -compactor.compaction-interval
 [compaction_interval: <duration> | default = 10m]
 
 # Interval at which to apply/enforce retention. 0 means run at same interval as
 # compaction. If non-zero, it should always be a multiple of compaction
 # interval.
-# CLI flag: -boltdb.shipper.compactor.apply-retention-interval
+# CLI flag: -compactor.apply-retention-interval
 [apply_retention_interval: <duration> | default = 0s]
 
 # (Experimental) Activate custom (per-stream,per-tenant) retention.
-# CLI flag: -boltdb.shipper.compactor.retention-enabled
+# CLI flag: -compactor.retention-enabled
 [retention_enabled: <boolean> | default = false]
 
 # Delay after which chunks will be fully deleted during retention.
-# CLI flag: -boltdb.shipper.compactor.retention-delete-delay
+# CLI flag: -compactor.retention-delete-delay
 [retention_delete_delay: <duration> | default = 2h]
 
 # The total amount of worker to use to delete chunks.
-# CLI flag: -boltdb.shipper.compactor.retention-delete-worker-count
+# CLI flag: -compactor.retention-delete-worker-count
 [retention_delete_worker_count: <int> | default = 150]
 
 # The maximum amount of time to spend running retention and deletion on any
 # given table in the index.
-# CLI flag: -boltdb.shipper.compactor.retention-table-timeout
+# CLI flag: -compactor.retention-table-timeout
 [retention_table_timeout: <duration> | default = 0s]
 
-# Store used for managing delete requests. Defaults to
-# -boltdb.shipper.compactor.shared-store.
-# CLI flag: -boltdb.shipper.compactor.delete-request-store
+# Store used for managing delete requests. Defaults to -compactor.shared-store.
+# CLI flag: -compactor.delete-request-store
 [delete_request_store: <string> | default = ""]
 
 # The max number of delete requests to run per compaction cycle.
-# CLI flag: -boltdb.shipper.compactor.delete-batch-size
+# CLI flag: -compactor.delete-batch-size
 [delete_batch_size: <int> | default = 70]
 
 # Allow cancellation of delete request until duration after they are created.
 # Data would be deleted only after delete requests have been older than this
 # duration. Ideally this should be set to at least 24h.
-# CLI flag: -boltdb.shipper.compactor.delete-request-cancel-period
+# CLI flag: -compactor.delete-request-cancel-period
 [delete_request_cancel_period: <duration> | default = 24h]
 
 # Constrain the size of any single delete request. When a delete request >
 # delete_max_interval is input, the request is sharded into smaller requests of
 # no more than delete_max_interval
-# CLI flag: -boltdb.shipper.compactor.delete-max-interval
+# CLI flag: -compactor.delete-max-interval
 [delete_max_interval: <duration> | default = 0s]
 
 # Maximum number of tables to compact in parallel. While increasing this value,
 # please make sure compactor has enough disk space allocated to be able to store
 # and compact as many tables.
-# CLI flag: -boltdb.shipper.compactor.max-compaction-parallelism
+# CLI flag: -compactor.max-compaction-parallelism
 [max_compaction_parallelism: <int> | default = 1]
 
 # Number of upload/remove operations to execute in parallel when finalizing a
 # compaction. NOTE: This setting is per compaction operation, which can be
 # executed in parallel. The upper bound on the number of concurrent uploads is
 # upload_parallelism * max_compaction_parallelism.
-# CLI flag: -boltdb.shipper.compactor.upload-parallelism
+# CLI flag: -compactor.upload-parallelism
 [upload_parallelism: <int> | default = 10]
 
 # The hash ring configuration used by compactors to elect a single instance for
 # running compactions. The CLI flags prefix for this block config is:
-# boltdb.shipper.compactor.ring
+# compactor.ring
 compactor_ring:
   kvstore:
     # Backend storage to use for the ring. Supported values are: consul, etcd,
     # inmemory, memberlist, multi.
-    # CLI flag: -boltdb.shipper.compactor.ring.store
+    # CLI flag: -compactor.ring.store
     [store: <string> | default = "consul"]
 
     # The prefix for the keys in the store. Should end with a /.
-    # CLI flag: -boltdb.shipper.compactor.ring.prefix
+    # CLI flag: -compactor.ring.prefix
     [prefix: <string> | default = "collectors/"]
 
     # Configuration for a Consul client. Only applies if the selected kvstore is
     # consul.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.compactor.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring
     [consul: <consul>]
 
     # Configuration for an ETCD v3 client. Only applies if the selected kvstore
     # is etcd.
-    # The CLI flags prefix for this block configuration is:
-    # boltdb.shipper.compactor.ring
+    # The CLI flags prefix for this block configuration is: compactor.ring
     [etcd: <etcd>]
 
     multi:
       # Primary backend storage used by multi-client.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.primary
+      # CLI flag: -compactor.ring.multi.primary
       [primary: <string> | default = ""]
 
       # Secondary backend storage used by multi-client.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.secondary
+      # CLI flag: -compactor.ring.multi.secondary
       [secondary: <string> | default = ""]
 
       # Mirror writes to secondary store.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-enabled
+      # CLI flag: -compactor.ring.multi.mirror-enabled
       [mirror_enabled: <boolean> | default = false]
 
       # Timeout for storing value to secondary store.
-      # CLI flag: -boltdb.shipper.compactor.ring.multi.mirror-timeout
+      # CLI flag: -compactor.ring.multi.mirror-timeout
       [mirror_timeout: <duration> | default = 2s]
 
   # Period at which to heartbeat to the ring. 0 = disabled.
-  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-period
+  # CLI flag: -compactor.ring.heartbeat-period
   [heartbeat_period: <duration> | default = 15s]
 
   # The heartbeat timeout after which compactors are considered unhealthy within
   # the ring. 0 = never (timeout disabled).
-  # CLI flag: -boltdb.shipper.compactor.ring.heartbeat-timeout
+  # CLI flag: -compactor.ring.heartbeat-timeout
   [heartbeat_timeout: <duration> | default = 1m]
 
   # File path where tokens are stored. If empty, tokens are not stored at
   # shutdown and restored at startup.
-  # CLI flag: -boltdb.shipper.compactor.ring.tokens-file-path
+  # CLI flag: -compactor.ring.tokens-file-path
   [tokens_file_path: <string> | default = ""]
 
   # True to enable zone-awareness and replicate blocks across different
   # availability zones.
-  # CLI flag: -boltdb.shipper.compactor.ring.zone-awareness-enabled
+  # CLI flag: -compactor.ring.zone-awareness-enabled
   [zone_awareness_enabled: <boolean> | default = false]
 
   # Instance ID to register in the ring.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-id
+  # CLI flag: -compactor.ring.instance-id
   [instance_id: <string> | default = "<hostname>"]
 
   # Name of network interface to read address from.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-interface-names
+  # CLI flag: -compactor.ring.instance-interface-names
   [instance_interface_names: <list of strings> | default = [<private network interfaces>]]
 
   # Port to advertise in the ring (defaults to server.grpc-listen-port).
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-port
+  # CLI flag: -compactor.ring.instance-port
   [instance_port: <int> | default = 0]
 
   # IP address to advertise in the ring.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-addr
+  # CLI flag: -compactor.ring.instance-addr
   [instance_addr: <string> | default = ""]
 
   # The availability zone where this instance is running. Required if
   # zone-awareness is enabled.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-availability-zone
+  # CLI flag: -compactor.ring.instance-availability-zone
   [instance_availability_zone: <string> | default = ""]
 
   # Enable using a IPv6 instance address.
-  # CLI flag: -boltdb.shipper.compactor.ring.instance-enable-ipv6
+  # CLI flag: -compactor.ring.instance-enable-ipv6
   [instance_enable_ipv6: <boolean> | default = false]
 
 # Number of tables that compactor will try to compact. Newer tables are chosen
 # when this is less than the number of tables available.
-# CLI flag: -boltdb.shipper.compactor.tables-to-compact
+# CLI flag: -compactor.tables-to-compact
 [tables_to_compact: <int> | default = 0]
 
-# Do not compact N latest tables. Together with
-# -boltdb.shipper.compactor.run-once and
-# -boltdb.shipper.compactor.tables-to-compact, this is useful when clearing
-# compactor backlogs.
-# CLI flag: -boltdb.shipper.compactor.skip-latest-n-tables
+# Do not compact N latest tables. Together with -compactor.run-once and
+# -compactor.tables-to-compact, this is useful when clearing compactor backlogs.
+# CLI flag: -compactor.skip-latest-n-tables
 [skip_latest_n_tables: <int> | default = 0]
 
 # Deprecated: Use deletion_mode per tenant configuration instead.
@@ -2426,7 +2415,7 @@ The `limits_config` block configures global and per-tenant limits in Loki.
 # CLI flag: -ingester.max-global-streams-per-user
 [max_global_streams_per_user: <int> | default = 5000]
 
-# When true, out-of-order writes are accepted.
+# Deprecated. When true, out-of-order writes are accepted.
 # CLI flag: -ingester.unordered-writes
 [unordered_writes: <boolean> | default = true]
 
@@ -2719,6 +2708,18 @@ shard_streams:
 # the deprecated -replication-factor for backwards compatibility reasons.
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
+
+# Allow user to send structured metadata in push payload.
+# CLI flag: -validation.allow-structured-metadata
+[allow_structured_metadata: <boolean> | default = false]
+
+# Maximum size accepted for structured metadata per log line.
+# CLI flag: -limits.max-structured-metadata-size
+[max_structured_metadata_size: <int> | default = 64KB]
+
+# Maximum number of structured metadata entries per log line.
+# CLI flag: -limits.max-structured-metadata-entries-count
+[max_structured_metadata_entries_count: <int> | default = 128]
 ```
 
 ### frontend_worker
@@ -3208,7 +3209,7 @@ storage:
 
   congestion_control:
     # Use storage congestion control (default: disabled).
-    # CLI flag: -common.storage.enabled
+    # CLI flag: -common.storage.congestion-control.enabled
     [enabled: <boolean> | default = false]
 
     controller:
@@ -3235,11 +3236,11 @@ storage:
     retry:
       # Congestion control retry strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.retry.strategy
+      # CLI flag: -common.storage.congestion-control.retry.strategy
       [strategy: <string> | default = ""]
 
       # Maximum number of retries allowed.
-      # CLI flag: -common.storage.retry.strategy.limited.limit
+      # CLI flag: -common.storage.congestion-control.retry.strategy.limited.limit
       [limit: <int> | default = 2]
 
     hedging:
@@ -3252,7 +3253,7 @@ storage:
 
       # Congestion control hedge strategy to use (default: none, options:
       # 'limited').
-      # CLI flag: -common.storage.hedge.strategy
+      # CLI flag: -common.storage.congestion-control.hedge.strategy
       [strategy: <string> | default = ""]
 
 [persist_tokens: <boolean>]
@@ -3358,8 +3359,8 @@ ring:
 
 Configuration for a Consul client. Only applies if the selected kvstore is `consul`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
+- `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `query-scheduler.ring`
@@ -3402,8 +3403,8 @@ Configuration for a Consul client. Only applies if the selected kvstore is `cons
 
 Configuration for an ETCD v3 client. Only applies if the selected kvstore is `etcd`. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
-- `boltdb.shipper.compactor.ring`
 - `common.storage.ring`
+- `compactor.ring`
 - `distributor.ring`
 - `index-gateway.ring`
 - `query-scheduler.ring`
@@ -3920,6 +3921,7 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 
 - `frontend`
 - `frontend.index-stats-results-cache`
+- `frontend.volume-results-cache`
 - `store.chunks-cache`
 - `store.index-cache-read`
 - `store.index-cache-write`
@@ -4130,17 +4132,19 @@ The `period_config` block configures what index schemas should be used for from 
 # want the schema to switch over. In YYYY-MM-DD format, for example: 2018-04-15.
 [from: <daytime>]
 
-# store and object_store below affect which <storage_config> key is used.
-# Which store to use for the index. Either aws, aws-dynamo, gcp, bigtable,
-# bigtable-hashed, cassandra, boltdb or boltdb-shipper.
+# store and object_store below affect which <storage_config> key is used. Which
+# index to use. Either tsdb or boltdb-shipper. Following stores are deprecated:
+# aws, aws-dynamo, gcp, gcp-columnkey, bigtable, bigtable-hashed, cassandra,
+# grpc.
 [store: <string> | default = ""]
 
-# Which store to use for the chunks. Either aws, azure, gcp, bigtable, gcs,
-# cassandra, swift, filesystem or a named_store (refer to named_stores_config).
-# If omitted, defaults to the same value as store.
+# Which store to use for the chunks. Either aws (alias s3), azure, gcs,
+# alibabacloud, bos, cos, swift, filesystem, or a named_store (refer to
+# named_stores_config). Following stores are deprecated: aws-dynamo, gcp,
+# gcp-columnkey, bigtable, bigtable-hashed, cassandra, grpc.
 [object_store: <string> | default = ""]
 
-# The schema version to use, current recommended schema is v11.
+# The schema version to use, current recommended schema is v12.
 [schema: <string> | default = ""]
 
 # Configures how the index is updated and stored.
@@ -4174,6 +4178,7 @@ chunks:
 The `aws_storage_config` block configures the connection to dynamoDB and S3 object storage. Either one of them or both can be configured.
 
 ```yaml
+# Deprecated: Configures storing indexes in DynamoDB.
 dynamodb:
   # DynamoDB endpoint URL with escaped Key and Secret encoded. If only region is
   # specified as a host, proper endpoint will be deduced. Use
@@ -4290,11 +4295,6 @@ dynamodb:
 # Disable https on s3 connection.
 # CLI flag: -s3.insecure
 [insecure: <boolean> | default = false]
-
-# Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-# s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-# CLI flag: -s3.sse-encryption
-[sse_encryption: <boolean> | default = false]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
@@ -4572,11 +4572,6 @@ The `s3_storage_config` block configures the connection to Amazon S3 object stor
 # Disable https on s3 connection.
 # CLI flag: -<prefix>.storage.s3.insecure
 [insecure: <boolean> | default = false]
-
-# Enable AWS Server Side Encryption [Deprecated: Use .sse instead. if
-# s3.sse-encryption is enabled, it assumes .sse.type SSE-S3]
-# CLI flag: -<prefix>.storage.s3.sse-encryption
-[sse_encryption: <boolean> | default = false]
 
 http_config:
   # Timeout specifies a time limit for requests made by s3 Client.
