@@ -83,8 +83,9 @@ In your Fluentd configuration, add `@type loki`. Additional configuration is opt
   password "#{ENV['LOKI_PASSWORD']}"
   extra_labels {"env":"dev"}
   <buffer>
-    flush_interval 10s
-    flush_at_shutdown true
+    chunk_limit_size   8m
+    flush_interval     10s
+    flush_at_shutdown  true
   </buffer>
   buffer_chunk_limit 1m
 </match>
