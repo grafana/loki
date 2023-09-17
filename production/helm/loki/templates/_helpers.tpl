@@ -230,6 +230,21 @@ s3:
   {{- end }}
   s3forcepathstyle: {{ .s3ForcePathStyle }}
   insecure: {{ .insecure }}
+  {{- with .sseEncryption }}
+  sse_encryption: {{ . }}
+  {{- end }}
+  {{- with .sse }}
+    sse:
+      {{- with .type }}
+      type: {{ . }}
+      {{- end }}
+      {{- with .kmsKeyId }}
+      kms_key_id: {{ . }}
+      {{- end }}
+      {{- with .kmsEncryptionContext }}
+      kms_encryption_context: {{ . }}
+      {{- end }}
+  {{- end }}
   {{- with .http_config}}
   http_config:
     {{- with .idle_conn_timeout }}
