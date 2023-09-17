@@ -205,6 +205,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>backend.persistence.enable</td>
+			<td>bool</td>
+			<td>Enable data persistence using PVC(s)</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>backend.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -3259,6 +3268,15 @@ false
 </td>
 		</tr>
 		<tr>
+			<td>read.persistence.enable</td>
+			<td>bool</td>
+			<td>Enable data persistence using PVC(s)</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>read.persistence.enableStatefulSetAutoDeletePVC</td>
 			<td>bool</td>
 			<td>Enable StatefulSetAutoDeletePVC feature</td>
@@ -4535,6 +4553,15 @@ null
 			<td>Node selector for write pods</td>
 			<td><pre lang="json">
 {}
+</pre>
+</td>
+		</tr>
+		<tr>
+			<td>write.persistence.enable</td>
+			<td>bool</td>
+			<td>Enable data persistence using PVC(s)</td>
+			<td><pre lang="json">
+true
 </pre>
 </td>
 		</tr>
