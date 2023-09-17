@@ -508,7 +508,7 @@ rbac:
   namespaced: false
 # -- Section for configuring optional Helm test
 test:
-  enabled: true
+  enabled: false
   # -- Address of the prometheus server to query for the test
   prometheusAddress: "http://prometheus:9090"
   # -- Number of times to retry the test before failing
