@@ -246,11 +246,16 @@ spec:
             sizeLimit: {{ .Values.sidecar.rules.sizeLimit }}
         {{- else }}
           emptyDir: {}
+        {{- if not .Values.backend.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
         {{- end -}}
         {{- end -}}
         {{- with .Values.backend.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if .Values.backend.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -267,4 +272,5 @@ spec:
         selector:
           {{- toYaml . | nindent 10 }}
         {{- end }}
+  {{- end }}
 {{- end }}

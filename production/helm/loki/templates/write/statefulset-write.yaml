@@ -173,9 +173,14 @@ spec:
             secretName: enterprise-logs-license
           {{- end }}
         {{- end }}
+        {{- if not .Values.write.persistence.enabled }}
+        - name: data
+          emptyDir: {}
+        {{- end }}
         {{- with .Values.write.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+  {{- if .Values.write.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: data
@@ -195,4 +200,5 @@ spec:
     {{- with .Values.write.extraVolumeClaimTemplates }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+  {{- end }}
 {{- end }}
