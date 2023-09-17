@@ -88,7 +88,7 @@ func (v *LokiStackValidator) validate(ctx context.Context, obj runtime.Object) e
 	)
 }
 
-func (v LokiStackValidator) validateReplicationSpec(ctx context.Context, stack lokiv1.LokiStackSpec) field.ErrorList {
+func (v *LokiStackValidator) validateReplicationSpec(ctx context.Context, stack lokiv1.LokiStackSpec) field.ErrorList {
 	if stack.Replication == nil {
 		return nil
 	}
