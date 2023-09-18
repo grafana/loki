@@ -531,9 +531,6 @@ test:
     pullPolicy: IfNotPresent
 # Monitoring section determines which monitoring features to enable
 monitoring:
-  # To enable Loki Canary set it to true
-  lokiCanary:
-    enabled: false
   # Dashboards for monitoring Loki
   dashboards:
     # -- If enabled, create configmap with dashboards for monitoring Loki
@@ -653,7 +650,7 @@ monitoring:
   # The Loki canary pushes logs to and queries from this loki installation to test
   # that it's working correctly
   lokiCanary:
-    enabled: true
+    enabled: false
     # -- The name of the label to look for at loki when doing the checks.
     labelname: pod
     # -- Additional annotations for the `loki-canary` Daemonset
