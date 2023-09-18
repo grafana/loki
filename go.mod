@@ -120,6 +120,7 @@ require (
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/grafana/loki/pkg/push v0.0.0-20230127102416-571f88bc5765
 	github.com/heroku/x v0.0.61
+	github.com/owen-d/BoomFilters v0.0.0-20230914145927-1ad00a0ec6fd
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
