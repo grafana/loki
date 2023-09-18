@@ -116,6 +116,7 @@ func (t *tailer) updatePosition() {
 	defer func() {
 		positionWait.Stop()
 		level.Info(t.logger).Log("msg", "position timer: exited", "path", t.path)
+		// NOTE: metrics must be cleaned up after the position timer exits, as MarkPositionAndSize() updates metrics.
 		t.cleanupMetrics()
 		close(t.posdone)
 	}()
@@ -214,6 +215,7 @@ func (t *tailer) MarkPositionAndSize() error {
 		return err
 	}
 
+	// Update metrics and positions file all together to avoid race conditions when `t.tail` is stopped.
 	t.metrics.totalBytes.WithLabelValues(t.path).Set(float64(size))
 	t.metrics.readBytes.WithLabelValues(t.path).Set(float64(pos))
 	t.positions.Put(t.path, pos)
