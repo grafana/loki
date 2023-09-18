@@ -12,7 +12,6 @@ import (
 
 	"github.com/go-kit/log/level"
 
-	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
@@ -60,7 +59,8 @@ func ResetMockStorage() {
 	singleton = nil
 }
 
-// NewMockStorage creates a new MockStorage.
+// NewMockStorage creates a mock storage singleton
+// MockStorage implements the interfaces client.ObjectClient, index.Client, index.TableClient, and storage.SchemaConfigProvider
 func NewMockStorage() *MockStorage {
 	if singleton == nil {
 		singleton = &MockStorage{
@@ -78,6 +78,10 @@ func NewMockStorage() *MockStorage {
 		}
 	}
 	return singleton
+}
+
+func (m *MockStorage) GetSchemaConfigs() []config.PeriodConfig {
+	return m.schemaCfg.Configs
 }
 
 func (m *MockStorage) GetSortedObjectKeys() []string {
@@ -364,61 +368,6 @@ func (m *MockStorage) query(ctx context.Context, query index.Query, callback fun
 
 	callback(&result)
 	return nil
-}
-
-// PutChunks implements StorageClient.
-func (m *MockStorage) PutChunks(_ context.Context, chunks []chunk.Chunk) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-
-	if m.mode == MockStorageModeReadOnly {
-		return errPermissionDenied
-	}
-
-	m.numChunkWrites += len(chunks)
-
-	for i := range chunks {
-		buf, err := chunks[i].Encoded()
-		if err != nil {
-			return err
-		}
-		m.objects[m.schemaCfg.ExternalKey(chunks[i].ChunkRef)] = buf
-	}
-	return nil
-}
-
-// GetChunks implements StorageClient.
-func (m *MockStorage) GetChunks(_ context.Context, chunkSet []chunk.Chunk) ([]chunk.Chunk, error) {
-	m.mtx.RLock()
-	defer m.mtx.RUnlock()
-
-	if m.mode == MockStorageModeWriteOnly {
-		return nil, errPermissionDenied
-	}
-
-	decodeContext := chunk.NewDecodeContext()
-	result := []chunk.Chunk{}
-	for _, chunk := range chunkSet {
-		key := m.schemaCfg.ExternalKey(chunk.ChunkRef)
-		buf, ok := m.objects[key]
-		if !ok {
-			return nil, errStorageObjectNotFound
-		}
-		if err := chunk.Decode(decodeContext, buf); err != nil {
-			return nil, err
-		}
-		result = append(result, chunk)
-	}
-	return result, nil
-}
-
-// DeleteChunk implements StorageClient.
-func (m *MockStorage) DeleteChunk(ctx context.Context, _, chunkID string) error {
-	if m.mode == MockStorageModeReadOnly {
-		return errPermissionDenied
-	}
-
-	return m.DeleteObject(ctx, chunkID)
 }
 
 func (m *MockStorage) ObjectExists(_ context.Context, objectKey string) (bool, error) {

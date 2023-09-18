@@ -13,10 +13,14 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.22.0
+## 5.23.0
 
 - [CHANGE] **BREAKING** Replace `loki.existingSecretForConfig` by `loki.useExternalConfig`.
 - [BUGFIX] Fix an issue where we could not provide loki configuration with an external ConfigMap.
+
+## 5.22.0
+
+- [CHANGE] Changed version of Loki to 2.9.1
 
 ## 5.21.0
 
