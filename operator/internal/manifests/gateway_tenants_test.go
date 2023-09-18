@@ -717,6 +717,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -823,6 +826,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1157,6 +1163,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
@@ -1251,6 +1260,9 @@ func TestConfigureDeploymentForMode(t *testing.T) {
 							Containers: []corev1.Container{
 								{
 									Name: gatewayContainerName,
+									Args: []string{
+										"--logs.auth.extract-selectors=kubernetes_namespace_name",
+									},
 								},
 								{
 									Name:  "opa",
