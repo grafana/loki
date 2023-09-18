@@ -63,7 +63,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Changes to default configuration values
 
-1. `frontend.embedded-cache.max-size-mb` Embedded results cache size is now limited to 100MB. Increase this value according to your log volume.
+1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
 ## 2.9.0
 
