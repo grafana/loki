@@ -793,7 +793,7 @@ write:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
-    # -- Enable data persistence using PVC(s)
+    # -- Enable data persistence using persistent volume claims (PVCs)
     enable: true
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: false
@@ -966,7 +966,7 @@ read:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
-    # -- Enable data persistence using PVC(s)
+    # -- Enable data persistence using persistent volume claims (PVCs)
     enable: true
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true
@@ -1069,7 +1069,7 @@ backend:
   # -- The default is to deploy all pods in parallel.
   podManagementPolicy: "Parallel"
   persistence:
-    # -- Enable data persistence using PVC(s)
+    # -- Enable data persistence using persistent volume claims (PVCs)
     enable: true
     # -- Enable StatefulSetAutoDeletePVC feature
     enableStatefulSetAutoDeletePVC: true

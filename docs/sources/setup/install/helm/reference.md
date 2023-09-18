@@ -207,7 +207,7 @@ null
 		<tr>
 			<td>backend.persistence.enable</td>
 			<td>bool</td>
-			<td>Enable data persistence using PVC(s)</td>
+			<td>Enable data persistence using persistent volume claims (PVCs)</td>
 			<td><pre lang="json">
 true
 </pre>
@@ -3270,7 +3270,7 @@ false
 		<tr>
 			<td>read.persistence.enable</td>
 			<td>bool</td>
-			<td>Enable data persistence using PVC(s)</td>
+			<td>Enable data persistence using persistent volume claims (PVCs)</td>
 			<td><pre lang="json">
 true
 </pre>
@@ -4559,7 +4559,7 @@ null
 		<tr>
 			<td>write.persistence.enable</td>
 			<td>bool</td>
-			<td>Enable data persistence using PVC(s)</td>
+			<td>Enable data persistence using persistent volume claims (PVCs)</td>
 			<td><pre lang="json">
 true
 </pre>
