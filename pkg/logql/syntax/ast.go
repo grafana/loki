@@ -1077,6 +1077,9 @@ const (
 	// parser flags
 	OpStrict    = "--strict"
 	OpKeepEmpty = "--keep-empty"
+
+	// private expressions
+	OpRangeTypeQuantileSketch    = "__quantile_sketch_over_time__"
 )
 
 func IsComparisonOperator(op string) bool {
@@ -1122,7 +1125,8 @@ type RangeAggregationExpr struct {
 func newRangeAggregationExpr(left *LogRange, operation string, gr *Grouping, stringParams *string) SampleExpr {
 	var params *float64
 	if stringParams != nil {
-		if operation != OpRangeTypeQuantile {
+		// TODO(karsten): we could create our own expression here.
+		if operation != OpRangeTypeQuantile && operation != OpRangeTypeQuantileSketch {
 			return &RangeAggregationExpr{err: logqlmodel.NewParseError(fmt.Sprintf("parameter %s not supported for operation %s", *stringParams, operation), 0, 0)}
 		}
 		var err error
@@ -1176,7 +1180,7 @@ func (e *RangeAggregationExpr) MatcherGroups() ([]MatcherRange, error) {
 func (e RangeAggregationExpr) validate() error {
 	if e.Grouping != nil {
 		switch e.Operation {
-		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
+		case OpRangeTypeAvg, OpRangeTypeStddev, OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeQuantileSketch, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeFirst, OpRangeTypeLast:
 		default:
 			return fmt.Errorf("grouping not allowed for %s aggregation", e.Operation)
 		}
@@ -1185,7 +1189,7 @@ func (e RangeAggregationExpr) validate() error {
 		switch e.Operation {
 		case OpRangeTypeAvg, OpRangeTypeSum, OpRangeTypeMax, OpRangeTypeMin, OpRangeTypeStddev,
 			OpRangeTypeStdvar, OpRangeTypeQuantile, OpRangeTypeRate, OpRangeTypeRateCounter,
-			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast:
+			OpRangeTypeAbsent, OpRangeTypeFirst, OpRangeTypeLast, OpRangeTypeQuantileSketch:
 			return nil
 		default:
 			return fmt.Errorf("invalid aggregation %s with unwrap", e.Operation)

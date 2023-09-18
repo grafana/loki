@@ -334,29 +334,31 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 
 	switch e := expr.(type) {
-	case *QuantileSketchExpr:
-		it, err := q.evaluator.(*DefaultEvaluator).querier.SelectSamples(ctx, SelectSampleParams{
-			&logproto.SampleQueryRequest{
-				Start:    q.params.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-				End:      q.params.End().Add(-e.Left.Offset),
-				Selector: e.RangeAggregationExpr.String(),
-				Shards:   q.params.Shards(),
-			},
-		})
-		if err != nil {
-			return nil, err
-		}
-		iter := newTDigestIterator(
-			iter.NewPeekingSampleIterator(it),
-			e.Left.Interval.Nanoseconds(),
-			q.params.Step().Nanoseconds(),
-			q.params.Start().UnixNano(), q.params.End().UnixNano(), e.Left.Offset.Nanoseconds(),
-		)
+	case *syntax.RangeAggregationExpr:
+		if e.Operation == syntax.OpRangeTypeQuantileSketch {
+			it, err := q.evaluator.(*DefaultEvaluator).querier.SelectSamples(ctx, SelectSampleParams{
+				&logproto.SampleQueryRequest{
+					Start:    q.params.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
+					End:      q.params.End().Add(-e.Left.Offset),
+					Selector: e.String(),
+					Shards:   q.params.Shards(),
+				},
+			})
+			if err != nil {
+				return nil, err
+			}
+			iter := newTDigestIterator(
+				iter.NewPeekingSampleIterator(it),
+				e.Left.Interval.Nanoseconds(),
+				q.params.Step().Nanoseconds(),
+				q.params.Start().UnixNano(), q.params.End().UnixNano(), e.Left.Offset.Nanoseconds(),
+			)
 
-		ev := &TDigestStepEvaluator{
-			iter: iter,
+			ev := &TDigestStepEvaluator{
+				iter: iter,
+			}
+			return JoinTDigest(ev, q.params)
 		}
-		return JoinTDigest(ev, q.params)
 	}
 
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)

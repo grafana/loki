@@ -155,27 +155,6 @@ func (c ConcatLogSelectorExpr) string(maxDepth int) string {
 	return fmt.Sprintf("%s ++ %s", c.DownstreamLogSelectorExpr.String(), c.next.string(maxDepth-1))
 }
 
-// QuantileSketchExpr estimates a quantile over time. It must be evaluated using
-// a QunatileSketchEvalExpr.
-type QuantileSketchExpr struct {
-	syntax.RangeAggregationExpr
-}
-
-func NewQuantileSketchExpr(original *syntax.RangeAggregationExpr) *QuantileSketchExpr {
-	return &QuantileSketchExpr{
-		RangeAggregationExpr: *original,
-	}
-}
-
-func (e QuantileSketchExpr) String() string {
-	return fmt.Sprintf("quantileSketch<%s>", &e.RangeAggregationExpr)
-}
-
-func (e *QuantileSketchExpr) Walk(f syntax.WalkFn) {
-	f(e)
-	e.RangeAggregationExpr.Walk(f)
-}
-
 type QuantileSketchEvalExpr struct {
 	syntax.SampleExpr
 	quantileMergeExpr *QuantileSketchMergeExpr

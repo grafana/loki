@@ -420,6 +420,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}, bytesPerShard, nil
 
 	case syntax.OpRangeTypeQuantile:
+		// TODO(karsten): only shard most outer expression.
 		potentialConflict := syntax.ReducesLabels(expr)
 		if !potentialConflict && (expr.Grouping == nil || expr.Grouping.Noop()) {
 			return m.mapSampleExpr(expr, r)
@@ -434,16 +435,19 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 		}
 
 		// quantile_over_time() by (foo) ->
-		// quantile_sketch_eval(quantile_merge by (foo) (quantile_over_time() by (foo)))
+		// quantile_sketch_eval(quantile_merge by (foo)
+		// (__quantile_sketch_over_time__() by (foo)))
 
 		downstreams := make([]DownstreamSampleExpr, 0, shards)
+		// TODO(karsten): maybe we have to clone
+		expr.Operation = syntax.OpRangeTypeQuantileSketch 
 		for shard := shards - 1; shard >= 0; shard-- {
 			downstreams = append(downstreams, DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{
 					Shard: shard,
 					Of:    shards,
 				},
-				SampleExpr: NewQuantileSketchExpr(expr),
+				SampleExpr: expr,
 			})
 		}
 
