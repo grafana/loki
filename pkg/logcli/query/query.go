@@ -452,7 +452,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 
 	if q.isInstant() {
 		query = eng.Query(logql.NewLiteralParams(
-			q.QueryString,
+			parsed,
 			q.Start,
 			q.Start,
 			0,
@@ -460,10 +460,10 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
-		), parsed)
+		))
 	} else {
 		query = eng.Query(logql.NewLiteralParams(
-			q.QueryString,
+			parsed,
 			q.Start,
 			q.End,
 			q.Step,
@@ -471,7 +471,7 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 			q.resultsDirection(),
 			uint32(q.Limit),
 			nil,
-		), parsed)
+		))
 	}
 
 	// execute the query

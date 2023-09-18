@@ -156,12 +156,11 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 }
 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
-func (ng *Engine) Query(params Params, parsed syntax.Expr) Query {
+func (ng *Engine) Query(params Params) Query {
 	return &query{
 		logger:       ng.logger,
 		params:       params,
 		evaluator:    ng.evaluatorFactory,
-		parsed:       parsed,
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
@@ -207,7 +206,7 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 
 	sp.LogKV(
 		"type", GetRangeType(q.params),
-		"query", q.params.Query(),
+		"query", q.params.QueryString(),
 		"start", q.params.Start(),
 		"end", q.params.End(),
 		"step", q.params.Step(),
@@ -215,11 +214,11 @@ func (q *query) Exec(ctx context.Context) (logqlmodel.Result, error) {
 	)
 
 	if q.logExecQuery {
-		queryHash := HashedQuery(q.params.Query())
+		queryHash := HashedQuery(q.params.QueryString())
 		if GetRangeType(q.params) == InstantType {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.Query(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "instant", "query", q.params.QueryString(), "query_hash", queryHash)
 		} else {
-			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.Query(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
+			level.Info(logutil.WithContext(ctx, q.logger)).Log("msg", "executing query", "type", "range", "query", q.params.QueryString(), "length", q.params.End().Sub(q.params.Start()), "step", q.params.Step(), "query_hash", queryHash)
 		}
 	}
 
@@ -273,7 +272,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		return nil, logqlmodel.ErrBlocked
 	}
 
-	switch e := q.parsed.(type) {
+	switch e := q.params.Query().(type) {
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err
@@ -388,7 +387,7 @@ func (q *query) Join(stepEvaluator StepEvaluator, maxSeries int) (promql_parser.
 	if GetRangeType(q.params) == InstantType {
 		sortByValue, err := Sortable(q.params)
 		if err != nil {
-			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.Query(), err)
+			return nil, fmt.Errorf("fail to check Sortable, logql: %s ,err: %s", q.params.QueryString(), err)
 		}
 		if !sortByValue {
 			sort.Slice(vec, func(i, j int) bool { return labels.Compare(vec[i].Metric, vec[j].Metric) < 0 })

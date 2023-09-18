@@ -149,12 +149,13 @@ func TestEngine_ExecWithBlockedQueries(t *testing.T) {
 			require.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:        test.q,
+				query:     parsed,
 				start:     time.Unix(0, 0),
 				end:       time.Unix(100000, 0),
 				step:      60 * time.Second,
 				direction: logproto.FORWARD,
 				limit:     1000,
-			}, parsed)
+			})
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 
 			if test.expectedErr == nil {

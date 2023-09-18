@@ -74,7 +74,7 @@ func TestMappingEquivalence(t *testing.T) {
 			parsed, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 			params := NewLiteralParams(
-				tc.query,
+				parsed,
 				start,
 				end,
 				step,
@@ -83,7 +83,7 @@ func TestMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params, parsed)
+			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
@@ -140,7 +140,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 			parsed, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 			params := NewLiteralParams(
-				tc.query,
+				parsed,
 				start,
 				end,
 				step,
@@ -149,7 +149,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params, parsed)
+			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
@@ -201,8 +201,12 @@ func TestShardCounter(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
+			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
+			noop, _, mapped, err := mapper.Parse(tc.query)
+			require.Nil(t, err)
+
 			params := NewLiteralParams(
-				tc.query,
+				mapped,
 				start,
 				end,
 				step,
@@ -211,11 +215,10 @@ func TestShardCounter(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			ctx := user.InjectOrgID(context.Background(), "fake")
+			// Note: the query string is the original string not the mapped query.
+			params.qs = tc.query
 
-			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
-			noop, _, mapped, err := mapper.Parse(tc.query)
-			require.Nil(t, err)
+			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			shardedQry := sharded.Query(ctx, params, mapped)
 
@@ -462,7 +465,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			parsed, err := syntax.ParseExpr(tc.query)
 			require.NoError(t, err)
 			params := NewLiteralParams(
-				tc.query,
+				parsed,
 				start,
 				end,
 				step,
@@ -473,7 +476,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			)
 
 			// Regular engine
-			qry := regularEngine.Query(params, parsed)
+			qry := regularEngine.Query(params)
 			res, err := qry.Exec(ctx)
 			require.NoError(t, err)
 

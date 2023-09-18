@@ -134,11 +134,12 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			assert.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
+				query:     parsed,
 				start:     test.ts,
 				end:       test.ts,
 				direction: test.direction,
 				limit:     test.limit,
-			}, parsed)
+			})
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if expectedError, ok := test.expected.(error); ok {
 				assert.Equal(t, expectedError.Error(), err.Error())
@@ -948,11 +949,12 @@ func TestEngine_LogsInstantQuery(t *testing.T) {
 			assert.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
+				query:     parsed,
 				start:     test.ts,
 				end:       test.ts,
 				direction: test.direction,
 				limit:     test.limit,
-			}, parsed)
+			})
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if expectedError, ok := test.expected.(error); ok {
 				assert.Equal(t, expectedError.Error(), err.Error())
@@ -2194,13 +2196,14 @@ func TestEngine_RangeQuery(t *testing.T) {
 			assert.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
+				query:     parsed,
 				start:     test.start,
 				end:       test.end,
 				step:      test.step,
 				interval:  test.interval,
 				direction: test.direction,
 				limit:     test.limit,
-			}, parsed)
+			})
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				t.Fatal(err)
@@ -2233,11 +2236,12 @@ func TestEngine_Stats(t *testing.T) {
 	require.NoError(t, err)
 	q := eng.Query(LiteralParams{
 		qs:        query,
+		query:     parsed,
 		start:     time.Now(),
 		end:       time.Now(),
 		direction: logproto.BACKWARD,
 		limit:     1000,
-	}, parsed)
+	})
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
 	r, err := q.Exec(user.InjectOrgID(ctx, "fake"))
 	require.NoError(t, err)
@@ -2272,11 +2276,12 @@ func TestEngine_Metadata(t *testing.T) {
 	require.NoError(t, err)
 	q := eng.Query(LiteralParams{
 		qs:        query,
+		query:     parsed,
 		start:     time.Now(),
 		end:       time.Now(),
 		direction: logproto.BACKWARD,
 		limit:     1000,
-	}, parsed)
+	})
 
 	r, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 	require.NoError(t, err)
@@ -2293,13 +2298,14 @@ func TestEngine_LogsInstantQuery_IllegalLogql(t *testing.T) {
 	parsed, err := syntax.ParseExpr(illegalVector)
 	q := eng.Query(LiteralParams{
 		qs:        illegalVector,
+		query:     parsed,
 		start:     time.Now(),
 		end:       time.Now(),
 		step:      time.Second * 30,
 		interval:  time.Second * 30,
 		direction: logproto.BACKWARD,
 		limit:     1000,
-	}, parsed)
+	})
 	expectErr := logqlmodel.NewParseError("syntax error: unexpected IDENTIFIER, expecting NUMBER", 1, 8)
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
 
@@ -2323,13 +2329,14 @@ func TestEngine_LogsInstantQuery_Vector(t *testing.T) {
 	require.NoError(t, err)
 	q := eng.Query(LiteralParams{
 		qs:        logqlVector,
+		query:     parsed,
 		start:     now,
 		end:       now,
 		step:      0,
 		interval:  time.Second * 30,
 		direction: logproto.BACKWARD,
 		limit:     1000,
-	}, parsed)
+	})
 	ctx := context.WithValue(context.Background(), httpreq.QueryQueueTimeHTTPHeader, queueTime)
 	_, err = q.Exec(user.InjectOrgID(ctx, "fake"))
 
@@ -2410,11 +2417,12 @@ func TestStepEvaluator_Error(t *testing.T) {
 			require.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:    tc.qs,
+				query: parsed,
 				start: time.Unix(0, 0),
 				end:   time.Unix(180, 0),
 				step:  1 * time.Second,
 				limit: 1,
-			}, parsed)
+			})
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			require.Equal(t, tc.err, err)
 		})
@@ -2442,12 +2450,13 @@ func TestEngine_MaxSeries(t *testing.T) {
 			require.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
+				query:     parsed,
 				start:     time.Unix(0, 0),
 				end:       time.Unix(100000, 0),
 				step:      60 * time.Second,
 				direction: test.direction,
 				limit:     1000,
-			}, parsed)
+			})
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.NotNil(t, err)
@@ -2476,12 +2485,13 @@ func TestEngine_MaxRangeInterval(t *testing.T) {
 			require.NoError(t, err)
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
+				query:     parsed,
 				start:     time.Unix(0, 0),
 				end:       time.Unix(100000, 0),
 				step:      60 * time.Second,
 				direction: test.direction,
 				limit:     1000,
-			}, parsed)
+			})
 			_, err = q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if test.expectLimitErr {
 				require.Error(t, err)
@@ -2551,12 +2561,13 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 			}
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
+				query:     parsed,
 				start:     start,
 				end:       end,
 				step:      60 * time.Second,
 				direction: test.direction,
 				limit:     1000,
-			}, parsed)
+			})
 			res, err := q.Exec(user.InjectOrgID(context.Background(), "fake"))
 			if err != nil {
 				b.Fatal(err)
@@ -2586,7 +2597,8 @@ func TestHashingStability(t *testing.T) {
 		eng := NewEngine(EngineOpts{LogExecutingQuery: true}, getLocalQuerier(4), NoLimits, logger)
 		parsed, err := syntax.ParseExpr(params.qs)
 		require.NoError(t, err)
-		query := eng.Query(params, parsed)
+		params.query = parsed
+		query := eng.Query(params)
 		_, err = query.Exec(ctx)
 		require.NoError(t, err)
 		return buf.String()

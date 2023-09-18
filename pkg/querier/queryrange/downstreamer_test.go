@@ -224,7 +224,7 @@ func TestInstanceFor(t *testing.T) {
 	in := mkIn()
 	newParams := func() logql.Params {
 		return logql.NewLiteralParams(
-			"",
+			&syntax.VectorExpr{},
 			time.Now(),
 			time.Now(),
 			0,
@@ -310,7 +310,7 @@ func TestInstanceFor(t *testing.T) {
 
 func TestInstanceDownstream(t *testing.T) {
 	params := logql.NewLiteralParams(
-		"",
+		&syntax.VectorExpr{},
 		time.Now(),
 		time.Now(),
 		0,
@@ -485,7 +485,7 @@ func TestDownstreamAccumulatorSimple(t *testing.T) {
 	}
 	// dummy params. Only need to populate direction & limit
 	params := logql.NewLiteralParams(
-		"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+		&syntax.LiteralExpr{}, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 	)
 
 	acc := newDownstreamAccumulator(params, 1)
@@ -543,7 +543,7 @@ func TestDownstreamAccumulatorMultiMerge(t *testing.T) {
 
 			// dummy params. Only need to populate direction & limit
 			params := logql.NewLiteralParams(
-				"", time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
+				&syntax.VectorExpr{}, time.Time{}, time.Time{}, 0, 0, direction, uint32(lim), nil,
 			)
 
 			acc := newDownstreamAccumulator(params, 1)

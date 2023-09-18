@@ -432,9 +432,9 @@ func (t *testQueryClient) QueryRange(queryStr string, limit int, from, through t
 	if err != nil {
 		return nil, err
 	}
-	params := logql.NewLiteralParams(queryStr, from, through, step, interval, direction, uint32(limit), nil)
+	params := logql.NewLiteralParams(parsed, from, through, step, interval, direction, uint32(limit), nil)
 
-	v, err := t.engine.Query(params, parsed).Exec(ctx)
+	v, err := t.engine.Query(params).Exec(ctx)
 	if err != nil {
 		return nil, err
 	}

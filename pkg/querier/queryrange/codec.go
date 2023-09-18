@@ -1146,8 +1146,12 @@ type paramsRangeWrapper struct {
 	*LokiRequest
 }
 
-func (p paramsRangeWrapper) Query() string {
+func (p paramsRangeWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsRangeWrapper) Query() syntax.Expr {
+	return nil // TODO
 }
 
 func (p paramsRangeWrapper) Start() time.Time {
@@ -1176,8 +1180,12 @@ type paramsInstantWrapper struct {
 	*LokiInstantRequest
 }
 
-func (p paramsInstantWrapper) Query() string {
+func (p paramsInstantWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsInstantWrapper) Query() syntax.Expr {
+	return nil // TODO
 }
 
 func (p paramsInstantWrapper) Start() time.Time {
@@ -1204,8 +1212,12 @@ type paramsSeriesWrapper struct {
 	*LokiSeriesRequest
 }
 
-func (p paramsSeriesWrapper) Query() string {
+func (p paramsSeriesWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsSeriesWrapper) Query() syntax.Expr {
+	return nil // TODO
 }
 
 func (p paramsSeriesWrapper) Start() time.Time {
@@ -1232,8 +1244,12 @@ type paramsLabelNamesWrapper struct {
 	*LokiLabelNamesRequest
 }
 
-func (p paramsLabelNamesWrapper) Query() string {
+func (p paramsLabelNamesWrapper) QueryString() string {
 	return p.GetQuery()
+}
+
+func (p paramsLabelNamesWrapper) Query() syntax.Expr {
+	return nil // TODO
 }
 
 func (p paramsLabelNamesWrapper) Start() time.Time {
