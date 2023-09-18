@@ -76,11 +76,13 @@ func main() {
 
 	// This is a little brittle, if we add a new cache it may easily get missed here but it's important to disable
 	// any of the chunk caches to save on memory because we write chunks to the cache when we call Put operations on the store.
+	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled = false
 	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient
 	sourceConfig.ChunkStoreConfig.ChunkCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.Redis
 	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
 	sourceConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.Redis
 
+	destConfig.ChunkStoreConfig.ChunkCacheConfig.EmbeddedCache.Enabled = false
 	destConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.MemcacheClient
 	destConfig.ChunkStoreConfig.ChunkCacheConfig.Redis = defaultsConfig.ChunkStoreConfig.ChunkCacheConfig.Redis
 	destConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient = defaultsConfig.ChunkStoreConfig.WriteDedupeCacheConfig.MemcacheClient
