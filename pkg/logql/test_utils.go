@@ -219,7 +219,7 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 	results := make([]logqlmodel.Result, 0, len(queries))
 	for _, query := range queries {
 		params := NewLiteralParams(
-			query.Expr,
+			query.Expr.String(),
 			query.Params.Start(),
 			query.Params.End(),
 			query.Params.Step(),
@@ -228,7 +228,7 @@ func (m MockDownstreamer) Downstream(ctx context.Context, queries []DownstreamQu
 			query.Params.Limit(),
 			query.Shards.Encode(),
 		)
-		res, err := m.Query(params).Exec(ctx)
+		res, err := m.Query(params, query.Expr).Exec(ctx)
 		if err != nil {
 			return nil, err
 		}

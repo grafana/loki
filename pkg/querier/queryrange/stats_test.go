@@ -30,7 +30,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		Query:   "foo",
 		StartTs: now,
 	})
-	require.Equal(t, "foo", data.params.QueryString())
+	require.Equal(t, "foo", data.params.Query())
 	require.Equal(t, true, data.recorded)
 	require.Equal(t, now, data.params.Start())
 	require.Nil(t, data.statistics)
@@ -60,7 +60,7 @@ func TestStatsCollectorMiddleware(t *testing.T) {
 		Query:   "foo",
 		StartTs: now,
 	})
-	require.Equal(t, "foo", data.params.QueryString())
+	require.Equal(t, "foo", data.params.Query())
 	require.Equal(t, true, data.recorded)
 	require.Equal(t, now, data.params.Start())
 	require.Equal(t, int32(10), data.statistics.Ingester.TotalReached)
@@ -108,7 +108,7 @@ func Test_StatsHTTP(t *testing.T) {
 			}),
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusOK), data.status)
-				require.Equal(t, "foo", data.params.QueryString())
+				require.Equal(t, "foo", data.params.Query())
 				require.Equal(t, logproto.BACKWARD, data.params.Direction())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, stats.Result{}, *data.statistics)
@@ -129,7 +129,7 @@ func Test_StatsHTTP(t *testing.T) {
 			}),
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
-				require.Equal(t, "foo", data.params.QueryString())
+				require.Equal(t, "foo", data.params.Query())
 				require.Equal(t, logproto.BACKWARD, data.params.Direction())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, statsResult, *data.statistics)
@@ -151,7 +151,7 @@ func Test_StatsHTTP(t *testing.T) {
 			}),
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
-				require.Equal(t, "foo", data.params.QueryString())
+				require.Equal(t, "foo", data.params.Query())
 				require.Equal(t, logproto.BACKWARD, data.params.Direction())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, statsResult, *data.statistics)
@@ -173,7 +173,7 @@ func Test_StatsHTTP(t *testing.T) {
 			}),
 			func(t *testing.T, data *queryData) {
 				require.Equal(t, fmt.Sprintf("%d", http.StatusTeapot), data.status)
-				require.Equal(t, "foo", data.params.QueryString())
+				require.Equal(t, "foo", data.params.Query())
 				require.Equal(t, uint32(100), data.params.Limit())
 				require.Equal(t, statsResult, *data.statistics)
 				require.Equal(t, streams, data.result)

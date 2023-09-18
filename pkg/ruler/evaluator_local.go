@@ -34,7 +34,7 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		return nil, err
 	}
 	params := logql.NewLiteralParams(
-		parsed,
+		qs,
 		now,
 		now,
 		0,
@@ -44,7 +44,7 @@ func (l *LocalEvaluator) Eval(ctx context.Context, qs string, now time.Time) (*l
 		nil,
 	)
 
-	q := l.engine.Query(params)
+	q := l.engine.Query(params, parsed)
 	res, err := q.Exec(ctx)
 	if err != nil {
 		return nil, err

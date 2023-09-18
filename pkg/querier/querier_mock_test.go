@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
@@ -558,8 +559,8 @@ func newEngineMock() *engineMock {
 	return &engineMock{}
 }
 
-func (e *engineMock) Query(p logql.Params) logql.Query {
-	args := e.Called(p)
+func (e *engineMock) Query(p logql.Params, expr syntax.Expr) logql.Query {
+	args := e.Called(p, expr)
 	return args.Get(0).(logql.Query)
 }
 

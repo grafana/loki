@@ -31,8 +31,7 @@ var (
 
 // Params details the parameters associated with a loki request
 type Params interface {
-	QueryString() string
-	Query() syntax.Expr
+	Query() string
 	Start() time.Time
 	End() time.Time
 	Step() time.Duration
@@ -43,7 +42,7 @@ type Params interface {
 }
 
 func NewLiteralParams(
-	q syntax.Expr,
+	qs string,
 	start, end time.Time,
 	step, interval time.Duration,
 	direction logproto.Direction,
@@ -51,7 +50,7 @@ func NewLiteralParams(
 	shards []string,
 ) LiteralParams {
 	return LiteralParams{
-		qs:        q.String(),
+		qs:        qs,
 		start:     start,
 		end:       end,
 		step:      step,
@@ -65,7 +64,6 @@ func NewLiteralParams(
 // LiteralParams impls Params
 type LiteralParams struct {
 	qs             string
-	query          syntax.Expr
 	start, end     time.Time
 	step, interval time.Duration
 	direction      logproto.Direction
@@ -76,10 +74,7 @@ type LiteralParams struct {
 func (p LiteralParams) Copy() LiteralParams { return p }
 
 // String impls Params
-func (p LiteralParams) QueryString() string { return p.qs }
-
-// Query impls Params
-func (p LiteralParams) Query() syntax.Expr { return p.query }
+func (p LiteralParams) Query() string { return p.qs }
 
 // Start impls Params
 func (p LiteralParams) Start() time.Time { return p.start }
@@ -113,7 +108,7 @@ func GetRangeType(q Params) QueryRangeType {
 // Sortable logql contain sort or sort_desc.
 func Sortable(q Params) (bool, error) {
 	var sortable bool
-	expr, err := syntax.ParseSampleExpr(q.QueryString())
+	expr, err := syntax.ParseSampleExpr(q.Query())
 	if err != nil {
 		return false, err
 	}

@@ -75,7 +75,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		return nil, fmt.Errorf("failed to parse query: %w", err)
 	}
 	params := logql.NewLiteralParams(
-		parsed,
+		q,
 		t, t,
 		0,
 		0,
@@ -84,7 +84,7 @@ func (f *FileClient) Query(q string, limit int, t time.Time, direction logproto.
 		nil,
 	)
 
-	query := f.engine.Query(params)
+	query := f.engine.Query(params, parsed)
 
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -116,7 +116,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		return nil, err
 	}
 	params := logql.NewLiteralParams(
-		parsed,
+		queryStr,
 		start,
 		end,
 		step,
@@ -126,7 +126,7 @@ func (f *FileClient) QueryRange(queryStr string, limit int, start, end time.Time
 		nil,
 	)
 
-	query := f.engine.Query(params)
+	query := f.engine.Query(params, parsed)
 
 	result, err := query.Exec(ctx)
 	if err != nil {

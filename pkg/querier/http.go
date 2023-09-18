@@ -47,7 +47,7 @@ type QueryResponse struct {
 }
 
 type Engine interface {
-	Query(logql.Params) logql.Query
+	Query(logql.Params, syntax.Expr) logql.Query
 }
 
 // nolint // QuerierAPI defines HTTP handler functions for the querier.
@@ -89,7 +89,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := logql.NewLiteralParams(
-		parsed,
+		request.Query,
 		request.Start,
 		request.End,
 		request.Step,
@@ -98,7 +98,7 @@ func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	query := q.engine.Query(params)
+	query := q.engine.Query(params, parsed)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -130,7 +130,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	params := logql.NewLiteralParams(
-		parsed,
+		request.Query,
 		request.Ts,
 		request.Ts,
 		0,
@@ -139,7 +139,7 @@ func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request)
 		request.Limit,
 		request.Shards,
 	)
-	query := q.engine.Query(params)
+	query := q.engine.Query(params, parsed)
 	result, err := query.Exec(ctx)
 	if err != nil {
 		serverutil.WriteError(err, w)
@@ -188,7 +188,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	params := logql.NewLiteralParams(
-		parsed,
+		request.Query,
 		request.Start,
 		request.End,
 		request.Step,
@@ -197,7 +197,7 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 		request.Limit,
 		request.Shards,
 	)
-	query := q.engine.Query(params)
+	query := q.engine.Query(params, parsed)
 
 	result, err := query.Exec(ctx)
 	if err != nil {
