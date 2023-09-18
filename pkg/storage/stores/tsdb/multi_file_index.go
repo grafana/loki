@@ -39,6 +39,7 @@ func (xs IndexSlice) For(ctx context.Context, fn func(context.Context, Index) er
 			return fn(ctx, x)
 		})
 	}
+	g.SetLimit(200)
 	return g.Wait()
 }
 
