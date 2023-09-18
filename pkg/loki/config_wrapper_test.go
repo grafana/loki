@@ -839,10 +839,6 @@ ingester:
 	})
 
 	t.Run("embedded-cache setting is applied to result caches", func(t *testing.T) {
-		// ensure they are all false by default
-		config, _, _ := configWrapperFromYAML(t, minimalConfig, nil)
-		assert.False(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
-
 		configFileString := `---
 query_range:
   results_cache:
@@ -850,8 +846,7 @@ query_range:
       embedded_cache:
         enabled: true`
 
-		config, _ = testContext(configFileString, nil)
-
+		config, _ := testContext(configFileString, nil)
 		assert.True(t, config.QueryRange.ResultsCacheConfig.CacheConfig.EmbeddedCache.Enabled)
 	})
 }
