@@ -1079,7 +1079,7 @@ const (
 	OpKeepEmpty = "--keep-empty"
 
 	// private expressions
-	OpRangeTypeQuantileSketch    = "__quantile_sketch_over_time__"
+	OpRangeTypeQuantileSketch = "__quantile_sketch_over_time__"
 )
 
 func IsComparisonOperator(op string) bool {

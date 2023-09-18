@@ -156,12 +156,14 @@ func NewEngine(opts EngineOpts, q Querier, l Limits, logger log.Logger) *Engine 
 }
 
 // Query creates a new LogQL query. Instant/Range type is derived from the parameters.
-func (ng *Engine) Query(params Params, parsed syntax.Expr) Query {
+func (ng *Engine) Query(params Params) Query {
 	return &query{
-		logger:       ng.logger,
-		params:       params,
-		evaluator:    ng.evaluatorFactory,
-		parsed:       parsed,
+		logger:    ng.logger,
+		params:    params,
+		evaluator: ng.evaluatorFactory,
+		parse: func(_ context.Context, query string) (syntax.Expr, error) {
+			return syntax.ParseExpr(query)
+		},
 		record:       true,
 		logExecQuery: ng.opts.LogExecutingQuery,
 		limits:       ng.limits,
@@ -177,7 +179,7 @@ type Query interface {
 type query struct {
 	logger       log.Logger
 	params       Params
-	parsed       syntax.Expr
+	parse        func(context.Context, string) (syntax.Expr, error)
 	limits       Limits
 	evaluator    EvaluatorFactory
 	record       bool
@@ -269,11 +271,16 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 	ctx, cancel := context.WithTimeout(ctx, queryTimeout)
 	defer cancel()
 
+	expr, err := q.parse(ctx, q.params.Query())
+	if err != nil {
+		return nil, err
+	}
+
 	if q.checkBlocked(ctx, tenants) {
 		return nil, logqlmodel.ErrBlocked
 	}
 
-	switch e := q.parsed.(type) {
+	switch e := expr.(type) {
 	case syntax.SampleExpr:
 		value, err := q.evalSample(ctx, e)
 		return value, err

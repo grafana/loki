@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql/syntax"
 )
 
 var nilShardMetrics = NewShardMapperMetrics(nil)
@@ -71,8 +70,6 @@ func TestMappingEquivalence(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			parsed, err := syntax.ParseExpr(tc.query)
-			require.NoError(t, err)
 			params := NewLiteralParams(
 				tc.query,
 				start,
@@ -83,7 +80,7 @@ func TestMappingEquivalence(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params, parsed)
+			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
@@ -137,8 +134,6 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 		sharded := NewDownstreamEngine(opts, MockDownstreamer{regular}, NoLimits, log.NewNopLogger())
 
 		t.Run(tc.query, func(t *testing.T) {
-			parsed, err := syntax.ParseExpr(tc.query)
-			require.NoError(t, err)
 			params := NewLiteralParams(
 				tc.query,
 				start,
@@ -149,7 +144,7 @@ func TestMappingEquivalenceSketches(t *testing.T) {
 				uint32(limit),
 				nil,
 			)
-			qry := regular.Query(params, parsed)
+			qry := regular.Query(params)
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
 			mapper := NewShardMapper(ConstantShards(shards), nilShardMetrics)
@@ -459,8 +454,6 @@ func TestRangeMappingEquivalence(t *testing.T) {
 		t.Run(tc.query, func(t *testing.T) {
 			ctx := user.InjectOrgID(context.Background(), "fake")
 
-			parsed, err := syntax.ParseExpr(tc.query)
-			require.NoError(t, err)
 			params := NewLiteralParams(
 				tc.query,
 				start,
@@ -473,7 +466,7 @@ func TestRangeMappingEquivalence(t *testing.T) {
 			)
 
 			// Regular engine
-			qry := regularEngine.Query(params, parsed)
+			qry := regularEngine.Query(params)
 			res, err := qry.Exec(ctx)
 			require.NoError(t, err)
 

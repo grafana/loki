@@ -440,7 +440,7 @@ func (m ShardMapper) mapRangeAggregationExpr(expr *syntax.RangeAggregationExpr, 
 
 		downstreams := make([]DownstreamSampleExpr, 0, shards)
 		// TODO(karsten): maybe we have to clone
-		expr.Operation = syntax.OpRangeTypeQuantileSketch 
+		expr.Operation = syntax.OpRangeTypeQuantileSketch
 		for shard := shards - 1; shard >= 0; shard-- {
 			downstreams = append(downstreams, DownstreamSampleExpr{
 				shard: &astmapper.ShardAnnotation{
