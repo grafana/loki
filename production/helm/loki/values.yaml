@@ -270,8 +270,8 @@ loki:
     type: s3
     s3:
       s3: null
-      # Set tls_verify to true to enable it  
-      tls_verify: false  
+      # Set tls_verify to true to enable it
+      tls_verify: false
       endpoint: null
       region: null
       secretAccessKey: null
