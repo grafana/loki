@@ -197,6 +197,9 @@ func newClient(metrics *Metrics, cfg Config, maxStreams, maxLineSize int, maxLin
 	if cfg.URL.URL == nil {
 		return nil, errors.New("client needs target URL")
 	}
+	if metrics == nil {
+		return nil, errors.New("metrics must be instantiated")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -442,11 +445,10 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 func (c *client) send(ctx context.Context, tenantID string, buf []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(ctx, c.cfg.Timeout)
 	defer cancel()
-	req, err := http.NewRequest("POST", c.cfg.URL.String(), bytes.NewReader(buf))
+	req, err := http.NewRequestWithContext(ctx, "POST", c.cfg.URL.String(), bytes.NewReader(buf))
 	if err != nil {
 		return -1, err
 	}
-	req = req.WithContext(ctx)
 	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("User-Agent", UserAgent)
 
