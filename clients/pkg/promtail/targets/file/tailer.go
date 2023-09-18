@@ -116,6 +116,7 @@ func (t *tailer) updatePosition() {
 	defer func() {
 		positionWait.Stop()
 		level.Info(t.logger).Log("msg", "position timer: exited", "path", t.path)
+		t.cleanupMetrics()
 		close(t.posdone)
 	}()
 
@@ -149,7 +150,6 @@ func (t *tailer) readLines() {
 	// This function runs in a goroutine, if it exits this tailer will never do any more tailing.
 	// Clean everything up.
 	defer func() {
-		t.cleanupMetrics()
 		t.running.Store(false)
 		level.Info(t.logger).Log("msg", "tail routine: exited", "path", t.path)
 		close(t.done)
@@ -208,12 +208,13 @@ func (t *tailer) MarkPositionAndSize() error {
 		}
 		return err
 	}
-	t.metrics.totalBytes.WithLabelValues(t.path).Set(float64(size))
 
 	pos, err := t.tail.Tell()
 	if err != nil {
 		return err
 	}
+
+	t.metrics.totalBytes.WithLabelValues(t.path).Set(float64(size))
 	t.metrics.readBytes.WithLabelValues(t.path).Set(float64(pos))
 	t.positions.Put(t.path, pos)
 
