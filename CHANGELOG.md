@@ -17,6 +17,7 @@
 * [10395](https://github.com/grafana/loki/pull/10395/) **shantanualshi** Remove deprecated `split_queries_by_interval` and `forward_headers_list` configuration options in the `query_range` section
 * [10456](https://github.com/grafana/loki/pull/10456) **dannykopping** Add `loki_distributor_ingester_append_timeouts_total` metric, remove `loki_distributor_ingester_append_failures_total` metric
 * [10534](https://github.com/grafana/loki/pull/10534) **chaudum** Remove configuration `use_boltdb_shipper_as_backup`
+* [10620](https://github.com/grafana/loki/pull/10620) **ashwanthgoli** Enable embedded cache if no other cache is explicitly enabled.
 
 ##### Fixes
 

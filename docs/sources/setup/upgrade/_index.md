@@ -54,6 +54,7 @@ The previous default value `false` is applied.
 5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
 6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+8. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
 
 #### Distributor metric changes
 
