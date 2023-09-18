@@ -190,7 +190,14 @@ func findSetMatches(pattern string) []string {
 	}
 	escaped := false
 	sets := []*strings.Builder{{}}
-	for i := 4; i < len(pattern)-2; i++ {
+	init := 4
+	end := len(pattern) - 2
+	// If the regex is wrapped in a group we can remove the first and last parentheses
+	if pattern[init] == '(' && pattern[end-1] == ')' {
+		init++
+		end--
+	}
+	for i := init; i < end; i++ {
 		if escaped {
 			switch {
 			case isRegexMetaCharacter(pattern[i]):
@@ -361,6 +368,22 @@ func postingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, erro
 
 // inversePostingsForMatcher returns the postings for the series with the label name set but not matching the matcher.
 func inversePostingsForMatcher(ix IndexReader, m *labels.Matcher) (index.Postings, error) {
+	// Fast-path for MatchNotRegexp matching.
+	// Inverse of a MatchNotRegexp is MatchRegexp (double negation).
+	// Fast-path for set matching.
+	if m.Type == labels.MatchNotRegexp {
+		setMatches := findSetMatches(m.GetRegexString())
+		if len(setMatches) > 0 {
+			return ix.Postings(m.Name, setMatches...)
+		}
+	}
+
+	// Fast-path for MatchNotEqual matching.
+	// Inverse of a MatchNotEqual is MatchEqual (double negation).
+	if m.Type == labels.MatchNotEqual {
+		return ix.Postings(m.Name, m.Value)
+	}
+
 	vals, err := ix.LabelValues(m.Name)
 	if err != nil {
 		return nil, err
@@ -391,6 +414,26 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 	if err != nil {
 		return nil, errors.Wrapf(err, "fetching values of label %s", name)
 	}
+
+	// If we have a matcher for the label name, we can filter out values that don't match
+	// before we fetch postings. This is especially useful for labels with many values.
+	// e.g. __name__ with a selector like {__name__="xyz"}
+	for _, m := range matchers {
+		if m.Name != name {
+			continue
+		}
+
+		// re-use the allValues slice to avoid allocations
+		// this is safe because the iteration is always ahead of the append
+		filteredValues := allValues[:0]
+		for _, v := range allValues {
+			if m.Matches(v) {
+				filteredValues = append(filteredValues, v)
+			}
+		}
+		allValues = filteredValues
+	}
+
 	valuesPostings := make([]index.Postings, len(allValues))
 	for i, value := range allValues {
 		valuesPostings[i], err = r.Postings(name, value)
@@ -777,40 +820,18 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 		if app, err = newChunk.Appender(); err != nil {
 			break
 		}
-		if hc, ok := p.currChkMeta.Chunk.(*chunkenc.HistogramChunk); ok {
-			newChunk.(*chunkenc.HistogramChunk).SetCounterResetHeader(hc.GetCounterResetHeader())
-		}
-		var h *histogram.Histogram
-		t, h = p.currDelIter.AtHistogram()
-		p.curr.MinTime = t
 
-		app.AppendHistogram(t, h)
-		for vt := p.currDelIter.Next(); vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
+		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
 			if vt != chunkenc.ValHistogram {
 				err = fmt.Errorf("found value type %v in histogram chunk", vt)
 				break
 			}
+			var h *histogram.Histogram
 			t, h = p.currDelIter.AtHistogram()
-
-			// Defend against corrupted chunks.
-			pI, nI, okToAppend, counterReset := app.(*chunkenc.HistogramAppender).Appendable(h)
-			if len(pI)+len(nI) > 0 {
-				err = fmt.Errorf(
-					"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
-					len(pI), len(nI),
-				)
+			_, _, app, err = app.AppendHistogram(nil, t, h, true)
+			if err != nil {
 				break
 			}
-			if counterReset {
-				err = errors.New("detected unexpected counter reset in histogram")
-				break
-			}
-			if !okToAppend {
-				err = errors.New("unable to append histogram due to unexpected schema change")
-				break
-			}
-
-			app.AppendHistogram(t, h)
 		}
 	case chunkenc.ValFloat:
 		newChunk = chunkenc.NewXORChunk()
@@ -834,40 +855,18 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 		if app, err = newChunk.Appender(); err != nil {
 			break
 		}
-		if hc, ok := p.currChkMeta.Chunk.(*chunkenc.FloatHistogramChunk); ok {
-			newChunk.(*chunkenc.FloatHistogramChunk).SetCounterResetHeader(hc.GetCounterResetHeader())
-		}
-		var h *histogram.FloatHistogram
-		t, h = p.currDelIter.AtFloatHistogram()
-		p.curr.MinTime = t
 
-		app.AppendFloatHistogram(t, h)
-		for vt := p.currDelIter.Next(); vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
+		for vt := valueType; vt != chunkenc.ValNone; vt = p.currDelIter.Next() {
 			if vt != chunkenc.ValFloatHistogram {
 				err = fmt.Errorf("found value type %v in histogram chunk", vt)
 				break
 			}
+			var h *histogram.FloatHistogram
 			t, h = p.currDelIter.AtFloatHistogram()
-
-			// Defend against corrupted chunks.
-			pI, nI, okToAppend, counterReset := app.(*chunkenc.FloatHistogramAppender).Appendable(h)
-			if len(pI)+len(nI) > 0 {
-				err = fmt.Errorf(
-					"bucket layout has changed unexpectedly: %d positive and %d negative bucket interjections required",
-					len(pI), len(nI),
-				)
+			_, _, app, err = app.AppendFloatHistogram(nil, t, h, true)
+			if err != nil {
 				break
 			}
-			if counterReset {
-				err = errors.New("detected unexpected counter reset in histogram")
-				break
-			}
-			if !okToAppend {
-				err = errors.New("unable to append histogram due to unexpected schema change")
-				break
-			}
-
-			app.AppendFloatHistogram(t, h)
 		}
 	default:
 		err = fmt.Errorf("populateWithDelChunkSeriesIterator: value type %v unsupported", valueType)
@@ -967,7 +966,6 @@ func (m *mergedStringIter) Next() bool {
 	if (!m.aok && !m.bok) || (m.Err() != nil) {
 		return false
 	}
-
 	switch {
 	case !m.aok:
 		m.cur = m.b.At()
