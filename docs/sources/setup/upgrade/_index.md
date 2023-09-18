@@ -61,6 +61,9 @@ The previous default value `false` is applied.
 The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
 This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
 
+#### Changes to default configuration values
+
+1. `frontend.embedded-cache.max-size-mb` Embedded results cache size is now limited to 100MB. Increase this value according to your log volume.
 
 ## 2.9.0
 
