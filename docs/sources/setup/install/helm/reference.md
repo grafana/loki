@@ -1858,6 +1858,15 @@ See values.yaml
 </td>
 		</tr>
 		<tr>
+			<td>loki.distributor</td>
+			<td>object</td>
+			<td>Optional distributor configuration</td>
+			<td><pre lang="json">
+{}
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>loki.enableServiceLinks</td>
 			<td>bool</td>
 			<td>Should enableServiceLinks be enabled. Default to enable</td>
