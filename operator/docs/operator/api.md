@@ -5649,7 +5649,7 @@ are degraded or the cluster cannot connect to object storage.</p>
 <td><p>ConditionFailed defines the condition that components in the Loki deployment failed to roll out.</p>
 </td>
 </tr><tr><td><p>&#34;Pending&#34;</p></td>
-<td><p>ConditionPending defines the conditioin that some or all components are in pending state.</p>
+<td><p>ConditionPending defines the condition that some or all components are in pending state.</p>
 </td>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>

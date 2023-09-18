@@ -237,7 +237,10 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 		err  error
 		resp *http.Response
 	)
-	req, err := http.NewRequest("POST", p.lokiURL, bytes.NewReader(payload))
+	// Set a timeout for the request
+	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, "POST", p.lokiURL, bytes.NewReader(payload))
 	if err != nil {
 		return -1, fmt.Errorf("failed to create push request: %w", err)
 	}
@@ -253,10 +256,6 @@ func (p *Push) send(ctx context.Context, payload []byte) (int, error) {
 	if p.username != "" {
 		req.SetBasicAuth(p.username, p.password)
 	}
-	// Set a timeout for the request
-	ctx, cancel := context.WithTimeout(ctx, p.httpClient.Timeout)
-	defer cancel()
-	req = req.WithContext(ctx)
 
 	resp, err = p.httpClient.Do(req)
 	if err != nil {
