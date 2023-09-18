@@ -49,10 +49,10 @@ var (
 			CacheResults:         true,
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -62,10 +62,10 @@ var (
 		StatsCacheConfig: IndexStatsCacheConfig{
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -73,10 +73,10 @@ var (
 		VolumeCacheConfig: VolumeCacheConfig{
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
