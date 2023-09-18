@@ -508,7 +508,7 @@ rbac:
   namespaced: false
 # -- Section for configuring optional Helm test
 test:
-  enabled: true
+  enabled: false
   # -- Address of the prometheus server to query for the test
   prometheusAddress: "http://prometheus:9090"
   # -- Number of times to retry the test before failing
@@ -531,6 +531,9 @@ test:
     pullPolicy: IfNotPresent
 # Monitoring section determines which monitoring features to enable
 monitoring:
+  # To enable Loki Canary set it to true
+  lokiCanary:
+    enabled: false
   # Dashboards for monitoring Loki
   dashboards:
     # -- If enabled, create configmap with dashboards for monitoring Loki
