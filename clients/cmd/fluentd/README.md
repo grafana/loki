@@ -2,7 +2,7 @@
 
 [Fluentd](https://fluentd.org/) is a data collector for unified logging layer, it can be configured with the Loki output plugin, provided in this folder, to ship logs to Loki.
 
-See [docs/client/fluentd/README.md](../../docs/sources/clients/fluentd/_index.md) for detailed information.
+See [docs/sources/fluentd/README.md](../../../docs/sources/send-data/fluentd/_index.md) for detailed information.
 
 ## Development
 
