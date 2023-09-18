@@ -128,11 +128,11 @@ Triggering lambda-promtail through SQS allows handling on-failure recovery of th
 
 ### S3 based logging and CloudFormation
 
-Lambda-promtail lets you send logs from different services that use S3 as their logs destination (ALB, VPC Flow, CloudFront access logs, etc.). For this, you need to configure S3 bucket notifications to trigger the lambda-promtail deployment. However, **when using CloudFormation** to encode infrastructure, there is a [known issue](https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/79) when configuring `AWS::S3::BucketNotification` and the resource that will be triggered by the notification in the same stack.
+Lambda-promtail lets you send logs from different services that use S3 as their logs destination (ALB, VPC Flow, CloudFront access logs, etc.). For this, you need to configure S3 bucket notifications to trigger the lambda-promtail deployment. However, when using CloudFormation to encode infrastructure, there is a [known issue](https://github.com/aws-cloudformation/cloudformation-coverage-roadmap/issues/79) when configuring `AWS::S3::BucketNotification` and the resource that will be triggered by the notification in the same stack.
 
-To manage the issue, AWS introduced [S3 event notifications with Event Bridge](https://aws.amazon.com/blogs/aws/new-use-amazon-s3-event-notifications-with-amazon-eventbridge/). In that way, when an object gets created in a S3 bucket, this sends an event to an EventBridge bus, and you can create a rule to send those events to Lambda-promtail.
+To manage this issue, AWS introduced [S3 event notifications with Event Bridge](https://aws.amazon.com/blogs/aws/new-use-amazon-s3-event-notifications-with-amazon-eventbridge/). When an object gets created in a S3 bucket, this sends an event to an EventBridge bus, and you can create a rule to send those events to Lambda-promtail.
 
-The diagram below shows how notifications logs will be written from the source service into an S3 bucket. From there on, the S3 bucket will send an `Object created` notification into the EventBridge `default` bus, where we can configure a rule to trigger lambda promtail.
+The diagram below shows how notifications logs will be written from the source service into an S3 bucket. From there on, the S3 bucket will send an `Object created` notification into the EventBridge `default` bus, where we can configure a rule to trigger Lambda Promtail.
 
 ![](https://grafana.com/media/docs/loki/lambda-promtail-with-eventbridge.png)
 
