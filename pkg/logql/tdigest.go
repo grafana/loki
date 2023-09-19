@@ -154,10 +154,9 @@ func (r *tdigestBatchRangeVectorIterator) agg(samples []promql.FPoint) sketch.Qu
 	return s
 }
 
-// JoinTDigest joins the results from stepEvaluator into a TDigestMatrix.
-func JoinTDigest(stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
+// JoinQuantileSketchVector joins the results from stepEvaluator into a TDigestMatrix.
+func JoinQuantileSketchVector(next bool, ts int64, r StepResult, stepEvaluator StepEvaluator, params Params) (promql_parser.Value, error) {
 	// TODO(karsten): check if ts should be used
-	next, _, r := stepEvaluator.Next()
 	vec := r.QuantileSketchVec()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()

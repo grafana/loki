@@ -340,54 +340,34 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		return nil, err
 	}
 
-	switch e := expr.(type) {
-	case *syntax.RangeAggregationExpr:
-		if e.Operation == syntax.OpRangeTypeQuantileSketch {
-			it, err := q.evaluator.(*DefaultEvaluator).querier.SelectSamples(ctx, SelectSampleParams{
-				&logproto.SampleQueryRequest{
-					Start:    q.params.Start().Add(-e.Left.Interval).Add(-e.Left.Offset),
-					End:      q.params.End().Add(-e.Left.Offset),
-					Selector: e.String(),
-					Shards:   q.params.Shards(),
-				},
-			})
-			if err != nil {
-				return nil, err
-			}
-			iter := newTDigestIterator(
-				iter.NewPeekingSampleIterator(it),
-				e.Left.Interval.Nanoseconds(),
-				q.params.Step().Nanoseconds(),
-				q.params.Start().UnixNano(), q.params.End().UnixNano(), e.Left.Offset.Nanoseconds(),
-			)
-
-			ev := &TDigestStepEvaluator{
-				iter: iter,
-			}
-			return JoinTDigest(ev, q.params)
-		}
-	}
-
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
 	}
 	defer util.LogErrorWithContext(ctx, "closing SampleExpr", stepEvaluator.Close)
 
-	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
-	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
-	return q.Join(stepEvaluator, maxSeries)
-}
-
-func (q *query) Join(stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
-
-	seriesIndex := map[uint64]*promql.Series{}
-
 	next, ts, r := stepEvaluator.Next()
-	vec := r.SampleVector()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
 	}
+	if next && r != nil {
+		switch vec := r.(type) {
+		case SampleVector:
+			maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
+			maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+			return q.JoinSampleVector(next, ts, vec, stepEvaluator, maxSeries)
+		case QuantileSketchVector:
+			return JoinQuantileSketchVector(next, ts, vec, stepEvaluator, q.params)
+		}
+	}
+	return nil, nil // TODO(karsten): return empty result
+}
+
+func (q *query) JoinSampleVector(next bool, ts int64, r StepResult, stepEvaluator StepEvaluator, maxSeries int) (promql_parser.Value, error) {
+
+	seriesIndex := map[uint64]*promql.Series{}
+
+	vec := r.SampleVector()
 
 	// fail fast for the first step or instant query
 	if len(vec) > maxSeries {

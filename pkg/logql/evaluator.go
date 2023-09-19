@@ -481,16 +481,19 @@ func newRangeAggEvaluator(
 	o time.Duration,
 ) (StepEvaluator, error) {
 
-	iter, err := newRangeVectorIterator(
-		it, expr,
-		expr.Left.Interval.Nanoseconds(),
-		q.Step().Nanoseconds(),
-		q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
-	)
-	if err != nil {
-		return nil, err
-	}
-	if expr.Operation == syntax.OpRangeTypeAbsent {
+	switch expr.Operation {
+	case syntax.OpRangeTypeAbsent:
+		// TODO: avoid duplication
+		iter, err := newRangeVectorIterator(
+			it, expr,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
 		absentLabels, err := absentLabels(expr)
 		if err != nil {
 			return nil, err
@@ -499,10 +502,33 @@ func newRangeAggEvaluator(
 			iter: iter,
 			lbs:  absentLabels,
 		}, nil
+	case syntax.OpRangeTypeQuantileSketch:
+		iter := newTDigestIterator(
+			it,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+
+		return &TDigestStepEvaluator{
+			iter: iter,
+		}, nil
+	default:
+		// TODO: avoid duplication
+		iter, err := newRangeVectorIterator(
+			it, expr,
+			expr.Left.Interval.Nanoseconds(),
+			q.Step().Nanoseconds(),
+			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		return &RangeVectorEvaluator{
+			iter: iter,
+		}, nil
 	}
-	return &RangeVectorEvaluator{
-		iter: iter,
-	}, nil
 }
 
 type RangeVectorEvaluator struct {
