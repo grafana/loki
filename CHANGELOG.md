@@ -2,11 +2,10 @@
 
 ### All Changes
 
-##### Security
-
 #### Loki
 
 ##### Enhancements
+
 * [10295](https://github.com/grafana/loki/pull/10295) **changhyuni**: Storage: remove signatureversionv2 from s3.
 * [10140](https://github.com/grafana/loki/pull/10140) **dannykopping**: Dynamic client-side throttling to avoid object storage rate-limits (GCS only)
 * [10302](https://github.com/grafana/loki/pull/10302) **ashwanthgoli**: Removes already deprecated `-querier.engine.timeout` CLI flag and corresponding YAML setting as well as the `querier.query_timeout` YAML setting.
@@ -17,10 +16,9 @@
 * [10380](https://github.com/grafana/loki/pull/10380) **shantanualsi** Remove `experimental.ruler.enable-api` in favour of `ruler.enable-api`
 * [10395](https://github.com/grafana/loki/pull/10395/) **shantanualshi** Remove deprecated `split_queries_by_interval` and `forward_headers_list` configuration options in the `query_range` section
 * [10456](https://github.com/grafana/loki/pull/10456) **dannykopping** Add `loki_distributor_ingester_append_timeouts_total` metric, remove `loki_distributor_ingester_append_failures_total` metric
+* [10534](https://github.com/grafana/loki/pull/10534) **chaudum** Remove configuration `use_boltdb_shipper_as_backup`
 
 ##### Fixes
-
-* [10314](https://github.com/grafana/loki/pull/10314) **bboreham**: Fix race conditions in indexshipper.
 
 ##### Changes
 
@@ -30,6 +28,7 @@
 #### Promtail
 
 ##### Enhancements
+
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
 
@@ -50,6 +49,25 @@
 ##### Enhancements
 
 #### Jsonnet
+## Unreleased
+
+
+
+## 2.9.1 (2023-09-14)
+
+### All Changes
+
+#### Loki
+
+##### Security
+
+* [10573](https://github.com/grafana/loki/pull/10573) **DylanGuedes**: Bump Docker base images to Alpine version 3.18.3 to mitigate CVE-2022-48174
+
+##### Fixes
+
+* [10585](https://github.com/grafana/loki/pull/10585) **ashwanthgoli** / **chaudum**: Fix bug in index object client that could result in not showing all ingested logs in query results.
+* [10314](https://github.com/grafana/loki/pull/10314) **bboreham**: Fix race conditions in indexshipper.
+
 
 ## 2.9.0 (2023-09-06)
 
@@ -180,6 +198,14 @@
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 * [9978](https://github.com/grafana/loki/pull/9978) ****vlad-diachenko****: replaced deprecated `policy.v1beta1` with `policy.v1`.
+
+## 2.8.5 (2023-09-14)
+
+#### Loki
+
+##### Security
+
+* [10573](https://github.com/grafana/loki/pull/10573) **DylanGuedes**: Bump Docker base images to Alpine version 3.18.3 to mitigate CVE-2022-48174
 
 ## 2.8.3 (2023-07-21)
 

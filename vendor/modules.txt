@@ -1172,6 +1172,9 @@ github.com/oschwald/geoip2-golang
 # github.com/oschwald/maxminddb-golang v1.11.0
 ## explicit; go 1.19
 github.com/oschwald/maxminddb-golang
+# github.com/owen-d/BoomFilters v0.0.0-20230914145927-1ad00a0ec6fd
+## explicit; go 1.20
+github.com/owen-d/BoomFilters/boom
 # github.com/pierrec/lz4/v4 v4.1.18
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4

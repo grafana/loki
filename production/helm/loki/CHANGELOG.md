@@ -13,9 +13,20 @@ Entries should include a reference to the pull request that introduced the chang
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
 
-## 5.21.0
+
+## 5.23.0
 
 - [ENHANCEMENT] Add support for _alibabacloud_, _cos_, _swift_ and _bos_ object storage backends in _Values.loki.storage_
+
+## 5.22.0
+
+- [CHANGE] Changed version of Loki to 2.9.1
+
+
+## 5.21.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.1
+
 
 ## 5.20.0
 

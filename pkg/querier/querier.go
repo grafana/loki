@@ -8,6 +8,7 @@ import (
 
 	"github.com/opentracing/opentracing-go"
 
+	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 
 	"github.com/go-kit/log/level"
@@ -100,10 +101,17 @@ type Limits interface {
 	MaxEntriesLimitPerQuery(context.Context, string) int
 }
 
+// Store is the store interface we need on the querier.
+type Store interface {
+	storage.SelectStore
+	index.BaseReader
+	index.StatsReader
+}
+
 // SingleTenantQuerier handles single tenant queries.
 type SingleTenantQuerier struct {
 	cfg             Config
-	store           storage.Store
+	store           Store
 	limits          Limits
 	ingesterQuerier *IngesterQuerier
 	deleteGetter    deleteGetter
@@ -115,7 +123,7 @@ type deleteGetter interface {
 }
 
 // New makes a new Querier.
-func New(cfg Config, store storage.Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
+func New(cfg Config, store Store, ingesterQuerier *IngesterQuerier, limits Limits, d deleteGetter, r prometheus.Registerer) (*SingleTenantQuerier, error) {
 	return &SingleTenantQuerier{
 		cfg:             cfg,
 		store:           store,
