@@ -222,23 +222,27 @@ func (s *indexShipper) ForEach(ctx context.Context, tableName, userID string, ca
 }
 
 func (s *indexShipper) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index.ForEachIndexCallback) error {
-
-	g, ctx := errgroup.WithContext(ctx)
-
-	if s.downloadsManager != nil {
+	// do not spawn new goroutines if indexshipper is running in read or write mode.
+	switch s.cfg.Mode {
+	case ModeReadOnly:
+		return s.downloadsManager.ForEachConcurrent(ctx, tableName, userID, callback)
+	case ModeWriteOnly:
+		return s.uploadsManager.ForEach(tableName, userID, callback)
+	case ModeReadWrite:
+		g, ctx := errgroup.WithContext(ctx)
 		g.Go(func() error {
 			return s.downloadsManager.ForEachConcurrent(ctx, tableName, userID, callback)
 		})
-	}
 
-	if s.uploadsManager != nil {
 		g.Go(func() error {
 			// NB: uploadsManager doesn't yet implement ForEachConcurrent
 			return s.uploadsManager.ForEach(tableName, userID, callback)
 		})
+
+		return g.Wait()
 	}
 
-	return g.Wait()
+	return nil
 }
 
 func (s *indexShipper) Stop() {
