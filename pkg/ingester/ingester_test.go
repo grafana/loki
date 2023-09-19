@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -101,7 +102,11 @@ func TestPrepareShutdown(t *testing.T) {
 		resp := httptest.NewRecorder()
 		i.PrepareShutdown(resp, httptest.NewRequest("GET", "/ingester/prepare-shutdown", nil))
 		require.Equal(t, 200, resp.Code)
-		require.Equal(t, "set", resp.Body.String())
+		splits := strings.SplitN(resp.Body.String(), " ", 2)
+		require.Len(t, splits, 2)
+		require.Equal(t, "set", splits[0])
+		_, err := time.Parse(time.RFC3339, splits[1])
+		require.NoError(t, err)
 	})
 
 	t.Run("DELETE", func(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"math/rand"
 	"net/http"
 	"os"
@@ -490,7 +491,7 @@ func (i *Ingester) starting(ctx context.Context) error {
 	}
 
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
-	shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
+	_, shutdownMarker, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
 		return errors.Wrap(err, "failed to check ingester shutdown marker")
 	}
@@ -562,7 +563,7 @@ func (i *Ingester) stopping(_ error) error {
 // removeShutdownMarkerFile removes the shutdown marker if it exists. Any errors are logged.
 func (i *Ingester) removeShutdownMarkerFile() {
 	shutdownMarkerPath := path.Join(i.cfg.ShutdownMarkerPath, shutdownMarkerFilename)
-	exists, err := shutdownMarkerExists(shutdownMarkerPath)
+	_, exists, err := shutdownMarkerExists(shutdownMarkerPath)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "error checking shutdown marker file exists", "err", err)
 	}
@@ -651,7 +652,7 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		exists, err := shutdownMarkerExists(shutdownMarkerPath)
+		contents, exists, err := shutdownMarkerExists(shutdownMarkerPath)
 		if err != nil {
 			level.Error(util_log.Logger).Log("msg", "unable to check for prepare-shutdown marker file", "path", shutdownMarkerPath, "err", err)
 			w.WriteHeader(http.StatusInternalServerError)
@@ -659,7 +660,7 @@ func (i *Ingester) PrepareShutdown(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if exists {
-			util.WriteTextResponse(w, "set")
+			util.WriteTextResponse(w, "set "+contents)
 		} else {
 			util.WriteTextResponse(w, "unset")
 		}
@@ -762,17 +763,27 @@ func removeShutdownMarker(p string) error {
 }
 
 // shutdownMarkerExists returns true if the shutdown marker file exists, false otherwise
-func shutdownMarkerExists(p string) (bool, error) {
+func shutdownMarkerExists(p string) (string, bool, error) {
 	s, err := os.Stat(p)
 	if err != nil && os.IsNotExist(err) {
-		return false, nil
+		return "", false, nil
 	}
 
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 
-	return s.Mode().IsRegular(), nil
+	f, err := os.Open(p)
+	if err != nil {
+		return "", false, err
+	}
+
+	bts, err := io.ReadAll(f)
+	if err != nil {
+		return "", false, err
+	}
+
+	return string(bts), s.Mode().IsRegular(), nil
 }
 
 // ShutdownHandler handles a graceful shutdown of the ingester service and
