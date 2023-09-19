@@ -24,7 +24,7 @@ to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 ## Release patched version
 
 1. [Backport PR(s)](./2-backport-prs.md)
-1. [Prepare Release notes](./3-prepare-release-notes.md)
+1. [Prepare Release notes]({{< relref "./3-prepare-release-notes" >}})
 1. [Prepare Changelog]({{< relref "./4-prepare-changelog" >}})
 1. [Check Metrics and Configurations changes]({{< relref "./5-check-metrics-configurations-changes" >}})
 1. [Prepare Upgrade guide]({{< relref "./6-prepare-upgrade-guide" >}})
