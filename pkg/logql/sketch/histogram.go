@@ -4,9 +4,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/influxdata/tdigest"
-
 	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/influxdata/tdigest"
 )
 
 type QuantileSketch interface {

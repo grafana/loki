@@ -8,6 +8,7 @@ import (
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/sketch"
 	"github.com/grafana/loki/pkg/logqlmodel"
 )
@@ -53,11 +54,27 @@ func (q QuantileSketchVector) QuantileSketchVec() QuantileSketchVector {
 	return q
 }
 
+func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
+	samples := make([]*logproto.QuantileSketchSample, len(q))
+	for i, sample := range q {
+		samples[i] = sample.ToProto()
+	}
+	return &logproto.QuantileSketchVector{Samples: samples}
+}
+
 func (QuantileSketchMatrix) String() string {
 	return "TDigestMatrix()"
 }
 
 func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
+
+func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
+	values := make([]*logproto.QuantileSketchVector, len(m))
+	for i, vec := range m {
+		values[i] = vec.ToProto()
+	}
+	return &logproto.QuantileSketchMatrix{Values: values}
+}
 
 type QuantileSketchStepEvaluator struct {
 	iter RangeVectorIterator
@@ -121,6 +138,22 @@ type quantileSketchSample struct {
 	F sketch.QuantileSketch
 
 	Metric labels.Labels
+}
+
+func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
+	metric := make([]*logproto.LabelPair, len(q.Metric))
+	for i, m := range q.Metric {
+		metric[i] = &logproto.LabelPair{Name: m.Name, Value: m.Value}
+	}
+
+	// TODO
+	sketch := &logproto.TDigest{}
+
+	return &logproto.QuantileSketchSample{
+		F:           sketch,
+		TimestampMs: q.T,
+		Metric:      metric,
+	}
 }
 
 type tdigestBatchRangeVectorIterator struct {
