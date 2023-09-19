@@ -368,9 +368,9 @@ func (ev *DownstreamEvaluator) NewStepEvaluator(
 			xs = append(xs, stepper)
 		}
 
-		inner := NewTDigestMergeStepEvaluator(xs)
+		inner := NewQuantileSketchMergeStepEvaluator(xs)
 
-		return NewTDigestVectorStepEvaluator(inner, *e.quantile), nil
+		return NewQuantileSketchVectorStepEvaluator(inner, *e.quantile), nil
 
 	default:
 		return ev.defaultEvaluator.NewStepEvaluator(ctx, nextEvFactory, e, params)

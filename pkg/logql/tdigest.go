@@ -225,19 +225,19 @@ func (*TDigestMatrixStepEvaluator) Explain(parent Node) {
 	parent.Child("TDigestMatrix")
 }
 
-// TDigestMergeStepEvaluator merges multiple tdigest sketches into one for each
+// QuantileSketchMergeStepEvaluator merges multiple tdigest sketches into one for each
 // step.
-type TDigestMergeStepEvaluator struct {
+type QuantileSketchMergeStepEvaluator struct {
 	evaluators []StepEvaluator
 }
 
-func NewTDigestMergeStepEvaluator(evaluators []StepEvaluator) *TDigestMergeStepEvaluator {
-	return &TDigestMergeStepEvaluator{
+func NewQuantileSketchMergeStepEvaluator(evaluators []StepEvaluator) *QuantileSketchMergeStepEvaluator {
+	return &QuantileSketchMergeStepEvaluator{
 		evaluators: evaluators,
 	}
 }
 
-func (e *TDigestMergeStepEvaluator) Next() (bool, int64, StepResult) {
+func (e *QuantileSketchMergeStepEvaluator) Next() (bool, int64, StepResult) {
 	// TODO(karsten): check that we have more than one
 	ok, ts, r := e.evaluators[0].Next()
 	var cur QuantileSketchVector
@@ -259,11 +259,11 @@ func (e *TDigestMergeStepEvaluator) Next() (bool, int64, StepResult) {
 	return ok, ts, cur
 }
 
-func (*TDigestMergeStepEvaluator) Close() error { return nil }
+func (*QuantileSketchMergeStepEvaluator) Close() error { return nil }
 
-func (*TDigestMergeStepEvaluator) Error() error { return nil }
+func (*QuantileSketchMergeStepEvaluator) Error() error { return nil }
 
-func (e *TDigestMergeStepEvaluator) Explain(parent Node) {
+func (e *QuantileSketchMergeStepEvaluator) Explain(parent Node) {
 	b := parent.Child("TDigestMerge")
 	if len(e.evaluators) < 3 {
 		for _, child := range e.evaluators {
@@ -276,23 +276,23 @@ func (e *TDigestMergeStepEvaluator) Explain(parent Node) {
 	}
 }
 
-// TDigestVectorStepEvaluator evaluates a tdigest qunatile sketch into a
+// QuantileSketchVectorStepEvaluator evaluates a tdigest qunatile sketch into a
 // promql.Vector.
-type TDigestVectorStepEvaluator struct {
+type QuantileSketchVectorStepEvaluator struct {
 	inner    StepEvaluator
 	quantile float64
 }
 
-var _ StepEvaluator = NewTDigestVectorStepEvaluator(nil, 0)
+var _ StepEvaluator = NewQuantileSketchVectorStepEvaluator(nil, 0)
 
-func NewTDigestVectorStepEvaluator(inner StepEvaluator, quantile float64) *TDigestVectorStepEvaluator {
-	return &TDigestVectorStepEvaluator{
+func NewQuantileSketchVectorStepEvaluator(inner StepEvaluator, quantile float64) *QuantileSketchVectorStepEvaluator {
+	return &QuantileSketchVectorStepEvaluator{
 		inner:    inner,
 		quantile: quantile,
 	}
 }
 
-func (e *TDigestVectorStepEvaluator) Next() (bool, int64, StepResult) {
+func (e *QuantileSketchVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.inner.Next()
 	quantileSketchVec := r.QuantileSketchVec()
 
@@ -312,11 +312,11 @@ func (e *TDigestVectorStepEvaluator) Next() (bool, int64, StepResult) {
 	return ok, ts, SampleVector(vec)
 }
 
-func (*TDigestVectorStepEvaluator) Close() error { return nil }
+func (*QuantileSketchVectorStepEvaluator) Close() error { return nil }
 
-func (*TDigestVectorStepEvaluator) Error() error { return nil }
+func (*QuantileSketchVectorStepEvaluator) Error() error { return nil }
 
-func (e *TDigestVectorStepEvaluator) Explain(parent Node) {
-	b := parent.Child("TDigestVector")
+func (e *QuantileSketchVectorStepEvaluator) Explain(parent Node) {
+	b := parent.Child("QuantileSketchVector")
 	e.inner.Explain(b)
 }

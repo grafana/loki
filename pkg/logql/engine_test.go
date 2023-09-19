@@ -129,7 +129,6 @@ func TestEngine_LogsRateUnwrap(t *testing.T) {
 			t.Parallel()
 
 			eng := NewEngine(EngineOpts{}, newQuerierRecorder(t, test.data, test.params), NoLimits, log.NewNopLogger())
-
 			q := eng.Query(LiteralParams{
 				qs:        test.qs,
 				start:     test.ts,
@@ -2221,10 +2220,9 @@ func (statsQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (it
 func TestEngine_Stats(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &statsQuerier{}, NoLimits, log.NewNopLogger())
 
-	query := `{foo="bar"}`
 	queueTime := 2 * time.Nanosecond
 	q := eng.Query(LiteralParams{
-		qs:        query,
+		qs:        `{foo="bar"}`,
 		start:     time.Now(),
 		end:       time.Now(),
 		direction: logproto.BACKWARD,
@@ -2259,9 +2257,8 @@ func (metaQuerier) SelectSamples(ctx context.Context, _ SelectSampleParams) (ite
 func TestEngine_Metadata(t *testing.T) {
 	eng := NewEngine(EngineOpts{}, &metaQuerier{}, NoLimits, log.NewNopLogger())
 
-	query := `{foo="bar"}`
 	q := eng.Query(LiteralParams{
-		qs:        query,
+		qs:        `{foo="bar"}`,
 		start:     time.Now(),
 		end:       time.Now(),
 		direction: logproto.BACKWARD,
