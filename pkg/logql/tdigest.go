@@ -59,13 +59,13 @@ func (QuantileSketchMatrix) String() string {
 
 func (QuantileSketchMatrix) Type() promql_parser.ValueType { return "TDigestMatrix" }
 
-type TDigestStepEvaluator struct {
+type QuantileSketchStepEvaluator struct {
 	iter RangeVectorIterator
 
 	err error
 }
 
-func (e *TDigestStepEvaluator) Next() (bool, int64, StepResult) {
+func (e *QuantileSketchStepEvaluator) Next() (bool, int64, StepResult) {
 	next := e.iter.Next()
 	if !next {
 		return false, 0, QuantileSketchVector{}
@@ -82,20 +82,20 @@ func (e *TDigestStepEvaluator) Next() (bool, int64, StepResult) {
 	return true, ts, vec
 }
 
-func (e *TDigestStepEvaluator) Close() error { return e.iter.Close() }
+func (e *QuantileSketchStepEvaluator) Close() error { return e.iter.Close() }
 
-func (e *TDigestStepEvaluator) Error() error {
+func (e *QuantileSketchStepEvaluator) Error() error {
 	if e.err != nil {
 		return e.err
 	}
 	return e.iter.Error()
 }
 
-func (e *TDigestStepEvaluator) Explain(parent Node) {
+func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 	parent.Child("T-Digest")
 }
 
-func newTDigestIterator(
+func newQuantileSketchIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64) RangeVectorIterator {
 	inner := batchRangeVectorIterator{

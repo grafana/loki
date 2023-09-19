@@ -503,14 +503,14 @@ func newRangeAggEvaluator(
 			lbs:  absentLabels,
 		}, nil
 	case syntax.OpRangeTypeQuantileSketch:
-		iter := newTDigestIterator(
+		iter := newQuantileSketchIterator(
 			it,
 			expr.Left.Interval.Nanoseconds(),
 			q.Step().Nanoseconds(),
 			q.Start().UnixNano(), q.End().UnixNano(), o.Nanoseconds(),
 		)
 
-		return &TDigestStepEvaluator{
+		return &QuantileSketchStepEvaluator{
 			iter: iter,
 		}, nil
 	default:
