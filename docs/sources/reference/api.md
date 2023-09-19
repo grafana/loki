@@ -661,7 +661,7 @@ the ingester will be unregistered from the ring and in-memory time series data w
 This endpoint supersedes any YAML configurations and isn't necessary if the ingester is already
 configured to unregister from the ring or to flush on shutdown.
 
-A `GET` to the `prepare_shutdown` endpoint returns the status of this configuration, either `set` or `unset`.
+A `GET` to the `prepare_shutdown` endpoint returns the status of this configuration, either `set` or `unset`, plus the timestamp in RFC3339 format.
 
 A `DELETE` to the `prepare_shutdown` endpoint reverts the configuration of the ingester to its previous state
 (with respect to unregistering on shutdown and flushing of in-memory time series data to long-term storage).
