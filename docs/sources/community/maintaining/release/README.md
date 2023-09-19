@@ -1,55 +1,45 @@
 ---
 title: Releasing Grafana Loki
 description: Releasing Grafana Loki
-aliases: 
+aliases:
 - ../../maintaining/release/
 ---
 # Releasing Grafana Loki
 
 This document is a series of instructions for core Grafana Loki maintainers to be able
-to publish a new Loki release.
+to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 
-## Prerequisites
+## Release stable version
 
-Each maintainer performing a release should perform the following steps once
-before releasing Loki.
+TODO(kavi): Integrate this somewhere.
+1. Create an issue to communicate beginning of the release process with the community. Example issue [here](https://github.com/grafana/loki/issues/10468)
 
-### Signing Tags and Commits
+1. [Create release branch](./1-create-release-branch.md)
+1. [Backport PR(s)](./2-backport-prs.md)
+1. [Prepare Release notes](./3-prepare-release-notes.md)
+1. [Prepare Changelog](./4-prepare-changelog.md)
+1. [Check Metrics and Configurations changes](./5-check-metrics-configurations-changes.md)
+1. [Prepare Upgrade guide](./6-prepare-upgrade-guide.md)
+1. [Prepare version upgrades](./7-prepare-version-upgrades.md)
+1. [Tag Release](./8-tag-release.md)
+1. [Publish Release](./9-publish-release.md)
+1. Test Release
+1. Announce Release
+1. Post release cleanup
 
-#### Add Existing GPG Key to GitHub
+## Release patched version
 
-First, Navigate to your user's [SSH and GPG keys settings
-page](https://github.com/settings/keys). If the GPG key for the email address
-used to commit with Loki is not present, follow these instructions to add it:
+1. Backport PR(s)
+1. Prepare Release notes
+1. Prepare Changelog
+1. Bump version in images, binaries and docs
+1. Test Config and Metric names
+1. Tag Release
+1. Publish Release
+1. Test Release
+1. Announce Release
+1. Post release cleanup
 
-1. Run `gpg --armor --export <your email address>`
-1. Copy the output.
-1. In the settings page linked above, click "New GPG Key".
-1. Copy and paste the PGP public key block.
-
-#### Signing Commits and Tags by Default
-
-To avoid accidentally publishing a tag or commit without signing it, you can run
-the following to ensure all commits and tags are signed:
-
-```bash
-git config --global commit.gpgSign true
-git config --global tag.gpgSign true
-```
-
-##### macOS Signing Errors
-
-If you are on macOS and using an encrypted GPG key, the `gpg-agent` may be
-unable to prompt you for your private key passphrase. This will be denoted by an
-error when creating a commit or tag. To circumvent the error, add the following
-into your `~/.bash_profile` or `~/.zshrc`, depending on which shell you are
-using:
-
-```
-export GPG_TTY=$(tty)
-```
-
-## Performing the Release
 
 1. Create a new branch to update `CHANGELOG.md` and references to version
    numbers across the entire repository (e.g. README.md in the project root).
