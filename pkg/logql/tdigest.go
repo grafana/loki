@@ -146,8 +146,7 @@ func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
 		metric[i] = &logproto.LabelPair{Name: m.Name, Value: m.Value}
 	}
 
-	// TODO
-	sketch := &logproto.TDigest{}
+	sketch := q.F.ToProto()
 
 	return &logproto.QuantileSketchSample{
 		F:           sketch,

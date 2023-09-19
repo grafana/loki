@@ -6,12 +6,15 @@ import (
 
 	"github.com/DataDog/sketches-go/ddsketch"
 	"github.com/influxdata/tdigest"
+
+	"github.com/grafana/loki/pkg/logproto"
 )
 
 type QuantileSketch interface {
 	Add(float64)
 	Quantile(float64) (float64, error)
 	Merge(QuantileSketch) (QuantileSketch, error)
+	ToProto() *logproto.TDigest // TODO: support DDSketch as well.
 }
 
 type DDSketchQuantile struct {
@@ -46,6 +49,10 @@ func (d *DDSketchQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
 	return d, err
 }
 
+func (d *DDSketchQuantile) ToProto() *logproto.TDigest {
+	return nil
+}
+
 type TDigestQuantile struct {
 	sketch *tdigest.TDigest
 }
@@ -75,4 +82,20 @@ func (d *TDigestQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
 
 	d.sketch.Merge(cast.sketch)
 	return d, nil
+}
+
+func (d *TDigestQuantile) ToProto() *logproto.TDigest {
+	centroids := make(tdigest.CentroidList, 0)
+	centroids = d.sketch.Centroids(centroids)
+	processed := make([]*logproto.TDigest_Centroid, len(centroids))
+	for i, c := range centroids {
+		processed[i] = &logproto.TDigest_Centroid{
+			Mean:   c.Mean,
+			Weight: c.Weight,
+		}
+	}
+	return &logproto.TDigest{
+		Compression: d.sketch.Compression,
+		Processed:   processed,
+	}
 }
