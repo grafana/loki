@@ -1,5 +1,9 @@
 package pattern
 
+import (
+	"strings"
+)
+
 type lexer struct {
 	data        []byte
 	p, pe, cs   int
@@ -51,7 +55,7 @@ func (lex *lexer) token() string {
 // nolint
 func (lex *lexer) identifier(out *exprSymType) (int, error) {
 	t := lex.token()
-	out.str = t[1 : len(t)-1]
+	out.str = strings.ToLower(t[1 : len(t)-1])
 	return IDENTIFIER, nil
 }
 
