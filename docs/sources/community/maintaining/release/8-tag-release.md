@@ -4,7 +4,7 @@ A tag is required to create GitHub artifacts and as a prerequisite for publishin
 
 ## Before you begin
 
-1. All required commits for the release should exist on the release branch. This includes functionality and documentation such as the [release notes](./3-prepare-release-notes.md) and [CHANGELOG.md](./4-prepare-changelog.md). All versions in the repo should have already been [updated](./7-prepare-version-upgrades.md).
+1. All required commits for the release should exist on the release branch. This includes functionality and documentation such as the [release notes]({{< "./3-prepare-release-notes" >}}) and [CHANGELOG.md]({{< "./4-prepare-changelog" >}}). All versions in the repo should have already been [updated]({{< "./7-prepare-version-upgrades" >}}).
 
 1. Make sure you are up to date on the release branch:
 
