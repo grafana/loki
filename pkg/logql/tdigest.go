@@ -76,6 +76,11 @@ func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	return &logproto.QuantileSketchMatrix{Values: values}
 }
 
+func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (QuantileSketchMatrix, error) {
+	// TODO
+	nil, fmt.Error("unimplemented QuantileSketchMatrixFromProto")
+}
+
 type QuantileSketchStepEvaluator struct {
 	iter RangeVectorIterator
 
