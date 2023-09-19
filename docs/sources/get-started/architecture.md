@@ -96,6 +96,7 @@ Symbols store references to the actual strings containing label names and values
 ### Single Store
 
 Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{< relref "../operations/storage/boltdb-shipper" >}}) to store the `index` in object storage (the same way we store `chunks`).
+Note: tsdb_shipper was introduced in 2.8 and it deprecated the previous boltdb_shipper
 
 ###  Deprecated: Multi-store
 
