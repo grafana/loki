@@ -43,7 +43,6 @@ import (
 )
 
 var (
-	indexGatewayClient index.Client
 	// singleton for each period
 	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
 
@@ -101,11 +100,6 @@ func ResetBoltDBIndexClientsWithShipper() {
 	}
 
 	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
-
-	if indexGatewayClient != nil {
-		indexGatewayClient.Stop()
-		indexGatewayClient = nil
-	}
 }
 
 // StoreLimits helps get Limits specific to Queries for Stores
@@ -412,17 +406,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 		switch periodCfg.IndexType {
 		case config.BoltDBShipperType:
 			if shouldUseIndexGatewayClient(cfg.BoltDBShipperConfig.Config) {
-				if indexGatewayClient != nil {
-					return indexGatewayClient, nil
-				}
-
-				gateway, err := gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
-				if err != nil {
-					return nil, err
-				}
-
-				indexGatewayClient = gateway
-				return gateway, nil
+				return gatewayclient.NewGatewayClient(cfg.BoltDBShipperConfig.IndexGatewayClientConfig, registerer, limits, logger)
 			}
 
 			if client, ok := boltdbIndexClientsWithShipper[periodCfg.From]; ok {
