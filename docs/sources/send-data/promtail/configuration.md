@@ -922,7 +922,7 @@ max_message_length: <int>
 
 ### loki_push_api
 
-The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) server.
+The `loki_push_api` block configures Promtail to expose a [Loki push API]({{< relref "../../reference/api#ingest-logs" >}}) server.
 
 Each job configured with a `loki_push_api` will expose this API and will require a separate port.
 
