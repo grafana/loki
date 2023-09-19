@@ -6,7 +6,7 @@ A tag is required to create GitHub artifacts and as a prerequisite for publishin
 
 1. All required commits for the release should exist on the release branch. This includes functionality and documentation such as the [release notes](./3-prepare-release-notes.md) and [CHANGELOG.md](./4-prepare-changelog.md). All versions in the repo should have already been [updated](./7-prepare-version-upgrades.md).
 
-2. Make sure you are up to date on the release branch:
+1. Make sure you are up to date on the release branch:
 
    ```
    git checkout release-VERSION_PREFIX
@@ -14,11 +14,11 @@ A tag is required to create GitHub artifacts and as a prerequisite for publishin
    git pull origin
    ```
 
-3. Determine the [VERSION](concepts/version.md).
+1. Determine the [VERSION](concepts/version.md).
 
-4. Follow the GitHub [instructions](https://docs.github.com/en/authentication/managing-commit-signature-verification) to set up GPG for signature verification.
+1. Follow the GitHub [instructions](https://docs.github.com/en/authentication/managing-commit-signature-verification) to set up GPG for signature verification.
 
-5. Optional: Configure git to always sign on commit or tag.
+1. Optional: Configure git to always sign on commit or tag.
 
 ```bash
 git config --global commit.gpgSign true
@@ -46,7 +46,8 @@ export GPG_TTY=$(tty)
     git push origin $RELEASE
     ```
 
-2. After a tag has been pushed, GitHub CI will create release assets and open a release draft for every pushed tag.
+1. After a tag has been pushed, GitHub CI will create release assets and open a release draft for every pushed tag.
 
     - This will take ~10-20 minutes.
     - You can monitor this by viewing the drone build on the commit for the release tag.
+	- It also creates PR to update helm charts. Example [PR](https://github.com/grafana/loki/pull/10479). Review and merge it.

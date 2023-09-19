@@ -16,9 +16,9 @@ This is how to publish the release in GitHub.
 
     Do not substitute the value for `CHANGELOG`.
 
-4. At the bottom of the release page, perform the following:
+1. At the bottom of the release page, perform the following:
     - For a Stable Release or Patch Release, tick the checkbox to "set as the latest release" only if it's latest release on current latest `release-VERSION_PREFIX` branch.
 
-5. Optionally, have other team members review the release draft if you wish to feel more comfortable with it.
+2. Optionally, have other team members review the release draft if you wish to feel more comfortable with it.
 
-6. Publish the release!
+3. Publish the release!

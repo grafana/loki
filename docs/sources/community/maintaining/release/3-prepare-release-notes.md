@@ -30,10 +30,11 @@ Preparing release notes for specific Loki release at high level is basically two
 
 1. Review the final release notes with Loki squad.
 
-1. Prepare release notes PR to `main` branch. Example [PR](https://github.com/grafana/loki/pull/10481)
+1. Prepare release notes PR to `main` branch. Example [PR](https://github.com/grafana/loki/pull/9004/)
    * Copy `next.md` to the new `v<MAJOR>-<MINOR>.md` (e.g: `v2.9.md`)
    * Replace version place holders `V?.?` with `V<MAJOR>.<MINOR>` in the new file.
    * Remove all the entries under `Features and enhancements`, `Upgrade Considerations` and `Bug fixes` on `next.md`
+   * Add an entry for new version in `_index.md` as shown in the example PR above.
    * Get review and merged.
 
 1. Backport above PR to the `release-VERSION_PREFIX` branch. Example [PR](https://github.com/grafana/loki/pull/10482)

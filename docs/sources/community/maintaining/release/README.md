@@ -11,9 +11,6 @@ to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 
 ## Release stable version
 
-TODO(kavi): Integrate this somewhere.
-1. Create an issue to communicate beginning of the release process with the community. Example issue [here](https://github.com/grafana/loki/issues/10468)
-
 1. [Create release branch](./1-create-release-branch.md)
 1. [Backport PR(s)](./2-backport-prs.md)
 1. [Prepare Release notes](./3-prepare-release-notes.md)
@@ -23,90 +20,14 @@ TODO(kavi): Integrate this somewhere.
 1. [Prepare version upgrades](./7-prepare-version-upgrades.md)
 1. [Tag Release](./8-tag-release.md)
 1. [Publish Release](./9-publish-release.md)
-1. Test Release
-1. Announce Release
-1. Post release cleanup
 
 ## Release patched version
 
-1. Backport PR(s)
-1. Prepare Release notes
-1. Prepare Changelog
-1. Bump version in images, binaries and docs
-1. Test Config and Metric names
-1. Tag Release
-1. Publish Release
-1. Test Release
-1. Announce Release
-1. Post release cleanup
-
-
-1. Create a new branch to update `CHANGELOG.md` and references to version
-   numbers across the entire repository (e.g. README.md in the project root).
-1. Modify `CHANGELOG.md` with the new version number and its release date.
-1. List all the merged PRs since the previous release. This command is helpful
-   for generating the list (modifying the date to the date of the previous release): `curl https://api.github.com/search/issues?q=repo:grafana/loki+is:pr+"merged:>=2019-08-02" | jq -r ' .items[] | "* [" + (.number|tostring) + "](" + .html_url + ") **" + .user.login + "**: " + .title'`
-1. Go through `docs/` and find references to the previous release version and
-   update them to reference the new version.
-1. *Without creating a tag*, create a commit based on your changes and open a PR
-   for updating the release notes.
-   1. Until [852](https://github.com/grafana/loki/issues/852) is fixed, updating
-      Helm and Ksonnet configs needs to be done in a separate commit following
-      the release tag so that Helm tests pass.
-1. Merge the changelog PR.
-1. Create a new tag for the release.
-    1. Once this step is done, the CI will be triggered to create release
-       artifacts and publish them to a draft release. The tag will be made
-       publicly available immediately.
-    1. Run the following to create the tag:
-
-       ```bash
-       RELEASE=v1.2.3 # UPDATE ME to reference new release
-       git checkout release-1.2.x # checkout release branch
-       git pull
-       git tag -s $RELEASE -m "tagging release $RELEASE"
-       git push origin $RELEASE
-       ```
-1. Watch Drone and wait for all the jobs to finish running.
-
-## Updating Helm and Ksonnet configs
-
-These steps should be executed after the previous section, once CircleCI has
-finished running all the release jobs.
-
-1. Run `bash ./tools/release_prepare.sh`
-1. When prompted for the release version, enter the latest tag.
-1. When prompted for new Helm version numbers, the defaults should suffice (a
-   minor version bump).
-1. Commit the changes to a new branch, push, make a PR, and get it merged.
-
-## Publishing the Release Draft
-
-Once the previous two steps are completed, you can publish your draft!
-
-1. Go to the [GitHub releases page](https://github.com/grafana/loki/releases)
-   and find the drafted release.
-1. Edit the drafted release, copying and pasting *notable changes* from the
-   CHANGELOG. Add a link to the CHANGELOG, noting that the full list of changes
-   can be found there. Refer to other releases for help with formatting this.
-1. Optionally, have other team members review the release draft so you feel
-   comfortable with it.
-1. Publish the release!
-
-## Versioning Loki docs on Grafana Website
-
-Loki docs are versioned. Follow the below steps to version Loki docs for this release.
-
->NOTE: Here $LOCAL_LOKI_PATH is your local path where Loki is checked out with correct $VERSION
-
-1. Clone Grafana website [repo](https://github.com/grafana/website)
-1. Create new branch `git checkout -b $VERSION` (replace `$VERSION` with current release version. e.g: `v2.5.0`)
-1. Run `mv content/docs/loki/next content/docs/loki/next.main`
-1. Run `mkdir content/docs/loki/next`
-1. Run `cp -R $LOCAL_LOKI_PATH/docs/sources/* content/docs/loki/next`
-1. Run `scripts/docs-release.sh loki latest next`
-1. Run `scripts/docs-release.sh loki $VERSION latest`
-1. Run `mv content/docs/loki/next.main content/docs/loki/next`
-1. Update `version_latest` to `$VERSION` in `content/docs/loki/_index.md`
-1. Docs will be generated for this release.
-1. Create PR and Merge it after approval.
+1. [Backport PR(s)](./2-backport-prs.md)
+1. [Prepare Release notes](./3-prepare-release-notes.md)
+1. [Prepare Changelog](./4-prepare-changelog.md)
+1. [Check Metrics and Configurations changes](./5-check-metrics-configurations-changes.md)
+1. [Prepare Upgrade guide](./6-prepare-upgrade-guide.md)
+1. [Prepare version upgrades](./7-prepare-version-upgrades.md)
+1. [Tag Release](./8-tag-release.md)
+1. [Publish Release](./9-publish-release.md)
