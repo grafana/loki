@@ -4,6 +4,8 @@ set -o errexit
 set -o nounset
 set -o pipefail
 
+git fetch --tags --all
+
 WIP=$(git diff --quiet || echo '-WIP')
 BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's#/#-#g')
 # When 7 chars are not enough to be unique, git automatically uses more.
