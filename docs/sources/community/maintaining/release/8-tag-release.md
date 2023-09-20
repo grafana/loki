@@ -29,10 +29,7 @@ git config --global commit.gpgSign true
 git config --global tag.gpgSign true
 ```
 
-If you are on macOS or linux and using an encrypted GPG key, `gpg-agent` or `gpg` may be unable
-to prompt you for your private key passphrase. This will be denoted by an error
-when creating a commit or tag. To circumvent the error, add the following into
-your `~/.bash_profile`, `~/.bashrc` or `~/.zshrc`, depending on which shell you are using.
+If you are on macOS or Linux and using an encrypted GPG key, `gpg-agent` or `gpg` may be unable to prompt you for your private key passphrase. This will be denoted by an error when creating a commit or tag. To circumvent the error, add the following into your `~/.bash_profile`, `~/.bashrc` or `~/.zshrc`, depending on which shell you are using.
 
 ```
 export GPG_TTY=$(tty)
@@ -51,7 +48,6 @@ export GPG_TTY=$(tty)
     ```
 
 1. After a tag has been pushed, GitHub CI will create release assets and open a release draft for every pushed tag.
-
-    - This will take ~10-20 minutes.
-    - You can monitor this by viewing the drone build on the commit for the release tag.
-	- It also creates PR to update helm charts. Example [PR](https://github.com/grafana/loki/pull/10479). Review and merge it.
+   - This will take ~10-20 minutes.
+   - You can monitor this by viewing the drone build on the commit for the release tag.
+   - It also creates a PR to update the Helm charts. Example [PR](https://github.com/grafana/loki/pull/10479). Review and merge it.
