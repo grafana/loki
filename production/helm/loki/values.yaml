@@ -277,6 +277,11 @@ loki:
       signatureVersion: null
       s3ForcePathStyle: false
       insecure: false
+      sseEncryption: null
+      sse:
+        type: null
+        kmsKeyId: null
+        kmsEncryptionContext: null
       http_config: {}
     gcs:
       chunkBufferSize: 0

@@ -2194,7 +2194,9 @@ null
     "s3": null,
     "s3ForcePathStyle": false,
     "secretAccessKey": null,
-    "signatureVersion": null
+    "signatureVersion": null,
+	"sseEncryption": null,
+	"sse": {}
   },
   "type": "s3"
 }
