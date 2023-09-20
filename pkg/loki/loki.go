@@ -445,8 +445,14 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.Server.HTTP.Path("/loki/api/v1/format_query").Methods("GET", "POST").HandlerFunc(formatQueryHandler())
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started", "startup_time", time.Since(startTime)) }
-	stopped := func() { level.Info(util_log.Logger).Log("msg", "Loki stopped", "running_time", time.Since(startTime)) }
+	healthy := func() {
+		level.Info(util_log.Logger).Log("msg", "Loki started", "startup_time", time.Since(startTime))
+		_ = util_log.Flush()
+	}
+	stopped := func() {
+		level.Info(util_log.Logger).Log("msg", "Loki stopped", "running_time", time.Since(startTime))
+		_ = util_log.Flush()
+	}
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Loki
 		sm.StopAsync()
