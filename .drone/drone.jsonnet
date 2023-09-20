@@ -906,7 +906,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
     ],
   },
   pipeline('docker-driver') {
-    trigger+: onTagOrMain,
+    trigger+: onTagOrMain + {event+: ['pull_request']},
     steps: [
       {
         name: 'build and push',

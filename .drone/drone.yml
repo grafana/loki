@@ -1761,6 +1761,7 @@ trigger:
   event:
   - push
   - tag
+  - pull_request
   ref:
   - refs/heads/main
   - refs/heads/k???
@@ -2016,6 +2017,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 6aff5ae73eeaed171dafbc08b599abaf9a4ef4c1d68212da1a1442f36f5c7d8b
+hmac: 3444b383cfb5e60bec0eaa7fd16bbc6d66d9cc00f7bec04af282a7cf545e735b
 
 ...
