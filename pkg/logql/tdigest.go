@@ -1,6 +1,7 @@
 package logql
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
@@ -62,6 +63,14 @@ func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
 	return &logproto.QuantileSketchVector{Samples: samples}
 }
 
+func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) QuantileSketchVector {
+	out := make([]quantileSketchSample, len(proto.Samples))
+	for i, s := range proto.Samples {
+		out[i] = quantileSketchSampleFromProto(s)
+	}
+	return out
+}
+
 func (QuantileSketchMatrix) String() string {
 	return "TDigestMatrix()"
 }
@@ -76,9 +85,12 @@ func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	return &logproto.QuantileSketchMatrix{Values: values}
 }
 
-func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (QuantileSketchMatrix, error) {
-	// TODO
-	nil, fmt.Error("unimplemented QuantileSketchMatrixFromProto")
+func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) QuantileSketchMatrix {
+	out := make([]QuantileSketchVector, len(proto.Values)) 
+	for i, v := range proto.Values {
+		out[i] = QuantileSketchVectorFromProto(v)
+	}
+	return out
 }
 
 type QuantileSketchStepEvaluator struct {
@@ -158,6 +170,20 @@ func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
 		TimestampMs: q.T,
 		Metric:      metric,
 	}
+}
+
+func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantileSketchSample {
+	out := quantileSketchSample{
+		T: proto.TimestampMs,
+		F: sketch.QuantileSketchFromProto(proto.F),
+		Metric: make(labels.Labels, len(proto.Metric)),
+	}
+
+	for i, p := range proto.Metric {
+		out.Metric[i] = labels.Label{Name: p.Name, Value: p.Value}
+	}
+
+	return out
 }
 
 type tdigestBatchRangeVectorIterator struct {

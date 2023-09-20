@@ -17,6 +17,18 @@ type QuantileSketch interface {
 	ToProto() *logproto.TDigest // TODO: support DDSketch as well.
 }
 
+// TODO: support other quantile sketches
+func QuantileSketchFromProto(proto *logproto.TDigest) QuantileSketch {
+	q := &TDigestQuantile{sketch: tdigest.NewWithCompression(proto.Compression)}
+
+	centroids := make([]tdigest.Centroid, len(proto.Processed))
+	for i, c := range proto.Processed {
+		centroids[i] = tdigest.Centroid{Mean: c.Mean, Weight: c.Weight}
+	}
+	q.sketch.AddCentroidList(centroids)
+	return q
+}
+
 type DDSketchQuantile struct {
 	sketch *ddsketch.DDSketch
 }
