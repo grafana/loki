@@ -4,7 +4,7 @@ Changelog is the list of all the important changes (features, bug-fix, optimizat
 
 ## Before you begin
 
-1. Determine the [VERSION](concepts/version.md).
+1. Determine the [VERSION_PREFIX]({{< relref "concepts/version" >}}).
 
 1. Know bit about how changelog works in Grafana Loki.
 

@@ -11,23 +11,23 @@ to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 
 ## Release stable version
 
-1. [Create release branch]({{< "./1-create-release-branch" >}})
-1. [Backport PR(s)]({{< "./2-backport-prs" >}})
-1. [Prepare Release notes]({{< "./3-prepare-release-notes" >}})
-1. [Prepare Changelog]({{< "./4-prepare-changelog" >}})
-1. [Check Metrics and Configurations changes]({{< "./5-check-metrics-configurations-changes" >}})
-1. [Prepare Upgrade guide]({{< "./6-prepare-upgrade-guide" >}})
-1. [Prepare version upgrades]({{< "./7-prepare-version-upgrades" >}})
-1. [Tag Release]({{< "./8-tag-release" >}})
-1. [Publish Release]({{< "./9-publish-release" >}})
-
-## Release patched version
-
-1. [Backport PR(s)]({{< "./2-backport-prs" >}})
+1. [Create release branch]({{< relref "./1-create-release-branch" >}})
+1. [Backport PR(s)]({{< relref "./2-backport-prs" >}})
 1. [Prepare Release notes]({{< relref "./3-prepare-release-notes" >}})
 1. [Prepare Changelog]({{< relref "./4-prepare-changelog" >}})
 1. [Check Metrics and Configurations changes]({{< relref "./5-check-metrics-configurations-changes" >}})
 1. [Prepare Upgrade guide]({{< relref "./6-prepare-upgrade-guide" >}})
-1. [Prepare version upgrades]({{< "./7-prepare-version-upgrades" >}})
-1. [Tag Release]({{< "./8-tag-release" >}})
-1. [Publish Release]({{< "./9-publish-release" >}})
+1. [Prepare version upgrades]({{< relref "./7-prepare-version-upgrades" >}})
+1. [Tag Release]({{< relref "./8-tag-release" >}})
+1. [Publish Release]({{< relref "./9-publish-release" >}})
+
+## Release patched version
+
+1. [Backport PR(s)]({{< relref "./2-backport-prs" >}})
+1. [Prepare Release notes]({{< relref "./3-prepare-release-notes" >}})
+1. [Prepare Changelog]({{< relref "./4-prepare-changelog" >}})
+1. [Check Metrics and Configurations changes]({{< relref "./5-check-metrics-configurations-changes" >}})
+1. [Prepare Upgrade guide]({{< relref "./6-prepare-upgrade-guide" >}})
+1. [Prepare version upgrades]({{< relref "./7-prepare-version-upgrades" >}})
+1. [Tag Release]({{< relref "./8-tag-release" >}})
+1. [Publish Release]({{< relref "./9-publish-release" >}})

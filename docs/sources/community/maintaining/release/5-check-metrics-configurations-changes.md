@@ -20,4 +20,4 @@ All the steps are performed on `release-VERSION_PREFIX` branch.
    $ OLD_VERSION=X.Y.Z ./tools/diff-metrics.sh
    ```
 
-1. Record metrics whose names modified in the [upgrade guide]({{< "./5-prepare-upgrade-guide" >}})
+1. Record metrics whose names modified in the [upgrade guide]({{< relref "./5-prepare-upgrade-guide" >}})

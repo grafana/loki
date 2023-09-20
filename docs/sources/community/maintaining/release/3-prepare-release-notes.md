@@ -4,7 +4,7 @@ Release notes are the few key highlights of the release. This is what appears on
 
 ## Before you begin
 
-1. Determine the [VERSION](concepts/version.md).
+1. Determine the [VERSION_PREFIX]({{< relref "concepts/version" >}}).
 
 1. Know bit about how release notes works in Grafana Loki.
 

@@ -4,7 +4,7 @@ This is how to publish the release in GitHub.
 
 ## Before you begin
 
-1. You should see a new draft release created [here](https://github.com/grafana/loki/releases). If not go back to [Tag Release]({{< "./8-tag-release" >}}).
+1. You should see a new draft release created [here](https://github.com/grafana/loki/releases). If not go back to [Tag Release]({{< relref "./8-tag-release" >}}).
 
 ## Steps
 
