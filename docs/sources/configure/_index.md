@@ -2,10 +2,9 @@
 title: Grafana Loki configuration parameters
 menuTitle: Configure
 description: Configuration reference for the parameters used to configure Grafana Loki.
-aliases: 
-  - ../configuration
-  - ../configure
-weight: 400 
+aliases:
+  - ./configuration # /docs/loki/<LOKI_VERSION>/configuration/
+weight: 400
 ---
 
 # Grafana Loki configuration parameters
@@ -2037,11 +2036,6 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -boltdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
-
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -2103,11 +2097,6 @@ tsdb_shipper:
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
-
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -tsdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
 
   [ingestername: <string> | default = ""]
 
@@ -2720,9 +2709,17 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
-# Allow user to send structured metadata (non-indexed labels) in push payload.
+# Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
+
+# Maximum size accepted for structured metadata per log line.
+# CLI flag: -limits.max-structured-metadata-size
+[max_structured_metadata_size: <int> | default = 64KB]
+
+# Maximum number of structured metadata entries per log line.
+# CLI flag: -limits.max-structured-metadata-entries-count
+[max_structured_metadata_entries_count: <int> | default = 128]
 ```
 
 ### frontend_worker

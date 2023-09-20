@@ -4,7 +4,7 @@ metadata:
   name: lokistack-dev
   namespace: openshift-logging
 spec:
-  size: 1x.extra-small
+  size: 1x.demo
   storage:
     schemas:
     - version: v12
@@ -12,7 +12,7 @@ spec:
     secret:
       name: test
       type: s3
-  storageClassName: gp2
+  storageClassName: gp3-csi
   tenants:
     mode: openshift-logging
   rules:

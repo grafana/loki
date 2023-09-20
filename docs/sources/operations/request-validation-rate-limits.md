@@ -1,10 +1,11 @@
 ---
-title: Request Validation & Rate-Limit Errors
-description: Request Validation & Rate-Limit Errors
-weight: 30
+title: Request Validation and Rate-Limit Errors
+menuTitle:  
+description: Request Validation and Rate-Limit Errors
+weight: 
 ---
 
-# Request Validation & Rate-Limit Errors
+# Request Validation and Rate-Limit Errors
 
 Loki will reject requests if they exceed a usage threshold (rate-limit error) or if they are invalid (validation error).
 

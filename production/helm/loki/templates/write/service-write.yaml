@@ -7,8 +7,18 @@ metadata:
   name: {{ include "loki.writeFullname" . }}
   labels:
     {{- include "loki.writeLabels" . | nindent 4 }}
-    {{- with .Values.write.serviceLabels }}
-    {{- toYaml . | nindent 4 }}
+    {{- with .Values.loki.serviceLabels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.write.service.labels }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+  annotations:
+    {{- with .Values.loki.serviceAnnotations }}
+    {{- toYaml . | nindent 4}}
+    {{- end }}
+    {{- with .Values.write.service.annotations }}
+    {{- toYaml . | nindent 4}}
     {{- end }}
 spec:
   type: ClusterIP

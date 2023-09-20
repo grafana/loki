@@ -52,6 +52,9 @@ const (
 	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
+
+	defaultMaxStructuredMetadataSize  = "64kb"
+	defaultMaxStructuredMetadataCount = 128
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -180,7 +183,9 @@ type Limits struct {
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
 
-	AllowStructuredMetadata bool `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata (non-indexed labels) in push payload."`
+	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
+	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
+	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 }
 
 type StreamRetention struct {
@@ -292,6 +297,10 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
 
 	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
+	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
+	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -769,6 +778,14 @@ func (o *Overrides) IndexGatewayShardSize(userID string) int {
 
 func (o *Overrides) AllowStructuredMetadata(userID string) bool {
 	return o.getOverridesForUser(userID).AllowStructuredMetadata
+}
+
+func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxStructuredMetadataSize.Val()
+}
+
+func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
+	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

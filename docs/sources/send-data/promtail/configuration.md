@@ -1141,7 +1141,7 @@ The `group_id` defined the unique consumer group id to use for consuming logs. E
 - If all promtail instances have the same consumer group, then the records will effectively be load balanced over the promtail instances.
 - If all promtail instances have different consumer groups, then each record will be broadcast to all promtail instances.
 
-The `group_id` is useful if you want to effectively send the data to multiple loki instances and/or other sinks.
+The `group_id` is useful if you want to effectively send the data to multiple Loki instances and/or other sinks.
 
 The `assignor` configuration allow you to select the rebalancing strategy to use for the consumer group.
 Rebalancing is the process where a group of consumer instances (belonging to the same group) co-ordinate to own a mutually exclusive set of partitions of topics that the group is subscribed to.
