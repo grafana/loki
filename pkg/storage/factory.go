@@ -585,13 +585,16 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 
 	case util.StringsContain(supportedIndexTypes, name):
 		var sharedStoreKeyPrefix string
+		var objectType string
 		switch name {
 		case config.BoltDBShipperType:
+			objectType = cfg.BoltDBShipperConfig.SharedStoreType
 			sharedStoreKeyPrefix = cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
 		case config.TSDBType:
+			objectType = cfg.TSDBShipperConfig.SharedStoreType
 			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
 		}
-		objectClient, err := NewObjectClient(sharedStoreKeyPrefix, cfg, cm)
+		objectClient, err := NewObjectClient(objectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}
