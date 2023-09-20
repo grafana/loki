@@ -99,7 +99,7 @@ func TestSeriesPageEncoding(t *testing.T) {
 	}
 
 	enc := &encoding.Encbuf{}
-	src.Encode(enc)
+	src.Encode(enc, Crc32HashPool.Get())
 
 	var dst SeriesPage
 	dec := encoding.DecWith(enc.Get())

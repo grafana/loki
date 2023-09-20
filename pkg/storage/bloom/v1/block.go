@@ -2,38 +2,24 @@ package v1
 
 import (
 	"bytes"
+	"hash"
 
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
-	"github.com/prometheus/prometheus/util/pool"
+
+	"github.com/grafana/loki/pkg/util/encoding"
 )
-
-// 1KB -> 8MB
-var BlockPool = BytePool{
-	pool: pool.New(
-		1<<10, 1<<24, 4,
-		func(size int) interface{} {
-			return make([]byte, size)
-		}),
-}
-
-type BytePool struct {
-	pool *pool.Pool
-}
-
-func (p *BytePool) Get(size int) []byte {
-	return p.pool.Get(size).([]byte)[:0]
-}
-func (p *BytePool) Put(b []byte) {
-	p.pool.Put(b)
-}
 
 type Block struct {
 	toc    ToC
-	series []SeriesPage
+	series []SeriesPageWithOffset
 	blooms []BloomPage
+}
+
+type SeriesPageWithOffset struct {
+	SeriesPage,
+	Offset int
 }
 
 // table of contents
@@ -72,15 +58,23 @@ type SeriesPage struct {
 	Series []Series
 }
 
-func (p *SeriesPage) Encode(enc *encoding.Encbuf) {
+func (p *SeriesPage) Encode(enc *encoding.Encbuf, crc32Hash hash.Hash32) {
+	enc.Reset()
+
 	p.Header.Encode(enc)
 	var lastSeries model.Fingerprint
 	for _, series := range p.Series {
 		lastSeries = series.Encode(enc, lastSeries)
 	}
+
+	enc.PutHash(crc32Hash)
 }
 
 func (p *SeriesPage) Decode(dec *encoding.Decbuf) error {
+
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return errors.Wrap(err, "decoding series page")
+	}
 	if err := p.Header.Decode(dec); err != nil {
 		return errors.Wrap(err, "decoding series page header")
 	}
