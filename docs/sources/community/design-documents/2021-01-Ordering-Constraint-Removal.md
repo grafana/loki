@@ -96,7 +96,7 @@ ts1         ts3          ts0        ts2
 --------------           --------------
 ```
 
-Thus _all_ blocks must have their metadata checked against a query. In this example, a query for the bounds `[ts1,ts2]`  would need to decompress and scan the `[ts1, ts2]` range across both of them, but a query against `[ts3, ts4]` would only decompress & scan _one_ block.
+Thus _all_ blocks must have their metadata checked against a query. In this example, a query for the bounds `[ts1,ts2]`  would need to decompress and scan the `[ts1, ts2]` range across both of them, but a query against `[ts3, ts4]` would only decompress and scan _one_ block.
 
 ```
 Figure 4
@@ -125,7 +125,7 @@ The performance losses against the current approach includes:
 2) Blocks may contain overlapping data (although ordering is still guaranteed within each block).
 3) Head block scans are now `O(n log(n))` instead of `O(n)`
 
-### Flushing & Chunk Creation
+### Flushing and Chunk Creation
 
 Loki regularly combines multiple blocks into a chunk and "flushes" it to storage. In order to ensure that reads over flushed chunks remain as performant as possible, we will re-order a possibly-overlapping set of blocks into a set of blocks that maintain monotonically increasing order between them. From the perspective of the rest of Loki’s components (queriers/rulers fetching chunks from storage), nothing has changed.
 
@@ -174,7 +174,7 @@ This ends the initial design portion of this document. Below, I'll describe some
 
 #### Variance Budget
 
-The intended approach of a "sliding validity" window for each stream is simple and effective at preventing misuse & bad actors from writing across the entire acceptable range for incoming timestamps. However, we may in the future wish to take a more sophisticated approach, introducing per tenant "variance" budgets, likely derived from the stream limit. This ingester limit could, for example use an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance), which would allow writing to larger ranges than option (2) in the _Chunk Durations_ section.
+The intended approach of a "sliding validity" window for each stream is simple and effective at preventing misuse and bad actors from writing across the entire acceptable range for incoming timestamps. However, we may in the future wish to take a more sophisticated approach, introducing per tenant "variance" budgets, likely derived from the stream limit. This ingester limit could, for example use an incremental (online) standard deviation/variance algorithm such as [Welford's](https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance), which would allow writing to larger ranges than option (2) in the _Chunk Durations_ section.
 
 #### LSM Tree
 
@@ -185,7 +185,7 @@ Much of the proposed approach mirrors an [LSM-Tree](http://www.benstopford.com/2
 - Keep open a wider validity window for incoming logs
 
 **At the cost of**
-- being susceptible to disk-related complexity & problems
+- being susceptible to disk-related complexity and problems
 
 ##### MemTable (head block)
 
@@ -197,7 +197,7 @@ Once a Memtable (head block) in an LSM-Tree hits a predefined size, it is flushe
 
 ##### Block Index
 
-Incoming reads in an LSM-Tree may need access to the SSTable entries in addition to the currently active memtable (head block). In order to improve this, we may cache the metadata including block offsets, start & end timestamps within an SSTable (block || MemChunk) in memory to mitigate lookups, seeking, and loading unnecessary data from disk.
+Incoming reads in an LSM-Tree may need access to the SSTable entries in addition to the currently active memtable (head block). In order to improve this, we may cache the metadata including block offsets, start and end timestamps within an SSTable (block || MemChunk) in memory to mitigate lookups, seeking, and loading unnecessary data from disk.
 
 ##### Compaction (flushing)
 
