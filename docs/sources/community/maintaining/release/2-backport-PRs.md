@@ -4,7 +4,9 @@ Any PRs or commits not on the release branch need to be backported over to it.
 
 ## Before you begin
 
-If the release branch already has all the code changes on it, skip this step.
+1. Determine the [VERSION](concepts/version.md).
+
+2. If the release branch already has all the code changes on it, skip this step.
 
 ## Steps
 

@@ -4,13 +4,15 @@ Changelog is the list of all the important changes (features, bug-fix, optimizat
 
 ## Before you begin
 
-Know bit about how changelog works in Grafana Loki.
+1. Determine the [VERSION](concepts/version.md).
 
-We have `CHANGELOG.md` that records both unreleased and released changes.
+1. Know bit about how changelog works in Grafana Loki.
 
-Preparing changelog for Loki release at high level is basically two steps
-1. Move `unreleased` changes to specific version on `release-VERSION_PREFIX` branch
-1. Reflect those changes on `main` branch.
+	We have `CHANGELOG.md` that records both unreleased and released changes.
+
+	Preparing changelog for Loki release at high level is basically two steps
+	1. Move `unreleased` changes to specific version on `release-VERSION_PREFIX` branch
+	1. Reflect those changes on `main` branch.
 
 ## Steps
 

@@ -4,15 +4,17 @@ Release notes are the few key highlights of the release. This is what appears on
 
 ## Before you begin
 
-Know bit about how release notes works in Grafana Loki.
+1. Determine the [VERSION](concepts/version.md).
 
-We have
-1. `release-notes/next.md` to track release notes that are not released yet.
-2. `release-notes/v<major>-<minor>.md` to track release notes that is part of that Loki version.
+1. Know bit about how release notes works in Grafana Loki.
 
-Preparing release notes for specific Loki release at high level is basically two steps
-1. Add important notes to `next.md`
-2. And make it available in specific Loki version.
+	We have
+	1. `release-notes/next.md` to track release notes that are not released yet.
+	1. `release-notes/v<major>-<minor>.md` to track release notes that is part of that Loki version.
+
+	Preparing release notes for specific Loki release at high level is basically two steps
+	1. Add important notes to `next.md`
+	1. And make it available in specific Loki version.
 
 ## Steps
 
