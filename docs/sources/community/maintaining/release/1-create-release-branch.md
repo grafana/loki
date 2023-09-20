@@ -5,7 +5,7 @@ branch is then used for all the Stable Release, and all Patch Releases for that 
 
 ## Before you begin
 
-1. Determine the [VERSION_PREFIX]({{< relref "concepts/version" >}}).
+1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
 1. Announce about the upcoming release in `#loki-releases` slack channel
 1. Skip this for patch release. Create an issue to communicate beginning of the release process with the community. Example issue [here](https://github.com/grafana/loki/issues/10468)
 

@@ -12,7 +12,7 @@ to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 ## Release stable version
 
 1. [Create release branch]({{< relref "./1-create-release-branch" >}})
-1. [Backport PR(s)]({{< relref "./2-backport-prs" >}})
+1. [Backport commits]({{< relref "./2-backport-commits" >}})
 1. [Prepare Release notes]({{< relref "./3-prepare-release-notes" >}})
 1. [Prepare Changelog]({{< relref "./4-prepare-changelog" >}})
 1. [Check Metrics and Configurations changes]({{< relref "./5-check-metrics-configurations-changes" >}})
@@ -23,7 +23,7 @@ to publish a new [Grafana Loki](https://github.com/grafana/loki) release.
 
 ## Release patched version
 
-1. [Backport PR(s)]({{< relref "./2-backport-prs" >}})
+1. [Backport commits]({{< relref "./2-backport-commits" >}})
 1. [Prepare Release notes]({{< relref "./3-prepare-release-notes" >}})
 1. [Prepare Changelog]({{< relref "./4-prepare-changelog" >}})
 1. [Check Metrics and Configurations changes]({{< relref "./5-check-metrics-configurations-changes" >}})

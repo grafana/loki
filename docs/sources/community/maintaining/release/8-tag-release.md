@@ -14,7 +14,7 @@ A tag is required to create GitHub artifacts and as a prerequisite for publishin
    git pull origin
    ```
 
-1. Determine the [VERSION_PREFIX]({{< relref "concepts/version" >}}).
+1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
 
 1. Follow the GitHub [instructions](https://docs.github.com/en/authentication/managing-commit-signature-verification) to set up GPG for signature verification.
 
