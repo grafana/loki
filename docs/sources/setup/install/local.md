@@ -37,7 +37,7 @@ The configuration specifies running Loki as a single binary.
    **Note:** Do not download LogCLI or Loki Canary at this time. `LogCLI` allows you to run Loki queries in a command line interface. [Loki Canary]({{< relref "../../operations/loki-canary" >}}) is a tool to audit Loki performance.
 4. Unzip the package contents into the same directory. This is where the two programs will run.
 5. In the command line, change directory (`cd` on most systems) to the directory with Loki and Promtail. Copy and paste the commands below into your command line to download generic configuration files.
-   **Note:** Use the corresponding Git refs that match your downloaded Loki version to get the correct configuration file. For example, if you are using Loki version 2.6.1, you need to use the `https://raw.githubusercontent.com/grafana/loki/v2.6.1/cmd/loki/loki-local-config.yaml` URL to download the configuration file that corresponds to the Loki version you aim to run.
+   **Note:** Use the corresponding Git refs that match your downloaded Loki version to get the correct configuration file. For example, if you are using Loki version 2.6.1, you need to use the `https://raw.githubusercontent.com/grafana/loki/v2.9.2/cmd/loki/loki-local-config.yaml` URL to download the configuration file that corresponds to the Loki version you aim to run.
 
     ```
     wget https://raw.githubusercontent.com/grafana/loki/main/cmd/loki/loki-local-config.yaml
