@@ -139,13 +139,7 @@ spec:
         - name: tmp
           emptyDir: {}
         - name: config
-          {{- if .Values.loki.existingSecretForConfig }}
-          secret:
-            secretName: {{ .Values.loki.existingSecretForConfig }}
-          {{- else }}
-          configMap:
-            name: {{ include "loki.name" . }}
-          {{- end }}
+          {{- include "loki.configVolume" . | nindent 10 }}
         - name: runtime-config
           configMap:
             name: {{ template "loki.name" . }}-runtime

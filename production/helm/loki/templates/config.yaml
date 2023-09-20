@@ -1,4 +1,4 @@
-{{- if not .Values.loki.existingSecretForConfig -}}
+{{- if not .Values.loki.useExternalConfig }}
 apiVersion: v1
 {{- if eq .Values.loki.configStorageType "Secret" }}
 kind: Secret
