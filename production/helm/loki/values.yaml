@@ -185,6 +185,9 @@ loki:
         cache:
           default_validity: {{ .default_validity }}
           memcached_client:
+            {{- if .consistent_hash }}
+            consistent_hash: true
+            {{- end }}
             {{- if .host }}
             host: {{ .host }}
             {{- end }}
@@ -193,6 +196,8 @@ loki:
             {{- end }}
             service: {{ .service }}
             timeout: {{ .timeout }}
+            max_idle_conns: {{ .max_idle_conns }}
+            update_interval: {{ .update_interval }}
       {{- end }}
     {{- end }}
 
@@ -304,10 +309,13 @@ loki:
       parallelism: 10
     results_cache:
       enabled: false
+      consistent_hash: true
       host: ""
       service: "memcached-client"
       timeout: "500ms"
       default_validity: "12h"
+      max_idle_conns: 16
+      update_interval: "1m"
   # -- Check https://grafana.com/docs/loki/latest/configuration/#schema_config for more info on how to configure schemas
   schemaConfig: {}
   # -- Check https://grafana.com/docs/loki/latest/configuration/#ruler for more info on configuring ruler
