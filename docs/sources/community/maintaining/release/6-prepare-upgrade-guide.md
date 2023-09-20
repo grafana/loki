@@ -1,3 +1,7 @@
+---
+title: Prepare Upgrade guide
+description: Prepare Upgrade guide
+---
 # Prepare Upgrade guide
 
 Upgrade guide records changes that require user attention or interaction to upgrade to specific Loki version from previous versions.

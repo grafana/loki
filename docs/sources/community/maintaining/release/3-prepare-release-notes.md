@@ -1,3 +1,7 @@
+---
+title: Prepare Release notes
+description: Prepare Release notes
+---
 # Prepare Release notes
 
 Release notes are the few key highlights of the release. This is what appears on the release page on the Github.

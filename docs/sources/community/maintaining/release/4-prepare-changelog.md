@@ -1,3 +1,7 @@
+---
+title: Prepare Changelog
+description: Prepare Changelog
+---
 # Prepare Changelog
 
 Changelog is the list of all the important changes (features, bug-fix, optimizations, docs) that are part of particular Loki release.

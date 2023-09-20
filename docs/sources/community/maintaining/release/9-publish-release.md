@@ -1,3 +1,7 @@
+---
+title: Publish Release
+description: Publish Release
+---
 # Publish Release
 
 This is how to publish the release in GitHub.

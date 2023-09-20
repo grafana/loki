@@ -1,3 +1,7 @@
+---
+title: Check metrics and configurations changes
+description: Check metrics and configurations changes
+---
 # Check metrics and configurations changes
 
 Any metrics and configurations that are removed or modified need to be part of upgrade guide. Configurations whose default values changed should also be part of upgrade guide.

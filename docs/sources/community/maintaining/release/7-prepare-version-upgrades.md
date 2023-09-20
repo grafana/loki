@@ -1,3 +1,7 @@
+---
+title: Prepare version upgrades
+description: Prepare version upgrades
+---
 # Prepare version upgrades
 
 Upgrade the Loki version to this release version on documents, examples, jsonnets, etc.

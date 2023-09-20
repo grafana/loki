@@ -1,3 +1,7 @@
+---
+title: Version
+description: Version
+---
 # Version
 
 Grafana Loki uses Semantic Versioning. The next version can be determined
