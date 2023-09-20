@@ -11,9 +11,24 @@ import (
 )
 
 // 1KB -> 8MB
-var BlockPool = pool.New(1<<10, 1<<24, 4, func(size int) interface{} {
-	return make([]byte, size)
-})
+var BlockPool = BytePool{
+	pool: pool.New(
+		1<<10, 1<<24, 4,
+		func(size int) interface{} {
+			return make([]byte, size)
+		}),
+}
+
+type BytePool struct {
+	pool *pool.Pool
+}
+
+func (p *BytePool) Get(size int) []byte {
+	return p.pool.Get(size).([]byte)[:0]
+}
+func (p *BytePool) Put(b []byte) {
+	p.pool.Put(b)
+}
 
 type Block struct {
 	toc    ToC
@@ -33,7 +48,7 @@ type SeriesHeader struct {
 	FromTs, ThroughTs int64
 }
 
-func (h *SeriesHeader) Encode(enc encoding.Encbuf) error {
+func (h *SeriesHeader) Encode(enc *encoding.Encbuf) error {
 	enc.PutUvarint(h.NumSeries)
 	enc.PutUvarint64(uint64(h.FromFp))
 	enc.PutUvarint64(uint64(h.ThroughFp))
@@ -42,7 +57,7 @@ func (h *SeriesHeader) Encode(enc encoding.Encbuf) error {
 	return nil
 }
 
-func (h *SeriesHeader) Decode(dec encoding.Decbuf) error {
+func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	h.NumSeries = dec.Uvarint()
 	h.FromFp = model.Fingerprint(dec.Uvarint64())
 	h.ThroughFp = model.Fingerprint(dec.Uvarint64())
@@ -57,7 +72,7 @@ type SeriesPage struct {
 	Series []Series
 }
 
-func (p *SeriesPage) Encode(enc encoding.Encbuf) {
+func (p *SeriesPage) Encode(enc *encoding.Encbuf) {
 	p.Header.Encode(enc)
 	var lastSeries model.Fingerprint
 	for _, series := range p.Series {
@@ -65,7 +80,7 @@ func (p *SeriesPage) Encode(enc encoding.Encbuf) {
 	}
 }
 
-func (p *SeriesPage) Decode(dec encoding.Decbuf) error {
+func (p *SeriesPage) Decode(dec *encoding.Decbuf) error {
 	if err := p.Header.Decode(dec); err != nil {
 		return errors.Wrap(err, "decoding series page header")
 	}
@@ -87,11 +102,11 @@ func (p *SeriesPage) Decode(dec encoding.Decbuf) error {
 
 type Series struct {
 	Fingerprint model.Fingerprint
-	Chunks      []ChunkRef
 	Offset      BloomOffset
+	Chunks      []ChunkRef
 }
 
-func (s *Series) Encode(enc encoding.Encbuf, previousFp model.Fingerprint) model.Fingerprint {
+func (s *Series) Encode(enc *encoding.Encbuf, previousFp model.Fingerprint) model.Fingerprint {
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
 	// encode offsets
@@ -107,7 +122,7 @@ func (s *Series) Encode(enc encoding.Encbuf, previousFp model.Fingerprint) model
 	return s.Fingerprint
 }
 
-func (s *Series) Decode(dec encoding.Decbuf, previousFp model.Fingerprint) (model.Fingerprint, error) {
+func (s *Series) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint) (model.Fingerprint, error) {
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
 	s.Offset.Decode(dec)
 
@@ -131,7 +146,7 @@ type ChunkRef struct {
 	Checksum   uint32
 }
 
-func (r *ChunkRef) Encode(enc encoding.Encbuf, previousEnd model.Time) model.Time {
+func (r *ChunkRef) Encode(enc *encoding.Encbuf, previousEnd model.Time) model.Time {
 	// delta encode start time
 	enc.PutVarint64(int64(r.Start - previousEnd))
 	enc.PutVarint64(int64(r.End - r.Start))
@@ -139,7 +154,7 @@ func (r *ChunkRef) Encode(enc encoding.Encbuf, previousEnd model.Time) model.Tim
 	return r.End
 }
 
-func (r *ChunkRef) Decode(dec encoding.Decbuf, previousEnd model.Time) (model.Time, error) {
+func (r *ChunkRef) Decode(dec *encoding.Decbuf, previousEnd model.Time) (model.Time, error) {
 	r.Start = previousEnd + model.Time(dec.Varint64())
 	r.End = r.Start + model.Time(dec.Varint64())
 	r.Checksum = dec.Be32()
@@ -151,15 +166,47 @@ type BloomOffset struct {
 	ByteOffset int // offset to beginning of bloom within page
 }
 
-func (o *BloomOffset) Encode(enc encoding.Encbuf) {
+func (o *BloomOffset) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(o.PageOffset)
 	enc.PutUvarint(o.ByteOffset)
 }
 
-func (o *BloomOffset) Decode(dec encoding.Decbuf) error {
+func (o *BloomOffset) Decode(dec *encoding.Decbuf) error {
 	o.PageOffset = dec.Uvarint()
 	o.ByteOffset = dec.Uvarint()
 	return dec.Err()
+}
+
+type Bloom struct {
+	sbf boom.ScalableBloomFilter
+}
+
+func (b *Bloom) Encode(enc *encoding.Encbuf) error {
+	// divide by 8 b/c bloom capacity is measured in bits, but we want bytes
+	buf := bytes.NewBuffer(BlockPool.Get(int(b.sbf.Capacity() / 8)))
+
+	_, err := b.sbf.WriteTo(buf)
+	if err != nil {
+		return errors.Wrap(err, "encoding bloom filter")
+	}
+
+	data := buf.Bytes()
+	enc.PutUvarint(len(data)) // length of bloom filter
+	enc.PutBytes(data)
+	BlockPool.Put(data[:0]) // release to pool
+	return nil
+}
+
+func (b *Bloom) Decode(dec *encoding.Decbuf) error {
+	ln := dec.Uvarint()
+	data := dec.Bytes(ln)
+
+	_, err := b.sbf.ReadFrom(bytes.NewReader(data))
+	if err != nil {
+		return errors.Wrap(err, "decoding bloom filter")
+	}
+
+	return nil
 }
 
 type BloomPage struct {
@@ -167,44 +214,25 @@ type BloomPage struct {
 	Blooms []Bloom
 }
 
-type Bloom struct {
-	sbf           *boom.ScalableBloomFilter
-	lastKnownSize int // bytes
-}
-
-func (p *BloomPage) Encode(enc encoding.Encbuf) error {
+func (p *BloomPage) Encode(enc *encoding.Encbuf) error {
 	enc.PutUvarint(p.N)
 
 	for i, bloom := range p.Blooms {
-		buf := bytes.NewBuffer(BlockPool.Get(bloom.lastKnownSize).([]byte))
-
-		_, err := bloom.sbf.WriteTo(buf)
-		if err != nil {
+		if err := bloom.Encode(enc); err != nil {
 			return errors.Wrapf(err, "encoding %dth bloom filter", i)
 		}
-
-		b := buf.Bytes()
-		enc.PutUvarint(len(b)) // length of bloom filter
-		enc.PutBytes(b)
-		BlockPool.Put(b[:0]) // release to pool
 	}
 	return nil
 }
 
-func (p *BloomPage) Decode(dec encoding.Decbuf) error {
+func (p *BloomPage) Decode(dec *encoding.Decbuf) error {
 	p.N = dec.Uvarint()
-	p.Blooms = make([]Bloom, 0, p.N)
+	// TODO(owen-d): pool
+	p.Blooms = make([]Bloom, p.N)
 	for i := 0; i < p.N; i++ {
-		bloom := Bloom{
-			sbf: &boom.ScalableBloomFilter{},
-		}
-
-		ln := dec.Uvarint()
-		_, err := bloom.sbf.ReadFrom(bytes.NewReader(dec.Bytes(ln)))
-		if err != nil {
+		if err := p.Blooms[i].Decode(dec); err != nil {
 			return errors.Wrapf(err, "decoding %dth bloom filter", i)
 		}
-
 	}
 	return nil
 }
