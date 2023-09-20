@@ -45,3 +45,24 @@ func toksToStrings(toks []int) []string {
 	}
 	return strings
 }
+func TestIdentifierToLower(t *testing.T) {
+	lex := newLexer()
+	lex.setData([]byte("{MyLabel}"))
+
+	var out exprSymType
+	token, err := lex.identifier(&out)
+
+	if err != nil {
+		t.Errorf("Expected no error, but got %v", err)
+	}
+
+	expectedToken := IDENTIFIER
+	if token != expectedToken {
+		t.Errorf("Expected token %d, but got %d", expectedToken, token)
+	}
+
+	expectedIdentifier := "mylabel"
+	if out.str != expectedIdentifier {
+		t.Errorf("Expected identifier %s, but got %s", expectedIdentifier, out.str)
+	}
+}
