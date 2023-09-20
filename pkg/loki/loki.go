@@ -399,6 +399,8 @@ func (t *Loki) ListTargets() {
 
 // Run starts Loki running, and blocks until a Loki stops.
 func (t *Loki) Run(opts RunOpts) error {
+	startTime := time.Now()
+
 	serviceMap, err := t.ModuleManager.InitModuleServices(t.Cfg.Target...)
 	if err != nil {
 		return err
@@ -443,8 +445,8 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.Server.HTTP.Path("/loki/api/v1/format_query").Methods("GET", "POST").HandlerFunc(formatQueryHandler())
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started") }
-	stopped := func() { level.Info(util_log.Logger).Log("msg", "Loki stopped") }
+	healthy := func() { level.Info(util_log.Logger).Log("msg", "Loki started", "startup_time", time.Since(startTime)) }
+	stopped := func() { level.Info(util_log.Logger).Log("msg", "Loki stopped", "running_time", time.Since(startTime)) }
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Loki
 		sm.StopAsync()
