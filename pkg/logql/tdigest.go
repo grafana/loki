@@ -1,7 +1,6 @@
 package logql
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/prometheus/prometheus/model/labels"
