@@ -5,9 +5,9 @@ description: Version
 # Version
 
 Grafana Loki uses Semantic Versioning. The next version can be determined
-by looking at the current version and incrementing it. Once exception can be when the release is new `major` version (e.g: after 2.9.1 we decide to go 3.0.0 instead of 2.9.2)
+by looking at the current version and incrementing it. When the release is a new `major` version (e.g: after 2.9.1 we decide to go 3.0.0 instead of 2.9.2) this should not be done.
 
-You may need to set two environmental values `VERSION` and `VERSION_PREFIX` to do follow the release process
+You need to set two environmental values `VERSION` and `VERSION_PREFIX` to do the release process.
 
 ## Version
 

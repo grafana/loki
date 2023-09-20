@@ -10,13 +10,13 @@ Upgrade the Loki version to this release version on documents, examples, jsonnet
 
 1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
 
-2. Skip this step if you are doing patch release on old release branch.
+2. Skip this step if you are doing a patch release on old release branch.
 
-	Example: Latest release branch is `release-2.9.x` but you are releasing patch version on `release-2.8.x` (or older)
+	Example: Latest release branch is `release-2.9.x` but you are releasing patch version in `release-2.8.x` (or older)
 
 ## Steps
 
-1. Upgrade the versions on `release-VERSION_PREFIX` branch
+1. Upgrade the versions in the `release-VERSION_PREFIX` branch
 
     Example commands:
 

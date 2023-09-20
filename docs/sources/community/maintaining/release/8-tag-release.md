@@ -46,8 +46,8 @@ export GPG_TTY=$(tty)
 
     ```
 	RELEASE="v$VERSION" # e.g: v2.9.0
-    git tag -s $RELEASE -m "tagging release $RELEASE"
-    git push origin $RELEASE
+	git tag -s $RELEASE -m "tagging release $RELEASE"
+	git push origin $RELEASE
     ```
 
 1. After a tag has been pushed, GitHub CI will create release assets and open a release draft for every pushed tag.

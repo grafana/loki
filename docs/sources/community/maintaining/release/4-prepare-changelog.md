@@ -10,7 +10,7 @@ Changelog is the list of all the important changes (features, bug-fix, optimizat
 
 1. Determine the [VERSION_PREFIX]({{< relref "./concepts/version" >}}).
 
-1. Know bit about how changelog works in Grafana Loki.
+1. The changelog in Grafana Loki works as follows.
 
 	We have `CHANGELOG.md` that records both unreleased and released changes.
 
