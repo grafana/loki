@@ -17,7 +17,7 @@ All the steps are performed on `release-VERSION_PREFIX` branch.
    $ OLD_VERSION=X.Y.Z ./tools/diff-config.sh
    ```
 
-1. Record configurations that are modified(either renamed or it's default value changed) in the [upgrade guide]({{< "./6-prepare-upgrade-guide" >}})
+1. Record configurations that are modified(either renamed or it's default value changed) in the [upgrade guide]({{< relref "./6-prepare-upgrade-guide" >}})
 
 1. Check metrics changed
    ```

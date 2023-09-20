@@ -8,7 +8,7 @@ Any PRs or commits not on the release branch need to be backported over to it.
 
 ## Before you begin
 
-1. Determine the [VERSION]({{< relref "./concepts/version" > }}).
+1. Determine the [VERSION]({{< relref "./concepts/version" >}}).
 
 2. If the release branch already has all the code changes on it, skip this step.
 
