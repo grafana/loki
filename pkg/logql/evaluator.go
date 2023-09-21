@@ -480,10 +480,8 @@ func newRangeAggEvaluator(
 	q Params,
 	o time.Duration,
 ) (StepEvaluator, error) {
-
 	switch expr.Operation {
 	case syntax.OpRangeTypeAbsent:
-		// TODO: avoid duplication
 		iter, err := newRangeVectorIterator(
 			it, expr,
 			expr.Left.Interval.Nanoseconds(),

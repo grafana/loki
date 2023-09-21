@@ -131,7 +131,7 @@ func (e *QuantileSketchStepEvaluator) Explain(parent Node) {
 func newQuantileSketchIterator(
 	it iter.PeekingSampleIterator,
 	selRange, step, start, end, offset int64) RangeVectorIterator {
-	inner := batchRangeVectorIterator{
+	inner := &batchRangeVectorIterator{
 		iter:     it,
 		step:     step,
 		end:      end,
@@ -186,7 +186,7 @@ func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantil
 }
 
 type tdigestBatchRangeVectorIterator struct {
-	batchRangeVectorIterator
+	*batchRangeVectorIterator
 	at []quantileSketchSample
 }
 
