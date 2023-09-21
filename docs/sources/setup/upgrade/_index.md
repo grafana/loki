@@ -55,6 +55,10 @@ The previous default value `false` is applied.
 6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
 7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
 
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
 #### Distributor metric changes
 
 The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
