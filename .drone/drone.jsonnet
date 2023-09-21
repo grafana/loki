@@ -911,7 +911,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
       {
         name: 'build and push',
         image: 'grafana/loki-build-image:%s' % build_image_version,
-        depends_on: ['clone'],
+        depends_on: ['clone', 'image-tag'],
         environment: {
           DOCKER_USERNAME: { from_secret: docker_username_secret.name },
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
