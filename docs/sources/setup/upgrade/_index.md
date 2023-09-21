@@ -57,7 +57,7 @@ The previous default value `false` is applied.
 
 #### Legacy ingester shutdown handler is removed
 
-The already deprecated handler `/ingester/flush_shutdown` is remove in favor of `/ingester/shutdown?flush=true`.
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
 
 #### Distributor metric changes
 
