@@ -2,6 +2,7 @@ package ingester
 
 import (
 	"context"
+	stderr "errors"
 	"flag"
 	"fmt"
 	"io"
@@ -762,8 +763,9 @@ func removeShutdownMarker(p string) error {
 	return merr.Err()
 }
 
-// shutdownMarkerExists returns true if the shutdown marker file exists, false otherwise
-func shutdownMarkerExists(p string) (string, bool, error) {
+// shutdownMarkerExists returns the contents and true if the shutdown marker file exists,
+// the empty string and false otherwise
+func shutdownMarkerExists(p string) (contents string, exists bool, err error) {
 	s, err := os.Stat(p)
 	if err != nil && os.IsNotExist(err) {
 		return "", false, nil
@@ -777,6 +779,10 @@ func shutdownMarkerExists(p string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
+	defer func() {
+		cerr := f.Close()
+		err = stderr.Join(err, cerr)
+	}()
 
 	bts, err := io.ReadAll(f)
 	if err != nil {
