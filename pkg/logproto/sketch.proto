@@ -24,7 +24,7 @@ message QuantileSketchSample {
 message QuantileSketch {
   oneof sketch {
   	TDigest tdigest = 1;
-	bytes ddsketch = 2 [(gogoproto.customtype) = "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb.DDSketch"];
+	//bytes ddsketch = 2 [(gogoproto.customtype) = "github.com/DataDog/sketches-go/ddsketch/pb/sketchpb.DDSketch"];
   }
 }
 

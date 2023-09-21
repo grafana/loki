@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/DataDog/sketches-go/ddsketch"
-	"github.com/DataDog/sketches-go/ddsketch/pb/sketchpb"
 	"github.com/influxdata/tdigest"
 	"github.com/prometheus/prometheus/model/labels"
 	promql_parser "github.com/prometheus/prometheus/promql/parser"
@@ -85,7 +84,7 @@ func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
 func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantileSketchSample {
 	out := quantileSketchSample{
 		T:      proto.TimestampMs,
-		F:      QuantileSketchFromProto(proto.F),
+		F:      nil, //QuantileSketchFromProto(proto.F),
 		Metric: make(labels.Labels, len(proto.Metric)),
 	}
 
@@ -103,6 +102,8 @@ type QuantileSketch interface {
 	Merge(QuantileSketch) (QuantileSketch, error)
 	ToProto() *logproto.QuantileSketch
 }
+
+type QuantileSketchFactory func() QuantileSketch
 
 // TODO: support other quantile sketches
 func QuantileSketchFromProto(proto *logproto.TDigest) QuantileSketch {
@@ -147,9 +148,7 @@ func (d *DDSketchQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
 
 func (d *DDSketchQuantile) ToProto() *logproto.QuantileSketch {
 	return &logproto.QuantileSketch{
-		Sketch: &logproto.QuantileSketch_Ddsketch{
-			Ddsketch: *d.DDSketch.ToProto(),
-		},
+		Sketch: nil,
 	}
 }
 
