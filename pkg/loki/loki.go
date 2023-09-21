@@ -369,7 +369,7 @@ type RunOpts struct {
 	// If empty, default handlerFunc will be used.
 	CustomConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
 	// StartTime is the time at which the main() function started executing.
-	// It is used to determin the startup time as well as the running time of the Loki process.
+	// It is used to determine the startup time as well as the running time of the Loki process.
 	StartTime time.Time
 }
 
