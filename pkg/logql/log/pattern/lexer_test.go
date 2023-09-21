@@ -45,11 +45,16 @@ func toksToStrings(toks []int) []string {
 	}
 	return strings
 }
+// TestIdentifierToLower tests that the identifier lexer function converts the identifier to lowercase
 func TestIdentifierToLower(t *testing.T) {
 	lex := newLexer()
-	lex.setData([]byte("{MyLabel}"))
+	inputData := []byte("{MyLabel}")
+	lex.setData(inputData)
 
 	var out exprSymType
+	lex.ts = 0              // Set the start position to 0
+	lex.te = len(inputData) // Set the end position to the length of inputData
+
 	token, err := lex.identifier(&out)
 
 	if err != nil {
