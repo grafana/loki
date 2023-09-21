@@ -11,27 +11,33 @@ message QuantileSketchMatrix {
 }
 
 message QuantileSketchVector {
-    repeated QuantileSketchSample samples = 1;
+  repeated QuantileSketchSample samples = 1;
 }
 
 message QuantileSketchSample {
-    TDigest f = 1;
-    int64  timestamp_ms = 2;
-    repeated LabelPair metric = 3;
+  QuantileSketch f = 1;
+  int64 timestamp_ms = 2;
+  repeated LabelPair metric = 3;
+}
+
+message QuantileSketch {
+  oneof sketch {
+    TDigest tdigest = 1;
+    bytes ddsketch = 2; // Use binary encoding for DDSketch.
+  }
 }
 
 // "Large" bytes format from https://github.com/tdunning/t-digest
 message TDigest {
-	double min = 1;
-	double max = 2;
-	double compression = 3;
+  double min = 1;
+  double max = 2;
+  double compression = 3;
 
-	message Centroid {
-		double mean = 1;
-		double weight = 2;
-	}
-	repeated Centroid processed = 4;
-
+  message Centroid {
+    double mean = 1;
+    double weight = 2;
+  }
+  repeated Centroid processed = 4;
 }
 
 message CountMinSketch {

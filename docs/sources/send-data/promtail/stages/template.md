@@ -148,7 +148,7 @@ The snippet above is an example of a multiline template without spaces. The extr
 
 > All [sprig functions](http://masterminds.github.io/sprig/) have been added to the template stage in Loki 2.3(along with function described below).
 
-### ToLower & ToUpper
+### ToLower and ToUpper
 
 ToLower and ToUpper convert the entire string respectively to lowercase and uppercase.
 

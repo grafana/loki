@@ -231,7 +231,7 @@ func ResultToResponse(result logqlmodel.Result, params *logql.LiteralParams) (*Q
 				TopkSketches: &TopKSketchesResponse{Response: sk},
 			},
 		}, nil
-	case logql.QuantileSketchMatrix:
+	case sketch.QuantileSketchMatrix:
 		return &QueryResponse{
 			Response: &QueryResponse_QuantileSketches{
 				QuantileSketches: &QuantileSketchResponse{Response: data.ToProto()},
