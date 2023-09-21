@@ -45,37 +45,30 @@ func toksToStrings(toks []int) []string {
 	}
 	return strings
 }
-<<<<<<< HEAD
+
 
 // TestIdentifierToLower tests that the identifier lexer function converts the identifier to lowercase
 func TestIdentifierToLower(t *testing.T) {
-	lex := newLexer()
-	inputData := []byte("{MyLabel}")
-	lex.setData(inputData)
+        lex := newLexer()
+        inputData := []byte("{MyLabel}")
+        lex.setData(inputData)
 
-	var out exprSymType
-	lex.ts = 0              // Set the start position to 0
-	lex.te = len(inputData) // Set the end position to the length of inputData
+        var out exprSymType
+        lex.ts = 0              // Set the start position to 0
+        lex.te = len(inputData) // Set the end position to the length of inputData
 
-=======
-func TestIdentifierToLower(t *testing.T) {
-	lex := newLexer()
-	lex.setData([]byte("{MyLabel}"))
+        token, err := lex.identifier(&out)
 
-	var out exprSymType
->>>>>>> 9b462f08142acc489a2ddabb3b6098d6e3579a89
-	token, err := lex.identifier(&out)
+        if err != nil {
+                t.Errorf("Expected no error, but got %v", err)
+        }
 
-	if err != nil {
-		t.Errorf("Expected no error, but got %v", err)
-	}
+        expectedToken := IDENTIFIER
+        if token != expectedToken {
+                t.Errorf("Expected token %d, but got %d", expectedToken, token)
+        }
 
-	expectedToken := IDENTIFIER
-	if token != expectedToken {
-		t.Errorf("Expected token %d, but got %d", expectedToken, token)
-	}
-
-	expectedIdentifier := "mylabel"
+        expectedIdentifier := "mylabel"
 	if out.str != expectedIdentifier {
 		t.Errorf("Expected identifier %s, but got %s", expectedIdentifier, out.str)
 	}
