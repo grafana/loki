@@ -55,7 +55,7 @@ func (lex *lexer) token() string {
 // nolint
 func (lex *lexer) identifier(out *exprSymType) (int, error) {
 	t := lex.token()
-	out.str = strings.ToLower(t[1 : len(t)-1])
+	out.str = strings.ToLower(t[1 : len(t)-1]) // Converts the identifier to lowercase
 	return IDENTIFIER, nil
 }
 
