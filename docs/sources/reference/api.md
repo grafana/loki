@@ -55,7 +55,6 @@ These endpoints are exposed by the ingester:
 
 - [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
-- **Deprecated** [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
 
 The API endpoints starting with `/loki/` are [Prometheus API-compatible](https://prometheus.io/docs/prometheus/latest/querying/api/) and the result formats can be used interchangeably.
 
@@ -1470,14 +1469,3 @@ In microservices mode, `/api/prom/push` is exposed by the distributor.
 $ curl -H "Content-Type: application/json" -XPOST -s "https://localhost:3100/api/prom/push" --data-raw \
   '{"streams": [{ "labels": "{foo=\"bar\"}", "entries": [{ "ts": "2018-12-18T08:28:06.801064-04:00", "line": "fizzbuzz" }] }]}'
 ```
-
-### `POST /ingester/flush_shutdown`
-
-> **WARNING**: `/ingester/flush_shutdown` is DEPRECATED; use `/ingester/shutdown?flush=true`
-> instead.
-
-`/ingester/flush_shutdown` triggers a shutdown of the ingester and notably will _always_ flush any in memory chunks it holds.
-This is helpful for scaling down WAL-enabled ingesters where we want to ensure old WAL directories are not orphaned,
-but instead flushed to our chunk backend.
-
-In microservices mode, the `/ingester/flush_shutdown` endpoint is exposed by the ingester.
