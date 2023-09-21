@@ -25,8 +25,6 @@ For more information see [Deployment modes]({{< relref "./deployment-modes" >}})
 
 This page describes the responsibilities of each of these components.
 
-![components_diagram](../loki_architecture_components.svg "Components diagram")
-
 
 ## Distributor
 
@@ -38,10 +36,10 @@ is then sent to `n` [ingesters](#ingester) in parallel, where `n` is the [replic
 The distributor determines the ingesters to which it sends a stream to using [consistent hashing](#hashing).
 
 It is important that a load balancer sits in front of the distributor in order to properly balance incoming traffic to them.
+In Kubernetes the service load balancer provides this service.
 
 The distributor is a stateless component. This makes it easy to scale and offload as much work as possible from the ingesters, which are the most critical component on the write path.
-The ability to independently scale these validation operations mean that Loki can also protect itself against denial of service attacks (either malicious or not) that could otherwise overload the ingesters.
-They act like the bouncer at the front door, ensuring everyone is appropriately dressed and has an invitation.
+The ability to independently scale these validation operations mean that Loki can also protect itself against denial of service attacks that could otherwise overload the ingesters.
 It also allows us to fan-out writes according to the [replication factor](#replication-factor).
 
 ### Validation
@@ -54,7 +52,7 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 ### Rate limiting
 
-The distributor can also rate limit incoming logs based on the maximum data ingest rate per tenant. It does this by checking a per-tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/s before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
+The distributor can also rate limit incoming logs based on the maximum data ingest rate per tenant. It does this by checking a per-tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/s before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`. This is how global limits allow much simpler and safer operation of the Loki cluster.
 
 {{% admonition type="note" %}}
 The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configure#distributor" >}}).
@@ -66,13 +64,13 @@ Once the distributor has performed all of its validation duties, it forwards dat
 
 #### Replication factor
 
-In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication factor_ of them. Generally, this is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will error if less than a _quorum_ of writes succeed. A quorum is defined as `floor( replication_factor / 2 ) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write can be retried.
+In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication factor_ of them. Generally, the replication factor is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will generate an error if less than a _quorum_ of writes succeed. A quorum is defined as `floor( replication_factor / 2 ) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write operation will be retried.
 
 {{% admonition type="caution" %}}
 If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.
 {{% /admonition %}}
 
-The replication factor is not the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts and restarts. The [ingester component](#ingester) now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) (WAL) which persists incoming writes to disk to ensure they are not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (that is, multiple ingesters die and lose/corrupt their disks).
+The replication factor is not the only thing that prevents data loss, though, and its main purpose is to allow writes to continue uninterrupted during rollouts and restarts. The [ingester component](#ingester) now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) (WAL) which persists incoming writes to disk to ensure they are not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (that is, multiple ingesters die and lose/corrupt their disks).
 
 ### Hashing
 
@@ -242,7 +240,7 @@ Query frontends are **stateless**. However, due to how the internal queue works,
 
 If no separate [query scheduler](#query-scheduler) component is used, the query frontend will also perform basic query queueing.
 
-- Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
+- Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the total cost of ownership (TCO).
 - Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
 - Prevent a single tenant from denial-of-service-ing (DOSing) other tenants by fairly scheduling queries between tenants.
 
@@ -278,11 +276,11 @@ This cache is only applicable when using single store TSDB.
 ## Query scheduler
 
 The **query scheduler** is an **optional service** providing more [advanced queuing functionality]({{< relref "../operations/query-fairness" >}}) than the [query frontend](#query-frontend).
-When using this component in in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
+When using this component in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
 There is a queue for each tenant to guarantee the query fairness across all tenants.
 The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query frontend for aggregation. Queriers therefore need to be configured with the query scheduler address (via the `-querier.scheduler-address` CLI flag) in order to allow them to connect to the query scheduler.
 
-Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run a more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
+Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
 
 
 ## Querier
@@ -305,7 +303,7 @@ The **index gateway** service is responsible for handling and serving metadata q
 Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
 such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}}) or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}).
 
-The query frontend queries the index gateway for volume of queries so it can make a decision on how to shard the queries.
+The query frontend queries the index gateway for the log volume of queries so it can make a decision on how to shard the queries.
 The queriers query the index gateway for chunk references for a given query so they know which chunks to fetch and query.
 
 The index gateway can run in `simple` or `ring` mode. In `simple` mode, each index gateway instance serves all indexes from all tenants.
@@ -315,10 +313,10 @@ In `ring` mode, index gateways use a consistent hash ring to distribute and shar
 ## Compactor
 
 The **compactor** service is used by "shipper stores", such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}})
-or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}), to compact the multiple index files produces by the ingesters
+or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}), to compact the multiple index files produced by the ingesters
 and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
 
-To do so, the compactor downloads the files from object storage in a regular interval, merges the them into a single one,
+To do so, the compactor downloads the files from object storage in a regular interval, merges them into a single one,
 uploads the newly created index, and cleans up the old files.
 
 Additionally, the compactor is also responsible for [log retention]({{< relref "../operations/storage/retention" >}}) and [log deletion]({{< relref "../operations/storage/logs-deletion" >}}).
