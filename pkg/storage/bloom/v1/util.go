@@ -3,7 +3,6 @@ package v1
 import (
 	"hash"
 	"hash/crc32"
-	"io"
 	"sync"
 
 	"github.com/prometheus/prometheus/util/pool"
@@ -72,18 +71,24 @@ type Iterator[T any] interface {
 	At() T
 }
 
-type checksumWriter struct {
-	h hash.Hash32
-	w io.Writer
+type SliceIter[T any] struct {
+	cur int
+	xs  []T
 }
 
-func newChecksumWriter(w io.Writer) *checksumWriter {
-	return &checksumWriter{
-		h: Crc32HashPool.Get(),
-		w: w,
-	}
+func NewSliceIter[T any](xs []T) *SliceIter[T] {
+	return &SliceIter[T]{xs: xs, cur: -1}
 }
 
-func (w *checksumWriter) Write(p []byte) (n int, err error) {
+func (it *SliceIter[T]) Next() bool {
+	it.cur++
+	return it.cur < len(it.xs)
+}
 
+func (it *SliceIter[T]) Err() error {
+	return nil
+}
+
+func (it *SliceIter[T]) At() T {
+	return it.xs[it.cur]
 }
