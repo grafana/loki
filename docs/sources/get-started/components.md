@@ -266,12 +266,12 @@ you'd still need to process a lot of data additionally to the data from the resu
 
 #### Index stats queries
 
-The query frontend caches index stats query results similar to the [metric query](#metrics-queries) results.
+The query frontend caches index stats query results similar to the [metric query](#metric-queries) results.
 This cache is only applicable when using single store TSDB.
 
 #### Log volume queries
 
-The query frontend caches log volume query results similar to the [metric query](#metrics-queries) results.
+The query frontend caches log volume query results similar to the [metric query](#metric-queries) results.
 This cache is only applicable when using single store TSDB.
 
 
