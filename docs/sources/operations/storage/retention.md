@@ -11,45 +11,50 @@ It is the recommended way of applying retention for [boltdb-shipper]({{< relref 
 
 Though [Table Manager]({{< relref "./table-manager" >}}) can perform retention on [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and other [legacy index types]({{< relref "../../storage#index-storage" >}}), it is now deprecated.
 
-By default `compactor.retention_enabled` flag is not set, then logs sent to Loki live forever.
+By default `compactor.retention-enabled` flag is not set, so the logs sent to Loki live forever.
 
-Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
+{{% admonition type="note" %}}
+If you have a lifecycle policy configured on the object store, please ensure that it is longer than the retention period.
+{{% /admonition %}}
+
+Granular retention policies to apply retention at per tenant or per stream level are also supported by the compactor.
 
 ## Compactor
 
-The [Compactor]({{< relref "./boltdb-shipper#compactor" >}}) can deduplicate index entries. It can also apply granular retention. When applying retention with the Compactor, the [Table Manager]({{< relref "./table-manager" >}}) is unnecessary.
+The compactor is resposible for compaction of index files and applying log retention.
 
-> Run the Compactor as a singleton (a single instance).
+{{% admonition type="note" %}}
+Run the Compactor as a singleton (a single instance).
+{{% /admonition %}}
 
-Compaction and retention are idempotent. If the Compactor restarts, it will continue from where it left off.
+The compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
+Both compaction and retention are idempotent. If the compactor restarts, it will continue from where it left off.
 
-The Compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
-
-The Compactor's algorithm to update the index:
-
-- For each table within each day:
-  - Compact the table into per-tenant index files. A single index file for a tenant.
-  - Traverse the per-tenant index. Use the tenant configuration to identify and mark chunks that need to be removed.
-  - Remove marked chunks from the index and save their reference in a file on disk.
+The compactor's algorithm to apply retention is as follows:
+- For each day or table (one table per day with 24h index period):
+  - Compact multiple index files in the table into per-tenant index files. Result of compaction is a single index file per tenant per day.
+  - Traverse the per-tenant index. Use the tenant configuration to identify the chunks that need to be removed.
+  - Remove the references to the matching chunks from the index and add the chunk references to a marker file on disk.
   - Upload the new modified index files.
 
 Chunks are not deleted while applying the retention algorithm on the index. They are deleted asynchronously by a sweeper process
-and this delay can be configured by setting `-compactor.retention-delete-delay`.
+and this delay can be configured by setting `-compactor.retention-delete-delay`. Marker files are used to keep track of the chunks pending for deletion.
 
-Chunks cannot be deleting immediately for the following reasons:
-- Index files are refreshed from the shared store on components using it (index gateway, querier and ruler) at a specific interval. This means deleting chunks instantly could lead to some of the components still having reference to old chunks and so they could fail to execute queries. Having a delay allows for components to pull the updated index file from the store allowing the compactor to remove gracefully their reference of those chunks.
+Chunks cannot be deleted immediately for the following reasons:
+- Index shipper downloads a copy of the index files to server queries and refreshes them at a regular interval.
+Having a delay allows the index gateways to pull the modified index file which would not contain any reference to the chunks marked for deletion.
+Without the delay, index files (that are stale) on the gateways could refer to already deleted chunks leading to query failures.
+
 - It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
 
-Compactor uses marker files to keep track of the chunks that need to be deleted.
 Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the compactor process restarts.
-
 {{% admonition type="note" %}}
 We recommend running compactor as a statefulset (when using Kubernetes) with a persistent storage for storing marker files.
 {{% /admonition %}}
 
 ### Retention Configuration
 
-This Compactor configuration example activates retention.
+This compactor configuration example activates retention.
 
 ```yaml
 compactor:
@@ -78,18 +83,14 @@ storage_config:
 ```
 
 {{% admonition type="note" %}}
-Note that retention is only available if the index period is 24h.
+Retention is only available if the index period is 24h. Single store TSDB and single store BoltDB require 24h index period.
 {{% /admonition %}}
 
-Set `retention_enabled` to true. Without this, the Compactor will only compact tables.
-
-Define `schema_config` and `storage_config` to access the storage.
-
-The index period must be 24h.
+`retention_enabled` should be set to true. Without this, the compactor will only compact tables.
 
 `working_directory` is the directory where marked chunks and temporary tables will be saved.
 
-`compaction_interval` dictates how often compaction and/or retention is applied. If the Compactor falls behind, compaction and/or retention occur as soon as possible.
+`compaction_interval` dictates how often compaction and/or retention is applied. If the compactor falls behind, compaction and/or retention occur as soon as possible.
 
 `retention_delete_delay` is the delay after which the Compactor will delete marked chunks.
 
@@ -101,12 +102,14 @@ Retention period is configured within the [`limits_config`]({{< relref "../../co
 
 There are two ways of setting retention policies:
 
-- `retention_period` which is applied globally.
-- `retention_stream` which is only applied to chunks matching the selector
+- `retention_period` which is applied globally for all log streams.
+- `retention_stream` which is only applied to log streams matching the selector.
 
-> The minimum retention period is 24h.
+{{% admonition type="note" %}}
+The minimum retention period is 24h.
+{{% /admonition %}}
 
-This example configures global retention:
+This example configures global retention that applies to all tenants (unless overridden by configuring per-tenant overrides):
 
 ```yaml
 ...
@@ -124,14 +127,14 @@ limits_config:
 You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
 {{% /admonition %}}
 
-Per tenant retention can be defined using the [runtime config overrides]({{< relref "../../configure#runtime-configuration-file" >}}). For example:
+Per tenant retention can be defined by configuring [runtime overrides]({{< relref "../../configure#runtime-configuration-file" >}}). For example:
 
 ```yaml
 overrides:
     "29":
         retention_period: 168h
         retention_stream:
-        - selector: '{namespace="prod", container=~"(nginx|loki)"}'
+        - selector: '{namespace="prod"}'
           priority: 2
           period: 336h
         - selector: '{container="loki"}'
@@ -144,13 +147,16 @@ overrides:
           period: 24h
 ```
 
-A rule to apply is selected by choosing the first in this list that matches:
-
-1. If a per-tenant `retention_stream` matches the current stream, the highest priority is picked.
-2. If a global `retention_stream` matches the current stream, the highest priority is picked.
+Retention period for a given stream is decided based on the first match in this list:
+1. If mutiple per-tenant `retention_stream` selectors match the stream, retention period with the highest priority is picked.
+2. If multiple global `retention_stream` selectors match the stream, retention period with the highest priority is picked. This value is not considered if per-tenant `retention_stream` is set.
 3. If a per-tenant `retention_period` is specified, it will be applied.
-4. The global `retention_period` will be selected if nothing else matched.
+4. The global `retention_period` will be applied if none of the above match.
 5. If no global `retention_period` is specified, the default value of `744h` (30days) retention is used.
+
+{{% admonition type="note" %}}
+The larger the priority value, the higher the priority.
+{{% /admonition %}}
 
 Stream matching uses the same syntax as Prometheus label matching:
 
@@ -159,17 +165,17 @@ Stream matching uses the same syntax as Prometheus label matching:
 - `=~`: Select labels that regex-match the provided string.
 - `!~`: Select labels that do not regex-match the provided string.
 
-The example configurations will set these rules:
-
-- All tenants except `29` and `30` in the `dev` namespace will have a retention period of `24h` hours.
-- All tenants except `29` and `30` that are not in the `dev` namespace will have the retention period of `744h`.
+The example configurations defined above will result in the following retention periods:
 - For tenant `29`:
-  - All streams except those in the container `loki` or in the namespace `prod` will have retention period of `168h` (1 week).
-  - All streams in the `prod` namespace will have a retention period of `336h` (2 weeks), even if the container label is `loki`, since the priority of the `prod` rule is higher.
+  - Streams that have the namespace label `prod` will have a retention period of `336h` (2 weeks), even if the container label is `loki`, since the priority of the `prod` rule is higher.
   - Streams that have the container label `loki` but are not in the namespace `prod` will have a `72h` retention period.
+  - For the rest of the streams in this tenant, per-tenant override `retention_period` value of `168h` is applied.
 - For tenant `30`:
-  - All streams except those having the container label `nginx` will have the global retention period of `744h`, since there is no override specified.
-  - Streams that have the label `nginx` will have a retention period of `24h`.
+  - Streams that have the label `nginx` and level `debug` will have a retention period of `24h`.
+  - For the rest of the streams in this tenant the global retention period of `744h`, since there is no override specified.
+- All tenants except `29` and `30`:
+  - Streams that have the namespace label `dev` will have a retention period of `24h` hours.
+  - Streams expect those with the namespace label `dev` will have the retention period of `744h`.
 
 ## Table Manager (deprecated)
 
