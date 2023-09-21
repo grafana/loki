@@ -47,7 +47,7 @@ In order to mitigate the chance of _losing_ data on any single ingester, the dis
 
 **Caveat: If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.**
 
-Replication factor isn't the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts & restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
+Replication factor isn't the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts and restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
 
 ### Hashing
 
