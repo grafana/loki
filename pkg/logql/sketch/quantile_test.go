@@ -13,8 +13,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// I used this test to generate what is essentially CSV data to then import into a google sheet
-// for analysis of the accuracy results and sketch sizes.
 func TestQuantiles(t *testing.T) {
 	// v controls the distribution of values along the curve, a greater v
 	// value means there's a large distance between generated values
@@ -78,18 +76,4 @@ func TestQuantiles(t *testing.T) {
 			}
 		}
 	}
-}
-
-type Float64Slice []float64
-
-func (s Float64Slice) Len() int {
-	return len(s)
-}
-
-func (s Float64Slice) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
-func (s Float64Slice) Less(i, j int) bool {
-	return s[i] > s[j]
 }
