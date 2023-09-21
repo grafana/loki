@@ -43,7 +43,9 @@ Chunks cannot be deleting immediately for the following reasons:
 Compactor uses marker files to keep track of the chunks that need to be deleted.
 Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the compactor process restarts.
 
-Note: We recommend running compactor as a statefulset (when using Kubernetes) with a persistent storage for storing marker files.
+{{% admonition type="note" %}}
+We recommend running compactor as a statefulset (when using Kubernetes) with a persistent storage for storing marker files.
+{{% /admonition %}}
 
 ### Retention Configuration
 
@@ -75,7 +77,9 @@ storage_config:
         bucket_name: loki
 ```
 
-> Note that retention is only available if the index period is 24h.
+{{% admonition type="note" %}}
+Note that retention is only available if the index period is 24h.
+{{% /admonition %}}
 
 Set `retention_enabled` to true. Without this, the Compactor will only compact tables.
 
@@ -116,7 +120,9 @@ limits_config:
 ...
 ```
 
-**NOTE:** You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
+{{% admonition type="note" %}}
+You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
+{{% /admonition %}}
 
 Per tenant retention can be defined using the [runtime config overrides]({{< relref "../../configure#runtime-configuration-file" >}}). For example:
 
@@ -180,14 +186,18 @@ Alternatively, the `table-manager.retention-period` and
 provided retention period needs to be a duration represented as a string that
 can be parsed using the Prometheus common model [ParseDuration](https://pkg.go.dev/github.com/prometheus/common/model#ParseDuration). Examples: `7d`, `1w`, `168h`.
 
-> **WARNING**: The retention period must be a multiple of the index and chunks table
+{{% admonition type="warning" %}}
+The retention period must be a multiple of the index and chunks table
 `period`, configured in the [`period_config`]({{< relref "../../configure#period_config" >}})
 block. See the [Table Manager]({{< relref "./table-manager#retention" >}}) documentation for
 more information.
+{{% /admonition %}}
 
-> **NOTE**: To avoid querying of data beyond the retention period,
+{{% admonition type="note" %}}
+To avoid querying of data beyond the retention period,
 `max_query_lookback` config in [`limits_config`]({{< relref "../../configure#limits_config" >}}) must be set to a value less than or equal to
 what is set in `table_manager.retention_period`.
+{{% /admonition %}}
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
 policy set correctly. For more details check
