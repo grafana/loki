@@ -3,6 +3,7 @@ title: Releasing Grafana Loki
 description: Releasing Grafana Loki
 aliases:
 - ../../maintaining/release/
+weight: 500
 ---
 # Releasing Grafana Loki
 
