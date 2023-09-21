@@ -1141,9 +1141,6 @@ github.com/modern-go/concurrent
 # github.com/modern-go/reflect2 v1.0.2
 ## explicit; go 1.12
 github.com/modern-go/reflect2
-# github.com/montanaflynn/stats v0.7.0
-## explicit; go 1.13
-github.com/montanaflynn/stats
 # github.com/morikuni/aec v1.0.0
 ## explicit
 github.com/morikuni/aec

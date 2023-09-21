@@ -7,7 +7,9 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/montanaflynn/stats"
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/vector"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 )
 
@@ -44,11 +46,11 @@ func TestQuantiles(t *testing.T) {
 
 						r := rand.New(rand.NewSource(42))
 						z := rand.NewZipf(r, s, v, 1_000)
-						values := Float64Slice{}
+						values := make(vector.HeapByMaxValue, 0)
 						for i := 0; i < samplesCount; i++ {
 
 							value := float64(z.Uint64())
-							values = append(values, value)
+							values = append(values, promql.Sample{F: value})
 							sketch.Add(value)
 						}
 						sort.Sort(values)
@@ -67,8 +69,7 @@ func TestQuantiles(t *testing.T) {
 						require.Less(t, len(buf), samplesCount*8)
 
 						// Accuracy
-						expected, err := stats.Percentile(stats.Float64Data(values), 99)
-						require.NoError(t, err)
+						expected := logql.Quantile(0.99, values)
 						actual, err := sketch.Quantile(0.99)
 						require.NoError(t, err)
 						require.InEpsilonf(t, expected, actual, tc.relativeError, "expected quantile %f, actual quantile %f", expected, actual)
