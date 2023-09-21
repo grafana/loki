@@ -916,7 +916,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         commands: [
-	  'git fetch origin --tags',
+          'git fetch origin --tags',
           'make docker-driver-push',
         ],
         volumes: [
