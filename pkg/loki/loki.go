@@ -38,7 +38,6 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	basetripper "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/worker"
 	"github.com/grafana/loki/pkg/ruler"
 	base_ruler "github.com/grafana/loki/pkg/ruler/base"
@@ -306,7 +305,7 @@ type Loki struct {
 	runtimeConfig             *runtimeconfig.Manager
 	MemberlistKV              *memberlist.KVInitService
 	compactor                 *compactor.Compactor
-	QueryFrontEndTripperware  basetripper.Tripperware
+	QueryFrontEndTripperware  queryrangebase.Tripperware
 	queryScheduler            *scheduler.Scheduler
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
@@ -369,6 +368,9 @@ type RunOpts struct {
 	// CustomConfigEndpointHandlerFn is the handlerFunc to be used by the /config endpoint.
 	// If empty, default handlerFunc will be used.
 	CustomConfigEndpointHandlerFn func(http.ResponseWriter, *http.Request)
+	// StartTime is the time at which the main() function started executing.
+	// It is used to determin the startup time as well as the running time of the Loki process.
+	StartTime time.Time
 }
 
 func (t *Loki) bindConfigEndpoint(opts RunOpts) {
@@ -445,14 +447,18 @@ func (t *Loki) Run(opts RunOpts) error {
 	t.Server.HTTP.Path("/loki/api/v1/format_query").Methods("GET", "POST").HandlerFunc(formatQueryHandler())
 
 	// Let's listen for events from this manager, and log them.
-	healthy := func() {
-		level.Info(util_log.Logger).Log("msg", "Loki started", "startup_time", time.Since(startTime))
-		_ = util_log.Flush()
+	logHook := func(msg, key string) func() {
+		return func() {
+			started := startTime
+			if opts.StartTime.After(time.Time{}) {
+				started = opts.StartTime
+			}
+			level.Info(util_log.Logger).Log("msg", msg, key, time.Since(started))
+			_ = util_log.Flush()
+		}
 	}
-	stopped := func() {
-		level.Info(util_log.Logger).Log("msg", "Loki stopped", "running_time", time.Since(startTime))
-		_ = util_log.Flush()
-	}
+	healthy := logHook("Loki started", "startup_time")
+	stopped := logHook("Loki stopped", "running_time")
 	serviceFailed := func(service services.Service) {
 		// if any service fails, stop entire Loki
 		sm.StopAsync()
