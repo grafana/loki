@@ -3,29 +3,124 @@ package v1
 import (
 	"bytes"
 	"hash"
+	"io"
 
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 type Block struct {
-	toc    ToC
-	series []SeriesPageWithOffset
-	blooms []BloomPage
+	schema Schema
+	header SeriesHeader             // header for the entire block
+	series []SeriesHeaderWithOffset // headers for each series page
+	// blooms []BloomPage              // pages of blooms referenced by series pages
 }
 
-type SeriesPageWithOffset struct {
-	SeriesPage,
-	Offset int
+func (b *Block) WriteTo(itr Iterator[SeriesPage], w io.Writer) (int64, error) {
+	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
+	defer Crc32HashPool.Put(crc32Hash)
+
+	var offset int64
+
+	// TODO(owen-d): guess sizing better
+	encoder := encoding.EncWith(BlockPool.Get(1 << 10))
+	enc := &encoder
+
+	// encode schema
+	b.schema.Encode(enc)
+	written, err := w.Write(enc.Get())
+	if err != nil {
+		return offset, errors.Wrap(err, "writing schema")
+	}
+	offset += int64(written)
+
+	// encode series, accumlate encoded headers with relevant offsets,
+	// they will be written at the end of the block
+	for itr.Next() {
+		page := itr.At()
+		b.series = append(b.series, SeriesHeaderWithOffset{
+			SeriesHeader: page.Header,
+			Offset:       int(offset),
+		})
+
+		page.Encode(enc, crc32Hash)
+		written, err := w.Write(enc.Get())
+		if err != nil {
+			return offset, errors.Wrap(err, "writing series page")
+		}
+		offset += int64(written)
+
+	}
+	if itr.Err() != nil {
+		return offset, errors.Wrap(err, "iterating series")
+	}
+
+	enc.Reset()
+	headerOffset := offset
+
+	// TODO: create a header for the entire block
+	// put aggregated series header
+
+	// put number of pages
+	enc.PutUvarint(len(b.series))
+	for _, s := range b.series {
+		s.Encode(enc)
+	}
+
+	// put offset to beginning of header section
+	// cannot be varint encoded because it's offset will be calculated as
+	// the 8 bytes prior to the checksum
+	enc.PutBE64(uint64(headerOffset))
+
+	// wrap with final checksum
+	enc.PutHash(crc32Hash)
+
+	written, err = w.Write(enc.Get())
+	if err != nil {
+		return offset, errors.Wrap(err, "writing series page")
+	}
+	offset += int64(written)
 }
 
-// table of contents
-type ToC struct {
+// schema
+// magic num, version, encoding, are the first few bytes
+// the offset of the final header detailing the series+time range
+// this block covers is encoded at the end of the block
+// Finally, a checksum of the entire block is the last 4 bytes
+type Schema struct {
 	version byte
-	header  SeriesHeader
+	enc     chunkenc.Encoding // encoding algorithm
+}
+
+func (s *Schema) Encode(enc *encoding.Encbuf) {
+	enc.Reset()
+	enc.PutByte(s.version)
+	enc.PutByte(byte(s.enc))
+}
+
+func (s *Schema) Decode(dec *encoding.Decbuf) error {
+	s.version = dec.Byte()
+	s.enc = chunkenc.Encoding(dec.Byte())
+	return dec.Err()
+}
+
+type SeriesHeaderWithOffset struct {
+	Offset int
+	SeriesHeader
+}
+
+func (h *SeriesHeaderWithOffset) Encode(enc *encoding.Encbuf) {
+	enc.PutUvarint(h.Offset)
+	h.SeriesHeader.Encode(enc)
+}
+
+func (h *SeriesHeaderWithOffset) Decode(dec *encoding.Decbuf) error {
+	h.Offset = dec.Uvarint()
+	return h.SeriesHeader.Decode(dec)
 }
 
 type SeriesHeader struct {
@@ -34,13 +129,12 @@ type SeriesHeader struct {
 	FromTs, ThroughTs int64
 }
 
-func (h *SeriesHeader) Encode(enc *encoding.Encbuf) error {
+func (h *SeriesHeader) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(h.NumSeries)
 	enc.PutUvarint64(uint64(h.FromFp))
 	enc.PutUvarint64(uint64(h.ThroughFp))
 	enc.PutVarint64(h.FromTs)
 	enc.PutVarint64(h.ThroughTs)
-	return nil
 }
 
 func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
@@ -49,7 +143,7 @@ func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	h.ThroughFp = model.Fingerprint(dec.Uvarint64())
 	h.FromTs = dec.Varint64()
 	h.ThroughTs = dec.Varint64()
-	return nil
+	return dec.Err()
 }
 
 // series page header

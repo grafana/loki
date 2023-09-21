@@ -3,6 +3,7 @@ package v1
 import (
 	"hash"
 	"hash/crc32"
+	"io"
 	"sync"
 
 	"github.com/prometheus/prometheus/util/pool"
@@ -63,4 +64,26 @@ func (p *ChecksumPool) Get() hash.Hash32 {
 
 func (p *ChecksumPool) Put(h hash.Hash32) {
 	p.Pool.Put(h)
+}
+
+type Iterator[T any] interface {
+	Next() bool
+	Err() error
+	At() T
+}
+
+type checksumWriter struct {
+	h hash.Hash32
+	w io.Writer
+}
+
+func newChecksumWriter(w io.Writer) *checksumWriter {
+	return &checksumWriter{
+		h: Crc32HashPool.Get(),
+		w: w,
+	}
+}
+
+func (w *checksumWriter) Write(p []byte) (n int, err error) {
+
 }
