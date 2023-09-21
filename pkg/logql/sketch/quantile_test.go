@@ -7,10 +7,11 @@ import (
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/grafana/loki/pkg/logql"
-	"github.com/grafana/loki/pkg/logql/vector"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/vector"
 )
 
 func TestQuantiles(t *testing.T) {
@@ -49,7 +50,8 @@ func TestQuantiles(t *testing.T) {
 
 							value := float64(z.Uint64())
 							values = append(values, promql.Sample{F: value})
-							sketch.Add(value)
+							err := sketch.Add(value)
+							require.NoError(t, err)
 						}
 						sort.Sort(values)
 
