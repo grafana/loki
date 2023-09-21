@@ -285,6 +285,7 @@ loki:
     azure:
       accountName: null
       accountKey: null
+      connectionString: null
       useManagedIdentity: false
       useFederatedToken: false
       userAssignedId: null

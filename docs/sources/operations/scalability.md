@@ -68,7 +68,7 @@ Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` 
 
 > **Note:** Queries that fail to execute are _not_ retried.
 
-### Limits & Observability
+### Limits and Observability
 
 Remote rule evaluation can be tuned with the following options:
 

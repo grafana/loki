@@ -188,8 +188,6 @@ type Interface interface {
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
-	// deprecated
-	LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
@@ -610,25 +608,6 @@ func (i *Ingester) loop() {
 			return
 		}
 	}
-}
-
-// LegacyShutdownHandler triggers the following set of operations in order:
-//   - Change the state of ring to stop accepting writes.
-//   - Flush all the chunks.
-//
-// Note: This handler does not trigger a termination of the Loki process,
-// despite its name. Instead, the ingester service is stopped, so an external
-// source can trigger a safe termination through a signal to the process.
-// The handler is deprecated and usage is discouraged. Use ShutdownHandler
-// instead.
-func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, _ *http.Request) {
-	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
-	originalState := i.lifecycler.FlushOnShutdown()
-	// We want to flush the chunks if transfer fails irrespective of original flag.
-	i.lifecycler.SetFlushOnShutdown(true)
-	_ = services.StopAndAwaitTerminated(context.Background(), i)
-	i.lifecycler.SetFlushOnShutdown(originalState)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
