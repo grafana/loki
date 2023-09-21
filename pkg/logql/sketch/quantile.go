@@ -29,12 +29,16 @@ func (q QuantileSketchVector) ToProto() *logproto.QuantileSketchVector {
 	return &logproto.QuantileSketchVector{Samples: samples}
 }
 
-func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) QuantileSketchVector {
+func QuantileSketchVectorFromProto(proto *logproto.QuantileSketchVector) (QuantileSketchVector, error) {
 	out := make([]quantileSketchSample, len(proto.Samples))
+	var err error
 	for i, s := range proto.Samples {
-		out[i] = quantileSketchSampleFromProto(s)
+		out[i], err = quantileSketchSampleFromProto(s)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return out
+	return out, nil
 }
 
 func (QuantileSketchMatrix) String() string {
@@ -51,12 +55,16 @@ func (m QuantileSketchMatrix) ToProto() *logproto.QuantileSketchMatrix {
 	return &logproto.QuantileSketchMatrix{Values: values}
 }
 
-func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) QuantileSketchMatrix {
+func QuantileSketchMatrixFromProto(proto *logproto.QuantileSketchMatrix) (QuantileSketchMatrix, error) {
 	out := make([]QuantileSketchVector, len(proto.Values))
+	var err error
 	for i, v := range proto.Values {
-		out[i] = QuantileSketchVectorFromProto(v)
+		out[i], err = QuantileSketchVectorFromProto(v)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return out
+	return out, nil
 }
 
 type quantileSketchSample struct {
@@ -81,10 +89,14 @@ func (q quantileSketchSample) ToProto() *logproto.QuantileSketchSample {
 	}
 }
 
-func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantileSketchSample {
+func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) (quantileSketchSample, error) {
+	sketch, err := QuantileSketchFromProto(proto.F)
+	if err != nil {
+		return quantileSketchSample{}, err
+	}
 	out := quantileSketchSample{
 		T:      proto.TimestampMs,
-		F:      nil, //QuantileSketchFromProto(proto.F),
+		F:      sketch,
 		Metric: make(labels.Labels, len(proto.Metric)),
 	}
 
@@ -92,7 +104,7 @@ func quantileSketchSampleFromProto(proto *logproto.QuantileSketchSample) quantil
 		out.Metric[i] = labels.Label{Name: p.Name, Value: p.Value}
 	}
 
-	return out
+	return out, nil
 }
 
 // QuantileSketch estimates quantiles over time.
@@ -105,16 +117,15 @@ type QuantileSketch interface {
 
 type QuantileSketchFactory func() QuantileSketch
 
-// TODO: support other quantile sketches
-func QuantileSketchFromProto(proto *logproto.TDigest) QuantileSketch {
-	q := &TDigestQuantile{tdigest.NewWithCompression(proto.Compression)}
-
-	centroids := make([]tdigest.Centroid, len(proto.Processed))
-	for i, c := range proto.Processed {
-		centroids[i] = tdigest.Centroid{Mean: c.Mean, Weight: c.Weight}
+func QuantileSketchFromProto(proto *logproto.QuantileSketch) (QuantileSketch, error) {
+	switch concrete := proto.Sketch.(type) {
+	case *logproto.QuantileSketch_Tdigest:
+		return TDigestQuantileFromProto(concrete.Tdigest), nil
+	case *logproto.QuantileSketch_Ddsketch:
+		return DDSketchQuantileFromProto(concrete.Ddsketch)
 	}
-	q.AddCentroidList(centroids)
-	return q
+
+	return nil, fmt.Errorf("unknown quantile sketch type: %T", proto.Sketch)
 }
 
 // DDSketchQuantile is a QuantileSketch implementation based on DataDog's
@@ -124,7 +135,7 @@ type DDSketchQuantile struct {
 	*ddsketch.DDSketch
 }
 
-func NewDDSketch() QuantileSketch {
+func NewDDSketch() *DDSketchQuantile {
 	s, _ := ddsketch.NewDefaultDDSketch(0.01)
 	return &DDSketchQuantile{s}
 }
@@ -147,9 +158,17 @@ func (d *DDSketchQuantile) Merge(other QuantileSketch) (QuantileSketch, error) {
 }
 
 func (d *DDSketchQuantile) ToProto() *logproto.QuantileSketch {
+	sketch := &logproto.QuantileSketch_Ddsketch{}
+	d.DDSketch.Encode(&sketch.Ddsketch, false)
 	return &logproto.QuantileSketch{
-		Sketch: nil,
+		Sketch: sketch,
 	}
+}
+
+func DDSketchQuantileFromProto(buf []byte) (*DDSketchQuantile, error) {
+	sketch := NewDDSketch()
+	err := sketch.DDSketch.DecodeAndMergeWith(buf)
+	return sketch, err
 }
 
 type TDigestQuantile struct {
@@ -203,4 +222,15 @@ func (d *TDigestQuantile) ToProto() *logproto.QuantileSketch {
 			},
 		},
 	}
+}
+
+func TDigestQuantileFromProto(proto *logproto.TDigest) *TDigestQuantile {
+	q := &TDigestQuantile{tdigest.NewWithCompression(proto.Compression)}
+
+	centroids := make([]tdigest.Centroid, len(proto.Processed))
+	for i, c := range proto.Processed {
+		centroids[i] = tdigest.Centroid{Mean: c.Mean, Weight: c.Weight}
+	}
+	q.AddCentroidList(centroids)
+	return q
 }

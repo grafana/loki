@@ -31,7 +31,7 @@ func TestQuantiles(t *testing.T) {
 		name          string
 		relativeError float64
 	}{
-		{newSketch: NewDDSketch, name: "DDSketch", relativeError: 0.02},
+		{newSketch: func() QuantileSketch { return NewDDSketch() }, name: "DDSketch", relativeError: 0.02},
 		{newSketch: NewTDigestSketch, name: "T-Digest", relativeError: 0.05},
 	}
 

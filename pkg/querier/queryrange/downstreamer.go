@@ -263,7 +263,10 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 			Headers: resp.GetHeaders(),
 		}, nil
 	case *QuantileSketchResponse:
-		matrix := sketch.QuantileSketchMatrixFromProto(r.Response)
+		matrix, err := sketch.QuantileSketchMatrixFromProto(r.Response)
+		if err != nil {
+			return logqlmodel.Result{}, fmt.Errorf("cannot decode quantile sketch: %w", err)
+		}
 		return logqlmodel.Result{
 			Data:    matrix,
 			Headers: resp.GetHeaders(),
