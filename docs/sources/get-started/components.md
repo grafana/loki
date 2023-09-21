@@ -1,27 +1,47 @@
 ---
-menutitle: Components
 title: Loki components
-description: The components that make up Grafana Loki.
+menutitle: Components
+description: An overview about the various components that Loki consists of.
 weight: 500
 aliases:
     - ../fundamentals/architecture/components
 ---
 # Loki components
 
+Loki is a modular system that contains many components that can either be run together (in "single binary" mode with target `all`),
+in logical groups (in "simple scalable deployment" mode with targets `read`, `write`, `backend`), or individually (in "microservice" mode).
+
+| Component | _individual_ | `all` | `read` | `write` | `backend` |
+| ----------------------------------- | - | - | - | - | - |
+| [Distributor](#distributor)         | x | x |   | x |   |
+| [Ingester](#ingester)               | x | x |   | x |   |
+| [Query Frontend](#query-frontend)   | x | x | x |   |   |
+| [Query Scheduler](#query-scheduler) | x | x |   |   | x |
+| [Querier](#querier)                 | x | x | x |   |   |
+| [Index Gateway](#index-gateway)     | x |   |   |   | x |
+| [Compactor](#compactor)             | x | x |   |   | x |
+| [Ruler](#ruler)                     | x | x |   |   | x |
+
+This page describes the responsibilities of each of these components.
+
 ![components_diagram](../loki_architecture_components.svg "Components diagram")
+
 
 ## Distributor
 
-The **distributor** service is responsible for handling incoming streams by
+The **distributor** service is responsible for handling incoming push requests from
 clients. It's the first stop in the write path for log data. Once the
-distributor receives a set of streams, each stream is validated for correctness
-and to ensure that it is within the configured tenant (or global) limits. Valid
-chunks are then split into batches and sent to multiple [ingesters](#ingester)
-in parallel.
+distributor receives a set of streams in an HTTP request, each stream is validated for correctness
+and to ensure that it is within the configured tenant (or global) limits. Each valid stream
+is then sent to `n` [ingesters](#ingester) in parallel, where `n` is the [replication factor](#replication-factor) for data.
+The distributor determines the ingesters to which it sends a stream to using [consistent hashing](#hashing).
 
-It is important that a load balancer sits in front of the distributor in order to properly balance traffic to them.
+It is important that a load balancer sits in front of the distributor in order to properly balance incoming traffic to them.
 
-The distributor is a stateless component. This makes it easy to scale and offload as much work as possible from the ingesters, which are the most critical component on the write path. The ability to independently scale these validation operations mean that Loki can also protect itself against denial of service attacks (either malicious or not) that could otherwise overload the ingesters. They act like the bouncer at the front door, ensuring everyone is appropriately dressed and has an invitation. It also allows us to fan-out writes according to our replication factor.
+The distributor is a stateless component. This makes it easy to scale and offload as much work as possible from the ingesters, which are the most critical component on the write path.
+The ability to independently scale these validation operations mean that Loki can also protect itself against denial of service attacks (either malicious or not) that could otherwise overload the ingesters.
+They act like the bouncer at the front door, ensuring everyone is appropriately dressed and has an invitation.
+It also allows us to fan-out writes according to the [replication factor](#replication-factor).
 
 ### Validation
 
@@ -33,21 +53,25 @@ Currently the only way the distributor mutates incoming data is by normalizing l
 
 ### Rate limiting
 
-The distributor can also rate limit incoming logs based on the maximum per-tenant bitrate. It does this by checking a per tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/second before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
+The distributor can also rate limit incoming logs based on the maximum data ingest rate per tenant. It does this by checking a per-tenant limit and dividing it by the current number of distributors. This allows the rate limit to be specified per tenant at the cluster level and enables us to scale the distributors up or down and have the per-distributor limit adjust accordingly. For instance, say we have 10 distributors and tenant A has a 10MB rate limit. Each distributor will allow up to 1MB/s before limiting. Now, say another large tenant joins the cluster and we need to spin up 10 more distributors. The now 20 distributors will adjust their rate limits for tenant A to `(10MB / 20 distributors) = 500KB/s`! This is how global limits allow much simpler and safer operation of the Loki cluster.
 
-**Note: The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configure#distributor" >}}).**
+{{% admonition type="note" %}}
+The distributor uses the `ring` component under the hood to register itself amongst its peers and get the total number of active distributors. This is a different "key" than the ingesters use in the ring and comes from the distributor's own [ring configuration]({{< relref "../configure#distributor" >}}).
+{{% /admonition %}}
 
 ### Forwarding
 
-Once the distributor has performed all of its validation duties, it forwards data to the ingester component which is ultimately responsible for acknowledging the write.
+Once the distributor has performed all of its validation duties, it forwards data to the ingester component which is ultimately responsible for acknowledging the write operation.
 
 #### Replication factor
 
-In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication_factor_ of them. Generally, this is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will error if less than a _quorum_ of writes succeed. A quorum is defined as `floor(replication_factor / 2) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write can be retried.
+In order to mitigate the chance of _losing_ data on any single ingester, the distributor will forward writes to a _replication factor_ of them. Generally, this is `3`. Replication allows for ingester restarts and rollouts without failing writes and adds additional protection from data loss for some scenarios. Loosely, for each label set (called a _stream_) that is pushed to a distributor, it will hash the labels and use the resulting value to look up `replication_factor` ingesters in the `ring` (which is a subcomponent that exposes a [distributed hash table](https://en.wikipedia.org/wiki/Distributed_hash_table)). It will then try to write the same data to all of them. This will error if less than a _quorum_ of writes succeed. A quorum is defined as `floor( replication_factor / 2 ) + 1`. So, for our `replication_factor` of `3`, we require that two writes succeed. If less than two writes succeed, the distributor returns an error and the write can be retried.
 
-**Caveat: If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.**
+{{% admonition type="caution" %}}
+If a write is acknowledged by 2 out of 3 ingesters, we can tolerate the loss of one ingester but not two, as this would result in data loss.
+{{% /admonition %}}
 
-Replication factor isn't the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts and restarts. The `ingester` component now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) which persists incoming writes to disk to ensure they're not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (i.e. multiple ingesters die and lose/corrupt their disks).
+The replication factor is not the only thing that prevents data loss, though, and arguably these days its main purpose is to allow writes to continue uninterrupted during rollouts and restarts. The [ingester component](#ingester) now includes a [write ahead log](https://en.wikipedia.org/wiki/Write-ahead_logging) (WAL) which persists incoming writes to disk to ensure they are not lost as long as the disk isn't corrupted. The complementary nature of replication factor and WAL ensures data isn't lost unless there are significant failures in both mechanisms (that is, multiple ingesters die and lose/corrupt their disks).
 
 ### Hashing
 
@@ -55,16 +79,17 @@ Distributors use consistent hashing in conjunction with a configurable
 replication factor to determine which instances of the ingester service should
 receive a given stream.
 
-A stream is a set of logs associated to a tenant and a unique labelset. The
-stream is hashed using both the tenant ID and the labelset and then the hash is
+A stream is a set of logs associated to a tenant and a unique label set. The
+stream is hashed using both the tenant ID and the label set and then the hash is
 used to find the ingesters to send the stream to.
 
-A hash ring stored in [Consul](https://www.consul.io) is used to achieve
+A hash ring, maintained by peer-to-peer communication using the [Memberlist](https://github.com/hashicorp/memberlist) protocol,
+or stored in a Key-Value store such as [Consul](https://www.consul.io) is used to achieve
 consistent hashing; all [ingesters](#ingester) register themselves into the hash
 ring with a set of tokens they own. Each token is a random unsigned 32-bit
 number. Along with a set of tokens, ingesters register their state into the
-hash ring. The state JOINING, and ACTIVE may all receive write requests, while
-ACTIVE and LEAVING ingesters may receive read requests. When doing a hash
+hash ring. The state `JOINING`, and `ACTIVE` may all receive write requests, while
+`ACTIVE` and `LEAVING` ingesters may receive read requests. When doing a hash
 lookup, distributors only use tokens for ingesters who are in the appropriate
 state for the request.
 
@@ -89,19 +114,23 @@ quorum consistency on reads and writes. This means that the distributor will wai
 for a positive response of at least one half plus one of the ingesters to send
 the sample to before responding to the client that initiated the send.
 
+
 ## Ingester
 
-The **ingester** service is responsible for writing log data to long-term
-storage backends (DynamoDB, S3, Cassandra, etc.) on the write path and returning
-log data for in-memory queries on the read path.
+The **ingester** service is responsible for persisting data and shipping it to long-term
+storage (Amazon Simple Storage Service, Google Cloud Storage, Azure Blob Storage, etc.)
+on the write path, and returning recently ingested, in-memory log data for queries on the read path.
 
 Ingesters contain a _lifecycler_ which manages the lifecycle of an ingester in
 the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 `ACTIVE`, `LEAVING`, or `UNHEALTHY`:
 
-**Deprecated: the WAL (write ahead log) supersedes this feature**
-1. `PENDING` is an Ingester's state when it is waiting for a handoff from
-   another ingester that is `LEAVING`.
+1. `PENDING` is an Ingester's state when it is waiting for a [handoff](#handoff) from
+   another ingester that is `LEAVING`. This only applies for legacy deployment modes.
+
+   {{% admonition type="note" %}}
+   Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log]({{< relref "../operations/storage/wal" >}}).
+   {{% /admonition %}}
 
 1. `JOINING` is an Ingester's state when it is currently inserting its tokens
    into the ring and initializing itself. It may receive write requests for
@@ -113,8 +142,8 @@ the hash ring. Each ingester has a state of either `PENDING`, `JOINING`,
 1. `LEAVING` is an Ingester's state when it is shutting down. It may receive
    read requests for data it still has in memory.
 
-1. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat to
-   Consul. `UNHEALTHY` is set by the distributor when it periodically checks the ring.
+1. `UNHEALTHY` is an Ingester's state when it has failed to heartbeat.
+   `UNHEALTHY` is set by the distributor when it periodically checks the ring.
 
 Each log stream that an ingester receives is built up into a set of many
 "chunks" in memory and flushed to the backing storage backend at a configurable
@@ -173,7 +202,11 @@ nanosecond timestamps:
    different content, the log line is accepted. This means it is possible to
    have two different log lines for the same timestamp.
 
-### Handoff - Deprecated in favor of the [WAL]({{< relref "../operations/storage/wal" >}})
+### Handoff
+
+{{% admonition type="warning" %}}
+Handoff is deprecated behavior mainly used in stateless deployments of ingesters, which is discouraged. Instead, it's recommended using a stateful deployment model together with the [write ahead log]({{< relref "../operations/storage/wal" >}}).
+{{% /admonition %}}
 
 By default, when an ingester is shutting down and tries to leave the hash ring,
 it will wait to see if a new ingester tries to enter before flushing and will
@@ -188,12 +221,13 @@ set of tokens.
 This process is used to avoid flushing all chunks when shutting down, which is a
 slow process.
 
-### Filesystem Support
+### Filesystem support
 
 While ingesters do support writing to the filesystem through BoltDB, this only
 works in single-process mode as [queriers](#querier) need access to the same
 back-end store and BoltDB only allows one process to have a lock on the DB at a
 given time.
+
 
 ## Query frontend
 
@@ -205,7 +239,7 @@ Query frontends are **stateless**. However, due to how the internal queue works,
 
 ### Queueing
 
-The query frontend queuing mechanism is used to:
+If no separate [query scheduler](#query-scheduler) component is used, the query frontend will also perform basic query queueing.
 
 - Ensure that large queries, that could cause an out-of-memory (OOM) error in the querier, will be retried on failure. This allows administrators to under-provision memory for queries, or optimistically run more small queries in parallel, which helps to reduce the TCO.
 - Prevent multiple large requests from being convoyed on a single querier by distributing them across all queriers using a first-in/first-out queue (FIFO).
@@ -217,24 +251,87 @@ The query frontend splits larger queries into multiple smaller queries, executin
 
 ### Caching
 
-#### Metric Queries
+#### Metric queries
 
-The query frontend supports caching metric query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required subqueries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any Loki caching backend (currently memcached, redis, and an in-memory cache).
+The query frontend supports caching metric query results and reuses them on subsequent queries. If the cached results are incomplete, the query frontend calculates the required sub-queries and executes them in parallel on downstream queriers. The query frontend can optionally align queries with their step parameter to improve the cacheability of the query results. The result cache is compatible with any Loki caching backend (currently Memcached, Redis, and an in-memory cache).
 
-#### Log Queries - Coming soon!
+#### Log queries
 
-Caching log (filter, regexp) queries are under active development.
+The query frontend also supports caching of log queries in form of a negative cache.
+This means that instead of caching the log results for quantized time ranges, Loki only caches empty results for quantized time ranges.
+This is more efficient than caching actual results, because log queries are limited (usually 1000 results)
+and if you have a query over a long time range that matches only a few lines, and you only cache actual results,
+you'd still need to process a lot of data additionally to the data from the results cache in order to verify that nothing else matches.
+
+#### Index stats queries
+
+The query frontend caches index stats query results similar to the [metric query](#metrics-queries) results.
+This cache is only applicable when using single store TSDB.
+
+#### Log volume queries
+
+The query frontend caches log volume query results similar to the [metric query](#metrics-queries) results.
+This cache is only applicable when using single store TSDB.
+
+
+## Query scheduler
+
+The **query scheduler** is an **optional service** providing more [advanced queuing functionality]({{< relref "../operations/query-fairness" >}}) than the [query frontend](#query-frontend).
+When using this component in in the Loki deployment, query frontend pushes split up queries to the query scheduler which enqueues them in an internal in-memory queue.
+There is a queue for each tenant to guarantee the query fairness across all tenants.
+The queriers that connect to the query scheduler act as workers that pull their jobs from the queue, execute them, and return them to the query-frontend for aggregation. Queriers need to be configured with the query frontend address (via the `-querier.frontend-address` CLI flag) in order to allow them to connect to the query frontends.
+The query frontend queuing mechanism is used to:
+
+Query schedulers are **stateless**. However, due to the in-memory queue, it's recommended to run a more than one replica to keep the benefit of high availability. Two replicas should suffice in most cases.
+
 
 ## Querier
 
-The **querier** service handles queries using the [LogQL]({{< relref "../query" >}}) query
-language, fetching logs both from the ingesters and from long-term storage.
+The **querier** service is responsible for executing [Log Query Language (LogQL)]({{< relref "../query" >}}) queries.
+The querier can handle HTTP requests from the client directly (in "single binary" mode, or as part of the read path in "simple scalable deployment")
+or pull subqueries from the query frontend or query scheduler (in "microservice" mode).
 
+It fetches log data from both the ingesters and from long-term storage.
 Queriers query all ingesters for in-memory data before falling back to
 running the same query against the backend store. Because of the replication
 factor, it is possible that the querier may receive duplicate data. To resolve
 this, the querier internally **deduplicates** data that has the same nanosecond
 timestamp, label set, and log message.
 
-At read path, [replication factor]({{< relref "#replication-factor" >}}) also plays a role here. For example with `replication-factor` of `3`, we require that two queries to be running. 
 
+## Index Gateway
+
+The **index gateway** service is responsible for handling and serving metadata queries.
+Metadata queries are queries that look up data from the index. The index gateway is only used by "shipper stores",
+such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}}) or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}).
+
+The query frontend queries the index gateway for volume of queries so it can make a decision on how to shard the queries.
+The queriers query the index gateway for chunk references for a given query so they know which chunks to fetch and query.
+
+The index gateway can run in `simple` or `ring` mode. In `simple` mode, each index gateway instance serves all indexes from all tenants.
+In `ring` mode, index gateways use a consistent hash ring to distribute and shard the indexes per tenant amongst available instances.
+
+
+## Compactor
+
+The **compactor** service is used by "shipper stores", such as [single store TSDB]({{< relref "../operations/storage/tsdb" >}})
+or [single store BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}), to compact the multiple index files produces by the ingesters
+and shipped to object storage into single index files per day and tenant. This makes index lookups more efficient.
+
+To do so, the compactor downloads the files from object storage in a regular interval, merges the them into a single one,
+uploads the newly created index, and cleans up the old files.
+
+Additionally, the compactor is also responsible for [log retention]({{< relref "../operations/storage/retention" >}}) and [log deletion]({{< relref "../operations/storage/logs-deletion" >}}).
+
+
+## Ruler
+
+The **ruler** service manages and evaluates rule and/or alert expressions provided in a rule configuration. The rule configuration
+is stored in object storage (or alternatively on local file system) and can be managed via the ruler API or directly by uploading
+the files to object storage.
+
+Alternatively, the ruler can also delegate rule evaluation to the query frontend.
+This mode is called remote rule evaluation and is used to gain the advantages of query splitting, query sharding, and caching
+from the query frontend.
+
+When running multiple rulers, they use a consistent hash ring to distribute rule groups amongst available ruler instances.
