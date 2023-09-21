@@ -1743,6 +1743,7 @@ kind: pipeline
 name: docker-driver
 steps:
 - commands:
+  - git fetch origin --tags
   - make docker-driver-push
   depends_on:
   - clone
@@ -2016,6 +2017,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: 19efaf699db1315f0ea71fb80d521dec5ab67ecbfa7975fa36ca7f4679e27c23
+hmac: 694e1933d3ac53f6b54bcf79b88003727100a74d3eb4f9417a9976f5da4a5658
 
 ...
