@@ -323,6 +323,7 @@ uploads the newly created index, and cleans up the old files.
 
 Additionally, the compactor is also responsible for [log retention]({{< relref "../operations/storage/retention" >}}) and [log deletion]({{< relref "../operations/storage/logs-deletion" >}}).
 
+In a Loki deployment, the compactor service is usually run as a single instance.
 
 ## Ruler
 
