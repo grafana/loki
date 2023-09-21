@@ -6,13 +6,14 @@ weight:  600
 ---
 # Log retention
 
-Retention in Grafana Loki is achieved either through the [Table Manager](#table-manager) or the [Compactor](#compactor).
+Retention in Grafana Loki is achieved through the [Compactor](#compactor).
+It is the recommended way of applying retention for [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and [tsdb]({{< relref "./tsdb" >}}).
 
-By default, when `table_manager.retention_deletes_enabled` or `compactor.retention_enabled` flags are not set, then logs sent to Loki live forever.
+Though [Table Manager]({{< relref "./table-manager" >}}) can perform retention on [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and other [legacy index types]({{< relref "../../storage#index-storage" >}}), it is now deprecated.
 
-Retention through the [Table Manager]({{< relref "./table-manager" >}}) is achieved by relying on the object store TTL feature, and will work for both [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) store and chunk/index store. However retention through the [Compactor]({{< relref "./boltdb-shipper#compactor" >}}) is supported only with the [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and tsdb store.
+By default `compactor.retention_enabled` flag is not set, then logs sent to Loki live forever.
 
-The Compactor retention will become the default and have long term support. It supports more granular retention policies on per tenant and per stream use cases.
+Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
 
 ## Compactor
 
@@ -22,25 +23,27 @@ The [Compactor]({{< relref "./boltdb-shipper#compactor" >}}) can deduplicate ind
 
 Compaction and retention are idempotent. If the Compactor restarts, it will continue from where it left off.
 
-The Compactor loops to apply compaction and retention at every `compaction_interval`, or as soon as possible if running behind.
+The Compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
 
 The Compactor's algorithm to update the index:
 
 - For each table within each day:
-  - Compact the table into a single index file.
-  - Traverse the entire index. Use the tenant configuration to identify and mark chunks that need to be removed.
+  - Compact the table into per-tenant index files. A single index file for a tenant.
+  - Traverse the per-tenant index. Use the tenant configuration to identify and mark chunks that need to be removed.
   - Remove marked chunks from the index and save their reference in a file on disk.
   - Upload the new modified index files.
 
-The retention algorithm is applied to the index. Chunks are not deleted while applying the retention algorithm. The chunks will be deleted by the Compactor asynchronously when swept.
+Chunks are not deleted while applying the retention algorithm on the index. They are deleted asynchronously by a sweeper process
+and this delay can be configured by setting `-compactor.retention-delete-delay`.
 
-Marked chunks will only  be deleted after `retention_delete_delay` configured is expired because:
-
-- boltdb-shipper indexes are refreshed from the shared store on components using it (querier and ruler) at a specific interval. This means deleting chunks instantly could lead to components still having reference to old chunks and so they could fails to execute queries. Having a delay allows for components to refresh their store and so remove gracefully their reference of those chunks.
-
+Chunks cannot be deleting immediately for the following reasons:
+- Index files are refreshed from the shared store on components using it (index gateway, querier and ruler) at a specific interval. This means deleting chunks instantly could lead to some of the components still having reference to old chunks and so they could fail to execute queries. Having a delay allows for components to pull the updated index file from the store allowing the compactor to remove gracefully their reference of those chunks.
 - It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
 
-Marker files (containing chunks to delete) should be stored on a persistent disk, since the disk will be the sole reference to them.
+Compactor uses marker files to keep track of the chunks that need to be deleted.
+Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the compactor process restarts.
+
+Note: We recommend running compactor as a statefulset (when using Kubernetes) with a persistent storage for storing marker files.
 
 ### Retention Configuration
 
@@ -115,7 +118,7 @@ limits_config:
 
 **NOTE:** You can only use label matchers in the `selector` field of a `retention_stream` definition. Arbitrary LogQL expressions are not supported.
 
-Per tenant retention can be defined using the `/etc/overrides.yaml` files. For example:
+Per tenant retention can be defined using the [runtime config overrides]({{< relref "../../configure#runtime-configuration-file" >}}). For example:
 
 ```yaml
 overrides:
@@ -162,7 +165,11 @@ The example configurations will set these rules:
   - All streams except those having the container label `nginx` will have the global retention period of `744h`, since there is no override specified.
   - Streams that have the label `nginx` will have a retention period of `24h`.
 
-## Table Manager
+## Table Manager (deprecated)
+
+Retention through the [Table Manager]({{< relref "./table-manager" >}}) is
+achieved by relying on the object store TTL feature, and will work for both
+[boltdb-shipper]({{< relref "./boltdb-shipper" >}}) store and chunk/index store.
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
@@ -179,7 +186,7 @@ block. See the [Table Manager]({{< relref "./table-manager#retention" >}}) docum
 more information.
 
 > **NOTE**: To avoid querying of data beyond the retention period,
-`max_look_back_period` config in [`chunk_store_config`]({{< relref "../../configure#chunk_store_config" >}}) must be set to a value less than or equal to
+`max_query_lookback` config in [`limits_config`]({{< relref "../../configure#limits_config" >}}) must be set to a value less than or equal to
 what is set in `table_manager.retention_period`.
 
 When using S3 or GCS, the bucket storing the chunks needs to have the expiry
@@ -188,8 +195,9 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-Currently, the retention policy can only be set globally. A per-tenant retention
-policy with an API to delete ingested logs is still under development.
+Currently, the retention policy for table manager can only be set globally.
+per-tenant and per-stream retention policies along with support for deleting
+ingested logs using an API are only supported by Compactor retention.
 
 Since a design goal of Loki is to make storing logs cheap, a volume-based
 deletion API is deprioritized. Until this feature is released, if you suddenly
@@ -224,8 +232,8 @@ storage_config:
   gcs:
     bucket_name: GCS_BUCKET_NAME
 
-chunk_store_config:
-  max_look_back_period: 672h
+limits_config:
+  max_query_lookback: 672h
 
 table_manager:
   retention_deletes_enabled: true
