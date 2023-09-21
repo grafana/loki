@@ -208,7 +208,8 @@ type BloomPage struct {
 	Blooms []Bloom
 }
 
-func (p *BloomPage) Encode(enc *encoding.Encbuf) error {
+func (p *BloomPage) Encode(enc *encoding.Encbuf, crc32Hash hash.Hash32) error {
+	enc.Reset()
 	enc.PutUvarint(p.N)
 
 	for i, bloom := range p.Blooms {
@@ -216,10 +217,16 @@ func (p *BloomPage) Encode(enc *encoding.Encbuf) error {
 			return errors.Wrapf(err, "encoding %dth bloom filter", i)
 		}
 	}
+
+	enc.PutHash(crc32Hash)
 	return nil
 }
 
 func (p *BloomPage) Decode(dec *encoding.Decbuf) error {
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return errors.Wrap(err, "decoding bloom page")
+	}
+
 	p.N = dec.Uvarint()
 	// TODO(owen-d): pool
 	p.Blooms = make([]Bloom, p.N)

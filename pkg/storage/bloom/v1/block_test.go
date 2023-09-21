@@ -122,7 +122,7 @@ func TestBloomPageEncoding(t *testing.T) {
 	}
 
 	enc := &encoding.Encbuf{}
-	src.Encode(enc)
+	src.Encode(enc, Crc32HashPool.Get())
 
 	var dst BloomPage
 	dec := encoding.DecWith(enc.Get())
