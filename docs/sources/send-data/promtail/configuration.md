@@ -2090,16 +2090,6 @@ sync_period: "10s"
 
 ## options_config
 
-```yaml
-# Deprecated.
-# A comma-separated list of labels to include in the stream lag metric
-# `promtail_stream_lag_seconds`. The default value is "filename". A "host" label is
-# always included. The stream lag metric indicates which streams are falling behind
-# on writes to Loki; be mindful about using too many labels,
-# as it can increase cardinality.
-[stream_lag_labels: <string> | default = "filename"]
-```
-
 ## tracing_config
 
 The `tracing` block configures tracing for Jaeger. Currently, limited to configuration per [environment variables](https://www.jaegertracing.io/docs/1.16/client-features/) only.

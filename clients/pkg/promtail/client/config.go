@@ -44,8 +44,6 @@ type Config struct {
 	// 429 'Too Many Requests' response from the distributor. Helps
 	// prevent HOL blocking in multitenant deployments.
 	DropRateLimitedBatches bool `yaml:"drop_rate_limited_batches"`
-
-	StreamLagLabels flagext.StringSliceCSV `yaml:"stream_lag_labels" doc:"deprecated"`
 }
 
 // RegisterFlags with prefix registers flags where every name is prefixed by
