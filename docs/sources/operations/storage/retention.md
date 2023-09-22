@@ -7,10 +7,6 @@ weight:  600
 # Log retention
 
 Retention in Grafana Loki is achieved through the [Compactor](#compactor).
-It is the recommended way of applying retention for [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and [tsdb]({{< relref "./tsdb" >}}).
-
-Though [Table Manager]({{< relref "./table-manager" >}}) can perform retention on [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and other [legacy index types]({{< relref "../../storage#index-storage" >}}), it is now deprecated.
-
 By default the `compactor.retention-enabled` flag is not set, so the logs sent to Loki live forever.
 
 {{% admonition type="note" %}}
@@ -18,6 +14,11 @@ If you have a lifecycle policy configured on the object store, please ensure tha
 {{% /admonition %}}
 
 Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
+
+{{% admonition type="note" %}}
+The Compactor does not support retention on [legacy index types]({{< relref "../../storage#index-storage" >}}). Please use the [Table Manager]({{< relref "./table-manager" >}}) instead.
+Both the Table manager and legacy index types are depreacted and may be removed in future major versions of Loki.
+{{% /admonition %}}
 
 ## Compactor
 
