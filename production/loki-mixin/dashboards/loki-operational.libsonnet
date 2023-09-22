@@ -60,6 +60,9 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                    else error 'no pod matchers'
                                  else error 'matcher must be either job or container',
 
+                               local replacePerClusterMatchers(expr) =
+                                 std.strReplace(expr, 'cluster="$cluster", ', $._config.per_cluster_label + '="$cluster", '),
+
                                local replaceClusterMatchers(expr) =
                                  if dashboards['loki-operational.json'].showMultiCluster
                                  then expr
@@ -143,7 +146,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
 
 
                                local replaceAllMatchers(expr) =
-                                 replaceMatchers(replaceClusterMatchers(expr)),
+                                 replaceMatchers(replaceClusterMatchers(replacePerClusterMatchers(expr))),
 
                                local selectDatasource(ds) =
                                  if ds == null || ds == '' then ds
