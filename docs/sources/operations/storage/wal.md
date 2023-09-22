@@ -85,7 +85,7 @@ When scaling down, we must ensure existing data on the leaving ingesters are flu
 
 Consider you have 4 ingesters `ingester-0 ingester-1 ingester-2 ingester-3` and you want to scale down to 2 ingesters, the ingesters which will be shutdown according to statefulset rules are `ingester-3` and then `ingester-2`.
 
-Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/flush_shutdown`]({{< relref "../../reference/api#post-ingesterflush_shutdown" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
+Hence before actually scaling down in Kubernetes, port forward those ingesters and hit the [`/ingester/shutdown?flush=true`]({{< relref "../../reference/api#flush-in-memory-chunks-and-shut-down" >}}) endpoint. This will flush the chunks and remove itself from the ring, after which it will register as unready and may be deleted.
 
 After hitting the endpoint for `ingester-2 ingester-3`, scale down the ingesters to 2.
 

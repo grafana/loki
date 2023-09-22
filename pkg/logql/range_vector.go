@@ -452,17 +452,17 @@ func quantileOverTime(q float64) func(samples []promql.FPoint) float64 {
 		for _, v := range samples {
 			values = append(values, promql.Sample{F: v.F})
 		}
-		return quantile(q, values)
+		return Quantile(q, values)
 	}
 }
 
-// quantile calculates the given quantile of a vector of samples.
+// Quantile calculates the given Quantile of a vector of samples.
 //
 // The Vector will be sorted.
 // If 'values' has zero elements, NaN is returned.
 // If q<0, -Inf is returned.
 // If q>1, +Inf is returned.
-func quantile(q float64, values vector.HeapByMaxValue) float64 {
+func Quantile(q float64, values vector.HeapByMaxValue) float64 {
 	if len(values) == 0 {
 		return math.NaN()
 	}
@@ -812,7 +812,7 @@ func (a *QuantileOverTime) agg(sample promql.FPoint) {
 }
 
 func (a *QuantileOverTime) at() float64 {
-	return quantile(a.q, a.values)
+	return Quantile(a.q, a.values)
 }
 
 type FirstOverTime struct {
