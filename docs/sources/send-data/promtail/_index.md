@@ -106,7 +106,7 @@ Important details are:
 
 ## Loki Push API
 
-Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{< relref "../../reference/api#push-log-entries-to-loki" >}}) with the [loki_push_api]({{< relref "./configuration#loki_push_api" >}}) scrape config.
+Promtail can also be configured to receive logs from another Promtail or any Loki client by exposing the [Loki Push API]({{< relref "../../reference/api#ingest-logs" >}}) with the [loki_push_api]({{< relref "./configuration#loki_push_api" >}}) scrape config.
 
 There are a few instances where this might be helpful:
 
