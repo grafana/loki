@@ -34,6 +34,11 @@
 * [10416](https://github.com/grafana/loki/pull/10416) **lpugoy**: Lambda-Promtail: Add support for WAF logs in S3
 * [10301](https://github.com/grafana/loki/pull/10301) **wildum**: users can now define `additional_fields` in cloudflare configuration.
 
+##### Changes
+
+* [10677](https://github.com/grafana/loki/pull/10677) **chaudum** Remove deprecated `stream_lag_labels` setting from both the `options` and `client` configuration sections.
+* [10689](https://github.com/grafana/loki/pull/10689) **dylanguedes**: Ingester: Make jitter to be 20% of flush check period instead of 1%.
+
 ##### Fixes
 
 * [10631](https://github.com/grafana/loki/pull/10631) **thampiotr**: Fix race condition in cleaning up metrics when stopping to tail files.
