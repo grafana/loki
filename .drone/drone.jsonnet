@@ -363,7 +363,6 @@ local logql_analyzer() = pipeline('logql-analyzer') + arch_image('amd64') {
   depends_on: ['check'],
 };
 
-
 local multiarch_image(arch) = pipeline('docker-' + arch) + arch_image(arch) {
   steps+: [
     // dry run for everything that is not tag or main
@@ -917,6 +916,7 @@ local manifest_ecr(apps, archs) = pipeline('manifest-ecr') {
           DOCKER_PASSWORD: { from_secret: docker_password_secret.name },
         },
         commands: [
+          'git fetch origin --tags',
           'make docker-driver-push',
         ],
         volumes: [

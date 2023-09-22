@@ -4352,6 +4352,13 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
 
+# If `connection-string` is set, the values of `account-name` and
+# `endpoint-suffix` values will not be used. Use this method over `account-key`
+# if you need to authenticate via a SAS token. Or if you use the Azurite
+# emulator.
+# CLI flag: -<prefix>.azure.connection-string
+[connection_string: <string> | default = ""]
+
 # Name of the storage account blob container used to store chunks. This
 # container must be created before running cortex.
 # CLI flag: -<prefix>.azure.container-name
