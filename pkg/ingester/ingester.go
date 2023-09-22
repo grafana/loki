@@ -584,7 +584,7 @@ func (i *Ingester) loop() {
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
-	level.Debug(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+	level.Info(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
 
 	select {
 	case <-initialDelay.C:
@@ -594,8 +594,9 @@ func (i *Ingester) loop() {
 		return
 	}
 
-	// Add +/- 1% of flush interval as jitter
-	j := i.cfg.FlushCheckPeriod / 100
+	// Add +/- 50% of flush interval as jitter.
+	// The default flush check period is 30s so max jitter will be 15s.
+	j := i.cfg.FlushCheckPeriod / 50
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
