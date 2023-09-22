@@ -422,8 +422,6 @@ Read the [configuration]({{< relref "./configuration#kafka" >}}) section for mor
 
 ## GELF
 
-<span style="background-color:#f3f973;">GELF support in Promtail is an experimental feature.</span>
-
 Promtail supports listening message using the [GELF](https://docs.graylog.org/docs/gelf) UDP protocol.
 The GELF targets can be configured using the `gelf` stanza:
 
