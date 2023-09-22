@@ -66,7 +66,6 @@ These HTTP endpoints are exposed by the `ingester`, `write`, and `all` component
 - [`POST /flush`](#flush-in-memory-chunks-to-backing-store)
 - [`POST /ingester/prepare_shutdown`](#prepare-ingester-shutdown)
 - [`POST /ingester/shutdown`](#flush-in-memory-chunks-and-shut-down)
-- **Deprecated** [`POST /ingester/flush_shutdown`](#post-ingesterflush_shutdown)
 
 ### Rule endpoints
 
