@@ -9,18 +9,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBloomPageEncoding(t *testing.T) {
+func mkBasicBlooms(n int) []Bloom {
 	var blooms []Bloom
-	n := 2
 	for i := 0; i < n; i++ {
 		var bloom Bloom
 		bloom.sbf = *boom.NewScalableBloomFilter(1024, 0.01, 0.8)
 		bloom.sbf.Add([]byte(fmt.Sprint(i)))
 		blooms = append(blooms, bloom)
 	}
+	return blooms
+}
 
+func mkBasicBloomPage(n int) BloomPage {
+	return BloomPage{
+		Blooms: mkBasicBlooms(n),
+	}
+}
+
+func TestBloomPageEncoding(t *testing.T) {
+	blooms := mkBasicBlooms(2)
 	src := BloomPage{
-		N:      n,
 		Blooms: blooms,
 	}
 

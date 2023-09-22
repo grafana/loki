@@ -43,13 +43,12 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 }
 
 type BloomPage struct {
-	N      int
 	Blooms []Bloom
 }
 
 func (p *BloomPage) Encode(enc *encoding.Encbuf, crc32Hash hash.Hash32) error {
 	enc.Reset()
-	enc.PutUvarint(p.N)
+	enc.PutUvarint(len(p.Blooms))
 
 	for i, bloom := range p.Blooms {
 		if err := bloom.Encode(enc); err != nil {
@@ -66,10 +65,12 @@ func (p *BloomPage) Decode(dec *encoding.Decbuf) error {
 		return errors.Wrap(err, "decoding bloom page")
 	}
 
-	p.N = dec.Uvarint()
 	// TODO(owen-d): pool
-	p.Blooms = make([]Bloom, p.N)
-	for i := 0; i < p.N; i++ {
+	p.Blooms = make([]Bloom, dec.Uvarint())
+	if err := dec.Err(); err != nil {
+		return errors.Wrap(err, "decoding number of blooms in page")
+	}
+	for i := 0; i < len(p.Blooms); i++ {
 		if err := p.Blooms[i].Decode(dec); err != nil {
 			return errors.Wrapf(err, "decoding %dth bloom filter", i)
 		}

@@ -1,6 +1,10 @@
 package v1
 
-import "io"
+import (
+	"io"
+
+	"github.com/pkg/errors"
+)
 
 type BlockReader interface {
 	Index() io.ReadSeekCloser
@@ -8,9 +12,19 @@ type BlockReader interface {
 }
 
 type Block struct {
-	schema Schema
-	header SeriesHeader // header for the entire block
-	index  BlockIndex
+	// schema, series index
+	index BlockIndex
+	// synthetic header for the entire block
+	// built from all the pages in the index
+	header SeriesHeader
 
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
+}
+
+func (b *Block) LoadHeaders(data []byte) error {
+	if err := b.index.Decode(data); err != nil {
+		return errors.Wrap(err, "decoding index")
+	}
+
+	return nil
 }

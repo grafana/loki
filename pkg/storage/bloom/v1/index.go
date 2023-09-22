@@ -18,6 +18,12 @@ type BlockIndex struct {
 	series []SeriesHeaderWithOffset // headers for each series page
 }
 
+func NewBlockIndex() BlockIndex {
+	return BlockIndex{
+		schema: Schema{version: 1},
+	}
+}
+
 func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (int64, error) {
 	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
 	defer Crc32HashPool.Put(crc32Hash)
@@ -83,8 +89,31 @@ func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (int64, erro
 	return offset, nil
 }
 
-func (b *BlockIndex) LoadFrom(r io.ReaderAt) error {
+func (b *BlockIndex) Decode(data []byte) error {
+	dec := encoding.DecWith(data)
+	if err := b.schema.Decode(&dec); err != nil {
+		return errors.Wrap(err, "decoding schema")
+	}
 
+	// last 12 bytes are (series_lengths: 8 byte u64, checksum: 4 byte u32)
+	dec.Skip(dec.Len() - 12)
+	headerOffset := dec.Be64()
+
+	dec = encoding.DecWith(data[headerOffset:])
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return errors.Wrap(err, "decoding series header")
+	}
+
+	b.series = make([]SeriesHeaderWithOffset, dec.Uvarint())
+	for i := 0; i < len(b.series); i++ {
+		var s SeriesHeaderWithOffset
+		if err := s.Decode(&dec); err != nil {
+			return errors.Wrapf(err, "decoding %dth series header", i)
+		}
+		b.series[i] = s
+	}
+
+	return nil
 }
 
 // schema
@@ -108,6 +137,9 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 		return errors.Errorf("invalid magic number. expected %x, got  %x", magicNumber, number)
 	}
 	s.version = dec.Byte()
+	if s.version != 1 {
+		return errors.Errorf("invalid version. expected %d, got %d", 1, s.version)
+	}
 	return dec.Err()
 }
 
@@ -129,7 +161,7 @@ func (h *SeriesHeaderWithOffset) Decode(dec *encoding.Decbuf) error {
 type SeriesHeader struct {
 	NumSeries         int
 	FromFp, ThroughFp model.Fingerprint
-	FromTs, ThroughTs int64
+	FromTs, ThroughTs model.Time
 }
 
 // build one aggregated header for the entire block
@@ -158,16 +190,16 @@ func (h *SeriesHeader) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(h.NumSeries)
 	enc.PutUvarint64(uint64(h.FromFp))
 	enc.PutUvarint64(uint64(h.ThroughFp))
-	enc.PutVarint64(h.FromTs)
-	enc.PutVarint64(h.ThroughTs)
+	enc.PutVarint64(int64(h.FromTs))
+	enc.PutVarint64(int64(h.ThroughTs))
 }
 
 func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	h.NumSeries = dec.Uvarint()
 	h.FromFp = model.Fingerprint(dec.Uvarint64())
 	h.ThroughFp = model.Fingerprint(dec.Uvarint64())
-	h.FromTs = dec.Varint64()
-	h.ThroughTs = dec.Varint64()
+	h.FromTs = model.Time(dec.Varint64())
+	h.ThroughTs = model.Time(dec.Varint64())
 	return dec.Err()
 }
 
