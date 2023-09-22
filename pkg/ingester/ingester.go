@@ -596,7 +596,7 @@ func (i *Ingester) loop() {
 
 	// Add +/- 50% of flush interval as jitter.
 	// The default flush check period is 30s so max jitter will be 15s.
-	j := i.cfg.FlushCheckPeriod / 50
+	j := i.cfg.FlushCheckPeriod / 2
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
