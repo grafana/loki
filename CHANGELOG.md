@@ -204,6 +204,7 @@
 * [8855](https://github.com/grafana/loki/pull/8855) **JoaoBraveCoding**: Add gRPC port to loki compactor mixin
 * [8880](https://github.com/grafana/loki/pull/8880) **JoaoBraveCoding**: Normalize headless service name for query-frontend/scheduler
 * [9978](https://github.com/grafana/loki/pull/9978) ****vlad-diachenko****: replaced deprecated `policy.v1beta1` with `policy.v1`.
+* [10678](https://github.com/grafana/loki/pull/10678) **liam-howe-maersk**: Update the `cluster` label in the logs and operational dashboards as currently the custom one is not picked up
 
 ## 2.8.5 (2023-09-14)
 
