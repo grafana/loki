@@ -6,7 +6,7 @@ networks:
 
 services:
   read:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:2.9.1
     command: "-config.file=/etc/loki/config.yaml -target=read"
     ports:
       - 3101:3100
@@ -27,7 +27,7 @@ services:
           - loki
 
   write:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:2.9.1
     command: "-config.file=/etc/loki/config.yaml -target=write"
     ports:
       - 3102:3100
@@ -46,7 +46,7 @@ services:
       <<: *loki-dns
 
   promtail:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:2.9.1
     volumes:
       - ./promtail-local-config.yaml:/etc/promtail/config.yaml:ro
       - /var/run/docker.sock:/var/run/docker.sock
