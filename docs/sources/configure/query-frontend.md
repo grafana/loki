@@ -53,11 +53,11 @@ data:
 
       results_cache:
         cache:
-          # We're going to use the in-process "FIFO" cache
-          enable_fifocache: true
-          fifocache:
-            size: 1024
-            validity: 24h
+          # We're going to use the in-process embedded cache
+          embedded_cache:
+            enabled: true
+            max_size_mb: 100
+            ttl: 24h
 
     limits_config:
       max_cache_freshness_per_query: '10m'
