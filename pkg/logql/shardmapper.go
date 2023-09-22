@@ -183,6 +183,89 @@ func (m ShardMapper) mapSampleExpr(expr syntax.SampleExpr, r *downstreamRecorder
 // technically, std{dev,var} are also parallelizable if there is no cross-shard merging
 // in descendent nodes in the AST. This optimization is currently avoided for simplicity.
 func (m ShardMapper) mapVectorAggregationExpr(expr *syntax.VectorAggregationExpr, r *downstreamRecorder) (syntax.SampleExpr, uint64, error) {
+	if expr.Shardable() {
+
+		switch expr.Operation {
+
+		case syntax.OpTypeSum:
+			// sum(x) -> sum(sum(x, shard=1) ++ sum(x, shard=2)...)
+			return m.wrappedShardedVectorAggr(expr, r)
+
+		case syntax.OpTypeMin, syntax.OpTypeMax:
+			if syntax.ReducesLabels(expr.Left) {
+				// skip sharding optimizations at this level. If labels are reduced,
+				// the same series may exist on multiple shards and must be aggregated
+				// together before a max|min is applied
+				break
+			}
+			// max(x) -> max(max(x, shard=1) ++ max(x, shard=2)...)
+			// min(x) -> min(min(x, shard=1) ++ min(x, shard=2)...)
+			return m.wrappedShardedVectorAggr(expr, r)
+
+		case syntax.OpTypeAvg:
+			// avg(x) -> sum(x)/count(x), which is parallelizable
+			lhs, lhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
+				Left:      expr.Left,
+				Grouping:  expr.Grouping,
+				Operation: syntax.OpTypeSum,
+			}, r)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			rhs, rhsBytesPerShard, err := m.mapVectorAggregationExpr(&syntax.VectorAggregationExpr{
+				Left:      expr.Left,
+				Grouping:  expr.Grouping,
+				Operation: syntax.OpTypeCount,
+			}, r)
+			if err != nil {
+				return nil, 0, err
+			}
+
+			// We take the maximum bytes per shard of both sides of the operation
+			bytesPerShard := uint64(math.Max(int(lhsBytesPerShard), int(rhsBytesPerShard)))
+
+			return &syntax.BinOpExpr{
+				SampleExpr: lhs,
+				RHS:        rhs,
+				Op:         syntax.OpTypeDiv,
+			}, bytesPerShard, nil
+
+		case syntax.OpTypeCount:
+			if syntax.ReducesLabels(expr.Left) {
+				// skip sharding optimizations at this level. If labels are reduced,
+				// the same series may exist on multiple shards and must be aggregated
+				// together before a count is applied
+				break
+			}
+
+			// count(x) -> sum(count(x, shard=1) ++ count(x, shard=2)...)
+			sharded, bytesPerShard, err := m.mapSampleExpr(expr, r)
+			if err != nil {
+				return nil, 0, err
+			}
+			return &syntax.VectorAggregationExpr{
+				Left:      sharded,
+				Grouping:  expr.Grouping,
+				Operation: syntax.OpTypeSum,
+			}, bytesPerShard, nil
+		default:
+			// this should not be reachable. If an operation is shardable it should
+			// have an optimization listed. Nonetheless, we log this as a warning
+			// and return the original expression unsharded.
+			level.Warn(util_log.Logger).Log(
+				"msg", "unexpected operation which appears shardable, ignoring",
+				"operation", expr.Operation,
+			)
+			exprStats, err := m.shards.GetStats(expr)
+			if err != nil {
+				return nil, 0, err
+			}
+			return expr, exprStats.Bytes, nil
+		}
+
+	}
+
 	// if this AST contains unshardable operations, don't shard this at this level,
 	// but attempt to shard a child node.
 	if !expr.Shardable() {

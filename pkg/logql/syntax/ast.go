@@ -1994,3 +1994,52 @@ func (e *VectorExpr) Pipeline() (log.Pipeline, error)         { return log.NewNo
 func (e *VectorExpr) Matchers() []*labels.Matcher             { return nil }
 func (e *VectorExpr) MatcherGroups() ([]MatcherRange, error)  { return nil, e.err }
 func (e *VectorExpr) Extractor() (log.SampleExtractor, error) { return nil, nil }
+
+func ReducesLabels(e Expr) (conflict bool) {
+	e.Walk(func(e interface{}) {
+		switch expr := e.(type) {
+		case *RangeAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
+		case *VectorAggregationExpr:
+			if groupingReducesLabels(expr.Grouping) {
+				conflict = true
+			}
+		// Technically, any parser that mutates labels could cause the query
+		// to be non-shardable _if_ the total (inherent+extracted) labels
+		// exist on two different shards, but this is incredibly unlikely
+		// for parsers which add new labels so I (owen-d) am preferring
+		// to continue sharding in those cases and only prevent sharding
+		// when using `drop` or `keep` which reduce labels to a smaller subset
+		// more likely to collide across shards.
+		case *KeepLabelsExpr, *DropLabelsExpr:
+			conflict = true
+		case *LabelFmtExpr:
+			// TODO(owen-d): renaming is shardable in many cases, but will
+			// likely require a `sum without ()` wrapper to combine the
+			// same extracted labelsets executed on different shards
+			for _, f := range expr.Formats {
+				if f.Rename {
+					conflict = true
+					break
+				}
+			}
+		}
+	})
+	return
+}
+
+func groupingReducesLabels(grp *Grouping) bool {
+	if grp == nil {
+		return false
+	}
+
+	// both without(foo) and by (bar) have the potential
+	// to reduce labels
+	if len(grp.Groups) > 0 {
+		return true
+	}
+
+	return false
+}
