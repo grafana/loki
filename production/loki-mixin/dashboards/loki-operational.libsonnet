@@ -61,7 +61,15 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  else error 'matcher must be either job or container',
 
                                local replacePerClusterMatchers(expr) =
-                                 std.strReplace(expr, 'cluster="$cluster", ', $._config.per_cluster_label + '="$cluster", '),
+                                 std.strReplace(
+                                    std.strReplace(
+                                      expr, 
+                                      'cluster="$cluster"', 
+                                      $._config.per_cluster_label + '="$cluster"'
+                                   ),
+                                    'cluster=~"$cluster"', 
+                                    $._config.per_cluster_label + '=~"$cluster"'
+                                 ),
 
                                local replaceClusterMatchers(expr) =
                                  if dashboards['loki-operational.json'].showMultiCluster
