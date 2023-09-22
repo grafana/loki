@@ -31,11 +31,11 @@ By maintaining separate FIFO queues for each tenant and assigning the correct am
 
 **Component diagram:**
 
-![scheduler-component-diagram.plantuml](../scheduler-component-diagram.png)
+![scheduler-component-diagram.plantuml](./scheduler-component-diagram.png)
 
 **Sequence diagram:**
 
-![scheduler-sequence-diagram.plantuml](../scheduler-sequence-diagram.png)
+![scheduler-sequence-diagram.plantuml](./scheduler-sequence-diagram.png)
 
 ## Problem Statement
 
@@ -77,7 +77,7 @@ Now, instead of enqueuing and pulling directly from the per-tenant queue, reques
 
 **Component diagram:**
 
-![scheduler-proposal-1-component-diagram.plantuml](../scheduler-proposal-1-component-diagram.png)
+![scheduler-proposal-1-component-diagram.plantuml](./scheduler-proposal-1-component-diagram.png)
 
 Like the current implementation, the scheduler enqueues requests based on the `X-Scope-OrgID` header (or equivalent key in the request context), but also takes a second key (such as `X-Scope-UserID`) into account. This ensembles a fixed hierarchy with two levels where the tenant-to-user relation is a one-to-many relation.
 However, this has the disadvantage that the concept of users (that does not exist yet in Loki) leaks into the scheduler domain.
@@ -95,7 +95,7 @@ This proposal is similar to _Proposal 1_, but with the difference that there are
 
 **Component diagram:**
 
-![scheduler-proposal-2-component-diagram.plantuml](../scheduler-proposal-2-component-diagram.png)
+![scheduler-proposal-2-component-diagram.plantuml](./scheduler-proposal-2-component-diagram.png)
 
 The implementation of the `RequestQueue`, which controls what querier workers are connected to which root queues (aka tenant queues), can be kept as is. However, the concept of tenants and users is dropped and replaced by by a concept of hierarchical actors, which can be represented as a slice of identifiers. Note, this does **not** drop the concept of tenants throughout Loki (represented in the `X-Scope-OrgID` header and/or request context).
 
