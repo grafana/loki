@@ -31,7 +31,7 @@ func (f fixture) Clients() (index.Client, client.Client, index.TableClient, conf
 	indexClient, chunkClient, tableClient, schemaConfig, closer, err := f.fixture.Clients()
 	reg := prometheus.NewRegistry()
 	logger := log.NewNopLogger()
-	indexClient = index.NewCachingIndexClient(indexClient, cache.NewEmbeddedCache("index-fifo", cache.EmbeddedCacheConfig{
+	indexClient = index.NewCachingIndexClient(indexClient, cache.NewEmbeddedCache("index-embedded", cache.EmbeddedCacheConfig{
 		MaxSizeItems: 500,
 		TTL:          5 * time.Minute,
 	}, reg, logger, stats.ChunkCache), 5*time.Minute, limits, logger, false)

@@ -204,7 +204,7 @@ func TestMemcache(t *testing.T) {
 	})
 }
 
-func TestFifoCache(t *testing.T) {
+func TestEmbeddedCache(t *testing.T) {
 	cache := cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 1e3, TTL: 1 * time.Hour},
 		nil, log.NewNopLogger(), "test")
 	testCache(t, cache)

@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestFifoCacheEviction(t *testing.T) {
+func TestEmbeddedCacheEviction(t *testing.T) {
 	const (
 		cnt     = 10
 		evicted = 5
@@ -170,7 +170,7 @@ func TestFifoCacheEviction(t *testing.T) {
 	}
 }
 
-func TestFifoCacheExpiry(t *testing.T) {
+func TestEmbeddedCacheExpiry(t *testing.T) {
 	key1, key2, key3, key4 := "01", "02", "03", "04"
 	data1, data2, data3, data4 := genBytes(32), genBytes(64), genBytes(128), genBytes(32)
 
