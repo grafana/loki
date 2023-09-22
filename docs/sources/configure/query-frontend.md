@@ -53,7 +53,7 @@ data:
 
       results_cache:
         cache:
-          # We're going to use the in-process embedded cache
+          # We're going to use the embedded cache
           embedded_cache:
             enabled: true
             max_size_mb: 100
