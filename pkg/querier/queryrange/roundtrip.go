@@ -291,7 +291,8 @@ func (r roundTripper) Do(ctx context.Context, req queryrangebase.Request) (query
 
 		return r.series.Do(ctx, req)
 	case *LokiLabelNamesRequest:
-		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.EndTs.Sub(op.StartTs), "query", op.Query)
+		// TODO: What's op.Name
+		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", "TODO", "length", op.EndTs.Sub(op.StartTs), "query", op.Query)
 
 		return r.labels.Do(ctx, req)
 	case *LokiInstantRequest:
@@ -828,10 +829,7 @@ func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Mi
 			// wrap nextRT with our new middleware
 			return queryrangebase.MergeMiddlewares(
 				seriesVolumeMiddlewares...,
-			).Wrap(
-				// TODO: handler is already what we want : )
-				VolumeDownstreamHandler(nextRT, codec),
-			).Do(ctx, r)
+			).Wrap(nextRT).Do(ctx, r)
 		})
 	})
 }

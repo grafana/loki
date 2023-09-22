@@ -258,6 +258,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
+		// TODO: add req.Name
 		return &LokiLabelNamesRequest{
 			StartTs: *req.Start,
 			EndTs:   *req.End,
