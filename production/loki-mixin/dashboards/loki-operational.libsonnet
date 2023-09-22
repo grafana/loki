@@ -163,7 +163,7 @@ local utils = import 'mixin-utils/utils.libsonnet';
                                  expr
                                else
                                  std.strReplace(
-                                   expr,
+                                   replacePerClusterMatchers(expr),
                                    'job=~"$namespace/cortex-gw(-internal)?"',
                                    matcherStr(replacement, matcher='job', sep='')
                                  ),
