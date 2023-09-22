@@ -11,26 +11,26 @@ It is the recommended way of applying retention for [boltdb-shipper]({{< relref 
 
 Though [Table Manager]({{< relref "./table-manager" >}}) can perform retention on [boltdb-shipper]({{< relref "./boltdb-shipper" >}}) and other [legacy index types]({{< relref "../../storage#index-storage" >}}), it is now deprecated.
 
-By default `compactor.retention-enabled` flag is not set, so the logs sent to Loki live forever.
+By default the `compactor.retention-enabled` flag is not set, so the logs sent to Loki live forever.
 
 {{% admonition type="note" %}}
 If you have a lifecycle policy configured on the object store, please ensure that it is longer than the retention period.
 {{% /admonition %}}
 
-Granular retention policies to apply retention at per tenant or per stream level are also supported by the compactor.
+Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
 
 ## Compactor
 
-The compactor is resposible for compaction of index files and applying log retention.
+The Compactor is resposible for compaction of index files and applying log retention.
 
 {{% admonition type="note" %}}
 Run the Compactor as a singleton (a single instance).
 {{% /admonition %}}
 
-The compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
-Both compaction and retention are idempotent. If the compactor restarts, it will continue from where it left off.
+The Compactor loops to apply compaction and retention at every `compactor.compaction-interval`, or as soon as possible if running behind.
+Both compaction and retention are idempotent. If the Compactor restarts, it will continue from where it left off.
 
-The compactor's algorithm to apply retention is as follows:
+The Compactor's algorithm to apply retention is as follows:
 - For each day or table (one table per day with 24h index period):
   - Compact multiple index files in the table into per-tenant index files. Result of compaction is a single index file per tenant per day.
   - Traverse the per-tenant index. Use the tenant configuration to identify the chunks that need to be removed.
@@ -41,20 +41,20 @@ Chunks are not deleted while applying the retention algorithm on the index. They
 and this delay can be configured by setting `-compactor.retention-delete-delay`. Marker files are used to keep track of the chunks pending for deletion.
 
 Chunks cannot be deleted immediately for the following reasons:
-- Index shipper downloads a copy of the index files to server queries and refreshes them at a regular interval.
-Having a delay allows the index gateways to pull the modified index file which would not contain any reference to the chunks marked for deletion.
-Without the delay, index files (that are stale) on the gateways could refer to already deleted chunks leading to query failures.
+- Index Gateway downloads a copy of the index files to serve queries and refreshes them at a regular interval.
+  Having a delay allows the index gateways to pull the modified index file which would not contain any reference to the chunks marked for deletion.
+  Without the delay, index files (that are stale) on the gateways could refer to already deleted chunks leading to query failures.
 
 - It provides a short window of time in which to cancel chunk deletion in the case of a configuration mistake.
 
-Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the compactor process restarts.
+Marker files should be stored on a persistent disk to ensure that the chunks pending for deletion are processed even if the Compactor process restarts.
 {{% admonition type="note" %}}
-We recommend running compactor as a statefulset (when using Kubernetes) with a persistent storage for storing marker files.
+We recommend running Compactor as a stateful deployment (StatefulSet when using Kubernetes) with a persistent storage for storing marker files.
 {{% /admonition %}}
 
 ### Retention Configuration
 
-This compactor configuration example activates retention.
+This Compactor configuration example activates retention.
 
 ```yaml
 compactor:
@@ -86,11 +86,11 @@ storage_config:
 Retention is only available if the index period is 24h. Single store TSDB and single store BoltDB require 24h index period.
 {{% /admonition %}}
 
-`retention_enabled` should be set to true. Without this, the compactor will only compact tables.
+`retention_enabled` should be set to true. Without this, the Compactor will only compact tables.
 
 `working_directory` is the directory where marked chunks and temporary tables will be saved.
 
-`compaction_interval` dictates how often compaction and/or retention is applied. If the compactor falls behind, compaction and/or retention occur as soon as possible.
+`compaction_interval` dictates how often compaction and/or retention is applied. If the Compactor falls behind, compaction and/or retention occur as soon as possible.
 
 `retention_delete_delay` is the delay after which the Compactor will delete marked chunks.
 
@@ -175,13 +175,13 @@ The example configurations defined above will result in the following retention 
   - For the rest of the streams in this tenant the global retention period of `744h`, since there is no override specified.
 - All tenants except `29` and `30`:
   - Streams that have the namespace label `dev` will have a retention period of `24h` hours.
-  - Streams expect those with the namespace label `dev` will have the retention period of `744h`.
+  - Streams except those with the namespace label `dev` will have the retention period of `744h`.
 
 ## Table Manager (deprecated)
 
 Retention through the [Table Manager]({{< relref "./table-manager" >}}) is
 achieved by relying on the object store TTL feature, and will work for both
-[boltdb-shipper]({{< relref "./boltdb-shipper" >}}) store and chunk/index store.
+[boltdb-shipper]({{< relref "./boltdb-shipper" >}}) store and chunk/index stores.
 
 In order to enable the retention support, the Table Manager needs to be
 configured to enable deletions and a retention period. Please refer to the
@@ -211,8 +211,8 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-Currently, the retention policy for table manager can only be set globally.
-per-tenant and per-stream retention policies along with support for deleting
+Currently, the retention policy for Table manager can only be set globally.
+Per-tenant and per-stream retention policies along with support for deleting
 ingested logs using an API are only supported by Compactor retention.
 
 Since a design goal of Loki is to make storing logs cheap, a volume-based
