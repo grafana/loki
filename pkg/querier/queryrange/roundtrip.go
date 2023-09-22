@@ -197,20 +197,20 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	return func(next Translator) http.RoundTripper {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		var (
-			metricRT       = metricsTripperware(next)
-			limitedRT      = limitedTripperware(next)
-			logFilterRT    = logFilterTripperware(next)
-			seriesRT       = seriesTripperware(next)
-			labelsRT       = labelsTripperware(next)
-			instantRT      = instantMetricTripperware(next)
-			statsRT        = indexStatsTripperware(next)
+			metricRT       = metricsTripperware.Wrap(next)
+			limitedRT      = limitedTripperware.Wrap(next)
+			logFilterRT    = logFilterTripperware.Wrap(next)
+			seriesRT       = seriesTripperware.Wrap(next)
+			labelsRT       = labelsTripperware.Wrap(next)
+			instantRT      = instantMetricTripperware.Wrap(next)
+			statsRT        = indexStatsTripperware.Wrap(next)
 			seriesVolumeRT = seriesVolumeTripperware(next)
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
-	}, StopperWrapper{resultsCache, statsCache, volumeCache}, nil
+	}), StopperWrapper{resultsCache, statsCache, volumeCache}, nil
 }
 
 type roundTripper struct {
@@ -434,13 +434,13 @@ func NewLogFilterTripperware(
 	log log.Logger,
 	limits Limits,
 	schema config.SchemaConfig,
-	codec queryrangebase.Codec,
+	codec queryrangebase.Codec, // TODO see if this could be removed
 	c cache.Cache,
 	metrics *Metrics,
-	indexStatsTripperware queryrangebase.Tripperware,
-) (queryrangebase.Tripperware, error) {
-	return func(next http.RoundTripper) http.RoundTripper {
-		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
+	indexStatsTripperware queryrangebase.Middleware,
+) (queryrangebase.Middleware, error) {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -501,7 +501,7 @@ func NewLogFilterTripperware(
 			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}), nil
 }
 
 // NewLimitedTripperware creates a new frontend tripperware responsible for handling log requests which are label matcher only, no filter expression.
@@ -513,10 +513,10 @@ func NewLimitedTripperware(
 	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
-	indexStatsTripperware queryrangebase.Tripperware,
-) (queryrangebase.Tripperware, error) {
-	return func(next http.RoundTripper) http.RoundTripper {
-		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
+	indexStatsTripperware queryrangebase.Middleware,
+) (queryrangebase.Middleware, error) {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -536,7 +536,7 @@ func NewLimitedTripperware(
 			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}), nil
 }
 
 // NewSeriesTripperware creates a new frontend tripperware responsible for handling series requests
@@ -547,7 +547,7 @@ func NewSeriesTripperware(
 	codec queryrangebase.Codec,
 	metrics *Metrics,
 	schema config.SchemaConfig,
-) (queryrangebase.Tripperware, error) {
+) (queryrangebase.Middleware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
@@ -578,12 +578,12 @@ func NewSeriesTripperware(
 		)
 	}
 
-	return func(next http.RoundTripper) http.RoundTripper {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		if len(queryRangeMiddleware) > 0 {
 			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}), nil
 }
 
 // NewLabelsTripperware creates a new frontend tripperware responsible for handling labels requests.
@@ -594,7 +594,7 @@ func NewLabelsTripperware(
 	codec queryrangebase.Codec,
 	metrics *Metrics,
 	schema config.SchemaConfig,
-) (queryrangebase.Tripperware, error) {
+) (queryrangebase.Middleware, error) {
 	queryRangeMiddleware := []queryrangebase.Middleware{
 		StatsCollectorMiddleware(),
 		NewLimitsMiddleware(limits),
@@ -611,13 +611,13 @@ func NewLabelsTripperware(
 		)
 	}
 
-	return func(next http.RoundTripper) http.RoundTripper {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		if len(queryRangeMiddleware) > 0 {
 			// Do not forward any request header.
-			return queryrangebase.NewRoundTripper(next, codec, nil, queryRangeMiddleware...)
+			queryrangebase.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
 		}
 		return next
-	}, nil
+	}), nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
@@ -633,8 +633,8 @@ func NewMetricTripperware(
 	retentionEnabled bool,
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
-	indexStatsTripperware queryrangebase.Tripperware,
-) (Translator, error) {
+	indexStatsTripperware queryrangebase.Middleware,
+) (queryrangebase.Middleware, error) {
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	var queryCacheMiddleware queryrangebase.Middleware
 	if cfg.CacheResults {
@@ -668,8 +668,8 @@ func NewMetricTripperware(
 		}
 	}
 
-	return func(next queryrangebase.Handler) http.RoundTripper {
-		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -740,11 +740,9 @@ func NewMetricTripperware(
 			})
 		}
 		return next
-	}, nil
+	}), nil
 }
 
-
-type Translator func(queryrangebase.Handler) http.RoundTripper
 
 // NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
 func NewInstantMetricTripperware(
@@ -755,10 +753,10 @@ func NewInstantMetricTripperware(
 	schema config.SchemaConfig,
 	codec queryrangebase.Codec,
 	metrics *Metrics,
-	indexStatsTripperware queryrangebase.Tripperware,
-) (Translator, error) {
-	return func(next queryrangebase.Handler) http.RoundTripper {
-		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
+	indexStatsTripperware queryrangebase.Middleware,
+) (queryrangebase.Middleware, error) {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		statsHandler := indexStatsTripperware.Wrap(next)
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
 			StatsCollectorMiddleware(),
@@ -795,7 +793,7 @@ func NewInstantMetricTripperware(
 			return NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}), nil
 }
 
 func NewVolumeTripperware(
@@ -808,7 +806,7 @@ func NewVolumeTripperware(
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	retentionEnabled bool,
 	metrics *Metrics,
-) (queryrangebase.Tripperware, error) {
+) (queryrangebase.Middleware, error) {
 	// Parallelize the volume requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the volume request in 24h intervals.
 	limits = WithSplitByLimits(limits, 24*time.Hour)
@@ -894,7 +892,7 @@ func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tr
 	}
 }
 
-func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Tripperware, limits Limits) func(next http.RoundTripper) http.RoundTripper {
+func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Middleware, limits Limits) func(next queryrangebase.Handler) queryrangebase.Handler {
 	return func(next http.RoundTripper) http.RoundTripper {
 		nextRt := nextTW(next)
 		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -922,7 +920,7 @@ func NewIndexStatsTripperware(
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	retentionEnabled bool,
 	metrics *Metrics,
-) (queryrangebase.Tripperware, error) {
+) (queryrangebase.Middleware, error) {
 	// Parallelize the index stats requests, so it doesn't send a huge request to a single index-gw (i.e. {app=~".+"} for 30d).
 	// Indices are sharded by 24 hours, so we split the stats request in 24h intervals.
 	limits = WithSplitByLimits(limits, 24*time.Hour)
@@ -977,8 +975,8 @@ func sharedIndexTripperware(
 	log log.Logger,
 	metrics *Metrics,
 	schema config.SchemaConfig,
-) (queryrangebase.Tripperware, error) {
-	return func(next http.RoundTripper) http.RoundTripper {
+) (queryrangebase.Middleware, error) {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
 		middlewares := []queryrangebase.Middleware{
 			NewLimitsMiddleware(limits),
 			queryrangebase.InstrumentMiddleware("split_by_interval", metrics.InstrumentMiddlewareMetrics),
@@ -1001,6 +999,6 @@ func sharedIndexTripperware(
 			)
 		}
 
-		return queryrangebase.NewRoundTripper(next, codec, nil, middlewares...)
-	}, nil
+		return queryrangebase.MergeMiddlewares(middlewares...).Wrap(next)
+	}), nil
 }

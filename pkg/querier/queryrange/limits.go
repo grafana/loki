@@ -462,7 +462,7 @@ type limitedRoundTripper struct {
 }
 
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) queryrangebase.Handler {
 	transport := limitedRoundTripper{
 		configs:    configs,
 		next:       next,

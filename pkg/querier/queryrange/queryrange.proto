@@ -11,6 +11,8 @@ import "pkg/push/push.proto";
 import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
+option go_package = "github.com/pkg/querier/queryrange";
+
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 
@@ -198,7 +200,7 @@ message QueryResponse {
   }
 }
 
-message QueryResquest {
+message QueryRequest {
   oneof request {
     LokiSeriesRequest series = 1;
     LokiLabelNamesRequest labels = 2;
