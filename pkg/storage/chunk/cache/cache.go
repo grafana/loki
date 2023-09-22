@@ -102,17 +102,11 @@ func New(cfg Config, reg prometheus.Registerer, logger log.Logger, cacheType sta
 
 	var caches []Cache
 	if cfg.EmbeddedCache.IsEnabled() {
-		fifocfg := FifoCacheConfig{
-			MaxSizeMB:     cfg.EmbeddedCache.MaxSizeMB,
-			TTL:           cfg.EmbeddedCache.TTL,
-			PurgeInterval: cfg.EmbeddedCache.PurgeInterval,
+		if cfg.EmbeddedCache.TTL == 0 && cfg.DefaultValidity != 0 {
+			cfg.EmbeddedCache.TTL = cfg.DefaultValidity
 		}
 
-		if fifocfg.TTL == 0 && cfg.DefaultValidity != 0 {
-			fifocfg.TTL = cfg.DefaultValidity
-		}
-
-		if cache := NewFifoCache(cfg.Prefix+"embedded-cache", fifocfg, reg, logger, cacheType); cache != nil {
+		if cache := NewEmbeddedCache(cfg.Prefix+"embedded-cache", cfg.EmbeddedCache, reg, logger, cacheType); cache != nil {
 			caches = append(caches, CollectStats(Instrument(cfg.Prefix+"embedded-cache", cache, reg)))
 		}
 	}

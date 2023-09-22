@@ -32,20 +32,20 @@ func TestFifoCacheEviction(t *testing.T) {
 
 	tests := []struct {
 		name string
-		cfg  FifoCacheConfig
+		cfg  EmbeddedCacheConfig
 	}{
 		{
 			name: "test-memory-eviction",
-			cfg:  FifoCacheConfig{MaxSizeMB: 1, TTL: 1 * time.Minute},
+			cfg:  EmbeddedCacheConfig{MaxSizeMB: 1, TTL: 1 * time.Minute},
 		},
 		{
 			name: "test-items-eviction",
-			cfg:  FifoCacheConfig{MaxSizeItems: cnt, TTL: 1 * time.Minute},
+			cfg:  EmbeddedCacheConfig{MaxSizeItems: cnt, TTL: 1 * time.Minute},
 		},
 	}
 
 	for _, test := range tests {
-		c := NewFifoCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
+		c := NewEmbeddedCache(test.name, test.cfg, nil, log.NewNopLogger(), "test")
 		ctx := context.Background()
 
 		// Check put / get works
@@ -178,13 +178,13 @@ func TestFifoCacheExpiry(t *testing.T) {
 		sizeOf(&cacheEntry{key: key2, value: data2}) +
 		sizeOf(&cacheEntry{key: key3, value: data3})
 
-	cfg := FifoCacheConfig{
+	cfg := EmbeddedCacheConfig{
 		MaxSizeItems:  3,
 		TTL:           100 * time.Millisecond,
 		PurgeInterval: 50 * time.Millisecond,
 	}
 
-	c := NewFifoCache("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test")
+	c := NewEmbeddedCache("cache_exprity_test", cfg, nil, log.NewNopLogger(), "test")
 	ctx := context.Background()
 
 	err := c.Store(ctx, []string{key1, key2, key3, key4}, [][]byte{data1, data2, data3, data4})
@@ -233,42 +233,4 @@ func genBytes(n uint8) []byte {
 		arr[i] = byte(i)
 	}
 	return arr
-}
-
-func TestBytesParsing(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected uint64
-	}{
-		{input: "", expected: 0},
-		{input: "123", expected: 123},
-		{input: "1234567890", expected: 1234567890},
-		{input: "25k", expected: 25000},
-		{input: "25K", expected: 25000},
-		{input: "25kb", expected: 25000},
-		{input: "25kB", expected: 25000},
-		{input: "25Kb", expected: 25000},
-		{input: "25KB", expected: 25000},
-		{input: "25kib", expected: 25600},
-		{input: "25KiB", expected: 25600},
-		{input: "25m", expected: 25000000},
-		{input: "25M", expected: 25000000},
-		{input: "25mB", expected: 25000000},
-		{input: "25MB", expected: 25000000},
-		{input: "2.5MB", expected: 2500000},
-		{input: "25MiB", expected: 26214400},
-		{input: "25mib", expected: 26214400},
-		{input: "2.5mib", expected: 2621440},
-		{input: "25g", expected: 25000000000},
-		{input: "25G", expected: 25000000000},
-		{input: "25gB", expected: 25000000000},
-		{input: "25Gb", expected: 25000000000},
-		{input: "25GiB", expected: 26843545600},
-		{input: "25gib", expected: 26843545600},
-	}
-	for _, test := range tests {
-		output, err := parsebytes(test.input)
-		assert.Nil(t, err)
-		assert.Equal(t, test.expected, output)
-	}
 }

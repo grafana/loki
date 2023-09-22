@@ -757,7 +757,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 						CacheConfig: cache.Config{
 							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled: true,
+								MaxSizeMB: 1,
+								Enabled:   true,
 							},
 						},
 					},
@@ -775,7 +776,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 						CacheConfig: cache.Config{
 							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled: true,
+								MaxSizeMB: 1,
+								Enabled:   true,
 							},
 						},
 					},
