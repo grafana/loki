@@ -6,7 +6,6 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	dskit_flagext "github.com/grafana/dskit/flagext"
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/clients/pkg/promtail/client"
