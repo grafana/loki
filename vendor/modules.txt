@@ -420,7 +420,7 @@ github.com/beorn7/perks/quantile
 # github.com/bmatcuk/doublestar v1.3.4
 ## explicit; go 1.12
 github.com/bmatcuk/doublestar
-# github.com/buger/jsonparser v1.1.1
+# github.com/buger/jsonparser v1.1.1 => github.com/floren/jsonparser v0.0.0-20221212180010-bf73ef709df6
 ## explicit; go 1.13
 github.com/buger/jsonparser
 # github.com/c2h5oh/datasize v0.0.0-20200112174442-28bbd4740fee
@@ -2170,3 +2170,4 @@ sigs.k8s.io/yaml
 # github.com/grafana/regexp => github.com/grafana/regexp v0.0.0-20221005093135-b4c2bcb0a4b6
 # github.com/grafana/loki/pkg/push => ./pkg/push
 # google.golang.org/grpc => google.golang.org/grpc v1.53.0
+# github.com/buger/jsonparser => github.com/floren/jsonparser v0.0.0-20221212180010-bf73ef709df6

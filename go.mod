@@ -351,3 +351,6 @@ replace github.com/grafana/loki/pkg/push => ./pkg/push
 
 // Pin grpc to previous version: using newer version breaks kuberesolver, but updating kuberesolver needs to be done in weaveworks/common.
 replace google.golang.org/grpc => google.golang.org/grpc v1.53.0
+
+// Leave this until https://github.com/buger/jsonparser/pull/180 is merged
+replace github.com/buger/jsonparser => github.com/floren/jsonparser v0.0.0-20221212180010-bf73ef709df6
