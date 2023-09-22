@@ -66,7 +66,6 @@ type Config struct {
 	ResyncInterval           time.Duration                          `yaml:"resync_interval"`
 	QueryReadyNumDays        int                                    `yaml:"query_ready_num_days"`
 	IndexGatewayClientConfig gatewayclient.IndexGatewayClientConfig `yaml:"index_gateway_client"`
-	UseBoltDBShipperAsBackup bool                                   `yaml:"use_boltdb_shipper_as_backup"`
 
 	IngesterName           string
 	Mode                   Mode
@@ -88,7 +87,6 @@ func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	f.DurationVar(&cfg.CacheTTL, prefix+"shipper.cache-ttl", 24*time.Hour, "TTL for index files restored in cache for queries")
 	f.DurationVar(&cfg.ResyncInterval, prefix+"shipper.resync-interval", 5*time.Minute, "Resync downloaded files with the storage")
 	f.IntVar(&cfg.QueryReadyNumDays, prefix+"shipper.query-ready-num-days", 0, "Number of days of common index to be kept downloaded for queries. For per tenant index query readiness, use limits overrides config.")
-	f.BoolVar(&cfg.UseBoltDBShipperAsBackup, prefix+"shipper.use-boltdb-shipper-as-backup", false, "Use boltdb-shipper index store as backup for indexing chunks. When enabled, boltdb-shipper needs to be configured under storage_config")
 }
 
 func (cfg *Config) Validate() error {

@@ -1418,13 +1418,26 @@ steps:
   - clone
   - manifest-loki-canary
   image: plugins/manifest:1.4.0
-  name: manifest-fluent-bit
+  name: manifest-loki-canary-boringcrypto
   settings:
     ignore_missing: false
     password:
       from_secret: docker_password
     spec: .drone/docker-manifest.tmpl
-    target: fluent-bit
+    target: loki-canary-boringcrypto
+    username:
+      from_secret: docker_username
+- depends_on:
+  - clone
+  - manifest-loki-canary-boringcrypto
+  image: plugins/manifest:1.4.0
+  name: manifest-fluent-bit-plugin-loki
+  settings:
+    ignore_missing: false
+    password:
+      from_secret: docker_password
+    spec: .drone/docker-manifest.tmpl
+    target: fluent-bit-plugin-loki
     username:
       from_secret: docker_username
 trigger:
@@ -2003,6 +2016,6 @@ kind: secret
 name: gpg_private_key
 ---
 kind: signature
-hmac: fb384b17b46ac77869765efc735c4d389ba33e37d5c584ec93da7b4c6b0387da
+hmac: 6aff5ae73eeaed171dafbc08b599abaf9a4ef4c1d68212da1a1442f36f5c7d8b
 
 ...

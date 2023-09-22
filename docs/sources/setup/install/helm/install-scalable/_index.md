@@ -69,10 +69,14 @@ It is not possible to run the scalable mode with the `filesystem` storage.
         enabled: true
       ```
 
-1. Install or upgrade the Loki deployment with this command.
+1. Install or upgrade the Loki deployment.
+      - To install:
+  
+        ```bash
+        helm install --values values.yaml loki grafana/loki
+        ```
+     - To upgrade:
+        ```bash
+        helm upgrade --values values.yaml loki grafana/loki
+        ```
 
-   ```bash
-   helm install --values values.yaml loki grafana/loki
-   # or upgrade for existing installations
-   helm upgrade --values values.yaml loki grafana/loki
-   ```

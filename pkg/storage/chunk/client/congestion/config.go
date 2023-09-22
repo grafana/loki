@@ -2,6 +2,7 @@ package congestion
 
 import (
 	"flag"
+	"fmt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/hedging"
 )
@@ -14,9 +15,10 @@ type Config struct {
 }
 
 func (c *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+	prefix = fmt.Sprintf("%s%s", prefix, "congestion-control.")
 	f.BoolVar(&c.Enabled, prefix+"enabled", false, "Use storage congestion control (default: disabled).")
 
-	c.Controller.RegisterFlagsWithPrefix(prefix+"congestion-control.", f)
+	c.Controller.RegisterFlagsWithPrefix(prefix, f)
 	c.Retry.RegisterFlagsWithPrefix(prefix+"retry.", f)
 	c.Hedge.RegisterFlagsWithPrefix(prefix+"hedge.", f)
 }

@@ -31,13 +31,12 @@ type IndexWriter interface {
 
 type store struct {
 	index.Reader
-	indexShipper      indexshipper.IndexShipper
-	indexWriter       IndexWriter
-	backupIndexWriter index.Writer
-	logger            log.Logger
-	stopOnce          sync.Once
 
-	parallelism int
+	parallelism  int
+	indexShipper indexshipper.IndexShipper
+	indexWriter  IndexWriter
+	logger       log.Logger
+	stopOnce     sync.Once
 }
 
 // NewStore creates a new tsdb index ReaderWriter.
@@ -49,7 +48,6 @@ func NewStore(
 	objectClient client.ObjectClient,
 	limits downloads.Limits,
 	tableRange config.TableRange,
-	backupIndexWriter index.Writer,
 	reg prometheus.Registerer,
 	logger log.Logger,
 	idxCache cache.Cache,
@@ -59,14 +57,10 @@ func NewStore(
 	func(),
 	error,
 ) {
-	if backupIndexWriter == nil {
-		backupIndexWriter = noopBackupIndexWriter{}
-	}
 
 	storeInstance := &store{
-		backupIndexWriter: backupIndexWriter,
-		logger:            logger,
-		parallelism:       parallelism,
+		logger:      logger,
+		parallelism: parallelism,
 	}
 
 	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
@@ -172,7 +166,7 @@ func (s *store) Stop() {
 	})
 }
 
-func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.Time, chk chunk.Chunk) error {
+func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdb_index.ChunkMetas{
@@ -187,18 +181,11 @@ func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.T
 	if err := s.indexWriter.Append(chk.UserID, chk.Metric, chk.ChunkRef.Fingerprint, metas); err != nil {
 		return errors.Wrap(err, "writing index entry")
 	}
-
-	return s.backupIndexWriter.IndexChunk(ctx, from, through, chk)
+	return nil
 }
 
 type failingIndexWriter struct{}
 
 func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_index.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
-}
-
-type noopBackupIndexWriter struct{}
-
-func (n noopBackupIndexWriter) IndexChunk(_ context.Context, _, _ model.Time, _ chunk.Chunk) error {
-	return nil
 }

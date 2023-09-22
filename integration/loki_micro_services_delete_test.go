@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"
@@ -131,13 +132,13 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 	pushRequests = append(pushRequests, pushRequest{
 		stream: map[string]string{
 			"job":           "fake",
-			"deletion_type": "with_non_indexed_labels",
+			"deletion_type": "with_structured_metadata",
 		},
 		entries: []logproto.Entry{
 			{
 				Timestamp: now.Add(-48 * time.Hour),
 				Line:      "AlineA",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "A",
@@ -147,7 +148,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			{
 				Timestamp: now.Add(-48 * time.Hour),
 				Line:      "AlineB",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "B",
@@ -157,7 +158,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			{
 				Timestamp: now.Add(-time.Minute),
 				Line:      "AlineC",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "C",
@@ -167,7 +168,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 			{
 				Timestamp: now.Add(-time.Minute),
 				Line:      "AlineD",
-				NonIndexedLabels: push.LabelsAdapter{
+				StructuredMetadata: push.LabelsAdapter{
 					{
 						Name:  "line",
 						Value: "D",
@@ -209,7 +210,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		{
 			StartTime: now.Add(-48 * time.Hour).Unix(),
 			EndTime:   now.Unix(),
-			Query:     `{deletion_type="with_non_indexed_labels"} | line="A"`,
+			Query:     `{deletion_type="with_structured_metadata"} | line="A"`,
 			Status:    "received",
 		},
 	}
@@ -234,10 +235,10 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		// ingest some log lines
 		for _, pr := range pushRequests {
 			for _, entry := range pr.entries {
-				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndNonIndexedLabels(
+				require.NoError(t, cliDistributor.PushLogLineWithTimestampAndStructuredMetadata(
 					entry.Line,
 					entry.Timestamp,
-					logproto.FromLabelAdaptersToLabels(entry.NonIndexedLabels).Map(),
+					logproto.FromLabelAdaptersToLabels(entry.StructuredMetadata).Map(),
 					pr.stream,
 				))
 			}
@@ -358,7 +359,7 @@ func TestMicroServicesDeleteRequest(t *testing.T) {
 		require.NoError(t, err)
 		checkUserLabelAndMetricValue(t, "loki_compactor_delete_requests_processed_total", metrics, tenantID, float64(len(expectedDeleteRequests)))
 
-		// ideally this metric should be equal to 2 given that a single line matches the line filter and non-indexed labels filter
+		// ideally this metric should be equal to 2 given that a single line matches the line filter and structured metadata filter
 		// but the same chunks are indexed in 3 tables
 		checkUserLabelAndMetricValue(t, "loki_compactor_deleted_lines", metrics, tenantID, 6)
 	})
@@ -411,7 +412,7 @@ func pushRequestToClientStreamValues(t *testing.T, p pushRequest) []client.Strea
 	logsByStream := map[string][][]string{}
 	for _, entry := range p.entries {
 		lb := labels.NewBuilder(labels.FromMap(p.stream))
-		for _, l := range entry.NonIndexedLabels {
+		for _, l := range entry.StructuredMetadata {
 			lb.Set(l.Name, l.Value)
 		}
 		stream := lb.Labels().String()

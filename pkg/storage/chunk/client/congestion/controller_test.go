@@ -251,6 +251,10 @@ func (m *mockObjectClient) GetObject(context.Context, string) (io.ReadCloser, in
 	return io.NopCloser(strings.NewReader("bar")), 3, nil
 }
 
+func (m *mockObjectClient) ObjectExists(context.Context, string) (bool, error) {
+	panic("not implemented")
+}
+
 func (m *mockObjectClient) List(context.Context, string, string) ([]client.StorageObject, []client.StorageCommonPrefix, error) {
 	panic("not implemented")
 }
@@ -262,8 +266,8 @@ func (m *mockObjectClient) IsObjectNotFoundErr(error) bool { return false }
 func (m *mockObjectClient) IsRetryableErr(error) bool      { return !m.nonRetryableErrs }
 func (m *mockObjectClient) Stop()                          {}
 
-func newMockObjectClient(strat requestFailer) *mockObjectClient {
-	return &mockObjectClient{strategy: strat}
+func newMockObjectClient(start requestFailer) *mockObjectClient {
+	return &mockObjectClient{strategy: start}
 }
 
 type requestFailer interface {

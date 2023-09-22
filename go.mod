@@ -49,7 +49,7 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/grafana/cloudflare-go v0.0.0-20230110200409-c627cf6792f2
-	github.com/grafana/dskit v0.0.0-20230823104051-002b55ecf009
+	github.com/grafana/dskit v0.0.0-20230829141140-06955c011ffd
 	github.com/grafana/go-gelf/v2 v2.0.1
 	github.com/grafana/gomemcache v0.0.0-20230316202710-a081dae0aba9
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd
@@ -123,7 +123,7 @@ require (
 	github.com/prometheus/alertmanager v0.26.0
 	github.com/prometheus/common/sigv4 v0.1.0
 	github.com/richardartoul/molecule v1.0.0
-	github.com/thanos-io/objstore v0.0.0-20230727115635-d0c43443ecda
+	github.com/thanos-io/objstore v0.0.0-20230816175749-20395bffdf26
 	github.com/willf/bloom v2.0.3+incompatible
 	go4.org/netipx v0.0.0-20230125063823-8449b0a6169f
 	golang.org/x/exp v0.0.0-20230713183714-613f0c0eb8a1

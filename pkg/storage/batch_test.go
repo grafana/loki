@@ -1760,7 +1760,7 @@ func Benchmark_store_OverlappingChunks(b *testing.B) {
 	require.NoError(b, err)
 
 	b.ReportAllocs()
-	st := &store{
+	st := &LokiStore{
 		chunkMetrics: NilMetrics,
 		cfg: Config{
 			MaxChunkBatchSize:      50,

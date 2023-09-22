@@ -23,7 +23,7 @@ func NewIndexCompactor() compactor.IndexCompactor {
 	return indexCompactor{}
 }
 
-func (i indexCompactor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig, parallelism int) compactor.TableCompactor {
+func (i indexCompactor) NewTableCompactor(ctx context.Context, commonIndexSet compactor.IndexSet, existingUserIndexSet map[string]compactor.IndexSet, userIndexSetFactoryFunc compactor.MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig, _ int) compactor.TableCompactor {
 	return newTableCompactor(ctx, commonIndexSet, existingUserIndexSet, userIndexSetFactoryFunc, periodConfig)
 }
 

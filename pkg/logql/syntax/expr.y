@@ -42,6 +42,7 @@ import (
   LogfmtParser            *LogfmtParserExpr
   LineFilters             *LineFilterExpr
   LineFilter              *LineFilterExpr
+  OrFilter                *LineFilterExpr
   ParserFlags             []string
   PipelineExpr            MultiStageExpr
   PipelineStage           StageExpr
@@ -108,6 +109,7 @@ import (
 %type <LabelFilter>           labelFilter
 %type <LineFilters>           lineFilters
 %type <LineFilter>            lineFilter
+%type <OrFilter>              orFilter
 %type <ParserFlags>           parserFlags
 %type <LineFormatExpr>        lineFormatExpr
 %type <DecolorizeExpr>        decolorizeExpr
@@ -284,13 +286,21 @@ filterOp:
   IP { $$ = OpFilterIP }
   ;
 
+orFilter:
+    STRING                                              { $$ = newLineFilterExpr(labels.MatchEqual, "", $1) }
+  | filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS	{ $$ = newLineFilterExpr(labels.MatchEqual, $1, $3) }
+  | STRING OR orFilter                                  { $$ = newOrLineFilter(newLineFilterExpr(labels.MatchEqual, "", $1), $3) }
+  ;
+
 lineFilter:
     filter STRING                                                   { $$ = newLineFilterExpr($1, "", $2) }
   | filter filterOp OPEN_PARENTHESIS STRING CLOSE_PARENTHESIS       { $$ = newLineFilterExpr($1, $2, $4) }
+  | filter STRING OR orFilter                                       { $$ = newOrLineFilter(newLineFilterExpr($1, "", $2), $4) }
   ;
 
 lineFilters:
     lineFilter                { $$ = $1 }
+  | lineFilter OR orFilter    { $$ = newOrLineFilter($1, $3)}
   | lineFilters lineFilter    { $$ = newNestedLineFilterExpr($1, $2) }
   ;
 

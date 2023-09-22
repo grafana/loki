@@ -205,7 +205,7 @@ func newTestIndexCompactor() testIndexCompactor {
 	return testIndexCompactor{}
 }
 
-func (i testIndexCompactor) NewTableCompactor(ctx context.Context, commonIndexSet IndexSet, existingUserIndexSet map[string]IndexSet, makeEmptyUserIndexSetFunc MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig, parallelism int) TableCompactor {
+func (i testIndexCompactor) NewTableCompactor(ctx context.Context, commonIndexSet IndexSet, existingUserIndexSet map[string]IndexSet, makeEmptyUserIndexSetFunc MakeEmptyUserIndexSetFunc, periodConfig config.PeriodConfig, _ int) TableCompactor {
 	return newTestTableCompactor(ctx, commonIndexSet, existingUserIndexSet, makeEmptyUserIndexSetFunc, periodConfig)
 }
 

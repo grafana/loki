@@ -40,8 +40,9 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -166,15 +167,13 @@ type Wrapper interface {
 	Wrap(wrapped Interface) Interface
 }
 
-// ChunkStore is the interface we need to store chunks.
-type ChunkStore interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSchemaConfigs() []config.PeriodConfig
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+// Store is the store interface we need on the ingester.
+type Store interface {
+	stores.ChunkWriter
+	stores.ChunkFetcher
+	storage.SelectStore
+	storage.SchemaConfigProvider
+	indexstore.StatsReader
 }
 
 // Interface is an interface for the Ingester
@@ -211,7 +210,7 @@ type Ingester struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store           ChunkStore
+	store           Store
 	periodicConfigs []config.PeriodConfig
 
 	loopDone    sync.WaitGroup
@@ -248,7 +247,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -1006,7 +1005,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunkRefs(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
 	if err != nil {
 		return nil, err
 	}
@@ -1081,7 +1080,7 @@ func (i *Ingester) Label(ctx context.Context, req *logproto.LabelRequest) (*logp
 	from, through := model.TimeFromUnixNano(start.UnixNano()), model.TimeFromUnixNano(req.End.UnixNano())
 	var storeValues []string
 	if req.Values {
-		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name)
+		storeValues, err = cs.LabelValuesForMetricName(ctx, userID, from, through, "logs", req.Name, matchers...)
 		if err != nil {
 			return nil, err
 		}
