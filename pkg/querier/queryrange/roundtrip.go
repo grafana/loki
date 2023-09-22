@@ -103,7 +103,7 @@ func NewTripperware(
 	cacheGenNumLoader queryrangebase.CacheGenNumberLoader,
 	retentionEnabled bool,
 	registerer prometheus.Registerer,
-) (queryrangebase.Tripperware, Stopper, error) {
+) (queryrangebase.Middleware, Stopper, error) {
 	metrics := NewMetrics(registerer)
 
 	var (
@@ -197,7 +197,7 @@ func NewTripperware(
 		return nil, nil, err
 	}
 
-	return func(next http.RoundTripper) http.RoundTripper {
+	return func(next Translator) http.RoundTripper {
 		var (
 			metricRT       = metricsTripperware(next)
 			limitedRT      = limitedTripperware(next)
@@ -634,7 +634,7 @@ func NewMetricTripperware(
 	extractor queryrangebase.Extractor,
 	metrics *Metrics,
 	indexStatsTripperware queryrangebase.Tripperware,
-) (queryrangebase.Tripperware, error) {
+) (Translator, error) {
 	cacheKey := cacheKeyLimits{limits, cfg.Transformer}
 	var queryCacheMiddleware queryrangebase.Middleware
 	if cfg.CacheResults {
@@ -668,7 +668,7 @@ func NewMetricTripperware(
 		}
 	}
 
-	return func(next http.RoundTripper) http.RoundTripper {
+	return func(next queryrangebase.Handler) http.RoundTripper {
 		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
 
 		queryRangeMiddleware := []queryrangebase.Middleware{
@@ -743,6 +743,9 @@ func NewMetricTripperware(
 	}, nil
 }
 
+
+type Translator func(queryrangebase.Handler) http.RoundTripper
+
 // NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
 func NewInstantMetricTripperware(
 	cfg Config,
@@ -753,8 +756,8 @@ func NewInstantMetricTripperware(
 	codec queryrangebase.Codec,
 	metrics *Metrics,
 	indexStatsTripperware queryrangebase.Tripperware,
-) (queryrangebase.Tripperware, error) {
-	return func(next http.RoundTripper) http.RoundTripper {
+) (Translator, error) {
+	return func(next queryrangebase.Handler) http.RoundTripper {
 		statsHandler := queryrangebase.NewRoundTripperHandler(indexStatsTripperware(next), codec)
 
 		queryRangeMiddleware := []queryrangebase.Middleware{

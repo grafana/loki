@@ -26,6 +26,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/querier/stats"
 	lokigrpc "github.com/grafana/loki/pkg/util/httpgrpc"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -219,32 +220,9 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 		response: make(chan *frontendv2pb.QueryResultRequest, 1),
 	}
 
-	f.requests.put(freq)
-	defer f.requests.delete(freq.queryID)
-
-	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
-
-enqueueAgain:
-	var cancelCh chan<- uint64
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-
-	case f.requestsCh <- freq:
-		// Enqueued, let's wait for response.
-		enqRes := <-freq.enqueue
-
-		if enqRes.status == waitForResponse {
-			cancelCh = enqRes.cancelCh
-			break // go wait for response.
-		} else if enqRes.status == failed {
-			retries--
-			if retries > 0 {
-				goto enqueueAgain
-			}
-		}
-
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
+	cancelCh, err := f.enqueue(ctx, freq)
+	if err != nil {
+		return nil, err
 	}
 
 	select {
@@ -268,6 +246,96 @@ enqueueAgain:
 
 		return resp.HttpResponse, nil
 	}
+}
+
+func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	tenantIDs, err := tenant.TenantIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tenantID := tenant.JoinTenantIDs(tenantIDs)
+
+	// TODO: Propagate trace context in gRPC too - this will be ignored if using HTTP.
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	freq := &frontendRequest{
+		queryID:      f.lastQueryID.Inc(),
+		request:      nil, // 
+		tenantID:     tenantID,
+		actor:        httpreq.ExtractActorPath(ctx),
+		statsEnabled: stats.IsEnabled(ctx),
+
+		cancel: cancel,
+
+		// Buffer of 1 to ensure response or error can be written to the channel
+		// even if this goroutine goes away due to client context cancellation.
+		enqueue:  make(chan enqueueResult, 1),
+		response: make(chan *frontendv2pb.QueryResultRequest, 1),
+	}
+
+	cancelCh, err := f.enqueue(ctx, freq)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-ctx.Done():
+		if cancelCh != nil {
+			select {
+			case cancelCh <- freq.queryID:
+				// cancellation sent.
+			default:
+				// failed to cancel, ignore.
+				level.Warn(f.log).Log("msg", "failed to send cancellation request to scheduler, queue full")
+			}
+		}
+		return nil, ctx.Err()
+
+	case resp := <-freq.response:
+		// TODO: track GRPC response
+
+		if resp.QueryResponse != nil {
+			return resp.QueryResponse, nil
+		}
+
+		// TODO: decode http response
+		return nil, errors.New("decoding is not implemented")
+
+	}
+}
+
+func (f *Frontend) enqueue(ctx context.Context, freq *frontendRequest) (chan<- uint64, error) {
+	f.requests.put(freq)
+	defer f.requests.delete(freq.queryID)
+
+	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
+
+enqueueAgain:
+	var cancelCh chan<- uint64
+	select {
+	case <-ctx.Done():
+		return cancelCh, ctx.Err()
+
+	case f.requestsCh <- freq:
+		// Enqueued, let's wait for response.
+		enqRes := <-freq.enqueue
+
+		if enqRes.status == waitForResponse {
+			cancelCh = enqRes.cancelCh
+			break // go wait for response.
+		} else if enqRes.status == failed {
+			retries--
+			if retries > 0 {
+				goto enqueueAgain
+			}
+		}
+
+		return cancelCh, httpgrpc.Errorf(http.StatusInternalServerError, "failed to enqueue request")
+	}
+
+	return cancelCh, nil
 }
 
 func (f *Frontend) QueryResult(ctx context.Context, qrReq *frontendv2pb.QueryResultRequest) (*frontendv2pb.QueryResultResponse, error) {

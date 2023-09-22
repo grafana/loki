@@ -14,7 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
-	"github.com/grafana/dskit/user"
+	//"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
@@ -451,9 +451,10 @@ func (sl *seriesLimiter) isLimitReached() bool {
 	return len(sl.hashes) > sl.maxSeries
 }
 
+
 type limitedRoundTripper struct {
 	configs []config.PeriodConfig
-	next    http.RoundTripper
+	next    queryrangebase.Handler
 	limits  Limits
 
 	codec      queryrangebase.Codec
@@ -461,7 +462,7 @@ type limitedRoundTripper struct {
 }
 
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
-func NewLimitedRoundTripper(next http.RoundTripper, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
+func NewLimitedRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) http.RoundTripper {
 	transport := limitedRoundTripper{
 		configs:    configs,
 		next:       next,
@@ -536,22 +537,22 @@ func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) 
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
 	defer sp.Finish()
 
+	// TODO: avoid this an pass queryrangebase.Request instead.
+	/*
 	request, err := rt.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
 	}
+	*/
 
+	// TODO: inject tenant
+	/*
 	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
+	*/
 
-	response, err := rt.next.RoundTrip(request)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = response.Body.Close() }()
-
-	return rt.codec.DecodeResponse(ctx, response, r)
+	return rt.next.Do(ctx, r)
 }
 
 // WeightedParallelism will calculate the request parallelism to use
@@ -743,4 +744,34 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	}
 
 	return nil
+}
+
+type serializeRoundTripper struct {
+	codec queryrangebase.Codec
+	next  queryrangebase.Handler
+}
+
+func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec) http.RoundTripper {
+	transport := serializeRoundTripper{
+		next:       next,
+		codec:      codec,
+	}
+	return transport
+}
+
+func (rt serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
+	defer sp.Finish()
+
+	request, err := rt.codec.DecodeRequest(ctx, r, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	response, err := rt.next.Do(request)
+	if err != nil {
+		return nil, err
+	}
+
+	return rt.codec.EncodeResponse(ctx, r, response)
 }

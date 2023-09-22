@@ -11,6 +11,10 @@ import "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 // It also has issue of generating slices without pointer to the custom type for Repeated customtype fields, see https://github.com/gogo/protobuf/issues/478
 // which is why we also have to do conversion from non-pointer to pointer type.
 
+func (m QueryResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader{
+	return nil // TODO
+}
+
 func (m *LokiLabelNamesResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
 	if m != nil {
 		return convertPrometheusResponseHeadersToPointers(m.Headers)
