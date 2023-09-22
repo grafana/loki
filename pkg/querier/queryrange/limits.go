@@ -689,13 +689,13 @@ func MinWeightedParallelism(ctx context.Context, tenantIDs []string, configs []c
 }
 
 // validates log entries limits
-func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits) error {
-	tenantIDs, err := tenant.TenantIDs(req.Context())
+func validateMaxEntriesLimits(ctx context.Context, reqLimit uint32, limits Limits) error {
+	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 	}
 
-	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(req.Context(), id) }
+	maxEntriesCapture := func(id string) int { return limits.MaxEntriesLimitPerQuery(ctx, id) }
 	maxEntriesLimit := validation.SmallestPositiveNonZeroIntPerTenant(tenantIDs, maxEntriesCapture)
 
 	if int(reqLimit) > maxEntriesLimit && maxEntriesLimit != 0 {
@@ -704,8 +704,8 @@ func validateMaxEntriesLimits(req *http.Request, reqLimit uint32, limits Limits)
 	return nil
 }
 
-func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Matcher) error {
-	tenants, err := tenant.TenantIDs(req.Context())
+func validateMatchers(ctx context.Context, limits Limits, matchers []*labels.Matcher) error {
+	tenants, err := tenant.TenantIDs(ctx)
 	if err != nil {
 		return err
 	}
@@ -719,7 +719,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 
 	// Enforce RequiredLabels limit
 	for _, tenant := range tenants {
-		required := limits.RequiredLabels(req.Context(), tenant)
+		required := limits.RequiredLabels(ctx, tenant)
 		var missing []string
 		for _, label := range required {
 			if _, found := actual[label]; !found {
@@ -736,7 +736,7 @@ func validateMatchers(req *http.Request, limits Limits, matchers []*labels.Match
 	// The reason to enforce this one after RequiredLabels is to avoid users
 	// from adding enough label matchers to pass the RequiredNumberLabels limit but then
 	// having to modify them to use the ones required by RequiredLabels.
-	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(req.Context(), id) }
+	requiredNumberLabelsCapture := func(id string) int { return limits.RequiredNumberLabels(ctx, id) }
 	if requiredNumberLabels := validation.SmallestPositiveNonZeroIntPerTenant(tenants, requiredNumberLabelsCapture); requiredNumberLabels > 0 {
 		if len(present) < requiredNumberLabels {
 			return fmt.Errorf(requiredNumberLabelsErrTmpl, strings.Join(present, ", "), len(present), requiredNumberLabels)

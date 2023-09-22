@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
@@ -206,7 +206,7 @@ func NewTripperware(
 			labelsRT       = labelsTripperware.Wrap(next)
 			instantRT      = instantMetricTripperware.Wrap(next)
 			statsRT        = indexStatsTripperware.Wrap(next)
-			seriesVolumeRT = seriesVolumeTripperware(next)
+			seriesVolumeRT = seriesVolumeTripperware.Wrap(next)
 		)
 
 		return newRoundTripper(log, next, limitedRT, logFilterRT, metricRT, seriesRT, labelsRT, instantRT, statsRT, seriesVolumeRT, limits)
@@ -216,13 +216,13 @@ func NewTripperware(
 type roundTripper struct {
 	logger log.Logger
 
-	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume http.RoundTripper
+	next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume queryrangebase.Handler
 
 	limits Limits
 }
 
 // newRoundTripper creates a new queryrange roundtripper
-func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume http.RoundTripper, limits Limits) roundTripper {
+func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labels, instantMetric, indexStats, seriesVolume queryrangebase.Handler, limits Limits) roundTripper {
 	return roundTripper{
 		logger:        logger,
 		limited:       limited,
@@ -238,26 +238,18 @@ func newRoundTripper(logger log.Logger, next, limited, log, metric, series, labe
 	}
 }
 
-func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	logger := logutil.WithContext(req.Context(), r.logger)
-	err := req.ParseForm()
-	if err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
+func (r roundTripper) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	logger := logutil.WithContext(ctx, r.logger)
 
-	switch op := getOperation(req.URL.Path); op {
-	case QueryRangeOp:
-		rangeQuery, err := loghttp.ParseRangeQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		expr, err := syntax.ParseExpr(rangeQuery.Query)
+	switch op := req.(type) {
+	case *LokiRequest:
+		expr, err := syntax.ParseExpr(op.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		queryHash := logql.HashedQuery(rangeQuery.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "range", "query", rangeQuery.Query, "length", rangeQuery.End.Sub(rangeQuery.Start), "step", rangeQuery.Step, "query_hash", queryHash)
+		queryHash := logql.HashedQuery(op.Query)
+		level.Info(logger).Log("msg", "executing query", "type", "range", "query", op.Query, "length", op.EndTs.Sub(op.StartTs), "step", op.Step, "query_hash", queryHash)
 
 		switch e := expr.(type) {
 		case syntax.SampleExpr:
@@ -268,112 +260,73 @@ func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 			}
 
 			for _, g := range groups {
-				if err := validateMatchers(req, r.limits, g.Matchers); err != nil {
+				if err := validateMatchers(ctx, r.limits, g.Matchers); err != nil {
 					return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 				}
 			}
-			return r.metric.RoundTrip(req)
+			return r.metric.Do(ctx, req)
 		case syntax.LogSelectorExpr:
 			// Note, this function can mutate the request
-			expr, err := transformRegexQuery(req, e)
-			if err != nil {
-				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-			}
-			if err := validateMaxEntriesLimits(req, rangeQuery.Limit, r.limits); err != nil {
+			// expr, err := transformRegexQuery(req, e) // TODO: this might be important
+
+			if err := validateMaxEntriesLimits(ctx, op.Limit, r.limits); err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
-			if err := validateMatchers(req, r.limits, e.Matchers()); err != nil {
+			if err := validateMatchers(ctx, r.limits, e.Matchers()); err != nil {
 				return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 			}
 
 			// Only filter expressions are query sharded
-			if !expr.HasFilter() {
-				return r.limited.RoundTrip(req)
+			if !e.HasFilter() {
+				return r.limited.Do(ctx, req)
 			}
-			return r.log.RoundTrip(req)
+			return r.log.Do(ctx, req)
 
 		default:
-			return r.next.RoundTrip(req)
+			return r.next.Do(ctx, req)
 		}
-	case SeriesOp:
-		sr, err := loghttp.ParseAndValidateSeriesQuery(req)
+	case *LokiSeriesRequest:
+		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(op.Match), "length", op.EndTs.Sub(op.StartTs))
+
+		return r.series.Do(ctx, req)
+	case *LokiLabelNamesRequest:
+		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", op.Name, "length", op.EndTs.Sub(op.StartTs), "query", op.Query)
+
+		return r.labels.Do(ctx, req)
+	case *LokiInstantRequest:
+		expr, err := syntax.ParseExpr(op.Query)
 		if err != nil {
 			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
 		}
 
-		level.Info(logger).Log("msg", "executing query", "type", "series", "match", logql.PrintMatches(sr.Groups), "length", sr.End.Sub(sr.Start))
-
-		return r.series.RoundTrip(req)
-	case LabelNamesOp:
-		lr, err := loghttp.ParseLabelQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		level.Info(logger).Log("msg", "executing query", "type", "labels", "label", lr.Name, "length", lr.End.Sub(*lr.Start), "query", lr.Query)
-
-		return r.labels.RoundTrip(req)
-	case InstantQueryOp:
-		instantQuery, err := loghttp.ParseInstantQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		expr, err := syntax.ParseExpr(instantQuery.Query)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-
-		queryHash := logql.HashedQuery(instantQuery.Query)
-		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", instantQuery.Query, "query_hash", queryHash)
+		queryHash := logql.HashedQuery(op.Query)
+		level.Info(logger).Log("msg", "executing query", "type", "instant", "query", op.Query, "query_hash", queryHash)
 
 		switch expr.(type) {
 		case syntax.SampleExpr:
-			return r.instantMetric.RoundTrip(req)
+			return r.instantMetric.Do(ctx, req)
 		default:
-			return r.next.RoundTrip(req)
+			return r.next.Do(ctx, req)
 		}
-	case IndexStatsOp:
-		statsQuery, err := loghttp.ParseIndexStatsQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", statsQuery.Query, "length", statsQuery.End.Sub(statsQuery.Start))
+	case *logproto.IndexStatsRequest:
+		level.Info(logger).Log("msg", "executing query", "type", "stats", "query", op.Matchers, "length", op.Through.Sub(op.From))
 
-		return r.indexStats.RoundTrip(req)
-	case VolumeOp:
-		volumeQuery, err := loghttp.ParseVolumeInstantQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
-		level.Info(logger).Log(
-			"msg", "executing query",
-			"type", "volume",
-			"query", volumeQuery.Query,
-			"length", volumeQuery.End.Sub(volumeQuery.Start),
-			"limit", volumeQuery.Limit,
-			"aggregate_by", volumeQuery.AggregateBy,
-		)
-
-		return r.seriesVolume.RoundTrip(req)
-	case VolumeRangeOp:
-		volumeQuery, err := loghttp.ParseVolumeRangeQuery(req)
-		if err != nil {
-			return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-		}
+		return r.indexStats.Do(ctx, req)
+	case *logproto.VolumeRequest:
 		level.Info(logger).Log(
 			"msg", "executing query",
 			"type", "volume_range",
-			"query", volumeQuery.Query,
-			"length", volumeQuery.End.Sub(volumeQuery.Start),
-			"step", volumeQuery.Step,
-			"limit", volumeQuery.Limit,
-			"aggregate_by", volumeQuery.AggregateBy,
+			"query", op.Matchers,
+			"length", op.Through.Sub(op.From),
+			"step", op.Step,
+			"limit", op.Limit,
+			"aggregate_by", op.AggregateBy,
 		)
 
-		return r.seriesVolume.RoundTrip(req)
+		return r.seriesVolume.Do(ctx, req)
 	default:
-		return r.next.RoundTrip(req)
+		return r.next.Do(ctx, req)
 	}
 }
 
@@ -732,11 +685,12 @@ func NewMetricTripperware(
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
 			rt := NewLimitedRoundTripper(next, codec, limits, schema.Configs, queryRangeMiddleware...)
-			return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
-				if !strings.HasSuffix(r.URL.Path, "/query_range") {
-					return next.RoundTrip(r)
+			return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				_, ok := r.(*LokiRequest)
+				if !ok {
+					return next.Do(ctx, r)
 				}
-				return rt.RoundTrip(r)
+				return rt.Do(ctx, r)
 			})
 		}
 		return next
@@ -861,42 +815,32 @@ func NewVolumeTripperware(
 	), nil
 }
 
-func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Tripperware) func(next http.RoundTripper) http.RoundTripper {
-	return func(next http.RoundTripper) http.RoundTripper {
-		nextRT := nextTW(next)
+func volumeRangeTripperware(codec queryrangebase.Codec, nextTW queryrangebase.Middleware) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		nextRT := nextTW.Wrap(next)
 
-		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
-			request, err := codec.DecodeRequest(r.Context(), r, nil)
-			if err != nil {
-				return nil, err
-			}
-
+		return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			seriesVolumeMiddlewares := []queryrangebase.Middleware{
 				StatsCollectorMiddleware(),
 				NewVolumeMiddleware(),
 			}
 
 			// wrap nextRT with our new middleware
-			response, err := queryrangebase.MergeMiddlewares(
+			return queryrangebase.MergeMiddlewares(
 				seriesVolumeMiddlewares...,
 			).Wrap(
+				// TODO: handler is already what we want : )
 				VolumeDownstreamHandler(nextRT, codec),
-			).Do(r.Context(), request)
-
-			if err != nil {
-				return nil, err
-			}
-
-			return codec.EncodeResponse(r.Context(), r, response)
+			).Do(ctx, r)
 		})
-	}
+	})
 }
 
-func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Middleware, limits Limits) func(next queryrangebase.Handler) queryrangebase.Handler {
-	return func(next http.RoundTripper) http.RoundTripper {
-		nextRt := nextTW(next)
-		return queryrangebase.RoundTripFunc(func(r *http.Request) (*http.Response, error) {
-			userID, err := user.ExtractOrgID(r.Context())
+func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Middleware, limits Limits) queryrangebase.Middleware {
+	return queryrangebase.MiddlewareFunc(func(next queryrangebase.Handler) queryrangebase.Handler {
+		nextRt := nextTW.Wrap(next)
+		return queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+			userID, err := user.ExtractOrgID(ctx)
 			if err != nil {
 				return nil, err
 			}
@@ -905,9 +849,9 @@ func volumeFeatureFlagRoundTripper(nextTW queryrangebase.Middleware, limits Limi
 				return nil, httpgrpc.Errorf(http.StatusNotFound, "not found")
 			}
 
-			return nextRt.RoundTrip(r)
+			return nextRt.Do(ctx, r)
 		})
-	}
+	})
 }
 
 func NewIndexStatsTripperware(
