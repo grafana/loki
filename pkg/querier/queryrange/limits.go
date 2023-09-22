@@ -760,6 +760,7 @@ func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.
 }
 
 func (rt serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+	ctx := r.Context()
 	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
 	defer sp.Finish()
 
@@ -768,7 +769,7 @@ func (rt serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, erro
 		return nil, err
 	}
 
-	response, err := rt.next.Do(request)
+	response, err := rt.next.Do(ctx, request)
 	if err != nil {
 		return nil, err
 	}

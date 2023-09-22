@@ -2,13 +2,10 @@ package queryrange
 
 import (
 	"context"
-	"net/http"
 	"sort"
 	"time"
 
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
-	"github.com/grafana/dskit/user"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
