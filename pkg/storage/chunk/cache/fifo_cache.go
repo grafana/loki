@@ -3,7 +3,6 @@ package cache
 import (
 	"container/list"
 	"context"
-	"flag"
 	"fmt"
 	"sync"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
-	"github.com/grafana/dskit/flagext"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -33,29 +31,11 @@ const (
 
 // FifoCacheConfig holds config for the FifoCache.
 type FifoCacheConfig struct {
-	MaxSizeBytes string        `yaml:"max_size_bytes"`
+	MaxSizeMB    int64         `yaml:"max_size_mb"`
 	MaxSizeItems int           `yaml:"max_size_items"` // deprecated
 	TTL          time.Duration `yaml:"ttl"`
 
-	DeprecatedValidity time.Duration `yaml:"validity"`
-	DeprecatedSize     int           `yaml:"size"`
-
 	PurgeInterval time.Duration
-}
-
-// RegisterFlagsWithPrefix adds the flags required to config this to the given FlagSet
-func (cfg *FifoCacheConfig) RegisterFlagsWithPrefix(prefix, description string, f *flag.FlagSet) {
-	f.StringVar(&cfg.MaxSizeBytes, prefix+"fifocache.max-size-bytes", "1GB", description+"Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be applied.")
-	f.IntVar(&cfg.MaxSizeItems, prefix+"fifocache.max-size-items", 0, description+"deprecated: Maximum number of entries in the cache.")
-	f.DurationVar(&cfg.TTL, prefix+"fifocache.ttl", time.Hour, description+"The time to live for items in the cache before they get purged.")
-
-	f.DurationVar(&cfg.DeprecatedValidity, prefix+"fifocache.duration", 0, "Deprecated (use ttl instead): "+description+"The expiry duration for the cache.")
-	f.IntVar(&cfg.DeprecatedSize, prefix+"fifocache.size", 0, "Deprecated (use max-size-items or max-size-bytes instead): "+description+"The number of entries to cache.")
-}
-
-func (cfg *FifoCacheConfig) Validate() error {
-	_, err := parsebytes(cfg.MaxSizeBytes)
-	return err
 }
 
 func parsebytes(s string) (uint64, error) {
@@ -110,23 +90,12 @@ type cacheEntry struct {
 func NewFifoCache(name string, cfg FifoCacheConfig, reg prometheus.Registerer, logger log.Logger, cacheType stats.CacheType) *FifoCache {
 	util_log.WarnExperimentalUse(fmt.Sprintf("In-memory (FIFO) cache - %s", name), logger)
 
-	if cfg.DeprecatedSize > 0 {
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.size, use fifocache.max-size-items or fifocache.max-size-bytes instead", "cache", name)
-		cfg.MaxSizeItems = cfg.DeprecatedSize
-	}
-	maxSizeBytes, _ := parsebytes(cfg.MaxSizeBytes)
+	maxSizeBytes := uint64(cfg.MaxSizeMB * 1e6)
 
 	if maxSizeBytes == 0 && cfg.MaxSizeItems == 0 {
 		// zero cache capacity - no need to create cache
 		level.Warn(logger).Log("msg", "neither fifocache.max-size-bytes nor fifocache.max-size-items is set", "cache", name)
 		return nil
-	}
-
-	if cfg.DeprecatedValidity > 0 {
-		flagext.DeprecatedFlagsUsed.Inc()
-		level.Warn(logger).Log("msg", "running with DEPRECATED flag fifocache.duration, use fifocache.ttl instead", "cache", name)
-		cfg.TTL = cfg.DeprecatedValidity
 	}
 
 	// Set a default interval for the ticker

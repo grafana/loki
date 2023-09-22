@@ -19,7 +19,7 @@ import (
 
 func TestSingleIdxCached(t *testing.T) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	cfg := cache.FifoCacheConfig{MaxSizeMB: 1}
 	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
@@ -217,7 +217,7 @@ func TestSingleIdxCached(t *testing.T) {
 
 func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	cfg := cache.FifoCacheConfig{MaxSizeMB: 1}
 	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
@@ -273,7 +273,7 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 
 func TestCacheableTSDBIndex_Stats(t *testing.T) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	cfg := cache.FifoCacheConfig{MaxSizeMB: 1}
 	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
@@ -388,7 +388,7 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 
 func BenchmarkSeriesRepetitive(b *testing.B) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	cfg := cache.FifoCacheConfig{MaxSizeMB: 1}
 	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
@@ -443,7 +443,7 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 
 func TestMultipleIndexesFiles(t *testing.T) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
+	cfg := cache.FifoCacheConfig{MaxSizeMB: 1}
 	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
