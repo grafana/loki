@@ -3,6 +3,7 @@ package v1
 import (
 	"testing"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
@@ -160,9 +161,9 @@ func TestSeriesPageEncoding(t *testing.T) {
 	}
 
 	enc := &encoding.Encbuf{}
-	src.Encode(enc, Crc32HashPool.Get())
+	src.Encode(enc, chunkenc.GetWriterPool(chunkenc.EncGZIP), Crc32HashPool.Get())
 
 	var dst SeriesPage
 	dec := encoding.DecWith(enc.Get())
-	require.Nil(t, dst.Decode(&dec))
+	require.Nil(t, dst.Decode(&dec, chunkenc.GetReaderPool(chunkenc.EncGZIP)))
 }

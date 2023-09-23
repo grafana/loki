@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"testing"
 
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/stretchr/testify/require"
 )
 
@@ -18,6 +20,13 @@ func TestBlockEncoding(t *testing.T) {
 	require.Nil(t, err)
 
 	var b Block
-	require.Nil(t, b.LoadHeaders(buf.Bytes()))
+	data := buf.Bytes()
+	require.Nil(t, b.LoadHeaders(data))
 	require.Equal(t, src, b.index)
+
+	for _, header := range b.index.series {
+		var page SeriesPage
+		decoder := encoding.DecWith(data[header.Offset : header.Offset+header.Len])
+		require.Nil(t, page.Decode(&decoder, chunkenc.GetReaderPool(b.index.schema.encoding)))
+	}
 }
