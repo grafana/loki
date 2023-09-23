@@ -20,17 +20,15 @@ type BlockIndex struct {
 	series []SeriesHeaderWithOffset // headers for each series page
 }
 
-func NewBlockIndex() BlockIndex {
+func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
 	return BlockIndex{
-		schema: Schema{version: 1, encoding: chunkenc.EncNone},
+		schema: Schema{version: 1, encoding: encoding},
 	}
 }
 
-func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (int64, error) {
+func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (offset int64, err error) {
 	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
 	defer Crc32HashPool.Put(crc32Hash)
-
-	var offset int64
 
 	// TODO(owen-d): guess sizing better
 	encoder := encoding.EncWith(BlockPool.Get(1 << 10))
@@ -54,7 +52,10 @@ func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (int64, erro
 			Offset:       int(offset),
 		}
 
-		if err := page.Encode(enc, compressionPool, crc32Hash); err != nil {
+		// we encode the decompressed length of the page so we can efficiently choose
+		// []byte sizes from a pool during decompression to minimize alloc costs
+		header.DecompressedLen, err = page.Encode(enc, compressionPool, crc32Hash)
+		if err != nil {
 			return offset, errors.Wrap(err, "encoding series page")
 		}
 		written, err := w.Write(enc.Get())
@@ -152,19 +153,21 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 }
 
 type SeriesHeaderWithOffset struct {
-	Offset, Len int
+	Offset, Len, DecompressedLen int
 	SeriesHeader
 }
 
 func (h *SeriesHeaderWithOffset) Encode(enc *encoding.Encbuf) {
 	enc.PutUvarint(h.Offset)
 	enc.PutUvarint(h.Len)
+	enc.PutUvarint(h.DecompressedLen)
 	h.SeriesHeader.Encode(enc)
 }
 
 func (h *SeriesHeaderWithOffset) Decode(dec *encoding.Decbuf) error {
 	h.Offset = dec.Uvarint()
 	h.Len = dec.Uvarint()
+	h.DecompressedLen = dec.Uvarint()
 	return h.SeriesHeader.Decode(dec)
 }
 
@@ -219,7 +222,7 @@ type SeriesPage struct {
 	Series []Series
 }
 
-func (p *SeriesPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc32Hash hash.Hash32) error {
+func (p *SeriesPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (decompressedLen int, err error) {
 	enc.Reset()
 
 	// TODO(owen-d): no need to write to a temp buffer then rewrite to a compressed one;
@@ -234,25 +237,26 @@ func (p *SeriesPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc3
 	for _, series := range p.Series {
 		lastSeries = series.Encode(enc, lastSeries)
 	}
+	decompressedLen = enc.Len()
 
 	compressor := pool.GetWriter(buf)
 	defer pool.PutWriter(compressor)
 
 	if _, err := compressor.Write(enc.Get()); err != nil {
-		return errors.Wrap(err, "compressing series page")
+		return 0, errors.Wrap(err, "compressing series page")
 	}
 
 	if err := compressor.Close(); err != nil {
-		return errors.Wrap(err, "closing compressor")
+		return 0, errors.Wrap(err, "closing compressor")
 	}
 
 	// replace the encoded series page with the compressed one
 	enc.B = buf.Bytes()
 	enc.PutHash(crc32Hash)
-	return nil
+	return decompressedLen, nil
 }
 
-func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool) error {
+func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) error {
 
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
 		return errors.Wrap(err, "checksumming series page")
@@ -263,10 +267,9 @@ func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool) erro
 		return errors.Wrap(err, "getting decompressor")
 	}
 
-	// TODO(owen-d): pool, better allocs
-	// will likely require signaling the decompressed size in the headers of the block
-	b, err := io.ReadAll(decompressor)
-	if err != nil {
+	b := BlockPool.Get(decompressedSize)[:decompressedSize]
+	defer BlockPool.Put(b)
+	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return errors.Wrap(err, "decompressing series page")
 	}
 

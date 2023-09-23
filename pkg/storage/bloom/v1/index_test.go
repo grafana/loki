@@ -161,9 +161,10 @@ func TestSeriesPageEncoding(t *testing.T) {
 	}
 
 	enc := &encoding.Encbuf{}
-	src.Encode(enc, chunkenc.GetWriterPool(chunkenc.EncGZIP), Crc32HashPool.Get())
+	decompressedLen, err := src.Encode(enc, chunkenc.GetWriterPool(chunkenc.EncGZIP), Crc32HashPool.Get())
+	require.Nil(t, err)
 
 	var dst SeriesPage
 	dec := encoding.DecWith(enc.Get())
-	require.Nil(t, dst.Decode(&dec, chunkenc.GetReaderPool(chunkenc.EncGZIP)))
+	require.Nil(t, dst.Decode(&dec, chunkenc.GetReaderPool(chunkenc.EncGZIP), decompressedLen))
 }

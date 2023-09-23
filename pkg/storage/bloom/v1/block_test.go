@@ -12,7 +12,7 @@ import (
 func TestBlockEncoding(t *testing.T) {
 
 	pages := mkBasicSeriesPages(2, 100, 0, 0xffff, 0, 100)
-	src := NewBlockIndex()
+	src := NewBlockIndex(chunkenc.EncSnappy)
 
 	buf := bytes.NewBuffer(nil)
 
@@ -27,6 +27,6 @@ func TestBlockEncoding(t *testing.T) {
 	for _, header := range b.index.series {
 		var page SeriesPage
 		decoder := encoding.DecWith(data[header.Offset : header.Offset+header.Len])
-		require.Nil(t, page.Decode(&decoder, chunkenc.GetReaderPool(b.index.schema.encoding)))
+		require.Nil(t, page.Decode(&decoder, chunkenc.GetReaderPool(b.index.schema.encoding), header.DecompressedLen))
 	}
 }
