@@ -75,12 +75,6 @@ func Test_seriesLimiter(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
-
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
 
 	rt, err := newfakeRoundTripper()
 	require.NoError(t, err)
@@ -89,7 +83,7 @@ func Test_seriesLimiter(t *testing.T) {
 	count, h := promqlResult(matrix)
 	rt.setHandler(h)
 
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, lreq)
 	require.NoError(t, err)
 	require.Equal(t, 7, *count)
 
@@ -137,7 +131,7 @@ func Test_seriesLimiter(t *testing.T) {
 	})
 	rt.setHandler(h)
 
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, lreq)
 	require.Error(t, err)
 	require.LessOrEqual(t, *c, 4)
 }
@@ -178,7 +172,7 @@ func Test_MaxQueryParallelism(t *testing.T) {
 				return nil, nil
 			})
 		}),
-	).RoundTrip(r)
+	).Do(ctx, r)
 	maxFound := int(max.Load())
 	require.LessOrEqual(t, maxFound, maxQueryParallelism, "max query parallelism: ", maxFound, " went over the configured one:", maxQueryParallelism)
 }
@@ -209,7 +203,7 @@ func Test_MaxQueryParallelismLateScheduling(t *testing.T) {
 				return nil, nil
 			})
 		}),
-	).RoundTrip(r)
+	).Do(ctx, r)
 }
 
 func Test_MaxQueryParallelismDisable(t *testing.T) {
@@ -238,7 +232,7 @@ func Test_MaxQueryParallelismDisable(t *testing.T) {
 				return nil, nil
 			})
 		}),
-	).RoundTrip(r)
+	).Do(ctx, r)
 	require.Error(t, err)
 }
 
@@ -267,14 +261,8 @@ func Test_MaxQueryLookBack(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
 
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, lreq)
 	require.NoError(t, err)
 }
 

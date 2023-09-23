@@ -1367,7 +1367,7 @@ func TestMetricsTripperware_SplitShardStats(t *testing.T) {
 
 			_, h := promqlResult(matrix)
 			rt.setHandler(h)
-			resp, err := tpw(rt).RoundTrip(req)
+			resp, err := tpw.Wrap(rt).Do(ctx, req)
 			require.NoError(t, err)
 
 			lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, tc.request)

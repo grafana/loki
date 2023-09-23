@@ -461,6 +461,8 @@ type limitedRoundTripper struct {
 	middleware queryrangebase.Middleware
 }
 
+var _ queryrangebase.Handler = limitedRoundTripper{}
+
 // NewLimitedRoundTripper creates a new roundtripper that enforces MaxQueryParallelism to the `next` roundtripper across `middlewares`.
 func NewLimitedRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec, limits Limits, configs []config.PeriodConfig, middlewares ...queryrangebase.Middleware) queryrangebase.Handler {
 	transport := limitedRoundTripper{
@@ -473,19 +475,13 @@ func NewLimitedRoundTripper(next queryrangebase.Handler, codec queryrangebase.Co
 	return transport
 }
 
-func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
+func (rt limitedRoundTripper) Do(c context.Context, request queryrangebase.Request) (queryrangebase.Response, error) {
 	var (
-		ctx, cancel = context.WithCancel(r.Context())
+		ctx, cancel = context.WithCancel(c)
 	)
 	defer func() {
 		cancel()
 	}()
-
-	// Do not forward any request header.
-	request, err := rt.codec.DecodeRequest(ctx, r, nil)
-	if err != nil {
-		return nil, err
-	}
 
 	if span := opentracing.SpanFromContext(ctx); span != nil {
 		request.LogToSpan(span)
@@ -510,7 +506,7 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 
 	sem := semaphore.NewWeighted(int64(parallelism))
 
-	response, err := rt.middleware.Wrap(
+	return rt.middleware.Wrap(
 		queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
 			// This inner handler is called multiple times by
 			// sharding outer middlewares such as the downstreamer.
@@ -524,35 +520,8 @@ func (rt limitedRoundTripper) RoundTrip(r *http.Request) (*http.Response, error)
 			}
 			defer sem.Release(int64(1))
 
-			return rt.do(ctx, r)
+			return rt.next.Do(ctx, r)
 		})).Do(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	return rt.codec.EncodeResponse(ctx, r, response)
-}
-
-func (rt limitedRoundTripper) do(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
-	defer sp.Finish()
-
-	// TODO: avoid this an pass queryrangebase.Request instead.
-	/*
-	request, err := rt.codec.EncodeRequest(ctx, r)
-	if err != nil {
-		return nil, err
-	}
-	*/
-
-	// TODO: inject tenant
-	/*
-	if err := user.InjectOrgIDIntoHTTPRequest(ctx, request); err != nil {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
-	}
-	*/
-
-	return rt.next.Do(ctx, r)
 }
 
 // WeightedParallelism will calculate the request parallelism to use
