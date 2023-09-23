@@ -213,7 +213,7 @@ func TestMetricsTripperware(t *testing.T) {
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, req)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -222,7 +222,7 @@ func TestMetricsTripperware(t *testing.T) {
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, req)
 	require.Error(t, err)
 	require.Equal(t, 0, *queryCount)
 	require.Equal(t, 2, *statsCount)
@@ -231,7 +231,7 @@ func TestMetricsTripperware(t *testing.T) {
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	retries, queryHandler := counter()
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, req)
 	// 3 retries configured.
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
@@ -254,21 +254,17 @@ func TestMetricsTripperware(t *testing.T) {
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	count, queryHandler := promqlResult(matrix)
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	resp, err := tpw(rt).RoundTrip(req)
+	lokiResponse, err := tpw.Wrap(rt).Do(ctx, req)
 	// 2 queries
 	require.Equal(t, 2, *count)
-	require.NoError(t, err)
-	lokiResponse, err := DefaultCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
 
 	// testing cache
 	count, queryHandler = counter()
 	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	cacheResp, err := tpw(rt).RoundTrip(req)
+	lokiCacheResponse, err := tpw.Wrap(rt).Do(ctx, req)
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
-	require.NoError(t, err)
-	lokiCacheResponse, err := DefaultCodec.DecodeResponse(ctx, cacheResp, lreq)
 	require.NoError(t, err)
 
 	require.Equal(t, lokiResponse.(*LokiPromResponse).Response, lokiCacheResponse.(*LokiPromResponse).Response)
@@ -946,7 +942,7 @@ func TestRegexpParamsSupport(t *testing.T) {
 		require.Contains(t, r.URL.Query().Get("query"), `|~ "foo"`)
 		h.ServeHTTP(rw, r)
 	}))
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, req)
 	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
 	require.NoError(t, err)
 }
