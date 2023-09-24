@@ -47,10 +47,17 @@ func (i *Ingester) InitFlushQueues() {
 	}
 }
 
+// Flush implements ring.FlushTransferer
 // Flush triggers a flush of all the chunks and closes the flush queues.
 // Called from the Lifecycler as part of the ingester shutdown.
 func (i *Ingester) Flush() {
 	i.flush(true)
+}
+
+// TransferOut implements ring.FlushTransferer
+// Noop implemenetation because ingesters have a WAL now that does not require transferring chunks any more.
+func (i *Ingester) TransferOut(_ context.Context) error {
+	return nil
 }
 
 func (i *Ingester) flush(mayRemoveStreams bool) {

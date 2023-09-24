@@ -1456,11 +1456,6 @@ lifecycler:
   # CLI flag: -ingester.lifecycler.ID
   [id: <string> | default = "<hostname>"]
 
-# Number of times to try and transfer chunks before falling back to flushing. If
-# set to 0 or negative value, transfers are disabled.
-# CLI flag: -ingester.max-transfer-retries
-[max_transfer_retries: <int> | default = 0]
-
 # How many flushes can happen concurrently from each stream.
 # CLI flag: -ingester.concurrent-flushes
 [concurrent_flushes: <int> | default = 32]
