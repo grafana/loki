@@ -378,9 +378,6 @@ func (cfg *Config) Validate() error {
 	if err := cfg.Swift.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Swift Storage config")
 	}
-	if err := cfg.IndexQueriesCacheConfig.Validate(); err != nil {
-		return errors.Wrap(err, "invalid Index Queries Cache config")
-	}
 	if err := cfg.AzureStorageConfig.Validate(); err != nil {
 		return errors.Wrap(err, "invalid Azure Storage config")
 	}
@@ -585,13 +582,16 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 
 	case util.StringsContain(supportedIndexTypes, name):
 		var sharedStoreKeyPrefix string
+		var objectType string
 		switch name {
 		case config.BoltDBShipperType:
+			objectType = cfg.BoltDBShipperConfig.SharedStoreType
 			sharedStoreKeyPrefix = cfg.BoltDBShipperConfig.SharedStoreKeyPrefix
 		case config.TSDBType:
+			objectType = cfg.TSDBShipperConfig.SharedStoreType
 			sharedStoreKeyPrefix = cfg.TSDBShipperConfig.SharedStoreKeyPrefix
 		}
-		objectClient, err := NewObjectClient(sharedStoreKeyPrefix, cfg, cm)
+		objectClient, err := NewObjectClient(objectType, cfg, cm)
 		if err != nil {
 			return nil, err
 		}

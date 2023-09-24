@@ -110,3 +110,16 @@ func (m *TopKSketchesResponse) WithHeaders(h []queryrangebase.PrometheusResponse
 	m.Headers = h
 	return m
 }
+
+// GetHeaders returns the HTTP headers in the response.
+func (m *QuantileSketchResponse) GetHeaders() []*queryrangebase.PrometheusResponseHeader {
+	if m != nil {
+		return convertPrometheusResponseHeadersToPointers(m.Headers)
+	}
+	return nil
+}
+
+func (m *QuantileSketchResponse) WithHeaders(h []queryrangebase.PrometheusResponseHeader) queryrangebase.Response {
+	m.Headers = h
+	return m
+}

@@ -182,7 +182,9 @@ spec:
         {{- end }}
   {{- if .Values.write.persistence.volumeClaimsEnabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1	
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes:

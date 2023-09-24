@@ -17,21 +17,29 @@ Entries should include a reference to the pull request that introduced the chang
 
 - [ENHANCEMENT] Allow emptyDir data volumes for backend and write (via `X.persistence.volumeClaimsEnabled: false`)
 
+## 5.23.0
+
+- [ENHANCEMENT] Add loki.storage.azure.connectionString to support Azure connection string
+
+## 5.22.2
+
+- [BUGFIX] Fix sidecar configuration for Backend
+
+## 5.22.1
+
+- ENHANCEMENT #10452 Improve gitops compatibility
 
 ## 5.22.0
 
 - [CHANGE] Changed version of Loki to 2.9.1
 
-
 ## 5.21.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.1
 
-
 ## 5.20.0
 
 - [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.0
-
 
 ## 5.19.0
 
@@ -45,7 +53,6 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.18.0
 
 - [CHANGE] Changed version of Loki to 2.9.0
-
 
 ## 5.17.0
 
