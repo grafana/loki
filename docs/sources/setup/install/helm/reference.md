@@ -24,6 +24,8 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+
+
 {{< responsive-table >}}
 <table>
 	<thead>
@@ -2195,7 +2197,8 @@ null
     "s3": null,
     "s3ForcePathStyle": false,
     "secretAccessKey": null,
-    "signatureVersion": null
+    "signatureVersion": null,
+    "tls_verify": false
   },
   "type": "s3"
 }
