@@ -19,14 +19,15 @@ func TestBlockEncoding(t *testing.T) {
 	_, err := src.WriteTo(NewSliceIter(pages), buf)
 	require.Nil(t, err)
 
-	var b Block
 	data := buf.Bytes()
-	require.Nil(t, b.LoadHeaders(data))
+	b := NewBlock(NewByteReader(data))
+	require.Nil(t, b.LoadHeaders())
 	require.Equal(t, src, b.index)
 
-	for _, header := range b.index.series {
+	for i, header := range b.index.series {
 		var page SeriesPage
 		decoder := encoding.DecWith(data[header.Offset : header.Offset+header.Len])
 		require.Nil(t, page.Decode(&decoder, chunkenc.GetReaderPool(b.index.schema.encoding), header.DecompressedLen))
+		require.Equal(t, pages[i], page)
 	}
 }

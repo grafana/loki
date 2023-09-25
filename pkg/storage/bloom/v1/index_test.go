@@ -75,11 +75,11 @@ func mkBasicSeriesPages(pages, series int, fromFp, throughFp model.Fingerprint, 
 func TestBloomOffsetEncoding(t *testing.T) {
 	src := BloomOffset{PageOffset: 1, ByteOffset: 2}
 	enc := &encoding.Encbuf{}
-	src.Encode(enc)
+	src.Encode(enc, BloomOffset{})
 
 	var dst BloomOffset
 	dec := encoding.DecWith(enc.Get())
-	require.Nil(t, dst.Decode(&dec))
+	require.Nil(t, dst.Decode(&dec, BloomOffset{}))
 
 	require.Equal(t, src, dst)
 }
@@ -103,13 +103,14 @@ func TestSeriesEncoding(t *testing.T) {
 	}
 
 	enc := &encoding.Encbuf{}
-	src.Encode(enc, 0)
+	src.Encode(enc, 0, BloomOffset{})
 
 	dec := encoding.DecWith(enc.Get())
 	var dst Series
-	fp, err := dst.Decode(&dec, 0)
+	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
 	require.Nil(t, err)
 	require.Equal(t, src.Fingerprint, fp)
+	require.Equal(t, src.Offset, offset)
 	require.Equal(t, src, dst)
 }
 

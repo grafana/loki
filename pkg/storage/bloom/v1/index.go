@@ -233,9 +233,12 @@ func (p *SeriesPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc3
 	buf := &bytes.Buffer{}
 
 	p.Header.Encode(enc)
-	var lastSeries model.Fingerprint
+	var (
+		lastSeries model.Fingerprint
+		lastOffset BloomOffset
+	)
 	for _, series := range p.Series {
-		lastSeries = series.Encode(enc, lastSeries)
+		lastSeries, lastOffset = series.Encode(enc, lastSeries, lastOffset)
 	}
 	decompressedLen = enc.Len()
 
@@ -282,10 +285,13 @@ func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, deco
 
 	// TODO(owen-d): pool
 	p.Series = make([]Series, p.Header.NumSeries)
-	var lastFp model.Fingerprint
+	var (
+		lastFp         model.Fingerprint
+		previousOffset BloomOffset
+	)
 	for i := 0; i < p.Header.NumSeries; i++ {
 		series := &p.Series[i]
-		if lastFp, err = series.Decode(dec, lastFp); err != nil {
+		if lastFp, previousOffset, err = series.Decode(dec, lastFp, previousOffset); err != nil {
 			return errors.Wrapf(err, "decoding %dth series", i)
 		}
 	}
@@ -298,11 +304,15 @@ type Series struct {
 	Chunks      []ChunkRef
 }
 
-func (s *Series) Encode(enc *encoding.Encbuf, previousFp model.Fingerprint) model.Fingerprint {
+func (s *Series) Encode(
+	enc *encoding.Encbuf,
+	previousFp model.Fingerprint,
+	previousOffset BloomOffset,
+) (model.Fingerprint, BloomOffset) {
 	// delta encode fingerprint
 	enc.PutBE64(uint64(s.Fingerprint - previousFp))
-	// encode offsets
-	s.Offset.Encode(enc)
+	// delta encode offsets
+	s.Offset.Encode(enc, previousOffset)
 
 	// encode chunks using delta encoded timestamps
 	var lastEnd model.Time
@@ -311,12 +321,12 @@ func (s *Series) Encode(enc *encoding.Encbuf, previousFp model.Fingerprint) mode
 		lastEnd = chunk.Encode(enc, lastEnd)
 	}
 
-	return s.Fingerprint
+	return s.Fingerprint, s.Offset
 }
 
-func (s *Series) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint) (model.Fingerprint, error) {
+func (s *Series) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint, previousOffset BloomOffset) (model.Fingerprint, BloomOffset, error) {
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
-	s.Offset.Decode(dec)
+	s.Offset.Decode(dec, previousOffset)
 
 	// TODO(owen-d): use pool
 	s.Chunks = make([]ChunkRef, dec.Uvarint())
@@ -327,10 +337,10 @@ func (s *Series) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint) (mod
 	for i := range s.Chunks {
 		lastEnd, err = s.Chunks[i].Decode(dec, lastEnd)
 		if err != nil {
-			return 0, errors.Wrapf(err, "decoding %dth chunk", i)
+			return 0, BloomOffset{}, errors.Wrapf(err, "decoding %dth chunk", i)
 		}
 	}
-	return s.Fingerprint, dec.Err()
+	return s.Fingerprint, s.Offset, dec.Err()
 }
 
 type ChunkRef struct {
@@ -358,13 +368,13 @@ type BloomOffset struct {
 	ByteOffset int // offset to beginning of bloom within page
 }
 
-func (o *BloomOffset) Encode(enc *encoding.Encbuf) {
-	enc.PutUvarint(o.PageOffset)
-	enc.PutUvarint(o.ByteOffset)
+func (o *BloomOffset) Encode(enc *encoding.Encbuf, previousOffset BloomOffset) {
+	enc.PutUvarint(o.PageOffset - previousOffset.PageOffset)
+	enc.PutUvarint(o.ByteOffset - previousOffset.ByteOffset)
 }
 
-func (o *BloomOffset) Decode(dec *encoding.Decbuf) error {
-	o.PageOffset = dec.Uvarint()
-	o.ByteOffset = dec.Uvarint()
+func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) error {
+	o.PageOffset = previousOffset.PageOffset + dec.Uvarint()
+	o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
 	return dec.Err()
 }

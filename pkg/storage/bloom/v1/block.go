@@ -1,14 +1,15 @@
 package v1
 
 import (
+	"bytes"
 	"io"
 
 	"github.com/pkg/errors"
 )
 
 type BlockReader interface {
-	Index() io.ReadSeekCloser
-	Bloom(id uint32) io.ReadSeekCloser // id TBD, just placeholder for now
+	Index() io.ReadSeeker
+	// Bloom(id uint32) io.ReadSeeker // id TBD, just placeholder for now
 }
 
 type Block struct {
@@ -21,10 +22,33 @@ type Block struct {
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
 }
 
-func (b *Block) LoadHeaders(data []byte) error {
+func NewBlock(reader BlockReader) *Block {
+	return &Block{
+		reader: reader,
+	}
+}
+
+func (b *Block) LoadHeaders() error {
+	data, err := io.ReadAll(b.reader.Index())
+	if err != nil {
+		return errors.Wrap(err, "reading index")
+	}
+
 	if err := b.index.Decode(data); err != nil {
 		return errors.Wrap(err, "decoding index")
 	}
 
 	return nil
+}
+
+type ByteReader struct {
+	data []byte
+}
+
+func NewByteReader(b []byte) *ByteReader {
+	return &ByteReader{data: b}
+}
+
+func (r *ByteReader) Index() io.ReadSeeker {
+	return bytes.NewReader(r.data)
 }
