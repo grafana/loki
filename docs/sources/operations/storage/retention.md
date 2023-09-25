@@ -16,13 +16,13 @@ If you have a lifecycle policy configured on the object store, please ensure tha
 Granular retention policies to apply retention at per tenant or per stream level are also supported by the Compactor.
 
 {{% admonition type="note" %}}
-The Compactor does not support retention on [legacy index types]({{< relref "../../storage#index-storage" >}}). Please use the [Table Manager]({{< relref "./table-manager" >}}) instead.
-Both the Table manager and legacy index types are depreacted and may be removed in future major versions of Loki.
+The Compactor does not support retention on [legacy index types]({{< relref "../../storage#index-storage" >}}). Please use the [Table Manager]({{< relref "./table-manager" >}}) when using legacy index types.
+Both the Table manager and legacy index types are deprecated and may be removed in future major versions of Loki.
 {{% /admonition %}}
 
 ## Compactor
 
-The Compactor is resposible for compaction of index files and applying log retention.
+The Compactor is responsible for compaction of index files and applying log retention.
 
 {{% admonition type="note" %}}
 Run the Compactor as a singleton (a single instance).
@@ -212,7 +212,7 @@ policy set correctly. For more details check
 or
 [GCS's documentation](https://cloud.google.com/storage/docs/managing-lifecycles).
 
-Currently, the retention policy for Table manager can only be set globally.
+The retention policy for Table manager can only be set globally.
 Per-tenant and per-stream retention policies along with support for deleting
 ingested logs using an API are only supported by Compactor retention.
 
