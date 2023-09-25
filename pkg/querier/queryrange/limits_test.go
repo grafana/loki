@@ -398,19 +398,6 @@ func Test_WeightedParallelism_DivideByZeroError(t *testing.T) {
 	})
 }
 
-func getFakeStatsHandler(retBytes uint64) (base.Handler, *int, error) {
-	fakeRT, err := newfakeRoundTripper()
-	if err != nil {
-		return nil, nil, err
-	}
-
-	count, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: retBytes})
-
-	fakeRT.setHandler(statsHandler)
-
-	return base.NewRoundTripperHandler(fakeRT, DefaultCodec), count, nil
-}
-
 func Test_MaxQuerySize(t *testing.T) {
 	const statsBytes = 1000
 
@@ -531,11 +518,9 @@ func Test_MaxQuerySize(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			queryStatsHandler, queryStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1)))
-			require.NoError(t, err)
+			queryStatsHits, queryStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQueryStatsHits, 1))})
 
-			querierStatsHandler, querierStatsHits, err := getFakeStatsHandler(uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1)))
-			require.NoError(t, err)
+			querierStatsHits, querierStatsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: uint64(statsBytes / math.Max(tc.expectedQuerierStatsHits, 1))})
 
 			_, promHandler := promqlResult(matrix)
 
@@ -555,7 +540,7 @@ func Test_MaxQuerySize(t *testing.T) {
 				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
 			
-			_, err = base.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
+			_, err := base.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
 
 			if tc.shouldErr {
 				require.Error(t, err)
