@@ -45,7 +45,7 @@ import (
 var (
 	indexGatewayClient index.Client
 	// singleton for each period
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]*shipper.IndexClient)
 
 	supportedIndexTypes = []string{
 		config.BoltDBShipperType,
@@ -100,7 +100,7 @@ func ResetBoltDBIndexClientsWithShipper() {
 		client.Stop()
 	}
 
-	boltdbIndexClientsWithShipper = make(map[config.DayTime]index.Client)
+	boltdbIndexClientsWithShipper = make(map[config.DayTime]*shipper.IndexClient)
 
 	if indexGatewayClient != nil {
 		indexGatewayClient.Stop()
