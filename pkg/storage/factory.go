@@ -331,7 +331,7 @@ type Config struct {
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
-	MaxParallelismTableOps   int          `yaml:"max_parallelism_table_ops" doc:"description=Max parallelism used by a table operation." category:"experimental"`
+	MaxParallelTableOps   int          `yaml:"max_parallel_table_ops" doc:"description=Max parallelism used by a table operation." category:"experimental"`
 
 	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`

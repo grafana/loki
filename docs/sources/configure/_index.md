@@ -1982,7 +1982,7 @@ congestion_control:
 
 # Max parallelism used by a table operation.
 # CLI flag: -store.max-parallelism-table-ops
-[max_parallelism_table_ops: <int> | default = 50]
+[max_parallel_table_ops: <int> | default = 50]
 
 # The maximum number of chunks to fetch per batch.
 # CLI flag: -store.max-chunk-batch-size
