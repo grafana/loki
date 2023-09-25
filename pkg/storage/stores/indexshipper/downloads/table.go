@@ -152,7 +152,6 @@ func (t *table) Close() {
 
 func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(t.parallelism)
 
 	// iterate through both user and common index
 	users := []string{userID, ""}
