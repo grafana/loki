@@ -952,6 +952,9 @@ type LiteralStepEvaluator struct {
 
 func (e *LiteralStepEvaluator) Next() (bool, int64, StepResult) {
 	ok, ts, r := e.nextEv.Next()
+	if !ok {
+		return ok, ts, r
+	}
 	vec := r.SampleVector()
 	results := make(promql.Vector, 0, len(vec))
 	for _, sample := range vec {
