@@ -2174,6 +2174,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,

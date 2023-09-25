@@ -1,6 +1,6 @@
 ---
-menutitle: Architecture
 title: Loki architecture
+menutitle: Architecture
 description: Grafana Loki's architecture.
 weight: 300
 aliases:
@@ -9,54 +9,97 @@ aliases:
 ---
 # Loki architecture
 
-## Multi-tenancy
+Grafana Loki has a microservices-based architecture and is designed to run as a horizontally scalable, distributed system.
+The system has multiple components that can run separately and in parallel.
+Grafana Loki's design compiles the code for all components into a single binary or Docker image.
+The `-target` command-line flag controls which component(s) that binary will behave as.
 
-All data, both in memory and in long-term storage, may be partitioned by a
-tenant ID, pulled from the `X-Scope-OrgID` HTTP header in the request when Grafana Loki
-is running in multi-tenant mode. When Loki is **not** in multi-tenant mode, the
-header is ignored and the tenant ID is set to "fake", which will appear in the
-index and in stored chunks.
+To get started easily, run Grafana Loki in "single binary" mode with all components running simultaneously in one process, or in "simple scalable deployment" mode, which groups components into read, write, and backend parts.
 
-## Chunk Format
+Grafana Loki is designed to easily redeploy a cluster under a different mode as your needs change, with no configuration changes or minimal configuration changes.
+
+For more information, refer to [Deployment modes]({{< relref "./deployment-modes" >}}) and [Components]({{< relref "./components" >}}).
+
+![Loki's components](../loki_architecture_components.svg "Loki's components")
+
+## Storage
+
+Loki stores all data in a single object storage backend, such as Amazon Simple Storage Service (S3), Google Cloud Storage (GCS), Azure Blob Storage, among others.
+This mode uses an adapter called **index shipper** (or short **shipper**) to store index (TSDB or BoltDB) files the same way we store chunk files in object storage.
+This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple. It is where all current and future development lies.
+
+Prior to 2.0, Loki had different storage backends for indexes and chunks. For more information, refer to [Legacy storage]({{< relref "../operations/storage/legacy-storage" >}}).
+
+### Data format
+
+Grafana Loki has two main file types: **index** and **chunks**.
+
+- The [**index**](#index-format) is a table of contents of where to find logs for a specific set of labels.
+- The [**chunk**](#chunk-format) is a container for log entries for a specific set of labels.
+
+![Loki data format: chunks and indexes](../chunks_diagram.png)
+
+The diagram above shows the high-level overview of the data that is stored in the chunk and data that is stored in the index.
+
+#### Index format
+
+There are two index formats that are currently supported as single store with index shipper:
+
+- [TSDB]({{< relref "../operations/storage/tsdb" >}}) (recommended)
+
+  Time Series Database (or short TSDB) is an [index format](https://github.com/prometheus/prometheus/blob/main/tsdb/docs/format/index.md) originally developed by the maintainers of [Prometheus](https://github.com/prometheus/prometheus) for time series (metric) data.
+
+  It is extensible and has many advantages over the deprecated BoltDB index.
+  New storage features in Loki are solely available when using TSDB.
+
+- [BoltDB]({{< relref "../operations/storage/boltdb-shipper" >}}) (deprecated)
+
+  [Bolt](https://github.com/boltdb/bolt) is a low-level, transactional key-value store written in Go.
+
+#### Chunk format
+
+A chunk is a container for log lines of a stream (unique set of labels) of a specific time range.
+
+The following ASCII diagram describes the chunk format in detail.
 
 ```
-  ----------------------------------------------------------------------------
-  |                        |                       |                         |
-  |     MagicNumber(4b)    |     version(1b)       |      encoding (1b)      |
-  |                        |                       |                         |
-  ----------------------------------------------------------------------------
-  |                      #structuredMetadata (uvarint)                       |
-  ----------------------------------------------------------------------------
-  |      len(label-1) (uvarint)      |          label-1 (bytes)              |
-  ----------------------------------------------------------------------------
-  |      len(label-2) (uvarint)      |          label-2 (bytes)              |
-  ----------------------------------------------------------------------------
-  |      len(label-n) (uvarint)      |          label-n (bytes)              |
-  ----------------------------------------------------------------------------
-  |                      checksum(from #structuredMetadata)                  |
-  ----------------------------------------------------------------------------
-  |           block-1 bytes          |           checksum (4b)               |
-  ----------------------------------------------------------------------------
-  |           block-2 bytes          |           checksum (4b)               |
-  ----------------------------------------------------------------------------
-  |           block-n bytes          |           checksum (4b)               |
-  ----------------------------------------------------------------------------
-  |                           #blocks (uvarint)                              |
-  ----------------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
-  ----------------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
-  ----------------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
-  ----------------------------------------------------------------------------
-  | #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
-  ----------------------------------------------------------------------------
-  |                          checksum(from #blocks)                          |
-  ----------------------------------------------------------------------------
-  | #structuredMetadata len (uvarint) | #structuredMetadata offset (uvarint) |
-  ----------------------------------------------------------------------------
-  |     #blocks len (uvarint)         |       #blocks offset (uvarint)      |
-  ----------------------------------------------------------------------------
+----------------------------------------------------------------------------
+|                        |                       |                         |
+|     MagicNumber(4b)    |     version(1b)       |      encoding (1b)      |
+|                        |                       |                         |
+----------------------------------------------------------------------------
+|                      #structuredMetadata (uvarint)                       |
+----------------------------------------------------------------------------
+|      len(label-1) (uvarint)      |          label-1 (bytes)              |
+----------------------------------------------------------------------------
+|      len(label-2) (uvarint)      |          label-2 (bytes)              |
+----------------------------------------------------------------------------
+|      len(label-n) (uvarint)      |          label-n (bytes)              |
+----------------------------------------------------------------------------
+|                      checksum(from #structuredMetadata)                  |
+----------------------------------------------------------------------------
+|           block-1 bytes          |           checksum (4b)               |
+----------------------------------------------------------------------------
+|           block-2 bytes          |           checksum (4b)               |
+----------------------------------------------------------------------------
+|           block-n bytes          |           checksum (4b)               |
+----------------------------------------------------------------------------
+|                           #blocks (uvarint)                              |
+----------------------------------------------------------------------------
+| #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+----------------------------------------------------------------------------
+| #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+----------------------------------------------------------------------------
+| #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+----------------------------------------------------------------------------
+| #entries(uvarint) | mint, maxt (varint)  | offset, len (uvarint)         |
+----------------------------------------------------------------------------
+|                          checksum(from #blocks)                          |
+----------------------------------------------------------------------------
+| #structuredMetadata len (uvarint) | #structuredMetadata offset (uvarint) |
+----------------------------------------------------------------------------
+|     #blocks len (uvarint)         |       #blocks offset (uvarint)       |
+----------------------------------------------------------------------------
 ```
 
 `mint` and `maxt` describe the minimum and maximum Unix nanosecond timestamp,
@@ -66,11 +109,9 @@ The `structuredMetadata` section stores non-repeated strings. It is used to stor
 [structured metadata]({{< relref "./labels/structured-metadata" >}}).
 Note that the labels strings and lengths within the `structuredMetadata` section are stored compressed.
 
-### Block Format
+#### Block format
 
-A block is comprised of a series of entries, each of which is an individual log
-line.
-
+A block is comprised of a series of entries, each of which is an individual log line.
 Note that the bytes of a block are stored compressed. The following is their form when uncompressed:
 
 ```
@@ -85,85 +126,51 @@ Note that the bytes of a block are stored compressed. The following is their for
 -----------------------------------------------------------------------------------------------------------------------------------------------
 ```
 
-`ts` is the Unix nanosecond timestamp of the logs, while len is the length in
+`ts` is the Unix nanosecond timestamp of the logs, while `len` is the length in
 bytes of the log entry.
 
 Symbols store references to the actual strings containing label names and values in the
 `structuredMetadata` section of the chunk.
 
-## Storage
 
-### Single Store
+## Write path
 
-Loki stores all data in a single object storage backend. This mode of operation became generally available with Loki 2.0 and is fast, cost-effective, and simple, not to mention where all current and future development lies. This mode uses an adapter called [`boltdb_shipper`]({{< relref "../operations/storage/boltdb-shipper" >}}) to store the `index` in object storage (the same way we store `chunks`).
+On a high level, the write path in Loki works as follows:
 
-###  Deprecated: Multi-store
+1. The distributor receives an HTTP POST request with streams and log lines.
+1. The distributor hashes each stream contained in the request so it can determine the ingester instance to which it needs to be sent based on the information from the consistent hash ring.
+1. The distributor sends each stream to the appropriate ingester and its replicas (based on the configured replication factor).
+1. The ingester receives the stream with log lines and creates a chunk or appends to an existing chunk for the stream's data.
+   A chunk is unique per tenant and per label set.
+1. The ingester acknowledges the write.
+1. The distributor waits for a majority (quorum) of the ingesters to acknowledge their writes.
+1. The distributor responds with a success (2xx status code) in case it received at least a quorum of acknowledged writes.
+   or with an error (4xx or 5xx status code) in case write operations failed.
 
-The **chunk store** is Loki's long-term data store, designed to support
-interactive querying and sustained writing without the need for background
-maintenance tasks. It consists of:
+Refer to [Components]({{< relref "./components" >}}) for a more detailed description of the components involved in the write path.
 
-- An index for the chunks. This index can be backed by:
-    - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Google Bigtable](https://cloud.google.com/bigtable)
-    - [Apache Cassandra](https://cassandra.apache.org)
-- A key-value (KV) store for the chunk data itself, which can be:
-    - [Amazon DynamoDB](https://aws.amazon.com/dynamodb)
-    - [Google Bigtable](https://cloud.google.com/bigtable)
-    - [Apache Cassandra](https://cassandra.apache.org)
-    - [Amazon S3](https://aws.amazon.com/s3)
-    - [Google Cloud Storage](https://cloud.google.com/storage/)
 
-> Unlike the other core components of Loki, the chunk store is not a separate
-> service, job, or process, but rather a library embedded in the two services
-> that need to access Loki data: the [ingester]({{< relref "./components#ingester" >}}) and [querier]({{< relref "./components#querier" >}}).
+## Read path
 
-The chunk store relies on a unified interface to the
-"[NoSQL](https://en.wikipedia.org/wiki/NoSQL)" stores (DynamoDB, Bigtable, and
-Cassandra) that can be used to back the chunk store index. This interface
-assumes that the index is a collection of entries keyed by:
+On a high level, the read path in Loki works as follows:
 
-- A **hash key**. This is required for *all* reads and writes.
-- A **range key**. This is required for writes and can be omitted for reads,
-which can be queried by prefix or range.
-
-The interface works somewhat differently across the supported databases:
-
-- DynamoDB supports range and hash keys natively. Index entries are thus
-  modelled directly as DynamoDB entries, with the hash key as the distribution
-  key and the range as the DynamoDB range key.
-- For Bigtable and Cassandra, index entries are modelled as individual column
-  values. The hash key becomes the row key and the range key becomes the column
-  key.
-
-A set of schemas are used to map the matchers and label sets used on reads and
-writes to the chunk store into appropriate operations on the index. Schemas have
-been added as Loki has evolved, mainly in an attempt to better load balance
-writes and improve query performance.
-
-## Read Path
-
-To summarize, the read path works as follows:
-
-1. The querier receives an HTTP/1 request for data.
+1. The query frontend receives an HTTP GET request with a LogQL query.
+1. The query frontend splits the query into sub-queries and passes them to the query scheduler.
+1. The querier pulls sub-queries from the scheduler.
 1. The querier passes the query to all ingesters for in-memory data.
-1. The ingesters receive the read request and return data matching the query, if
-   any.
-1. The querier lazily loads data from the backing store and runs the query
-   against it if no ingesters returned data.
-1. The querier iterates over all received data and deduplicates, returning a
-   final set of data over the HTTP/1 connection.
+1. The ingesters return in-memory data matching the query, if any.
+1. The querier lazily loads data from the backing store and runs the query against it if ingesters returned no or insufficient data.
+1. The querier iterates over all received data and deduplicates, returning the result of the sub-query to the query frontend.
+1. The query frontend waits for all sub-queries of a query to be finished and returned by the queriers.
+1. The query frontend merges the indvidual results into a final result and return it to the client.
 
-## Write Path
+Refer to [Components]({{< relref "./components" >}}) for a more detailed description of the components involved in the read path.
 
-![chunk_diagram](../chunks_diagram.png "Chunk diagram")
 
-To summarize, the write path works as follows:
+## Multi-tenancy
 
-1. The distributor receives an HTTP/1 request to store data for streams.
-1. Each stream is hashed using the hash ring.
-1. The distributor sends each stream to the appropriate ingesters and their
-   replicas (based on the configured replication factor).
-1. Each ingester will create a chunk or append to an existing chunk for the
-   stream's data. A chunk is unique per tenant and per labelset.
-1. The distributor responds with a success code over the HTTP/1 connection.
+All data, both in memory and in long-term storage, may be partitioned by a
+tenant ID, pulled from the `X-Scope-OrgID` HTTP header in the request when Grafana Loki
+is running in multi-tenant mode. When Loki is **not** in multi-tenant mode, the
+header is ignored and the tenant ID is set to `fake`, which will appear in the
+index and in stored chunks.

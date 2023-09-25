@@ -54,9 +54,7 @@ var (
 			configFn: func() config.ChunkStoreConfig {
 				var storeCfg config.ChunkStoreConfig
 				flagext.DefaultValues(&storeCfg)
-				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-					MaxSizeItems: 500,
-				}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
+				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 500}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
 				return storeCfg
 			},
 		},

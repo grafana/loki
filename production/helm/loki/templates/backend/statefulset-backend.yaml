@@ -131,17 +131,19 @@ spec:
             {{- end }}
           {{- if .Values.sidecar.livenessProbe }}
           livenessProbe:
-          {{ toYaml .Values.livenessProbe | indent 6 }}
+          {{- toYaml .Values.sidecar.livenessProbe | nindent 12 }}
           {{- end }}
           {{- if .Values.sidecar.readinessProbe }}
           readinessProbe:
-          {{ toYaml .Values.readinessProbe | indent 6 }}
+          {{- toYaml .Values.sidecar.readinessProbe | nindent 12 }}
           {{- end }}
+          {{- if .Values.sidecar.resources }}
           resources:
-          {{ toYaml .Values.sidecar.resources | indent 6 }}
+          {{- toYaml .Values.sidecar.resources | nindent 12 }}
+          {{- end }}
           {{- if .Values.sidecar.securityContext }}
           securityContext:
-          {{- toYaml .Values.sidecar.securityContext | nindent 6 }}
+          {{- toYaml .Values.sidecar.securityContext | nindent 12 }}
           {{- end }}
           volumeMounts:
             - name: sc-rules-volume
@@ -257,7 +259,9 @@ spec:
         {{- end }}
   {{- if .Values.backend.persistence.enabled }}
   volumeClaimTemplates:
-    - metadata:
+    - apiVersion: v1	
+      kind: PersistentVolumeClaim
+      metadata:
         name: data
       spec:
         accessModes:
