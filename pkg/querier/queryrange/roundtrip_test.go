@@ -1,16 +1,13 @@
 package queryrange
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"sort"
-	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -849,6 +846,7 @@ func TestRegexpParamsSupport(t *testing.T) {
 
 	// fudge a regexp params
 	params := req.URL.Query()
+	// TODO: test this translation.
 	params.Set("regexp", "foo")
 	req.URL.RawQuery = params.Encode()
 
@@ -857,33 +855,24 @@ func TestRegexpParamsSupport(t *testing.T) {
 	require.NoError(t, err)
 
 	count, h := promqlResult(streams)
-	rt.setHandler(http.HandlerFunc(func(rw http.ResponseWriter, r *http.Request) {
+	handler := base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 		// the query params should contain the filter.
-		require.Contains(t, r.URL.Query().Get("query"), `|~ "foo"`)
-		h.ServeHTTP(rw, r)
-	}))
-	_, err = tpw.Wrap(rt).Do(ctx, req)
+		require.Contains(t, r.GetQuery(), `|~ "foo"`)
+		return h.Do(ctx, r)
+	})
+	_, err = tpw.Wrap(handler).Do(ctx, lreq)
 	require.Equal(t, 2, *count) // expecting the query to also be splitted since it has a filter.
 	require.NoError(t, err)
 }
 
 func TestPostQueries(t *testing.T) {
-	req, err := http.NewRequest(http.MethodPost, "/loki/api/v1/query_range", nil)
-	data := url.Values{
-		"query": {`{app="foo"} |~ "foo"`},
-	}
-	body := bytes.NewBufferString(data.Encode())
-	req.Body = io.NopCloser(body)
-	req.Header.Add("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
-	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
-	require.NoError(t, err)
+	lreq := &LokiRequest{Query: `{app="foo"} |~ "foo"`}
 	ctx := user.InjectOrgID(context.Background(), "1")
 	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
-			t.Error("unexpected default roundtripper called")
-			return nil, nil
-		})
-	_, err = newRoundTripper(
+		t.Error("unexpected default roundtripper called")
+		return nil, nil
+	})
+	_, err := newRoundTripper(
 		util_log.Logger,
 		handler,
 		handler,
@@ -895,7 +884,7 @@ func TestPostQueries(t *testing.T) {
 		handler,
 		handler,
 		fakeLimits{},
-	).Do(ctx, req)
+	).Do(ctx, lreq)
 	require.NoError(t, err)
 }
 
@@ -905,9 +894,6 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &LokiRequest{
 		Query:     `{app="foo"}`,
@@ -920,8 +906,15 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	_, err = tpw.Wrap(rt).Do(ctx, lreq)
+	called := false
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error){
+		called = true
+		return nil, nil
+	})
+
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
+	require.False(t, called)
 }
 
 func TestTripperware_RequiredLabels(t *testing.T) {
