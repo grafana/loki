@@ -21,4 +21,7 @@ type Limits interface {
 	// MaxCacheFreshness returns the period after which results are cacheable,
 	// to prevent caching of very recent results.
 	MaxCacheFreshness(context.Context, string) time.Duration
+
+	// SnapQueryTimestamps returns whether query timestamps should be snapped to nearest whole second/minute.
+	SnapQueryTimestamps(context.Context, string) bool
 }

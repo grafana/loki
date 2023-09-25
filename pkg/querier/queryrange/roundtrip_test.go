@@ -1388,6 +1388,7 @@ type fakeLimits struct {
 	maxQuerierBytesRead     int
 	maxStatsCacheFreshness  time.Duration
 	volumeEnabled           bool
+	snapQueryTimestamps     bool
 }
 
 func (f fakeLimits) QuerySplitDuration(key string) time.Duration {
@@ -1426,6 +1427,10 @@ func (f fakeLimits) MaxQuerySeries(context.Context, string) int {
 
 func (f fakeLimits) MaxCacheFreshness(context.Context, string) time.Duration {
 	return 1 * time.Minute
+}
+
+func (f fakeLimits) SnapQueryTimestamps(context.Context, string) bool {
+	return f.snapQueryTimestamps
 }
 
 func (f fakeLimits) MaxQueryLookback(context.Context, string) time.Duration {
