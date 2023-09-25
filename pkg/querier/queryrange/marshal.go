@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/prometheus/prometheus/promql"
+	"github.com/prometheus/prometheus/promql/parser"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -240,4 +241,55 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (*QueryResp
 	}
 
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
+}
+
+func ValueToResponse(v parser.Value) (queryrangebase.Response, error) {
+	switch data := v.(type) {
+	case promql.Vector:
+		sampleStream, err := queryrangebase.FromValue(data)
+		if err != nil {
+			return nil, err
+		}
+
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: loghttp.ResultTypeVector,
+					Result:     sampleStream,
+				},
+			},
+		}, nil
+	case promql.Matrix:
+		sampleStream, err := queryrangebase.FromValue(data)
+		if err != nil {
+			return nil, err
+		}
+		return &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     sampleStream,
+				},
+			},
+		}, nil
+	case promql.Scalar:
+		sampleStream, err := queryrangebase.FromValue(data)
+		if err != nil {
+			return nil, err
+		}
+
+		return  &LokiPromResponse{
+			Response: &queryrangebase.PrometheusResponse{
+				Status: "success",
+				Data: queryrangebase.PrometheusData{
+					ResultType: loghttp.ResultTypeScalar,
+					Result:     sampleStream,
+				},
+			},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unexpected praser.Value type: %T", v)
+	}
 }

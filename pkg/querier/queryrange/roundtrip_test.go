@@ -1351,11 +1351,7 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-		params, err := paramsFromRequest(r)
-		if err != nil {
-			return nil, err
-		}
-		return ResultToResponse(logqlmodel.Result{Data: v}, params)
+		return ValueToResponse(v)
 	})
 }
 
