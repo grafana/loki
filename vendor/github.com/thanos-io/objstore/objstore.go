@@ -315,7 +315,7 @@ func DownloadFile(ctx context.Context, logger log.Logger, bkt BucketReader, src,
 
 	f, err := os.Create(dst)
 	if err != nil {
-		return errors.Wrap(err, "create file")
+		return errors.Wrapf(err, "create file %s", dst)
 	}
 	defer func() {
 		if err != nil {
@@ -327,7 +327,7 @@ func DownloadFile(ctx context.Context, logger log.Logger, bkt BucketReader, src,
 	defer logerrcapture.Do(logger, f.Close, "close block's output file")
 
 	if _, err = io.Copy(f, rc); err != nil {
-		return errors.Wrap(err, "copy object to file")
+		return errors.Wrapf(err, "copy object to file %s", src)
 	}
 	return nil
 }
