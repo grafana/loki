@@ -440,13 +440,13 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			if shardingStrategy != nil {
 				filterFn = shardingStrategy.FilterTenants
 			}
-			shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+			indexClient, err := shipper.NewIndexClient(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
 			if err != nil {
 				return nil, err
 			}
 
-			boltdbIndexClientsWithShipper[periodCfg.From] = shipper
-			return shipper, nil
+			boltdbIndexClientsWithShipper[periodCfg.From] = indexClient
+			return indexClient, nil
 
 		case config.TSDBType:
 			// TODO(chaudum): Move TSDB index client creation into this code path
