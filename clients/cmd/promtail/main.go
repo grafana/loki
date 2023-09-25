@@ -57,7 +57,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&c.dryRun, "dry-run", false, "Start Promtail but print entries instead of sending them to Loki.")
 	f.BoolVar(&c.checkSyntax, "check-syntax", false, "Validate the config file of its syntax")
 	f.BoolVar(&c.inspect, "inspect", false, "Allows for detailed inspection of pipeline stages")
-	f.StringVar(&c.configFile, "config.file", "", "yaml file to load")
+	f.StringVar(&c.configFile, "config.file", "", "yaml file to load (see https://bit.ly/promtail-yaml-reference)")
 	f.BoolVar(&c.configExpandEnv, "config.expand-env", false, "Expands ${var} in config according to the values of the environment variables.")
 	c.Config.RegisterFlags(f)
 }
