@@ -111,64 +111,64 @@ func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Regis
 		done: make(chan struct{}),
 
 		entriesAdded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "added_total",
 			Help:        "The total number of Put calls on the cache",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		entriesAddedNew: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "added_new_total",
 			Help:        "The total number of new entries added to the cache",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "evicted_total",
 			Help:        "The total number of evicted entries",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}, []string{"reason"}),
 
 		entriesCurrent: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "entries",
 			Help:        "The total number of entries",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		totalGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "gets_total",
 			Help:        "The total number of Get calls",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		totalMisses: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "misses_total",
 			Help:        "The total number of Get calls that had no valid entry",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		staleGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "stale_gets_total",
 			Help:        "The total number of Get calls that had an entry which expired (deprecated)",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		memoryBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "memory_bytes",
 			Help:        "The current cache size in bytes",
 			ConstLabels: prometheus.Labels{"cache": name},
