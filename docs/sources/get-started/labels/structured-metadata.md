@@ -9,6 +9,10 @@ description: Attaching metadata to logs.
 Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki. This feature is not yet available for Cloud Logs users.
 {{% /admonition %}}
 
+{{% admonition type="warning" %}}
+Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to `13`. (See [Schema Config]({{< relref "../../storage#schema-config" >}}) for more details about schema versions. )
+{{% /admonition %}}
+
 One of the powerful features of Loki is parsing logs at query time to extract metadata and build labels out of it.
 However, the parsing of logs at query time comes with a cost which can be significantly high for, as an example,
 large json blobs or a poorly written query using complex regex patterns.
