@@ -506,7 +506,7 @@ func TestLoadFromURL(t *testing.T) {
 
 	conf := loki.Config{
 		StorageConfig: storage.Config{
-			MaxParallelismTableOps: 50,
+			MaxParallelTableOps: 50,
 			FSConfig: local.FSConfig{
 				Directory: tmpDir,
 			},

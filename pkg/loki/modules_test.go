@@ -366,8 +366,8 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
-		MaxParallelismTableOps: 50,
-		FSConfig:               local.FSConfig{Directory: dir},
+		MaxParallelTableOps: 50,
+		FSConfig:            local.FSConfig{Directory: dir},
 		BoltDBShipperConfig: shipper.Config{
 			Config: indexshipper.Config{
 				SharedStoreType:      config.StorageTypeFileSystem,
