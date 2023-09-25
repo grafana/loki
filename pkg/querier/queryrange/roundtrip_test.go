@@ -151,19 +151,16 @@ var (
 	}
 )
 
-func getQueryAndStatsHandler(queryHandler, statsHandler http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/loki/api/v1/index/stats" {
-			statsHandler.ServeHTTP(w, r)
-			return
+func getQueryAndStatsHandler(queryHandler, statsHandler base.Handler) base.Handler {
+	return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+		switch r.(type) {
+		case *logproto.IndexStatsRequest:
+			return statsHandler.Do(ctx, r)
+		case *LokiRequest:
+			return queryHandler.Do(ctx, r)
 		}
 
-		if r.URL.Path == "/loki/api/v1/query_range" || r.URL.Path == "/loki/api/v1/query" {
-			queryHandler.ServeHTTP(w, r)
-			return
-		}
-
-		panic("Request not supported")
+		panic(fmt.Sprintf("Request not supported: %T", r))
 	})
 }
 
@@ -206,8 +203,8 @@ func TestMetricsTripperware(t *testing.T) {
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -215,8 +212,8 @@ func TestMetricsTripperware(t *testing.T) {
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 0, *queryCount)
 	require.Equal(t, 2, *statsCount)
@@ -224,8 +221,8 @@ func TestMetricsTripperware(t *testing.T) {
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	retries, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	// 3 retries configured.
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
@@ -247,16 +244,16 @@ func TestMetricsTripperware(t *testing.T) {
 	// testing split interval
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	count, queryHandler := promqlResult(matrix)
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	lokiResponse, err := tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
 
 	// testing cache
 	count, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	lokiCacheResponse, err := tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiCacheResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	// 0 queries result are cached.
 	require.Equal(t, 0, *count)
 	require.NoError(t, err)
@@ -306,16 +303,16 @@ func TestLogFilterTripperware(t *testing.T) {
 	// testing retry
 	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
 	retries, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
 
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -323,8 +320,8 @@ func TestLogFilterTripperware(t *testing.T) {
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -365,8 +362,8 @@ func TestInstantQueryTripperware(t *testing.T) {
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h := getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 1, *statsCount)
 	require.Equal(t, 0, *queryCount)
@@ -374,16 +371,16 @@ func TestInstantQueryTripperware(t *testing.T) {
 	// Test MaxQuerierBytesRead limit
 	statsCount, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 200})
 	queryCount, queryHandler = counter()
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	_, err = tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.Error(t, err)
 	require.Equal(t, 2, *statsCount)
 	require.Equal(t, 0, *queryCount)
 
 	count, queryHandler := promqlResult(vector)
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
-	rt.setHandler(getQueryAndStatsHandler(queryHandler, statsHandler))
-	lokiResponse, err := tpw.Wrap(queryHandler).Do(ctx, lreq)
+	h = getQueryAndStatsHandler(queryHandler, statsHandler)
+	lokiResponse, err := tpw.Wrap(h).Do(ctx, lreq)
 	require.Equal(t, 1, *count)
 	require.NoError(t, err)
 
@@ -888,45 +885,24 @@ func TestPostQueries(t *testing.T) {
 	req.Header.Add("Content-Length", strconv.Itoa(len(data.Encode())))
 	req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
 	require.NoError(t, err)
+	ctx := user.InjectOrgID(context.Background(), "1")
+	handler := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+			t.Error("unexpected default roundtripper called")
+			return nil, nil
+		})
 	_, err = newRoundTripper(
 		util_log.Logger,
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected default roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected default roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected metric roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected series roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected labels roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected instant roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected indexStats roundtripper called")
-			return nil, nil
-		}),
-		base.RoundTripFunc(func(*http.Request) (*http.Response, error) {
-			t.Error("unexpected labelVolume roundtripper called")
-			return nil, nil
-		}),
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
+		handler,
 		fakeLimits{},
-	).RoundTrip(req)
+	).Do(ctx, req)
 	require.NoError(t, err)
 }
 
@@ -950,14 +926,8 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")
-	req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-	require.NoError(t, err)
 
-	req = req.WithContext(ctx)
-	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-	require.NoError(t, err)
-
-	_, err = tpw(rt).RoundTrip(req)
+	_, err = tpw.Wrap(rt).Do(ctx, lreq)
 	require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, "max entries limit per query exceeded, limit > max_entries_limit (10000 > 5000)"), err)
 }
 
@@ -988,7 +958,6 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 			require.NoError(t, err)
 			defer rt.Close()
 			_, h := promqlResult(test.response)
-			rt.setHandler(h)
 
 			lreq := &LokiRequest{
 				Query:     test.qs,
@@ -1000,14 +969,8 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 			}
 
 			ctx := user.InjectOrgID(context.Background(), "1")
-			req, err := DefaultCodec.EncodeRequest(ctx, lreq)
-			require.NoError(t, err)
 
-			req = req.WithContext(ctx)
-			err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
-			require.NoError(t, err)
-
-			_, err = tpw(rt).RoundTrip(req)
+			_, err = tpw.Wrap(h).Do(ctx, lreq)
 			if test.expectedError != "" {
 				require.Equal(t, httpgrpc.Errorf(http.StatusBadRequest, test.expectedError), err)
 			} else {
