@@ -8,11 +8,11 @@ aliases:
 ---
 # Loki deployment modes
 
-Loki has many component microservices, and is designed to run as a horizontally-scalable distributed system. The Loki binary and Docker image include all of the Loki component microservices, letting you customize how you deploy Loki.
+Loki is a distributed system consisting of many microservices.  It also has a unique build model where all of those microservices exist within the same binary.
 
 You can configure the behavior of the single binary with the `-target` command-line flag to specify which microservices will run on startup. You can further configure each of the components in the `loki.yaml` file.
 
-As Loki stores indexes and chunks separately, you can easily redeploy a cluster under a different mode as your needs change, with minimal or no configuration changes.
+Because Loki decouples the data it stores from the software which ingests and queries it, you can easily redeploy a cluster under a different mode as your needs change, with minimal or no configuration changes.
 
 ## Scalable monolithic deployment mode
 
@@ -20,7 +20,7 @@ Scalable monolithic mode, previously referred to as a simple scalable deployment
 
 Loki’s scalable monolithic deployment mode separates execution paths into read, write, and backend targets. These targets can be scaled independently, letting you customize your Loki deployment to meet your business needs for log ingestion and log query so that your infrastructure costs better match how you use Loki.
 
-The scalable monolithic deployment mode can scale to several TBs of logs per day and more.
+The scalable monolithic deployment mode can scale up to a few TBs of logs per day, however if you go much beyond this, the microservices mode will be a better choice for most users.
 
 ![Scalable monolithic mode diagram](../monolithic-mode.png "Scalable monolithic mode")
 
@@ -46,11 +46,11 @@ The simplest mode of operation is monolithic mode. You enable monolithic mode by
 
 ![monolithic mode diagram](../monolithic-mode.png "Monolithic mode")
 
-Monolithic mode is useful for getting started quickly to experiment with Loki, as well as for small read/write volumes of up to approximately 100GB per day.
+Monolithic mode is useful for getting started quickly to experiment with Loki, as well as for small read/write volumes of up to approximately 20GB per day.
 
 You can horizontally scale a monolithic mode deployment to more instances by using a shared object store, and by configuring the [`ring` section]({{< relref "../configure#common" >}}) of the `loki.yaml` file to share state between all instances, but the recommendation is to use scalable monolithic mode if you need to scale your deployment.
 
-You can configure high availability by running two Loki instances using `memberlist_config` configuration and a shared object store. You route traffic to all the Loki instances in a round robin fashion.
+You can configure high availability by running two Loki instances using `memberlist_config` configuration and a shared object store and setting the `replication_factor` to `3`. You route traffic to all the Loki instances in a round robin fashion.
 
 Query parallelization is limited by the number of instances and the setting `max_query_parallelism` which is defined in the `loki.yaml` file.
 
