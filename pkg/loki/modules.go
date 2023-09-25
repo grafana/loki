@@ -1340,9 +1340,12 @@ func (t *Loki) initQueryLimitsInterceptors() (services.Service, error) {
 
 func (t *Loki) initQueryLimitsTripperware() (services.Service, error) {
 	_ = level.Debug(util_log.Logger).Log("msg", "initializing query limits tripperware")
+	// TODO: limits tripperware is not required. 
+	/*
 	t.QueryFrontEndTripperware = querylimits.WrapTripperware(
 		t.QueryFrontEndTripperware,
 	)
+	*/
 
 	return nil, nil
 }

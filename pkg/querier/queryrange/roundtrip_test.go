@@ -153,7 +153,7 @@ func getQueryAndStatsHandler(queryHandler, statsHandler base.Handler) base.Handl
 		switch r.(type) {
 		case *logproto.IndexStatsRequest:
 			return statsHandler.Do(ctx, r)
-		case *LokiRequest:
+		case *LokiRequest, *LokiInstantRequest:
 			return queryHandler.Do(ctx, r)
 		}
 
@@ -1351,7 +1351,11 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-		return ResultToResponse(logqlmodel.Result{Data: v}, nil)
+		params, err := paramsFromRequest(r)
+		if err != nil {
+			return nil, err
+		}
+		return ResultToResponse(logqlmodel.Result{Data: v}, params)
 	})
 }
 

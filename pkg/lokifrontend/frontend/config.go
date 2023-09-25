@@ -2,6 +2,7 @@ package frontend
 
 import (
 	"flag"
+	"fmt"
 	"net/http"
 
 	"github.com/go-kit/log"
@@ -69,6 +70,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, nil
+		//return transport.AdaptGrpcRoundTripperToHTTPRoundTripper(fr), fr, nil, nil
+		return nil, fr, nil, fmt.Errorf("unsupported default frontend")
 	}
 }

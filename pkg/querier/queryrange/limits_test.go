@@ -222,9 +222,6 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		defer stopper.Stop()
 	}
 	require.NoError(t, err)
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	lreq := &LokiRequest{
 		Query:     `{app="foo"} |= "foo"`,
@@ -237,8 +234,15 @@ func Test_MaxQueryLookBack(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	_, err = tpw.Wrap(rt).Do(ctx, lreq)
+	called := false
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+		called = true
+		return nil, nil
+	})
+
+	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.NoError(t, err)
+	require.True(t, called)
 }
 
 func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
