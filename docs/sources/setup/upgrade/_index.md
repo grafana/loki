@@ -69,6 +69,22 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
+#### Embedded cache metric changes
+
+- The following embedded cache metrics are removed. Instead use `loki_cache_request_duration_seconds` which instruments requests made to the configured caches (`embeddedcache`, `memcached` or `redis`).
+  `loki_cache_request_duration_seconds` is partitioned by `method`, `status_code` and the cache `name` labels.
+  - `querier_cache_added_total`
+  - `querier_cache_gets_total`
+  - `querier_cache_misses_total`
+
+- The following embedded cache metrics are renamed:
+  - `querier_cache_added_new_total` is renamed to `loki_embeddedcache_added_new_total`
+  - `querier_cache_evicted_total` is renamed to `loki_embeddedcache_evicted_total`
+  - `querier_cache_entries` is renamed to `loki_embeddedcache_entries`
+  - `querier_cache_memory_bytes` is renamed to `loki_embeddedcache_memory_bytes`
+
+- Already deprecated metric `querier_cache_stale_gets_total` is now removed.
+
 ## 2.9.0
 
 ### Loki
