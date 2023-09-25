@@ -1258,6 +1258,7 @@ func (m *LabelPair) GetValue() string {
 }
 
 // LegacyLabelPair exists for backwards compatibility reasons and is deprecated. Do not use.
+// Use LabelPair instead.
 type LegacyLabelPair struct {
 	Name  []byte `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Value []byte `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`

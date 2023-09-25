@@ -19,8 +19,8 @@ import (
 
 func TestSingleIdxCached(t *testing.T) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
-	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	cfg := cache.EmbeddedCacheConfig{MaxSizeMB: 1}
+	c := cache.NewEmbeddedCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	cases := []LoadableSeries{
@@ -217,8 +217,8 @@ func TestSingleIdxCached(t *testing.T) {
 
 func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
-	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	cfg := cache.EmbeddedCacheConfig{MaxSizeMB: 1}
+	c := cache.NewEmbeddedCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	now := model.Now()
@@ -273,8 +273,8 @@ func BenchmarkCacheableTSDBIndex_GetChunkRefs(b *testing.B) {
 
 func TestCacheableTSDBIndex_Stats(t *testing.T) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
-	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	cfg := cache.EmbeddedCacheConfig{MaxSizeMB: 1}
+	c := cache.NewEmbeddedCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	series := []LoadableSeries{
@@ -388,8 +388,8 @@ func TestCacheableTSDBIndex_Stats(t *testing.T) {
 
 func BenchmarkSeriesRepetitive(b *testing.B) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
-	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	cfg := cache.EmbeddedCacheConfig{MaxSizeMB: 1}
+	c := cache.NewEmbeddedCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	series := []LoadableSeries{
@@ -443,8 +443,8 @@ func BenchmarkSeriesRepetitive(b *testing.B) {
 
 func TestMultipleIndexesFiles(t *testing.T) {
 	// setup cache.
-	cfg := cache.FifoCacheConfig{MaxSizeBytes: "1MB"}
-	c := cache.NewFifoCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
+	cfg := cache.EmbeddedCacheConfig{MaxSizeMB: 1}
+	c := cache.NewEmbeddedCache("test-cache", cfg, nil, log.NewNopLogger(), "test")
 	defer c.Stop()
 
 	series := []LoadableSeries{

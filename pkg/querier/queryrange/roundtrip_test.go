@@ -49,10 +49,10 @@ var (
 			CacheResults:         true,
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -62,10 +62,10 @@ var (
 		StatsCacheConfig: IndexStatsCacheConfig{
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -73,10 +73,10 @@ var (
 		VolumeCacheConfig: VolumeCacheConfig{
 			ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 				CacheConfig: cache.Config{
-					EnableFifoCache: true,
-					Fifocache: cache.FifoCacheConfig{
-						MaxSizeItems: 1024,
-						TTL:          24 * time.Hour,
+					EmbeddedCache: cache.EmbeddedCacheConfig{
+						Enabled:   true,
+						MaxSizeMB: 1024,
+						TTL:       24 * time.Hour,
 					},
 				},
 			},
@@ -732,11 +732,10 @@ func TestVolumeTripperware(t *testing.T) {
 
 func TestNewTripperware_Caches(t *testing.T) {
 	for _, tc := range []struct {
-		name        string
-		config      Config
-		numCaches   int
-		equalCaches bool
-		err         string
+		name      string
+		config    Config
+		numCaches int
+		err       string
 	}{
 		{
 			name: "results cache disabled, stats cache disabled",
@@ -757,7 +756,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 						CacheConfig: cache.Config{
 							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled: true,
+								MaxSizeMB: 1,
+								Enabled:   true,
 							},
 						},
 					},
@@ -775,16 +775,16 @@ func TestNewTripperware_Caches(t *testing.T) {
 					ResultsCacheConfig: queryrangebase.ResultsCacheConfig{
 						CacheConfig: cache.Config{
 							EmbeddedCache: cache.EmbeddedCacheConfig{
-								Enabled: true,
+								MaxSizeMB: 1,
+								Enabled:   true,
 							},
 						},
 					},
 				},
 				CacheIndexStatsResults: true,
 			},
-			numCaches:   2,
-			equalCaches: true,
-			err:         "",
+			numCaches: 2,
+			err:       "",
 		},
 		{
 			name: "results cache enabled, stats cache enabled but different",
@@ -812,9 +812,8 @@ func TestNewTripperware_Caches(t *testing.T) {
 					},
 				},
 			},
-			numCaches:   2,
-			equalCaches: false,
-			err:         "",
+			numCaches: 2,
+			err:       "",
 		},
 		{
 			name: "results cache enabled (no config provided)",
@@ -856,19 +855,13 @@ func TestNewTripperware_Caches(t *testing.T) {
 				if s != nil {
 					c, ok := s.(cache.Cache)
 					require.True(t, ok)
+
+					require.NotNil(t, c)
 					caches = append(caches, c)
 				}
 			}
 
 			require.Equal(t, tc.numCaches, len(caches))
-
-			if tc.numCaches == 2 {
-				if tc.equalCaches {
-					require.Equal(t, caches[0], caches[1])
-				} else {
-					require.NotEqual(t, caches[0], caches[1])
-				}
-			}
 		})
 	}
 }
