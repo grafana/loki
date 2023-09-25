@@ -15,8 +15,8 @@ import (
 	"go.uber.org/atomic"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/config"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -90,11 +90,23 @@ func Test_seriesLimiter(t *testing.T) {
 		}()
 		// first time returns  a single series
 		if *c == 0 {
-			return ResultToResponse(logqlmodel.Result{Data: matrix}, nil)
+			// TODO: refactor and use ResultToResponse
+			sampleStream, err := base.FromValue(matrix)
+			if err != nil {
+				return nil, err
+			}
+			return &LokiPromResponse{
+				Response: &base.PrometheusResponse{
+					Status: "success",
+					Data: base.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     sampleStream,
+					},
+				},
+			}, nil
 		}
 		// second time returns a different series.
-		return ResultToResponse(logqlmodel.Result{
-			Data: promql.Matrix{
+		m := promql.Matrix{
 				{
 					Floats: []promql.FPoint{
 						{
@@ -113,8 +125,21 @@ func Test_seriesLimiter(t *testing.T) {
 						},
 					},
 				},
-			},
-		}, nil)
+			}
+			// TODO: refactor and use ResultToResponse
+			sampleStream, err := base.FromValue(m)
+			if err != nil {
+				return nil, err
+			}
+			return &LokiPromResponse{
+				Response: &base.PrometheusResponse{
+					Status: "success",
+					Data: base.PrometheusData{
+						ResultType: loghttp.ResultTypeMatrix,
+						Result:     sampleStream,
+					},
+				},
+			}, nil
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
@@ -543,7 +568,7 @@ func Test_MaxQuerySize(t *testing.T) {
 				NewQuerySizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, queryStatsHandler),
 				NewQuerierSizeLimiterMiddleware(schemas, testEngineOpts, util_log.Logger, tc.limits, querierStatsHandler),
 			}
-			
+
 			_, err := base.MergeMiddlewares(middlewares...).Wrap(promHandler).Do(ctx, lokiReq)
 
 			if tc.shouldErr {

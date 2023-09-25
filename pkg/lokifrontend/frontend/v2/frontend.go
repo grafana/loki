@@ -258,16 +258,16 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 // TODO: move to codec
 func EncodeRequest(r queryrangebase.Request) (*queryrange.QueryRequest, error) {
 	/*
-	header := make(http.Header)
-	queryTags := getQueryTags(ctx)
-	if queryTags != "" {
-		header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
-	}
+		header := make(http.Header)
+		queryTags := getQueryTags(ctx)
+		if queryTags != "" {
+			header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
+		}
 
-	actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
-	if actor != "" {
-		header.Set(httpreq.LokiActorPathHeader, actor)
-	}
+		actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+		if actor != "" {
+			header.Set(httpreq.LokiActorPathHeader, actor)
+		}
 	*/
 
 	switch request := r.(type) {
@@ -330,8 +330,8 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	}
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
-		request:      nil, // 
-		queryRequest: queryRequest, 
+		request:      nil, //
+		queryRequest: queryRequest,
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),
 		statsEnabled: stats.IsEnabled(ctx),
@@ -366,7 +366,26 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		// TODO: track GRPC response
 
 		if resp.QueryResponse != nil {
-			return resp.QueryResponse, nil
+			switch concrete := resp.QueryResponse.Response.(type) {
+			case *queryrange.QueryResponse_Series:
+				return concrete.Series, nil
+			case *queryrange.QueryResponse_Labels:
+				return concrete.Labels, nil
+			case *queryrange.QueryResponse_Stats:
+				return concrete.Stats, nil
+			case *queryrange.QueryResponse_Prom:
+				return concrete.Prom, nil
+			case *queryrange.QueryResponse_Streams:
+				return concrete.Streams, nil
+			case *queryrange.QueryResponse_Volume:
+				return concrete.Volume, nil
+			case *queryrange.QueryResponse_TopkSketches:
+				return concrete.TopkSketches, nil
+			case *queryrange.QueryResponse_QuantileSketches:
+				return concrete.QuantileSketches, nil
+			default:
+				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.QueryResponse.Response)
+			}
 		}
 
 		// TODO: decode http response
