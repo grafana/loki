@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/util/marshal"
 )
 
@@ -518,7 +518,7 @@ func TestLoadFromURL(t *testing.T) {
 	require.Error(t, err)
 	require.Nil(t, client)
 
-	conf.StorageConfig.BoltDBShipperConfig = indexclient.Config{
+	conf.StorageConfig.BoltDBShipperConfig = boltdb.IndexCfg{
 		Config: indexshipper.Config{
 			SharedStoreType: config.StorageTypeFileSystem,
 		},

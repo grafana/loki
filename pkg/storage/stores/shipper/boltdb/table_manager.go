@@ -1,4 +1,4 @@
-package index
+package boltdb
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
@@ -22,6 +23,20 @@ import (
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
+
+type tableManagerMetrics struct {
+	openExistingFileFailuresTotal prometheus.Counter
+}
+
+func newTableManagerMetrics(r prometheus.Registerer) *tableManagerMetrics {
+	return &tableManagerMetrics{
+		openExistingFileFailuresTotal: promauto.With(r).NewCounter(prometheus.CounterOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "open_existing_file_failures_total",
+			Help:      "Total number of failures in opening of existing files while loading active index tables during startup",
+		}),
+	}
+}
 
 type Config struct {
 	Uploader             string
@@ -34,7 +49,7 @@ type TableManager struct {
 	cfg          Config
 	indexShipper Shipper
 
-	metrics    *metrics
+	metrics    *tableManagerMetrics
 	logger     log.Logger
 	tables     map[string]*Table
 	tableRange config.TableRange
@@ -60,7 +75,7 @@ func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRa
 	tm := TableManager{
 		cfg:          cfg,
 		indexShipper: indexShipper,
-		metrics:      newMetrics(registerer),
+		metrics:      newTableManagerMetrics(registerer),
 		tableRange:   tableRange,
 		ctx:          ctx,
 		cancel:       cancel,

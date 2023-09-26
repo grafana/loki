@@ -19,16 +19,15 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
 )
 
-type metrics struct {
+type indexClientMetrics struct {
 	// duration in seconds spent in serving request on index managed by BoltDB Shipper
 	requestDurationSeconds *prometheus.HistogramVec
 }
 
-func newMetrics(r prometheus.Registerer) *metrics {
-	return &metrics{
+func newIndexClientMetrics(r prometheus.Registerer) *indexClientMetrics {
+	return &indexClientMetrics{
 		requestDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "request_duration_seconds",
@@ -68,9 +67,9 @@ type IndexClient struct {
 	cfg          IndexCfg
 	indexShipper indexshipper.IndexShipper
 	writer       writer
-	querier      index.Querier
+	querier      Querier
 
-	metrics  *metrics
+	metrics  *indexClientMetrics
 	logger   log.Logger
 	stopOnce sync.Once
 }
@@ -80,7 +79,7 @@ func NewIndexClient(cfg IndexCfg, storageClient client.ObjectClient, limits down
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (*IndexClient, error) {
 	i := IndexClient{
 		cfg:     cfg,
-		metrics: newMetrics(registerer),
+		metrics: newIndexClientMetrics(registerer),
 		logger:  logger,
 	}
 
@@ -109,19 +108,19 @@ func (i *IndexClient) init(storageClient client.ObjectClient, limits downloads.L
 			return err
 		}
 
-		cfg := index.Config{
+		cfg := Config{
 			Uploader:             uploader,
 			IndexDir:             i.cfg.ActiveIndexDirectory,
 			DBRetainPeriod:       i.cfg.IngesterDBRetainPeriod,
 			MakePerTenantBuckets: i.cfg.BuildPerTenantIndex,
 		}
-		i.writer, err = index.NewTableManager(cfg, i.indexShipper, tableRange, registerer, i.logger)
+		i.writer, err = NewTableManager(cfg, i.indexShipper, tableRange, registerer, i.logger)
 		if err != nil {
 			return err
 		}
 	}
 
-	i.querier = index.NewQuerier(i.writer, i.indexShipper)
+	i.querier = NewQuerier(i.writer, i.indexShipper)
 
 	return nil
 }

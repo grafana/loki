@@ -1,4 +1,4 @@
-package index
+package boltdb
 
 import (
 	"context"
@@ -18,7 +18,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -71,7 +70,7 @@ func NewTable(path, uploader string, indexShipper Shipper, makePerTenantBuckets 
 }
 
 // LoadTable loads local dbs belonging to the table and creates a new Table with references to dbs if there are any otherwise it doesn't create a table
-func LoadTable(path, uploader string, indexShipper Shipper, makePerTenantBuckets bool, metrics *metrics) (*Table, error) {
+func LoadTable(path, uploader string, indexShipper Shipper, makePerTenantBuckets bool, metrics *tableManagerMetrics) (*Table, error) {
 	dbs, err := loadBoltDBsFromDir(path, metrics)
 	if err != nil {
 		return nil, err
@@ -324,7 +323,7 @@ func (lt *Table) handoverIndexesToShipper(force bool) ([]string, error) {
 			continue
 		}
 
-		err = lt.indexShipper.AddIndex(lt.name, "", boltdb.BoltDBToIndexFile(db, lt.buildFileName(name)))
+		err = lt.indexShipper.AddIndex(lt.name, "", BoltDBToIndexFile(db, lt.buildFileName(name)))
 		if err != nil {
 			return nil, err
 		}
@@ -348,7 +347,7 @@ func (lt *Table) buildFileName(dbName string) string {
 	return fileName
 }
 
-func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, error) {
+func loadBoltDBsFromDir(dir string, metrics *tableManagerMetrics) (map[string]*bbolt.DB, error) {
 	dbs := map[string]*bbolt.DB{}
 	dirEntries, err := os.ReadDir(dir)
 	if err != nil {
@@ -361,7 +360,7 @@ func loadBoltDBsFromDir(dir string, metrics *metrics) (map[string]*bbolt.DB, err
 		}
 		fullPath := filepath.Join(dir, entry.Name())
 
-		if strings.HasSuffix(entry.Name(), boltdb.TempFileSuffix) || strings.HasSuffix(entry.Name(), snapshotFileSuffix) {
+		if strings.HasSuffix(entry.Name(), TempFileSuffix) || strings.HasSuffix(entry.Name(), snapshotFileSuffix) {
 			// If an ingester is killed abruptly in the middle of an upload operation it could leave out a temp file which holds the snapshot of db for uploading.
 			// Cleaning up those temp files to avoid problems.
 			if err := os.Remove(fullPath); err != nil {

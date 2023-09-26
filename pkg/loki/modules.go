@@ -62,7 +62,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/shipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
@@ -1459,7 +1459,7 @@ func shipperQuerierIndexUpdateDelay(cacheValidity, resyncInterval time.Duration)
 
 // shipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
 func shipperIngesterIndexUploadDelay() time.Duration {
-	return shipper_index.ShardDBsByDuration + indexshipper.UploadInterval
+	return boltdb.ShardDBsByDuration + indexshipper.UploadInterval
 }
 
 // shipperMinIngesterQueryStoreDuration returns minimum duration(with some buffer) ingesters should query their stores to

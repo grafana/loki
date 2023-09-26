@@ -1,4 +1,4 @@
-package index
+package boltdb
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -151,7 +150,7 @@ func TestLoadTables(t *testing.T) {
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
 			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
 				return tm.indexShipper.ForEach(ctx, table, userID, func(_ bool, index index_shipper.Index) error {
-					return callback(index.(*boltdb.IndexFile).GetBoltDB())
+					return callback(index.(*IndexFile).GetBoltDB())
 				})
 			},
 			expectedIndex.start, expectedIndex.numRecords)
