@@ -2,7 +2,7 @@
 title: Patch vulnerabilities
 description: Describes the procedure how to patch Loki to mitigate vulnerabilities.
 ---
-# Patch Vulnerabilities
+# Patch vulnerabilities
 
 This step patches vulnerabilities in Grafana Loki binaries and Docker images.
 
