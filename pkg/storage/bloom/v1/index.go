@@ -22,7 +22,7 @@ type BlockIndex struct {
 
 func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
 	return BlockIndex{
-		schema: Schema{version: 1, encoding: encoding},
+		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
 	}
 }
 
@@ -42,7 +42,7 @@ func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (offset int6
 	}
 	offset += int64(written)
 
-	compressionPool := chunkenc.GetWriterPool(b.schema.encoding)
+	compressionPool := b.schema.CompressorPool()
 	// encode series, accumlate encoded headers with relevant offsets,
 	// they will be written at the end of the block
 	for itr.Next() {
@@ -88,7 +88,7 @@ func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (offset int6
 
 	written, err = w.Write(enc.Get())
 	if err != nil {
-		return offset, errors.Wrap(err, "writing series page")
+		return offset, errors.Wrap(err, "writing series page headers")
 	}
 	offset += int64(written)
 
@@ -107,7 +107,7 @@ func (b *BlockIndex) Decode(data []byte) error {
 
 	dec = encoding.DecWith(data[headerOffset:])
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
-		return errors.Wrap(err, "decoding series header")
+		return errors.Wrap(err, "checksumming page headers")
 	}
 
 	b.pageHeaders = make([]SeriesPageHeaderWithOffset, dec.Uvarint())
@@ -127,8 +127,18 @@ type Schema struct {
 	encoding chunkenc.Encoding
 }
 
+// byte length
+func (s Schema) Len() int {
+	// magic number + version + encoding
+	return 4 + 1 + 1
+}
+
 func (s *Schema) DecompressorPool() chunkenc.ReaderPool {
 	return chunkenc.GetReaderPool(s.encoding)
+}
+
+func (s *Schema) CompressorPool() chunkenc.WriterPool {
+	return chunkenc.GetWriterPool(s.encoding)
 }
 
 func (s *Schema) Encode(enc *encoding.Encbuf) {
@@ -268,7 +278,7 @@ func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, deco
 
 	decoder, err := p.DecodeLazy(dec, pool, decompressedSize)
 	if err != nil {
-		return errors.Wrap(err, "building decoder")
+		return errors.Wrap(err, "building series page decoder")
 	}
 
 	// TODO(owen-d): pool
@@ -282,7 +292,7 @@ func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, deco
 		p.Series = append(p.Series, series)
 		i++
 	}
-	return dec.Err()
+	return errors.Wrap(dec.Err(), "decoding series page")
 }
 
 // decompress page and return an iterator over the bytes

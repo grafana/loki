@@ -1,9 +1,11 @@
 package v1
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
+	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/stretchr/testify/require"
@@ -32,11 +34,37 @@ func TestBloomPageEncoding(t *testing.T) {
 		Blooms: blooms,
 	}
 
+	schema := Schema{version: DefaultSchemaVersion, encoding: chunkenc.EncSnappy}
 	enc := &encoding.Encbuf{}
-	src.Encode(enc, Crc32HashPool.Get())
+	decompressedLen, err := src.Encode(enc, schema.CompressorPool(), Crc32HashPool.Get())
+	require.Nil(t, err)
 
 	var dst BloomPage
 	dec := encoding.DecWith(enc.Get())
-	require.Nil(t, dst.Decode(&dec))
+	require.Nil(t, dst.Decode(&dec, schema.DecompressorPool(), decompressedLen))
+	require.Equal(t, src, dst)
+}
+
+func TestBloomBlockEncoding(t *testing.T) {
+	pages := []BloomPage{
+		{
+			Blooms: mkBasicBlooms(2),
+		},
+		{
+			Blooms: mkBasicBlooms(2),
+		},
+	}
+
+	pageItr := NewSliceIter[BloomPage](pages)
+	src := NewBloomBlock(chunkenc.EncSnappy)
+	buf := bytes.NewBuffer(nil)
+
+	_, err := src.WriteTo(pageItr, buf)
+	require.Nil(t, err)
+
+	data := buf.Bytes()
+	var dst BloomBlock
+	require.Nil(t, dst.DecodeHeaders(bytes.NewReader(data)))
+
 	require.Equal(t, src, dst)
 }

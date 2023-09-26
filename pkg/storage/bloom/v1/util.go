@@ -14,6 +14,10 @@ const (
 	V1 byte = iota
 )
 
+const (
+	DefaultSchemaVersion = V1
+)
+
 var (
 	castagnoliTable = crc32.MakeTable(crc32.Castagnoli)
 

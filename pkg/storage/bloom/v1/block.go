@@ -9,7 +9,7 @@ import (
 
 type BlockReader interface {
 	Index() io.ReadSeeker
-	// Bloom(id uint32) io.ReadSeeker // id TBD, just placeholder for now
+	// Blooms() io.ReedSeeker
 }
 
 type Block struct {
@@ -20,6 +20,7 @@ type Block struct {
 	header SeriesHeader
 
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
+
 }
 
 func NewBlock(reader BlockReader) *Block {
