@@ -157,7 +157,7 @@ func getQueryAndStatsHandler(queryHandler, statsHandler base.Handler) base.Handl
 			return queryHandler.Do(ctx, r)
 		}
 
-		panic(fmt.Sprintf("Request not supported: %T", r))
+		return nil, fmt.Errorf("Request not supported: %T", r)
 	})
 }
 
