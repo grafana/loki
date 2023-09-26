@@ -13,7 +13,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 // Builder is a helper used to create tsdb indices.

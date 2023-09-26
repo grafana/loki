@@ -17,7 +17,7 @@ import (
 	"github.com/prometheus/prometheus/storage"
 
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 type PostingsReader interface {

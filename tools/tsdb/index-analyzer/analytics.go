@@ -9,8 +9,8 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 func analyze(shipper indexshipper.IndexShipper, tableName string, tenants []string) error {

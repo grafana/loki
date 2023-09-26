@@ -18,8 +18,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	shipper_storage "github.com/grafana/loki/pkg/storage/stores/indexshipper/storage"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
+	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
