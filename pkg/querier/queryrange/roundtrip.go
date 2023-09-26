@@ -568,7 +568,7 @@ func NewLabelsTripperware(
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
 		if len(queryRangeMiddleware) > 0 {
 			// Do not forward any request header.
-			base.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
+			return base.MergeMiddlewares(queryRangeMiddleware...).Wrap(next)
 		}
 		return next
 	}), nil
