@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -94,7 +94,7 @@ func TestNamedStores(t *testing.T) {
 	tempDir := t.TempDir()
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := indexclient.Config{}
+	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = "named-store"

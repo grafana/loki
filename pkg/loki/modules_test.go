@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 )
 
@@ -366,7 +366,7 @@ func minimalWorkingConfig(t *testing.T, dir, target string, cfgTransformers ...f
 	// This would be overwritten by the default values setting.
 	cfg.StorageConfig = storage.Config{
 		FSConfig: local.FSConfig{Directory: dir},
-		BoltDBShipperConfig: indexclient.Config{
+		BoltDBShipperConfig: boltdb.IndexCfg{
 			Config: indexshipper.Config{
 				SharedStoreType:      config.StorageTypeFileSystem,
 				ActiveIndexDirectory: path.Join(dir, "index"),

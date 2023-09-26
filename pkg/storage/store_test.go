@@ -30,7 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -1189,11 +1189,9 @@ func TestStore_MultiPeriod(t *testing.T) {
 			shipperConfig.Mode = indexshipper.ModeReadWrite
 
 			cfg := Config{
-				FSConfig: local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-				BoltDBShipperConfig: indexclient.Config{
-					Config: shipperConfig,
-				},
-				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
+				FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+				BoltDBShipperConfig: boltdb.IndexCfg{Config: shipperConfig},
+				TSDBShipperConfig:   tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
 				NamedStores: NamedStores{
 					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1507,7 +1505,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.NoError(t, err)
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := indexclient.Config{}
+	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
@@ -1516,7 +1514,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	boltdbShipperConfig.IngesterName = ingesterName
 
 	// config for tsdb Shipper
-	tsdbShipperConfig := indexshipper.Config{}
+	tsdbShipperConfig := tsdb.IndexCfg{}
 	flagext.DefaultValues(&tsdbShipperConfig)
 	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
 	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
@@ -1531,7 +1529,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	cfg := Config{
 		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		BoltDBShipperConfig: boltdbShipperConfig,
-		TSDBShipperConfig:   tsdb.IndexCfg{Config: tsdbShipperConfig},
+		TSDBShipperConfig:   tsdbShipperConfig,
 	}
 
 	schemaConfig := config.SchemaConfig{

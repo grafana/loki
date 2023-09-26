@@ -1,4 +1,4 @@
-package index
+package boltdb
 
 import (
 	"context"
@@ -9,7 +9,6 @@ import (
 
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -47,7 +46,7 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 			// writer could be nil when running in ReadOnly mode
 			if q.writer != nil {
 				err := q.writer.ForEach(ctx, table, func(b *bbolt.DB) error {
-					return boltdb.QueryBoltDB(ctx, b, userIDBytes, queries, callback)
+					return QueryBoltDB(ctx, b, userIDBytes, queries, callback)
 				})
 				if err != nil {
 					return err
@@ -55,12 +54,12 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 			}
 
 			return q.indexShipper.ForEach(ctx, table, userID, func(_ bool, idx shipper_index.Index) error {
-				boltdbIndexFile, ok := idx.(*boltdb.IndexFile)
+				boltdbIndexFile, ok := idx.(*IndexFile)
 				if !ok {
 					return fmt.Errorf("unexpected index type %T", idx)
 				}
 
-				return boltdb.QueryBoltDB(ctx, boltdbIndexFile.GetBoltDB(), userIDBytes, queries, callback)
+				return QueryBoltDB(ctx, boltdbIndexFile.GetBoltDB(), userIDBytes, queries, callback)
 			})
 		}, queries, callback)
 		if err != nil {

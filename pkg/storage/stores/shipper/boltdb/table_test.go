@@ -1,4 +1,4 @@
-package index
+package boltdb
 
 import (
 	"context"
@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -111,7 +110,7 @@ func TestLoadTable(t *testing.T) {
 	require.Error(t, err)
 
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", newMockIndexShipper(), false, newMetrics(nil))
+	table, err := LoadTable(tablePath, "test", newMockIndexShipper(), false, newTableManagerMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -229,7 +228,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
-						return callback(index.(*boltdb.IndexFile).GetBoltDB())
+						return callback(index.(*IndexFile).GetBoltDB())
 					})
 				},
 				0, 10)
@@ -249,7 +248,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
-						return callback(index.(*boltdb.IndexFile).GetBoltDB())
+						return callback(index.(*IndexFile).GetBoltDB())
 					})
 				},
 				0, 20)
@@ -268,7 +267,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 				NumRecords: 10,
 			},
 		},
-		"db1" + boltdb.TempFileSuffix: { // a snapshot file which should be ignored.
+		"db1" + TempFileSuffix: { // a snapshot file which should be ignored.
 			DBRecords: testutil.DBRecords{
 				Start:      0,
 				NumRecords: 10,
@@ -288,7 +287,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 	require.NoError(t, db.Close())
 
 	// try loading the dbs
-	dbs, err := loadBoltDBsFromDir(tablePath, newMetrics(nil))
+	dbs, err := loadBoltDBsFromDir(tablePath, newTableManagerMetrics(nil))
 	require.NoError(t, err)
 
 	// check that we have just 2 dbs
@@ -336,7 +335,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	tableName := "test-table"
 	tablePath := testutil.SetupDBsAtPath(t, filepath.Join(indexPath, tableName), dbs, nil)
 
-	table, err := LoadTable(tablePath, "test", indexShipper, false, newMetrics(nil))
+	table, err := LoadTable(tablePath, "test", indexShipper, false, newTableManagerMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 
@@ -423,7 +422,7 @@ func TestTable_MultiQueries(t *testing.T) {
 	}, []byte(user1))
 
 	// try loading the table.
-	table, err := LoadTable(tablePath, "test", newMockIndexShipper(), false, newMetrics(nil))
+	table, err := LoadTable(tablePath, "test", newMockIndexShipper(), false, newTableManagerMetrics(nil))
 	require.NoError(t, err)
 	require.NotNil(t, table)
 	defer func() {
