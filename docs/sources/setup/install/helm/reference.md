@@ -24,6 +24,8 @@ This is the generated reference for the Loki Helm Chart values.
 
 <!-- Override default values table from helm-docs. See https://github.com/norwoodj/helm-docs/tree/master#advanced-table-rendering -->
 
+
+
 {{< responsive-table >}}
 <table>
 	<thead>
@@ -2390,7 +2392,7 @@ null
 			<td>bool</td>
 			<td></td>
 			<td><pre lang="json">
-true
+false
 </pre>
 </td>
 		</tr>
@@ -4193,7 +4195,7 @@ false
 			<td><pre lang="json">
 {
   "annotations": {},
-  "enabled": true,
+  "enabled": false,
   "image": {
     "digest": null,
     "pullPolicy": "IfNotPresent",
