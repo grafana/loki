@@ -8,7 +8,7 @@ A tag is required to create GitHub artifacts and as a prerequisite for publishin
 
 ## Before you begin
 
-1. All required commits for the release should exist on the release branch. This includes functionality and documentation such as the [release notes]({{< relref "./3-prepare-release-notes" >}}) and [CHANGELOG.md]({{< relref "./4-prepare-changelog" >}}). All versions in the repo should have already been [updated]({{< relref "./7-update-version-numbers" >}}).
+1. All required commits for the release should exist on the release branch. This includes functionality and documentation such as the [release notes]({{< relref "./prepare-release-notes" >}}) and [CHANGELOG.md]({{< relref "./prepare-changelog" >}}). All versions in the repo should have already been [updated]({{< relref "./update-version-numbers" >}}).
 
 1. Make sure you are up to date on the release branch:
 
