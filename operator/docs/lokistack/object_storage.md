@@ -38,6 +38,30 @@ _Note_: Upon setting up LokiStack for any object storage provider, you should co
       --from-literal=region="<AWS_REGION_YOUR_BUCKET_LIVES_IN>"
     ```
 
+    or with `SSE-KMS` encryption
+
+    ```console
+    kubectl create secret generic lokistack-dev-s3 \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
+      --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=sse_type="SSE-KMS" \
+      --from-literal=sse_kms_key_id="<AWS_SSE_KMS_KEY_ID>" \
+      --from-literal=sse_kms_encryption_context="<OPTIONAL_AWS_SSE_KMS_ENCRYPTION_CONTEXT_JSON>"
+    ```
+
+    or with `SSE-S3` encryption
+
+    ```console
+    kubectl create secret generic lokistack-dev-s3 \
+      --from-literal=bucketnames="<BUCKET_NAME>" \
+      --from-literal=endpoint="<AWS_BUCKET_ENDPOINT>" \
+      --from-literal=access_key_id="<AWS_ACCESS_KEY_ID>" \
+      --from-literal=access_key_secret="<AWS_ACCESS_KEY_SECRET>" \
+      --from-literal=sse_type="SSE-S3"
+    ```
+
     where `lokistack-dev-s3` is the secret name.
 
 * Create an instance of [LokiStack](../hack/lokistack_dev.yaml) by referencing the secret name and type as `s3`:

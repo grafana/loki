@@ -92,7 +92,6 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	if len(buckets) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "bucketnames")
 	}
-	// TODO buckets are comma-separated list
 	id := s.Data["access_key_id"]
 	if len(id) == 0 {
 		return nil, kverrors.New("missing secret field", "field", "access_key_id")
@@ -105,12 +104,47 @@ func extractS3ConfigSecret(s *corev1.Secret) (*storage.S3StorageConfig, error) {
 	// Extract and validate optional fields
 	region := s.Data["region"]
 
+	sseCfg, err := extractS3SSEConfig(s.Data)
+	if err != nil {
+		return nil, err
+	}
+
 	return &storage.S3StorageConfig{
 		Endpoint:        string(endpoint),
 		Buckets:         string(buckets),
 		AccessKeyID:     string(id),
 		AccessKeySecret: string(secret),
 		Region:          string(region),
+		SSE:             sseCfg,
+	}, nil
+}
+
+func extractS3SSEConfig(d map[string][]byte) (storage.S3SSEConfig, error) {
+	var (
+		sseType                    storage.S3SSEType
+		kmsKeyId, kmsEncryptionCtx string
+	)
+
+	switch sseType = storage.S3SSEType(d["sse_type"]); sseType {
+	case storage.SSEKMSType:
+		kmsEncryptionCtx = string(d["sse_kms_encryption_context"])
+		kmsKeyId = string(d["sse_kms_key_id"])
+		if kmsKeyId == "" {
+			return storage.S3SSEConfig{}, kverrors.New("missing secret field", "field", "sse_kms_key_id")
+		}
+
+	case storage.SSES3Type:
+	case "":
+		return storage.S3SSEConfig{}, nil
+
+	default:
+		return storage.S3SSEConfig{}, kverrors.New("unsupported secret field value (Supported: SSE-KMS, SSE-S3)", "field", "sse_type", "value", sseType)
+	}
+
+	return storage.S3SSEConfig{
+		Type:                 sseType,
+		KMSKeyID:             string(kmsKeyId),
+		KMSEncryptionContext: string(kmsEncryptionCtx),
 	}, nil
 }
 

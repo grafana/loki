@@ -26,6 +26,17 @@ common:
       region: {{ .Region }}
       access_key_id: {{ .AccessKeyID }}
       secret_access_key: {{ .AccessKeySecret }}
+      {{- with .SSE }}
+      {{- if .Type }}
+      sse:
+        type: {{ .Type }}
+        {{- if eq .Type "SSE-KMS" }}
+        kms_key_id: {{ .KMSKeyID }}
+        kms_encryption_context: |
+          {{ .KMSEncryptionContext }}
+        {{- end}}
+      {{- end }}
+      {{- end }}
       s3forcepathstyle: true
     {{- end }}
     {{- with .ObjectStorage.Swift }}
