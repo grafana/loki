@@ -19,9 +19,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 )
 
 type tableManagerMetrics struct {
@@ -61,8 +61,8 @@ type TableManager struct {
 }
 
 type Shipper interface {
-	AddIndex(tableName, userID string, index shipper_index.Index) error
-	ForEach(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
+	AddIndex(tableName, userID string, index shipperindex.Index) error
+	ForEach(ctx context.Context, tableName, userID string, callback shipperindex.ForEachIndexCallback) error
 }
 
 func NewTableManager(cfg Config, indexShipper Shipper, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (*TableManager, error) {
@@ -98,7 +98,7 @@ func (tm *TableManager) loop() {
 
 	tm.handoverIndexesToShipper(false)
 
-	syncTicker := time.NewTicker(indexshipper.UploadInterval)
+	syncTicker := time.NewTicker(shipper.UploadInterval)
 	defer syncTicker.Stop()
 
 	for {

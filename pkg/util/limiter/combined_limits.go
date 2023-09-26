@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 )
 

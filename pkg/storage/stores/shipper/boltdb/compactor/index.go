@@ -8,7 +8,7 @@ import (
 
 	"github.com/prometheus/common/model"
 
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
 const (

@@ -17,10 +17,10 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 const readDBsConcurrency = 50
@@ -53,7 +53,7 @@ func (i indexProcessor) OpenCompactedIndexFile(ctx context.Context, path, tableN
 	}
 
 	builder := NewBuilder(indexFormat)
-	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+	err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
 		builder.AddSeries(lbls.Copy(), fp, chks)
 	}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 	if err != nil {
@@ -212,7 +212,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 
 	// add users index from multi-tenant indexes to the builder
 	for _, idx := range multiTenantIndexes {
-		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err := idx.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
 			builder.AddSeries(withoutTenantLabel(lbls.Copy()), fp, chks)
 		}, withTenantLabelMatcher(userID, []*labels.Matcher{})...)
 		if err != nil {
@@ -244,7 +244,7 @@ func setupBuilder(ctx context.Context, indexType int, userID string, sourceIndex
 			}
 		}()
 
-		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+		err = indexFile.(*TSDBFile).Index.(*TSDBIndex).ForSeries(ctx, nil, 0, math.MaxInt64, func(lbls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
 			builder.AddSeries(lbls.Copy(), fp, chks)
 		}, labels.MustNewMatcher(labels.MatchEqual, "", ""))
 		if err != nil {
@@ -267,7 +267,7 @@ type compactedIndex struct {
 	periodConfig  config.PeriodConfig
 
 	indexChunks     []chunk.Chunk
-	deleteChunks    map[string][]index.ChunkMeta
+	deleteChunks    map[string][]tsdbindex.ChunkMeta
 	seriesToCleanup map[string]struct{}
 }
 
@@ -279,7 +279,7 @@ func newCompactedIndex(ctx context.Context, tableName, userID, workingDir string
 		workingDir:      workingDir,
 		periodConfig:    periodConfig,
 		tableInterval:   retention.ExtractIntervalFromTableName(tableName),
-		deleteChunks:    map[string][]index.ChunkMeta{},
+		deleteChunks:    map[string][]tsdbindex.ChunkMeta{},
 		seriesToCleanup: map[string]struct{}{},
 	}
 }
@@ -355,7 +355,7 @@ func (c *compactedIndex) Cleanup() {}
 
 // ToIndexFile creates an indexFile from the chunksmetas stored in the builder.
 // Before building the index, it takes care of the lined up updates i.e deletes and adding of new chunks.
-func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
+func (c *compactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	for seriesID, chks := range c.deleteChunks {
 		for _, chk := range chks {
 			chunkFound, err := c.builder.DropChunk(seriesID, chk)
@@ -376,7 +376,7 @@ func (c *compactedIndex) ToIndexFile() (index_shipper.Index, error) {
 		ls := b.Labels()
 
 		approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-		err := c.builder.InsertChunk(ls.String(), index.ChunkMeta{
+		err := c.builder.InsertChunk(ls.String(), tsdbindex.ChunkMeta{
 			Checksum: chk.Checksum,
 			MinTime:  int64(chk.From),
 			MaxTime:  int64(chk.Through),

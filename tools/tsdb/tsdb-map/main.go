@@ -12,8 +12,8 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"

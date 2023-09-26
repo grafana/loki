@@ -15,11 +15,11 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
+	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
+	shipperutil "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 type CompactedIndex struct {
@@ -165,7 +165,7 @@ func (c *CompactedIndex) CleanupSeries(userID []byte, lbls labels.Labels) error 
 	return c.seriesCleaner.CleanupSeries(userID, lbls)
 }
 
-func (c *CompactedIndex) ToIndexFile() (shipper_index.Index, error) {
+func (c *CompactedIndex) ToIndexFile() (shipperindex.Index, error) {
 	if c.boltdbTx != nil {
 		err := c.boltdbTx.Commit()
 		if err != nil {
@@ -178,7 +178,7 @@ func (c *CompactedIndex) ToIndexFile() (shipper_index.Index, error) {
 	if c.compactedFileRecreated {
 		fileNameFormat = "%s" + recreatedCompactedDBSuffix
 	}
-	fileName := fmt.Sprintf(fileNameFormat, shipper_util.BuildIndexFileName(c.tableName, uploaderName, fmt.Sprint(time.Now().Unix())))
+	fileName := fmt.Sprintf(fileNameFormat, shipperutil.BuildIndexFileName(c.tableName, uploaderName, fmt.Sprint(time.Now().Unix())))
 
 	idxFile := boltdb.BoltDBToIndexFile(c.compactedFile, fileName)
 	c.compactedFile = nil
@@ -211,11 +211,11 @@ type chunkIndexer struct {
 	scfg      config.SchemaConfig
 	tableName string
 
-	seriesStoreSchema series_index.SeriesStoreSchema
+	seriesStoreSchema seriesindex.SeriesStoreSchema
 }
 
 func newChunkIndexer(bucket *bbolt.Bucket, periodConfig config.PeriodConfig, tableName string) (*chunkIndexer, error) {
-	seriesStoreSchema, err := series_index.CreateSchema(periodConfig)
+	seriesStoreSchema, err := seriesindex.CreateSchema(periodConfig)
 	if err != nil {
 		return nil, err
 	}

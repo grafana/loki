@@ -22,7 +22,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	seriesindex "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 )
 
@@ -159,7 +158,7 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 	for itr.Next() {
 		if len(resp) == maxIndexEntriesPerResponse {
 			err := callback(&logproto.QueryIndexResponse{
-				QueryKey: util.QueryKey(query),
+				QueryKey: seriesindex.QueryKey(query),
 				Rows:     resp,
 			})
 			if err != nil {
@@ -176,7 +175,7 @@ func buildResponses(query seriesindex.Query, batch seriesindex.ReadBatchResult, 
 
 	if len(resp) != 0 {
 		err := callback(&logproto.QueryIndexResponse{
-			QueryKey: util.QueryKey(query),
+			QueryKey: seriesindex.QueryKey(query),
 			Rows:     resp,
 		})
 		if err != nil {

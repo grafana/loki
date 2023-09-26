@@ -9,8 +9,8 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 )
 
 const (

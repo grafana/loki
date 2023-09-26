@@ -7,8 +7,8 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"go.etcd.io/bbolt"
 
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -53,7 +53,7 @@ func (q *querier) QueryPages(ctx context.Context, queries []index.Query, callbac
 				}
 			}
 
-			return q.indexShipper.ForEach(ctx, table, userID, func(_ bool, idx shipper_index.Index) error {
+			return q.indexShipper.ForEach(ctx, table, userID, func(_ bool, idx shipperindex.Index) error {
 				boltdbIndexFile, ok := idx.(*IndexFile)
 				if !ok {
 					return fmt.Errorf("unexpected index type %T", idx)
