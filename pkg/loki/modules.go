@@ -63,7 +63,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
-	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
+	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
 	"github.com/grafana/loki/pkg/util/httpreq"
@@ -1168,7 +1168,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 

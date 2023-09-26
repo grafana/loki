@@ -13,10 +13,10 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
+	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
-	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
 var (
@@ -62,7 +62,7 @@ func main() {
 		panic("dest is required")
 	}
 
-	db, err := shipper_util.SafeOpenBoltdbFile(*source)
+	db, err := util.SafeOpenBoltdbFile(*source)
 	if err != nil {
 		panic(err)
 	}
@@ -78,7 +78,7 @@ func main() {
 
 	// loads everything into memory.
 	if err := db.View(func(t *bbolt.Tx) error {
-		return compactor.ForEachChunk(context.Background(), t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
+		return boltdbcompactor.ForEachChunk(context.Background(), t.Bucket([]byte("index")), periodConfig, func(entry retention.ChunkEntry) (bool, error) {
 			builder.AddSeries(entry.Labels, model.Fingerprint(entry.Labels.Hash()), []index.ChunkMeta{{
 				Checksum: extractChecksumFromChunkID(entry.ChunkID),
 				MinTime:  int64(entry.From),
