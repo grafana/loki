@@ -12,7 +12,6 @@ import "pkg/querier/queryrange/queryrangebase/definitions/definitions.proto";
 import "pkg/querier/queryrange/queryrangebase/queryrange.proto";
 
 option go_package = "github.com/grafana/loki/pkg/querier/queryrange";
-
 option (gogoproto.marshaler_all) = true;
 option (gogoproto.unmarshaler_all) = true;
 

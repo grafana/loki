@@ -4,8 +4,8 @@ package frontendv2pb;
 
 import "github.com/grafana/dskit/httpgrpc/httpgrpc.proto";
 import "gogoproto/gogo.proto";
-import "pkg/querier/stats/stats.proto";
 import "pkg/querier/queryrange/queryrange.proto";
+import "pkg/querier/stats/stats.proto";
 
 option go_package = "frontendv2pb";
 option (gogoproto.marshaler_all) = true;
@@ -18,7 +18,7 @@ service FrontendForQuerier {
 
 message QueryResultRequest {
   uint64 queryID = 1;
-  httpgrpc.HTTPResponse httpResponse = 2 [deprecated=true]; // or mark as reserved
+  httpgrpc.HTTPResponse httpResponse = 2 [deprecated = true]; // or mark as reserved
   stats.Stats stats = 3;
   queryrange.QueryResponse queryResponse = 4;
 
