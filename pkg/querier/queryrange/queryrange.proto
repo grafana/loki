@@ -146,21 +146,6 @@ message IndexStatsResponse {
   ];
 }
 
-message VolumeRequest {
-  int64 from = 1 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  int64 through = 2 [
-    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
-    (gogoproto.nullable) = false
-  ];
-  string matchers = 3;
-  int32 limit = 4;
-  int64 step = 5;
-  repeated string targetLabels = 6;
-}
-
 message VolumeResponse {
   logproto.VolumeResponse response = 1 [(gogoproto.customtype) = "github.com/grafana/loki/pkg/logproto.VolumeResponse"];
   repeated definitions.PrometheusResponseHeader Headers = 2 [

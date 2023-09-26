@@ -3929,11 +3929,6 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 &nbsp;
 
 ```yaml
-# (deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled
-# for the chunks & query results cache if no other cache is configured).
-# CLI flag: -<prefix>.cache.enable-fifocache
-[enable_fifocache: <boolean> | default = false]
-
 # The default validity of entries for caches unless overridden.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration> | default = 1h]
@@ -4084,34 +4079,13 @@ embedded_cache:
   # CLI flag: -<prefix>.embedded-cache.max-size-mb
   [max_size_mb: <int> | default = 100]
 
-  # The time to live for items in the cache before they get purged.
-  # CLI flag: -<prefix>.embedded-cache.ttl
-  [ttl: <duration> | default = 1h]
-
-fifocache:
-  # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
-  # applied.
-  # CLI flag: -<prefix>.fifocache.max-size-bytes
-  [max_size_bytes: <string> | default = "1GB"]
-
-  # deprecated: Maximum number of entries in the cache.
-  # CLI flag: -<prefix>.fifocache.max-size-items
+  # Maximum number of entries in the cache.
+  # CLI flag: -<prefix>.embedded-cache.max-size-items
   [max_size_items: <int> | default = 0]
 
   # The time to live for items in the cache before they get purged.
-  # CLI flag: -<prefix>.fifocache.ttl
+  # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
-
-  # Deprecated (use ttl instead): The expiry duration for the cache.
-  # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 0s]
-
-  # Deprecated (use max-size-items or max-size-bytes instead): The number of
-  # entries to cache.
-  # CLI flag: -<prefix>.fifocache.size
-  [size: <int> | default = 0]
-
-  [purgeinterval: <duration>]
 
 # The maximum number of concurrent asynchronous writeback cache can occur.
 # CLI flag: -<prefix>.max-async-cache-write-back-concurrency
