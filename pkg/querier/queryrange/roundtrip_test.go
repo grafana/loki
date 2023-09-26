@@ -918,9 +918,10 @@ func TestTripperware_RequiredLabels(t *testing.T) {
 				EndTs:     testTime,
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
-				// See loghttp.step
-				Step:      time.Duration(int(math.Max(math.Floor(end.Sub(start).Seconds()/250), 1))).Milliseconds(),
 			}
+			// See loghttp.step
+			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
+			lreq.Step = step.Milliseconds()
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
@@ -1023,6 +1024,9 @@ func TestTripperware_RequiredNumberLabels(t *testing.T) {
 				Direction: logproto.FORWARD,
 				Path:      "/loki/api/v1/query_range",
 			}
+			// See loghttp.step
+			step := time.Duration(int(math.Max(math.Floor(lreq.EndTs.Sub(lreq.StartTs).Seconds()/250), 1))) * time.Second
+			lreq.Step = step.Milliseconds()
 
 			ctx := user.InjectOrgID(context.Background(), "1")
 
