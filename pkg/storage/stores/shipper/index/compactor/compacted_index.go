@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
+	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 

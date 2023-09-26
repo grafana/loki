@@ -21,7 +21,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/prometheus/prometheus/storage"
 
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 // Index returns an IndexReader against the block.

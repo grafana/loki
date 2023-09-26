@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 type IndexWriter interface {

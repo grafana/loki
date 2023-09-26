@@ -7,7 +7,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 // Index adapter for a function which returns an index when queried.

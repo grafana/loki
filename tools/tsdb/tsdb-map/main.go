@@ -14,9 +14,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
 )
 
 var (

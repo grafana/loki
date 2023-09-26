@@ -18,8 +18,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
+	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index/indexfile"
 )
 
 type Config struct {
