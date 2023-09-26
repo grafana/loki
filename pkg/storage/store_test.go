@@ -30,7 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexclient"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -1190,7 +1190,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 
 			cfg := Config{
 				FSConfig: local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-				BoltDBShipperConfig: shipper.Config{
+				BoltDBShipperConfig: indexclient.Config{
 					Config: shipperConfig,
 				},
 				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
@@ -1507,7 +1507,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.NoError(t, err)
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
+	boltdbShipperConfig := indexclient.Config{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
