@@ -843,7 +843,9 @@ func TestPostQueries(t *testing.T) {
 		util_log.Logger,
 		handler,
 		handler,
-		handler,
+		base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
+			return nil, nil
+		}),
 		handler,
 		handler,
 		handler,
