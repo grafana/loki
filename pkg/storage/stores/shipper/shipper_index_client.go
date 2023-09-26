@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
 )
 
@@ -43,7 +43,7 @@ func (cfg *Config) Validate() error {
 }
 
 type writer interface {
-	ForEach(ctx context.Context, tableName string, callback func(boltdb *bbolt.DB) error) error
+	ForEach(ctx context.Context, tableName string, callback func(b *bbolt.DB) error) error
 	BatchWrite(ctx context.Context, batch series_index.WriteBatch) error
 	Stop()
 }
@@ -82,7 +82,7 @@ func (i *IndexClient) init(storageClient client.ObjectClient, limits downloads.L
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
 	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, tenantFilter,
-		indexfile.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
+		boltdb.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
 	if err != nil {
 		return err
 	}

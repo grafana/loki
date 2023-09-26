@@ -1,4 +1,4 @@
-package indexfile
+package boltdb
 
 import (
 	"context"

@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
-	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
@@ -71,7 +71,7 @@ func TestCompactedIndex_IndexProcessor(t *testing.T) {
 				require.NoError(t, os.Remove(path))
 			}()
 
-			modifiedBoltDB := indexFile.(*indexfile.IndexFile).GetBoltDB()
+			modifiedBoltDB := indexFile.(*boltdb.IndexFile).GetBoltDB()
 
 			err = modifiedBoltDB.View(func(tx *bbolt.Tx) error {
 				return tx.Bucket(local.IndexBucketName).ForEach(func(k, _ []byte) error {
