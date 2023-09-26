@@ -1,5 +1,6 @@
 ## Main
 
+- [10719](https://github.com/grafana/loki/pull/10719) **JoaoBraveCoding**: Overrides default replication factor when 1xMedium size is picked
 - [10600](https://github.com/grafana/loki/pull/10600) **periklis**: Update Loki operand to v2.9.1
 - [10545](https://github.com/grafana/loki/pull/10545) **xperimental**: Update gateway arguments to enable namespace extraction
 - [10558](https://github.com/grafana/loki/pull/10558) **periklis**: Upgrade dashboards for for Loki v2.9.0

@@ -44,7 +44,6 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, defs.Size, opt.Stack.Size)
 		require.Equal(t, defs.Limits, opt.Stack.Limits)
-		require.Equal(t, defs.ReplicationFactor, opt.Stack.ReplicationFactor)
 		require.Equal(t, defs.Replication, opt.Stack.Replication)
 		require.Equal(t, defs.ManagementState, opt.Stack.ManagementState)
 		require.Equal(t, defs.Template.Ingester, opt.Stack.Template.Ingester)
@@ -57,6 +56,46 @@ func TestApplyUserOptions_OverrideDefaults(t *testing.T) {
 		// Require distributor tolerations and nodeselectors to use defaults
 		require.Equal(t, defs.Template.Distributor.Tolerations, opt.Stack.Template.Distributor.Tolerations)
 		require.Equal(t, defs.Template.Distributor.NodeSelector, opt.Stack.Template.Distributor.NodeSelector)
+	}
+}
+
+func TestOverrideDefaultFactor_ForOneXMedium(t *testing.T) {
+	allSizes := []lokiv1.LokiStackSizeType{
+		lokiv1.SizeOneXDemo,
+		lokiv1.SizeOneXExtraSmall,
+		lokiv1.SizeOneXSmall,
+		lokiv1.SizeOneXMedium,
+	}
+	for _, size := range allSizes {
+		opt := Options{
+			Name:      "abcd",
+			Namespace: "efgh",
+			Stack: lokiv1.LokiStackSpec{
+				Size: size,
+				Replication: &lokiv1.ReplicationSpec{
+					Zones: []lokiv1.ZoneSpec{
+						{
+							MaxSkew: 1,
+							TopologyKey: "us-east-1a",
+						},
+						{
+							MaxSkew: 1,
+							TopologyKey: "us-east-1b",
+						},
+					},
+				},
+			},
+			Timeouts: defaultTimeoutConfig,
+		}
+		err := ApplyDefaultSettings(&opt)
+		defs := internal.StackSizeTable[size]
+
+		require.NoError(t, err)
+		if size != lokiv1.SizeOneXMedium {
+			require.Equal(t, defs.Replication.Factor, opt.Stack.Replication.Factor)
+		} else {
+		    require.Equal(t, int32(2), opt.Stack.Replication.Factor)	
+		}
 	}
 }
 

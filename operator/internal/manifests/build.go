@@ -129,6 +129,16 @@ func ApplyDefaultSettings(opts *Options) error {
 		},
 	}
 
+	// nolint:staticcheck
+	// In a zone aware deployment if the T-Shirt is 1xmedium then we will want
+	// to not set the default value of factor 3 but 2 instead to not bring the
+	// stack down if 1 zone goes down
+	if opts.Stack.Size == lokiv1.SizeOneXMedium && opts.Stack.Replication != nil && opts.Stack.Replication.Factor == 0 && opts.Stack.ReplicationFactor == 0 {
+		strictOverrides.Replication = &lokiv1.ReplicationSpec{
+			Factor: 2,
+		}
+	}
+
 	if err := mergo.Merge(spec, strictOverrides, mergo.WithOverride); err != nil {
 		return kverrors.Wrap(err, "failed to merge strict defaults")
 	}
