@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"net/http"
@@ -194,9 +195,6 @@ func TestMetricsTripperware(t *testing.T) {
 
 	ctx := user.InjectOrgID(context.Background(), "1")
 
-	rt, err := newfakeRoundTripper()
-	require.NoError(t, err)
-
 	// Test MaxQueryBytesRead limit
 	statsCount, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 2000})
 	queryCount, queryHandler := counter()
@@ -217,17 +215,12 @@ func TestMetricsTripperware(t *testing.T) {
 
 	// testing retry
 	_, statsHandler = indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
-	retries, queryHandler := counter()
+	retries, queryHandler := counterWithError(errors.New("handle error"))
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	// 3 retries configured.
 	require.GreaterOrEqual(t, *retries, 3)
 	require.Error(t, err)
-	rt.Close()
-
-	rt, err = newfakeRoundTripper()
-	require.NoError(t, err)
-	defer rt.Close()
 
 	// Configure with cache
 	tpw, stopper, err = NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{
@@ -1341,6 +1334,17 @@ func counter() (*int, base.Handler) {
 		defer lock.Unlock()
 		count++
 		return base.NewEmptyPrometheusResponse(), nil
+	})
+}
+
+func counterWithError(err error) (*int, base.Handler) {
+	count := 0
+	var lock sync.Mutex
+	return &count, base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
+		lock.Lock()
+		defer lock.Unlock()
+		count++
+		return nil, err
 	})
 }
 

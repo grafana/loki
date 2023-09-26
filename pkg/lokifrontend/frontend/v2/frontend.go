@@ -365,6 +365,8 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	case resp := <-freq.response:
 		// TODO: track GRPC response
 
+		// TODO: handle errors from querier.
+
 		if resp.QueryResponse != nil {
 			switch concrete := resp.QueryResponse.Response.(type) {
 			case *queryrange.QueryResponse_Series:
