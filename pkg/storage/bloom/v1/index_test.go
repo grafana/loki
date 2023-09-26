@@ -10,10 +10,10 @@ import (
 )
 
 // does not include a real bloom offset
-func mkBasicSeries(n int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) []Series {
-	var seriesList []Series
+func mkBasicSeries(n int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) []SeriesWithOffset {
+	var seriesList []SeriesWithOffset
 	for i := 0; i < n; i++ {
-		var series Series
+		var series SeriesWithOffset
 		step := (throughFp - fromFp) / (model.Fingerprint(n))
 		series.Fingerprint = fromFp + model.Fingerprint(i)*step
 		timeDelta := fromTs + (throughTs-fromTs)/model.Time(n)*model.Time(i)
@@ -29,7 +29,7 @@ func mkBasicSeries(n int, fromFp, throughFp model.Fingerprint, fromTs, throughTs
 	return seriesList
 }
 
-func mkBasicSeriesPage(series []Series) SeriesPage {
+func mkBasicSeriesPage(series []SeriesWithOffset) SeriesPage {
 	pg := SeriesPage{
 		Series: series,
 	}
@@ -63,11 +63,14 @@ func mkBasicSeriesPage(series []Series) SeriesPage {
 	return pg
 }
 
-func mkBasicSeriesPages(pages, series int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (res []SeriesPage) {
+func mkBasicSeriesPages(pages, series int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (res []SeriesPage, resultingSeries []Series) {
 	for i := 0; i < pages; i++ {
 		fpStep := (throughFp - fromFp) / model.Fingerprint(pages)
 		series := mkBasicSeries(series/pages, fromFp+fpStep*model.Fingerprint(i), fromFp+fpStep*model.Fingerprint(i+1), fromTs, throughTs)
 		res = append(res, mkBasicSeriesPage(series))
+		for _, s := range series {
+			resultingSeries = append(resultingSeries, s.Series)
+		}
 	}
 	return
 }
@@ -85,40 +88,9 @@ func TestBloomOffsetEncoding(t *testing.T) {
 }
 
 func TestSeriesEncoding(t *testing.T) {
-	src := Series{
-		Fingerprint: model.Fingerprint(1),
-		Offset:      BloomOffset{PageOffset: 2, ByteOffset: 3},
-		Chunks: []ChunkRef{
-			{
-				Start:    1,
-				End:      2,
-				Checksum: 3,
-			},
-			{
-				Start:    4,
-				End:      5,
-				Checksum: 6,
-			},
-		},
-	}
-
-	enc := &encoding.Encbuf{}
-	src.Encode(enc, 0, BloomOffset{})
-
-	dec := encoding.DecWith(enc.Get())
-	var dst Series
-	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
-	require.Nil(t, err)
-	require.Equal(t, src.Fingerprint, fp)
-	require.Equal(t, src.Offset, offset)
-	require.Equal(t, src, dst)
-}
-
-func TestSeriesPageEncoding(t *testing.T) {
-	series := []Series{
-		{
+	src := SeriesWithOffset{
+		Series: Series{
 			Fingerprint: model.Fingerprint(1),
-			Offset:      BloomOffset{PageOffset: 2, ByteOffset: 3},
 			Chunks: []ChunkRef{
 				{
 					Start:    1,
@@ -132,21 +104,58 @@ func TestSeriesPageEncoding(t *testing.T) {
 				},
 			},
 		},
+		Offset: BloomOffset{PageOffset: 2, ByteOffset: 3},
+	}
+
+	enc := &encoding.Encbuf{}
+	src.Encode(enc, 0, BloomOffset{})
+
+	dec := encoding.DecWith(enc.Get())
+	var dst SeriesWithOffset
+	fp, offset, err := dst.Decode(&dec, 0, BloomOffset{})
+	require.Nil(t, err)
+	require.Equal(t, src.Fingerprint, fp)
+	require.Equal(t, src.Offset, offset)
+	require.Equal(t, src, dst)
+}
+
+func TestSeriesPageEncoding(t *testing.T) {
+	series := []SeriesWithOffset{
 		{
-			Fingerprint: model.Fingerprint(2),
-			Offset:      BloomOffset{PageOffset: 2, ByteOffset: 3},
-			Chunks: []ChunkRef{
-				{
-					Start:    7,
-					End:      8,
-					Checksum: 9,
+			Series: Series{
+				Chunks: []ChunkRef{
+					{
+						Start:    1,
+						End:      2,
+						Checksum: 3,
+					},
+					{
+						Start:    4,
+						End:      5,
+						Checksum: 6,
+					},
 				},
-				{
-					Start:    10,
-					End:      11,
-					Checksum: 12,
+				Fingerprint: model.Fingerprint(1),
+			},
+			Offset: BloomOffset{PageOffset: 2, ByteOffset: 3},
+		},
+		{
+			Series: Series{
+				Fingerprint: model.Fingerprint(2),
+				Chunks: []ChunkRef{
+					{
+						Start:    7,
+						End:      8,
+						Checksum: 9,
+					},
+					{
+						Start:    10,
+						End:      11,
+						Checksum: 12,
+					},
 				},
 			},
+			Offset: BloomOffset{PageOffset: 2, ByteOffset: 3},
 		},
 	}
 

@@ -28,10 +28,18 @@ func NewBlock(reader BlockReader) *Block {
 	}
 }
 
-func (b *Block) LoadHeaders() error {
+func (b *Block) LoadIndex() ([]byte, error) {
 	data, err := io.ReadAll(b.reader.Index())
 	if err != nil {
-		return errors.Wrap(err, "reading index")
+		return nil, errors.Wrap(err, "reading index")
+	}
+	return data, nil
+}
+
+func (b *Block) LoadHeaders() error {
+	data, err := b.LoadIndex()
+	if err != nil {
+		return err
 	}
 
 	if err := b.index.Decode(data); err != nil {
@@ -39,6 +47,10 @@ func (b *Block) LoadHeaders() error {
 	}
 
 	return nil
+}
+
+func (b *Block) Series() *LazySeriesIter {
+	return NewLazySeriesIter(b)
 }
 
 type ByteReader struct {
