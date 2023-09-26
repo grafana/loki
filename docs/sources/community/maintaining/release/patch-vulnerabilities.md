@@ -1,6 +1,6 @@
 ---
-title: Patch Vulnerabilities
-description: Patch Vulnerabilities
+title: Patch vulnerabilities
+description: Describes the procedure how to patch Loki to mitigate vulnerabilities.
 ---
 # Patch Vulnerabilities
 
@@ -20,9 +20,9 @@ Grafana Loki dependencies can be
 
 1. Go dependencies in `go.mod`
 
-1. Go compiler itself
+1. The Go compiler itself
 
-1. Grafana Loki docker dependencies (example: base images)
+1. Grafana Loki Docker dependencies, for example, the base images
 
 Before start patching vulnerabilities, know what are you patching. It can be one or more from sources mentioned above. Use `#security-go`, `#security` slack channels to clarify.
 
@@ -49,12 +49,12 @@ Before start patching vulnerabilities, know what are you patching. It can be one
 		```
 	1. [Backport]({{< relref "./backport-commits" >}}) it to `release-$VERSION_PREFIX` branch.
 
-	1. Repeat for each Go dependencies
+	1. Repeat for each Go dependency
 
 1. [Patch Go compiler]({{< relref "./patch-go-version" >}}).
 
-1. Patch Grafana Loki docker dependencies(example: alpine images).
+1. Patch Grafana Loki Docker dependencies, for example: Alphine Linux base images).
 
-   1. Update docker image version. [Example PR](https://github.com/grafana/loki/pull/10573).
+   1. Update Docker image version. [Example PR](https://github.com/grafana/loki/pull/10573).
 
    1. [Backport]({{< relref "./backport-commits" >}}) to `release-$VERSION_PREFIX` branch
