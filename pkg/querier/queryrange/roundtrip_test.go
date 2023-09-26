@@ -292,7 +292,7 @@ func TestLogFilterTripperware(t *testing.T) {
 
 	// testing retry
 	_, statsHandler := indexStatsResult(logproto.IndexStatsResponse{Bytes: 10})
-	retries, queryHandler := counter()
+	retries, queryHandler := counterWithError(errors.New("handler failed"))
 	h = getQueryAndStatsHandler(queryHandler, statsHandler)
 	_, err = tpw.Wrap(h).Do(ctx, lreq)
 	require.GreaterOrEqual(t, *retries, 3)
@@ -531,6 +531,7 @@ func TestVolumeTripperware(t *testing.T) {
 
 		volumeResp, err := tpw.Wrap(h).Do(ctx, lreq)
 		require.NoError(t, err)
+		// TODO: this is totally broken
 		require.Equal(t, 2, *count) // 2 queries from splitting
 
 		expected := base.PrometheusData{
@@ -814,6 +815,7 @@ func TestLogNoFilter(t *testing.T) {
 }
 
 func TestRegexpParamsSupport(t *testing.T) {
+	// TODO: This one times out
 	l := WithSplitByLimits(fakeLimits{maxSeries: 1, maxQueryParallelism: 2}, 4*time.Hour)
 	tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, l, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 	if stopper != nil {
@@ -1355,7 +1357,11 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-		return ValueToResponse(v)
+		params, err := paramsFromRequest(r)
+		if err != nil {
+			return nil, err
+		}
+		return ValueToResponse(v, params)
 	})
 }
 
@@ -1409,8 +1415,9 @@ func newFakeHandler(calls ...base.Handler) *fakeHandler {
 func (f *fakeHandler) Do(ctx context.Context, req base.Request) (base.Response, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
+	r, err := f.calls[f.count].Do(ctx, req)
 	f.count++
-	return f.calls[f.count].Do(ctx, req)
+	return r, err
 }
 
 type fakeRoundTripper struct {

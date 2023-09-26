@@ -243,7 +243,7 @@ func ResultToResponse(result logqlmodel.Result, params logql.Params) (*QueryResp
 	return nil, fmt.Errorf("unsupported data type: %t", result.Data)
 }
 
-func ValueToResponse(v parser.Value) (queryrangebase.Response, error) {
+func ValueToResponse(v parser.Value, params logql.Params) (queryrangebase.Response, error) {
 	switch data := v.(type) {
 	case promql.Vector:
 		sampleStream, err := queryrangebase.FromValue(data)
@@ -288,6 +288,16 @@ func ValueToResponse(v parser.Value) (queryrangebase.Response, error) {
 					Result:     sampleStream,
 				},
 			},
+		}, nil
+	case logqlmodel.Streams:
+		return &LokiResponse{
+			Direction: params.Direction(),
+			Limit:     params.Limit(),
+			Data: LokiData{
+				ResultType: loghttp.ResultTypeStream,
+				Result:     data,
+			},
+			Status:     "success",
 		}, nil
 	default:
 		return nil, fmt.Errorf("unexpected praser.Value type: %T", v)
