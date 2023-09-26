@@ -16,7 +16,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -51,14 +51,14 @@ type tsdbManager struct {
 
 	sync.RWMutex
 
-	shipper indexshipper.IndexShipper
+	shipper shipper.IndexShipper
 }
 
 func NewTSDBManager(
 	name,
 	nodeName,
 	dir string,
-	shipper indexshipper.IndexShipper,
+	indexShipper shipper.IndexShipper,
 	tableRange config.TableRange,
 	schemaCfg config.SchemaConfig,
 	logger log.Logger,
@@ -72,7 +72,7 @@ func NewTSDBManager(
 		metrics:    metrics,
 		tableRange: tableRange,
 		schemaCfg:  schemaCfg,
-		shipper:    shipper,
+		shipper:    indexShipper,
 	}
 }
 
@@ -156,7 +156,7 @@ type chunkInfo struct {
 	tsdbFormat int
 }
 
-func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.IndexShipper, tableRanges []config.TableRange) (err error) {
+func (m *tsdbManager) buildFromHead(heads *tenantHeads, indexShipper shipper.IndexShipper, tableRanges []config.TableRange) (err error) {
 	periods := make(map[string]*Builder)
 
 	if err := heads.forAll(func(user string, ls labels.Labels, fp uint64, chks index.ChunkMetas) error {
@@ -235,7 +235,7 @@ func (m *tsdbManager) buildFromHead(heads *tenantHeads, shipper indexshipper.Ind
 			return err
 		}
 
-		if err := shipper.AddIndex(p, "", loaded); err != nil {
+		if err := indexShipper.AddIndex(p, "", loaded); err != nil {
 			return err
 		}
 	}
@@ -270,8 +270,8 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 	}()
 
 	var (
-		tableRanges = []config.TableRange{m.tableRange}
-		shipper     = m.shipper
+		tableRanges  = []config.TableRange{m.tableRange}
+		indexShipper = m.shipper
 	)
 
 	if legacy {
@@ -280,7 +280,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 
 		// do not ship legacy WAL files.
 		// TSDBs built from these WAL files would get loaded on starting tsdbManager
-		shipper = indexshipper.Noop{}
+		indexShipper = shipper.Noop{}
 	}
 
 	level.Debug(m.log).Log("msg", "recovering tenant heads")
@@ -290,7 +290,7 @@ func (m *tsdbManager) BuildFromWALs(t time.Time, ids []WALIdentifier, legacy boo
 			return errors.Wrap(err, "building TSDB from WALs")
 		}
 
-		err := m.buildFromHead(tmp, shipper, tableRanges)
+		err := m.buildFromHead(tmp, indexShipper, tableRanges)
 		if err != nil {
 			return err
 		}

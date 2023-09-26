@@ -15,8 +15,8 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -26,21 +26,21 @@ const (
 )
 
 type mockIndexShipper struct {
-	addedIndexes map[string][]shipper_index.Index
+	addedIndexes map[string][]shipperindex.Index
 }
 
 func newMockIndexShipper() Shipper {
 	return &mockIndexShipper{
-		addedIndexes: make(map[string][]shipper_index.Index),
+		addedIndexes: make(map[string][]shipperindex.Index),
 	}
 }
 
-func (m *mockIndexShipper) AddIndex(tableName, _ string, index shipper_index.Index) error {
+func (m *mockIndexShipper) AddIndex(tableName, _ string, index shipperindex.Index) error {
 	m.addedIndexes[tableName] = append(m.addedIndexes[tableName], index)
 	return nil
 }
 
-func (m *mockIndexShipper) ForEach(_ context.Context, tableName, _ string, callback shipper_index.ForEachIndexCallback) error {
+func (m *mockIndexShipper) ForEach(_ context.Context, tableName, _ string, callback shipperindex.ForEachIndexCallback) error {
 	for _, idx := range m.addedIndexes[tableName] {
 		if err := callback(false, idx); err != nil {
 			return err
@@ -227,7 +227,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
-					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
+					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipperindex.Index) error {
 						return callback(index.(*IndexFile).GetBoltDB())
 					})
 				},
@@ -247,7 +247,7 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			require.Len(t, indexShipper.addedIndexes[table.name], 2)
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
 				func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
-					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
+					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipperindex.Index) error {
 						return callback(index.(*IndexFile).GetBoltDB())
 					})
 				},
@@ -370,7 +370,7 @@ func TestTable_ImmutableUploads(t *testing.T) {
 	}
 
 	// clear dbs handed over to shipper
-	mockIndexShipper.addedIndexes = map[string][]shipper_index.Index{}
+	mockIndexShipper.addedIndexes = map[string][]shipperindex.Index{}
 
 	// force handover of dbs
 	require.NoError(t, table.HandoverIndexesToShipper(true))

@@ -12,12 +12,12 @@ import (
 
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 type indexShipperIterator interface {
-	ForEachConcurrent(ctx context.Context, tableName, userID string, callback shipper_index.ForEachIndexCallback) error
+	ForEachConcurrent(ctx context.Context, tableName, userID string, callback shipperindex.ForEachIndexCallback) error
 }
 
 // indexShipperQuerier is used for querying index from the shipper.
@@ -42,7 +42,7 @@ func (i *indexShipperQuerier) indices(ctx context.Context, from, through model.T
 		// Ensure we query both per tenant and multitenant TSDBs
 		idxBuckets := indexBuckets(from, through, []config.TableRange{i.tableRange})
 		for _, bkt := range idxBuckets {
-			if err := i.shipper.ForEachConcurrent(ctx, bkt.prefix, user, func(multitenant bool, idx shipper_index.Index) error {
+			if err := i.shipper.ForEachConcurrent(ctx, bkt.prefix, user, func(multitenant bool, idx shipperindex.Index) error {
 				impl, ok := idx.(Index)
 				if !ok {
 					return fmt.Errorf("unexpected shipper index type: %T", idx)
@@ -84,7 +84,7 @@ func (i *indexShipperQuerier) Close() error {
 	return nil
 }
 
-func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
+func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, from, through model.Time, res []ChunkRef, shard *tsdbindex.ShardAnnotation, matchers ...*labels.Matcher) ([]ChunkRef, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func (i *indexShipperQuerier) GetChunkRefs(ctx context.Context, userID string, f
 	return idx.GetChunkRefs(ctx, userID, from, through, res, shard, matchers...)
 }
 
-func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *index.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
+func (i *indexShipperQuerier) Series(ctx context.Context, userID string, from, through model.Time, res []Series, shard *tsdbindex.ShardAnnotation, matchers ...*labels.Matcher) ([]Series, error) {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return nil, err
@@ -116,7 +116,7 @@ func (i *indexShipperQuerier) LabelValues(ctx context.Context, userID string, fr
 	return idx.LabelValues(ctx, userID, from, through, name, matchers...)
 }
 
-func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, through model.Time, acc IndexStatsAccumulator, shard *tsdbindex.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err
@@ -125,7 +125,7 @@ func (i *indexShipperQuerier) Stats(ctx context.Context, userID string, from, th
 	return idx.Stats(ctx, userID, from, through, acc, shard, shouldIncludeChunk, matchers...)
 }
 
-func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *index.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
+func (i *indexShipperQuerier) Volume(ctx context.Context, userID string, from, through model.Time, acc VolumeAccumulator, shard *tsdbindex.ShardAnnotation, shouldIncludeChunk shouldIncludeChunk, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) error {
 	idx, err := i.indices(ctx, from, through, userID)
 	if err != nil {
 		return err

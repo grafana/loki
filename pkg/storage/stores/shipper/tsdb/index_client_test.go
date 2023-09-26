@@ -7,27 +7,25 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-
-	"github.com/grafana/loki/pkg/logproto"
-
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/config"
-	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 )
 
 type mockIndexShipperIndexIterator struct {
 	tables map[string][]*TSDBFile
 }
 
-func (m mockIndexShipperIndexIterator) ForEachConcurrent(ctx context.Context, tableName, userID string, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEachConcurrent(ctx context.Context, tableName, userID string, callback shipperindex.ForEachIndexCallback) error {
 	return m.ForEach(ctx, tableName, userID, callback)
 }
 
-func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ string, callback index_shipper.ForEachIndexCallback) error {
+func (m mockIndexShipperIndexIterator) ForEach(_ context.Context, tableName, _ string, callback shipperindex.ForEachIndexCallback) error {
 	indexes := m.tables[tableName]
 	for _, idx := range indexes {
 		if err := callback(false, idx); err != nil {

@@ -8,7 +8,7 @@ import (
 	"github.com/prometheus/prometheus/model/labels"
 
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
@@ -25,7 +25,7 @@ type ChunkRef struct {
 }
 
 type IndexCfg struct {
-	indexshipper.Config `yaml:",inline"`
+	shipper.Config `yaml:",inline"`
 
 	CachePostings bool `yaml:"enable_postings_cache" category:"experimental"`
 }

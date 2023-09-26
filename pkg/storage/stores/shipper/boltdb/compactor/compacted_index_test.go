@@ -16,8 +16,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 

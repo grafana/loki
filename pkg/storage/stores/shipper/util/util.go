@@ -10,7 +10,6 @@ import (
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
-	"github.com/grafana/loki/pkg/storage/stores/series/index"
 )
 
 const maxStackSize = 8 * 1024
@@ -64,23 +63,23 @@ func safeOpenBoltDbFile(path string, ret chan *result) {
 	res.err = err
 }
 
-func QueryKey(q index.Query) string {
-	ret := q.TableName + sep + q.HashValue
+// func QueryKey(q index.Query) string {
+// 	ret := q.TableName + sep + q.HashValue
 
-	if len(q.RangeValuePrefix) != 0 {
-		ret += sep + string(q.RangeValuePrefix)
-	}
+// 	if len(q.RangeValuePrefix) != 0 {
+// 		ret += sep + string(q.RangeValuePrefix)
+// 	}
 
-	if len(q.RangeValueStart) != 0 {
-		ret += sep + string(q.RangeValueStart)
-	}
+// 	if len(q.RangeValueStart) != 0 {
+// 		ret += sep + string(q.RangeValueStart)
+// 	}
 
-	if len(q.ValueEqual) != 0 {
-		ret += sep + string(q.ValueEqual)
-	}
+// 	if len(q.ValueEqual) != 0 {
+// 		ret += sep + string(q.ValueEqual)
+// 	}
 
-	return ret
-}
+// 	return ret
+// }
 
 func GetUnsafeBytes(s string) []byte {
 	return *((*[]byte)(unsafe.Pointer(&s)))

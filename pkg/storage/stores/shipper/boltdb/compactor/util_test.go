@@ -21,7 +21,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -225,13 +225,13 @@ func newTestStore(t testing.TB, clientMetrics storage.ClientMetrics) *testStore 
 		MaxParallelGetChunk: 150,
 
 		BoltDBShipperConfig: boltdb.IndexCfg{
-			Config: indexshipper.Config{
+			Config: shipper.Config{
 				ActiveIndexDirectory: indexDir,
 				SharedStoreType:      "filesystem",
 				SharedStoreKeyPrefix: "index",
 				ResyncInterval:       1 * time.Millisecond,
 				IngesterName:         "foo",
-				Mode:                 indexshipper.ModeReadWrite,
+				Mode:                 shipper.ModeReadWrite,
 			},
 		},
 	}

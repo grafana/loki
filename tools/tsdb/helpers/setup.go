@@ -16,7 +16,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -44,7 +44,7 @@ func Setup() (loki.Config, services.Service, string, error) {
 		return c.Config, nil, "", fmt.Errorf("failed to ensure directory %s: %w", dir, err)
 	}
 
-	c.Config.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	c.Config.StorageConfig.TSDBShipperConfig.Mode = shipper.ModeReadOnly
 	util_log.InitLogger(&c.Server, prometheus.DefaultRegisterer, c.UseBufferedLogger, c.UseSyncLogger)
 
 	c.Config.StorageConfig.TSDBShipperConfig.ActiveIndexDirectory = filepath.Join(dir, "tsdb-active")

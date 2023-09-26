@@ -15,8 +15,8 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -149,7 +149,7 @@ func TestLoadTables(t *testing.T) {
 		// see if index shipper has the index files
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
 			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
-				return tm.indexShipper.ForEach(ctx, table, userID, func(_ bool, index index_shipper.Index) error {
+				return tm.indexShipper.ForEach(ctx, table, userID, func(_ bool, index shipperindex.Index) error {
 					return callback(index.(*IndexFile).GetBoltDB())
 				})
 			},

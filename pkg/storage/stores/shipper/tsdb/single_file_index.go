@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
-	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -33,7 +33,7 @@ type IndexOpts struct {
 	PostingsCache cache.Cache
 }
 
-func OpenShippableTSDB(p string, opts IndexOpts) (index_shipper.Index, error) {
+func OpenShippableTSDB(p string, opts IndexOpts) (shipperindex.Index, error) {
 	id, err := identifierFromPath(p)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func OpenShippableTSDB(p string, opts IndexOpts) (index_shipper.Index, error) {
 	return NewShippableTSDBFile(id, opts)
 }
 
-func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (index_shipper.Index, error) {
+func RebuildWithVersion(ctx context.Context, path string, desiredVer int) (shipperindex.Index, error) {
 	opts := IndexOpts{}
 	indexFile, err := OpenShippableTSDB(path, opts)
 	if err != nil {

@@ -16,9 +16,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
 )
 
 type indexClientMetrics struct {
@@ -38,7 +38,7 @@ func newIndexClientMetrics(r prometheus.Registerer) *indexClientMetrics {
 }
 
 type IndexCfg struct {
-	indexshipper.Config `yaml:",inline"`
+	shipper.Config      `yaml:",inline"`
 	BuildPerTenantIndex bool `yaml:"build_per_tenant_index"`
 }
 
@@ -65,7 +65,7 @@ type writer interface {
 
 type IndexClient struct {
 	cfg          IndexCfg
-	indexShipper indexshipper.IndexShipper
+	indexShipper shipper.IndexShipper
 	writer       writer
 	querier      Querier
 
@@ -96,13 +96,13 @@ func NewIndexClient(cfg IndexCfg, storageClient client.ObjectClient, limits down
 func (i *IndexClient) init(storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
-	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, tenantFilter,
+	i.indexShipper, err = shipper.NewIndexShipper(i.cfg.Config, storageClient, limits, tenantFilter,
 		OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
 	if err != nil {
 		return err
 	}
 
-	if i.cfg.Mode != indexshipper.ModeReadOnly {
+	if i.cfg.Mode != shipper.ModeReadOnly {
 		uploader, err := i.cfg.GetUniqueUploaderName()
 		if err != nil {
 			return err

@@ -29,7 +29,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -1006,11 +1006,11 @@ type timeRange struct {
 func TestStore_indexPrefixChange(t *testing.T) {
 	tempDir := t.TempDir()
 
-	shipperConfig := indexshipper.Config{}
+	shipperConfig := shipper.Config{}
 	flagext.DefaultValues(&shipperConfig)
 	shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	shipperConfig.CacheLocation = path.Join(tempDir, "cache")
-	shipperConfig.Mode = indexshipper.ModeReadWrite
+	shipperConfig.Mode = shipper.ModeReadWrite
 
 	cfg := Config{
 		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
@@ -1182,11 +1182,11 @@ func TestStore_MultiPeriod(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tempDir := t.TempDir()
 
-			shipperConfig := indexshipper.Config{}
+			shipperConfig := shipper.Config{}
 			flagext.DefaultValues(&shipperConfig)
 			shipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 			shipperConfig.CacheLocation = path.Join(tempDir, "cache")
-			shipperConfig.Mode = indexshipper.ModeReadWrite
+			shipperConfig.Mode = shipper.ModeReadWrite
 
 			cfg := Config{
 				FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
@@ -1510,7 +1510,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	boltdbShipperConfig.CacheLocation = path.Join(tempDir, "boltdb-shipper-cache")
-	boltdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	boltdbShipperConfig.Mode = shipper.ModeReadWrite
 	boltdbShipperConfig.IngesterName = ingesterName
 
 	// config for tsdb Shipper
@@ -1519,7 +1519,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
 	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
 	tsdbShipperConfig.CacheLocation = path.Join(tempDir, "tsdb-shipper-cache")
-	tsdbShipperConfig.Mode = indexshipper.ModeReadWrite
+	tsdbShipperConfig.Mode = shipper.ModeReadWrite
 	tsdbShipperConfig.IngesterName = ingesterName
 
 	// dates for activation of boltdb shippers

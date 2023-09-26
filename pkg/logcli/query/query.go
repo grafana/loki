@@ -26,7 +26,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	chunk "github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
@@ -431,9 +431,9 @@ func (q *Query) DoLocalQuery(out output.LogOutput, statistics bool, orgID string
 	if err != nil {
 		return err
 	}
-	conf.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
 	conf.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
-	conf.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	conf.StorageConfig.TSDBShipperConfig.Mode = shipper.ModeReadOnly
 	conf.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
 
 	querier, err := storage.NewStore(conf.StorageConfig, conf.ChunkStoreConfig, conf.SchemaConfig, limits, cm, prometheus.DefaultRegisterer, util_log.Logger)

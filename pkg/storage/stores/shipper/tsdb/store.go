@@ -19,19 +19,19 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/index"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
-	indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 )
 
 type IndexWriter interface {
-	Append(userID string, ls labels.Labels, fprint uint64, chks tsdb_index.ChunkMetas) error
+	Append(userID string, ls labels.Labels, fprint uint64, chks tsdbindex.ChunkMetas) error
 }
 
 type store struct {
 	index.Reader
-	indexShipper indexshipper.IndexShipper
+	indexShipper shipper.IndexShipper
 	indexWriter  IndexWriter
 	logger       log.Logger
 	stopOnce     sync.Once
@@ -70,16 +70,16 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
 
 	var sharedCache cache.Cache
-	if indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil {
+	if indexCfg.CachePostings && indexCfg.Mode == shipper.ModeReadOnly && idxCache != nil {
 		sharedCache = idxCache
 	}
 
-	openFn := func(p string) (indexshipper_index.Index, error) {
+	openFn := func(p string) (shipperindex.Index, error) {
 		return OpenShippableTSDB(p, IndexOpts{PostingsCache: sharedCache})
 	}
 
 	var err error
-	s.indexShipper, err = indexshipper.NewIndexShipper(
+	s.indexShipper, err = shipper.NewIndexShipper(
 		indexCfg.Config,
 		objectClient,
 		limits,
@@ -97,7 +97,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 	var indices []Index
 	opts := DefaultIndexClientOptions()
 
-	if indexCfg.Mode == indexshipper.ModeWriteOnly {
+	if indexCfg.Mode == shipper.ModeWriteOnly {
 		// We disable bloom filters on write nodes
 		// for the Stats() methods as it's of relatively little
 		// benefit when compared to the memory cost. The bloom filters
@@ -107,7 +107,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		opts.UseBloomFilters = false
 	}
 
-	if indexCfg.Mode != indexshipper.ModeReadOnly {
+	if indexCfg.Mode != shipper.ModeReadOnly {
 		nodeName, err := indexCfg.GetUniqueUploaderName()
 		if err != nil {
 			return err
@@ -164,7 +164,7 @@ func (s *store) Stop() {
 func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
-	metas := tsdb_index.ChunkMetas{
+	metas := tsdbindex.ChunkMetas{
 		{
 			Checksum: chk.ChunkRef.Checksum,
 			MinTime:  int64(chk.ChunkRef.From),
@@ -181,6 +181,6 @@ func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.T
 
 type failingIndexWriter struct{}
 
-func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdb_index.ChunkMetas) error {
+func (f failingIndexWriter) Append(_ string, _ labels.Labels, _ uint64, _ tsdbindex.ChunkMetas) error {
 	return fmt.Errorf("index writer is not initialized due to tsdb store being initialized in read-only mode")
 }

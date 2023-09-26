@@ -17,7 +17,6 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
 	util_test "github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	util_math "github.com/grafana/loki/pkg/util/math"
@@ -137,7 +136,7 @@ func TestGateway_QueryIndex(t *testing.T) {
 				end:   util_math.Min(j+maxIndexEntriesPerResponse, responseSize),
 			})
 		}
-		expectedQueryKey = util.QueryKey(query)
+		expectedQueryKey = index.QueryKey(query)
 		gateway.indexClients = []IndexClientWithRange{{
 			IndexClient: &mockIndexClient{response: &mockBatch{size: responseSize}},
 			TableRange: config.TableRange{
@@ -173,7 +172,7 @@ func TestGateway_QueryIndex_multistore(t *testing.T) {
 	var server logproto.IndexGateway_QueryIndexServer = &mockQueryIndexServer{
 		callback: func(resp *logproto.QueryIndexResponse) {
 			require.True(t, len(expectedQueries) > 0)
-			require.Equal(t, util.QueryKey(index.Query{
+			require.Equal(t, index.QueryKey(index.Query{
 				TableName:        expectedQueries[0].TableName,
 				HashValue:        expectedQueries[0].HashValue,
 				RangeValuePrefix: expectedQueries[0].RangeValuePrefix,

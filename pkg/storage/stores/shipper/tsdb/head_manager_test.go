@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
 	"github.com/grafana/loki/pkg/validation"
 )
@@ -502,9 +502,9 @@ func TestBuildLegacyWALs(t *testing.T) {
 	fsObjectClient, err := local.NewFSObjectClient(local.FSConfig{Directory: filepath.Join(dir, "fs_store")})
 	require.Nil(t, err)
 
-	shipperCfg := indexshipper.Config{}
+	shipperCfg := shipper.Config{}
 	flagext.DefaultValues(&shipperCfg)
-	shipperCfg.Mode = indexshipper.ModeReadWrite
+	shipperCfg.Mode = shipper.ModeReadWrite
 	shipperCfg.ActiveIndexDirectory = filepath.Join(dir)
 	shipperCfg.CacheLocation = filepath.Join(dir, "cache")
 
