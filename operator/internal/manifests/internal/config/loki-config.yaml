@@ -32,8 +32,10 @@ common:
         type: {{ .Type }}
         {{- if eq .Type "SSE-KMS" }}
         kms_key_id: {{ .KMSKeyID }}
+        {{- with .KMSEncryptionContext }}
         kms_encryption_context: |
-          {{ .KMSEncryptionContext }}
+          {{ . }}
+        {{- end }}
         {{- end}}
       {{- end }}
       {{- end }}
