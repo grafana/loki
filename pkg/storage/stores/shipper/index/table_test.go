@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -126,7 +126,7 @@ func TestLoadTable(t *testing.T) {
 
 	// query the loaded table to see if it has right data.
 	require.NoError(t, table.Snapshot())
-	testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}}, func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+	testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}}, func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 		return table.ForEach(ctx, callback)
 	}, 0, 20)
 }
@@ -187,7 +187,7 @@ func TestTable_Write(t *testing.T) {
 
 					// test that the table has current + previous records
 					testutil.VerifyIndexes(t, userID, []index.Query{{}},
-						func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+						func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 							return table.ForEach(ctx, callback)
 						},
 						0, (i+1)*10)
@@ -227,9 +227,9 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			require.Len(t, indexShipper.addedIndexes[table.name], 1)
 
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
-				func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+				func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
-						return callback(index.(*indexfile.IndexFile).GetBoltDB())
+						return callback(index.(*boltdb.IndexFile).GetBoltDB())
 					})
 				},
 				0, 10)
@@ -247,9 +247,9 @@ func TestTable_HandoverIndexesToShipper(t *testing.T) {
 			// check that shipper got the new data we handed over
 			require.Len(t, indexShipper.addedIndexes[table.name], 2)
 			testutil.VerifyIndexes(t, userID, []index.Query{{TableName: table.name}},
-				func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+				func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 					return indexShipper.ForEach(ctx, table.name, "", func(_ bool, index shipper_index.Index) error {
-						return callback(index.(*indexfile.IndexFile).GetBoltDB())
+						return callback(index.(*boltdb.IndexFile).GetBoltDB())
 					})
 				},
 				0, 20)
@@ -268,7 +268,7 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 				NumRecords: 10,
 			},
 		},
-		"db1" + indexfile.TempFileSuffix: { // a snapshot file which should be ignored.
+		"db1" + boltdb.TempFileSuffix: { // a snapshot file which should be ignored.
 			DBRecords: testutil.DBRecords{
 				Start:      0,
 				NumRecords: 10,
@@ -297,8 +297,8 @@ func Test_LoadBoltDBsFromDir(t *testing.T) {
 	require.NotNil(t, dbs["db2"])
 
 	// close all the open dbs
-	for _, boltdb := range dbs {
-		require.NoError(t, boltdb.Close())
+	for _, db := range dbs {
+		require.NoError(t, db.Close())
 	}
 
 	dirEntries, err := os.ReadDir(tablePath)
@@ -440,14 +440,14 @@ func TestTable_MultiQueries(t *testing.T) {
 
 	// querying data for user1 should return both data from common index and user1's index
 	testutil.VerifyIndexes(t, user1, queries,
-		func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+		func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 			return table.ForEach(ctx, callback)
 		},
 		5, 30)
 
 	// querying data for user2 should return only common index
 	testutil.VerifyIndexes(t, user2, queries,
-		func(ctx context.Context, _ string, callback func(boltdb *bbolt.DB) error) error {
+		func(ctx context.Context, _ string, callback func(b *bbolt.DB) error) error {
 			return table.ForEach(ctx, callback)
 		},
 		5, 15)

@@ -18,7 +18,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
 	shipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	shipper_util "github.com/grafana/loki/pkg/storage/stores/shipper/util"
 )
 
@@ -180,7 +180,7 @@ func (c *CompactedIndex) ToIndexFile() (shipper_index.Index, error) {
 	}
 	fileName := fmt.Sprintf(fileNameFormat, shipper_util.BuildIndexFileName(c.tableName, uploaderName, fmt.Sprint(time.Now().Unix())))
 
-	idxFile := indexfile.BoltDBToIndexFile(c.compactedFile, fileName)
+	idxFile := boltdb.BoltDBToIndexFile(c.compactedFile, fileName)
 	c.compactedFile = nil
 	return idxFile, nil
 }

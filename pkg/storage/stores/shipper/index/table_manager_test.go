@@ -17,7 +17,7 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	index_shipper "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	indexfile "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/testutil"
 )
 
@@ -142,16 +142,16 @@ func TestLoadTables(t *testing.T) {
 	for tableName, expectedIndex := range expectedTables {
 		// loaded tables should not have any index files, it should have handed them over to index shipper
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
-			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
 				return tm.tables[tableName].ForEach(ctx, callback)
 			},
 			0, 0)
 
 		// see if index shipper has the index files
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
-			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
 				return tm.indexShipper.ForEach(ctx, table, userID, func(_ bool, index index_shipper.Index) error {
-					return callback(index.(*indexfile.IndexFile).GetBoltDB())
+					return callback(index.(*boltdb.IndexFile).GetBoltDB())
 				})
 			},
 			expectedIndex.start, expectedIndex.numRecords)
@@ -186,7 +186,7 @@ func TestTableManager_BatchWrite(t *testing.T) {
 	for tableName, expectedIndex := range tc {
 		require.NoError(t, tm.tables[tableName].Snapshot())
 		testutil.VerifyIndexes(t, userID, []index.Query{{TableName: tableName}},
-			func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+			func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
 				return tm.tables[tableName].ForEach(context.Background(), callback)
 			},
 			expectedIndex.start, expectedIndex.numRecords)
@@ -225,7 +225,7 @@ func TestTableManager_ForEach(t *testing.T) {
 	}
 
 	testutil.VerifyIndexes(t, userID, queries,
-		func(ctx context.Context, table string, callback func(boltdb *bbolt.DB) error) error {
+		func(ctx context.Context, table string, callback func(b *bbolt.DB) error) error {
 			return tm.ForEach(ctx, table, callback)
 		},
 		0, 30)
