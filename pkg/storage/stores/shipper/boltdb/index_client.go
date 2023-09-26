@@ -1,4 +1,4 @@
-package shipper
+package boltdb
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/instrument"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.etcd.io/bbolt"
 
 	"github.com/grafana/loki/pkg/storage/chunk/client"
@@ -18,27 +19,42 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/storage/stores/indexshipper/downloads"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
 )
 
-type Config struct {
+type metrics struct {
+	// duration in seconds spent in serving request on index managed by BoltDB Shipper
+	requestDurationSeconds *prometheus.HistogramVec
+}
+
+func newMetrics(r prometheus.Registerer) *metrics {
+	return &metrics{
+		requestDurationSeconds: promauto.With(r).NewHistogramVec(prometheus.HistogramOpts{
+			Namespace: "loki_boltdb_shipper",
+			Name:      "request_duration_seconds",
+			Help:      "Time (in seconds) spent serving requests when using boltdb shipper",
+			Buckets:   instrument.DefBuckets,
+		}, []string{"operation", "status_code"}),
+	}
+}
+
+type IndexCfg struct {
 	indexshipper.Config `yaml:",inline"`
 	BuildPerTenantIndex bool `yaml:"build_per_tenant_index"`
 }
 
 // RegisterFlags registers flags.
-func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+func (cfg *IndexCfg) RegisterFlags(f *flag.FlagSet) {
 	cfg.RegisterFlagsWithPrefix("boltdb.", f)
 
 }
 
-func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
+func (cfg *IndexCfg) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
 	cfg.Config.RegisterFlagsWithPrefix(prefix, f)
 	f.BoolVar(&cfg.BuildPerTenantIndex, prefix+"shipper.build-per-tenant-index", false, "Build per tenant index files")
 }
 
-func (cfg *Config) Validate() error {
+func (cfg *IndexCfg) Validate() error {
 	return cfg.Config.Validate()
 }
 
@@ -49,7 +65,7 @@ type writer interface {
 }
 
 type IndexClient struct {
-	cfg          Config
+	cfg          IndexCfg
 	indexShipper indexshipper.IndexShipper
 	writer       writer
 	querier      index.Querier
@@ -59,8 +75,8 @@ type IndexClient struct {
 	stopOnce sync.Once
 }
 
-// NewIndexClient creates a shipper for syncing local objects with a store
-func NewIndexClient(cfg Config, storageClient client.ObjectClient, limits downloads.Limits,
+// New creates a shipper for syncing local objects with a store
+func NewIndexClient(cfg IndexCfg, storageClient client.ObjectClient, limits downloads.Limits,
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer, logger log.Logger) (*IndexClient, error) {
 	i := IndexClient{
 		cfg:     cfg,
@@ -82,7 +98,7 @@ func (i *IndexClient) init(storageClient client.ObjectClient, limits downloads.L
 	tenantFilter downloads.TenantFilter, tableRange config.TableRange, registerer prometheus.Registerer) error {
 	var err error
 	i.indexShipper, err = indexshipper.NewIndexShipper(i.cfg.Config, storageClient, limits, tenantFilter,
-		boltdb.OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
+		OpenIndexFile, tableRange, prometheus.WrapRegistererWithPrefix("loki_boltdb_shipper_", registerer), i.logger)
 	if err != nil {
 		return err
 	}
