@@ -20,7 +20,7 @@ func TestBlockEncoding(t *testing.T) {
 	require.Nil(t, err)
 
 	data := buf.Bytes()
-	b := NewBlock(NewByteReader(data))
+	b := NewBlock(NewByteReader(data, nil))
 	require.Nil(t, b.LoadHeaders())
 	require.Equal(t, src, b.index)
 
@@ -42,7 +42,7 @@ func TestSeriesIter(t *testing.T) {
 	require.Nil(t, err)
 
 	data := buf.Bytes()
-	b := NewBlock(NewByteReader(data))
+	b := NewBlock(NewByteReader(data, nil))
 	itr := b.Series()
 
 	for i := range series {

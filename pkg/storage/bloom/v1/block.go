@@ -9,7 +9,7 @@ import (
 
 type BlockReader interface {
 	Index() io.ReadSeeker
-	// Blooms() io.ReedSeeker
+	Blooms() io.ReadSeeker
 }
 
 type Block struct {
@@ -20,7 +20,6 @@ type Block struct {
 	header SeriesHeader
 
 	reader BlockReader // should this be decoupled from the struct (accepted as method arg instead)?
-
 }
 
 func NewBlock(reader BlockReader) *Block {
@@ -55,13 +54,18 @@ func (b *Block) Series() *LazySeriesIter {
 }
 
 type ByteReader struct {
-	data []byte
+	index  []byte
+	blooms []byte
 }
 
-func NewByteReader(b []byte) *ByteReader {
-	return &ByteReader{data: b}
+func NewByteReader(index, blooms []byte) *ByteReader {
+	return &ByteReader{index: index, blooms: blooms}
 }
 
 func (r *ByteReader) Index() io.ReadSeeker {
-	return bytes.NewReader(r.data)
+	return bytes.NewReader(r.index)
+}
+
+func (r *ByteReader) Blooms() io.ReadSeeker {
+	return bytes.NewReader(r.blooms)
 }

@@ -84,70 +84,66 @@ func (p *BloomPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc32
 }
 
 func (p *BloomPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) error {
-	decoder, err := p.DecodeLazy(dec, pool, decompressedSize)
+	decoder, n, err := LazyDecodeBloomPage(dec, pool, decompressedSize)
 	if err != nil {
 		return errors.Wrap(err, "building bloom page decoder")
 	}
 
-	p.Blooms = make([]Bloom, 0, decoder.n)
-	var i int
-	for decoder.Next() {
-		bloom, err := decoder.At()
+	p.Blooms = make([]Bloom, n)
+
+	for i := 0; i < n; i++ {
+		bloom, err := decoder.Next()
 		if err != nil {
 			return errors.Wrapf(err, "decoding %dth bloom filter", i)
 		}
-		p.Blooms = append(p.Blooms, bloom)
-		i++
+		p.Blooms[i] = bloom
 	}
 
 	return errors.Wrap(dec.Err(), "decoding bloom page")
 }
 
-func (p *BloomPage) DecodeLazy(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*BloomPageDecoder, error) {
+func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*BloomPageDecoder, int, error) {
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
-		return nil, errors.Wrap(err, "checksumming bloom page")
+		return nil, 0, errors.Wrap(err, "checksumming bloom page")
 	}
 
 	decompressor, err := pool.GetReader(bytes.NewReader(dec.Get()))
 	if err != nil {
-		return nil, errors.Wrap(err, "getting decompressor")
+		return nil, 0, errors.Wrap(err, "getting decompressor")
 	}
 
 	b := BlockPool.Get(decompressedSize)[:decompressedSize]
 	defer BlockPool.Put(b)
 
 	if _, err = io.ReadFull(decompressor, b); err != nil {
-		return nil, errors.Wrap(err, "decompressing bloom page")
+		return nil, 0, errors.Wrap(err, "decompressing bloom page")
 	}
 
-	// replace decoder's input with the now-decompressed data
 	dec.B = b
+	n := dec.Uvarint()
 
-	return NewBloomPageDecoder(dec), nil
+	return NewBloomPageDecoder(dec.Get()), n, nil
 }
 
-func NewBloomPageDecoder(dec *encoding.Decbuf) *BloomPageDecoder {
+func NewBloomPageDecoder(data []byte) *BloomPageDecoder {
+	dec := encoding.DecWith(data)
 	return &BloomPageDecoder{
-		n:   dec.Uvarint(),
-		dec: dec,
-
-		i: -1,
+		dec:  &dec,
+		data: data,
 	}
 }
 
+// Decoder is a seekable, reset-able iterator
 type BloomPageDecoder struct {
-	n   int
-	dec *encoding.Decbuf
-
-	i int
+	data []byte
+	dec  *encoding.Decbuf
 }
 
-func (d *BloomPageDecoder) Next() bool {
-	d.i++
-	return d.i < d.n
+func (d *BloomPageDecoder) Seek(offset int) {
+	d.dec.B = d.data[offset:]
 }
 
-func (d *BloomPageDecoder) At() (bloom Bloom, err error) {
+func (d *BloomPageDecoder) Next() (bloom Bloom, err error) {
 	err = bloom.Decode(d.dec)
 	return
 }

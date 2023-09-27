@@ -67,4 +67,5 @@ func TestBloomBlockEncoding(t *testing.T) {
 	require.Nil(t, dst.DecodeHeaders(bytes.NewReader(data)))
 
 	require.Equal(t, src, dst)
+
 }
