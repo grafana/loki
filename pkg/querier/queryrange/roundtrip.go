@@ -818,10 +818,9 @@ func NewVolumeTripperware(
 
 func volumeRangeTripperware(codec base.Codec, nextTW base.Middleware) base.Middleware {
 	return base.MiddlewareFunc(func(next base.Handler) base.Handler {
-		nextRT := nextTW.Wrap(next)
-
 		return base.HandlerFunc(func(ctx context.Context, r base.Request) (base.Response, error) {
 			seriesVolumeMiddlewares := []base.Middleware{
+				nextTW,
 				StatsCollectorMiddleware(),
 				NewVolumeMiddleware(),
 			}
@@ -829,7 +828,7 @@ func volumeRangeTripperware(codec base.Codec, nextTW base.Middleware) base.Middl
 			// wrap nextRT with our new middleware
 			return base.MergeMiddlewares(
 				seriesVolumeMiddlewares...,
-			).Wrap(nextRT).Do(ctx, r)
+			).Wrap(next).Do(ctx, r)
 		})
 	})
 }

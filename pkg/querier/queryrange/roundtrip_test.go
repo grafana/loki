@@ -489,10 +489,13 @@ func TestIndexStatsTripperware(t *testing.T) {
 }
 
 func TestVolumeTripperware(t *testing.T) {
-	// TODO: This one times out
-	t.Skip("FIXME. I take too long.")
 	t.Run("instant queries hardcode step to 0 and return a prometheus style vector response", func(t *testing.T) {
-		tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, fakeLimits{maxQueryLength: 48 * time.Hour, volumeEnabled: true}, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
+		limits := fakeLimits{
+			maxQueryLength: 48 * time.Hour,
+			volumeEnabled: true,
+			maxSeries: 42,
+		}
+		tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 		if stopper != nil {
 			defer stopper.Stop()
 		}
@@ -512,7 +515,6 @@ func TestVolumeTripperware(t *testing.T) {
 
 		volumeResp, err := tpw.Wrap(h).Do(ctx, lreq)
 		require.NoError(t, err)
-		// TODO: this is totally broken
 		require.Equal(t, 2, *count) // 2 queries from splitting
 
 		expected := base.PrometheusData{
