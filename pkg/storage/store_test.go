@@ -194,9 +194,10 @@ func getLocalStore(cm ClientMetrics) Store {
 	}
 
 	storeConfig := Config{
-		BoltDBConfig:      local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
-		FSConfig:          local.FSConfig{Directory: "/tmp/benchmark/chunks"},
-		MaxChunkBatchSize: 10,
+		BoltDBConfig:        local.BoltDBConfig{Directory: "/tmp/benchmark/index"},
+		FSConfig:            local.FSConfig{Directory: "/tmp/benchmark/chunks"},
+		MaxChunkBatchSize:   10,
+		MaxParallelTableOps: 50,
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -488,7 +489,8 @@ func Test_store_SelectLogs(t *testing.T) {
 			s := &LokiStore{
 				Store: storeFixture,
 				cfg: Config{
-					MaxChunkBatchSize: 10,
+					MaxChunkBatchSize:   10,
+					MaxParallelTableOps: 50,
 				},
 				chunkMetrics: NilMetrics,
 			}
@@ -812,7 +814,8 @@ func Test_store_SelectSample(t *testing.T) {
 			s := &LokiStore{
 				Store: storeFixture,
 				cfg: Config{
-					MaxChunkBatchSize: 10,
+					MaxChunkBatchSize:   10,
+					MaxParallelTableOps: 50,
 				},
 				chunkMetrics: NilMetrics,
 			}
@@ -848,7 +851,8 @@ func Test_ChunkFilterer(t *testing.T) {
 	s := &LokiStore{
 		Store: storeFixture,
 		cfg: Config{
-			MaxChunkBatchSize: 10,
+			MaxChunkBatchSize:   10,
+			MaxParallelTableOps: 50,
 		},
 		chunkMetrics: NilMetrics,
 	}
@@ -938,7 +942,8 @@ func Test_store_GetSeries(t *testing.T) {
 			s := &LokiStore{
 				Store: newMockChunkStore(chunkfmt, headfmt, streamsFixture),
 				cfg: Config{
-					MaxChunkBatchSize: tt.batchSize,
+					MaxChunkBatchSize:   tt.batchSize,
+					MaxParallelTableOps: 50,
 				},
 				chunkMetrics: NilMetrics,
 			}
@@ -1013,8 +1018,9 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	shipperConfig.Mode = indexshipper.ModeReadWrite
 
 	cfg := Config{
-		FSConfig:          local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-		TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig},
+		MaxParallelTableOps: 50,
+		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+		TSDBShipperConfig:   tsdb.IndexCfg{Config: shipperConfig},
 		NamedStores: NamedStores{
 			Filesystem: map[string]NamedFSConfig{
 				"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1199,6 +1205,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
 					},
 				},
+				MaxParallelTableOps: 50,
 			}
 			require.NoError(t, cfg.NamedStores.validate())
 
@@ -1532,6 +1539,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		BoltDBShipperConfig: boltdbShipperConfig,
 		TSDBShipperConfig:   tsdb.IndexCfg{Config: tsdbShipperConfig},
+		MaxParallelTableOps: 50,
 	}
 
 	schemaConfig := config.SchemaConfig{

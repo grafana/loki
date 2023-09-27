@@ -214,7 +214,7 @@ func Test_HeadManager_RecoverHead(t *testing.T) {
 	}
 
 	storeName := "store_2010-10-10"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir), 50)
 	// This bit is normally handled by the Start() fn, but we're testing a smaller surface area
 	// so ensure our dirs exist
 	for _, d := range managerRequiredDirs(storeName, dir) {
@@ -299,7 +299,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	}
 
 	storeName := "store_2010-10-10"
-	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir))
+	mgr := NewHeadManager(storeName, log.NewNopLogger(), dir, NewMetrics(nil), newNoopTSDBManager(storeName, dir), 50)
 	w, err := newHeadWAL(log.NewNopLogger(), walPath(mgr.name, mgr.dir, curPeriod), curPeriod)
 	require.Nil(t, err)
 
@@ -325,7 +325,7 @@ func Test_HeadManager_Lifecycle(t *testing.T) {
 	require.Nil(t, mgr.Start())
 
 	// Ensure old WAL data is queryable
-	multiIndex := NewMultiIndex(IndexSlice{mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads})
+	multiIndex := NewMultiIndex(IndexSlice{mgr, mgr.tsdbManager.(noopTSDBManager).tenantHeads}, 50)
 
 	for _, c := range cases {
 		refs, err := multiIndex.GetChunkRefs(
@@ -529,7 +529,7 @@ func TestBuildLegacyWALs(t *testing.T) {
 			},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
-				store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger(), nil)
+				store, stop, err := NewStore(tc.store, IndexCfg{Config: shipperCfg}, schemaCfg, nil, fsObjectClient, &zeroValueLimits{}, tc.tableRange, nil, log.NewNopLogger(), nil, 50)
 				require.Nil(t, err)
 				refs, err := store.GetChunkRefs(
 					context.Background(),

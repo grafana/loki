@@ -64,7 +64,7 @@ func TestMultiIndex(t *testing.T) {
 		indices = append(indices, BuildIndex(t, dir, cases, IndexOpts{}))
 	}
 
-	idx := NewMultiIndex(IndexSlice(indices))
+	idx := NewMultiIndex(IndexSlice(indices), 50)
 
 	t.Run("GetChunkRefs", func(t *testing.T) {
 		refs, err := idx.GetChunkRefs(context.Background(), "fake", 2, 5, nil, nil, labels.MustNewMatcher(labels.MatchEqual, "foo", "bar"))
@@ -153,4 +153,61 @@ func TestMultiIndex(t *testing.T) {
 
 		require.Equal(t, expected, xs)
 	})
+}
+
+func BenchmarkSliceForParallelism(b *testing.B) {
+	cases := []LoadableSeries{
+		{
+			Labels: mustParseLabels(`{foo="bar"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  0,
+					MaxTime:  3,
+					Checksum: 0,
+				},
+				{
+					MinTime:  1,
+					MaxTime:  4,
+					Checksum: 1,
+				},
+				{
+					MinTime:  2,
+					MaxTime:  5,
+					Checksum: 2,
+				},
+			},
+		},
+		{
+			Labels: mustParseLabels(`{foo="bar", bazz="buzz"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  1,
+					MaxTime:  10,
+					Checksum: 3,
+				},
+			},
+		},
+		{
+			// should be excluded due to bounds checking
+			Labels: mustParseLabels(`{foo="bar", bazz="bozz", bonk="borb"}`),
+			Chunks: []index.ChunkMeta{
+				{
+					MinTime:  8,
+					MaxTime:  9,
+					Checksum: 4,
+				},
+			},
+		},
+	}
+
+	dir := b.TempDir()
+	b.ResetTimer()
+	var indices []Index
+	for i := 0; i < 1000; i++ {
+		indices = append(indices, BuildIndex(b, dir, cases, IndexOpts{}))
+	}
+	idx := NewMultiIndex(IndexSlice(indices), 50)
+	for i := 0; i < b.N; i++ {
+		idx.LabelNames(context.Background(), "fake", 8, 10, labels.MustNewMatcher(labels.MatchEqual, "bazz", "buzz")) //nolint:errcheck
+	}
 }

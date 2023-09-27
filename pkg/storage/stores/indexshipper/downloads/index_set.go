@@ -57,11 +57,13 @@ type indexSet struct {
 	indexMtx   *mtxWithReadiness
 	err        error
 
+	parallelism int
+
 	cancelFunc context.CancelFunc // helps with cancellation of initialization if we are asked to stop.
 }
 
 func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.IndexSet, openIndexFileFunc index.OpenIndexFileFunc,
-	logger log.Logger) (IndexSet, error) {
+	logger log.Logger, parallelism int) (IndexSet, error) {
 	if baseIndexSet.IsUserBasedIndexSet() && userID == "" {
 		return nil, fmt.Errorf("userID must not be empty")
 	} else if !baseIndexSet.IsUserBasedIndexSet() && userID != "" {
@@ -84,6 +86,7 @@ func NewIndexSet(tableName, userID, cacheLocation string, baseIndexSet storage.I
 		index:             map[string]index.Index{},
 		indexMtx:          newMtxWithReadiness(),
 		cancelFunc:        func() {},
+		parallelism:       parallelism,
 	}
 
 	return &is, nil
@@ -195,14 +198,13 @@ func (t *indexSet) ForEach(ctx context.Context, callback index.ForEachIndexCallb
 }
 
 func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEachIndexCallback) error {
-
 	if err := t.indexMtx.rLock(ctx); err != nil {
 		return err
 	}
 	defer t.indexMtx.rUnlock()
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(200)
+	g.SetLimit(t.parallelism)
 
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))

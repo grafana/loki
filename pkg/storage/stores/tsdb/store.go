@@ -31,6 +31,8 @@ type IndexWriter interface {
 
 type store struct {
 	index.Reader
+
+	parallelism  int
 	indexShipper indexshipper.IndexShipper
 	indexWriter  IndexWriter
 	logger       log.Logger
@@ -49,6 +51,7 @@ func NewStore(
 	reg prometheus.Registerer,
 	logger log.Logger,
 	idxCache cache.Cache,
+	parallelism int,
 ) (
 	index.ReaderWriter,
 	func(),
@@ -56,7 +59,8 @@ func NewStore(
 ) {
 
 	storeInstance := &store{
-		logger: logger,
+		logger:      logger,
+		parallelism: parallelism,
 	}
 
 	if err := storeInstance.init(name, indexShipperCfg, schemaCfg, objectClient, limits, tableRange, reg, idxCache); err != nil {
@@ -68,7 +72,6 @@ func NewStore(
 
 func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConfig, objectClient client.ObjectClient,
 	limits downloads.Limits, tableRange config.TableRange, reg prometheus.Registerer, idxCache cache.Cache) error {
-
 	var sharedCache cache.Cache
 	if indexCfg.CachePostings && indexCfg.Mode == indexshipper.ModeReadOnly && idxCache != nil {
 		sharedCache = idxCache
@@ -88,6 +91,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		tableRange,
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", reg),
 		s.logger,
+		s.parallelism,
 	)
 
 	if err != nil {
@@ -131,6 +135,7 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 			indexCfg.ActiveIndexDirectory,
 			tsdbMetrics,
 			tsdbManager,
+			s.parallelism,
 		)
 		if err := headManager.Start(); err != nil {
 			return err
@@ -142,8 +147,8 @@ func (s *store) init(name string, indexCfg IndexCfg, schemaCfg config.SchemaConf
 		s.indexWriter = failingIndexWriter{}
 	}
 
-	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange))
-	multiIndex := NewMultiIndex(IndexSlice(indices))
+	indices = append(indices, newIndexShipperQuerier(s.indexShipper, tableRange, s.parallelism))
+	multiIndex := NewMultiIndex(IndexSlice(indices), s.parallelism)
 
 	s.Reader = NewIndexClient(multiIndex, opts, limits)
 
@@ -161,7 +166,7 @@ func (s *store) Stop() {
 	})
 }
 
-func (s *store) IndexChunk(ctx context.Context, from model.Time, through model.Time, chk chunk.Chunk) error {
+func (s *store) IndexChunk(_ context.Context, _ model.Time, _ model.Time, chk chunk.Chunk) error {
 	// Always write the index to benefit durability via replication factor.
 	approxKB := math.Round(float64(chk.Data.UncompressedSize()) / float64(1<<10))
 	metas := tsdb_index.ChunkMetas{

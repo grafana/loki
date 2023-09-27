@@ -41,6 +41,7 @@ func main() {
 		tableRanges[len(tableRanges)-1],
 		prometheus.WrapRegistererWithPrefix("loki_tsdb_shipper_", prometheus.DefaultRegisterer),
 		util_log.Logger,
+		50,
 	)
 	helpers.ExitErr("creating index shipper", err)
 

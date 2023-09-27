@@ -77,7 +77,7 @@ func BenchmarkIndexClient_Stats(b *testing.B) {
 		Start:        0,
 		End:          math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{},
-	})
+	}, 50)
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
@@ -143,7 +143,7 @@ func TestIndexClient_Stats(t *testing.T) {
 		Start:        0,
 		End:          math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{},
-	})
+	}, 50)
 
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, &fakeLimits{})
 
@@ -271,7 +271,7 @@ func TestIndexClient_Volume(t *testing.T) {
 		Start:        0,
 		End:          math.MaxInt64,
 		PeriodConfig: &config.PeriodConfig{},
-	})
+	}, 50)
 
 	limits := &fakeLimits{volumeMaxSeries: 5}
 	indexClient := NewIndexClient(idx, IndexClientOptions{UseBloomFilters: true}, limits)

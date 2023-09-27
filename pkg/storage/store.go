@@ -279,7 +279,7 @@ func (s *LokiStore) storeForPeriod(p config.PeriodConfig, tableRange config.Tabl
 		}
 
 		name := fmt.Sprintf("%s_%s", p.ObjectType, p.From.String())
-		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache)
+		indexReaderWriter, stopTSDBStoreFunc, err := tsdb.NewStore(name, s.cfg.TSDBShipperConfig, s.schemaCfg, f, objectClient, s.limits, tableRange, indexClientReg, indexClientLogger, s.indexReadCache, s.cfg.MaxParallelTableOps)
 		if err != nil {
 			return nil, nil, nil, err
 		}

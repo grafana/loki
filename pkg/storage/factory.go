@@ -331,6 +331,7 @@ type Config struct {
 	IndexQueriesCacheConfig  cache.Config `yaml:"index_queries_cache_config"`
 	DisableBroadIndexQueries bool         `yaml:"disable_broad_index_queries"`
 	MaxParallelGetChunk      int          `yaml:"max_parallel_get_chunk"`
+	MaxParallelTableOps      int          `yaml:"max_parallel_table_ops" doc:"description=Max parallelism used by a table operation." category:"experimental"`
 
 	MaxChunkBatchSize   int            `yaml:"max_chunk_batch_size"`
 	BoltDBShipperConfig shipper.Config `yaml:"boltdb_shipper" doc:"description=Configures storing index in an Object Store (GCS/S3/Azure/Swift/COS/Filesystem) in the form of boltdb files. Required fields only required when boltdb-shipper is defined in config."`
@@ -363,6 +364,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.BoolVar(&cfg.DisableBroadIndexQueries, "store.disable-broad-index-queries", false, "Disable broad index queries which results in reduced cache usage and faster query performance at the expense of somewhat higher QPS on the index store.")
 	f.IntVar(&cfg.MaxParallelGetChunk, "store.max-parallel-get-chunk", 150, "Maximum number of parallel chunk reads.")
 	cfg.BoltDBShipperConfig.RegisterFlags(f)
+	f.IntVar(&cfg.MaxParallelTableOps, "store.max-parallelism-table-ops", 50, "Maximum number of concurrence used for each table operation. We recommend 2*CPUs available")
 	f.IntVar(&cfg.MaxChunkBatchSize, "store.max-chunk-batch-size", 50, "The maximum number of chunks to fetch per batch.")
 	cfg.TSDBShipperConfig.RegisterFlagsWithPrefix("tsdb.", f)
 }
@@ -440,7 +442,7 @@ func NewIndexClient(periodCfg config.PeriodConfig, tableRange config.TableRange,
 			if shardingStrategy != nil {
 				filterFn = shardingStrategy.FilterTenants
 			}
-			shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger)
+			shipper, err := shipper.NewShipper(cfg.BoltDBShipperConfig, objectClient, limits, filterFn, tableRange, registerer, logger, cfg.MaxParallelTableOps)
 			if err != nil {
 				return nil, err
 			}

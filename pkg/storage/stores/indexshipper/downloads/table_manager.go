@@ -73,10 +73,12 @@ type tableManager struct {
 	wg     sync.WaitGroup
 
 	tenantFilter TenantFilter
+
+	parallelism int
 }
 
 func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, indexStorageClient storage.Client,
-	tenantFilter TenantFilter, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger) (TableManager, error) {
+	tenantFilter TenantFilter, tableRangeToHandle config.TableRange, reg prometheus.Registerer, logger log.Logger, parallelism int) (TableManager, error) {
 	if err := util.EnsureDirectory(cfg.CacheDir); err != nil {
 		return nil, err
 	}
@@ -93,6 +95,7 @@ func NewTableManager(cfg Config, openIndexFileFunc index.OpenIndexFileFunc, inde
 		logger:             logger,
 		ctx:                ctx,
 		cancel:             cancel,
+		parallelism:        parallelism,
 	}
 
 	// load the existing tables first.
@@ -200,7 +203,7 @@ func (tm *tableManager) getOrCreateTable(tableName string) (Table, error) {
 				return nil, err
 			}
 
-			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
+			table = NewTable(tableName, filepath.Join(tm.cfg.CacheDir, tableName), tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.parallelism)
 			tm.tables[tableName] = table
 		}
 	}
@@ -427,7 +430,7 @@ func (tm *tableManager) loadLocalTables() error {
 		level.Info(tm.logger).Log("msg", fmt.Sprintf("loading local table %s", entry.Name()))
 
 		table, err := LoadTable(entry.Name(), filepath.Join(tm.cfg.CacheDir, entry.Name()),
-			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics)
+			tm.indexStorageClient, tm.openIndexFileFunc, tm.metrics, tm.parallelism)
 		if err != nil {
 			return err
 		}

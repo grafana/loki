@@ -111,6 +111,7 @@ func TestNamedStores(t *testing.T) {
 			Directory: path.Join(tempDir, "default"),
 		},
 		BoltDBShipperConfig: boltdbShipperConfig,
+		MaxParallelTableOps: 50,
 	}
 	require.NoError(t, cfg.NamedStores.validate())
 

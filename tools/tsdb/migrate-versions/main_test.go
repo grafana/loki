@@ -47,6 +47,7 @@ func TestMigrateTables(t *testing.T) {
 		FSConfig: local.FSConfig{
 			Directory: tempDir,
 		},
+		MaxParallelTableOps: 50,
 	}
 	clientMetrics := storage.NewClientMetrics()
 

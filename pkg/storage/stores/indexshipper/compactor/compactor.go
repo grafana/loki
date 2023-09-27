@@ -92,6 +92,8 @@ type Config struct {
 	TablesToCompact           int             `yaml:"tables_to_compact"`
 	SkipLatestNTables         int             `yaml:"skip_latest_n_tables"`
 
+	TableOperationsParallelism int `yaml:"-" doc:"hidden"`
+
 	// Deprecated
 	DeletionMode string `yaml:"deletion_mode" doc:"deprecated|description=Use deletion_mode per tenant configuration instead."`
 }
@@ -584,7 +586,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 	}
 
 	table, err := newTable(ctx, filepath.Join(c.cfg.WorkingDirectory, tableName), sc.indexStorageClient, indexCompactor,
-		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism)
+		schemaCfg, sc.tableMarker, c.expirationChecker, c.cfg.UploadParallelism, c.cfg.TableOperationsParallelism)
 	if err != nil {
 		level.Error(util_log.Logger).Log("msg", "failed to initialize table for compaction", "table", tableName, "err", err)
 		return err

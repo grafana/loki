@@ -199,7 +199,7 @@ func TestTable_Compaction(t *testing.T) {
 					require.NoError(t, err)
 
 					table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 50)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -236,7 +236,7 @@ func TestTable_Compaction(t *testing.T) {
 
 					// running compaction again should not do anything.
 					table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+						newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 50)
 					require.NoError(t, err)
 
 					require.NoError(t, table.compact(false))
@@ -379,7 +379,7 @@ func TestTable_CompactionRetention(t *testing.T) {
 					newTestIndexCompactor(), config.PeriodConfig{},
 					tt.tableMarker, IntervalMayHaveExpiredChunksFunc(func(interval model.Interval, userID string) bool {
 						return true
-					}), 10)
+					}), 10, 50)
 				require.NoError(t, err)
 
 				require.NoError(t, table.compact(true))
@@ -452,7 +452,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, err)
 
 	table, err := newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 50)
 	require.NoError(t, err)
 
 	// compaction should fail due to a non-boltdb file.
@@ -470,7 +470,7 @@ func TestTable_CompactionFailure(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(tablePathInStorage, "fail.gz")))
 
 	table, err = newTable(context.Background(), tableWorkingDirectory, storage.NewIndexStorageClient(objectClient, ""),
-		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10)
+		newTestIndexCompactor(), config.PeriodConfig{}, nil, nil, 10, 50)
 	require.NoError(t, err)
 	require.NoError(t, table.compact(false))
 
