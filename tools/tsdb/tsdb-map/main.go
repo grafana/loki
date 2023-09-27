@@ -12,11 +12,11 @@ import (
 	"gopkg.in/yaml.v2"
 
 	"github.com/grafana/loki/pkg/storage/config"
-	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/boltdb/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor/retention"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/util"
+	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"
 )
 
 var (

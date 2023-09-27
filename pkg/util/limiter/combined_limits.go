@@ -8,8 +8,8 @@ import (
 	"github.com/grafana/loki/pkg/ruler"
 	"github.com/grafana/loki/pkg/scheduler"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
 )
 
 type CombinedLimits interface {

@@ -32,12 +32,12 @@ import (
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/boltdb"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/downloads"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/gatewayclient"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/downloads"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/gatewayclient"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
@@ -595,7 +595,7 @@ func NewTableClient(name string, cfg Config, cm ClientMetrics, registerer promet
 		if err != nil {
 			return nil, err
 		}
-		return shipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
+		return indexshipper.NewTableClient(objectClient, sharedStoreKeyPrefix), nil
 
 	case util.StringsContain(deprecatedIndexTypes, name):
 		switch name {
