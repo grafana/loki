@@ -506,7 +506,7 @@ func TestVolumeTripperware(t *testing.T) {
 			From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
 			Through:  model.TimeFromUnixNano(testTime.UnixNano()),
 			Limit:    10,
-			Step:     42, // this should be ignored and set to 0
+			Step:     0, // Travis/Trevor: this should be ignored and set to 0. Karsten: Why?
 		}
 
 		ctx := user.InjectOrgID(context.Background(), "1")
