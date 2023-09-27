@@ -44,6 +44,7 @@ func OpenIndexFile(path string) (index.Index, error) {
 	}, nil
 }
 
+// nolint:revive
 func BoltDBToIndexFile(boltdbFile *bbolt.DB, name string) index.Index {
 	return &IndexFile{
 		boltDB: boltdbFile,
