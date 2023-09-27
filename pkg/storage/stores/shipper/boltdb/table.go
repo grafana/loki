@@ -30,6 +30,7 @@ const (
 	snapshotFileSuffix = ".snapshot"
 )
 
+// nolint:revive
 type BoltDBIndexClient interface {
 	QueryWithCursor(_ context.Context, c *bbolt.Cursor, query index.Query, callback index.QueryPagesCallback) error
 	WriteToDB(ctx context.Context, db *bbolt.DB, bucketName []byte, writes local.TableWrites) error
