@@ -30,10 +30,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/series"
 	series_index "github.com/grafana/loki/pkg/storage/stores/series/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/gatewayclient"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/gatewayclient"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util"
 	"github.com/grafana/loki/pkg/util/deletion"
 )
@@ -229,8 +229,8 @@ func (s *LokiStore) chunkClientForPeriod(p config.PeriodConfig) (client.Client, 
 	return chunks, nil
 }
 
-func shouldUseIndexGatewayClient(cfg shipper.Config) bool {
-	if cfg.Mode != shipper.ModeReadOnly || cfg.IndexGatewayClientConfig.Disabled {
+func shouldUseIndexGatewayClient(cfg indexshipper.Config) bool {
+	if cfg.Mode != indexshipper.ModeReadOnly || cfg.IndexGatewayClientConfig.Disabled {
 		return false
 	}
 

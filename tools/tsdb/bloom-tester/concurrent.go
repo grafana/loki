@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb/index"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 )

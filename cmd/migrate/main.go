@@ -22,7 +22,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
 	"github.com/grafana/loki/pkg/util/cfg"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/validation"
@@ -91,8 +91,8 @@ func main() {
 	// Don't keep fetched index files for very long
 	sourceConfig.StorageConfig.BoltDBShipperConfig.CacheTTL = 30 * time.Minute
 
-	sourceConfig.StorageConfig.BoltDBShipperConfig.Mode = shipper.ModeReadOnly
-	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = shipper.ModeReadOnly
+	sourceConfig.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+	sourceConfig.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
 
 	// Shorten these timers up so we resync a little faster and clear index files a little quicker
 	destConfig.StorageConfig.IndexCacheValidity = 1 * time.Minute

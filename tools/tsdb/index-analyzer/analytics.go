@@ -7,13 +7,13 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
-	tsdb_index "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb"
+	tsdb_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb/index"
 )
 
-func analyze(indexShipper shipper.IndexShipper, tableName string, tenants []string) error {
+func analyze(indexShipper indexshipper.IndexShipper, tableName string, tenants []string) error {
 
 	var (
 		series             int

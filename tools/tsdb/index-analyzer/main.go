@@ -7,9 +7,9 @@ import (
 
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
 )
@@ -32,7 +32,7 @@ func main() {
 		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
 	}
 
-	shipper, err := shipper.NewIndexShipper(
+	shipper, err := indexshipper.NewIndexShipper(
 		conf.StorageConfig.TSDBShipperConfig.Config,
 		objectClient,
 		overrides,

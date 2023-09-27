@@ -19,7 +19,7 @@ import (
 
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/util/log"
 )
 

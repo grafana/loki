@@ -22,10 +22,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/tsdb"
-	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
 )
@@ -49,7 +49,7 @@ func execute() {
 		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
 	}
 
-	indexShipper, err := shipper.NewIndexShipper(
+	indexShipper, err := indexshipper.NewIndexShipper(
 		conf.StorageConfig.TSDBShipperConfig.Config,
 		objectClient,
 		overrides,
@@ -170,7 +170,7 @@ var experiments = []Experiment{
 	),
 }
 
-func analyze(metrics *Metrics, sampler Sampler, indexShipper shipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
+func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
 	metrics.tenants.Add(float64(len(tenants)))
 
 	var n int         // count iterated series
