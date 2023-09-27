@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -65,8 +66,41 @@ func TestBloomBlockEncoding(t *testing.T) {
 	data := buf.Bytes()
 	var dst BloomBlock
 	require.Nil(t, dst.DecodeHeaders(bytes.NewReader(data)))
-
 	require.Equal(t, src, dst)
+
+	// TODO: clean up, test independently, remove old creation method
+	buf2 := bytes.NewBuffer(nil)
+	builder := NewBloomBlockBuilder(BlockOptions{
+		schema:        Schema{version: DefaultSchemaVersion, encoding: chunkenc.EncSnappy},
+		BloomPageSize: 1 << 20,
+	}, noopCloser{buf2})
+	itr := NewSliceIter[Bloom](append(mkBasicBlooms(2), mkBasicBlooms(2)...))
+	var i int
+	for itr.Next() {
+		bloom := itr.At()
+		_, err := builder.Append(SeriesWithBloom{
+			Bloom: &bloom,
+		})
+		require.Nil(t, err)
+
+		// force it to be 2 pages of 2 blooms, like above
+		if i%2 != 0 {
+			require.Nil(t, builder.flushPage())
+		}
+
+		i++
+	}
+
+	require.Nil(t, builder.Close())
+	require.Equal(t, buf.Bytes(), buf2.Bytes())
+}
+
+type noopCloser struct {
+	io.Writer
+}
+
+func (n noopCloser) Close() error {
+	return nil
 }
 
 func TestBloomBlockPageIteration(t *testing.T) {
