@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package logproto;
+
+import "gogoproto/gogo.proto";
+import "pkg/logproto/logproto.proto";
+
+option go_package = "github.com/grafana/loki/pkg/logproto";
+
+message FilterChunkRefRequest {
+  int64 from = 1 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  int64 through = 2 [
+    (gogoproto.customtype) = "github.com/prometheus/common/model.Time",
+    (gogoproto.nullable) = false
+  ];
+  repeated logproto.ChunkRef refs = 3;
+  repeated logproto.LineFilterExpression filters = 4;
+}
+
+message ChunkIDsForStream {
+  uint64 fingerprint = 1;
+  repeated string chunkIDs = 2;
+}
+
+message FilterChunkRefResponse {
+  repeated ChunkIDsForStream chunks = 1;
+}
+
+service BloomGateway {
+  rpc FilterChunkRefs(FilterChunkRefRequest) returns (FilterChunkRefResponse) {};
+}
+

@@ -5,6 +5,7 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -32,4 +33,8 @@ func (g *Gateway) starting(_ context.Context) error {
 
 func (g *Gateway) stopping(_ error) error {
 	return nil
+}
+
+func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
+	return &logproto.FilterChunkRefResponse{}, nil
 }
