@@ -107,39 +107,39 @@ func Test_seriesLimiter(t *testing.T) {
 		}
 		// second time returns a different series.
 		m := promql.Matrix{
-				{
-					Floats: []promql.FPoint{
-						{
-							T: toMs(testTime.Add(-4 * time.Hour)),
-							F: 0.013333333333333334,
-						},
-					},
-					Metric: []labels.Label{
-						{
-							Name:  "filename",
-							Value: `/var/hostlog/apport.log`,
-						},
-						{
-							Name:  "job",
-							Value: "anotherjob",
-						},
+			{
+				Floats: []promql.FPoint{
+					{
+						T: toMs(testTime.Add(-4 * time.Hour)),
+						F: 0.013333333333333334,
 					},
 				},
-			}
-			// TODO: refactor and use ResultToResponse
-			sampleStream, err := base.FromValue(m)
-			if err != nil {
-				return nil, err
-			}
-			return &LokiPromResponse{
-				Response: &base.PrometheusResponse{
-					Status: "success",
-					Data: base.PrometheusData{
-						ResultType: loghttp.ResultTypeMatrix,
-						Result:     sampleStream,
+				Metric: []labels.Label{
+					{
+						Name:  "filename",
+						Value: `/var/hostlog/apport.log`,
+					},
+					{
+						Name:  "job",
+						Value: "anotherjob",
 					},
 				},
-			}, nil
+			},
+		}
+		// TODO: refactor and use ResultToResponse
+		sampleStream, err := base.FromValue(m)
+		if err != nil {
+			return nil, err
+		}
+		return &LokiPromResponse{
+			Response: &base.PrometheusResponse{
+				Status: "success",
+				Data: base.PrometheusData{
+					ResultType: loghttp.ResultTypeMatrix,
+					Result:     sampleStream,
+				},
+			},
+		}, nil
 	})
 
 	_, err = tpw.Wrap(h).Do(ctx, lreq)

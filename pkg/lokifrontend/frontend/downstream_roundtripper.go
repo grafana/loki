@@ -7,8 +7,9 @@ import (
 	"net/url"
 	"path"
 
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 )
 
 // RoundTripper that forwards requests to downstream URL.
@@ -42,7 +43,7 @@ func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Reque
 	r.URL.Host = d.downstreamURL.Host
 	r.URL.Path = path.Join(d.downstreamURL.Path, r.URL.Path)
 	r.Host = ""
-	d.transport.RoundTrip(r)
+	d.transport.RoundTrip(r) // nolint
 	// TODO
 	return nil, fmt.Errorf("no implemented")
 }

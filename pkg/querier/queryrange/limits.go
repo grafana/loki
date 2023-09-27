@@ -14,6 +14,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/tenant"
+
 	//"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 	"github.com/pkg/errors"
@@ -451,7 +452,6 @@ func (sl *seriesLimiter) isLimitReached() bool {
 	return len(sl.hashes) > sl.maxSeries
 }
 
-
 type limitedRoundTripper struct {
 	configs []config.PeriodConfig
 	next    queryrangebase.Handler
@@ -722,8 +722,8 @@ type serializeRoundTripper struct {
 
 func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec) http.RoundTripper {
 	transport := serializeRoundTripper{
-		next:       next,
-		codec:      codec,
+		next:  next,
+		codec: codec,
 	}
 	return transport
 }

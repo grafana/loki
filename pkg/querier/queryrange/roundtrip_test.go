@@ -493,8 +493,8 @@ func TestVolumeTripperware(t *testing.T) {
 	t.Run("instant queries hardcode step to 0 and return a prometheus style vector response", func(t *testing.T) {
 		limits := fakeLimits{
 			maxQueryLength: 48 * time.Hour,
-			volumeEnabled: true,
-			maxSeries: 42,
+			volumeEnabled:  true,
+			maxSeries:      42,
 		}
 		tpw, stopper, err := NewTripperware(testConfig, testEngineOpts, util_log.Logger, limits, config.SchemaConfig{Configs: testSchemas}, nil, false, nil)
 		if stopper != nil {
@@ -503,11 +503,11 @@ func TestVolumeTripperware(t *testing.T) {
 		require.NoError(t, err)
 
 		lreq := &logproto.VolumeRequest{
-			Matchers: `{job="varlogs"}`,
-			From:     model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
-			Through:  model.TimeFromUnixNano(testTime.UnixNano()),
-			Limit:    10,
-			Step:     0, // Travis/Trevor: this should be ignored and set to 0. Karsten: Why?
+			Matchers:    `{job="varlogs"}`,
+			From:        model.TimeFromUnixNano(testTime.Add(-25 * time.Hour).UnixNano()), // bigger than split by interval limit
+			Through:     model.TimeFromUnixNano(testTime.UnixNano()),
+			Limit:       10,
+			Step:        0, // Travis/Trevor: this should be ignored and set to 0. Karsten: Why?
 			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
@@ -562,11 +562,11 @@ func TestVolumeTripperware(t *testing.T) {
 		end := testTime
 
 		lreq := &logproto.VolumeRequest{
-			Matchers: `{job="varlogs"}`,
-			From:     model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
-			Through:  model.TimeFromUnixNano(end.UnixNano()),
-			Step:     time.Hour.Milliseconds(),
-			Limit:    10,
+			Matchers:    `{job="varlogs"}`,
+			From:        model.TimeFromUnixNano(start.UnixNano()), // bigger than split by interval limit
+			Through:     model.TimeFromUnixNano(end.UnixNano()),
+			Step:        time.Hour.Milliseconds(),
+			Limit:       10,
 			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
@@ -881,7 +881,7 @@ func TestTripperware_EntriesLimit(t *testing.T) {
 	ctx := user.InjectOrgID(context.Background(), "1")
 
 	called := false
-	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error){
+	h := base.HandlerFunc(func(context.Context, base.Request) (base.Response, error) {
 		called = true
 		return nil, nil
 	})

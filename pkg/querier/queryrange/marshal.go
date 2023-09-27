@@ -280,7 +280,7 @@ func ValueToResponse(v parser.Value, params logql.Params) (queryrangebase.Respon
 			return nil, err
 		}
 
-		return  &LokiPromResponse{
+		return &LokiPromResponse{
 			Response: &queryrangebase.PrometheusResponse{
 				Status: "success",
 				Data: queryrangebase.PrometheusData{
@@ -297,7 +297,7 @@ func ValueToResponse(v parser.Value, params logql.Params) (queryrangebase.Respon
 				ResultType: loghttp.ResultTypeStream,
 				Result:     data,
 			},
-			Status:     "success",
+			Status: "success",
 		}, nil
 	default:
 		return nil, fmt.Errorf("unexpected praser.Value type: %T", v)

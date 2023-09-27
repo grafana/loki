@@ -29,7 +29,7 @@ import (
 
 // Config is the configuration for the queryrange tripperware
 type Config struct {
-	base.Config  `yaml:",inline"`
+	base.Config            `yaml:",inline"`
 	Transformer            UserIDTransformer     `yaml:"-"`
 	CacheIndexStatsResults bool                  `yaml:"cache_index_stats_results"`
 	StatsCacheConfig       IndexStatsCacheConfig `yaml:"index_stats_results_cache" doc:"description=If a cache config is not specified and cache_index_stats_results is true, the config for the results cache is used."`
@@ -697,7 +697,6 @@ func NewMetricTripperware(
 		return next
 	}), nil
 }
-
 
 // NewInstantMetricTripperware creates a new frontend tripperware responsible for handling metric queries
 func NewInstantMetricTripperware(
