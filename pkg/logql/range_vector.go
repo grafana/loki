@@ -34,7 +34,7 @@ type RangeStreamingAgg interface {
 // To fetch the current vector use `At` with a `BatchRangeVectorAggregator` or `RangeStreamingAgg`.
 type RangeVectorIterator interface {
 	Next() bool
-	At() (int64, promql.Vector)
+	At() (int64, StepResult)
 	Close() error
 	Error() error
 }
@@ -186,7 +186,7 @@ func (r *batchRangeVectorIterator) load(start, end int64) {
 		_ = r.iter.Next()
 	}
 }
-func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
+func (r *batchRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.window))
 	}
@@ -200,7 +200,7 @@ func (r *batchRangeVectorIterator) At() (int64, promql.Vector) {
 			Metric: series.Metric,
 		})
 	}
-	return ts, r.at
+	return ts, SampleVector(r.at)
 }
 
 var seriesPool sync.Pool
@@ -452,17 +452,17 @@ func quantileOverTime(q float64) func(samples []promql.FPoint) float64 {
 		for _, v := range samples {
 			values = append(values, promql.Sample{F: v.F})
 		}
-		return quantile(q, values)
+		return Quantile(q, values)
 	}
 }
 
-// quantile calculates the given quantile of a vector of samples.
+// Quantile calculates the given Quantile of a vector of samples.
 //
 // The Vector will be sorted.
 // If 'values' has zero elements, NaN is returned.
 // If q<0, -Inf is returned.
 // If q>1, +Inf is returned.
-func quantile(q float64, values vector.HeapByMaxValue) float64 {
+func Quantile(q float64, values vector.HeapByMaxValue) float64 {
 	if len(values) == 0 {
 		return math.NaN()
 	}
@@ -580,7 +580,7 @@ func (r *streamRangeVectorIterator) load(start, end int64) {
 	}
 }
 
-func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
+func (r *streamRangeVectorIterator) At() (int64, StepResult) {
 	if r.at == nil {
 		r.at = make([]promql.Sample, 0, len(r.windowRangeAgg))
 	}
@@ -594,7 +594,7 @@ func (r *streamRangeVectorIterator) At() (int64, promql.Vector) {
 			Metric: r.metrics[lbs],
 		})
 	}
-	return ts, r.at
+	return ts, SampleVector(r.at)
 }
 
 func streamingAggregator(r *syntax.RangeAggregationExpr) (RangeStreamingAgg, error) {
@@ -812,7 +812,7 @@ func (a *QuantileOverTime) agg(sample promql.FPoint) {
 }
 
 func (a *QuantileOverTime) at() float64 {
-	return quantile(a.q, a.values)
+	return Quantile(a.q, a.values)
 }
 
 type FirstOverTime struct {

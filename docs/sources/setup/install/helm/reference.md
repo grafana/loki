@@ -827,7 +827,7 @@ false
 			<td>string</td>
 			<td></td>
 			<td><pre lang="json">
-"v1.8.0"
+"v1.8.1"
 </pre>
 </td>
 		</tr>
@@ -944,7 +944,7 @@ null
 			<td>string</td>
 			<td>Uses the specified users from the `loki.tenants` list to create the htpasswd file if `loki.tenants` is not set, the `gateway.basicAuth.username` and `gateway.basicAuth.password` are used The value is templated using `tpl`. Override this to use a custom htpasswd, e.g. in case the default causes high CPU load.</td>
 			<td><pre lang="json">
-"{{ if .Values.loki.tenants }}\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
+"{{ if .Values.loki.tenants }}\n\n\n  {{- range $t := .Values.loki.tenants }}\n{{ htpasswd (required \"All tenants must have a 'name' set\" $t.name) (required \"All tenants must have a 'password' set\" $t.password) }}\n\n\n  {{- end }}\n{{ else }} {{ htpasswd (required \"'gateway.basicAuth.username' is required\" .Values.gateway.basicAuth.username) (required \"'gateway.basicAuth.password' is required\" .Values.gateway.basicAuth.password) }} {{ end }}"
 </pre>
 </td>
 		</tr>
@@ -2165,6 +2165,7 @@ null
   "azure": {
     "accountKey": null,
     "accountName": null,
+    "connectionString": null,
     "endpointSuffix": null,
     "requestTimeout": null,
     "useFederatedToken": false,

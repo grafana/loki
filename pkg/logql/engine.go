@@ -295,7 +295,7 @@ func (q *query) Eval(ctx context.Context) (promql_parser.Value, error) {
 		streams, err := readStreams(iter, q.params.Limit(), q.params.Direction(), q.params.Interval())
 		return streams, err
 	default:
-		return nil, errors.New("Unexpected type (%T): cannot evaluate")
+		return nil, fmt.Errorf("unexpected type (%T): cannot evaluate", e)
 	}
 }
 
@@ -339,7 +339,6 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	if err != nil {
 		return nil, err
 	}
-
 	stepEvaluator, err := q.evaluator.NewStepEvaluator(ctx, q.evaluator, expr, q.params)
 	if err != nil {
 		return nil, err
@@ -348,11 +347,16 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 
 	maxSeriesCapture := func(id string) int { return q.limits.MaxQuerySeries(ctx, id) }
 	maxSeries := validation.SmallestPositiveIntPerTenant(tenantIDs, maxSeriesCapture)
+
 	seriesIndex := map[uint64]*promql.Series{}
 
-	next, ts, vec := stepEvaluator.Next()
+	next, ts, r := stepEvaluator.Next()
 	if stepEvaluator.Error() != nil {
 		return nil, stepEvaluator.Error()
+	}
+	vec := promql.Vector{}
+	if next {
+		vec = r.SampleVector()
 	}
 
 	// fail fast for the first step or instant query
@@ -377,6 +381,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 	}
 
 	for next {
+		vec = r.SampleVector()
 		for _, p := range vec {
 			var (
 				series *promql.Series
@@ -401,7 +406,7 @@ func (q *query) evalSample(ctx context.Context, expr syntax.SampleExpr) (promql_
 		if len(seriesIndex) > maxSeries {
 			return nil, logqlmodel.NewSeriesLimitError(maxSeries)
 		}
-		next, ts, vec = stepEvaluator.Next()
+		next, ts, r = stepEvaluator.Next()
 		if stepEvaluator.Error() != nil {
 			return nil, stepEvaluator.Error()
 		}
