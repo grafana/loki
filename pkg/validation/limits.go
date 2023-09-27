@@ -189,9 +189,9 @@ type Limits struct {
 }
 
 type StreamRetention struct {
-	Period   model.Duration    `yaml:"period" json:"period"`
-	Priority int               `yaml:"priority" json:"priority"`
-	Selector string            `yaml:"selector" json:"selector"`
+	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
+	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
+	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
