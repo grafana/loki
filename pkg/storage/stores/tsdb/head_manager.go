@@ -310,7 +310,7 @@ func (m *HeadManager) buildTSDBFromWALs(legacy bool) error {
 		allWALs,
 		legacy,
 	); err != nil {
-		return errors.Wrap(err, "building tsdb from WALs")
+		level.Error(m.log).Log("msg", "failed to build tsdb from WALs, continuing", "err", err.Error())
 	}
 
 	if legacy {
@@ -563,7 +563,6 @@ func recoverHead(name, dir string, heads *tenantHeads, wals []WALIdentifier, leg
 					return err
 				}
 
-				// labels are always written to the WAL before corresponding chunks
 				if len(rec.Series.Labels) > 0 {
 					tenant, ok := seriesMap[rec.UserID]
 					if !ok {
@@ -660,22 +659,19 @@ func (t *tenantHeads) Append(userID string, ls labels.Labels, fprint uint64, chk
 	updateMintMaxt(mint, maxt, &t.mint, &t.maxt)
 
 	head := t.getOrCreateTenantHead(userID)
-	newStream, refID := head.Append(ls, fprint, chks)
+	refID := head.Append(ls, fprint, chks)
 
 	rec := &WALRecord{
+		Fingerprint: fprint,
+		Series: record.RefSeries{
+			Ref:    chunks.HeadSeriesRef(refID),
+			Labels: ls,
+		},
 		UserID: userID,
 		Chks: ChunkMetasRecord{
 			Ref:  refID,
 			Chks: chks,
 		},
-	}
-
-	if newStream {
-		rec.Fingerprint = fprint
-		rec.Series = record.RefSeries{
-			Ref:    chunks.HeadSeriesRef(refID),
-			Labels: ls,
-		}
 	}
 
 	return rec

@@ -159,10 +159,10 @@ func updateMintMaxt(mint, maxt int64, mintSrc, maxtSrc *atomic.Int64) {
 }
 
 // Note: chks must not be nil or zero-length
-func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (created bool, refID uint64) {
+func (h *Head) Append(ls labels.Labels, fprint uint64, chks index.ChunkMetas) (refID uint64) {
 	from, through := chks.Bounds()
 	var id uint64
-	created, refID = h.series.Append(ls, chks, func() *memSeries {
+	created, refID := h.series.Append(ls, chks, func() *memSeries {
 		id = h.lastSeriesID.Inc()
 		return newMemSeries(id, ls, fprint)
 	})
