@@ -264,18 +264,23 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		enableIPv6   bool
 	)
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
+		podIP := fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
-			instanceAddr = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
+			instanceAddr = podIP
 		case lokiv1.InstanceAddrDefault:
 			// Do nothing use loki defaults
 		default:
 			// Do nothing use loki defaults
 		}
 
+		// Always default to use the pod IP address when IPv6 enabled to ensure:
+		// - On Single Stack IPv6: Skip interface checking
+		// - On Dual Stack IPv4/6: Eliminate duplicate memberlist node registration
 		if spec.MemberList.EnableIPv6 {
-			instanceAddr = "'::'"
 			enableIPv6 = true
+			instanceAddr = podIP
 		}
 	}
 

@@ -142,19 +142,3 @@ func configureHTTPServicePKI(podSpec *corev1.PodSpec, serviceName string) error 
 
 	return nil
 }
-
-func configureIPv6(svc *corev1.Service) error {
-	spec := &corev1.ServiceSpec{
-		IPFamilies: []corev1.IPFamily{
-			corev1.IPv4Protocol,
-			corev1.IPv6Protocol,
-		},
-		IPFamilyPolicy: &preferDualStack,
-	}
-
-	if err := mergo.Merge(&svc.Spec, spec); err != nil {
-		return kverrors.Wrap(err, "failed to merge service IPv6 support")
-	}
-
-	return nil
-}

@@ -292,7 +292,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 			},
 			wantOptions: config.GossipRing{
 				EnableIPv6:           true,
-				InstanceAddr:         "'::'",
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
 				InstancePort:         9095,
 				BindPort:             7946,
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
@@ -311,7 +311,7 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 			},
 			wantOptions: config.GossipRing{
 				EnableIPv6:           true,
-				InstanceAddr:         "'::'",
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
 				InstancePort:         9095,
 				BindPort:             7946,
 				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",

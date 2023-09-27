@@ -127,7 +127,6 @@ var (
 
 	defaultConfigMapMode = int32(420)
 	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
-	preferDualStack      = corev1.IPFamilyPolicyPreferDualStack
 )
 
 func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {
