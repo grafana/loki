@@ -439,9 +439,8 @@ type MemberListSpec struct {
 	InstanceAddrType InstanceAddrType `json:"instanceAddrType,omitempty"`
 
 	// EnableIPv6 defines a flag to enable/disable IPv6 support for the memberlist
-	// based hash ring. Enabling this flag will update all Services to accept
-	// both IP families (IPv4, IPv6) and prefer dual stack configurations on the
-	// cluster.
+	// based hash ring. Enabling this flag will set `instanceAddrType` to podIP on
+	// single IPv6 and dual stack environments.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional

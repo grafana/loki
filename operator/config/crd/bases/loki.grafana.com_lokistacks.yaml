@@ -47,9 +47,8 @@ spec:
                       enableIPv6:
                         description: EnableIPv6 defines a flag to enable/disable IPv6
                           support for the memberlist based hash ring. Enabling this
-                          flag will update all Services to accept both IP families
-                          (IPv4, IPv6) and prefer dual stack configurations on the
-                          cluster.
+                          flag will set `instanceAddrType` to podIP on single IPv6
+                          and dual stack environments.
                         type: boolean
                       instanceAddrType:
                         description: InstanceAddrType defines the type of address
