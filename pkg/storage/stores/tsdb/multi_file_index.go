@@ -32,6 +32,11 @@ type IndexIter interface {
 type IndexSlice []Index
 
 func (xs IndexSlice) For(ctx context.Context, fn func(context.Context, Index) error) error {
+	// avoid spawning goroutines if the slice contains a single index.
+	if len(xs) == 1 {
+		return fn(ctx, xs[0])
+	}
+
 	g, ctx := errgroup.WithContext(ctx)
 	for i := range xs {
 		x := xs[i]

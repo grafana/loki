@@ -201,12 +201,19 @@ func (t *indexSet) ForEachConcurrent(ctx context.Context, callback index.ForEach
 	}
 	defer t.indexMtx.rUnlock()
 
-	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(200)
-
 	logger := util_log.WithContext(ctx, t.logger)
 	level.Debug(logger).Log("index-files-count", len(t.index))
 
+	// avoid spawning new goroutines if the index set contains a single index file.
+	// user index sets are expected to contain a single compacted index file.
+	if len(t.index) == 1 {
+		for _, idx := range t.index {
+			return callback(t.userID == "", idx)
+		}
+	}
+
+	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(200)
 	for i := range t.index {
 		idx := t.index[i]
 		g.Go(func() error {
