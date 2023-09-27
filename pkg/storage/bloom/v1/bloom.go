@@ -59,12 +59,14 @@ func (p *BloomPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc32
 	// TODO(owen-d): pool
 	buf := &bytes.Buffer{}
 
-	enc.PutUvarint(len(p.Blooms))
 	for i, bloom := range p.Blooms {
 		if err := bloom.Encode(enc); err != nil {
 			return 0, errors.Wrapf(err, "encoding %dth bloom filter", i)
 		}
 	}
+
+	// encode the number of filters in the page
+	enc.PutBE64(uint64(len(p.Blooms)))
 	decompressedLen = enc.Len()
 
 	compressor := pool.GetWriter(buf)
@@ -143,8 +145,12 @@ type BloomPageDecoder struct {
 }
 
 func (d *BloomPageDecoder) Reset() {
-	d.dec.B = d.data
-	d.n = d.dec.Uvarint() // first varint is number of blooms
+	// last 8 bytes are the number of blooms in this page
+	d.dec.B = d.data[len(d.data)-8:]
+	d.n = int(d.dec.Be64())
+
+	// reset data to the bloom portion of the page
+	d.dec.B = d.data[:len(d.data)-8]
 	return
 }
 
