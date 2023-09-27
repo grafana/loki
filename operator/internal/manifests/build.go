@@ -129,10 +129,10 @@ func ApplyDefaultSettings(opts *Options) error {
 		},
 	}
 
-	// nolint:staticcheck
-	// In a zone aware deployment if the T-Shirt is 1xmedium then we will want
-	// to not set the default value of factor 3 but 2 instead to not bring the
-	// stack down if 1 zone goes down
+	// nolint:staticcheck 
+	// In a zone-aware deployment, if the T-shirt size is 1x.medium then we will
+	// want to modify the replication factor to 2 instead of the default value
+	// of 3, in order to keep the stack functioning in case a zone goes down.
 	if opts.Stack.Size == lokiv1.SizeOneXMedium && opts.Stack.Replication != nil && opts.Stack.Replication.Factor == 0 && opts.Stack.ReplicationFactor == 0 {
 		strictOverrides.Replication = &lokiv1.ReplicationSpec{
 			Factor: 2,
