@@ -265,9 +265,10 @@ func Test_MaxQueryLookBack(t *testing.T) {
 		return nil, nil
 	})
 
-	_, err = tpw.Wrap(h).Do(ctx, lreq)
+	resp, err := tpw.Wrap(h).Do(ctx, lreq)
 	require.NoError(t, err)
-	require.True(t, called)
+	require.False(t, called)
+	require.Equal(t, resp.(*LokiResponse).Status, "success")
 }
 
 func Test_GenerateCacheKey_NoDivideZero(t *testing.T) {
