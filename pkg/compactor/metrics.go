@@ -8,17 +8,17 @@ import (
 const (
 	statusFailure = "failure"
 	statusSuccess = "success"
-
-	lblWithRetention = "with_retention"
 )
 
 type metrics struct {
-	compactTablesOperationTotal           *prometheus.CounterVec
-	compactTablesOperationDurationSeconds *prometheus.GaugeVec
-	compactTablesOperationLastSuccess     *prometheus.GaugeVec
-	applyRetentionLastSuccess             prometheus.Gauge
-	compactorRunning                      prometheus.Gauge
-	skippedCompactingLockedTables         prometheus.Counter
+	compactTablesOperationTotal            *prometheus.CounterVec
+	compactTablesOperationDurationSeconds  prometheus.Gauge
+	compactTablesOperationLastSuccess      prometheus.Gauge
+	applyRetentionOperationTotal           *prometheus.CounterVec
+	applyRetentionOperationDurationSeconds prometheus.Gauge
+	applyRetentionLastSuccess              prometheus.Gauge
+	compactorRunning                       prometheus.Gauge
+	skippedCompactingLockedTables          *prometheus.CounterVec
 }
 
 func newMetrics(r prometheus.Registerer) *metrics {
@@ -26,18 +26,28 @@ func newMetrics(r prometheus.Registerer) *metrics {
 		compactTablesOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "compact_tables_operation_total",
-			Help:      "Total number of tables compaction done by status and with/without retention",
-		}, []string{"status", lblWithRetention}),
-		compactTablesOperationDurationSeconds: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Help:      "Total number of tables compaction done by status",
+		}, []string{"status"}),
+		compactTablesOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "compact_tables_operation_duration_seconds",
-			Help:      "Time (in seconds) spent in compacting all the tables with/without retention",
-		}, []string{lblWithRetention}),
-		compactTablesOperationLastSuccess: promauto.With(r).NewGaugeVec(prometheus.GaugeOpts{
+			Help:      "Time (in seconds) spent in compacting all the tables",
+		}),
+		compactTablesOperationLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "compact_tables_operation_last_successful_run_timestamp_seconds",
 			Help:      "Unix timestamp of the last successful compaction run",
-		}, []string{lblWithRetention}),
+		}),
+		applyRetentionOperationTotal: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
+			Namespace: "loki_compactor",
+			Name:      "apply_retention_operation_total",
+			Help:      "Total number of attempts done to apply retention with status",
+		}, []string{"status"}),
+		applyRetentionOperationDurationSeconds: promauto.With(r).NewGauge(prometheus.GaugeOpts{
+			Namespace: "loki_compactor",
+			Name:      "apply_retention_operation_duration_seconds",
+			Help:      "Time (in seconds) spent in applying retention",
+		}),
 		applyRetentionLastSuccess: promauto.With(r).NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki_boltdb_shipper",
 			Name:      "apply_retention_last_successful_run_timestamp_seconds",
@@ -48,11 +58,11 @@ func newMetrics(r prometheus.Registerer) *metrics {
 			Name:      "compactor_running",
 			Help:      "Value will be 1 if compactor is currently running on this instance",
 		}),
-		skippedCompactingLockedTables: promauto.With(r).NewCounter(prometheus.CounterOpts{
+		skippedCompactingLockedTables: promauto.With(r).NewCounterVec(prometheus.CounterOpts{
 			Namespace: "loki_compactor",
-			Name:      "skipped_compacting_locked_tables_total",
+			Name:      "skipped_compacting_locked_table_total",
 			Help:      "Count of uncompacted tables being skipped due to them being locked by retention",
-		}),
+		}, []string{"table_name"}),
 	}
 
 	return &m

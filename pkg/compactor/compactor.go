@@ -126,6 +126,8 @@ func (cfg *Config) Validate() error {
 
 		if cfg.ApplyRetentionInterval == 0 {
 			cfg.ApplyRetentionInterval = cfg.CompactionInterval
+			// add some jitter to avoid running retention and compaction at same time
+			cfg.ApplyRetentionInterval += cfg.CompactionInterval / 2
 		}
 
 		if err := config.ValidatePathPrefix(cfg.DeleteRequestStoreKeyPrefix); err != nil {
@@ -604,7 +606,7 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 			}
 
 			if hasUncompactedIndex {
-				c.metrics.skippedCompactingLockedTables.Inc()
+				c.metrics.skippedCompactingLockedTables.WithLabelValues(tableName).Inc()
 				level.Warn(util_log.Logger).Log("msg", "skipped compacting table which likely has uncompacted index since it is locked by retention", "table_name", tableName)
 			}
 			return nil
@@ -614,6 +616,8 @@ func (c *Compactor) CompactTable(ctx context.Context, tableName string, applyRet
 		// wait for lock to be released since we can't mark delete requests as processed without checking all the tables
 		select {
 		case <-lockWaiterChan:
+			// refresh index list cache since the compaction would have changed the index files in the object store
+			sc.indexStorageClient.RefreshIndexTableNamesCache(ctx)
 		case <-ctx.Done():
 			return nil
 		}
@@ -657,14 +661,19 @@ func (c *Compactor) RunCompaction(ctx context.Context, applyRetention bool) (err
 		if err != nil {
 			status = statusFailure
 		}
-		withRetentionLabelValue := fmt.Sprintf("%v", applyRetention)
-		c.metrics.compactTablesOperationTotal.WithLabelValues(status, withRetentionLabelValue).Inc()
+		if applyRetention {
+			c.metrics.applyRetentionOperationTotal.WithLabelValues(status).Inc()
+		} else {
+			c.metrics.compactTablesOperationTotal.WithLabelValues(status).Inc()
+		}
 		runtime := time.Since(start)
 		if status == statusSuccess {
-			c.metrics.compactTablesOperationDurationSeconds.WithLabelValues(withRetentionLabelValue).Set(runtime.Seconds())
-			c.metrics.compactTablesOperationLastSuccess.WithLabelValues(withRetentionLabelValue).SetToCurrentTime()
 			if applyRetention {
+				c.metrics.applyRetentionOperationDurationSeconds.Set(runtime.Seconds())
 				c.metrics.applyRetentionLastSuccess.SetToCurrentTime()
+			} else {
+				c.metrics.compactTablesOperationDurationSeconds.Set(runtime.Seconds())
+				c.metrics.compactTablesOperationLastSuccess.SetToCurrentTime()
 			}
 		}
 
