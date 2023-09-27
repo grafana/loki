@@ -33,6 +33,7 @@ type IndexSlice []Index
 
 func (xs IndexSlice) For(ctx context.Context, fn func(context.Context, Index) error) error {
 	g, ctx := errgroup.WithContext(ctx)
+	g.SetLimit(4)
 	for i := range xs {
 		x := xs[i]
 		g.Go(func() error {
