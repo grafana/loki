@@ -29,6 +29,7 @@ import (
 	base "github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/storage/chunk/cache"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -507,6 +508,7 @@ func TestVolumeTripperware(t *testing.T) {
 			Through:  model.TimeFromUnixNano(testTime.UnixNano()),
 			Limit:    10,
 			Step:     0, // Travis/Trevor: this should be ignored and set to 0. Karsten: Why?
+			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
 		ctx := user.InjectOrgID(context.Background(), "1")
@@ -565,6 +567,7 @@ func TestVolumeTripperware(t *testing.T) {
 			Through:  model.TimeFromUnixNano(end.UnixNano()),
 			Step:     time.Hour.Milliseconds(),
 			Limit:    10,
+			AggregateBy: seriesvolume.DefaultAggregateBy,
 		}
 
 		ctx := user.InjectOrgID(context.Background(), "1")

@@ -72,6 +72,7 @@ func NewVolumeMiddleware() queryrangebase.Middleware {
 			queryStatsCtx.AddSplitQueries(int64(len(jobs)))
 
 			collector := make(chan *bucketedVolumeResponse, len(jobs))
+			// TODO(karsten): I'm not sure this is the right way...
 			err := concurrency.ForEachJob(
 				ctx,
 				len(jobs),
