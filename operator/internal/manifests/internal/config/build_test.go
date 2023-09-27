@@ -3570,7 +3570,7 @@ common:
       store: memberlist
     heartbeat_period: 5s
     heartbeat_timeout: 1m
-    instance_addr: '::'
+    instance_addr: ${HASH_RING_INSTANCE_ADDR}
     instance_port: 9095
 compactor:
   compaction_interval: 2h
@@ -3648,6 +3648,7 @@ limits_config:
   query_timeout: 1m
 memberlist:
   abort_if_cluster_join_fails: true
+  advertise_addr: ${HASH_RING_INSTANCE_ADDR}
   advertise_port: 7946
   bind_port: 7946
   join_members:
@@ -3751,7 +3752,7 @@ overrides:
 		},
 		GossipRing: GossipRing{
 			EnableIPv6:           true,
-			InstanceAddr:         "'::'",
+			InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
 			InstancePort:         9095,
 			BindPort:             7946,
 			MembersDiscoveryAddr: "loki-gossip-ring-lokistack-dev.default.svc.cluster.local",
