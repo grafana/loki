@@ -150,6 +150,7 @@ loki:
           addresses: {{ .addresses }}
           {{- end }}
           service: {{ .service }}
+          timeout: {{ .timeout }}
     {{- end }}
     {{- end }}
 
