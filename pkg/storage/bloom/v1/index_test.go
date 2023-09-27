@@ -76,7 +76,7 @@ func mkBasicSeriesPages(pages, series int, fromFp, throughFp model.Fingerprint, 
 }
 
 func TestBloomOffsetEncoding(t *testing.T) {
-	src := BloomOffset{PageOffset: 1, ByteOffset: 2}
+	src := BloomOffset{Page: 1, ByteOffset: 2}
 	enc := &encoding.Encbuf{}
 	src.Encode(enc, BloomOffset{})
 
@@ -104,7 +104,7 @@ func TestSeriesEncoding(t *testing.T) {
 				},
 			},
 		},
-		Offset: BloomOffset{PageOffset: 2, ByteOffset: 3},
+		Offset: BloomOffset{Page: 2, ByteOffset: 3},
 	}
 
 	enc := &encoding.Encbuf{}
@@ -137,7 +137,7 @@ func TestSeriesPageEncoding(t *testing.T) {
 				},
 				Fingerprint: model.Fingerprint(1),
 			},
-			Offset: BloomOffset{PageOffset: 2, ByteOffset: 3},
+			Offset: BloomOffset{Page: 2, ByteOffset: 3},
 		},
 		{
 			Series: Series{
@@ -155,7 +155,7 @@ func TestSeriesPageEncoding(t *testing.T) {
 					},
 				},
 			},
-			Offset: BloomOffset{PageOffset: 2, ByteOffset: 3},
+			Offset: BloomOffset{Page: 2, ByteOffset: 3},
 		},
 	}
 

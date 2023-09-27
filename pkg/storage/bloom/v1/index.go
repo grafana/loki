@@ -422,17 +422,17 @@ func (r *ChunkRef) Decode(dec *encoding.Decbuf, previousEnd model.Time) (model.T
 }
 
 type BloomOffset struct {
-	PageOffset int // offset to beginnging of bloom page
+	Page       int // page number in bloom block
 	ByteOffset int // offset to beginning of bloom within page
 }
 
 func (o *BloomOffset) Encode(enc *encoding.Encbuf, previousOffset BloomOffset) {
-	enc.PutUvarint(o.PageOffset - previousOffset.PageOffset)
+	enc.PutUvarint(o.Page - previousOffset.Page)
 	enc.PutUvarint(o.ByteOffset - previousOffset.ByteOffset)
 }
 
 func (o *BloomOffset) Decode(dec *encoding.Decbuf, previousOffset BloomOffset) error {
-	o.PageOffset = previousOffset.PageOffset + dec.Uvarint()
+	o.Page = previousOffset.Page + dec.Uvarint()
 	o.ByteOffset = previousOffset.ByteOffset + dec.Uvarint()
 	return dec.Err()
 }

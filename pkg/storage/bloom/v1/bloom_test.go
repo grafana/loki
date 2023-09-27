@@ -67,5 +67,44 @@ func TestBloomBlockEncoding(t *testing.T) {
 	require.Nil(t, dst.DecodeHeaders(bytes.NewReader(data)))
 
 	require.Equal(t, src, dst)
+}
 
+func TestBloomBlockPageIteration(t *testing.T) {
+	pages := []BloomPage{
+		{
+			Blooms: mkBasicBlooms(2),
+		},
+		{
+			Blooms: mkBasicBlooms(2),
+		},
+	}
+
+	pageItr := NewSliceIter[BloomPage](pages)
+	src := NewBloomBlock(chunkenc.EncSnappy)
+	buf := bytes.NewBuffer(nil)
+
+	_, err := src.WriteTo(pageItr, buf)
+	require.Nil(t, err)
+
+	data := buf.Bytes()
+	var dst BloomBlock
+	require.Nil(t, dst.DecodeHeaders(bytes.NewReader(data)))
+	require.Equal(t, src, dst)
+
+	for i := range pages {
+		srcPage := pages[i]
+		decoder, err := dst.BloomPageDecoder(bytes.NewReader(data), BloomOffset{Page: i})
+		require.Nil(t, err)
+		require.Equal(t, len(srcPage.Blooms), decoder.N())
+
+		for i := 0; i < decoder.N(); i++ {
+
+			bloom, err := decoder.Next()
+			require.Nil(t, err)
+			require.Equal(t, srcPage.Blooms[i], bloom)
+		}
+
+		_, err = decoder.Next()
+		require.NotNil(t, err)
+	}
 }
