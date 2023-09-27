@@ -38,7 +38,7 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
 1. Configure the zone for the existing ingester StatefulSet as `zone-default` by setting `multi_zone_default_ingester_zone: true`, this allows us to later filter out that zone from the write path.
 2. Configure ingester-pdb with maxUnavailable=0 and deploy 3x zone-aware StatefulSets with 0 replicas by setting
 
-    ```
+    ```jsonnet
     _config+:: {
         multi_zone_ingester_enabled: true,
         multi_zone_ingester_migration_enabled: true,
@@ -49,13 +49,12 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
         multi_zone_ingester_replication_write_path_enabled: false,
         multi_zone_ingester_replication_read_path_enabled: false,
     },
-
     ```
    
     If you're not using jsonnet, the new ingester StatefulSets should have a label with `rollout-group: ingester`, annotation `rollout-max-unavailable: x` (put a placeholder value in, later you should set the value of this to be some portion of the StatefulSets total replicas, for example in jsonnet we template this so that each StatefulSet runs 1/3 of the total replicas and the max unavailable is 1/3 of each StatefulSets replicas), and set the update strategy to `OnDelete`.
 
 1. Diff ingester and ingester-zone-a StatefulSets and make sure all config matches
-    ```
+    ```bash
     kubectl get statefulset -n loki-dev-008 ingester -o yaml > ingester.yaml
     kubectl get statefulset -n loki-dev-008 ingester-zone-a -o yaml > ingester-zone-a.yaml
     diff ingester.yaml ingester-zone-a.yaml
@@ -92,7 +91,6 @@ These instructions assume you are using the zone aware ingester jsonnet deployme
     rule_evaluations_total
     rule_evaluation_failures_total
     rule_group_iterations_missed_total
-
     ```
 
 1. Enable zone-aware replication on the read path `multi_zone_ingester_replication_read_path_enabled: true`. If you're not using jsonnet, set `distributor.zone-awareness-enabled` to true for queriers.
