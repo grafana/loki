@@ -127,6 +127,8 @@ var (
 
 	defaultConfigMapMode = int32(420)
 	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
+
+	podIP = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
 )
 
 func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {

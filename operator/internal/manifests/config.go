@@ -264,8 +264,6 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		enableIPv6   bool
 	)
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
-		podIP := fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
-
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
 			instanceAddr = podIP

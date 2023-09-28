@@ -438,14 +438,15 @@ type MemberListSpec struct {
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors={"urn:alm:descriptor:com.tectonic.ui:select:default","urn:alm:descriptor:com.tectonic.ui:select:podIP"},displayName="Instance Address"
 	InstanceAddrType InstanceAddrType `json:"instanceAddrType,omitempty"`
 
-	// EnableIPv6 defines a flag to enable/disable IPv6 support for the memberlist
-	// based hash ring. Enabling this flag will set `instanceAddrType` to podIP on
-	// single IPv6 and dual stack environments.
+	// EnableIPv6 enables IPv6 support for the memberlist based hash ring.
+	//
+	// Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+	// for the memberlist.
 	//
 	// +optional
 	// +kubebuilder:validation:Optional
 	// +operator-sdk:csv:customresourcedefinitions:type=spec,xDescriptors="urn:alm:descriptor:com.tectonic.ui:booleanSwitch",displayName="Enable IPv6"
-	EnableIPv6 bool `json:"enableIPv6"`
+	EnableIPv6 bool `json:"enableIPv6,omitempty"`
 }
 
 // HashRingSpec defines the hash ring configuration

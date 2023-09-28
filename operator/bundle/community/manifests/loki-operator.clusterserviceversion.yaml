@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: docker.io/grafana/loki-operator:0.4.0
-    createdAt: "2023-09-27T13:18:06Z"
+    createdAt: "2023-09-28T10:58:45Z"
     description: The Community Loki Operator provides Kubernetes native deployment
       and management of Loki and related logging components.
     operators.operatorframework.io/builder: operator-sdk-unknown
@@ -265,9 +265,9 @@ spec:
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
-      - description: EnableIPv6 defines a flag to enable/disable IPv6 support for
-          the memberlist based hash ring. Enabling this flag will set `instanceAddrType`
-          to podIP on single IPv6 and dual stack environments.
+      - description: "EnableIPv6 enables IPv6 support for the memberlist based hash
+          ring. \n Currently this also forces the instanceAddrType to podIP to avoid
+          local address lookup for the memberlist."
         displayName: Enable IPv6
         path: hashRing.memberlist.enableIPv6
         x-descriptors:

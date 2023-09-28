@@ -150,7 +150,7 @@ metadata:
     categories: OpenShift Optional, Logging & Tracing
     certified: "false"
     containerImage: quay.io/openshift-logging/loki-operator:0.1.0
-    createdAt: "2023-09-27T13:18:12Z"
+    createdAt: "2023-09-28T10:58:49Z"
     description: |
       The Loki Operator for OCP provides a means for configuring and managing a Loki stack for cluster logging.
       ## Prerequisites and Requirements
@@ -278,9 +278,9 @@ spec:
       - description: MemberList configuration spec
         displayName: Memberlist Config
         path: hashRing.memberlist
-      - description: EnableIPv6 defines a flag to enable/disable IPv6 support for
-          the memberlist based hash ring. Enabling this flag will set `instanceAddrType`
-          to podIP on single IPv6 and dual stack environments.
+      - description: "EnableIPv6 enables IPv6 support for the memberlist based hash
+          ring. \n Currently this also forces the instanceAddrType to podIP to avoid
+          local address lookup for the memberlist."
         displayName: Enable IPv6
         path: hashRing.memberlist.enableIPv6
         x-descriptors:
