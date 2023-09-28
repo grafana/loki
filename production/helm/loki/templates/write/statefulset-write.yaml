@@ -202,5 +202,6 @@ spec:
         {{- end }}
     {{- with .Values.write.extraVolumeClaimTemplates }}
     {{- toYaml . | nindent 4 }}
+    {{- end }}
   {{- end }}
 {{- end }}
