@@ -287,7 +287,7 @@ func (ns *NamedStores) populateStoreType() error {
 	return nil
 }
 
-func (ns *NamedStores) validate() error {
+func (ns *NamedStores) Validate() error {
 	for name, awsCfg := range ns.AWS {
 		if err := awsCfg.Validate(); err != nil {
 			return errors.Wrap(err, fmt.Sprintf("invalid AWS Storage config with name %s", name))
@@ -391,7 +391,7 @@ func (cfg *Config) Validate() error {
 		return errors.Wrap(err, "invalid tsdb config")
 	}
 
-	return cfg.NamedStores.validate()
+	return cfg.NamedStores.Validate()
 }
 
 // NewIndexClient creates a new index client of the desired type specified in the PeriodConfig
