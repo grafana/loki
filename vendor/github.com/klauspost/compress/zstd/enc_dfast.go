@@ -138,9 +138,9 @@ encodeLoop:
 				if repIndex >= 0 && load3232(src, repIndex) == uint32(cv>>(repOff*8)) {
 					// Consider history as well.
 					var seq seq
-					length := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
+					lenght := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
 
-					seq.matchLen = uint32(length - zstdMinMatch)
+					seq.matchLen = uint32(lenght - zstdMinMatch)
 
 					// We might be able to match backwards.
 					// Extend as long as we can.
@@ -166,11 +166,11 @@ encodeLoop:
 						println("repeat sequence", seq, "next s:", s)
 					}
 					blk.sequences = append(blk.sequences, seq)
-					s += length + repOff
+					s += lenght + repOff
 					nextEmit = s
 					if s >= sLimit {
 						if debugEncoder {
-							println("repeat ended", s, length)
+							println("repeat ended", s, lenght)
 
 						}
 						break encodeLoop
@@ -798,9 +798,9 @@ encodeLoop:
 				if repIndex >= 0 && load3232(src, repIndex) == uint32(cv>>(repOff*8)) {
 					// Consider history as well.
 					var seq seq
-					length := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
+					lenght := 4 + e.matchlen(s+4+repOff, repIndex+4, src)
 
-					seq.matchLen = uint32(length - zstdMinMatch)
+					seq.matchLen = uint32(lenght - zstdMinMatch)
 
 					// We might be able to match backwards.
 					// Extend as long as we can.
@@ -826,11 +826,11 @@ encodeLoop:
 						println("repeat sequence", seq, "next s:", s)
 					}
 					blk.sequences = append(blk.sequences, seq)
-					s += length + repOff
+					s += lenght + repOff
 					nextEmit = s
 					if s >= sLimit {
 						if debugEncoder {
-							println("repeat ended", s, length)
+							println("repeat ended", s, lenght)
 
 						}
 						break encodeLoop
