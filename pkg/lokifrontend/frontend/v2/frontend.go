@@ -312,6 +312,7 @@ func EncodeRequest(r queryrangebase.Request) (*queryrange.QueryRequest, error) {
 	}
 }
 
+// Do implements queryrangebase.Handler analogous to RoundTripGRPC.
 func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
 	if err != nil {

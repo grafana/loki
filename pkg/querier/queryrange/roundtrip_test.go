@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"net/http/httptest"
 	"sort"
 	"sync"
 	"testing"
@@ -1397,11 +1396,6 @@ func (f *fakeHandler) Do(ctx context.Context, req base.Request) (base.Response, 
 	r, err := f.calls[f.count].Do(ctx, req)
 	f.count++
 	return r, err
-}
-
-type fakeRoundTripper struct {
-	*httptest.Server
-	host string
 }
 
 func toMs(t time.Time) int64 {
