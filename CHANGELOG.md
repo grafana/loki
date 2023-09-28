@@ -19,6 +19,7 @@
 * [10534](https://github.com/grafana/loki/pull/10534) **chaudum** Remove configuration `use_boltdb_shipper_as_backup`
 * [10620](https://github.com/grafana/loki/pull/10620) **ashwanthgoli** Enable embedded cache if no other cache is explicitly enabled.
 * [10655](https://github.com/grafana/loki/pull/10655) **chaudum** Remove legacy ingester shutdown handler `/ingester/flush_shutdown`.
+* [10709](https://github.com/grafana/loki/pull/10709) **chaudum** Remove `ingester.max-transfer-retries` configuration option in favor of using the WAL.
 
 ##### Fixes
 
