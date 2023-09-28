@@ -19,15 +19,15 @@ At Grafana Labs, we also make use of [rollout-operator](https://github.com/grafa
 
 Migrating from a single ingester StatefulSet to 3 zone aware ingester StatefulSets. The migration follows a few general steps, regardless of deployment method.
 
-0. Configure your existing ingesters to be part of a zone, for example `zone-default`, this will allow us to later exclude them from the write path while still allowing for graceful shutdowns.
+1. Configure your existing ingesters to be part of a zone, for example `zone-default`, this will allow us to later exclude them from the write path while still allowing for graceful shutdowns.
 1. Prep for the increase in active streams (due to the way streams are split between ingesters) by increasing the number of active streams allowed for your tenants.
-2. Add and scale up your new zone-aware ingester StatefulSets such that each has 1/3rd of the total number of replicas you want to run.
-3. Enable zone awareness on the write path by setting `distributor.zone-awareness-enabled` to `true` for distributors and rulers.
-4. Wait some time to ensure that the new zone-aware ingesters have data for the time period they are queried for (`query_ingesters_within`).
-5. Enable zone awareness on the read path by setting `distributor.zone-awareness-enabled` to true for queriers.
-6. Configure distributors and rulers to exclude ingesters in the `zone-default` so those ingesters no longer receive write traffic using `distributor.excluded-zones`.
-7. Use the shutdown endpoint to flush data from the default ingesters, then scale down and remove the associated StatefulSet.
-8. Clean up any config remaining from the migration.
+1. Add and scale up your new zone-aware ingester StatefulSets such that each has 1/3rd of the total number of replicas you want to run.
+1. Enable zone awareness on the write path by setting `distributor.zone-awareness-enabled` to `true` for distributors and rulers.
+1. Wait some time to ensure that the new zone-aware ingesters have data for the time period they are queried for (`query_ingesters_within`).
+1. Enable zone awareness on the read path by setting `distributor.zone-awareness-enabled` to true for queriers.
+1. Configure distributors and rulers to exclude ingesters in the `zone-default` so those ingesters no longer receive write traffic using `distributor.excluded-zones`.
+1. Use the shutdown endpoint to flush data from the default ingesters, then scale down and remove the associated StatefulSet.
+1. Clean up any config remaining from the migration.
 
 ### Detailed Migration Steps
 
