@@ -88,7 +88,7 @@ type Shipper interface {
 }
 
 // todo add logger
-func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (Shipper, error) {
+func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*bloomShipper, error) {
 	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)

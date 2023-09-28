@@ -232,9 +232,7 @@ func createShipper(t *testing.T) *bloomShipper {
 	t.Cleanup(metrics.Unregister)
 	bshipper, err := NewShipper(periodicConfigs, storageConfig, metrics)
 	require.NoError(t, err)
-	require.NotNil(t, bshipper)
-	require.IsType(t, &bloomShipper{}, bshipper)
-	return bshipper.(*bloomShipper)
+	return bshipper
 }
 
 func createPeriodConfigs() []config.PeriodConfig {
