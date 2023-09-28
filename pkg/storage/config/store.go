@@ -55,8 +55,6 @@ func (cfg *ChunkStoreConfig) Validate(logger log.Logger) error {
 		flagext.DeprecatedFlagsUsed.Inc()
 		level.Warn(logger).Log("msg", "running with DEPRECATED flag -store.max-look-back-period, use -querier.max-query-lookback instead.")
 	}
-	if err := cfg.ChunkCacheConfig.Validate(); err != nil {
-		return err
-	}
-	return cfg.WriteDedupeCacheConfig.Validate()
+
+	return nil
 }
