@@ -823,7 +823,9 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		disabledShuffleShardingLimits{},
 		t.Cfg.Server.GRPCListenPort,
 		util_log.Logger,
-		prometheus.DefaultRegisterer)
+		prometheus.DefaultRegisterer,
+		queryrange.DefaultCodec,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -21,6 +21,7 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -251,4 +252,48 @@ func writeServiceTimingHeader(queryResponseTime time.Duration, headers http.Head
 func statsValue(name string, d time.Duration) string {
 	durationInMs := strconv.FormatFloat(float64(d)/float64(time.Millisecond), 'f', -1, 64)
 	return name + ";dur=" + durationInMs
+}
+
+func AdaptGrpcRoundTripperToHandler(r GrpcRoundTripper, codec queryrangebase.Codec) queryrangebase.Handler {
+	return &grpcRoundTripperToHandlerAdapter{roundTripper: r, codec: codec}
+}
+
+// This adapter wraps GrpcRoundTripper and converts it into a queryrangebase.Handler
+type grpcRoundTripperToHandlerAdapter struct {
+	roundTripper GrpcRoundTripper
+	codec        queryrangebase.Codec
+}
+
+func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
+	httpReq, err := a.codec.EncodeRequest(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert request ot HTTP request: %w", err)
+	}
+
+	grpcReq, err := server.HTTPRequest(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert HTTP request ot gRPC request: %w", err)
+	}
+
+	grpcResp, err := a.roundTripper.RoundTripGRPC(ctx, grpcReq)
+	if err != nil {
+		return nil, err
+	}
+
+	httpResp := &http.Response{
+		StatusCode:    int(grpcResp.Code),
+		Body:          &buffer{buff: grpcResp.Body, ReadCloser: io.NopCloser(bytes.NewReader(grpcResp.Body))},
+		Header:        http.Header{},
+		ContentLength: int64(len(grpcResp.Body)),
+	}
+	for _, h := range grpcResp.Headers {
+		httpResp.Header[h.Key] = h.Values
+	}
+
+	resp, err := a.codec.DecodeResponse(ctx, httpResp, req)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert HTTP response to response: %w", err)
+	}
+
+	return resp, nil
 }
