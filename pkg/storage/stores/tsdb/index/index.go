@@ -1658,7 +1658,12 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 	if s, ok := r.nameSymbols[o]; ok {
 		return s, nil
 	}
-	return r.symbols.Lookup(o)
+	l, err := r.symbols.Lookup(o)
+	if err != nil {
+		return "", err
+	}
+	r.nameSymbols[o] = l
+	return l, nil
 }
 
 func (r *Reader) Bounds() (int64, int64) {
