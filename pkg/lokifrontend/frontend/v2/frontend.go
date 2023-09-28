@@ -261,6 +261,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 
 // TODO: move to codec
 func EncodeRequest(r queryrangebase.Request) (*queryrange.QueryRequest, error) {
+	// TODO(karsten): forward query tags and actor paths in protobuf
 	/*
 		header := make(http.Header)
 		queryTags := getQueryTags(ctx)
@@ -399,7 +400,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			}
 		}
 
-		httpResp := transport.HttpgrpcToHttp(resp.HttpResponse)
+		httpResp := transport.HttpgrpcToHTTP(resp.HttpResponse)
 		return f.codec.DecodeResponse(ctx, httpResp, req)
 	}
 }

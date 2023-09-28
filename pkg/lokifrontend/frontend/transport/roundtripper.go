@@ -44,10 +44,10 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 		return nil, err
 	}
 
-	return HttpgrpcToHttp(resp), nil
+	return HttpgrpcToHTTP(resp), nil
 }
 
-func HttpgrpcToHttp(resp *httpgrpc.HTTPResponse) *http.Response {
+func HttpgrpcToHTTP(resp *httpgrpc.HTTPResponse) *http.Response {
 	httpResp := &http.Response{
 		StatusCode:    int(resp.Code),
 		Body:          &buffer{buff: resp.Body, ReadCloser: io.NopCloser(bytes.NewReader(resp.Body))},
