@@ -2255,9 +2255,9 @@ bool
 </td>
 <td>
 <em>(Optional)</em>
-<p>EnableIPv6 defines a flag to enable/disable IPv6 support for the memberlist
-based hash ring. Enabling this flag will set <code>instanceAddrType</code> to podIP on
-single IPv6 and dual stack environments.</p>
+<p>EnableIPv6 enables IPv6 support for the memberlist based hash ring.</p>
+<p>Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+for the memberlist.</p>
 </td>
 </tr>
 </tbody>
