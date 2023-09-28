@@ -7,13 +7,13 @@ weight:
 
 # Zone aware ingesters
 
-Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them in logical zones, however with some extra k8s config you could deploy them in separate zones.
+Loki's zone aware ingesters are used by Grafana Labs in order to allow for easier rollouts of large Loki deployments. You can think of them in three logical zones, however with some extra k8s config you could deploy them in separate zones.
 
-By default, an incoming log stream's logs are replicated to 3 random ingesters. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost, however two or more ingesters restarting can result into data loss and also impacts the systems ability to ingest logs because of an unhealthy ring status.
+By default, an incoming log stream's logs are replicated to 3 random ingesters. Except in the case of some replica scaling up or down, a given stream will always be replicated to the same 3 ingesters. This means that if one of those ingesters is restarted no data is lost, however two or more ingesters restarting can result in data loss and also impacts the systems ability to ingest logs because of an unhealthy ring status.
 
-With zone awareness enabled, an incomming log line will be replicated to one ingester in each zone. This means that we're not only concerned about ingesters in multiple zones restarting at the same time, we can now rollout or lose an entire zone at once without impacting writes. This allows deployments with a large number of ingesters to be deployed too much more quickly.
+With zone awareness enabled, an incomming log line will be replicated to one ingester in each zone. This means that we're not only concerned about ingesters in multiple zones restarting at the same time, we can now rollout or lose an entire zone at once without impacting writes. This allows deployments with a large number of ingesters to be deployed much more quickly.
 
-At Grafana Labs, we also make use of [rollout-operator](https://github.com/grafana/rollout-operator) to manage rollouts to the 3 StatefulSets gracefully. The rollout-operator looks for labels on StatefulSets to know which ones are part of a certain rollout group, and coordinate rollouts of pods only from a single StatefulSet in the group at a time. See the README in the rollout-operator repo. for a more in depth explanation.
+At Grafana Labs, we also make use of [rollout-operator](https://github.com/grafana/rollout-operator) to manage rollouts to the 3 StatefulSets gracefully. The rollout-operator looks for labels on StatefulSets to know which ones are part of a certain rollout group, and coordinate rollouts of pods only from a single StatefulSet in the group at a time. See the README in the rollout-operator repo for a more in depth explanation.
 
 ## Migration
 
@@ -36,7 +36,7 @@ The following are steps to live migrate (no downtime) an existing Loki deploymen
 These instructions assume you are using the zone aware ingester jsonnet deployment code from this repo, see [here](https://github.com/grafana/loki/blob/main/production/ksonnet/loki/multi-zone.libsonnet). **If you are not using jsonnet see the relevant annotations in some steps that describe how to perform that step manually.**
 
 1. Configure the zone for the existing ingester StatefulSet as `zone-default` by setting `multi_zone_default_ingester_zone: true`, this allows us to later filter out that zone from the write path.
-2. Configure ingester-pdb with maxUnavailable=0 and deploy 3x zone-aware StatefulSets with 0 replicas by setting
+1. Configure ingester-pdb with maxUnavailable=0 and deploy 3x zone-aware StatefulSets with 0 replicas by setting
 
     ```jsonnet
     _config+:: {
