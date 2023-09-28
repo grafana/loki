@@ -214,8 +214,9 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return 0
 	}
 
-	tokenText := l.TokenText()
-	tokenNext := tokenText + string(l.Peek())
+	tokenText := strings.ToLower(l.TokenText())
+	tokenNext := strings.ToLower(tokenText + string(l.Peek()))
+
 	if tok, ok := functionTokens[tokenNext]; ok {
 		// create a copy to advance to the entire token for testing suffix
 		sc := l.Scanner
