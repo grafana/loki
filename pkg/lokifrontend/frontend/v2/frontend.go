@@ -81,6 +81,8 @@ type Frontend struct {
 
 	schedulerWorkers *frontendSchedulerWorkers
 	requests         *requestsInProgress
+
+	codec queryrangebase.Codec
 }
 
 var _ queryrangebase.Handler = &Frontend{}
@@ -117,7 +119,7 @@ type enqueueResult struct {
 }
 
 // NewFrontend creates a new frontend.
-func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer) (*Frontend, error) {
+func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.Registerer, codec queryrangebase.Codec) (*Frontend, error) {
 	requestsCh := make(chan *frontendRequest)
 
 	schedulerWorkers, err := newFrontendSchedulerWorkers(cfg, fmt.Sprintf("%s:%d", cfg.Addr, cfg.Port), ring, requestsCh, log)
@@ -131,6 +133,7 @@ func NewFrontend(cfg Config, ring ring.ReadRing, log log.Logger, reg prometheus.
 		requestsCh:       requestsCh,
 		schedulerWorkers: schedulerWorkers,
 		requests:         newRequestsInProgress(),
+		codec:            codec,
 	}
 	// Randomize to avoid getting responses from queries sent before restart, which could lead to mixing results
 	// between different queries. Note that frontend verifies the user, so it cannot leak results between tenants.
@@ -366,9 +369,12 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		// TODO: track GRPC response
+		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+			stats := stats.FromContext(ctx)
+			stats.Merge(resp.Stats) // Safe if stats is nil.
+		}
 
-		// TODO: handle errors from querier.
+		// TODO(karsten): handle HTTP 500 errors from querier.
 
 		if resp.QueryResponse != nil {
 			switch concrete := resp.QueryResponse.Response.(type) {
@@ -393,9 +399,8 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			}
 		}
 
-		// TODO: decode http response
-		return nil, errors.New("decoding is not implemented for HTTP responses")
-
+		httpResp := transport.HttpgrpcToHttp(resp.HttpResponse)
+		return f.codec.DecodeResponse(ctx, httpResp, req)
 	}
 }
 

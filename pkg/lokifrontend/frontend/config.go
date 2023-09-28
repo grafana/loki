@@ -60,7 +60,7 @@ func InitFrontend(cfg CombinedFrontendConfig, ring ring.ReadRing, limits v1.Limi
 			cfg.FrontendV2.Port = grpcListenPort
 		}
 
-		fr, err := v2.NewFrontend(cfg.FrontendV2, ring, log, reg)
+		fr, err := v2.NewFrontend(cfg.FrontendV2, ring, log, reg, codec)
 		return fr, nil, fr, err
 
 	default:
