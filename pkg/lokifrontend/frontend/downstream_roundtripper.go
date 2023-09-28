@@ -16,9 +16,10 @@ import (
 type downstreamRoundTripper struct {
 	downstreamURL *url.URL
 	transport     http.RoundTripper
+	codec         queryrangebase.Codec
 }
 
-func NewDownstreamRoundTripper(downstreamURL string, transport http.RoundTripper) (queryrangebase.Handler, error) {
+func NewDownstreamRoundTripper(downstreamURL string, transport http.RoundTripper, codec queryrangebase.Codec) (queryrangebase.Handler, error) {
 	u, err := url.Parse(downstreamURL)
 	if err != nil {
 		return nil, err
@@ -28,9 +29,15 @@ func NewDownstreamRoundTripper(downstreamURL string, transport http.RoundTripper
 }
 
 func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
-	// TODO: r := EncodeRequest(req)
 	tracer, span := opentracing.GlobalTracer(), opentracing.SpanFromContext(ctx)
+
 	var r *http.Request
+
+	r, err := d.codec.EncodeRequest(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert request ot HTTP request: %w", err)
+	}
+
 	if tracer != nil && span != nil {
 		carrier := opentracing.HTTPHeadersCarrier(r.Header)
 		err := tracer.Inject(span.Context(), opentracing.HTTPHeaders, carrier)
@@ -43,7 +50,16 @@ func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Reque
 	r.URL.Host = d.downstreamURL.Host
 	r.URL.Path = path.Join(d.downstreamURL.Path, r.URL.Path)
 	r.Host = ""
-	d.transport.RoundTrip(r) // nolint
-	// TODO
-	return nil, fmt.Errorf("no implemented")
+
+	httpResp, err := d.transport.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := d.codec.DecodeResponse(ctx, httpResp, req)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert HTTP response to response: %w", err)
+	}
+
+	return resp, nil
 }
