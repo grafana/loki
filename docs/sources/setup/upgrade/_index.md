@@ -69,6 +69,10 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
+#### Write dedupe cache is deprecated
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+
 ## 2.9.0
 
 ### Loki
