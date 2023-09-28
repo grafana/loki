@@ -16,6 +16,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/httpgrpc/server"
+	"github.com/grafana/dskit/user"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
@@ -268,6 +269,9 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 	httpReq, err := a.codec.EncodeRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
+	}
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, httpReq); err != nil {
+		return nil, err
 	}
 
 	grpcReq, err := server.HTTPRequest(httpReq)

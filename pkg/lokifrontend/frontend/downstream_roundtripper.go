@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path"
 
+	"github.com/grafana/dskit/user"
 	"github.com/opentracing/opentracing-go"
 
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
@@ -36,6 +37,9 @@ func (d downstreamRoundTripper) Do(ctx context.Context, req queryrangebase.Reque
 	r, err := d.codec.EncodeRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("connot convert request ot HTTP request: %w", err)
+	}
+	if err := user.InjectOrgIDIntoHTTPRequest(ctx, r); err != nil {
+		return nil, err
 	}
 
 	if tracer != nil && span != nil {
