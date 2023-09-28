@@ -71,8 +71,7 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 #### Embedded cache metric changes
 
-- The following embedded cache metrics are removed. Instead use `loki_cache_request_duration_seconds` which instruments requests made to the configured caches (`embeddedcache`, `memcached` or `redis`).
-  `loki_cache_request_duration_seconds` is partitioned by `method`, `status_code` and the cache `name` labels.
+- The following embedded cache metrics are removed. Instead use `loki_cache_fetched_keys`, `loki_cache_hits`, `loki_cache_request_duration_seconds` which instruments requests made to the configured cache (`embeddedcache`, `memcached` or `redis`).
   - `querier_cache_added_total`
   - `querier_cache_gets_total`
   - `querier_cache_misses_total`
