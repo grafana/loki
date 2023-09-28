@@ -17,8 +17,8 @@ type Config struct {
 }
 
 func (cfg *Config) RegisterFlagsWithPrefix(prefix string, f *flag.FlagSet) {
-	f.Float64Var(&cfg.ReadlineRate, prefix+"limit.readline-rate", 10000, "The rate limit in log lines per second that this instance of Promtail may push to Loki. (default: 1000)")
-	f.IntVar(&cfg.ReadlineBurst, prefix+"limit.readline-burst", 10000, "The cap in the quantity of burst lines that this instance of Promtail may push to Loki. (default: 1000)")
+	f.Float64Var(&cfg.ReadlineRate, prefix+"limit.readline-rate", 10000, "The rate limit in log lines per second that this instance of Promtail may push to Loki. (default: 10000)")
+	f.IntVar(&cfg.ReadlineBurst, prefix+"limit.readline-burst", 10000, "The cap in the quantity of burst lines that this instance of Promtail may push to Loki. (default: 10000)")
 	f.BoolVar(&cfg.ReadlineRateEnabled, prefix+"limit.readline-rate-enabled", false, "When true, enforces rate limiting on this instance of Promtail. (default: false)")
 	f.BoolVar(&cfg.ReadlineRateDrop, prefix+"limit.readline-rate-drop", true, "When true, exceeding the rate limit causes this instance of Promtail to discard log lines, rather than sending them to Loki. (default: true)")
 	f.IntVar(&cfg.MaxStreams, prefix+"max-streams", 0, "Maximum number of active streams. 0 to disable. (default: 0)")
