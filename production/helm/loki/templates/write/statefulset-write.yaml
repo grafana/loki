@@ -5,6 +5,7 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: {{ include "loki.writeFullname" . }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.writeLabels" . | nindent 4 }}
     app.kubernetes.io/part-of: memberlist
@@ -182,7 +183,7 @@ spec:
         {{- end }}
   {{- if .Values.write.persistence.volumeClaimsEnabled }}
   volumeClaimTemplates:
-    - apiVersion: v1	
+    - apiVersion: v1
       kind: PersistentVolumeClaim
       metadata:
         name: data
@@ -201,6 +202,5 @@ spec:
         {{- end }}
     {{- with .Values.write.extraVolumeClaimTemplates }}
     {{- toYaml . | nindent 4 }}
-    {{- end }}
   {{- end }}
 {{- end }}

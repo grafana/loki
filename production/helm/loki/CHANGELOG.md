@@ -16,6 +16,9 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.26.0
 
 - [ENHANCEMENT] Allow emptyDir data volumes for backend and write (via `X.persistence.volumeClaimsEnabled: false`)
+## 5.23.1
+
+- [BUGFIX] Add missing namespaces to some components
 
 ## 5.23.0
 
