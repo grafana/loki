@@ -228,6 +228,7 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	}
 
 	cancelCh, err := f.enqueue(ctx, freq)
+	defer f.requests.delete(freq.queryID)
 	if err != nil {
 		return nil, err
 	}
@@ -346,6 +347,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	}
 
 	cancelCh, err := f.enqueue(ctx, freq)
+	defer f.requests.delete(freq.queryID)
 	if err != nil {
 		return nil, err
 	}
@@ -399,7 +401,6 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 
 func (f *Frontend) enqueue(ctx context.Context, freq *frontendRequest) (chan<- uint64, error) {
 	f.requests.put(freq)
-	defer f.requests.delete(freq.queryID)
 
 	retries := f.cfg.WorkerConcurrency + 1 // To make sure we hit at least two different schedulers.
 
