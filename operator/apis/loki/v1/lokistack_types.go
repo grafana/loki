@@ -1111,8 +1111,28 @@ const (
 	ReasonStorageNeedsSchemaUpdate LokiStackConditionReason = "StorageNeedsSchemaUpdate"
 )
 
+// PodStatus is a short description of the status a Pod can be in.
+type PodStatus string
+
+const (
+	// PodPending means the pod has been accepted by the system, but one or more of the containers
+	// has not been started. This includes time before being bound to a node, as well as time spent
+	// pulling images onto the host.
+	PodPending PodStatus = "Pending"
+	// PodRunning means the pod has been bound to a node and all of the containers have been started.
+	// At least one container is still running or is in the process of being restarted.
+	PodRunning PodStatus = "Running"
+	// PodReady means the pod has been started and the readiness probe reports a successful status.
+	PodReady PodStatus = "Ready"
+	// PodFailed means that all containers in the pod have terminated, and at least one container has
+	// terminated in a failure (exited with a non-zero exit code or was stopped by the system).
+	PodFailed PodStatus = "Failed"
+	// PodStatusUnknown is used when none of the other statuses apply or the information is not ready yet.
+	PodStatusUnknown PodStatus = "Unknown"
+)
+
 // PodStatusMap defines the type for mapping pod status to pod name.
-type PodStatusMap map[corev1.PodPhase][]string
+type PodStatusMap map[PodStatus][]string
 
 // LokiStackComponentStatus defines the map of per pod status per LokiStack component.
 // Each component is represented by a separate map of v1.Phase to a list of pods.
