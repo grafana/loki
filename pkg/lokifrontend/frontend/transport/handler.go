@@ -267,12 +267,12 @@ type grpcRoundTripperToHandlerAdapter struct {
 func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	httpReq, err := a.codec.EncodeRequest(ctx, req)
 	if err != nil {
-		return nil, fmt.Errorf("connot convert request ot HTTP request: %w", err)
+		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
 	}
 
 	grpcReq, err := server.HTTPRequest(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("connot convert HTTP request ot gRPC request: %w", err)
+		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
 	}
 
 	grpcResp, err := a.roundTripper.RoundTripGRPC(ctx, grpcReq)

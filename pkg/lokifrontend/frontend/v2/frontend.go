@@ -14,6 +14,7 @@ import (
 	"github.com/grafana/dskit/flagext"
 	"github.com/grafana/dskit/grpcclient"
 	"github.com/grafana/dskit/httpgrpc"
+	"github.com/grafana/dskit/httpgrpc/server"
 	"github.com/grafana/dskit/netutil"
 	"github.com/grafana/dskit/ring"
 	"github.com/grafana/dskit/services"
@@ -334,9 +335,20 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	if err != nil {
 		return nil, fmt.Errorf("could not encode request: %w", err)
 	}
+
+	// For backwards comaptibility we are sending both encodings
+	httpReq, err := f.codec.EncodeRequest(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert request to HTTP request: %w", err)
+	}
+	httpgrpcReq, err := server.HTTPRequest(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("connot convert HTTP request to gRPC request: %w", err)
+	}
+
 	freq := &frontendRequest{
 		queryID:      f.lastQueryID.Inc(),
-		request:      nil, //
+		request:      httpgrpcReq,
 		queryRequest: queryRequest,
 		tenantID:     tenantID,
 		actor:        httpreq.ExtractActorPath(ctx),

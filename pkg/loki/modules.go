@@ -842,10 +842,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		level.Debug(util_log.Logger).Log("msg", "no query frontend configured")
 	}
 
-	// TODO: Karsten thinks roundTripper is translating http.Request to
-	// httpgrpc.Request.
-	// The limiter is translating queryrangebase.Request to http.Request.
-	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndTripperware.Wrap(frontendTripper), nil)
+	roundTripper := queryrange.NewSerializeRoundTripper(t.QueryFrontEndTripperware.Wrap(frontendTripper), queryrange.DefaultCodec)
 
 	frontendHandler := transport.NewHandler(t.Cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.Cfg.Frontend.CompressResponses {
