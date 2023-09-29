@@ -2825,6 +2825,11 @@ shard_streams:
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
 
+# The shard size defines how many bloom gateways should be used by a tenant for
+# querying.
+# CLI flag: -bloom-gateway.shard-size
+[bloom_gateway_shard_size: <int> | default = 1]
+
 # Allow user to send structured metadata in push payload.
 # CLI flag: -validation.allow-structured-metadata
 [allow_structured_metadata: <boolean> | default = false]
