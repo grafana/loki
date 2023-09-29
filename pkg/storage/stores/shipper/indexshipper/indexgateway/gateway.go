@@ -37,20 +37,6 @@ type IndexQuerier interface {
 	Stop()
 }
 
-type BloomQuerier interface {
-	FilterChunks(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error)
-	Stop()
-}
-
-type noopBloomQuerier struct{}
-
-func (bq *noopBloomQuerier) FilterChunks(_ context.Context, _ string, _, _ model.Time, chunks []*logproto.ChunkRef, _ ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error) {
-	return chunks, nil
-}
-
-func (bq *noopBloomQuerier) Stop() {
-}
-
 type IndexClient interface {
 	seriesindex.ReadClient
 	Stop()
@@ -59,6 +45,10 @@ type IndexClient interface {
 type IndexClientWithRange struct {
 	IndexClient
 	TableRange config.TableRange
+}
+
+type BloomQuerier interface {
+	FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunks []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error)
 }
 
 type Gateway struct {
@@ -76,10 +66,10 @@ type Gateway struct {
 //
 // In case it is configured to be in ring mode, a Basic Service wrapping the ring client is started.
 // Otherwise, it starts an Idle Service that doesn't have lifecycle hooks.
-func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange) (*Gateway, error) {
+func NewIndexGateway(cfg Config, log log.Logger, _ prometheus.Registerer, indexQuerier IndexQuerier, indexClients []IndexClientWithRange, bloomQuerier BloomQuerier) (*Gateway, error) {
 	g := &Gateway{
 		indexQuerier: indexQuerier,
-		bloomQuerier: &noopBloomQuerier{},
+		bloomQuerier: bloomQuerier,
 		cfg:          cfg,
 		log:          log,
 		indexClients: indexClients,
@@ -226,11 +216,16 @@ func (g *Gateway) GetChunkRef(ctx context.Context, req *logproto.GetChunkRefRequ
 		}
 	}
 
+	// Return unfiltered results if there is no bloom querier (Bloom Gateway disabled) or if there are not filters.
+	if g.bloomQuerier == nil || len(req.Filters) == 0 {
+		return result, nil
+	}
+
 	// TODO(chaudum): Take the chunks from the index querier's GetChunks()
 	// response and send them to the bloom gateway along with the filter
 	// expression that we got from the request object.
 	// The bloom gateway returns the list of matching ChunkRefs.
-	chunkRefs, err := g.bloomQuerier.FilterChunks(ctx, instanceID, req.From, req.Through, result.Refs, req.Filters...)
+	chunkRefs, err := g.bloomQuerier.FilterChunkRefs(ctx, instanceID, req.From, req.Through, result.Refs, req.Filters...)
 	if err != nil {
 		return nil, err
 	}

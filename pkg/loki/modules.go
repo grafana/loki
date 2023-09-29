@@ -1265,7 +1265,18 @@ func (t *Loki) initIndexGateway() (services.Service, error) {
 		})
 	}
 
-	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, util_log.Logger, prometheus.DefaultRegisterer, t.Store, indexClients)
+	logger := log.With(util_log.Logger, "component", "index-gateway")
+
+	var bloomQuerier indexgateway.BloomQuerier
+	if t.Cfg.BloomGateway.Enabled {
+		bloomGatewayClient, err := bloomgateway.NewGatewayClient(t.Cfg.BloomGateway.Client, t.Overrides, prometheus.DefaultRegisterer, logger)
+		if err != nil {
+			return nil, err
+		}
+		bloomQuerier = bloomgateway.NewBloomQuerier(bloomGatewayClient, logger)
+	}
+
+	gateway, err := indexgateway.NewIndexGateway(t.Cfg.IndexGateway, logger, prometheus.DefaultRegisterer, t.Store, indexClients, bloomQuerier)
 	if err != nil {
 		return nil, err
 	}

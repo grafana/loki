@@ -1788,6 +1788,18 @@ ring:
 # Flag to enable or disable the usage of the bloom gatway component.
 # CLI flag: -bloom-gateway.enabled
 [enabled: <boolean> | default = false]
+
+client:
+  # The grpc_client block configures the gRPC client used to communicate between
+  # two Loki components.
+  # The CLI flags prefix for this block configuration is:
+  # bloom-gateway-client.grpc
+  [grpc_client_config: <grpc_client>]
+
+  # Flag to control whether requests sent to the gateway should be logged or
+  # not.
+  # CLI flag: -bloom-gateway-client.log-gateway-requests
+  [log_gateway_requests: <boolean> | default = false]
 ```
 
 ### storage_config
@@ -3817,6 +3829,7 @@ When a memberlist config with atleast 1 join_members is defined, kvstore of type
 The `grpc_client` block configures the gRPC client used to communicate between two Loki components. The supported CLI flags `<prefix>` used to reference this configuration block are:
 
 - `bigtable`
+- `bloom-gateway-client.grpc`
 - `boltdb.shipper.index-gateway-client.grpc`
 - `frontend.grpc-client-config`
 - `ingester.client`
