@@ -20,6 +20,7 @@
 * [10534](https://github.com/grafana/loki/pull/10534) **chaudum** Remove configuration `use_boltdb_shipper_as_backup`
 * [10620](https://github.com/grafana/loki/pull/10620) **ashwanthgoli** Enable embedded cache if no other cache is explicitly enabled.
 * [10655](https://github.com/grafana/loki/pull/10655) **chaudum** Remove legacy ingester shutdown handler `/ingester/flush_shutdown`.
+* [10693](https://github.com/grafana/loki/pull/10693) **ashwanthgoli** Embedded cache: Updates the metric prefix from `querier_cache_` to `loki_embeddedcache_` and removes duplicate metrics.
 
 ##### Fixes
 
