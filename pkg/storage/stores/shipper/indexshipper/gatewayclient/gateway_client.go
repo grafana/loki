@@ -366,6 +366,11 @@ func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logprot
 	if err != nil {
 		return err
 	}
+
+	if len(addrs) == 0 {
+		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
+	}
+
 	var lastErr error
 	for _, addr := range addrs {
 		if s.cfg.LogGatewayRequests {
