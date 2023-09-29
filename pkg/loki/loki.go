@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/analytics"
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	"github.com/grafana/loki/pkg/distributor"
 	"github.com/grafana/loki/pkg/ingester"
 	ingester_client "github.com/grafana/loki/pkg/ingester/client"
@@ -84,6 +85,7 @@ type Config struct {
 	IngesterClient      ingester_client.Config      `yaml:"ingester_client,omitempty"`
 	Ingester            ingester.Config             `yaml:"ingester,omitempty"`
 	IndexGateway        indexgateway.Config         `yaml:"index_gateway"`
+	BloomCompactor      bloomcompactor.Config       `yaml:"bloom_compactor"`
 	StorageConfig       storage.Config              `yaml:"storage_config,omitempty"`
 	ChunkStoreConfig    config.ChunkStoreConfig     `yaml:"chunk_store_config,omitempty"`
 	SchemaConfig        config.SchemaConfig         `yaml:"schema_config,omitempty"`
@@ -162,6 +164,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.MemberlistKV.RegisterFlags(f)
 	c.Tracing.RegisterFlags(f)
 	c.CompactorConfig.RegisterFlags(f)
+	c.BloomCompactor.RegisterFlags(f)
 	c.QueryScheduler.RegisterFlags(f)
 	c.Analytics.RegisterFlags(f)
 }
@@ -310,6 +313,7 @@ type Loki struct {
 	querySchedulerRingManager *scheduler.RingManager
 	usageReport               *analytics.Reporter
 	indexGatewayRingManager   *indexgateway.RingManager
+	bloomCompactorRingManager *bloomcompactor.RingManager
 
 	clientMetrics       storage.ClientMetrics
 	deleteClientMetrics *deletion.DeleteRequestClientMetrics
@@ -589,6 +593,8 @@ func (t *Loki) setupModuleManager() error {
 	mm.RegisterModule(RuleEvaluator, t.initRuleEvaluator, modules.UserInvisibleModule)
 	mm.RegisterModule(TableManager, t.initTableManager)
 	mm.RegisterModule(Compactor, t.initCompactor)
+	mm.RegisterModule(BloomCompactor, t.initBloomCompactor)
+	mm.RegisterModule(BloomCompactorRing, t.initBloomCompactorRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGateway, t.initIndexGateway)
 	mm.RegisterModule(IndexGatewayRing, t.initIndexGatewayRing, modules.UserInvisibleModule)
 	mm.RegisterModule(IndexGatewayInterceptors, t.initIndexGatewayInterceptors, modules.UserInvisibleModule)
@@ -621,9 +627,11 @@ func (t *Loki) setupModuleManager() error {
 		TableManager:             {Server, Analytics},
 		Compactor:                {Server, Overrides, MemberlistKV, Analytics},
 		IndexGateway:             {Server, Store, Overrides, Analytics, MemberlistKV, IndexGatewayRing, IndexGatewayInterceptors},
+		BloomCompactor:           {Server, BloomCompactorRing, Analytics},
 		IngesterQuerier:          {Ring},
 		QuerySchedulerRing:       {Overrides, Server, MemberlistKV},
 		IndexGatewayRing:         {Overrides, Server, MemberlistKV},
+		BloomCompactorRing:       {Overrides, MemberlistKV},
 		All:                      {QueryScheduler, QueryFrontend, Querier, Ingester, Distributor, Ruler, Compactor},
 		Read:                     {QueryFrontend, Querier},
 		Write:                    {Ingester, Distributor},
@@ -681,8 +689,9 @@ func (t *Loki) setupModuleManager() error {
 		deps[QueryFrontend] = append(deps[QueryFrontend], QueryScheduler)
 	}
 
+	//TODO(poyzannur) not sure this is needed for BloomCompactor
 	if t.Cfg.LegacyReadTarget {
-		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway)
+		deps[Read] = append(deps[Read], QueryScheduler, Ruler, Compactor, IndexGateway, BloomCompactor)
 	}
 
 	if t.Cfg.InternalServer.Enable {

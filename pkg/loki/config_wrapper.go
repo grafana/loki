@@ -302,6 +302,19 @@ func applyConfigToRings(r, defaults *ConfigWrapper, rc util.RingConfig, mergeWit
 		r.IndexGateway.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
 		r.IndexGateway.Ring.KVStore = rc.KVStore
 	}
+
+	// BloomCompactor
+	if mergeWithExisting || reflect.DeepEqual(r.BloomCompactor.Ring, defaults.BloomCompactor.Ring) {
+		r.BloomCompactor.Ring.HeartbeatTimeout = rc.HeartbeatTimeout
+		r.BloomCompactor.Ring.HeartbeatPeriod = rc.HeartbeatPeriod
+		r.BloomCompactor.Ring.InstancePort = rc.InstancePort
+		r.BloomCompactor.Ring.InstanceAddr = rc.InstanceAddr
+		r.BloomCompactor.Ring.InstanceID = rc.InstanceID
+		r.BloomCompactor.Ring.InstanceInterfaceNames = rc.InstanceInterfaceNames
+		r.BloomCompactor.Ring.InstanceZone = rc.InstanceZone
+		r.BloomCompactor.Ring.ZoneAwarenessEnabled = rc.ZoneAwarenessEnabled
+		r.BloomCompactor.Ring.KVStore = rc.KVStore
+	}
 }
 
 func applyTokensFilePath(cfg *ConfigWrapper) error {
@@ -326,11 +339,19 @@ func applyTokensFilePath(cfg *ConfigWrapper) error {
 	}
 	cfg.QueryScheduler.SchedulerRing.TokensFilePath = f
 
+	// Index Gateway
 	f, err = tokensFile(cfg, "indexgateway.tokens")
 	if err != nil {
 		return err
 	}
 	cfg.IndexGateway.Ring.TokensFilePath = f
+
+	// Bloom-Compactor
+	f, err = tokensFile(cfg, "bloom-compactor.tokens")
+	if err != nil {
+		return err
+	}
+	cfg.BloomCompactor.Ring.TokensFilePath = f
 
 	return nil
 }
@@ -409,6 +430,10 @@ func appendLoopbackInterface(cfg, defaults *ConfigWrapper) {
 	if reflect.DeepEqual(cfg.IndexGateway.Ring.InstanceInterfaceNames, defaults.IndexGateway.Ring.InstanceInterfaceNames) {
 		cfg.IndexGateway.Ring.InstanceInterfaceNames = append(cfg.IndexGateway.Ring.InstanceInterfaceNames, loopbackIface)
 	}
+
+	if reflect.DeepEqual(cfg.BloomCompactor.Ring.InstanceInterfaceNames, defaults.BloomCompactor.Ring.InstanceInterfaceNames) {
+		cfg.BloomCompactor.Ring.InstanceInterfaceNames = append(cfg.BloomCompactor.Ring.InstanceInterfaceNames, loopbackIface)
+	}
 }
 
 // applyMemberlistConfig will change the default ingester, distributor, ruler, and query scheduler ring configurations to use memberlist.
@@ -422,6 +447,7 @@ func applyMemberlistConfig(r *ConfigWrapper) {
 	r.QueryScheduler.SchedulerRing.KVStore.Store = memberlistStr
 	r.CompactorConfig.CompactorRing.KVStore.Store = memberlistStr
 	r.IndexGateway.Ring.KVStore.Store = memberlistStr
+	r.BloomCompactor.Ring.KVStore.Store = memberlistStr
 }
 
 var ErrTooManyStorageConfigs = errors.New("too many storage configs provided in the common config, please only define one storage backend")

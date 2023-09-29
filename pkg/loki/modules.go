@@ -27,6 +27,7 @@ import (
 	"github.com/grafana/dskit/services"
 	"github.com/grafana/dskit/tenant"
 	"github.com/grafana/dskit/user"
+	"github.com/grafana/loki/pkg/bloomcompactor"
 	gerrors "github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
@@ -107,6 +108,8 @@ const (
 	IndexGatewayInterceptors string = "index-gateway-interceptors"
 	QueryScheduler           string = "query-scheduler"
 	QuerySchedulerRing       string = "query-scheduler-ring"
+	BloomCompactor           string = "bloom-compactor"
+	BloomCompactorRing       string = "bloom-compactor-ring"
 	All                      string = "all"
 	Read                     string = "read"
 	Write                    string = "write"
@@ -244,10 +247,11 @@ func (t *Loki) initRuntimeConfig() (services.Service, error) {
 
 	// Update config fields using runtime config. Only if multiKV is used for given ring these returned functions will be
 	// called and register the listener.
-	//
+
 	// By doing the initialization here instead of per-module init function, we avoid the problem
 	// of projects based on Loki forgetting the wiring if they override module's init method (they also don't have access to private symbols).
 	t.Cfg.CompactorConfig.CompactorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
+	t.Cfg.BloomCompactor.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Distributor.DistributorRing.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.IndexGateway.Ring.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
 	t.Cfg.Ingester.LifecyclerConfig.RingConfig.KVStore.Multi.ConfigProvider = multiClientRuntimeConfigChannel(t.runtimeConfig)
@@ -1276,6 +1280,39 @@ func (t *Loki) initIndexGatewayInterceptors() (services.Service, error) {
 		t.Cfg.Server.GRPCMiddleware = append(t.Cfg.Server.GRPCMiddleware, interceptors.PerTenantRequestCount)
 	}
 	return nil, nil
+}
+
+func (t *Loki) initBloomCompactor() (services.Service, error) {
+	logger := log.With(util_log.Logger, "component", "bloom-compactor")
+	compactor, err := bloomcompactor.New(t.Cfg.BloomCompactor, logger, prometheus.DefaultRegisterer)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return compactor, nil
+}
+
+func (t *Loki) initBloomCompactorRing() (services.Service, error) {
+	t.Cfg.BloomCompactor.Ring.ListenPort = t.Cfg.Server.GRPCListenPort
+
+	// is LegacyMode needed?
+	//legacyReadMode := t.Cfg.LegacyReadTarget && t.isModuleActive(Read)
+
+	rm, err := bloomcompactor.NewRingManager(t.Cfg.BloomCompactor, util_log.Logger, prometheus.DefaultRegisterer)
+	if err != nil {
+		return nil, gerrors.Wrap(err, "error initializing bloom-compactor ring manager")
+	}
+
+	t.bloomCompactorRingManager = rm
+
+	t.Server.HTTP.Path("/bloomcompactor/ring").Methods("GET", "POST").Handler(t.bloomCompactorRingManager)
+
+	if t.Cfg.InternalServer.Enable {
+		t.InternalServer.HTTP.Path("/bloomcompactor/ring").Methods("GET", "POST").Handler(t.bloomCompactorRingManager)
+	}
+
+	return t.bloomCompactorRingManager, nil
 }
 
 func (t *Loki) initQueryScheduler() (services.Service, error) {
