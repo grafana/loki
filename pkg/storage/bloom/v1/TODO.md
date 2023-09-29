@@ -1,3 +1,6 @@
-* Need to implement a lazy decoder similar to encoding.Decbuf but backed by a io.ReadSeeker
-  * Will allow seeking to offsets within a file and not buffering the entire file in memory
-  * This is important for size-sensitive workloads such as many bloom block files, etc
+* Should be able to read bloom as a []byte without copying it during decoding
+  * It's immutable + partition offsets are calculable, etc
+  * can encode version, parameters as the last n bytes, each partition's byte range can be determined from that. No need to unpack
+* Build & load from directories
+* Less copying! I've taken some shortcuts we'll need to refactor to avoid copying []byte around in a few places
+* more sophisticated querying methods
