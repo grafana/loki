@@ -2,7 +2,6 @@ package v1
 
 import (
 	"bytes"
-	"hash"
 	"io"
 
 	"github.com/pkg/errors"
@@ -11,116 +10,6 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/util/encoding"
 )
-
-// Block index is a set of series pages along with the headers for each page
-// and schema information for the entire block
-// It is the entrypoint for reading and writing blocks
-type BlockIndex struct {
-	schema      Schema
-	pageHeaders []SeriesPageHeaderWithOffset // headers for each series page
-}
-
-func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
-	return BlockIndex{
-		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
-	}
-}
-
-func (b *BlockIndex) WriteTo(itr Iterator[SeriesPage], w io.Writer) (offset int64, err error) {
-	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
-	defer Crc32HashPool.Put(crc32Hash)
-
-	// TODO(owen-d): guess sizing better
-	encoder := encoding.EncWith(BlockPool.Get(1 << 10))
-	enc := &encoder
-
-	// encode schema
-	b.schema.Encode(enc)
-	written, err := w.Write(enc.Get())
-	if err != nil {
-		return offset, errors.Wrap(err, "writing schema")
-	}
-	offset += int64(written)
-
-	compressionPool := b.schema.CompressorPool()
-	// encode series, accumlate encoded headers with relevant offsets,
-	// they will be written at the end of the block
-	for itr.Next() {
-		page := itr.At()
-		header := SeriesPageHeaderWithOffset{
-			SeriesHeader: page.Header,
-			Offset:       int(offset),
-		}
-
-		// we encode the decompressed length of the page so we can efficiently choose
-		// []byte sizes from a pool during decompression to minimize alloc costs
-		header.DecompressedLen, err = page.Encode(enc, compressionPool, crc32Hash)
-		if err != nil {
-			return offset, errors.Wrap(err, "encoding series page")
-		}
-		written, err := w.Write(enc.Get())
-		if err != nil {
-			return 0, errors.Wrap(err, "writing series page")
-		}
-		offset += int64(written)
-		header.Len = int(offset) - header.Offset
-		b.pageHeaders = append(b.pageHeaders, header)
-	}
-
-	if itr.Err() != nil {
-		return offset, errors.Wrap(err, "iterating series")
-	}
-
-	enc.Reset()
-	headerOffset := offset
-	enc.PutUvarint(len(b.pageHeaders))
-	for _, s := range b.pageHeaders {
-		s.Encode(enc)
-	}
-
-	// put offset to beginning of header section
-	// cannot be varint encoded because it's offset will be calculated as
-	// the 8 bytes prior to the checksum
-	enc.PutBE64(uint64(headerOffset))
-
-	// wrap with final checksum
-	enc.PutHash(crc32Hash)
-
-	written, err = w.Write(enc.Get())
-	if err != nil {
-		return offset, errors.Wrap(err, "writing series page headers")
-	}
-	offset += int64(written)
-
-	return offset, nil
-}
-
-func (b *BlockIndex) Decode(data []byte) error {
-	dec := encoding.DecWith(data)
-	if err := b.schema.Decode(&dec); err != nil {
-		return errors.Wrap(err, "decoding schema")
-	}
-
-	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
-	dec.Skip(dec.Len() - 12)
-	headerOffset := dec.Be64()
-
-	dec = encoding.DecWith(data[headerOffset:])
-	if err := dec.CheckCrc(castagnoliTable); err != nil {
-		return errors.Wrap(err, "checksumming page headers")
-	}
-
-	b.pageHeaders = make([]SeriesPageHeaderWithOffset, dec.Uvarint())
-	for i := 0; i < len(b.pageHeaders); i++ {
-		var s SeriesPageHeaderWithOffset
-		if err := s.Decode(&dec); err != nil {
-			return errors.Wrapf(err, "decoding %dth series header", i)
-		}
-		b.pageHeaders[i] = s
-	}
-
-	return nil
-}
 
 type Schema struct {
 	version  byte
@@ -164,6 +53,47 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	}
 
 	return dec.Err()
+}
+
+// Block index is a set of series pages along with the headers for each page
+// and schema information for the entire block
+// It is the entrypoint for reading and writing blocks
+type BlockIndex struct {
+	schema      Schema
+	pageHeaders []SeriesPageHeaderWithOffset // headers for each series page
+}
+
+func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
+	return BlockIndex{
+		schema: Schema{version: DefaultSchemaVersion, encoding: encoding},
+	}
+}
+
+func (b *BlockIndex) Decode(data []byte) error {
+	dec := encoding.DecWith(data)
+	if err := b.schema.Decode(&dec); err != nil {
+		return errors.Wrap(err, "decoding schema")
+	}
+
+	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
+	dec.Skip(dec.Len() - 12)
+	headerOffset := dec.Be64()
+
+	dec = encoding.DecWith(data[headerOffset:])
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return errors.Wrap(err, "checksumming page headers")
+	}
+
+	b.pageHeaders = make([]SeriesPageHeaderWithOffset, dec.Uvarint())
+	for i := 0; i < len(b.pageHeaders); i++ {
+		var s SeriesPageHeaderWithOffset
+		if err := s.Decode(&dec); err != nil {
+			return errors.Wrapf(err, "decoding %dth series header", i)
+		}
+		b.pageHeaders[i] = s
+	}
+
+	return nil
 }
 
 // Header for a series page
@@ -231,72 +161,8 @@ func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	return dec.Err()
 }
 
-// series page header
-type SeriesPage struct {
-	Header SeriesHeader
-	Series []SeriesWithOffset
-}
-
-func (p *SeriesPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (decompressedLen int, err error) {
-	enc.Reset()
-
-	// TODO(owen-d): no need to write to a temp buffer then rewrite to a compressed one;
-	// should build a streaming encoder/decoder, although we will need to know the true
-	// number of bytes written to calculate offsets (compression changes this)
-	// temp buffer for compression
-	// TODO(owen-d): pool
-	buf := &bytes.Buffer{}
-
-	p.Header.Encode(enc)
-	var (
-		lastSeries model.Fingerprint
-		lastOffset BloomOffset
-	)
-	for _, series := range p.Series {
-		lastSeries, lastOffset = series.Encode(enc, lastSeries, lastOffset)
-	}
-	decompressedLen = enc.Len()
-
-	compressor := pool.GetWriter(buf)
-	defer pool.PutWriter(compressor)
-
-	if _, err := compressor.Write(enc.Get()); err != nil {
-		return 0, errors.Wrap(err, "compressing series page")
-	}
-
-	if err := compressor.Close(); err != nil {
-		return 0, errors.Wrap(err, "closing compressor")
-	}
-
-	// replace the encoded series page with the compressed one
-	enc.B = buf.Bytes()
-	enc.PutHash(crc32Hash)
-	return decompressedLen, nil
-}
-
-func (p *SeriesPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) error {
-
-	decoder, err := p.DecodeLazy(dec, pool, decompressedSize)
-	if err != nil {
-		return errors.Wrap(err, "building series page decoder")
-	}
-
-	// TODO(owen-d): pool
-	p.Series = make([]SeriesWithOffset, 0, p.Header.NumSeries)
-	var i int
-	for decoder.Next() {
-		series, err := decoder.At()
-		if err != nil {
-			return errors.Wrapf(err, "decoding %dth series", i)
-		}
-		p.Series = append(p.Series, series)
-		i++
-	}
-	return errors.Wrap(dec.Err(), "decoding series page")
-}
-
 // decompress page and return an iterator over the bytes
-func (p *SeriesPage) DecodeLazy(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*SeriesPageDecoder, error) {
+func NewSeriesPageDecoder(header SeriesPageHeaderWithOffset, dec *encoding.Decbuf, pool chunkenc.ReaderPool) (*SeriesPageDecoder, error) {
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
 		return nil, errors.Wrap(err, "checksumming series page")
 	}
@@ -306,7 +172,7 @@ func (p *SeriesPage) DecodeLazy(dec *encoding.Decbuf, pool chunkenc.ReaderPool, 
 		return nil, errors.Wrap(err, "getting decompressor")
 	}
 
-	b := BlockPool.Get(decompressedSize)[:decompressedSize]
+	b := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
 	defer BlockPool.Put(b)
 	if _, err = io.ReadFull(decompressor, b); err != nil {
 		return nil, errors.Wrap(err, "decompressing series page")
@@ -315,11 +181,12 @@ func (p *SeriesPage) DecodeLazy(dec *encoding.Decbuf, pool chunkenc.ReaderPool, 
 	// replace decoder's input with the now-decompressed data
 	dec.B = b
 
-	if err := p.Header.Decode(dec); err != nil {
-		return nil, errors.Wrap(err, "decoding series page header")
-	}
+	return &SeriesPageDecoder{
+		dec:    dec,
+		header: header.SeriesHeader,
 
-	return NewSeriesPageDecoder(dec, p.Header), nil
+		i: -1,
+	}, nil
 }
 
 // can decode a series page one item at a time, useful when we don't
@@ -331,15 +198,6 @@ type SeriesPageDecoder struct {
 	i              int
 	lastFp         model.Fingerprint
 	previousOffset BloomOffset
-}
-
-func NewSeriesPageDecoder(dec *encoding.Decbuf, header SeriesHeader) *SeriesPageDecoder {
-	return &SeriesPageDecoder{
-		dec:    dec,
-		header: header,
-
-		i: -1,
-	}
 }
 
 func (d *SeriesPageDecoder) Next() bool {

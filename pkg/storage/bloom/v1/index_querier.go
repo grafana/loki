@@ -52,11 +52,17 @@ func (it *LazySeriesIter) next() bool {
 		// first access of next page
 		if it.curPage == nil {
 			var (
-				p   SeriesPage
-				err error
+				curHeader = it.b.index.pageHeaders[it.pageIndex]
+				err       error
 			)
-			decbuf := encoding.DecWith(it.data[it.b.index.pageHeaders[it.pageIndex].Offset : it.b.index.pageHeaders[it.pageIndex].Offset+it.b.index.pageHeaders[it.pageIndex].Len])
-			it.curPage, err = p.DecodeLazy(&decbuf, it.b.index.schema.DecompressorPool(), it.b.index.pageHeaders[it.pageIndex].DecompressedLen)
+			decbuf := encoding.DecWith(
+				it.data[curHeader.Offset : curHeader.Offset+curHeader.Len],
+			)
+			it.curPage, err = NewSeriesPageDecoder(
+				curHeader,
+				&decbuf,
+				it.b.index.schema.DecompressorPool(),
+			)
 			if err != nil {
 				it.err = err
 				return false
