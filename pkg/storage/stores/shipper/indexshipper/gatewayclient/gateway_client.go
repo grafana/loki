@@ -149,6 +149,12 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 		return igPool, nil
 	}
 
+	//FIXME(ewelch) we don't expose the pool configs nor set defaults, and register flags is kind of messed up with remote config being defined somewhere else
+	//make a separate PR to make the pool config generic so it can be used with proper names in multiple places.
+	cfg.PoolConfig.RemoteTimeout = 1 * time.Second
+	cfg.PoolConfig.ClientCleanupPeriod = 15 * time.Second
+	cfg.PoolConfig.HealthCheckIngesters = true
+
 	if sgClient.cfg.Mode == indexgateway.RingMode {
 		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, sgClient.ring, factory, logger)
 	} else {
