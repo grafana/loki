@@ -17,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util"
 	lokiutil "github.com/grafana/loki/pkg/util"
 )
@@ -57,7 +58,7 @@ func (cfg *Config) Validate() error {
 
 // Handler for HTTP requests wrapped in protobuf messages.
 type RequestHandler interface {
-	Handle(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
+	Do(context.Context, queryrangebase.Request) (queryrangebase.Response, error)
 }
 
 // Single processor handles all streaming operations to query-frontend or query-scheduler to fetch queries

@@ -45,6 +45,8 @@ message SchedulerToQuerier {
   // Whether query statistics tracking should be enabled. The response will include
   // statistics only when this option is enabled.
   bool statsEnabled = 5;
+
+  queryrange.QueryRequest queryRequest = 8;
 }
 
 // Scheduler interface exposed to Frontend. Frontend can enqueue and cancel requests.

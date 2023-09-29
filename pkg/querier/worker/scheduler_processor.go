@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -161,13 +162,15 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *httpgrpc.HTTPRequest) {
+func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request queryrangebase.Request) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response, err := sp.handler.Handle(ctx, request)
+	response, err := sp.handler.Do(ctx, request)
+	// TODO(karsten): add error type to QueryResponse
+	/*
 	if err != nil {
 		var ok bool
 		response, ok = httpgrpc.HTTPResponseFromError(err)
@@ -178,10 +181,12 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 			}
 		}
 	}
+	*/
 
 	logger = log.With(logger, "frontend", frontendAddress)
 
 	// Ensure responses that are too big are not retried.
+	/* TODO(karsten): determine message size somehow.
 	if len(response.Body) >= sp.maxMessageSize {
 		level.Error(logger).Log("msg", "response larger than max message size", "size", len(response.Body), "maxMessageSize", sp.maxMessageSize)
 
@@ -191,6 +196,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 			Body: []byte(errMsg),
 		}
 	}
+	*/
 
 	runPoolWithBackoff(
 		ctx,

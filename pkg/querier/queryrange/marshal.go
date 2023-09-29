@@ -3,6 +3,7 @@
 package queryrange
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -302,4 +303,35 @@ func ValueToResponse(v parser.Value, params logql.Params) (queryrangebase.Respon
 	default:
 		return nil, fmt.Errorf("unexpected praser.Value type: %T", v)
 	}
+}
+
+func ResponseToQueryResponse(ctx context.Context, res queryrangebase.Response) (QueryResponse, error) {
+	p := QueryResponse{}
+
+	switch response := res.(type) {
+	case *LokiPromResponse:
+		p.Response = &QueryResponse_Prom{response}
+	case *LokiResponse:
+		p.Response = &QueryResponse_Streams{response}
+	case *LokiSeriesResponse:
+		p.Response = &QueryResponse_Series{response}
+	case *MergedSeriesResponseView:
+		mat, err := response.Materialize()
+		if err != nil {
+			return p, err
+		}
+		p.Response = &QueryResponse_Series{mat}
+	case *LokiLabelNamesResponse:
+		p.Response = &QueryResponse_Labels{response}
+	case *IndexStatsResponse:
+		p.Response = &QueryResponse_Stats{response}
+	case *TopKSketchesResponse:
+		p.Response = &QueryResponse_TopkSketches{response}
+	case *QuantileSketchResponse:
+		p.Response = &QueryResponse_QuantileSketches{response}
+	default:
+		return p, fmt.Errorf("invalid response format, got (%T)", res)
+	}
+
+	return p, nil
 }
