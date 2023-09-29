@@ -4,6 +4,7 @@ apiVersion: monitoring.grafana.com/v1alpha1
 kind: GrafanaAgent
 metadata:
   name: {{ include "loki.fullname" $ }}
+  namespace: {{ $.Release.Namespace }}
   labels:
     {{- include "loki.labels" $ | nindent 4 }}
     {{- with .labels }}
