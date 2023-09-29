@@ -21,19 +21,19 @@ type Compactor struct {
 //)
 
 func New(cfg Config, logger log.Logger, _ prometheus.Registerer) (*Compactor, error) {
-	g := &Compactor{
+	c := &Compactor{
 		cfg:    cfg,
 		logger: logger,
 	}
-	g.Service = services.NewIdleService(g.starting, g.stopping)
+	c.Service = services.NewIdleService(c.starting, c.stopping)
 
-	return g, nil
+	return c, nil
 }
 
-func (g *Compactor) starting(_ context.Context) error {
+func (c *Compactor) starting(_ context.Context) error {
 	return nil
 }
 
-func (g *Compactor) stopping(_ error) error {
+func (c *Compactor) stopping(_ error) error {
 	return nil
 }
