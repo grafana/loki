@@ -1,6 +1,6 @@
 ## Main
 
-- [10720](https://github.com/grafana/loki/pull/10720) **JoaoBraveCoding**: Update default replication factor on 1xMedium from 3 to 2
+- [10720](https://github.com/grafana/loki/pull/10720) **JoaoBraveCoding**: Change default replication factor of 1x.medium to 2
 - [10600](https://github.com/grafana/loki/pull/10600) **periklis**: Update Loki operand to v2.9.1
 - [10545](https://github.com/grafana/loki/pull/10545) **xperimental**: Update gateway arguments to enable namespace extraction
 - [10558](https://github.com/grafana/loki/pull/10558) **periklis**: Upgrade dashboards for for Loki v2.9.0
