@@ -214,7 +214,8 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return 0
 	}
 
-	tokenText := strings.ToLower(l.TokenText())
+	tokenText := l.TokenText()
+	tokenTextLower := strings.ToLower(l.TokenText())
 	tokenNext := strings.ToLower(tokenText + string(l.Peek()))
 
 	if tok, ok := functionTokens[tokenNext]; ok {
@@ -227,7 +228,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		}
 	}
 
-	if tok, ok := functionTokens[tokenText]; ok {
+	if tok, ok := functionTokens[tokenTextLower]; ok {
 		if !isFunction(l.Scanner) {
 			lval.str = tokenText
 			return IDENTIFIER
@@ -240,7 +241,7 @@ func (l *lexer) Lex(lval *exprSymType) int {
 		return tok
 	}
 
-	if tok, ok := tokens[tokenText]; ok {
+	if tok, ok := tokens[tokenTextLower]; ok {
 		return tok
 	}
 
