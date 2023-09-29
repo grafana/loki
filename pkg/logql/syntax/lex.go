@@ -392,7 +392,7 @@ func isFunction(sc Scanner) bool {
 	sc = trimSpace(sc)
 	for r := sc.Next(); r != scanner.EOF; r = sc.Next() {
 		sb.WriteRune(r)
-		switch sb.String() {
+		switch strings.ToLower(sb.String()) {
 		case "(":
 			return true
 		case "by", "without":
