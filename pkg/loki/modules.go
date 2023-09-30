@@ -412,6 +412,9 @@ func (t *Loki) initQuerier() (services.Service, error) {
 
 	httpMiddleware := middleware.Merge(toMerge...)
 
+	// TODO: use roundTripper
+	roundTripper := querier.NewQuerierRoundTripper(t.querierAPI)
+
 	queryHandlers := map[string]http.Handler{
 		"/loki/api/v1/query_range": middleware.Merge(
 			httpMiddleware,
