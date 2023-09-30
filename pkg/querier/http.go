@@ -70,75 +70,28 @@ func NewQuerierAPI(cfg Config, querier Querier, limits Limits, logger log.Logger
 }
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
-func (q *QuerierAPI) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseRangeQuery(r)
+func (q *QuerierAPI) RangeQueryHandler(ctx context.Context, req *queryrange.LokiRequest) (logqlmodel.Result, error) {
+	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
+		// TODO
 	}
 
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Start,
-		request.End,
-		request.Step,
-		request.Interval,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
 	query := q.engine.Query(params)
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return query.Exec(ctx)
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
-func (q *QuerierAPI) InstantQueryHandler(w http.ResponseWriter, r *http.Request) {
-	request, err := loghttp.ParseInstantQuery(r)
+func (q *QuerierAPI) InstantQueryHandler(ctx context.Context, req *queryrange.LokiInstantRequest) (logqlmodel.Result, error) {
+	if err := q.validateMaxEntriesLimits(ctx, req.Query, req.Limit); err != nil {
+		// TODO
+	}
+
+	params, err := queryrange.ParamsFromRequest(req)
 	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
+		// TODO
 	}
-
-	ctx := r.Context()
-	if err := q.validateMaxEntriesLimits(ctx, request.Query, request.Limit); err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	params := logql.NewLiteralParams(
-		request.Query,
-		request.Ts,
-		request.Ts,
-		0,
-		0,
-		request.Direction,
-		request.Limit,
-		request.Shards,
-	)
 	query := q.engine.Query(params)
-	result, err := query.Exec(ctx)
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, &params, result, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return query.Exec(ctx)
 }
 
 // LogQueryHandler is a http.HandlerFunc for log only queries.
@@ -196,20 +149,14 @@ func (q *QuerierAPI) LogQueryHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // LabelHandler is a http.HandlerFunc for handling label queries.
-func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseLabelQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
+func (q *QuerierAPI) LabelHandler(ctx context.Context, req *logproto.LabelRequest) (*logproto.LabelResponse, error) {
 	timer := prometheus.NewTimer(logql.QueryTime.WithLabelValues("labels"))
 	defer timer.ObserveDuration()
 
 	start := time.Now()
-	statsCtx, ctx := stats.NewContext(r.Context())
+	statsCtx, ctx := stats.NewContext(ctx)
 
-	resp, err := q.querier.Label(r.Context(), req)
+	resp, err := q.querier.Label(ctx, req)
 	queueTime, _ := ctx.Value(httpreq.QueryQueueTimeHTTPHeader).(time.Duration)
 
 	resLength := 0
@@ -228,14 +175,7 @@ func (q *QuerierAPI) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 	logql.RecordLabelQueryMetrics(ctx, log, *req.Start, *req.End, req.Name, req.Query, strconv.Itoa(status), statResult)
 
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return resp, err
 }
 
 // TailHandler is a http.HandlerFunc for handling tail queries.

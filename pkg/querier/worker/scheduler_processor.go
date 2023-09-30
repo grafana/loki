@@ -2,8 +2,6 @@ package worker
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"strings"
 	"time"
 
@@ -12,7 +10,6 @@ import (
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/backoff"
 	"github.com/grafana/dskit/grpcclient"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/grafana/dskit/middleware"
 	"github.com/grafana/dskit/multierror"
 	"github.com/grafana/dskit/ring/client"
@@ -152,7 +149,7 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 			}
 			logger := util_log.WithContext(ctx, sp.log)
 
-			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.HttpRequest)
+			sp.runRequest(ctx, logger, request.QueryID, request.FrontendAddress, request.StatsEnabled, request.QueryRequest)
 			sp.metrics.inflightRequests.Dec()
 			// Report back to scheduler that processing of the query has finished.
 			if err := c.Send(&schedulerpb.QuerierToScheduler{}); err != nil {

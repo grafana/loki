@@ -264,6 +264,7 @@ func (Codec) DecodeRequest(_ context.Context, r *http.Request, _ []string) (quer
 			EndTs:   *req.End,
 			Path:    r.URL.Path,
 			Query:   req.Query,
+			Name:    req.Name,
 		}, nil
 	case IndexStatsOp:
 		req, err := loghttp.ParseIndexStatsQuery(r)
@@ -587,7 +588,7 @@ func decodeResponseJSON(r *http.Response, req queryrangebase.Request) (queryrang
 			}, nil
 		case loghttp.ResultTypeStream:
 			// This is the same as in querysharding.go
-			params, err := paramsFromRequest(req)
+			params, err := ParamsFromRequest(req)
 			if err != nil {
 				return nil, err
 			}
@@ -1092,7 +1093,7 @@ func (res LokiResponse) Count() int64 {
 	return result
 }
 
-func paramsFromRequest(req queryrangebase.Request) (logql.Params, error) {
+func ParamsFromRequest(req queryrangebase.Request) (logql.Params, error) {
 	switch r := req.(type) {
 	case *LokiRequest:
 		return &paramsRangeWrapper{

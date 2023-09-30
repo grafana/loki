@@ -8,7 +8,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
-	"github.com/grafana/dskit/httpgrpc"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
@@ -113,7 +112,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	}
 }
 
-func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response queryrangebase.Response, stats *querier_stats.Stats) error) {
+func (fp *frontendProcessor) runRequest(ctx context.Context, request queryrangebase.Request, statsEnabled bool, sendResponse func(response queryrangebase.Response, stats *querier_stats.Stats) error) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)

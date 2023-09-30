@@ -78,8 +78,6 @@ func WriteLabelResponseProtobuf(version loghttp.Version, l logproto.LabelRespons
 			Labels: &LokiLabelNamesResponse{
 				Status:  "success",
 				Data:    l.Values,
-				Version: uint32(version),
-				// Statistics: statResult,
 			},
 		},
 	}

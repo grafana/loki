@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 )
 
@@ -221,7 +222,7 @@ type requestHandlerMock struct {
 	mock.Mock
 }
 
-func (m *requestHandlerMock) Handle(ctx context.Context, req *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error) {
+func (m *requestHandlerMock) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	args := m.Called(ctx, req)
-	return args.Get(0).(*httpgrpc.HTTPResponse), args.Error(1)
+	return args.Get(0).(queryrangebase.Response), args.Error(1)
 }

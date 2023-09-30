@@ -108,6 +108,7 @@ message LokiLabelNamesRequest {
   ];
   string path = 3;
   string query = 4;
+  string name = 5;
 }
 
 message LokiLabelNamesResponse {

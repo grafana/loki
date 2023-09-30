@@ -1335,7 +1335,7 @@ func promqlResult(v parser.Value) (*int, base.Handler) {
 		lock.Lock()
 		defer lock.Unlock()
 		count++
-		params, err := paramsFromRequest(r)
+		params, err := ParamsFromRequest(r)
 		if err != nil {
 			return nil, err
 		}

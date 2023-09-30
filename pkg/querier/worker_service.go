@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	serverutil "github.com/grafana/loki/pkg/util/server"
@@ -48,20 +49,20 @@ func InitWorkerService(
 	cfg WorkerServiceConfig,
 	reg prometheus.Registerer,
 	queryRouterPathPrefix string,
-	queryRoutesToHandlers map[string]http.Handler,
+	queryHandler queryrangebase.Handler,
 	alwaysExternalRoutesToHandlers map[string]http.Handler,
 	externalRouter *mux.Router,
 	externalHandler http.Handler,
-	authMiddleware middleware.Interface,
+	authMiddleware queryrangebase.Middleware,
 ) (serve services.Service, err error) {
 
 	// Create a couple Middlewares used to handle panics, perform auth, parse forms in http request, and set content type in response
-	handlerMiddleware := middleware.Merge(
-		httpreq.ExtractQueryTagsMiddleware(),
-		serverutil.RecoveryHTTPMiddleware,
+	handlerMiddleware := queryrangebase.MergeMiddlewares(
+		//httpreq.ExtractQueryTagsMiddleware(),
+		//serverutil.RecoveryHTTPMiddleware, TODO
 		authMiddleware,
-		serverutil.NewPrepopulateMiddleware(),
-		serverutil.ResponseJSONMiddleware(),
+		//serverutil.NewPrepopulateMiddleware(),
+		//serverutil.ResponseJSONMiddleware(),
 	)
 
 	internalRouter := mux.NewRouter()
@@ -129,7 +130,7 @@ func InitWorkerService(
 	}
 
 	// Add a middleware to extract the trace context and add a header.
-	var internalHandler http.Handler
+	var internalHandler queryrangebase.Handler
 	internalHandler = nethttp.MiddlewareFunc(
 		opentracing.GlobalTracer(),
 		internalRouter.ServeHTTP,
@@ -144,7 +145,7 @@ func InitWorkerService(
 	return querier_worker.NewQuerierWorker(
 		*(cfg.QuerierWorkerConfig),
 		cfg.SchedulerRing,
-		httpgrpc_server.NewServer(internalHandler),
+		internalHandler,
 		util_log.Logger,
 		reg,
 	)
