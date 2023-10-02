@@ -99,6 +99,14 @@ limits_config:
   volume_enabled: true
 
 chunk_store_config:
+  chunk_cache_config:
+    memcached:
+      batch_size: 256
+      parallelism: 10
+    memcached_client:
+      host: chunk-cache-memcached-client.loki.svc
+      service: memcache_client
+
   max_look_back_period: 336h
 
 table_manager:
@@ -107,6 +115,16 @@ table_manager:
 
 query_range:
   # make queries more cache-able by aligning them with their step intervals
+  cache_results: true
+  results_cache:
+    cache:
+      memcached_client:
+        consistent_hash: true
+        host: results-cache-memcached-client.loki.svc
+        service: memcache_client
+        max_idle_conns: 16
+        timeout: 500ms
+        update_interval: 1m
   align_queries_with_step: true
   max_retries: 5
   parallelise_shardable_queries: true
