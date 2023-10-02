@@ -14,9 +14,9 @@ You can configure the behavior of the single binary with the `-target` command-l
 
 Because Loki decouples the data it stores from the software which ingests and queries it, you can easily redeploy a cluster under a different mode as your needs change, with minimal or no configuration changes.
 
-## Scalable monolithic deployment mode
+## Scalable monolithic 
 
-Scalable monolithic mode, previously referred to as a simple scalable deployment (SSD), is the preferred way to deploy Loki for most installations. The scalable monolithic deployment is the default configuration installed by the [Loki Helm Chart]({{< relref "../setup/install/helm" >}}). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
+The scalable monolithic deployment mode, previously referred to as a simple scalable deployment (SSD), is the preferred way to deploy Loki for most installations. The scalable monolithic deployment is the default configuration installed by the [Loki Helm Chart]({{< relref "../setup/install/helm" >}}). This deployment mode is the easiest way to deploy Loki at scale. It strikes a balance between deploying in [monolithic mode](#monolithic-mode) or deploying each component as a [separate microservice](#microservices-mode).
 
 Loki’s scalable monolithic deployment mode separates execution paths into read, write, and backend targets. These targets can be scaled independently, letting you customize your Loki deployment to meet your business needs for log ingestion and log query so that your infrastructure costs better match how you use Loki.
 
@@ -42,7 +42,7 @@ The scalable monolithic deployment mode requires a reverse proxy to be deployed 
 
 ## Monolithic mode
 
-The simplest mode of operation is monolithic mode. You enable monolithic mode by setting the `-target=all` command line parameter. This mode runs all of Loki’s microservice components inside a single process as a single binary or Docker image.
+The simplest mode of operation is the monolithic deployment mode. You enable monolithic mode by setting the `-target=all` command line parameter. This mode runs all of Loki’s microservice components inside a single process as a single binary or Docker image.
 
 ![monolithic mode diagram](../monolithic-mode.png "Monolithic mode")
 
