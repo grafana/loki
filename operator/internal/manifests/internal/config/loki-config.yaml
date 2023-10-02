@@ -14,6 +14,9 @@ common:
       container_name: {{ .Container }}
       account_name: {{ .AccountName }}
       account_key: {{ .AccountKey }}
+      {{- with .EndpointSuffix }}
+      endpoint_suffix: {{ . }}
+      {{- end }}
     {{- end }}
     {{- with .ObjectStorage.GCS }}
     gcs:
