@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/retention"
 )
 
 // Limits is an interface for distributor limits/related configs

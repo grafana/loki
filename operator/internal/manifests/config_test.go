@@ -280,6 +280,43 @@ func TestConfigOptions_GossipRingConfig(t *testing.T) {
 				MembersDiscoveryAddr:           "my-stack-gossip-ring.my-ns.svc.cluster.local",
 			},
 		},
+		{
+			desc: "IPv6 enabled with default instance address type",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6: true,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableIPv6:           true,
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
+		{
+			desc: "IPv6 enabled with podIP instance address type",
+			spec: lokiv1.LokiStackSpec{
+				HashRing: &lokiv1.HashRingSpec{
+					Type: lokiv1.HashRingMemberList,
+					MemberList: &lokiv1.MemberListSpec{
+						EnableIPv6:       true,
+						InstanceAddrType: lokiv1.InstanceAddrPodIP,
+					},
+				},
+			},
+			wantOptions: config.GossipRing{
+				EnableIPv6:           true,
+				InstanceAddr:         "${HASH_RING_INSTANCE_ADDR}",
+				InstancePort:         9095,
+				BindPort:             7946,
+				MembersDiscoveryAddr: "my-stack-gossip-ring.my-ns.svc.cluster.local",
+			},
+		},
 	}
 	for _, tc := range tt {
 		tc := tc
