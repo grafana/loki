@@ -48,5 +48,4 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) (*Bloom, error) {
 
 	it.curPage.Seek(offset.ByteOffset)
 	return it.curPage.Next()
-
 }

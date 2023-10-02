@@ -70,10 +70,17 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 	block := NewBlock(blockReader)
 
 	seriesItr := block.Series()
+	bloomItr := NewLazyBloomIter(block)
 
 	var i int
 	for seriesItr.Next() {
 		require.Nil(t, seriesItr.Err())
+		s := seriesItr.At()
+		require.Equal(t, *data[i].Series, s.Series)
+
+		bloom, err := bloomItr.Seek(s.Offset)
+		require.Nil(t, err)
+		require.Equal(t, data[i].Bloom, bloom)
 		i++
 	}
 
