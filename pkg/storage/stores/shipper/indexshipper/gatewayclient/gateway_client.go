@@ -104,6 +104,8 @@ type GatewayClient struct {
 	ring ring.ReadRing
 
 	limits indexgateway.Limits
+
+	done chan struct{}
 }
 
 // NewGatewayClient instantiates a new client used to communicate with an Index Gateway instance.
@@ -134,6 +136,7 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 		storeGatewayClientRequestDuration: latency,
 		ring:                              cfg.Ring,
 		limits:                            limits,
+		done:                              make(chan struct{}),
 	}
 
 	dialOpts, err := cfg.GRPCClientConfig.DialOption(grpcclient.Instrument(sgClient.storeGatewayClientRequestDuration))
@@ -151,18 +154,18 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 
 	//FIXME(ewelch) we don't expose the pool configs nor set defaults, and register flags is kind of messed up with remote config being defined somewhere else
 	//make a separate PR to make the pool config generic so it can be used with proper names in multiple places.
-	cfg.PoolConfig.RemoteTimeout = 1 * time.Second
-	cfg.PoolConfig.ClientCleanupPeriod = 15 * time.Second
-	cfg.PoolConfig.HealthCheckIngesters = true
+	sgClient.cfg.PoolConfig.RemoteTimeout = 2 * time.Second
+	sgClient.cfg.PoolConfig.ClientCleanupPeriod = 5 * time.Second
+	sgClient.cfg.PoolConfig.HealthCheckIngesters = true
 
 	if sgClient.cfg.Mode == indexgateway.RingMode {
-		sgClient.pool = clientpool.NewPool(cfg.PoolConfig, sgClient.ring, factory, logger)
+		sgClient.pool = clientpool.NewPool(sgClient.cfg.PoolConfig, sgClient.ring, factory, logger)
 	} else {
 		// Note we don't use clientpool.NewPool because we want to provide our own discovery function
 		poolCfg := ring_client.PoolConfig{
-			CheckInterval:      cfg.PoolConfig.ClientCleanupPeriod,
-			HealthCheckEnabled: cfg.PoolConfig.HealthCheckIngesters,
-			HealthCheckTimeout: cfg.PoolConfig.RemoteTimeout,
+			CheckInterval:      sgClient.cfg.PoolConfig.ClientCleanupPeriod,
+			HealthCheckEnabled: sgClient.cfg.PoolConfig.HealthCheckIngesters,
+			HealthCheckTimeout: sgClient.cfg.PoolConfig.RemoteTimeout,
 		}
 		clients := prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: "loki",
@@ -182,11 +185,12 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 		//TODO(ewelch) we can't use metrics in the provider because of duplicate registration errors
 		dnsProvider := dns.NewProvider(logger, nil, dns.GolangResolverType)
 		sgClient.dnsProvider = dnsProvider
-		address := []string{cfg.Address}
+
+		// Make an attempt to do one DNS lookup so we can start with addresses
+		sgClient.runDiscovery()
+		go sgClient.discoveryLoop()
+
 		discovery := func() ([]string, error) {
-			ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, ErrIndexGatewayDNSLookupTimeout)
-			defer cancel()
-			err := dnsProvider.Resolve(ctx, address)
 			return dnsProvider.Addresses(), err
 		}
 		sgClient.pool = ring_client.NewPool("index gateway", poolCfg, discovery, factory, clients, logger)
@@ -202,6 +206,29 @@ func NewGatewayClient(cfg IndexGatewayClientConfig, r prometheus.Registerer, lim
 	return sgClient, nil
 }
 
+func (s *GatewayClient) discoveryLoop() {
+	ticker := time.NewTicker(s.cfg.PoolConfig.ClientCleanupPeriod)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			s.runDiscovery()
+		case <-s.done:
+			return
+		}
+	}
+}
+
+func (s *GatewayClient) runDiscovery() {
+	ctx, cancel := context.WithTimeoutCause(context.Background(), 5*time.Second, ErrIndexGatewayDNSLookupTimeout)
+	defer cancel()
+	err := s.dnsProvider.Resolve(ctx, []string{s.cfg.Address})
+	if err != nil {
+		level.Error(s.logger).Log("msg", "failed to resolve index gateway address", "err", err)
+	}
+}
+
 // Stop stops the execution of this gateway client.
 func (s *GatewayClient) Stop() {
 	ctx, cancel := context.WithTimeoutCause(context.Background(), 10*time.Second, errors.New("service shutdown timeout expired"))
@@ -210,6 +237,7 @@ func (s *GatewayClient) Stop() {
 	if err != nil {
 		level.Error(s.logger).Log("msg", "failed to stop index gateway connection pool", "err", err)
 	}
+	close(s.done)
 }
 
 func (s *GatewayClient) QueryPages(ctx context.Context, queries []index.Query, callback index.QueryPagesCallback) error {

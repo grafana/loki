@@ -256,16 +256,7 @@ func TestGatewayClient(t *testing.T) {
 	gatewayClient, err := NewGatewayClient(cfg, prometheus.DefaultRegisterer, overrides, logger)
 	require.NoError(t, err)
 
-	// There is kind of a chicken and egg problem with how the pool works in simple mode
-	// A background thread will call the resolve function as part of the code that cleans up
-	// stale connections, so until this runs there are no addresses in the resolver.
-	// To work around that for the test we will just manually resolve the address
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	err = gatewayClient.dnsProvider.Resolve(context.Background(), []string{storeAddress})
-	require.NoError(t, err)
-
-	ctx = user.InjectOrgID(context.Background(), "fake")
+	ctx := user.InjectOrgID(context.Background(), "fake")
 
 	queries := []index.Query{}
 	for i := 0; i < 10; i++ {
