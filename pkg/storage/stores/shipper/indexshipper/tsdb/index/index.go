@@ -1255,8 +1255,9 @@ type Reader struct {
 	postingsV1 map[string]map[string]uint64
 
 	symbols     *Symbols
-	nameSymbols sync.Map // Cache of the label name symbol lookups,
+	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
+	nameSymbolsMtx sync.RWMutex
 
 	fingerprintOffsets FingerprintOffsets
 
@@ -1404,7 +1405,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		}
 	}
 
-	//r.nameSymbols = make(map[uint32]string, len(r.postings))
+	r.nameSymbols = make(map[uint32]string, len(r.postings))
 	for k := range r.postings {
 		if k == "" {
 			continue
@@ -1413,8 +1414,7 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		if err != nil {
 			return nil, errors.Wrap(err, "reverse symbol lookup")
 		}
-		r.nameSymbols.Store(off, k)
-		//r.nameSymbols[off] = k
+		r.nameSymbols[off] = k
 	}
 
 	r.fingerprintOffsets, err = readFingerprintOffsetsTable(r.b, r.toc.FingerprintOffsets)
@@ -1656,14 +1656,12 @@ func (r *Reader) Close() error {
 }
 
 func (r *Reader) lookupSymbol(o uint32) (string, error) {
-	//r.nameSymbolsMtx.RLock()
-	//s, ok := r.nameSymbols[o]
-	//r.nameSymbolsMtx.RUnlock()
-
-	s, ok := r.nameSymbols.Load(o)
+	r.nameSymbolsMtx.RLock()
+	s, ok := r.nameSymbols[o]
+	r.nameSymbolsMtx.RUnlock()
 
 	if ok {
-		return s.(string), nil
+		return s, nil
 	}
 
 	l, err := r.symbols.Lookup(o)
@@ -1671,12 +1669,9 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 		return "", err
 	}
 
-	//r.nameSymbolsMtx.Lock()
-
-	//r.nameSymbols[o] = l
-	//r.nameSymbolsMtx.Unlock()
-
-	r.nameSymbols.Store(o, l)
+	r.nameSymbolsMtx.Lock()
+	r.nameSymbols[o] = l
+	r.nameSymbolsMtx.Unlock()
 	return l, nil
 }
 
