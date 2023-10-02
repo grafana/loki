@@ -68,6 +68,6 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 	}
 }
 
-func NewQuerierRoundTripper(api *QuerierAPI) http.RoundTripper {
-	return queryrange.NewSerializeRoundTripper(NewQuerierHandler(api), queryrange.DefaultCodec)
+func NewQuerierHTTPHandler(api *QuerierAPI) http.Handler {
+	return queryrange.NewSerializeHTTPHandler(NewQuerierHandler(api), queryrange.DefaultCodec)
 }

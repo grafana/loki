@@ -480,7 +480,7 @@ func (q *QuerierAPI) validateMaxEntriesLimits(ctx context.Context, query string,
 // WrapQuerySpanAndTimeout applies a context deadline and a span logger to a query call.
 //
 // The timeout is based on the per-tenant query timeout configuration.
-func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
+func WrapQuerySpanAndTimeout(call string, limits Limits) middleware.Interface {
 	return middleware.Func(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 			sp, ctx := opentracing.StartSpanFromContext(req.Context(), call)
@@ -495,7 +495,7 @@ func WrapQuerySpanAndTimeout(call string, q *QuerierAPI) middleware.Interface {
 				return
 			}
 
-			timeoutCapture := func(id string) time.Duration { return q.limits.QueryTimeout(ctx, id) }
+			timeoutCapture := func(id string) time.Duration { return limits.QueryTimeout(ctx, id) }
 			timeout := util_validation.SmallestPositiveNonZeroDurationPerTenant(tenants, timeoutCapture)
 			newCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()

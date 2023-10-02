@@ -15,6 +15,7 @@ type GrpcRoundTripper interface {
 	RoundTripGRPC(context.Context, *httpgrpc.HTTPRequest) (*httpgrpc.HTTPResponse, error)
 }
 
+// TODO: remove
 func AdaptGrpcRoundTripperToHTTPRoundTripper(r GrpcRoundTripper) http.RoundTripper {
 	return &grpcRoundTripperAdapter{roundTripper: r}
 }
