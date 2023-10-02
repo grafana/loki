@@ -34,9 +34,12 @@ type IndexIter interface {
 
 type IndexSlice []Index
 
-func (xs IndexSlice) For(ctx context.Context, maxParallel int, fn func(context.Context, Index) error) error {
+func (xs IndexSlice) For(ctx context.Context, maxConcurrent int, fn func(context.Context, Index) error) error {
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(maxParallel)
+	if maxConcurrent == 0 {
+		panic("maxConcurrent cannot be 0, IndexIter is being called with a maxConcurrent of 0")
+	}
+	g.SetLimit(maxConcurrent)
 	for i := range xs {
 		x := xs[i]
 		g.Go(func() error {
@@ -47,9 +50,13 @@ func (xs IndexSlice) For(ctx context.Context, maxParallel int, fn func(context.C
 }
 
 func NewMultiIndex(i IndexIter) *MultiIndex {
+	maxConcurrent := runtime.GOMAXPROCS(0) / 2
+	if maxConcurrent == 0 {
+		maxConcurrent = 1
+	}
 	return &MultiIndex{
 		iter:        i,
-		maxParallel: runtime.GOMAXPROCS(0) / 2,
+		maxParallel: maxConcurrent,
 	}
 }
 
