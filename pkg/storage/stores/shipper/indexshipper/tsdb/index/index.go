@@ -1257,7 +1257,6 @@ type Reader struct {
 	symbols     *Symbols
 	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
 	// as there are not many and they are half of all lookups.
-	nameSymbolsMtx sync.Mutex
 
 	fingerprintOffsets FingerprintOffsets
 
@@ -1656,8 +1655,6 @@ func (r *Reader) Close() error {
 }
 
 func (r *Reader) lookupSymbol(o uint32) (string, error) {
-	r.nameSymbolsMtx.Lock()
-	defer r.nameSymbolsMtx.Unlock()
 	if s, ok := r.nameSymbols[o]; ok {
 		return s, nil
 	}
