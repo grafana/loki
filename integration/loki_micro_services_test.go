@@ -729,7 +729,7 @@ func TestCategorizedLabels(t *testing.T) {
 			"index-gateway",
 			"-target=index-gateway",
 			"-tsdb.enable-postings-cache=true",
-			"-store.index-cache-read.cache.enable-fifocache=true",
+			"-store.index-cache-read.embedded-cache.enabled=true",
 		)
 	)
 	require.NoError(t, clu.Run())
