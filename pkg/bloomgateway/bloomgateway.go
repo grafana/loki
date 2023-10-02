@@ -1,12 +1,49 @@
+/*
+Bloom Gateway package
+
+The bloom gateway is a component that can be run as a standalone microserivce
+target and provides capabilities for filtering ChunkRefs based on a given list
+of line filter expressions.
+
+		     Querier   Query Frontend
+		        |           |
+		................................... service boundary
+		        |           |
+		        +----+------+
+		             |
+		     indexgateway.Gateway
+		             |
+		   bloomgateway.BloomQuerier
+		             |
+		   bloomgateway.GatewayClient
+		             |
+		  logproto.BloomGatewayClient
+		             |
+		................................... service boundary
+		             |
+		      bloomgateway.Gateway
+		             |
+		       bloomshipper.Store
+		             |
+		      bloomshipper.Shipper
+		             |
+		     bloom_shipper.Shipper
+		             |
+		        ObjectClient
+		             |
+		................................... service boundary
+		             |
+	         object storage
+*/
 package bloomgateway
 
 import (
 	"context"
-	"math"
-	"time"
+	"sort"
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/services"
+	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
@@ -14,6 +51,7 @@ import (
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/bloom/bloom-shipper"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
@@ -31,8 +69,13 @@ type Gateway struct {
 	logger  log.Logger
 	metrics *metrics
 
-	bloomShipper bloom_shipper.Shipper
-	sharding     ShardingStrategy
+	bloomStore   bloomshipper.Store
+	bloomShipper bloomshipper.Shipper
+	bloomClient  bloom_shipper.Shipper
+
+	sharding ShardingStrategy
+
+	ConvertChunkRefToChunkID func(chunkRef logproto.ChunkRef) string
 }
 
 // New returns a new instance of the Bloom Gateway.
@@ -42,92 +85,72 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		logger:   logger,
 		metrics:  newMetrics(reg),
 		sharding: shardingStrategy,
+		// Only keep convert function instead of full schemaCfg
+		ConvertChunkRefToChunkID: schemaCfg.ExternalKey,
 	}
 
-	shipper, err := bloom_shipper.NewShipper(schemaCfg.Configs, storageCfg, storage.NewClientMetrics())
+	bloomClient, err := bloom_shipper.NewShipper(schemaCfg.Configs, storageCfg, storage.NewClientMetrics())
+	if err != nil {
+		return nil, err
+	}
+	g.bloomClient = bloomClient
+
+	bloomShipper, err := bloomshipper.NewBloomShipper(bloomClient)
+	if err != nil {
+		return nil, err
+	}
+	g.bloomShipper = bloomShipper
+
+	bloomStore, err := bloomshipper.NewBloomStore(bloomShipper)
 	if err != nil {
 		return nil, err
 	}
 
-	g.bloomShipper = shipper
+	g.bloomStore = bloomStore
 	g.Service = services.NewIdleService(g.starting, g.stopping)
-
-	g.init()
 
 	return g, nil
 }
 
-func (g *Gateway) init() error {
-	return nil
-}
-
 func (g *Gateway) starting(ctx context.Context) error {
-	// Do not sync on startup
-	// return g.sync(ctx)
 	return nil
 }
 
 func (g *Gateway) stopping(_ error) error {
+	g.bloomStore.Stop()
 	return nil
-}
-
-func (g *Gateway) sync(ctx context.Context) error {
-	// TODO(chaudum): Make configurable
-	start := time.Now()
-	end := start.Add(24 * time.Hour)
-
-	tenants, err := g.bloomShipper.ListTenants(ctx)
-	if err != nil {
-		return err
-	}
-
-	tenants, err = g.sharding.FilterTenants(ctx, tenants)
-	if err != nil {
-		return err
-	}
-
-	blockRefs := make([]bloom_shipper.BlockRef, 0, 64)
-	for _, tenant := range tenants {
-		ownedBlocks, err := g.loadAllBlocksForTenant(ctx, tenant, end, start)
-		if err != nil {
-			return err
-		}
-		blockRefs = append(blockRefs, ownedBlocks...)
-	}
-
-	// TODO(chaudum): Do we need to initialize blocks so they load their data?
-	_, err = g.bloomShipper.GetBlocks(ctx, blockRefs)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (g *Gateway) loadAllBlocksForTenant(ctx context.Context, tenant string, start, end time.Time) ([]bloom_shipper.BlockRef, error) {
-	params := bloom_shipper.MetaSearchParams{
-		TenantID:       tenant,
-		MinFingerprint: 0,
-		MaxFingerprint: math.MaxUint64,
-		StartTimestamp: start.UnixNano(),
-		EndTimestamp:   end.UnixNano(),
-	}
-	metas, err := g.bloomShipper.GetAll(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	var maxBlocks int
-	for i := range metas {
-		maxBlocks += len(metas[i].Blocks)
-	}
-	blocks := make([]bloom_shipper.BlockRef, 0, maxBlocks)
-	for i := range metas {
-		blocks = append(blocks, metas[i].Blocks...)
-	}
-	return g.sharding.FilterBlocks(ctx, tenant, blocks)
 }
 
 // FilterChunkRefs implements BloomGatewayServer
 func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunkRefRequest) (*logproto.FilterChunkRefResponse, error) {
-	return &logproto.FilterChunkRefResponse{}, nil
+	tenantID, err := tenant.TenantID(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// Sort ChunkRefs by fingerprint in ascending order
+	sort.Slice(req.Refs, func(i, j int) bool {
+		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
+	})
+
+	chunkRefs, err := g.bloomStore.FilterChunkRefs(ctx, tenantID, req.From.Time(), req.Through.Time(), req.Refs, req.Filters...)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := make([]*logproto.ChunkIDsForStream, 0)
+	for idx, chunkRef := range chunkRefs {
+		fp := chunkRef.Fingerprint
+		if idx == 0 || fp > resp[len(resp)-1].Fingerprint {
+			r := &logproto.ChunkIDsForStream{
+				Fingerprint: fp,
+				ChunkIDs:    []string{g.ConvertChunkRefToChunkID(*chunkRef)},
+			}
+			resp = append(resp, r)
+			continue
+		}
+		resp[len(resp)-1].ChunkIDs = append(resp[len(resp)-1].ChunkIDs, g.ConvertChunkRefToChunkID(*chunkRef))
+	}
+
+	return &logproto.FilterChunkRefResponse{Chunks: resp}, nil
 }
