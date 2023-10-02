@@ -379,7 +379,7 @@ decompression:
   # Especially useful in scenarios where compressed files are found before the compression is finished.
   [initial_delay: <duration> | default = 0s]
 
-  # Compression format. Supported formats are: 'gz', 'bz2' and 'z.
+  # Compression format. Supported formats are: 'gz', 'bz2', 'zip' and 'z.
   [format: <string> | default = ""]
 
 # Describes how to scrape logs from the journal.
