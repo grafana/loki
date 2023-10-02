@@ -124,6 +124,50 @@ func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
 	return nil
 }
 
+// decompress page and return an iterator over the bytes
+func (b *BlockIndex) NewSeriesPageDecoder(r io.ReadSeeker, header SeriesPageHeaderWithOffset) (*SeriesPageDecoder, error) {
+
+	if _, err := r.Seek(int64(header.Offset), io.SeekStart); err != nil {
+		return nil, errors.Wrap(err, "seeking to series page")
+	}
+
+	data := BlockPool.Get(header.Len)[:header.Len]
+	defer BlockPool.Put(data)
+	_, err := io.ReadFull(r, data)
+	if err != nil {
+		return nil, errors.Wrap(err, "reading series page")
+	}
+
+	dec := encoding.DecWith(data)
+
+	if err := dec.CheckCrc(castagnoliTable); err != nil {
+		return nil, errors.Wrap(err, "checksumming series page")
+	}
+
+	decompressor, err := b.schema.DecompressorPool().GetReader(bytes.NewReader(dec.Get()))
+	if err != nil {
+		return nil, errors.Wrap(err, "getting decompressor")
+	}
+
+	decompressed := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
+	if _, err = io.ReadFull(decompressor, decompressed); err != nil {
+		return nil, errors.Wrap(err, "decompressing series page")
+	}
+
+	// replace decoder's input with the now-decompressed data
+	dec.B = decompressed
+
+	res := &SeriesPageDecoder{
+		data:   decompressed,
+		header: header.SeriesHeader,
+
+		i: -1,
+	}
+
+	res.Reset()
+	return res, nil
+}
+
 // Header for a series page
 type SeriesPageHeaderWithOffset struct {
 	Offset, Len, DecompressedLen int
@@ -189,53 +233,53 @@ func (h *SeriesHeader) Decode(dec *encoding.Decbuf) error {
 	return dec.Err()
 }
 
-// decompress page and return an iterator over the bytes
-func NewSeriesPageDecoder(header SeriesPageHeaderWithOffset, dec *encoding.Decbuf, pool chunkenc.ReaderPool) (*SeriesPageDecoder, error) {
-	if err := dec.CheckCrc(castagnoliTable); err != nil {
-		return nil, errors.Wrap(err, "checksumming series page")
-	}
-
-	decompressor, err := pool.GetReader(bytes.NewReader(dec.Get()))
-	if err != nil {
-		return nil, errors.Wrap(err, "getting decompressor")
-	}
-
-	b := BlockPool.Get(header.DecompressedLen)[:header.DecompressedLen]
-	defer BlockPool.Put(b)
-	if _, err = io.ReadFull(decompressor, b); err != nil {
-		return nil, errors.Wrap(err, "decompressing series page")
-	}
-
-	// replace decoder's input with the now-decompressed data
-	dec.B = b
-
-	return &SeriesPageDecoder{
-		dec:    dec,
-		header: header.SeriesHeader,
-
-		i: -1,
-	}, nil
-}
-
 // can decode a series page one item at a time, useful when we don't
 // need to iterate an entire page
 type SeriesPageDecoder struct {
-	dec    *encoding.Decbuf
+	data   []byte
+	dec    encoding.Decbuf
 	header SeriesHeader
 
+	// state
 	i              int
+	cur            *SeriesWithOffset
+	err            error
 	lastFp         model.Fingerprint
 	previousOffset BloomOffset
 }
 
-func (d *SeriesPageDecoder) Next() bool {
-	d.i++
-	return d.i < d.header.NumSeries
+func (d *SeriesPageDecoder) Reset() {
+	d.cur = nil
+	d.dec.B = d.data
+	d.i = -1
+	d.err = nil
 }
 
-func (d *SeriesPageDecoder) At() (res SeriesWithOffset, err error) {
-	d.lastFp, d.previousOffset, err = res.Decode(d.dec, d.lastFp, d.previousOffset)
-	return res, err
+func (d *SeriesPageDecoder) Next() bool {
+	d.i++
+	if d.i >= d.header.NumSeries {
+		return false
+	}
+
+	var res SeriesWithOffset
+	d.lastFp, d.previousOffset, d.err = res.Decode(&d.dec, d.lastFp, d.previousOffset)
+	if d.err != nil {
+		return false
+	}
+
+	d.cur = &res
+	return true
+}
+
+func (d *SeriesPageDecoder) At() (res *SeriesWithOffset) {
+	return d.cur
+}
+
+func (d *SeriesPageDecoder) Err() error {
+	if d.err != nil {
+		return d.err
+	}
+	return d.dec.Err()
 }
 
 type Series struct {

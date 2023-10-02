@@ -78,9 +78,11 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 		s := seriesItr.At()
 		require.Equal(t, *data[i].Series, s.Series)
 
-		bloom, err := bloomItr.Seek(s.Offset)
-		require.Nil(t, err)
+		bloomItr.Seek(s.Offset)
+		require.Equal(t, true, bloomItr.Next())
+		bloom := bloomItr.At()
 		require.Equal(t, data[i].Bloom, bloom)
+		require.Nil(t, bloomItr.Err())
 		i++
 	}
 

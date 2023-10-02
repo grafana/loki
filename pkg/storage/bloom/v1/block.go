@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/common/model"
 )
 
 type BlockReader interface {
@@ -74,4 +75,56 @@ func (r *ByteReader) Index() io.ReadSeeker {
 
 func (r *ByteReader) Blooms() io.ReadSeeker {
 	return bytes.NewReader(r.blooms)
+}
+
+type BlockQuerier struct {
+	series *LazySeriesIter
+	blooms *LazyBloomIter
+
+	cur *SeriesWithBloom
+}
+
+func NewBlockQuerier(b *Block) *BlockQuerier {
+	return &BlockQuerier{
+		series: NewLazySeriesIter(b),
+		blooms: NewLazyBloomIter(b),
+	}
+}
+
+func (bq *BlockQuerier) Seek(fp model.Fingerprint) {
+	bq.series.Seek(fp)
+}
+
+func (bq *BlockQuerier) Next() bool {
+	if !bq.series.Next() {
+		return false
+	}
+
+	series := bq.series.At()
+
+	bq.blooms.Seek(series.Offset)
+	if !bq.blooms.Next() {
+		return false
+	}
+
+	bloom := bq.blooms.At()
+
+	bq.cur = &SeriesWithBloom{
+		Series: &series.Series,
+		Bloom:  bloom,
+	}
+	return true
+
+}
+
+func (bq *BlockQuerier) At() *SeriesWithBloom {
+	return bq.cur
+}
+
+func (bq *BlockQuerier) Err() error {
+	if err := bq.series.Err(); err != nil {
+		return err
+	}
+
+	return bq.blooms.Err()
 }

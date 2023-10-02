@@ -22,10 +22,7 @@ func NewLazyBloomIter(b *Block) *LazyBloomIter {
 	}
 }
 
-func (it *LazyBloomIter) Seek(offset BloomOffset) (*Bloom, error) {
-	if it.err != nil {
-		return nil, it.err
-	}
+func (it *LazyBloomIter) Seek(offset BloomOffset) {
 
 	// if we need a different page or the current page hasn't been loaded,
 	// load the desired page
@@ -33,12 +30,12 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) (*Bloom, error) {
 
 		// TODO(owen-d): better control over when to decode
 		if err := it.b.LoadHeaders(); err != nil {
-			return nil, errors.Wrap(err, "loading bloom headers")
+			it.err = errors.Wrap(err, "loading bloom headers")
 		}
 
-		decoder, err := it.b.blooms.BloomPageDecoder(it.b.reader.Blooms(), offset)
+		decoder, err := it.b.blooms.BloomPageDecoder(it.b.reader.Blooms(), offset.Page)
 		if err != nil {
-			return nil, errors.Wrap(err, "loading bloom page")
+			it.err = errors.Wrap(err, "loading bloom page")
 		}
 
 		it.curPageIndex = offset.Page
@@ -47,5 +44,71 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) (*Bloom, error) {
 	}
 
 	it.curPage.Seek(offset.ByteOffset)
-	return it.curPage.Next()
+}
+
+func (it *LazyBloomIter) Next() bool {
+	if !it.initialized {
+		// TODO(owen-d): better control over when to decode
+		if err := it.b.LoadHeaders(); err != nil {
+			it.err = err
+			return false
+		}
+	}
+	return it.next()
+}
+
+func (it *LazyBloomIter) next() bool {
+	if it.err != nil {
+		return false
+	}
+
+	for it.curPageIndex < len(it.b.blooms.pageHeaders) {
+		// first access of next page
+		if it.curPage == nil {
+			var (
+				err error
+			)
+			it.curPage, err = it.b.blooms.BloomPageDecoder(
+				it.b.reader.Blooms(),
+				it.curPageIndex,
+			)
+			if err != nil {
+				it.err = err
+				return false
+			}
+			continue
+		}
+
+		if !it.curPage.Next() {
+			// there was an error
+			if it.curPage.Err() != nil {
+				return false
+			}
+			// we've exhausted the current page, progress to next
+			it.curPageIndex++
+			it.curPage = nil
+			continue
+		}
+
+		return true
+	}
+
+	// finished last page
+	return false
+}
+
+func (it *LazyBloomIter) At() *Bloom {
+	return it.curPage.At()
+}
+
+func (it *LazyBloomIter) Err() error {
+	{
+		if it.err != nil {
+			return it.err
+		}
+		if it.curPage != nil {
+			return it.curPage.Err()
+		}
+		return nil
+	}
 }

@@ -96,3 +96,26 @@ func (it *SliceIter[T]) Err() error {
 func (it *SliceIter[T]) At() T {
 	return it.xs[it.cur]
 }
+
+type EmptyIter[T any] struct {
+	zero T
+}
+
+func (it *EmptyIter[T]) Next() bool {
+	return false
+}
+
+func (it *EmptyIter[T]) Err() error {
+	return nil
+}
+
+func (it *EmptyIter[T]) At() T {
+	return it.zero
+}
+
+// noop
+func (it *EmptyIter[T]) Reset() {}
+
+func NewEmptyIter[T any](zero T) *EmptyIter[T] {
+	return &EmptyIter[T]{zero: zero}
+}
