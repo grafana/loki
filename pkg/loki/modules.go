@@ -55,17 +55,17 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	chunk_util "github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor"
-	compactor_client "github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/client/grpc"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletion"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/generationnumber"
 	"github.com/grafana/loki/pkg/storage/stores/series/index"
-	shipper_index "github.com/grafana/loki/pkg/storage/stores/shipper/index"
-	boltdb_shipper_compactor "github.com/grafana/loki/pkg/storage/stores/shipper/index/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexgateway"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor"
+	compactor_client "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/client"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/client/grpc"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/generationnumber"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/indexgateway"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/util/httpreq"
 	"github.com/grafana/loki/pkg/util/limiter"
 	util_log "github.com/grafana/loki/pkg/util/log"
@@ -506,9 +506,6 @@ func (t *Loki) initIngester() (_ services.Service, err error) {
 	t.Server.HTTP.Methods("GET", "POST").Path("/flush").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.FlushHandler)),
 	)
-	t.Server.HTTP.Methods("POST").Path("/ingester/flush_shutdown").Handler(
-		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.LegacyShutdownHandler)),
-	)
 	t.Server.HTTP.Methods("POST", "GET", "DELETE").Path("/ingester/prepare_shutdown").Handler(
 		httpMiddleware.Wrap(http.HandlerFunc(t.Ingester.PrepareShutdown)),
 	)
@@ -560,153 +557,167 @@ func (t *Loki) initTableManager() (services.Service, error) {
 	return t.tableManager, nil
 }
 
-func (t *Loki) initStore() (_ services.Service, err error) {
-	// Always set these configs
-	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
-	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
-		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
-		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
-	}
-
-	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
-	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
-	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 && config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		t.Cfg.ChunkStoreConfig.DisableIndexDeduplication = true
-		t.Cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
-	}
-
+func (t *Loki) initStore() (services.Service, error) {
 	// Set configs pertaining to object storage based indices
 	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
-		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
-
-		switch true {
-		case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
-			// Use fifo cache for caching index in memory, this also significantly helps performance.
-			t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
-				EmbeddedCache: cache.EmbeddedCacheConfig{
-					Enabled:   true,
-					MaxSizeMB: 200,
-					// This is a small hack to save some CPU cycles.
-					// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
-					// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
-					// IndexCacheValidity guarantees the FIFO cache will expire the object first which can be done without
-					// having to deserialize the object.
-					TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
-				},
-			}
-			// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
-			// have query gaps on chunks flushed after an index entry is cached by keeping them retained in the ingester
-			// and queried as part of live data until the cache TTL expires on the index entry.
-			t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
-
-			// We do not want ingester to unnecessarily keep downloading files
-			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeWriteOnly
-			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval)
-
-			t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
-			t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
-
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway):
-			// We do not want query to do any updates to index
-			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
-			t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
-		default:
-			t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadWrite
-			t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval)
-			t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadWrite
-			t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
-
+		t.updateConfigForShipperStore()
+		err := t.setupAsyncStore()
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	if config.UsingObjectStorageIndex(t.Cfg.SchemaConfig.Configs) {
-		var asyncStore bool
-
-		shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
-		iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
-		if iTy != config.BoltDBShipperType && iTy != config.TSDBType {
-			shipperConfigIdx++
-		}
-
-		// TODO(owen-d): make helper more agnostic between boltdb|tsdb
-		var resyncInterval time.Duration
-		switch t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType {
-		case config.BoltDBShipperType:
-			resyncInterval = t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
-		case config.TSDBType:
-			resyncInterval = t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval
-		}
-
-		minIngesterQueryStoreDuration := shipperMinIngesterQueryStoreDuration(
-			t.Cfg.Ingester.MaxChunkAge,
-			shipperQuerierIndexUpdateDelay(
-				t.Cfg.StorageConfig.IndexCacheValidity,
-				resyncInterval,
-			),
-		)
-
-		switch true {
-		case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
-			// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
-			if t.Cfg.Querier.QueryStoreOnly {
-				break
-			}
-
-			// Use AsyncStore to query both ingesters local store and chunk store for store queries.
-			// Only queriers should use the AsyncStore, it should never be used in ingesters.
-			asyncStore = true
-
-			// The legacy Read target includes the index gateway, so disable the index-gateway client in that configuration.
-			if t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read) {
-				t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
-				t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
-			}
-			// Backend target includes the index gateway
-		case t.Cfg.isModuleEnabled(IndexGateway), t.Cfg.isModuleEnabled(Backend):
-			// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
-			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
-			t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
-		case t.Cfg.isModuleEnabled(All):
-			// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
-			// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
-			// ToDo: See if we can avoid doing this when not running loki in clustered mode.
-			t.Cfg.Ingester.QueryStore = true
-
-			mlb, err := calculateMaxLookBack(
-				t.Cfg.SchemaConfig.Configs[shipperConfigIdx],
-				t.Cfg.Ingester.QueryStoreMaxLookBackPeriod,
-				minIngesterQueryStoreDuration,
-			)
-			if err != nil {
-				return nil, err
-			}
-			t.Cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
-		}
-
-		if asyncStore {
-			t.Cfg.StorageConfig.EnableAsyncStore = true
-
-			t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
-				IngesterQuerier: t.ingesterQuerier,
-				QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
-					t.Cfg.Querier.QueryIngestersWithin,
-					minIngesterQueryStoreDuration,
-				),
-			}
-		}
-	}
-
-	t.Store, err = storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
+	store, err := storage.NewStore(t.Cfg.StorageConfig, t.Cfg.ChunkStoreConfig, t.Cfg.SchemaConfig, t.Overrides, t.clientMetrics, prometheus.DefaultRegisterer, util_log.Logger)
 	if err != nil {
-		return
+		return nil, err
 	}
+
+	t.Store = store
 
 	return services.NewIdleService(nil, func(_ error) error {
 		t.Store.Stop()
 		return nil
 	}), nil
+}
+
+func (t *Loki) updateConfigForShipperStore() {
+	// Always set these configs
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+	t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Mode = t.Cfg.IndexGateway.Mode
+
+	if t.Cfg.IndexGateway.Mode == indexgateway.RingMode {
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Ring = t.indexGatewayRingManager.Ring
+	}
+
+	t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
+	t.Cfg.StorageConfig.TSDBShipperConfig.IngesterName = t.Cfg.Ingester.LifecyclerConfig.ID
+
+	// If RF > 1 and current or upcoming index type is boltdb-shipper then disable index dedupe and write dedupe cache.
+	// This is to ensure that index entries are replicated to all the boltdb files in ingesters flushing replicated data.
+	if t.Cfg.Ingester.LifecyclerConfig.RingConfig.ReplicationFactor > 1 {
+		t.Cfg.ChunkStoreConfig.DisableIndexDeduplication = true
+		t.Cfg.ChunkStoreConfig.WriteDedupeCacheConfig = cache.Config{}
+	}
+
+	switch true {
+	case t.Cfg.isModuleEnabled(Ingester), t.Cfg.isModuleEnabled(Write):
+		// Use embedded cache for caching index in memory, this also significantly helps performance.
+		t.Cfg.StorageConfig.IndexQueriesCacheConfig = cache.Config{
+			EmbeddedCache: cache.EmbeddedCacheConfig{
+				Enabled:   true,
+				MaxSizeMB: 200,
+				// This is a small hack to save some CPU cycles.
+				// We check if the object is still valid after pulling it from cache using the IndexCacheValidity value
+				// however it has to be deserialized to do so, setting the cache validity to some arbitrary amount less than the
+				// IndexCacheValidity guarantees the Embedded cache will expire the object first which can be done without
+				// having to deserialize the object.
+				TTL: t.Cfg.StorageConfig.IndexCacheValidity - 1*time.Minute,
+			},
+		}
+		// Force the retain period to be longer than the IndexCacheValidity used in the store, this guarantees we don't
+		// have query gaps on chunks flushed after an index entry is cached by keeping them retained in the ingester
+		// and queried as part of live data until the cache TTL expires on the index entry.
+		t.Cfg.Ingester.RetainPeriod = t.Cfg.StorageConfig.IndexCacheValidity + 1*time.Minute
+
+		// We do not want ingester to unnecessarily keep downloading files
+		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeWriteOnly
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval)
+
+		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeWriteOnly
+		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
+
+	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read), t.Cfg.isModuleEnabled(Backend), t.isModuleActive(IndexGateway):
+		// We do not want query to do any updates to index
+		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadOnly
+		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadOnly
+
+	default:
+		// All other targets use the shipper store in RW mode
+		t.Cfg.StorageConfig.BoltDBShipperConfig.Mode = indexshipper.ModeReadWrite
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval)
+		t.Cfg.StorageConfig.TSDBShipperConfig.Mode = indexshipper.ModeReadWrite
+		t.Cfg.StorageConfig.TSDBShipperConfig.IngesterDBRetainPeriod = shipperQuerierIndexUpdateDelay(t.Cfg.StorageConfig.IndexCacheValidity, t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval)
+	}
+}
+
+func (t *Loki) setupAsyncStore() error {
+	var asyncStore bool
+
+	shipperConfigIdx := config.ActivePeriodConfig(t.Cfg.SchemaConfig.Configs)
+	iTy := t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType
+	if iTy != config.BoltDBShipperType && iTy != config.TSDBType {
+		shipperConfigIdx++
+	}
+
+	// TODO(owen-d): make helper more agnostic between boltdb|tsdb
+	var resyncInterval time.Duration
+	switch t.Cfg.SchemaConfig.Configs[shipperConfigIdx].IndexType {
+	case config.BoltDBShipperType:
+		resyncInterval = t.Cfg.StorageConfig.BoltDBShipperConfig.ResyncInterval
+	case config.TSDBType:
+		resyncInterval = t.Cfg.StorageConfig.TSDBShipperConfig.ResyncInterval
+	}
+
+	minIngesterQueryStoreDuration := shipperMinIngesterQueryStoreDuration(
+		t.Cfg.Ingester.MaxChunkAge,
+		shipperQuerierIndexUpdateDelay(
+			t.Cfg.StorageConfig.IndexCacheValidity,
+			resyncInterval,
+		),
+	)
+
+	switch true {
+	case t.Cfg.isModuleEnabled(Querier), t.Cfg.isModuleEnabled(Ruler), t.Cfg.isModuleEnabled(Read):
+		// Do not use the AsyncStore if the querier is configured with QueryStoreOnly set to true
+		if t.Cfg.Querier.QueryStoreOnly {
+			break
+		}
+
+		// Use AsyncStore to query both ingesters local store and chunk store for store queries.
+		// Only queriers should use the AsyncStore, it should never be used in ingesters.
+		asyncStore = true
+
+		// The legacy Read target includes the index gateway, so disable the index-gateway client in that configuration.
+		if t.Cfg.LegacyReadTarget && t.Cfg.isModuleEnabled(Read) {
+			t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+			t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+		}
+		// Backend target includes the index gateway
+	case t.Cfg.isModuleEnabled(IndexGateway), t.Cfg.isModuleEnabled(Backend):
+		// we want to use the actual storage when running the index-gateway, so we remove the Addr from the config
+		t.Cfg.StorageConfig.BoltDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+		t.Cfg.StorageConfig.TSDBShipperConfig.IndexGatewayClientConfig.Disabled = true
+	case t.Cfg.isModuleEnabled(All):
+		// We want ingester to also query the store when using boltdb-shipper but only when running with target All.
+		// We do not want to use AsyncStore otherwise it would start spiraling around doing queries over and over again to the ingesters and store.
+		// ToDo: See if we can avoid doing this when not running loki in clustered mode.
+		t.Cfg.Ingester.QueryStore = true
+
+		mlb, err := calculateMaxLookBack(
+			t.Cfg.SchemaConfig.Configs[shipperConfigIdx],
+			t.Cfg.Ingester.QueryStoreMaxLookBackPeriod,
+			minIngesterQueryStoreDuration,
+		)
+		if err != nil {
+			return err
+		}
+		t.Cfg.Ingester.QueryStoreMaxLookBackPeriod = mlb
+	}
+
+	if asyncStore {
+		t.Cfg.StorageConfig.EnableAsyncStore = true
+
+		t.Cfg.StorageConfig.AsyncStoreConfig = storage.AsyncStoreCfg{
+			IngesterQuerier: t.ingesterQuerier,
+			QueryIngestersWithin: calculateAsyncStoreQueryIngestersWithin(
+				t.Cfg.Querier.QueryIngestersWithin,
+				minIngesterQueryStoreDuration,
+			),
+		}
+	}
+
+	return nil
 }
 
 func (t *Loki) initIngesterQuerier() (_ services.Service, err error) {
@@ -1157,7 +1168,7 @@ func (t *Loki) initCompactor() (services.Service, error) {
 		return nil, err
 	}
 
-	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdb_shipper_compactor.NewIndexCompactor())
+	t.compactor.RegisterIndexCompactor(config.BoltDBShipperType, boltdbcompactor.NewIndexCompactor())
 	t.compactor.RegisterIndexCompactor(config.TSDBType, tsdb.NewIndexCompactor())
 	t.Server.HTTP.Path("/compactor/ring").Methods("GET", "POST").Handler(t.compactor)
 
@@ -1448,7 +1459,7 @@ func shipperQuerierIndexUpdateDelay(cacheValidity, resyncInterval time.Duration)
 
 // shipperIngesterIndexUploadDelay returns duration it could take for an index file containing id of a chunk to be uploaded to the shared store since it got flushed.
 func shipperIngesterIndexUploadDelay() time.Duration {
-	return shipper_index.ShardDBsByDuration + indexshipper.UploadInterval
+	return boltdb.ShardDBsByDuration + indexshipper.UploadInterval
 }
 
 // shipperMinIngesterQueryStoreDuration returns minimum duration(with some buffer) ingesters should query their stores to
