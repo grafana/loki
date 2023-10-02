@@ -333,3 +333,23 @@ func ResponseToQueryResponse(ctx context.Context, res queryrangebase.Response) (
 
 	return p, nil
 }
+
+// TODO: Maybe extend QueryRequest instead.
+func QueryRequestToRequest(res *QueryRequest) (queryrangebase.Request, error) {
+	switch concrete := res.Request.(type) {
+	case *QueryRequest_Series:
+		return concrete.Series, nil
+	case *QueryRequest_Instant:
+		return concrete.Instant, nil
+	case *QueryRequest_Stats:
+		return concrete.Stats, nil
+	case *QueryRequest_Volume:
+		return concrete.Volume, nil
+	case *QueryRequest_Streams:
+		return concrete.Streams, nil
+	case *QueryRequest_Labels:
+		return concrete.Labels, nil
+	default:
+		return nil, fmt.Errorf("unsupported request type, got (%t)", res.Request)
+	}
+}

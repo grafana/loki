@@ -22,7 +22,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	httpgrpcutil "github.com/grafana/loki/pkg/util/httpgrpc"
@@ -159,13 +159,16 @@ func (sp *schedulerProcessor) querierLoop(c schedulerpb.SchedulerForQuerier_Quer
 	}
 }
 
-func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request queryrangebase.Request) {
+func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger, queryID uint64, frontendAddress string, statsEnabled bool, request *queryrange.QueryRequest) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response, err := sp.handler.Do(ctx, request)
+	// TODO: handle error
+	req, _ := queryrange.QueryRequestToRequest(request)
+
+	response, err := sp.handler.Do(ctx, req)
 	// TODO(karsten): add error type to QueryResponse
 	/*
 	if err != nil {
