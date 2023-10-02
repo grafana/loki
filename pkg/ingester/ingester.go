@@ -40,8 +40,9 @@ import (
 	"github.com/grafana/loki/pkg/runtime"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
-	"github.com/grafana/loki/pkg/storage/chunk/fetcher"
 	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/storage/stores"
+	indexstore "github.com/grafana/loki/pkg/storage/stores/index"
 	"github.com/grafana/loki/pkg/storage/stores/index/seriesvolume"
 	index_stats "github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
@@ -166,15 +167,13 @@ type Wrapper interface {
 	Wrap(wrapped Interface) Interface
 }
 
-// ChunkStore is the interface we need to store chunks.
-type ChunkStore interface {
-	Put(ctx context.Context, chunks []chunk.Chunk) error
-	SelectLogs(ctx context.Context, req logql.SelectLogParams) (iter.EntryIterator, error)
-	SelectSamples(ctx context.Context, req logql.SelectSampleParams) (iter.SampleIterator, error)
-	GetChunkRefs(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) ([][]chunk.Chunk, []*fetcher.Fetcher, error)
-	GetSchemaConfigs() []config.PeriodConfig
-	Stats(ctx context.Context, userID string, from, through model.Time, matchers ...*labels.Matcher) (*index_stats.Stats, error)
-	Volume(ctx context.Context, userID string, from, through model.Time, limit int32, targetLabels []string, aggregateBy string, matchers ...*labels.Matcher) (*logproto.VolumeResponse, error)
+// Store is the store interface we need on the ingester.
+type Store interface {
+	stores.ChunkWriter
+	stores.ChunkFetcher
+	storage.SelectStore
+	storage.SchemaConfigProvider
+	indexstore.StatsReader
 }
 
 // Interface is an interface for the Ingester
@@ -189,8 +188,6 @@ type Interface interface {
 	CheckReady(ctx context.Context) error
 	FlushHandler(w http.ResponseWriter, _ *http.Request)
 	GetOrCreateInstance(instanceID string) (*instance, error)
-	// deprecated
-	LegacyShutdownHandler(w http.ResponseWriter, r *http.Request)
 	ShutdownHandler(w http.ResponseWriter, r *http.Request)
 	PrepareShutdown(w http.ResponseWriter, r *http.Request)
 }
@@ -211,7 +208,7 @@ type Ingester struct {
 	lifecycler        *ring.Lifecycler
 	lifecyclerWatcher *services.FailureWatcher
 
-	store           ChunkStore
+	store           Store
 	periodicConfigs []config.PeriodConfig
 
 	loopDone    sync.WaitGroup
@@ -248,7 +245,7 @@ type Ingester struct {
 }
 
 // New makes a new Ingester.
-func New(cfg Config, clientConfig client.Config, store ChunkStore, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
+func New(cfg Config, clientConfig client.Config, store Store, limits Limits, configs *runtime.TenantConfigs, registerer prometheus.Registerer, writeFailuresCfg writefailures.Cfg) (*Ingester, error) {
 	if cfg.ingesterClientFactory == nil {
 		cfg.ingesterClientFactory = client.New
 	}
@@ -587,7 +584,7 @@ func (i *Ingester) loop() {
 	initialDelay := time.NewTimer(jitter)
 	defer initialDelay.Stop()
 
-	level.Debug(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
+	level.Info(util_log.Logger).Log("msg", "sleeping for initial delay before starting periodic flushing", "delay", jitter)
 
 	select {
 	case <-initialDelay.C:
@@ -597,8 +594,9 @@ func (i *Ingester) loop() {
 		return
 	}
 
-	// Add +/- 1% of flush interval as jitter
-	j := i.cfg.FlushCheckPeriod / 100
+	// Add +/- 20% of flush interval as jitter.
+	// The default flush check period is 30s so max jitter will be 6s.
+	j := i.cfg.FlushCheckPeriod / 5
 	flushTicker := util.NewTickerWithJitter(i.cfg.FlushCheckPeriod, j)
 	defer flushTicker.Stop()
 
@@ -611,25 +609,6 @@ func (i *Ingester) loop() {
 			return
 		}
 	}
-}
-
-// LegacyShutdownHandler triggers the following set of operations in order:
-//   - Change the state of ring to stop accepting writes.
-//   - Flush all the chunks.
-//
-// Note: This handler does not trigger a termination of the Loki process,
-// despite its name. Instead, the ingester service is stopped, so an external
-// source can trigger a safe termination through a signal to the process.
-// The handler is deprecated and usage is discouraged. Use ShutdownHandler
-// instead.
-func (i *Ingester) LegacyShutdownHandler(w http.ResponseWriter, _ *http.Request) {
-	level.Warn(util_log.Logger).Log("msg", "The handler /ingester/flush_shutdown is deprecated and usage is discouraged. Please use /ingester/shutdown?flush=true instead.")
-	originalState := i.lifecycler.FlushOnShutdown()
-	// We want to flush the chunks if transfer fails irrespective of original flag.
-	i.lifecycler.SetFlushOnShutdown(true)
-	_ = services.StopAndAwaitTerminated(context.Background(), i)
-	i.lifecycler.SetFlushOnShutdown(originalState)
-	w.WriteHeader(http.StatusNoContent)
 }
 
 // PrepareShutdown will handle the /ingester/prepare_shutdown endpoint.
@@ -1006,7 +985,7 @@ func (i *Ingester) GetChunkIDs(ctx context.Context, req *logproto.GetChunkIDsReq
 	}
 
 	// get chunk references
-	chunksGroups, _, err := i.store.GetChunkRefs(ctx, orgID, start, end, matchers...)
+	chunksGroups, _, err := i.store.GetChunks(ctx, orgID, start, end, matchers...)
 	if err != nil {
 		return nil, err
 	}

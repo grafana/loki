@@ -20,7 +20,7 @@ More detailed information can be found on the [operations page]({{< relref "../o
 
 Loki 2.8 adds TSDB as a new mode for the Single Store and is now the recommended way to persist data in Loki.
 
-Some more storage details can also be found in the [operations section]({{< relref "../operations/storage/_index.md" >}}).
+You can find more storage information in the [manage section]({{< relref "../operations/storage/_index.md" >}}).
 
 ## Single Store
 
@@ -175,7 +175,7 @@ Note, there are a few other DynamoDB provisioning options including DynamoDB aut
 
 ## Upgrading Schemas
 
-When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query & merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
+When a new schema is released and you want to gain the advantages it provides, you can! Loki can transparently query and merge data from across schema boundaries so there is no disruption of service and upgrading is easy.
 
 First, you'll want to create a new [period_config]({{< relref "../configure#period_config" >}}) entry in your [schema_config]({{< relref "../configure#schema_config" >}}). The important thing to remember here is to set this at some point in the _future_ and then roll out the config file changes to Loki. This allows the table manager to create the required table in advance of writes and ensures that existing data isn't queried as if it adheres to the new schema.
 
@@ -359,8 +359,10 @@ storage_config:
     # Providing a user assigned ID will override use_managed_identity
     user_assigned_id: <user-assigned-identity-id>
     request_timeout: 0
-    # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container & blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
+    # Configure this if you are using private azure cloud like azure stack hub and will use this endpoint suffix to compose container and blob storage URL. Ex: https://account_name.endpoint_suffix/container_name/blob_name
     endpoint_suffix: <endpoint-suffix>
+    # If `connection_string` is set, the values of `account_name` and `endpoint_suffix` values will not be used. Use this method over `account_key` if you need to authenticate via a SAS token. Or if you use the Azurite emulator.
+    connection_string: <connection-string>
   boltdb_shipper:
     active_index_directory: /data/loki/boltdb-shipper-active
     cache_location: /data/loki/boltdb-shipper-cache

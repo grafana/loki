@@ -88,7 +88,8 @@ type BucketReader interface {
 	// IsObjNotFoundErr returns true if error means that object is not found. Relevant to Get operations.
 	IsObjNotFoundErr(err error) bool
 
-	// IsCustomerManagedKeyError returns true if the permissions for key used to encrypt the object was revoked.
+	// IsAccessDeniedErr returns true if access to object is denied.
+	IsAccessDeniedErr(err error) bool
 ```
 
 Those interfaces represent the object storage operations your code can use from `objstore` clients.
@@ -418,6 +419,7 @@ type: AZURE
 config:
   storage_account: ""
   storage_account_key: ""
+  storage_connection_string: ""
   container: ""
   endpoint: ""
   user_assigned_id: ""
@@ -452,6 +454,8 @@ prefix: ""
 If `msi_resource` is used, authentication is done via system-assigned managed identity. The value for Azure should be `https://<storage-account-name>.blob.core.windows.net`.
 
 If `user_assigned_id` is used, authentication is done via user-assigned managed identity. When using `user_assigned_id` the `msi_resource` defaults to `https://<storage_account>.<endpoint>`
+
+If `storage_connection_string` is set, the values of `storage_account` and `endpoint` values will not be used. Use this method over `storage_account_key` if you need to authenticate via a SAS token.
 
 The generic `max_retries` will be used as value for the `pipeline_config`'s `max_tries` and `reader_config`'s `max_retry_requests`. For more control, `max_retries` could be ignored (0) and one could set specific retry values.
 
@@ -578,7 +582,7 @@ prefix: ""
 
 ### Oracle Cloud Infrastructure Object Storage
 
-To configure Oracle Cloud Infrastructure (OCI) Object Storage as Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports either the default keypair or instance principal authentication.
+To configure Oracle Cloud Infrastructure (OCI) Object Storage as a Thanos Object Store, you need to provide appropriate authentication credentials to your OCI tenancy. The OCI object storage client implementation for Thanos supports default keypair, instance principal, and OKE workload identity authentication.
 
 #### API Signing Key
 
@@ -641,6 +645,20 @@ config:
 ```
 
 You can also include any of the optional configuration just like the example in `Default Provider`.
+
+#### OKE Workload Identity Provider
+
+For Example:
+
+```yaml
+type: OCI
+config:
+  provider: "oke-workload-identity"
+  bucket: ""
+  region: ""
+```
+
+The `bucket` and `region` fields are required. The `region` field identifies the bucket region.
 
 ##### HuaweiCloud OBS
 

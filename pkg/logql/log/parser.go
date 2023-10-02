@@ -717,7 +717,7 @@ func (u *UnpackParser) unpack(entry []byte, lbs *LabelsBuilder) ([]byte, error) 
 				return nil
 			}
 			key, ok := u.keys.Get(key, func() (string, bool) {
-				field := unsafeGetString(key)
+				field := string(key)
 				if lbs.BaseHas(field) {
 					field = field + duplicateSuffix
 				}

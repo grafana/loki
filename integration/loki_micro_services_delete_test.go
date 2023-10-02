@@ -13,6 +13,7 @@ import (
 
 	"github.com/grafana/loki/integration/client"
 	"github.com/grafana/loki/integration/cluster"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/syntax"
 	"github.com/grafana/loki/pkg/push"

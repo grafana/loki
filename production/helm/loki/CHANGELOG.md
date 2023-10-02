@@ -12,6 +12,52 @@ Entries should be ordered as follows:
 Entries should include a reference to the pull request that introduced the change.
 
 [//]: # (<AUTOMATED_UPDATES_LOCATOR> : do not remove this line. This locator is used by the CI pipeline to automatically create a changelog entry for each new Loki release. Add other chart versions and respective changelog entries bellow this line.)
+
+## 5.23.1
+
+- [BUGFIX] Add missing namespaces to some components
+
+## 5.23.0
+
+- [ENHANCEMENT] Add loki.storage.azure.connectionString to support Azure connection string
+
+## 5.22.2
+
+- [BUGFIX] Fix sidecar configuration for Backend
+
+## 5.22.1
+
+- ENHANCEMENT #10452 Improve gitops compatibility
+
+## 5.22.0
+
+- [CHANGE] Changed version of Loki to 2.9.1
+
+## 5.21.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.1
+
+## 5.20.0
+
+- [CHANGE] Changed version of Grafana Enterprise Logs to v1.8.0
+
+## 5.19.0
+
+- [FEATURE] Add optional sidecard to load rules from ConfigMaps and Secrets.
+
+## 5.18.1
+
+- [ENHANCEMENT] #8627 Add service labels and annotations for all services.
+- [CHANGE] #8627 Move read, write and table manager labels from #component.serviceLabels to #component.service.labels to improve consistency.
+
+## 5.18.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
+## 5.17.0
+
+- [CHANGE] Changed version of Loki to 2.9.0
+
 ## 5.16.1
 
 - [BUGFIX] Increase default minReplicas to 2 and maxReplicas to 6

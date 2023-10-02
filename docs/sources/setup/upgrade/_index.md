@@ -2,7 +2,7 @@
 title: Upgrade Loki
 menuTitle:  Upgrade
 description: Upgrading Grafana Loki
-aliases: 
+aliases:
   - ../upgrading/
 weight: 400
 ---
@@ -35,6 +35,56 @@ The output is incredibly verbose as it shows the entire internal config struct u
 
 
 ## Main / Unreleased
+
+### Loki
+
+#### Configuration `use_boltdb_shipper_as_backup` is removed
+
+The setting `use_boltdb_shipper_as_backup` (`-tsdb.shipper.use-boltdb-shipper-as-backup`) was a remnant from the development of the TSDB storage.
+It was used to allow writing to both TSDB and BoltDB when TSDB was still highly experimental.
+Since TSDB is now stable and the recommended index type, the setting has become irrelevant and therefore was removed.
+The previous default value `false` is applied.
+
+#### Deprecated configuration options are removed
+
+1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
+2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
+4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
+5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
+6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
+7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
+8. `frontend.cache-split-interval` CLI flag is removed. Results caching interval is now determined by `querier.split-queries-by-interval`.
+
+#### Legacy ingester shutdown handler is removed
+
+The already deprecated handler `/ingester/flush_shutdown` is removed in favor of `/ingester/shutdown?flush=true`.
+
+#### Distributor metric changes
+
+The `loki_distributor_ingester_append_failures_total` metric has been removed in favour of `loki_distributor_ingester_append_timeouts_total`.
+This new metric will provide a more clear signal that there is an issue with ingesters, and this metric can be used for high-signal alerting.
+
+#### Changes to default configuration values
+
+1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
+
+#### Embedded cache metric changes
+
+- The following embedded cache metrics are removed. Instead use `loki_cache_fetched_keys`, `loki_cache_hits`, `loki_cache_request_duration_seconds` which instruments requests made to the configured cache (`embeddedcache`, `memcached` or `redis`).
+  - `querier_cache_added_total`
+  - `querier_cache_gets_total`
+  - `querier_cache_misses_total`
+
+- The following embedded cache metrics are renamed:
+  - `querier_cache_added_new_total` is renamed to `loki_embeddedcache_added_new_total`
+  - `querier_cache_evicted_total` is renamed to `loki_embeddedcache_evicted_total`
+  - `querier_cache_entries` is renamed to `loki_embeddedcache_entries`
+  - `querier_cache_memory_bytes` is renamed to `loki_embeddedcache_memory_bytes`
+
+- Already deprecated metric `querier_cache_stale_gets_total` is now removed.
+
+## 2.9.0
 
 ### Loki
 
@@ -89,6 +139,7 @@ A new config option `-boltdb.shipper.compactor.delete-request-store` decides whe
 In the case where neither of these options are set, the `object_store` configured in the latest `period_config` that uses either a tsdb or boltdb-shipper index is used for storing delete requests to ensure pending requests are processed.
 
 #### logfmt parser non-strict parsing
+
 logfmt parser now performs non-strict parsing which helps scan semi-structured log lines.
 It skips invalid tokens and tries to extract as many key/value pairs as possible from the rest of the log line.
 If you have a use-case that relies on strict parsing where you expect the parser to throw an error, use `| logfmt --strict` to enable strict mode.
@@ -96,21 +147,12 @@ If you have a use-case that relies on strict parsing where you expect the parser
 logfmt parser doesn't include standalone keys(keys without a value) in the resulting label set anymore.
 You can use `--keep-empty` flag to retain them.
 
-#### deprecated configs are now removed
-1. Removes already deprecated `-querier.engine.timeout` CLI flag and the corresponding YAML setting. 
-2. Also removes the `query_timeout` from the querier YAML section. Instead of configuring `query_timeout` under `querier`, you now configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-3. `s3.sse-encryption` is removed. AWS now defaults encryption of all buckets to SSE-S3. Use `sse.type` to set SSE type. 
-4. `ruler.wal-cleaer.period` is removed. Use `ruler.wal-cleaner.period` instead.
-5. `experimental.ruler.enable-api` is removed. Use `ruler.enable-api` instead.
-6. `split_queries_by_interval` is removed from `query_range` YAML section. You can instead configure it in [Limits Config](/docs/loki/latest/configuration/#limits_config).
-7. `frontend.forward-headers-list` CLI flag and its corresponding YAML setting are removed.
-
 ### Jsonnet
 
 ##### Deprecated PodDisruptionBudget definition has been removed
 
 The `policy/v1beta1` API version of PodDisruptionBudget is no longer served as of Kubernetes v1.25.
-To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21. 
+To support the latest versions of the Kubernetes, it was necessary to replace `policy/v1beta1` with the new definition `policy/v1` that is available since v1.21.
 
 No impact is expected if you use Kubernetes v1.21 or newer.
 
@@ -420,7 +462,7 @@ This histogram reports the distribution of log line sizes by file. It has 8 buck
 
 This creates a lot of series and we don't think this metric has enough value to offset the amount of series genereated so we are removing it.
 
-While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs](/docs/loki/latest/send-data/promtail/stages/metrics/#counter)
+While this isn't a direct replacement, two metrics we find more useful are size and line counters configured via pipeline stages, an example of how to configure these metrics can be found in the [metrics pipeline stage docs]({{< relref "../../send-data/promtail/stages/metrics#counter" >}}).
 
 #### `added Docker target` log message has been demoted from level=error to level=info
 

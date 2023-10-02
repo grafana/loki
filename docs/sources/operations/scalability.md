@@ -1,9 +1,10 @@
 ---
-title: Scalability
-description: Scaling with Grafana Loki
-weight: 30
+title: Scale Loki
+menuTitle:  Scale
+description: Describes how to scale Grafana Loki
+weight: 
 ---
-# Scalability
+# Scale Loki
 
 When scaling Loki, operators should consider running several Loki processes
 partitioned by role (ingester, distributor, querier) rather than a single Loki
@@ -67,7 +68,7 @@ Requests will be load-balanced across all `query-frontend` IPs if the `dns:///` 
 
 > **Note:** Queries that fail to execute are _not_ retried.
 
-### Limits & Observability
+### Limits and Observability
 
 Remote rule evaluation can be tuned with the following options:
 

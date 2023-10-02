@@ -686,6 +686,8 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 			return concrete.Streams.WithHeaders(headers), nil
 		case *QueryResponse_TopkSketches:
 			return concrete.TopkSketches.WithHeaders(headers), nil
+		case *QueryResponse_QuantileSketches:
+			return concrete.QuantileSketches.WithHeaders(headers), nil
 		default:
 			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
 		}
@@ -803,6 +805,8 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 		p.Response = &QueryResponse_Stats{response}
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
+	case *QuantileSketchResponse:
+		p.Response = &QueryResponse_QuantileSketches{response}
 	default:
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid response format, got (%T)", res))
 	}

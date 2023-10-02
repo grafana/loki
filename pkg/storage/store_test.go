@@ -29,9 +29,9 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	"github.com/grafana/loki/pkg/storage/stores/shipper"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/marshal"
 	"github.com/grafana/loki/pkg/validation"
@@ -1080,7 +1080,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	}
 
 	// get all the chunks from the first period
-	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), newMatchers(fooLabelsWithName.String())...)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {
@@ -1148,7 +1148,7 @@ func TestStore_indexPrefixChange(t *testing.T) {
 	}
 
 	// get all the chunks from both the stores
-	chunks, _, err = store.GetChunkRefs(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	chunks, _, err = store.GetChunks(ctx, "fake", timeToModelTime(firstPeriodDate), timeToModelTime(secondPeriodDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
 
 	totalChunks = 0
@@ -1189,11 +1189,9 @@ func TestStore_MultiPeriod(t *testing.T) {
 			shipperConfig.Mode = indexshipper.ModeReadWrite
 
 			cfg := Config{
-				FSConfig: local.FSConfig{Directory: path.Join(tempDir, "chunks")},
-				BoltDBShipperConfig: shipper.Config{
-					Config: shipperConfig,
-				},
-				TSDBShipperConfig: tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
+				FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
+				BoltDBShipperConfig: boltdb.IndexCfg{Config: shipperConfig},
+				TSDBShipperConfig:   tsdb.IndexCfg{Config: shipperConfig, CachePostings: false},
 				NamedStores: NamedStores{
 					Filesystem: map[string]NamedFSConfig{
 						"named-store": {Directory: path.Join(tempDir, "named-store")},
@@ -1281,7 +1279,7 @@ func TestStore_MultiPeriod(t *testing.T) {
 			defer store.Stop()
 
 			// get all the chunks from both the stores
-			chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+			chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(firstStoreDate), timeToModelTime(secondStoreDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 			require.NoError(t, err)
 			var totalChunks int
 			for _, chks := range chunks {
@@ -1507,7 +1505,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	require.NoError(t, err)
 
 	// config for BoltDB Shipper
-	boltdbShipperConfig := shipper.Config{}
+	boltdbShipperConfig := boltdb.IndexCfg{}
 	flagext.DefaultValues(&boltdbShipperConfig)
 	boltdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "index")
 	boltdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
@@ -1516,7 +1514,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	boltdbShipperConfig.IngesterName = ingesterName
 
 	// config for tsdb Shipper
-	tsdbShipperConfig := indexshipper.Config{}
+	tsdbShipperConfig := tsdb.IndexCfg{}
 	flagext.DefaultValues(&tsdbShipperConfig)
 	tsdbShipperConfig.ActiveIndexDirectory = path.Join(tempDir, "tsdb-index")
 	tsdbShipperConfig.SharedStoreType = config.StorageTypeFileSystem
@@ -1531,7 +1529,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	cfg := Config{
 		FSConfig:            local.FSConfig{Directory: path.Join(tempDir, "chunks")},
 		BoltDBShipperConfig: boltdbShipperConfig,
-		TSDBShipperConfig:   tsdb.IndexCfg{Config: tsdbShipperConfig},
+		TSDBShipperConfig:   tsdbShipperConfig,
 	}
 
 	schemaConfig := config.SchemaConfig{
@@ -1627,7 +1625,7 @@ func TestStore_BoltdbTsdbSameIndexPrefix(t *testing.T) {
 	defer store.Stop()
 
 	// get all the chunks from both the stores
-	chunks, _, err := store.GetChunkRefs(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
+	chunks, _, err := store.GetChunks(ctx, "fake", timeToModelTime(boltdbShipperStartDate), timeToModelTime(tsdbStartDate.Add(24*time.Hour)), newMatchers(fooLabelsWithName.String())...)
 	require.NoError(t, err)
 	var totalChunks int
 	for _, chks := range chunks {

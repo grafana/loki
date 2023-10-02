@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/distributor/shardstreams"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/retention"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/retention"
 )
 
 // Limits is an interface for distributor limits/related configs
@@ -27,4 +27,7 @@ type Limits interface {
 	IngestionRateStrategy() string
 	IngestionRateBytes(userID string) float64
 	IngestionBurstSizeBytes(userID string) int
+	AllowStructuredMetadata(userID string) bool
+	MaxStructuredMetadataSize(userID string) int
+	MaxStructuredMetadataCount(userID string) int
 }

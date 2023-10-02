@@ -54,9 +54,7 @@ var (
 			configFn: func() config.ChunkStoreConfig {
 				var storeCfg config.ChunkStoreConfig
 				flagext.DefaultValues(&storeCfg)
-				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewFifoCache("test", cache.FifoCacheConfig{
-					MaxSizeItems: 500,
-				}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
+				storeCfg.WriteDedupeCacheConfig.Cache = cache.NewEmbeddedCache("test", cache.EmbeddedCacheConfig{MaxSizeItems: 500}, prometheus.NewRegistry(), log.NewNopLogger(), stats.ChunkCache)
 				return storeCfg
 			},
 		},
@@ -395,7 +393,7 @@ func TestChunkStore_getMetricNameChunks(t *testing.T) {
 						t.Fatal(err)
 					}
 
-					chunks, fetchers, err := store.GetChunkRefs(ctx, userID, now.Add(-time.Hour), now, matchers...)
+					chunks, fetchers, err := store.GetChunks(ctx, userID, now.Add(-time.Hour), now, matchers...)
 					require.NoError(t, err)
 					fetchedChunk := []chunk.Chunk{}
 					for _, f := range fetchers {
@@ -655,7 +653,7 @@ func TestChunkStoreError(t *testing.T) {
 				require.NoError(t, err)
 
 				// Query with ordinary time-range
-				_, _, err = store.GetChunkRefs(ctx, userID, tc.from, tc.through, matchers...)
+				_, _, err = store.GetChunks(ctx, userID, tc.from, tc.through, matchers...)
 				require.EqualError(t, err, tc.err)
 			})
 		}

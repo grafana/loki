@@ -2,7 +2,7 @@
 title: Automatic stream sharding
 menuTitle: Automatic stream sharding
 description: Automatic stream sharding can control issues around the per-stream rate limit
-weight: 110
+weight: 
 ---
 
 # Automatic stream sharding

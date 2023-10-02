@@ -2,10 +2,9 @@
 title: Grafana Loki configuration parameters
 menuTitle: Configure
 description: Configuration reference for the parameters used to configure Grafana Loki.
-aliases: 
-  - ../configuration
-  - ../configure
-weight: 400 
+aliases:
+  - ./configuration # /docs/loki/<LOKI_VERSION>/configuration/
+weight: 400
 ---
 
 # Grafana Loki configuration parameters
@@ -2037,11 +2036,6 @@ boltdb_shipper:
     # CLI flag: -boltdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
 
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -boltdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
-
   [ingestername: <string> | default = ""]
 
   [mode: <string> | default = ""]
@@ -2103,11 +2097,6 @@ tsdb_shipper:
     # Whether requests sent to the gateway should be logged or not.
     # CLI flag: -tsdb.shipper.index-gateway-client.log-gateway-requests
     [log_gateway_requests: <boolean> | default = false]
-
-  # Use boltdb-shipper index store as backup for indexing chunks. When enabled,
-  # boltdb-shipper needs to be configured under storage_config
-  # CLI flag: -tsdb.shipper.use-boltdb-shipper-as-backup
-  [use_boltdb_shipper_as_backup: <boolean> | default = false]
 
   [ingestername: <string> | default = ""]
 
@@ -2719,6 +2708,18 @@ shard_streams:
 # the deprecated -replication-factor for backwards compatibility reasons.
 # CLI flag: -index-gateway.shard-size
 [index_gateway_shard_size: <int> | default = 0]
+
+# Allow user to send structured metadata in push payload.
+# CLI flag: -validation.allow-structured-metadata
+[allow_structured_metadata: <boolean> | default = false]
+
+# Maximum size accepted for structured metadata per log line.
+# CLI flag: -limits.max-structured-metadata-size
+[max_structured_metadata_size: <int> | default = 64KB]
+
+# Maximum number of structured metadata entries per log line.
+# CLI flag: -limits.max-structured-metadata-entries-count
+[max_structured_metadata_entries_count: <int> | default = 128]
 ```
 
 ### frontend_worker
@@ -3928,11 +3929,6 @@ The cache block configures the cache backend. The supported CLI flags `<prefix>`
 &nbsp;
 
 ```yaml
-# (deprecated: use embedded-cache instead) Enable in-memory cache (auto-enabled
-# for the chunks & query results cache if no other cache is configured).
-# CLI flag: -<prefix>.cache.enable-fifocache
-[enable_fifocache: <boolean> | default = false]
-
 # The default validity of entries for caches unless overridden.
 # CLI flag: -<prefix>.default-validity
 [default_validity: <duration> | default = 1h]
@@ -4083,34 +4079,13 @@ embedded_cache:
   # CLI flag: -<prefix>.embedded-cache.max-size-mb
   [max_size_mb: <int> | default = 100]
 
-  # The time to live for items in the cache before they get purged.
-  # CLI flag: -<prefix>.embedded-cache.ttl
-  [ttl: <duration> | default = 1h]
-
-fifocache:
-  # Maximum memory size of the cache in bytes. A unit suffix (KB, MB, GB) may be
-  # applied.
-  # CLI flag: -<prefix>.fifocache.max-size-bytes
-  [max_size_bytes: <string> | default = "1GB"]
-
-  # deprecated: Maximum number of entries in the cache.
-  # CLI flag: -<prefix>.fifocache.max-size-items
+  # Maximum number of entries in the cache.
+  # CLI flag: -<prefix>.embedded-cache.max-size-items
   [max_size_items: <int> | default = 0]
 
   # The time to live for items in the cache before they get purged.
-  # CLI flag: -<prefix>.fifocache.ttl
+  # CLI flag: -<prefix>.embedded-cache.ttl
   [ttl: <duration> | default = 1h]
-
-  # Deprecated (use ttl instead): The expiry duration for the cache.
-  # CLI flag: -<prefix>.fifocache.duration
-  [validity: <duration> | default = 0s]
-
-  # Deprecated (use max-size-items or max-size-bytes instead): The number of
-  # entries to cache.
-  # CLI flag: -<prefix>.fifocache.size
-  [size: <int> | default = 0]
-
-  [purgeinterval: <duration>]
 
 # The maximum number of concurrent asynchronous writeback cache can occur.
 # CLI flag: -<prefix>.max-async-cache-write-back-concurrency
@@ -4380,6 +4355,13 @@ The `azure_storage_config` block configures the connection to Azure object stora
 # Azure storage account key.
 # CLI flag: -<prefix>.azure.account-key
 [account_key: <string> | default = ""]
+
+# If `connection-string` is set, the values of `account-name` and
+# `endpoint-suffix` values will not be used. Use this method over `account-key`
+# if you need to authenticate via a SAS token. Or if you use the Azurite
+# emulator.
+# CLI flag: -<prefix>.azure.connection-string
+[connection_string: <string> | default = ""]
 
 # Name of the storage account blob container used to store chunks. This
 # container must be created before running cortex.

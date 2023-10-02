@@ -23,7 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/logql/syntax"
 	ruler_config "github.com/grafana/loki/pkg/ruler/config"
 	"github.com/grafana/loki/pkg/ruler/util"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper/compactor/deletionmode"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/deletionmode"
 	"github.com/grafana/loki/pkg/util/flagext"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -52,6 +52,9 @@ const (
 	defaultPerStreamBurstLimit  = 5 * defaultPerStreamRateLimit
 
 	DefaultPerTenantQueryTimeout = "1m"
+
+	defaultMaxStructuredMetadataSize  = "64kb"
+	defaultMaxStructuredMetadataCount = 128
 )
 
 // Limits describe all the limits for users; can be used to describe global default
@@ -179,12 +182,16 @@ type Limits struct {
 	RequiredNumberLabels int      `yaml:"minimum_labels_number,omitempty" json:"minimum_labels_number,omitempty" doc:"description=Minimum number of label matchers a query should contain."`
 
 	IndexGatewayShardSize int `yaml:"index_gateway_shard_size" json:"index_gateway_shard_size"`
+
+	AllowStructuredMetadata           bool             `yaml:"allow_structured_metadata,omitempty" json:"allow_structured_metadata,omitempty" doc:"description=Allow user to send structured metadata in push payload."`
+	MaxStructuredMetadataSize         flagext.ByteSize `yaml:"max_structured_metadata_size" json:"max_structured_metadata_size" doc:"description=Maximum size accepted for structured metadata per log line."`
+	MaxStructuredMetadataEntriesCount int              `yaml:"max_structured_metadata_entries_count" json:"max_structured_metadata_entries_count" doc:"description=Maximum number of structured metadata entries per log line."`
 }
 
 type StreamRetention struct {
-	Period   model.Duration    `yaml:"period" json:"period"`
-	Priority int               `yaml:"priority" json:"priority"`
-	Selector string            `yaml:"selector" json:"selector"`
+	Period   model.Duration    `yaml:"period" json:"period" doc:"description:Retention period applied to the log lines matching the selector."`
+	Priority int               `yaml:"priority" json:"priority" doc:"description:The larger the value, the higher the priority."`
+	Selector string            `yaml:"selector" json:"selector" doc:"description:Stream selector expression."`
 	Matchers []*labels.Matcher `yaml:"-" json:"-"` // populated during validation.
 }
 
@@ -288,6 +295,12 @@ func (l *Limits) RegisterFlags(f *flag.FlagSet) {
 	l.ShardStreams.RegisterFlagsWithPrefix("shard-streams", f)
 
 	f.IntVar(&l.VolumeMaxSeries, "limits.volume-max-series", 1000, "The default number of aggregated series or labels that can be returned from a log-volume endpoint")
+
+	f.BoolVar(&l.AllowStructuredMetadata, "validation.allow-structured-metadata", false, "Allow user to send structured metadata (non-indexed labels) in push payload.")
+	_ = l.MaxStructuredMetadataSize.Set(defaultMaxStructuredMetadataSize)
+	f.Var(&l.MaxStructuredMetadataSize, "limits.max-structured-metadata-size", "Maximum size accepted for structured metadata per entry. Default: 64 kb. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+	f.IntVar(&l.MaxStructuredMetadataEntriesCount, "limits.max-structured-metadata-entries-count", defaultMaxStructuredMetadataCount, "Maximum number of structured metadata entries per log line. Default: 128. Any log line exceeding this limit will be discarded. There is no limit when unset or set to 0.")
+
 }
 
 // UnmarshalYAML implements the yaml.Unmarshaler interface.
@@ -761,6 +774,18 @@ func (o *Overrides) VolumeMaxSeries(userID string) int {
 
 func (o *Overrides) IndexGatewayShardSize(userID string) int {
 	return o.getOverridesForUser(userID).IndexGatewayShardSize
+}
+
+func (o *Overrides) AllowStructuredMetadata(userID string) bool {
+	return o.getOverridesForUser(userID).AllowStructuredMetadata
+}
+
+func (o *Overrides) MaxStructuredMetadataSize(userID string) int {
+	return o.getOverridesForUser(userID).MaxStructuredMetadataSize.Val()
+}
+
+func (o *Overrides) MaxStructuredMetadataCount(userID string) int {
+	return o.getOverridesForUser(userID).MaxStructuredMetadataEntriesCount
 }
 
 func (o *Overrides) getOverridesForUser(userID string) *Limits {

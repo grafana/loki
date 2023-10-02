@@ -158,6 +158,14 @@ github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/options
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/shared
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/internal/version
 github.com/AzureAD/microsoft-authentication-library-for-go/apps/public
+# github.com/DataDog/sketches-go v1.4.2
+## explicit; go 1.15
+github.com/DataDog/sketches-go/ddsketch
+github.com/DataDog/sketches-go/ddsketch/encoding
+github.com/DataDog/sketches-go/ddsketch/mapping
+github.com/DataDog/sketches-go/ddsketch/pb/sketchpb
+github.com/DataDog/sketches-go/ddsketch/stat
+github.com/DataDog/sketches-go/ddsketch/store
 # github.com/DmitriyVTitov/size v1.5.0
 ## explicit; go 1.14
 github.com/DmitriyVTitov/size
@@ -969,6 +977,9 @@ github.com/influxdata/go-syslog/v3/common
 github.com/influxdata/go-syslog/v3/nontransparent
 github.com/influxdata/go-syslog/v3/octetcounting
 github.com/influxdata/go-syslog/v3/rfc5424
+# github.com/influxdata/tdigest v0.0.2-0.20210216194612-fc98d27c9e8b
+## explicit; go 1.13
+github.com/influxdata/tdigest
 # github.com/influxdata/telegraf v1.16.3
 ## explicit; go 1.15
 github.com/influxdata/telegraf
@@ -1172,6 +1183,9 @@ github.com/oschwald/geoip2-golang
 # github.com/oschwald/maxminddb-golang v1.11.0
 ## explicit; go 1.19
 github.com/oschwald/maxminddb-golang
+# github.com/owen-d/BoomFilters v0.0.0-20230914145927-1ad00a0ec6fd
+## explicit; go 1.20
+github.com/owen-d/BoomFilters/boom
 # github.com/pierrec/lz4/v4 v4.1.18
 ## explicit; go 1.14
 github.com/pierrec/lz4/v4
@@ -1357,7 +1371,7 @@ github.com/stretchr/testify/assert
 github.com/stretchr/testify/mock
 github.com/stretchr/testify/require
 github.com/stretchr/testify/suite
-# github.com/thanos-io/objstore v0.0.0-20230727115635-d0c43443ecda
+# github.com/thanos-io/objstore v0.0.0-20230829152104-1b257a36f9a3
 ## explicit; go 1.18
 github.com/thanos-io/objstore
 github.com/thanos-io/objstore/exthttp

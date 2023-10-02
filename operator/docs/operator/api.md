@@ -1657,9 +1657,6 @@ storage is missing.</p>
 <td><p>ReasonMissingRulerSecret when the required secret to authorization remote write connections
 for the ruler is missing.</p>
 </td>
-</tr><tr><td><p>&#34;ReasonNoZoneAwareNodes&#34;</p></td>
-<td><p>ReasonNoZoneAwareNodes when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
-</td>
 </tr><tr><td><p>&#34;PendingComponents&#34;</p></td>
 <td><p>ReasonPendingComponents when all/some LokiStack components pending dependencies</p>
 </td>
@@ -1668,6 +1665,12 @@ for the ruler is missing.</p>
 </td>
 </tr><tr><td><p>&#34;ReadyComponents&#34;</p></td>
 <td><p>ReasonReadyComponents when all LokiStack components are ready to serve traffic.</p>
+</td>
+</tr><tr><td><p>&#34;ReasonZoneAwareEmptyLabel&#34;</p></td>
+<td><p>ReasonZoneAwareEmptyLabel when the node-label used for zone-awareness has an empty value.</p>
+</td>
+</tr><tr><td><p>&#34;ReasonZoneAwareNodesMissing&#34;</p></td>
+<td><p>ReasonZoneAwareNodesMissing when the cluster does not contain any nodes with the labels needed for zone-awareness.</p>
 </td>
 </tr></tbody>
 </table>
@@ -2241,6 +2244,20 @@ InstanceAddrType
 Defaults to the first address from any private network interfaces of the current pod.
 Alternatively the public pod IP can be used in case private networks (RFC 1918 and RFC 6598)
 are not available.</p>
+</td>
+</tr>
+<tr>
+<td>
+<code>enableIPv6</code><br/>
+<em>
+bool
+</em>
+</td>
+<td>
+<em>(Optional)</em>
+<p>EnableIPv6 enables IPv6 support for the memberlist based hash ring.</p>
+<p>Currently this also forces the instanceAddrType to podIP to avoid local address lookup
+for the memberlist.</p>
 </td>
 </tr>
 </tbody>
@@ -5646,7 +5663,7 @@ are degraded or the cluster cannot connect to object storage.</p>
 <td><p>ConditionFailed defines the condition that components in the Loki deployment failed to roll out.</p>
 </td>
 </tr><tr><td><p>&#34;Pending&#34;</p></td>
-<td><p>ConditionPending defines the conditioin that some or all components are in pending state.</p>
+<td><p>ConditionPending defines the condition that some or all components are in pending state.</p>
 </td>
 </tr><tr><td><p>&#34;Ready&#34;</p></td>
 <td><p>ConditionReady defines the condition that all components in the Loki deployment are ready.</p>

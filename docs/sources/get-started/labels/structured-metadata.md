@@ -6,7 +6,11 @@ description: Attaching metadata to logs.
 # What is structured metadata
 
 {{% admonition type="warning" %}}
-Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki.
+Structured metadata is an experimental feature and is subject to change in future releases of Grafana Loki. This feature is not yet available for Cloud Logs users.
+{{% /admonition %}}
+
+{{% admonition type="warning" %}}
+Structured metadata was added to chunk format V4 which is used if the schema version is greater or equal to `13`. (See [Schema Config]({{< relref "../../storage#schema-config" >}}) for more details about schema versions. )
 {{% /admonition %}}
 
 One of the powerful features of Loki is parsing logs at query time to extract metadata and build labels out of it.
@@ -23,7 +27,7 @@ to extract at query time.
 ## Attaching structured metadata to log lines
 
 You have the option to attach structured metadata to log lines in the push payload along with each log line and the timestamp.
-For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#push-log-entries-to-loki" >}}).
+For more information on how to push logs to Loki via the HTTP endpoint, refer to the [HTTP API documentation]({{< relref "../../reference/api#ingest-logs" >}}).
 
 Alternatively, you can use the Grafana Agent or Promtail to extract and attach structured metadata to your log lines.
 See the [Promtail: Structured metadata stage]({{< relref "../../send-data/promtail/stages/structured_metadata" >}}) for more information.
