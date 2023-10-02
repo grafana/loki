@@ -22,7 +22,8 @@ const (
 	grpcPort         = 9095
 	protocolTCP      = "TCP"
 
-	gossipInstanceAddrEnvVarName = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarName     = "HASH_RING_INSTANCE_ADDR"
+	gossipInstanceAddrEnvVarTemplate = "${" + gossipInstanceAddrEnvVarName + "}"
 
 	lokiHTTPPortName         = "metrics"
 	lokiInternalHTTPPortName = "healthchecks"
@@ -127,8 +128,6 @@ var (
 
 	defaultConfigMapMode = int32(420)
 	volumeFileSystemMode = corev1.PersistentVolumeFilesystem
-
-	podIP = fmt.Sprintf("${%s}", gossipInstanceAddrEnvVarName)
 )
 
 func commonAnnotations(configHash, rotationRequiredAt string) map[string]string {

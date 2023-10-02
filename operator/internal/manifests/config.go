@@ -266,7 +266,7 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 	if spec != nil && spec.Type == lokiv1.HashRingMemberList && spec.MemberList != nil {
 		switch spec.MemberList.InstanceAddrType {
 		case lokiv1.InstanceAddrPodIP:
-			instanceAddr = podIP
+			instanceAddr = gossipInstanceAddrEnvVarTemplate
 		case lokiv1.InstanceAddrDefault:
 			// Do nothing use loki defaults
 		default:
@@ -278,7 +278,7 @@ func gossipRingConfig(stackName, stackNs string, spec *lokiv1.HashRingSpec, repl
 		// - On Dual Stack IPv4/6: Eliminate duplicate memberlist node registration
 		if spec.MemberList.EnableIPv6 {
 			enableIPv6 = true
-			instanceAddr = podIP
+			instanceAddr = gossipInstanceAddrEnvVarTemplate
 		}
 	}
 
