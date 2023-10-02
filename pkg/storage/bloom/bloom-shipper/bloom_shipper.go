@@ -24,12 +24,10 @@ const (
 )
 
 type BlockRef struct {
-	TenantID      string
-	TSDBSource    string
-	BlockFilePath string
-	//todo check if it should be string
-	Checksum string
-
+	TenantID                       string
+	IndexPath                      string
+	BlockPath                      string
+	Checksum                       uint32
 	MinFingerprint, MaxFingerprint uint64
 	StartTimestamp, EndTimestamp   int64
 }
@@ -40,9 +38,8 @@ type MetaRef struct {
 	MinFingerprint, MaxFingerprint uint64
 	// check if it has to be time.Time
 	StartTimestamp, EndTimestamp int64
-	//todo check if it should be string
-	Checksum string
-	FilePath string
+	Checksum                     uint32
+	FilePath                     string
 }
 
 // todo rename it
@@ -64,9 +61,9 @@ type MetaSearchParams struct {
 type MetaShipper interface {
 	// Returns all metas that are within MinFingerprint-MaxFingerprint fingerprint range
 	// and intersect time period from StartTimestamp to EndTimestamp.
-	GetAll(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	Upload(ctx context.Context, meta Meta) error
-	Delete(ctx context.Context, meta Meta) error
+	GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
+	PutMeta(ctx context.Context, meta Meta) error
+	DeleteMeta(ctx context.Context, meta Meta) error
 }
 
 type Block struct {
@@ -77,7 +74,7 @@ type Block struct {
 
 type BlockShipper interface {
 	GetBlocks(ctx context.Context, references []BlockRef) ([]Block, error)
-	UploadBlocks(ctx context.Context, blocks []Block) error
+	PutBlocks(ctx context.Context, blocks []Block) error
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
 
@@ -88,7 +85,7 @@ type Shipper interface {
 }
 
 // todo add logger
-func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*bloomShipper, error) {
+func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*BloomShipper, error) {
 	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
@@ -97,20 +94,20 @@ func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Con
 		}
 		periodicObjectClients[periodicConfig.From] = objectClient
 	}
-	return &bloomShipper{
+	return &BloomShipper{
 		periodicConfigs:       periodicConfigs,
 		storageConfig:         storageConfig,
 		periodicObjectClients: periodicObjectClients,
 	}, nil
 }
 
-type bloomShipper struct {
+type BloomShipper struct {
 	periodicConfigs       []config.PeriodConfig
 	storageConfig         storage.Config
 	periodicObjectClients map[config.DayTime]client.ObjectClient
 }
 
-func (b *bloomShipper) GetAll(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+func (b *BloomShipper) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
 	start := model.TimeFromUnix(params.StartTimestamp)
 	end := model.TimeFromUnix(params.EndTimestamp)
 	tablesByPeriod := tablesByPeriod(b.periodicConfigs, start, end)
@@ -144,7 +141,7 @@ func (b *bloomShipper) GetAll(ctx context.Context, params MetaSearchParams) ([]M
 	return metas, nil
 }
 
-func (b *bloomShipper) Upload(ctx context.Context, meta Meta) error {
+func (b *BloomShipper) PutMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
 		return fmt.Errorf("error updloading meta file: %w", err)
@@ -159,7 +156,7 @@ func (b *bloomShipper) Upload(ctx context.Context, meta Meta) error {
 }
 
 func createObjectKey(meta MetaRef) string {
-	filename := fmt.Sprintf("%x-%x-%v-%v-%s", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
+	filename := fmt.Sprintf("%x-%x-%v-%v-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
 	return strings.Join([]string{meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
 }
 
@@ -173,7 +170,7 @@ func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime,
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", timestamp)
 }
-func (b *bloomShipper) Delete(ctx context.Context, meta Meta) error {
+func (b *BloomShipper) DeleteMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
 		return fmt.Errorf("error updloading meta file: %w", err)
@@ -182,23 +179,23 @@ func (b *bloomShipper) Delete(ctx context.Context, meta Meta) error {
 	fmt.Println("uploading to ", key, "periodfrom", periodFrom)
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
-func (b *bloomShipper) GetBlocks(ctx context.Context, references []BlockRef) ([]Block, error) {
+func (b *BloomShipper) GetBlocks(ctx context.Context, references []BlockRef) ([]Block, error) {
 	return nil, nil
 }
-func (b *bloomShipper) UploadBlocks(ctx context.Context, blocks []Block) error {
+func (b *BloomShipper) PutBlocks(ctx context.Context, blocks []Block) error {
 	return nil
 }
-func (b *bloomShipper) DeleteBlocks(ctx context.Context, blocks []BlockRef) error {
+func (b *BloomShipper) DeleteBlocks(ctx context.Context, blocks []BlockRef) error {
 	return nil
 }
 
-func (b *bloomShipper) Stop() {
+func (b *BloomShipper) Stop() {
 	for _, objectClient := range b.periodicObjectClients {
 		objectClient.Stop()
 	}
 }
 
-func (b *bloomShipper) downloadMeta(ctx context.Context, metaRef MetaRef, client client.ObjectClient) (Meta, error) {
+func (b *BloomShipper) downloadMeta(ctx context.Context, metaRef MetaRef, client client.ObjectClient) (Meta, error) {
 	meta := Meta{
 		MetaRef: metaRef,
 	}
@@ -243,7 +240,10 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 	if err != nil {
 		return MetaRef{}, fmt.Errorf("error parsing endTimestamp %s : %w", parts[3], err)
 	}
-	checksum := parts[4]
+	checksum, err := strconv.ParseUint(parts[4], 16, 64)
+	if err != nil {
+		return MetaRef{}, fmt.Errorf("error parsing checksum %s : %w", parts[4], err)
+	}
 	return MetaRef{
 		TenantID:       tenantID,
 		TableName:      tableName,
@@ -251,7 +251,7 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 		MaxFingerprint: maxFingerprint,
 		StartTimestamp: startTimestamp,
 		EndTimestamp:   endTimestamp,
-		Checksum:       checksum,
+		Checksum:       uint32(checksum),
 		FilePath:       objectKey,
 	}, nil
 }

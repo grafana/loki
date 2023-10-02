@@ -26,7 +26,7 @@ var (
 	fixedDay = model.TimeFromUnix(time.Date(2023, time.September, 27, 0, 0, 0, 0, time.UTC).Unix())
 )
 
-func Test_BloomShipper_List(t *testing.T) {
+func Test_BloomShipper_GetMetas(t *testing.T) {
 	shipper := createShipper(t)
 
 	var expected []Meta
@@ -48,7 +48,7 @@ func Test_BloomShipper_List(t *testing.T) {
 	// must not be present in results because it belongs to another tenant
 	createMetaInStorage(t, folder2, "second-period-19624", "tenantB", 0, 100, fixedDay.Add(-3*day))
 
-	actual, err := shipper.GetAll(context.Background(), MetaSearchParams{
+	actual, err := shipper.GetMetas(context.Background(), MetaSearchParams{
 		TenantID:       "tenantA",
 		MinFingerprint: 50,
 		MaxFingerprint: 150,
@@ -59,7 +59,7 @@ func Test_BloomShipper_List(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func Test_BloomShipper_Upload(t *testing.T) {
+func Test_BloomShipper_PutMeta(t *testing.T) {
 	tests := map[string]struct {
 		source           Meta
 		expectedFilePath string
@@ -72,11 +72,11 @@ func Test_BloomShipper_Upload(t *testing.T) {
 				0xfff,
 				time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
 				time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
-				"31e0a0000000e58de8",
+				0xaaa,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-1",
-			expectedFilePath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-31e0a0000000e58de8",
+			expectedFilePath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa",
 		},
 		"expected meta to be uploaded to the second folder": {
 			source: createMetaEntity("tenantA",
@@ -85,23 +85,23 @@ func Test_BloomShipper_Upload(t *testing.T) {
 				300,
 				time.Date(2023, time.September, 25, 0, 0, 0, 0, time.UTC).Unix(),
 				time.Date(2023, time.September, 25, 1, 0, 0, 0, time.UTC).Unix(),
-				"31e0a973c2e58de8",
+				0xbbb,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-2",
-			expectedFilePath: "second-period-19625/tenantA/metas/c8-12c-1695600000-1695603600-31e0a973c2e58de8",
+			expectedFilePath: "second-period-19625/tenantA/metas/c8-12c-1695600000-1695603600-bbb",
 		},
 	}
 	for name, data := range tests {
 		t.Run(name, func(t *testing.T) {
 			shipper := createShipper(t)
 
-			err := shipper.Upload(context.Background(), data.source)
+			err := shipper.PutMeta(context.Background(), data.source)
 			require.NoError(t, err)
 
 			directory := shipper.storageConfig.NamedStores.Filesystem[data.expectedStorage].Directory
-			filePath := filepath.Join(directory, createObjectKey(data.source.MetaRef))
-			fmt.Println(createObjectKey(data.source.MetaRef))
+			filePath := filepath.Join(directory, data.expectedFilePath)
+			require.FileExists(t, filePath)
 			content, err := os.ReadFile(filePath)
 			require.NoError(t, err)
 			result := Meta{}
@@ -115,7 +115,7 @@ func Test_BloomShipper_Upload(t *testing.T) {
 
 }
 
-func Test_BloomShipper_Delete(t *testing.T) {
+func Test_BloomShipper_DeleteMeta(t *testing.T) {
 	tests := map[string]struct {
 		source           Meta
 		expectedFilePath string
@@ -128,11 +128,11 @@ func Test_BloomShipper_Delete(t *testing.T) {
 				0xfff,
 				time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
 				time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
-				"31e0a0000000e58de8",
+				0xaaa,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-1",
-			expectedFilePath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-31e0a0000000e58de8",
+			expectedFilePath: "first-period-19621/tenantA/metas/ff-fff-1695272400-1695276000-aaa",
 		},
 		"expected meta to be delete to the second folder": {
 			source: createMetaEntity("tenantA",
@@ -141,11 +141,11 @@ func Test_BloomShipper_Delete(t *testing.T) {
 				300,
 				time.Date(2023, time.September, 25, 0, 0, 0, 0, time.UTC).Unix(),
 				time.Date(2023, time.September, 25, 1, 0, 0, 0, time.UTC).Unix(),
-				"31e0a973c2e58de8",
+				0xbbb,
 				"ignored-file-path-during-uploading",
 			),
 			expectedStorage:  "folder-2",
-			expectedFilePath: "second-period-19625/tenantA/metas/c8-12c-1695600000-1695603600-31e0a973c2e58de8",
+			expectedFilePath: "second-period-19625/tenantA/metas/c8-12c-1695600000-1695603600-bbb",
 		},
 	}
 	for name, data := range tests {
@@ -158,7 +158,7 @@ func Test_BloomShipper_Delete(t *testing.T) {
 			err = os.WriteFile(file, []byte("dummy content"), 0700)
 			require.NoError(t, err)
 
-			err = shipper.Delete(context.Background(), data.source)
+			err = shipper.DeleteMeta(context.Background(), data.source)
 			require.NoError(t, err)
 
 			require.NoFileExists(t, file)
@@ -217,7 +217,7 @@ func Test_TablesByPeriod(t *testing.T) {
 	}
 }
 
-func createShipper(t *testing.T) *bloomShipper {
+func createShipper(t *testing.T) *BloomShipper {
 	periodicConfigs := createPeriodConfigs()
 	namedStores := storage.NamedStores{
 		Filesystem: map[string]storage.NamedFSConfig{
@@ -263,8 +263,8 @@ func createMetaInStorage(t *testing.T, rootFolder string, tableName string, tena
 	startTimestamp := start.Unix()
 	endTimestamp := start.Add(12 * time.Hour).Unix()
 
-	metaChecksum := fmt.Sprintf("%x", rand.Int63())
-	metaFileName := fmt.Sprintf("%x-%x-%v-%v-%s", minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum)
+	metaChecksum := rand.Uint32()
+	metaFileName := fmt.Sprintf("%x-%x-%v-%v-%x", minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum)
 	metaFolder := filepath.Join(tableName, tenant, "metas")
 	err := os.MkdirAll(filepath.Join(rootFolder, metaFolder), 0700)
 	require.NoError(t, err)
@@ -285,7 +285,7 @@ func createMetaEntity(
 	maxFingerprint uint64,
 	startTimestamp int64,
 	endTimestamp int64,
-	metaChecksum string,
+	metaChecksum uint32,
 	metaFilePath string) Meta {
 	return Meta{
 		MetaRef: MetaRef{
@@ -301,9 +301,9 @@ func createMetaEntity(
 		Tombstones: []BlockRef{
 			{
 				TenantID:       tenant,
-				TSDBSource:     uuid.New().String(),
-				BlockFilePath:  uuid.New().String(),
-				Checksum:       fmt.Sprintf("%x", rand.Int63()),
+				IndexPath:      uuid.New().String(),
+				BlockPath:      uuid.New().String(),
+				Checksum:       metaChecksum + 1,
 				MinFingerprint: minFingerprint,
 				MaxFingerprint: maxFingerprint,
 				StartTimestamp: startTimestamp,
@@ -312,9 +312,9 @@ func createMetaEntity(
 		},
 		Blocks: []BlockRef{{
 			TenantID:       tenant,
-			TSDBSource:     uuid.New().String(),
-			BlockFilePath:  uuid.New().String(),
-			Checksum:       fmt.Sprintf("%x", rand.Int63()),
+			IndexPath:      uuid.New().String(),
+			BlockPath:      uuid.New().String(),
+			Checksum:       metaChecksum + 2,
 			MinFingerprint: minFingerprint,
 			MaxFingerprint: maxFingerprint,
 			StartTimestamp: startTimestamp,
