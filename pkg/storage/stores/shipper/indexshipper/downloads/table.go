@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -44,6 +45,7 @@ type table struct {
 	storageClient     storage.Client
 	openIndexFileFunc index.OpenIndexFileFunc
 	metrics           *metrics
+	maxConcurrent     int
 
 	baseUserIndexSet, baseCommonIndexSet storage.IndexSet
 
@@ -64,6 +66,7 @@ func NewTable(name, cacheLocation string, storageClient storage.Client, openInde
 		logger:             log.With(util_log.Logger, "table-name", name),
 		openIndexFileFunc:  openIndexFileFunc,
 		metrics:            metrics,
+		maxConcurrent:      runtime.GOMAXPROCS(0) / 2,
 		indexSets:          map[string]IndexSet{},
 	}
 
@@ -148,7 +151,7 @@ func (t *table) Close() {
 
 func (t *table) ForEachConcurrent(ctx context.Context, userID string, callback index.ForEachIndexCallback) error {
 	g, ctx := errgroup.WithContext(ctx)
-	g.SetLimit(4)
+	g.SetLimit(t.maxConcurrent)
 
 	// iterate through both user and common index
 	users := []string{userID, ""}
