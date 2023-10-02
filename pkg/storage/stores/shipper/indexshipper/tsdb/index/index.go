@@ -30,6 +30,7 @@ import (
 	"time"
 	"unsafe"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
@@ -61,6 +62,8 @@ const (
 	fingerprintInterval = 1 << 10
 
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
+
+	maxLabelCacheSize = 100000
 )
 
 type indexWriterStage uint8
@@ -1254,9 +1257,9 @@ type Reader struct {
 	// For the v1 format, labelname -> labelvalue -> offset.
 	postingsV1 map[string]map[string]uint64
 
-	symbols     *Symbols
-	nameSymbols map[uint32]string // Cache of the label name symbol lookups,
-	// as there are not many and they are half of all lookups.
+	symbols      *Symbols
+	nameSymbols  map[uint32]string // Cache of the label name symbol lookups.
+	otherSymbols *lru.Cache        // Cache of the other symbol lookups.
 
 	fingerprintOffsets FingerprintOffsets
 
@@ -1314,10 +1317,17 @@ func NewFileReader(path string) (*Reader, error) {
 }
 
 func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
+	var err error
+
+	cache, err := lru.New(maxLabelCacheSize)
+	if err != nil {
+		return nil, err
+	}
 	r := &Reader{
-		b:        b,
-		c:        c,
-		postings: map[string][]postingOffset{},
+		b:            b,
+		c:            c,
+		postings:     map[string][]postingOffset{},
+		otherSymbols: cache,
 	}
 
 	// Verify header.
@@ -1333,7 +1343,6 @@ func newReader(b ByteSlice, c io.Closer) (*Reader, error) {
 		return nil, errors.Errorf("unknown index file version %d", r.version)
 	}
 
-	var err error
 	r.toc, err = NewTOCFromByteSlice(b)
 	if err != nil {
 		return nil, errors.Wrap(err, "read TOC")
@@ -1658,7 +1667,15 @@ func (r *Reader) lookupSymbol(o uint32) (string, error) {
 	if s, ok := r.nameSymbols[o]; ok {
 		return s, nil
 	}
-	return r.symbols.Lookup(o)
+	if s, ok := r.otherSymbols.Get(o); ok {
+		return s.(string), nil
+	}
+	s, err := r.symbols.Lookup(o)
+	if err != nil {
+		return "", err
+	}
+	r.otherSymbols.Add(o, s)
+	return s, nil
 }
 
 func (r *Reader) Bounds() (int64, int64) {
