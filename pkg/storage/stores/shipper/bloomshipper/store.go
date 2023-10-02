@@ -16,8 +16,16 @@ type BloomFilter interface {
 
 type ForEachBloomFilterCallback func(f BloomFilter) error
 
-type Shipper interface {
+type ReadShipper interface {
 	ForEachBloom(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBloomFilterCallback) error
+}
+
+type WriteShipper interface {
+}
+
+type Shipper interface {
+	ReadShipper
+	WriteShipper
 	Stop()
 }
 
