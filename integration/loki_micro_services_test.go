@@ -734,17 +734,24 @@ func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
 		},
 	}
 
-	mf, found := mfs["querier_cache_added_new_total"]
+	mf, found := mfs["loki_embeddedcache_added_new_total"]
 	require.True(t, found)
 	require.Equal(t, e.added, getValueFromMF(mf, lbs))
 
-	mf, found = mfs["querier_cache_gets_total"]
+	lbs = []*dto.LabelPair{
+		{
+			Name:  proto.String("name"),
+			Value: proto.String(e.cacheName),
+		},
+	}
+
+	mf, found = mfs["loki_cache_fetched_keys"]
 	require.True(t, found)
 	require.Equal(t, e.gets, getValueFromMF(mf, lbs))
 
-	mf, found = mfs["querier_cache_misses_total"]
+	mf, found = mfs["loki_cache_hits"]
 	require.True(t, found)
-	require.Equal(t, e.misses, getValueFromMF(mf, lbs))
+	require.Equal(t, e.gets-e.misses, getValueFromMF(mf, lbs))
 }
 
 type expectedCacheState struct {

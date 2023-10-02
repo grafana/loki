@@ -22,10 +22,11 @@ type Options struct {
 
 // AzureStorageConfig for Azure storage config
 type AzureStorageConfig struct {
-	Env         string
-	Container   string
-	AccountName string
-	AccountKey  string
+	Env            string
+	Container      string
+	AccountName    string
+	AccountKey     string
+	EndpointSuffix string
 }
 
 // GCSStorageConfig for GCS storage config
