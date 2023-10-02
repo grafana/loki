@@ -3,6 +3,7 @@ package v1
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"testing"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -10,6 +11,14 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
+
+type noopCloser struct {
+	io.Writer
+}
+
+func (n noopCloser) Close() error {
+	return nil
+}
 
 func mkBasicSeriesWithBlooms(n int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom) {
 	for i := 0; i < n; i++ {

@@ -13,8 +13,12 @@ type BlockReader interface {
 }
 
 type Block struct {
-	// schema, series index
+	// covers series pages
 	index BlockIndex
+	// covers bloom pages
+	blooms BloomBlock
+
+	// TODO(owen-d): implement
 	// synthetic header for the entire block
 	// built from all the pages in the index
 	header SeriesHeader
@@ -37,20 +41,22 @@ func (b *Block) LoadIndex() ([]byte, error) {
 }
 
 func (b *Block) LoadHeaders() error {
-	data, err := b.LoadIndex()
-	if err != nil {
-		return err
-	}
-
-	if err := b.index.Decode(data); err != nil {
+	if err := b.index.DecodeHeaders(b.reader.Index()); err != nil {
 		return errors.Wrap(err, "decoding index")
 	}
 
+	if err := b.blooms.DecodeHeaders(b.reader.Blooms()); err != nil {
+		return errors.Wrap(err, "decoding blooms")
+	}
 	return nil
 }
 
 func (b *Block) Series() *LazySeriesIter {
 	return NewLazySeriesIter(b)
+}
+
+func (b *Block) Blooms() *LazyBloomIter {
+	return NewLazyBloomIter(b)
 }
 
 type ByteReader struct {

@@ -25,8 +25,6 @@ type LazySeriesIter struct {
 func NewLazySeriesIter(b *Block) *LazySeriesIter {
 	return &LazySeriesIter{
 		b: b,
-
-		pageIndex: 0,
 	}
 }
 

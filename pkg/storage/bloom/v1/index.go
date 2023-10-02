@@ -37,6 +37,18 @@ func (s *Schema) Encode(enc *encoding.Encbuf) {
 	enc.PutByte(byte(s.encoding))
 }
 
+func (s *Schema) DecodeFrom(r io.ReadSeeker) error {
+	// TODO(owen-d): improve allocations
+	schemaBytes := make([]byte, s.Len())
+	_, err := io.ReadFull(r, schemaBytes)
+	if err != nil {
+		return errors.Wrap(err, "reading schema")
+	}
+
+	dec := encoding.DecWith(schemaBytes)
+	return s.Decode(&dec)
+}
+
 func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	number := dec.Be32()
 	if number != magicNumber {
@@ -55,9 +67,8 @@ func (s *Schema) Decode(dec *encoding.Decbuf) error {
 	return dec.Err()
 }
 
-// Block index is a set of series pages along with the headers for each page
-// and schema information for the entire block
-// It is the entrypoint for reading and writing blocks
+// Block index is a set of series pages along with
+// the headers for each page
 type BlockIndex struct {
 	schema      Schema
 	pageHeaders []SeriesPageHeaderWithOffset // headers for each series page
@@ -69,22 +80,39 @@ func NewBlockIndex(encoding chunkenc.Encoding) BlockIndex {
 	}
 }
 
-func (b *BlockIndex) Decode(data []byte) error {
-	dec := encoding.DecWith(data)
-	if err := b.schema.Decode(&dec); err != nil {
+func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
+	if err := b.schema.DecodeFrom(r); err != nil {
 		return errors.Wrap(err, "decoding schema")
 	}
 
-	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
-	dec.Skip(dec.Len() - 12)
-	headerOffset := dec.Be64()
+	var (
+		err error
+		dec encoding.Decbuf
+	)
 
-	dec = encoding.DecWith(data[headerOffset:])
+	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
+	r.Seek(-12, io.SeekEnd)
+	dec.B, err = io.ReadAll(r)
+	if err != nil {
+		return errors.Wrap(err, "reading bloom headers metadata")
+	}
+
+	headerOffset := dec.Be64()
+	r.Seek(int64(headerOffset), io.SeekStart)
+	dec.B, err = io.ReadAll(r)
+	if err != nil {
+		return errors.Wrap(err, "reading index page headers")
+	}
+
 	if err := dec.CheckCrc(castagnoliTable); err != nil {
 		return errors.Wrap(err, "checksumming page headers")
 	}
 
-	b.pageHeaders = make([]SeriesPageHeaderWithOffset, dec.Uvarint())
+	b.pageHeaders = make(
+		[]SeriesPageHeaderWithOffset,
+		dec.Uvarint(),
+	)
+
 	for i := 0; i < len(b.pageHeaders); i++ {
 		var s SeriesPageHeaderWithOffset
 		if err := s.Decode(&dec); err != nil {

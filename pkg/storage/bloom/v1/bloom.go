@@ -3,7 +3,6 @@ package v1
 import (
 	"bytes"
 	"fmt"
-	"hash"
 	"io"
 
 	"github.com/owen-d/BoomFilters/boom"
@@ -43,66 +42,6 @@ func (b *Bloom) Decode(dec *encoding.Decbuf) error {
 	}
 
 	return nil
-}
-
-type BloomPage struct {
-	Blooms []Bloom
-}
-
-func (p *BloomPage) Encode(enc *encoding.Encbuf, pool chunkenc.WriterPool, crc32Hash hash.Hash32) (decompressedLen int, err error) {
-	enc.Reset()
-
-	// TODO(owen-d): no need to write to a temp buffer then rewrite to a compressed one;
-	// should build a streaming encoder/decoder, although we will need to know the true
-	// number of bytes written to calculate offsets (compression changes this)
-	// temp buffer for compression
-	// TODO(owen-d): pool
-	buf := &bytes.Buffer{}
-
-	for i, bloom := range p.Blooms {
-		if err := bloom.Encode(enc); err != nil {
-			return 0, errors.Wrapf(err, "encoding %dth bloom filter", i)
-		}
-	}
-
-	// encode the number of filters in the page
-	enc.PutBE64(uint64(len(p.Blooms)))
-	decompressedLen = enc.Len()
-
-	compressor := pool.GetWriter(buf)
-	defer pool.PutWriter(compressor)
-
-	if _, err := compressor.Write(enc.Get()); err != nil {
-		return 0, errors.Wrap(err, "compressing bloom page")
-	}
-
-	if err := compressor.Close(); err != nil {
-		return 0, errors.Wrap(err, "closing compressor")
-	}
-
-	// replace the encoded series page with the compressed one
-	enc.B = buf.Bytes()
-	enc.PutHash(crc32Hash)
-	return decompressedLen, nil
-}
-
-func (p *BloomPage) Decode(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) error {
-	decoder, err := LazyDecodeBloomPage(dec, pool, decompressedSize)
-	if err != nil {
-		return errors.Wrap(err, "building bloom page decoder")
-	}
-
-	p.Blooms = make([]Bloom, decoder.N())
-
-	for i := 0; i < len(p.Blooms); i++ {
-		bloom, err := decoder.Next()
-		if err != nil {
-			return errors.Wrapf(err, "decoding %dth bloom filter", i)
-		}
-		p.Blooms[i] = bloom
-	}
-
-	return errors.Wrap(dec.Err(), "decoding bloom page")
 }
 
 func LazyDecodeBloomPage(dec *encoding.Decbuf, pool chunkenc.ReaderPool, decompressedSize int) (*BloomPageDecoder, error) {
@@ -162,9 +101,10 @@ func (d *BloomPageDecoder) Seek(offset int) {
 	d.dec.B = d.data[offset:]
 }
 
-func (d *BloomPageDecoder) Next() (bloom Bloom, err error) {
-	err = bloom.Decode(d.dec)
-	return
+func (d *BloomPageDecoder) Next() (*Bloom, error) {
+	var b Bloom
+	err := b.Decode(d.dec)
+	return &b, err
 }
 
 type BloomPageHeader struct {
@@ -197,91 +137,15 @@ func NewBloomBlock(encoding chunkenc.Encoding) BloomBlock {
 	}
 }
 
-func (b *BloomBlock) WriteTo(itr Iterator[BloomPage], w io.Writer) (offset int64, err error) {
-	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
-	defer Crc32HashPool.Put(crc32Hash)
-
-	// TODO(owen-d): guess sizing better
-	encoder := encoding.EncWith(BlockPool.Get(1 << 10))
-	enc := &encoder
-
-	// encode schema
-	b.schema.Encode(enc)
-	written, err := w.Write(enc.Get())
-	if err != nil {
-		return offset, errors.Wrap(err, "writing schema")
-	}
-	offset += int64(written)
-
-	compressionPool := b.schema.CompressorPool()
-
-	// encode blooms, accumlate encoded headers with relevant offsets,
-	// they will be written at the end of the block
-	for itr.Next() {
-		page := itr.At()
-		header := BloomPageHeader{
-			N:      len(page.Blooms),
-			Offset: int(offset),
-		}
-
-		// we encode the decompressed length of the page so we can efficiently choose
-		// []byte sizes from a pool during decompression to minimize alloc costs
-		header.DecompressedLen, err = page.Encode(enc, compressionPool, crc32Hash)
-		if err != nil {
-			return offset, errors.Wrap(err, "encoding bloom page")
-		}
-		written, err := w.Write(enc.Get())
-		if err != nil {
-			return 0, errors.Wrap(err, "writing series page")
-		}
-		offset += int64(written)
-		header.Len = int(offset) - header.Offset
-		b.pageHeaders = append(b.pageHeaders, header)
-	}
-
-	if itr.Err() != nil {
-		return offset, errors.Wrap(err, "iterating blooms")
-	}
-
-	enc.Reset()
-	headerOffset := offset
-	enc.PutUvarint(len(b.pageHeaders))
-	for _, s := range b.pageHeaders {
-		s.Encode(enc)
-	}
-
-	// put offset to beginning of header section
-	// cannot be varint encoded because it's offset will be calculated as
-	// the 8 bytes prior to the checksum
-	enc.PutBE64(uint64(headerOffset))
-
-	// wrap with final checksum
-	enc.PutHash(crc32Hash)
-
-	written, err = w.Write(enc.Get())
-	if err != nil {
-		return offset, errors.Wrap(err, "writing bloom page headers")
-	}
-	offset += int64(written)
-
-	return offset, nil
-}
-
 func (b *BloomBlock) DecodeHeaders(r io.ReadSeeker) error {
-	// TODO(owen-d): improve allocations
-	var dec encoding.Decbuf
-
-	schemaBytes := make([]byte, b.schema.Len())
-	_, err := io.ReadFull(r, schemaBytes)
-	if err != nil {
-		return errors.Wrap(err, "reading schema")
-	}
-	dec.B = schemaBytes
-
-	if err := b.schema.Decode(&dec); err != nil {
+	if err := b.schema.DecodeFrom(r); err != nil {
 		return errors.Wrap(err, "decoding schema")
 	}
 
+	var (
+		err error
+		dec encoding.Decbuf
+	)
 	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
 	r.Seek(-12, io.SeekEnd)
 	dec.B, err = io.ReadAll(r)
