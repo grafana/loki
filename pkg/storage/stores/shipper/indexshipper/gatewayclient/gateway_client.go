@@ -396,6 +396,7 @@ func (s *GatewayClient) poolDo(ctx context.Context, callback func(client logprot
 	}
 
 	if len(addrs) == 0 {
+		level.Error(s.logger).Log("msg", fmt.Sprintf("no index gateway instances found for tenant %s", userID))
 		return fmt.Errorf("no index gateway instances found for tenant %s", userID)
 	}
 
