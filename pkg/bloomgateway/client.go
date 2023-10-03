@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
@@ -122,6 +123,13 @@ func NewGatewayClient(cfg ClientConfig, limits Limits, registerer prometheus.Reg
 	return c, nil
 }
 
+func shuffleAddrs(addrs []string) []string {
+	rand.Shuffle(len(addrs), func(i, j int) {
+		addrs[i], addrs[j] = addrs[j], addrs[i]
+	})
+	return addrs
+}
+
 // FilterChunkRefs implements Client
 func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, through model.Time, fingerprints []uint64, chunkRefs [][]*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]uint64, [][]*logproto.ChunkRef, error) {
 	// Get the addresses of corresponding bloom gateways for each series.
@@ -134,11 +142,14 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	// All chunk refs of series that belong to one and the same bloom gateway are set in one batch.
 	streamsByAddr := c.groupStreamsByAddr(fingerprints, chunkRefs, addrs)
 
+	// TODO(chaudum): We might over-allocate for the filtered responses here?
 	filteredChunkRefs := make([][]*logproto.ChunkRef, 0, len(fingerprints))
 	filteredFingerprints := make([]uint64, 0, len(fingerprints))
 
 	for _, item := range streamsByAddr {
-		err := c.doForAddrs(item.addrs, func(client logproto.BloomGatewayClient) error {
+		// randomize order of addresses so we don't hotspot the first server in the list
+		addrs := shuffleAddrs(item.addrs)
+		err := c.doForAddrs(addrs, func(client logproto.BloomGatewayClient) error {
 			req := &logproto.FilterChunkRefRequest{
 				From:    from,
 				Through: through,
@@ -171,7 +182,9 @@ func (c *GatewayClient) FilterChunks(ctx context.Context, tenant string, from, t
 	return fingerprints, filteredChunkRefs, nil
 }
 
-func IsEqualAddresses(a, b []string) bool {
+// isEqualStringElements checks if two string slices contain the same elements.
+// The order of the elements is ignored.
+func isEqualStringElements(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
 	}
@@ -183,9 +196,14 @@ func IsEqualAddresses(a, b []string) bool {
 	return true
 }
 
-func ListContainsAddrs(list []chunkRefsByAddrs, addrs []string) (int, bool) {
+// listContainsAddrs checks if a slice of chunkRefAddrs contains an element
+// whos field addrs contains the same addresses as the given slice of
+// addresses.
+// It returns the index of the element, if found, and a boolean whether the
+// given list contains the given addrs.
+func listContainsAddrs(list []chunkRefsByAddrs, addrs []string) (int, bool) {
 	for i, r := range list {
-		if IsEqualAddresses(r.addrs, addrs) {
+		if isEqualStringElements(r.addrs, addrs) {
 			return i, true
 		}
 	}
@@ -193,24 +211,37 @@ func ListContainsAddrs(list []chunkRefsByAddrs, addrs []string) (int, bool) {
 }
 
 type chunkRefsByAddrs struct {
-	addrs []string
-	refs  []*logproto.ChunkRef
+	addrs   []string
+	refs    []*logproto.ChunkRef
+	streams []uint64
 }
 
+// groupStreamsByAddr takes a slice of stream fingerprints, a slices of chunkRef slices, and a slice of address slices
+// and groups them into a slice of chunkRefsByAddrs.
+// streams is a slice of uint64 stream fingerprints
+// chunks is a slice of chunk ref slices
+// addresses is a slice of string slices containing server addresses
+// It is necessary that len(streams) == len(chunks) == len(addresses), but the
+// function implementation does not validate the precondition and would fail silently.
 func (c *GatewayClient) groupStreamsByAddr(streams []uint64, chunks [][]*logproto.ChunkRef, addresses [][]string) []chunkRefsByAddrs {
 	res := make([]chunkRefsByAddrs, 0, len(addresses))
 	for i := 0; i < len(addresses); i++ {
 		addrs := addresses[i]
 		refs := chunks[i]
-		if idx, ok := ListContainsAddrs(res, addrs); ok {
+		fp := streams[i]
+		if idx, ok := listContainsAddrs(res, addrs); ok {
 			res[idx].refs = append(res[idx].refs, refs...)
+			res[idx].streams = append(res[idx].streams, fp)
 		} else {
-			res = append(res, chunkRefsByAddrs{addrs: addrs, refs: refs})
+			res = append(res, chunkRefsByAddrs{addrs: addrs, refs: refs, streams: []uint64{fp}})
 		}
 	}
 	return res
 }
 
+// doForAddrs sequetially calls the provided callback function fn for each
+// address in given slice addrs until the callback function does not return an
+// error.
 func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGatewayClient) error) error {
 	var err error
 	var poolClient ringclient.PoolClient
@@ -231,6 +262,11 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 	return err
 }
 
+// serverAddrsForFingerprints returns a slices of server address slices for
+// each fingerprint of given fingerprints.
+// The indexes of the returned slices correspond to each other.
+// Returns an error in case the bloom gateway ring could not get the
+// corresponding replica set for a given fingerprint.
 func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, fingerprints []uint64) ([]uint64, [][]string, error) {
 	subRing := GetShuffleShardingSubring(c.ring, tenantID, c.limits)
 

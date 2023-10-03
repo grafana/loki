@@ -150,6 +150,7 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		}
 	}
 
+	// TODO(chaudum): Re-use buffers for response.
 	resp := make([]*logproto.ChunkIDsForStream, 0)
 	for idx, chunkRef := range chunkRefs {
 		fp := chunkRef.Fingerprint
