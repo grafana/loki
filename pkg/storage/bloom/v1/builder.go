@@ -6,10 +6,11 @@ import (
 	"hash"
 	"io"
 
-	"github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/pkg/util/encoding"
 	"github.com/pkg/errors"
 	"github.com/prometheus/common/model"
+
+	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/util/encoding"
 )
 
 // SerieResolver iterates two sequences, one from blocks which have already been indexed

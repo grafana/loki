@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/chunkenc"
 )
 
 func mkBasicSeriesWithBlooms(n int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom) {
