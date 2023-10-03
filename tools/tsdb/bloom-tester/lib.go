@@ -9,12 +9,12 @@ import (
 	"time"
 
 	"github.com/go-kit/log/level"
+	"github.com/grafana/dskit/services"
 	"github.com/owen-d/BoomFilters/boom"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/model/labels"
 
-	"github.com/grafana/dskit/services"
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
@@ -22,10 +22,10 @@ import (
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/indexshipper"
-	indexshipper_index "github.com/grafana/loki/pkg/storage/stores/indexshipper/index"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb"
-	"github.com/grafana/loki/pkg/storage/stores/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper"
+	shipperindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
+	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
+	tsdbindex "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	util_log "github.com/grafana/loki/pkg/util/log"
 	"github.com/grafana/loki/tools/tsdb/helpers"
 )
@@ -45,11 +45,11 @@ func execute() {
 
 	tableRanges := helpers.GetIndexStoreTableRanges(config.TSDBType, conf.SchemaConfig.Configs)
 
-	openFn := func(p string) (indexshipper_index.Index, error) {
+	openFn := func(p string) (shipperindex.Index, error) {
 		return tsdb.OpenShippableTSDB(p, tsdb.IndexOpts{})
 	}
 
-	shipper, err := indexshipper.NewIndexShipper(
+	indexShipper, err := indexshipper.NewIndexShipper(
 		conf.StorageConfig.TSDBShipperConfig.Config,
 		objectClient,
 		overrides,
@@ -74,7 +74,7 @@ func execute() {
 	helpers.ExitErr("waiting for service to start", err)
 	level.Info(util_log.Logger).Log("msg", "server started")
 
-	err = analyze(metrics, sampler, shipper, chunkClient, tableName, tenants)
+	err = analyze(metrics, sampler, indexShipper, chunkClient, tableName, tenants)
 	helpers.ExitErr("analyzing", err)
 }
 
@@ -170,7 +170,7 @@ var experiments = []Experiment{
 	),
 }
 
-func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
+func analyze(metrics *Metrics, sampler Sampler, indexShipper indexshipper.IndexShipper, client client.Client, tableName string, tenants []string) error {
 	metrics.tenants.Add(float64(len(tenants)))
 
 	var n int         // count iterated series
@@ -178,11 +178,11 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 	pool := newPool(runtime.NumCPU())
 
 	for _, tenant := range tenants {
-		err := shipper.ForEach(
+		err := indexShipper.ForEach(
 			context.Background(),
 			tableName,
 			tenant,
-			indexshipper_index.ForEachIndexCallback(func(isMultiTenantIndex bool, idx indexshipper_index.Index) error {
+			shipperindex.ForEachIndexCallback(func(isMultiTenantIndex bool, idx shipperindex.Index) error {
 				if isMultiTenantIndex {
 					return nil
 				}
@@ -191,14 +191,14 @@ func analyze(metrics *Metrics, sampler Sampler, shipper indexshipper.IndexShippe
 				_ = casted.ForSeries(
 					context.Background(),
 					nil, model.Earliest, model.Latest,
-					func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
-						chksCpy := make([]index.ChunkMeta, len(chks))
+					func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
+						chksCpy := make([]tsdbindex.ChunkMeta, len(chks))
 						copy(chksCpy, chks)
 						pool.acquire(
 							ls.Copy(),
 							fp,
 							chksCpy,
-							func(ls labels.Labels, fp model.Fingerprint, chks []index.ChunkMeta) {
+							func(ls labels.Labels, fp model.Fingerprint, chks []tsdbindex.ChunkMeta) {
 
 								metrics.series.Inc()
 								metrics.chunks.Add(float64(len(chks)))
