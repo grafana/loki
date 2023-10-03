@@ -405,28 +405,17 @@ memberlist:
 ```
 
 
-## 16-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
+## 16-Compactor-snippet.yaml
 
 ```yaml
 
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
-# WARNING - DEPRECATED: The DynamoDB index store is deprecated and will be removed in a future release.
+# This partial configuration sets the compactor to use S3 and run the compaction every 5 minutes.
+# Downloaded chunks for compaction are stored in /loki/compactor.
 
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v12
-    index:
-      prefix: loki_
-
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
+compactor:
+  working_directory: /tmp/loki/compactor
+  shared_store: s3
+  compaction_interval: 5m
 ```
 
 
@@ -458,5 +447,30 @@ storage_config:
   filesystem:
     directory: /tmp/loki/chunks
     
+```
+
+
+## 18-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
+
+```yaml
+
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
+# WARNING - DEPRECATED: The DynamoDB index store is deprecated and will be removed in a future release.
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: aws
+    object_store: s3
+    schema: v12
+    index:
+      prefix: loki_
+
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
 ```
 
