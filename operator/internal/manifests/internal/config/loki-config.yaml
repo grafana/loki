@@ -14,6 +14,9 @@ common:
       container_name: {{ .Container }}
       account_name: {{ .AccountName }}
       account_key: {{ .AccountKey }}
+      {{- with .EndpointSuffix }}
+      endpoint_suffix: {{ . }}
+      {{- end }}
     {{- end }}
     {{- with .ObjectStorage.GCS }}
     gcs:
@@ -116,6 +119,9 @@ ingester:
     final_sleep: 0s
     join_after: 30s
     num_tokens: 512
+    {{- if .GossipRing.EnableIPv6 }}
+    enable_inet6: true
+    {{- end}}
     ring:
       replication_factor: {{ .Stack.Replication.Factor }}
   max_transfer_retries: 0
