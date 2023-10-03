@@ -1,5 +1,5 @@
-# This is a complete configuration to deploy Loki backed by the filesystem
-# The index will be shipped to the storage via tsdb-shipper.
+# This is a complete configuration to deploy Loki backed by a GCS.
+# The index will be shipped to storage via tsdb-shipper.
 
 auth_enabled: false
 
@@ -12,13 +12,13 @@ common:
     kvstore:
       store: inmemory
   replication_factor: 1
-  path_prefix: /tmp/loki
+  path_prefix: /loki
 
 schema_config:
   configs:
   - from: 2020-05-15
     store: tsdb
-    object_store: filesystem
+    object_store: gcs
     schema: v13
     index:
       prefix: index_
@@ -26,6 +26,9 @@ schema_config:
 
 storage_config:
   tsdb_shipper:
-    active_index_directory: /tmp/loki/index
-    cache_location: /tmp/loki/index_cache
-    shared_store: filesystem
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: gcs
+  gcs:
+    bucket_name: replace_by_your_bucked_name
+    

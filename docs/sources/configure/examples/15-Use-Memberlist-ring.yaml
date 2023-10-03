@@ -1,0 +1,14 @@
+# This partial configuration uses memberlist for the ring.
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: memberlist
+  replication_factor: 1
+  path_prefix: /loki
+
+memberlist:
+  join_members:
+    # You can use a headless k8s service for all distributor, ingester and querier components.
+    - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.

@@ -1,11 +1,12 @@
 # This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
+# WARNING - DEPRECATED: The Cassandra index store is deprecated and will be removed in a future release.
 
 schema_config:
   configs:
   - from: 2020-05-15
     store: cassandra
     object_store: filesystem
-    schema: v11
+    schema: v13
     index:
       prefix: cassandra_table
       period: 168h

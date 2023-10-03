@@ -4,31 +4,6 @@ description: Loki Configuration Examples
 ---
  # Examples
 
-## alibaba-cloud-storage-config.yaml
-
-```yaml
-
-# This partial configuration uses Alibaba for chunk storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    object_store: alibabacloud
-    schema: v11
-    index:
-      prefix: loki_index_
-      period: 168h
-
-storage_config:
-  alibabacloud:
-    bucket: <bucket>
-    endpoint: <endpoint>
-    access_key_id: <access_key_id>
-    secret_access_key: <secret_access_key>
-
-```
-
-
 ## 1-Local-Configuration-Example.yaml
 
 ```yaml
@@ -417,6 +392,31 @@ storage_config:
     auth_endpoint: <iam_endpoint_for_authentication>
     cr_token_file_path: <path_to_compute_resource_token>
     trusted_profile_name: <name_of_the_trusted_profile> # You can also use trusted_profile_id instead of trusted_profile_name
+
+```
+
+
+## 14-alibaba-cloud-storage-config.yaml
+
+```yaml
+
+# This partial configuration uses Alibaba for chunk storage
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    object_store: alibabacloud
+    schema: v11
+    index:
+      prefix: loki_index_
+      period: 168h
+
+storage_config:
+  alibabacloud:
+    bucket: <bucket>
+    endpoint: <endpoint>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
 
 ```
 

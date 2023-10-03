@@ -3,13 +3,18 @@
 schema_config:
   configs:
   - from: 2020-05-15
+    store: tsdb
     object_store: alibabacloud
-    schema: v11
+    schema: v13
     index:
-      prefix: loki_index_
-      period: 168h
+      prefix: index_
+      period: 24h
 
 storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: alibabacloud
   alibabacloud:
     bucket: <bucket>
     endpoint: <endpoint>
