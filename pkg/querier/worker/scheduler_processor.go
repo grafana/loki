@@ -169,6 +169,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	req, _ := queryrange.QueryRequestToRequest(request)
 
 	response, err := sp.handler.Do(ctx, req)
+	resp, _ := queryrange.ResponseToQueryResponse(ctx, response)
 	// TODO(karsten): add error type to QueryResponse
 	/*
 	if err != nil {
@@ -207,8 +208,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 			// Response is empty and uninteresting.
 			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
 				QueryID:      queryID,
-				HttpResponse: response,
+				HttpResponse: nil, // TODO: set http response for backwards compatibility
 				Stats:        stats,
+				QueryResponse: &resp,
 			})
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)

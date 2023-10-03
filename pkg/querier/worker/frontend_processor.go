@@ -8,9 +8,12 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/backoff"
+	"github.com/grafana/dskit/httpgrpc"
+	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"google.golang.org/grpc"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 )
@@ -112,14 +115,18 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	}
 }
 
-func (fp *frontendProcessor) runRequest(ctx context.Context, request queryrangebase.Request, statsEnabled bool, sendResponse func(response queryrangebase.Response, stats *querier_stats.Stats) error) {
+func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response queryrangebase.Response, stats *querier_stats.Stats) error) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
 	}
 
-	response, _ := fp.handler.Do(ctx, request)
-	// TODO
+	// TODO: handler error
+	httpReq, _ := httpgrpc_server.ToHTTP(ctx, request)
+	req, _ := queryrange.DefaultCodec.DecodeRequest(ctx, httpReq, nil)
+
+	// TODO return error code
+	response, _ := fp.handler.Do(ctx, req)
 	/*
 	if err != nil {
 		var ok bool
