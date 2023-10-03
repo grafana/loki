@@ -55,6 +55,7 @@ import (
 )
 
 var errGatewayUnhealthy = errors.New("bloom-gateway is unhealthy in the ring")
+var errInvalidTenant = errors.New("invalid tenant in chunk refs")
 
 type metrics struct{}
 
@@ -79,7 +80,7 @@ type Gateway struct {
 }
 
 // New returns a new instance of the Bloom Gateway.
-func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, shardingStrategy ShardingStrategy, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
+func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, shardingStrategy ShardingStrategy, cm storage.ClientMetrics, logger log.Logger, reg prometheus.Registerer) (*Gateway, error) {
 	g := &Gateway{
 		cfg:      cfg,
 		logger:   logger,
@@ -89,7 +90,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		ConvertChunkRefToChunkID: schemaCfg.ExternalKey,
 	}
 
-	bloomClient, err := bloom_shipper.NewShipper(schemaCfg.Configs, storageCfg, storage.NewClientMetrics())
+	bloomClient, err := bloom_shipper.NewShipper(schemaCfg.Configs, storageCfg, cm)
 	if err != nil {
 		return nil, err
 	}
@@ -128,14 +129,25 @@ func (g *Gateway) FilterChunkRefs(ctx context.Context, req *logproto.FilterChunk
 		return nil, err
 	}
 
+	for _, ref := range req.Refs {
+		if ref.UserID != tenantID {
+			return nil, errors.Wrapf(errInvalidTenant, "expected chunk refs from tenant %s, got tenant %s", tenantID, ref.UserID)
+		}
+	}
+
 	// Sort ChunkRefs by fingerprint in ascending order
 	sort.Slice(req.Refs, func(i, j int) bool {
 		return req.Refs[i].Fingerprint < req.Refs[j].Fingerprint
 	})
 
-	chunkRefs, err := g.bloomStore.FilterChunkRefs(ctx, tenantID, req.From.Time(), req.Through.Time(), req.Refs, req.Filters...)
-	if err != nil {
-		return nil, err
+	chunkRefs := req.Refs
+
+	// Only query bloom filters if filters are present
+	if len(req.Filters) > 0 {
+		chunkRefs, err = g.bloomStore.FilterChunkRefs(ctx, tenantID, req.From.Time(), req.Through.Time(), req.Refs, req.Filters...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	resp := make([]*logproto.ChunkIDsForStream, 0)

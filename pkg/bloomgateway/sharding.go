@@ -147,7 +147,7 @@ func NewNoopStrategy() *NoopStrategy {
 }
 
 // FilterTenants implements ShardingStrategy.
-func (s *NoopStrategy) FilterTenants(tenantIDs []string) ([]string, error) {
+func (s *NoopStrategy) FilterTenants(ctx context.Context, tenantIDs []string) ([]string, error) {
 	return tenantIDs, nil
 }
 
