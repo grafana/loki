@@ -81,11 +81,16 @@ func (b *DirectoryBlockBuilder) Init() error {
 }
 
 func (b *DirectoryBlockBuilder) Index() io.WriteCloser {
-	b.index.Stat()
+	if !b.initialized {
+		b.Init()
+	}
 	return b.index
 }
 
 func (b *DirectoryBlockBuilder) Blooms() io.WriteCloser {
+	if !b.initialized {
+		b.Init()
+	}
 	return b.blooms
 }
 
