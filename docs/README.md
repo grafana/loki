@@ -23,12 +23,12 @@ The Loki documentation is written using the CommonMark flavor of markdown, inclu
 If you have a GitHub account and you're just making a small fix, for example fixing a typo or updating an example, you can edit the topic in GitHub.
 
 1. Find the topic in the Loki repo.
-1. Click the pencil icon.
-1. Enter your changes.
-1. Click **Commit changes**. GitHub creates a pull request for you.
-1. If this is your first contribution to the Loki repository, you will need to sign the Contributor License Agreement (CLA) before your PR can be accepted.
-1. Add the `type/docs` label to identify your PR as a docs contribution.
-1. If your contribution needs to be added to the current release or previous releases, apply the appropriate `backport` label.  You can find more information about backporting in the [Writers' toolkit](https://grafana.com/docs/writers-toolkit/review/backporting/).
+2. Click the pencil icon.
+3. Enter your changes.
+4. Click **Commit changes**. GitHub creates a pull request for you.
+5. If this is your first contribution to the Loki repository, you will need to sign the Contributor License Agreement (CLA) before your PR can be accepted.
+6. Add the `type/docs` label to identify your PR as a docs contribution.
+7. If your contribution needs to be added to the current release or previous releases, apply the appropriate `backport` label.  You can find more information about backporting in the [Writers' toolkit](https://grafana.com/docs/writers-toolkit/review/backporting/).
 
 For larger contributions, for example documenting a new feature or adding a new topic, consider running the project locally to see how the changes look like before making a pull request.
 
@@ -43,10 +43,9 @@ Loki uses the static site generator [Hugo](https://gohugo.io/) to generate the d
 You can preview the documentation in GitHub, but GitHub does not render images or any of the Hugo shortcodes. However, you can preview the documentation locally after installing [Docker](https://www.docker.com/) or [Podman](https://podman.io/).
 
 To get a local preview of the documentation:
-1. Run Docker (or Podman).
-2. Navigate to the directory with the documentation makefile, `/loki/docs`.
-3. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
-4. Open http://localhost:3002/docs/loki/latest/ to review your changes.
+1. Navigate to the directory with the documentation makefile, `/loki/docs`.
+2. Run the command `make docs`. This uses the `grafana/docs` image which internally uses Hugo to generate the static site.
+3. Open http://localhost:3002/docs/loki/latest/ to review your changes.
 
 > Note that `make docs` uses a lot of memory. If it crashes, increase the memory allocated to Docker and try again.
 
