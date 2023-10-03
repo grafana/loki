@@ -3,7 +3,6 @@ package v1
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/grafana/loki/pkg/chunkenc"
@@ -11,14 +10,6 @@ import (
 	"github.com/prometheus/common/model"
 	"github.com/stretchr/testify/require"
 )
-
-type noopCloser struct {
-	io.Writer
-}
-
-func (n noopCloser) Close() error {
-	return nil
-}
 
 func mkBasicSeriesWithBlooms(n int, fromFp, throughFp model.Fingerprint, fromTs, throughTs model.Time) (seriesList []SeriesWithBloom) {
 	for i := 0; i < n; i++ {
@@ -62,8 +53,7 @@ func TestBuilding(t *testing.T) {
 			SeriesPageSize: 1,
 			BloomPageSize:  1,
 		},
-		noopCloser{indexBuf},
-		noopCloser{bloomsBuf},
+		NewMemoryBlockWriter(indexBuf, bloomsBuf),
 	)
 
 	require.Nil(t, builder.BuildFrom(itr))
@@ -86,11 +76,10 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
-			SeriesPageSize: 1,
-			BloomPageSize:  1,
+			SeriesPageSize: 100,
+			BloomPageSize:  10 << 10,
 		},
-		noopCloser{indexBuf},
-		noopCloser{bloomsBuf},
+		NewMemoryBlockWriter(indexBuf, bloomsBuf),
 	)
 
 	require.Nil(t, builder.BuildFrom(itr))

@@ -3,6 +3,7 @@ package v1
 import (
 	"hash"
 	"hash/crc32"
+	"io"
 	"sync"
 
 	"github.com/prometheus/prometheus/util/pool"
@@ -118,4 +119,16 @@ func (it *EmptyIter[T]) Reset() {}
 
 func NewEmptyIter[T any](zero T) *EmptyIter[T] {
 	return &EmptyIter[T]{zero: zero}
+}
+
+type NoopCloser struct {
+	io.Writer
+}
+
+func (n NoopCloser) Close() error {
+	return nil
+}
+
+func NewNoopCloser(w io.Writer) NoopCloser {
+	return NoopCloser{w}
 }

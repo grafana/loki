@@ -25,7 +25,7 @@ type BlockOptions struct {
 
 	// target size in bytes (decompressed)
 	// of each page type
-	SeriesPageSize, BloomPageSize int
+	SeriesPageSize, BloomPageSize, BlockSize int
 }
 
 type BlockBuilder struct {
@@ -35,11 +35,11 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockBuilder(opts BlockOptions, index, blooms io.WriteCloser) *BlockBuilder {
+func NewBlockBuilder(opts BlockOptions, writer BlockWriter) *BlockBuilder {
 	return &BlockBuilder{
 		opts:   opts,
-		index:  NewIndexBuilder(opts, index),
-		blooms: NewBloomBlockBuilder(opts, blooms),
+		index:  NewIndexBuilder(opts, writer.Index()),
+		blooms: NewBloomBlockBuilder(opts, writer.Blooms()),
 	}
 }
 
