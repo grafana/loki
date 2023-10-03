@@ -12,8 +12,8 @@ import (
 	"github.com/prometheus/common/model"
 	"google.golang.org/grpc"
 
-	deletion_grpc "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/client/grpc"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/deletion"
+	deletion_grpc "github.com/grafana/loki/pkg/compactor/client/grpc"
+	"github.com/grafana/loki/pkg/compactor/deletion"
 )
 
 type GRPCConfig struct {
