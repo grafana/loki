@@ -52,13 +52,25 @@ func TestAzureExtract(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "all set",
+			name: "all mandatory set",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
 					"environment":  []byte("here"),
 					"container":    []byte("this,that"),
 					"account_name": []byte("id"),
 					"account_key":  []byte("secret"),
+				},
+			},
+		},
+		{
+			name: "all set including optional",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
+					"environment":     []byte("here"),
+					"container":       []byte("this,that"),
+					"account_name":    []byte("id"),
+					"account_key":     []byte("secret"),
+					"endpoint_suffix": []byte("suffix"),
 				},
 			},
 		},
