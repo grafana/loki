@@ -81,5 +81,5 @@ Given the following discovered labels below with a log line `sample log`:
 | __meta_kubernetes_pod_host_ip | 127.0.0.1 | pod_host_ip |
 | __meta_kubernetes_pod_uid | b3937321-fe90-4e15-ac94-495c8fdb9202 | pod_uid |
 
-The `structured_metadata` stage would turn the discovered labels `pod_uid` and `pod_host_ip` in key-value pair as a structured metadata to the log line `sample log`
-excluding them out of creating high-cardinality streams.
+The `structured_metadata` stage would turn the discovered labels `pod_uid` and `pod_host_ip` into key-value pairs as  structured metadata for the log line `sample log` and
+exclude them from creating high-cardinality streams.
