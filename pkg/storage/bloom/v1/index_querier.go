@@ -33,10 +33,19 @@ func NewLazySeriesIter(b *Block) *LazySeriesIter {
 	}
 }
 
+func (it *LazySeriesIter) ensureInit() {
+	// TODO(owen-d): better control over when to decode
+	if !it.initialized {
+		if err := it.b.LoadHeaders(); err != nil {
+			it.err = err
+		}
+		it.initialized = true
+	}
+}
+
 // Seek returns an iterator over the pages where the first fingerprint is >= fp
 func (it *LazySeriesIter) Seek(fp model.Fingerprint) (SeriesIterator, error) {
-	// seeking resets error
-	it.err = nil
+	it.ensureInit()
 
 	// first potentially relevant page
 	desiredPage := sort.Search(len(it.b.index.pageHeaders), func(i int) bool {
@@ -75,12 +84,9 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) (SeriesIterator, error) {
 }
 
 func (it *LazySeriesIter) Next() bool {
-	if !it.initialized {
-		// TODO(owen-d): better control over when to decode
-		if err := it.b.LoadHeaders(); err != nil {
-			it.err = err
-			return false
-		}
+	it.ensureInit()
+	if it.err != nil {
+		return false
 	}
 
 	return it.next()

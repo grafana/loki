@@ -45,6 +45,34 @@ func mkBasicSeriesWithBlooms(n int, fromFp, throughFp model.Fingerprint, fromTs,
 	}
 	return
 }
+
+func TestBuilding(t *testing.T) {
+	numSeries := 100
+	data := mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
+	itr := NewSliceIter[SeriesWithBloom](data)
+
+	indexBuf := bytes.NewBuffer(nil)
+	bloomsBuf := bytes.NewBuffer(nil)
+	builder := NewBlockBuilder(
+		BlockOptions{
+			schema: Schema{
+				version:  DefaultSchemaVersion,
+				encoding: chunkenc.EncSnappy,
+			},
+			SeriesPageSize: 1,
+			BloomPageSize:  1,
+		},
+		noopCloser{indexBuf},
+		noopCloser{bloomsBuf},
+	)
+
+	require.Nil(t, builder.BuildFrom(itr))
+	blockReader := NewByteReader(indexBuf.Bytes(), bloomsBuf.Bytes())
+	block := NewBlock(blockReader)
+	require.Nil(t, block.LoadHeaders())
+	require.Nil(t, nil)
+}
+
 func TestBlockBuilderRoundTrip(t *testing.T) {
 	numSeries := 100
 	data := mkBasicSeriesWithBlooms(numSeries, 0, 0xffff, 0, 10000)
@@ -58,8 +86,8 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 				version:  DefaultSchemaVersion,
 				encoding: chunkenc.EncSnappy,
 			},
-			SeriesPageSize: 64 << 10,
-			BloomPageSize:  128 << 10,
+			SeriesPageSize: 1,
+			BloomPageSize:  1,
 		},
 		noopCloser{indexBuf},
 		noopCloser{bloomsBuf},
@@ -68,24 +96,16 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 	require.Nil(t, builder.BuildFrom(itr))
 	blockReader := NewByteReader(indexBuf.Bytes(), bloomsBuf.Bytes())
 	block := NewBlock(blockReader)
+	querier := NewBlockQuerier(block)
 
-	seriesItr := block.Series()
-	bloomItr := NewLazyBloomIter(block)
-
-	var i int
-	for seriesItr.Next() {
-		require.Nil(t, seriesItr.Err())
-		s := seriesItr.At()
-		require.Equal(t, *data[i].Series, s.Series)
-
-		bloomItr.Seek(s.Offset)
-		require.Equal(t, true, bloomItr.Next())
-		bloom := bloomItr.At()
-		require.Equal(t, data[i].Bloom, bloom)
-		require.Nil(t, bloomItr.Err())
-		i++
+	for i := 0; i < len(data); i++ {
+		require.Equal(t, true, querier.Next(), "on iteration %d with error %v", i, querier.Err())
+		got := querier.At()
+		require.Equal(t, data[i].Series, got.Series)
+		require.Equal(t, data[i].Bloom, got.Bloom)
 	}
-
-	require.Equal(t, false, seriesItr.Next())
-	require.Equal(t, numSeries, i)
+	// ensure no error
+	require.Nil(t, querier.Err())
+	// ensure it's exhausted
+	require.Equal(t, false, querier.Next())
 }

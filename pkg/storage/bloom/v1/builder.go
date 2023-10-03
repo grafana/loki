@@ -293,13 +293,22 @@ func (b *IndexBuilder) Append(series SeriesWithOffset) error {
 	}
 
 	b.scratch.Reset()
-	b.previousFp, b.previousOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
+	// we don't want to update the previous pointers yet in case
+	// we need to flush the page first which would
+	// be passed the incorrect final fp/offset
+	previousFp, previousOffset := series.Encode(b.scratch, b.previousFp, b.previousOffset)
 
 	if !b.page.SpaceFor(b.scratch.Len()) {
 		if err := b.flushPage(); err != nil {
 			return errors.Wrap(err, "flushing series page")
 		}
+
+		// re-encode now that a new page has been cut and we use delta-encoding
+		b.scratch.Reset()
+		previousFp, previousOffset = series.Encode(b.scratch, b.previousFp, b.previousOffset)
 	}
+	b.previousFp = previousFp
+	b.previousOffset = previousOffset
 
 	switch {
 	case b.page.Count() == 0:
@@ -376,6 +385,7 @@ func (b *IndexBuilder) flushPage() error {
 	b.throughTs = 0
 	b.previousFp = 0
 	b.previousOffset = BloomOffset{}
+	b.page.Reset()
 
 	return nil
 }

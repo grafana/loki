@@ -22,20 +22,27 @@ func NewLazyBloomIter(b *Block) *LazyBloomIter {
 	}
 }
 
+func (it *LazyBloomIter) ensureInit() {
+	// TODO(owen-d): better control over when to decode
+	if !it.initialized {
+		if err := it.b.LoadHeaders(); err != nil {
+			it.err = err
+		}
+		it.initialized = true
+	}
+}
+
 func (it *LazyBloomIter) Seek(offset BloomOffset) {
+	it.ensureInit()
 
 	// if we need a different page or the current page hasn't been loaded,
 	// load the desired page
 	if it.curPageIndex != offset.Page || it.curPage == nil {
 
-		// TODO(owen-d): better control over when to decode
-		if err := it.b.LoadHeaders(); err != nil {
-			it.err = errors.Wrap(err, "loading bloom headers")
-		}
-
 		decoder, err := it.b.blooms.BloomPageDecoder(it.b.reader.Blooms(), offset.Page)
 		if err != nil {
 			it.err = errors.Wrap(err, "loading bloom page")
+			return
 		}
 
 		it.curPageIndex = offset.Page
@@ -47,12 +54,9 @@ func (it *LazyBloomIter) Seek(offset BloomOffset) {
 }
 
 func (it *LazyBloomIter) Next() bool {
-	if !it.initialized {
-		// TODO(owen-d): better control over when to decode
-		if err := it.b.LoadHeaders(); err != nil {
-			it.err = err
-			return false
-		}
+	it.ensureInit()
+	if it.err != nil {
+		return false
 	}
 	return it.next()
 }
