@@ -1,20 +1,25 @@
 package bloom_shipper
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/prometheus/common/model"
-	"github.com/stretchr/testify/require"
+	"io"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	aws_io "github.com/aws/smithy-go/io"
+	"github.com/google/uuid"
+	"github.com/prometheus/common/model"
+	"github.com/stretchr/testify/require"
+
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 const (
@@ -167,6 +172,203 @@ func Test_BloomShipper_DeleteMeta(t *testing.T) {
 
 }
 
+func Test_BloomShipper_GetBlocks(t *testing.T) {
+	shipper := createShipper(t)
+	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
+	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "first-period-19621/tenantA/blooms/eeee-ffff-1695272400-1695276000-1")
+	firstBlockData := createBlockFile(t, block1Path)
+	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "second-period-19624/tenantA/blooms/aaaa-bbbb-1695531600-1695535200-2")
+	secondBlockData := createBlockFile(t, block2Path)
+	require.FileExists(t, block1Path)
+	require.FileExists(t, block2Path)
+
+	firstBlockRef := BlockRef{
+		Ref: Ref{
+			TenantID:       "tenantA",
+			TableName:      "first-period-19621",
+			MinFingerprint: 0xeeee,
+			MaxFingerprint: 0xffff,
+			StartTimestamp: time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
+			EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+			Checksum:       1,
+		},
+	}
+	secondBlockRef := BlockRef{
+		Ref: Ref{
+			TenantID:       "tenantA",
+			TableName:      "second-period-19624",
+			MinFingerprint: 0xaaaa,
+			MaxFingerprint: 0xbbbb,
+			StartTimestamp: time.Date(2023, time.September, 24, 5, 0, 0, 0, time.UTC).Unix(),
+			EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
+			Checksum:       2,
+		},
+	}
+
+	blocksToDownload := []BlockRef{firstBlockRef, secondBlockRef}
+
+	blocksCh, errorsCh := shipper.GetBlocks(context.Background(), blocksToDownload)
+	blocks := make(map[BlockRef]string)
+	func() {
+		timout := time.After(5 * time.Second)
+		for {
+			select {
+			case <-timout:
+				t.Fatalf("the test had to be completed before the timeout")
+				return
+			case err := <-errorsCh:
+				require.NoError(t, err)
+			case block, ok := <-blocksCh:
+				if !ok {
+					return
+				}
+				blockData, err := io.ReadAll(block.Data)
+				require.NoError(t, err)
+				blocks[block.BlockRef] = string(blockData)
+
+			}
+		}
+	}()
+
+	firstBlockActualData, exists := blocks[firstBlockRef]
+	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
+	require.Equal(t, firstBlockData, firstBlockActualData)
+
+	secondBlockActualData, exists := blocks[secondBlockRef]
+	require.True(t, exists, "data for the second block must be present in the results: %+v", blocks)
+	require.Equal(t, secondBlockData, secondBlockActualData)
+
+	require.Len(t, blocks, 2)
+}
+
+func Test_BloomShipper_PutBlocks(t *testing.T) {
+	shipper := createShipper(t)
+	blockForFirstFolderData := "data1"
+	blockForFirstFolder := Block{
+		BlockRef: BlockRef{
+			Ref: Ref{
+				TenantID:       "tenantA",
+				TableName:      "first-period-19621",
+				MinFingerprint: 0xeeee,
+				MaxFingerprint: 0xffff,
+				StartTimestamp: time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
+				EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+				Checksum:       1,
+			},
+			IndexPath: uuid.New().String(),
+		},
+		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForFirstFolderData))},
+	}
+
+	blockForSecondFolderData := "data2"
+	blockForSecondFolder := Block{
+		BlockRef: BlockRef{
+			Ref: Ref{
+				TenantID:       "tenantA",
+				TableName:      "second-period-19624",
+				MinFingerprint: 0xaaaa,
+				MaxFingerprint: 0xbbbb,
+				StartTimestamp: time.Date(2023, time.September, 24, 5, 0, 0, 0, time.UTC).Unix(),
+				EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
+				Checksum:       2,
+			},
+			IndexPath: uuid.New().String(),
+		},
+		Data: aws_io.ReadSeekNopCloser{ReadSeeker: bytes.NewReader([]byte(blockForSecondFolderData))},
+	}
+
+	results, err := shipper.PutBlocks(context.Background(), []Block{blockForFirstFolder, blockForSecondFolder})
+	require.NoError(t, err)
+	require.Len(t, results, 2)
+	firstResultBlock := results[0]
+	path := firstResultBlock.BlockPath
+	require.Equal(t, "first-period-19621/tenantA/blooms/eeee-ffff-1695272400-1695276000-1", path)
+	require.Equal(t, blockForFirstFolder.TenantID, firstResultBlock.TenantID)
+	require.Equal(t, blockForFirstFolder.TableName, firstResultBlock.TableName)
+	require.Equal(t, blockForFirstFolder.MinFingerprint, firstResultBlock.MinFingerprint)
+	require.Equal(t, blockForFirstFolder.MaxFingerprint, firstResultBlock.MaxFingerprint)
+	require.Equal(t, blockForFirstFolder.StartTimestamp, firstResultBlock.StartTimestamp)
+	require.Equal(t, blockForFirstFolder.EndTimestamp, firstResultBlock.EndTimestamp)
+	require.Equal(t, blockForFirstFolder.Checksum, firstResultBlock.Checksum)
+	require.Equal(t, blockForFirstFolder.IndexPath, firstResultBlock.IndexPath)
+	folder1 := shipper.storageConfig.NamedStores.Filesystem["folder-1"].Directory
+	savedFilePath := filepath.Join(folder1, path)
+	require.FileExists(t, savedFilePath)
+	savedData, err := os.ReadFile(savedFilePath)
+	require.NoError(t, err)
+	require.Equal(t, blockForFirstFolderData, string(savedData))
+
+	secondResultBlock := results[1]
+	path = secondResultBlock.BlockPath
+	require.Equal(t, "second-period-19624/tenantA/blooms/aaaa-bbbb-1695531600-1695535200-2", path)
+	require.Equal(t, blockForSecondFolder.TenantID, secondResultBlock.TenantID)
+	require.Equal(t, blockForSecondFolder.TableName, secondResultBlock.TableName)
+	require.Equal(t, blockForSecondFolder.MinFingerprint, secondResultBlock.MinFingerprint)
+	require.Equal(t, blockForSecondFolder.MaxFingerprint, secondResultBlock.MaxFingerprint)
+	require.Equal(t, blockForSecondFolder.StartTimestamp, secondResultBlock.StartTimestamp)
+	require.Equal(t, blockForSecondFolder.EndTimestamp, secondResultBlock.EndTimestamp)
+	require.Equal(t, blockForSecondFolder.Checksum, secondResultBlock.Checksum)
+	require.Equal(t, blockForSecondFolder.IndexPath, secondResultBlock.IndexPath)
+	folder2 := shipper.storageConfig.NamedStores.Filesystem["folder-2"].Directory
+
+	savedFilePath = filepath.Join(folder2, path)
+	require.FileExists(t, savedFilePath)
+	savedData, err = os.ReadFile(savedFilePath)
+	require.NoError(t, err)
+	require.Equal(t, blockForSecondFolderData, string(savedData))
+}
+
+func Test_BloomShipper_DeleteBlocks(t *testing.T) {
+	shipper := createShipper(t)
+	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
+	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "first-period-19621/tenantA/blooms/eeee-ffff-1695272400-1695276000-1")
+	createBlockFile(t, block1Path)
+	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "second-period-19624/tenantA/blooms/aaaa-bbbb-1695531600-1695535200-2")
+	createBlockFile(t, block2Path)
+	require.FileExists(t, block1Path)
+	require.FileExists(t, block2Path)
+
+	blocksToDelete := []BlockRef{
+		{
+			Ref: Ref{
+				TenantID:       "tenantA",
+				TableName:      "second-period-19624",
+				MinFingerprint: 0xaaaa,
+				MaxFingerprint: 0xbbbb,
+				StartTimestamp: time.Date(2023, time.September, 24, 5, 0, 0, 0, time.UTC).Unix(),
+				EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
+				Checksum:       2,
+			},
+			IndexPath: uuid.New().String(),
+		},
+		{
+			Ref: Ref{
+				TenantID:       "tenantA",
+				TableName:      "first-period-19621",
+				MinFingerprint: 0xeeee,
+				MaxFingerprint: 0xffff,
+				StartTimestamp: time.Date(2023, time.September, 21, 5, 0, 0, 0, time.UTC).Unix(),
+				EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
+				Checksum:       1,
+			},
+			IndexPath: uuid.New().String(),
+		},
+	}
+	err := shipper.DeleteBlocks(context.Background(), blocksToDelete)
+	require.NoError(t, err)
+	require.NoFileExists(t, block1Path)
+	require.NoFileExists(t, block2Path)
+}
+
+func createBlockFile(t *testing.T, path string) string {
+	err := os.MkdirAll(path[:strings.LastIndex(path, "/")], 0755)
+	require.NoError(t, err)
+	fileContent := uuid.NewString()
+	err = os.WriteFile(path, []byte(fileContent), 0700)
+	require.NoError(t, err)
+	return fileContent
+}
+
 func Test_TablesByPeriod(t *testing.T) {
 	configs := createPeriodConfigs()
 	firstPeriodFrom := configs[0].From
@@ -240,7 +442,7 @@ func createPeriodConfigs() []config.PeriodConfig {
 		{
 			ObjectType: "folder-1",
 			// from 2023-09-20: table range [19620:19623]
-			From: config.DayTime{Time: fixedDay.Add(-7 * 24 * time.Hour)},
+			From: config.DayTime{Time: model.TimeFromUnix(time.Date(2023, time.September, 20, 0, 0, 0, 0, time.UTC).Unix())},
 			IndexTables: config.PeriodicTableConfig{
 				Period: day,
 				Prefix: "first-period-",
@@ -249,7 +451,7 @@ func createPeriodConfigs() []config.PeriodConfig {
 		{
 			ObjectType: "folder-2",
 			// from 2023-09-24: table range [19624:19627]
-			From: config.DayTime{Time: fixedDay.Add(-3 * 24 * time.Hour)},
+			From: config.DayTime{Time: model.TimeFromUnix(time.Date(2023, time.September, 24, 0, 0, 0, 0, time.UTC).Unix())},
 			IndexTables: config.PeriodicTableConfig{
 				Period: day,
 				Prefix: "second-period-",
@@ -265,15 +467,15 @@ func createMetaInStorage(t *testing.T, rootFolder string, tableName string, tena
 
 	metaChecksum := rand.Uint32()
 	metaFileName := fmt.Sprintf("%x-%x-%v-%v-%x", minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum)
-	metaFolder := filepath.Join(tableName, tenant, "metas")
+	metaFolder := filepath.Join(tableName, tenant, metasFolder)
 	err := os.MkdirAll(filepath.Join(rootFolder, metaFolder), 0700)
 	require.NoError(t, err)
 	metaFilePath := filepath.Join(metaFolder, metaFileName)
 	meta := createMetaEntity(tenant, tableName, minFingerprint, maxFingerprint, startTimestamp, endTimestamp, metaChecksum, metaFilePath)
 
-	bytes, err := json.Marshal(meta)
+	metaFileContent, err := json.Marshal(meta)
 	require.NoError(t, err)
-	err = os.WriteFile(filepath.Join(rootFolder, metaFilePath), bytes, 0644)
+	err = os.WriteFile(filepath.Join(rootFolder, metaFilePath), metaFileContent, 0644)
 	require.NoError(t, err)
 	return meta
 }
@@ -289,36 +491,44 @@ func createMetaEntity(
 	metaFilePath string) Meta {
 	return Meta{
 		MetaRef: MetaRef{
-			TenantID:       tenant,
-			TableName:      tableName,
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
-			StartTimestamp: startTimestamp,
-			EndTimestamp:   endTimestamp,
-			Checksum:       metaChecksum,
-			FilePath:       metaFilePath,
-		},
-		Tombstones: []BlockRef{
-			{
+			Ref: Ref{
 				TenantID:       tenant,
-				IndexPath:      uuid.New().String(),
-				BlockPath:      uuid.New().String(),
-				Checksum:       metaChecksum + 1,
+				TableName:      tableName,
 				MinFingerprint: minFingerprint,
 				MaxFingerprint: maxFingerprint,
 				StartTimestamp: startTimestamp,
 				EndTimestamp:   endTimestamp,
+				Checksum:       metaChecksum,
+			},
+			FilePath: metaFilePath,
+		},
+		Tombstones: []BlockRef{
+			{
+				Ref: Ref{
+					TenantID:       tenant,
+					Checksum:       metaChecksum + 1,
+					MinFingerprint: minFingerprint,
+					MaxFingerprint: maxFingerprint,
+					StartTimestamp: startTimestamp,
+					EndTimestamp:   endTimestamp,
+				},
+				IndexPath: uuid.New().String(),
+				BlockPath: uuid.New().String(),
 			},
 		},
-		Blocks: []BlockRef{{
-			TenantID:       tenant,
-			IndexPath:      uuid.New().String(),
-			BlockPath:      uuid.New().String(),
-			Checksum:       metaChecksum + 2,
-			MinFingerprint: minFingerprint,
-			MaxFingerprint: maxFingerprint,
-			StartTimestamp: startTimestamp,
-			EndTimestamp:   endTimestamp,
-		}},
+		Blocks: []BlockRef{
+			{
+				Ref: Ref{
+					TenantID:       tenant,
+					Checksum:       metaChecksum + 2,
+					MinFingerprint: minFingerprint,
+					MaxFingerprint: maxFingerprint,
+					StartTimestamp: startTimestamp,
+					EndTimestamp:   endTimestamp,
+				},
+				IndexPath: uuid.New().String(),
+				BlockPath: uuid.New().String(),
+			},
+		},
 	}
 }

@@ -5,41 +5,45 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/chunk/client"
-	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/util/math"
-	"github.com/prometheus/common/model"
 	"io"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/prometheus/common/model"
+
+	"github.com/grafana/dskit/concurrency"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/chunk/client"
+	"github.com/grafana/loki/pkg/storage/config"
+	"github.com/grafana/loki/pkg/util/math"
 )
 
 const (
 	metasFolder           = "metas"
+	bloomsFolder          = "blooms"
 	delimiter             = "/"
 	fileNamePartDelimiter = "-"
 )
 
-type BlockRef struct {
-	TenantID                       string
-	IndexPath                      string
-	BlockPath                      string
-	Checksum                       uint32
-	MinFingerprint, MaxFingerprint uint64
-	StartTimestamp, EndTimestamp   int64
-}
-
-type MetaRef struct {
+type Ref struct {
 	TenantID                       string
 	TableName                      string
 	MinFingerprint, MaxFingerprint uint64
-	// check if it has to be time.Time
-	StartTimestamp, EndTimestamp int64
-	Checksum                     uint32
-	FilePath                     string
+	StartTimestamp, EndTimestamp   int64
+	Checksum                       uint32
+}
+
+type BlockRef struct {
+	Ref
+	IndexPath string
+	BlockPath string
+}
+
+type MetaRef struct {
+	Ref
+	FilePath string
 }
 
 // todo rename it
@@ -62,19 +66,19 @@ type MetaShipper interface {
 	// Returns all metas that are within MinFingerprint-MaxFingerprint fingerprint range
 	// and intersect time period from StartTimestamp to EndTimestamp.
 	GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
-	PutMeta(ctx context.Context, meta Meta) error
+	PutMeta(ctx context.Context, meta Meta) (Meta, error)
 	DeleteMeta(ctx context.Context, meta Meta) error
 }
 
 type Block struct {
 	BlockRef
-	//todo TBD
-	Data []byte
+
+	Data io.ReadCloser
 }
 
 type BlockShipper interface {
-	GetBlocks(ctx context.Context, references []BlockRef) ([]Block, error)
-	PutBlocks(ctx context.Context, blocks []Block) error
+	GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error)
+	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
 
@@ -150,14 +154,14 @@ func (b *BloomShipper) PutMeta(ctx context.Context, meta Meta) error {
 	if err != nil {
 		return fmt.Errorf("can not marshal the meta to json: %w", err)
 	}
-	key := createObjectKey(meta.MetaRef)
+	key := createObjectKey(meta.MetaRef.Ref, metasFolder)
 	fmt.Println("uploading to ", key, "periodfrom", periodFrom)
 	return b.periodicObjectClients[periodFrom].PutObject(ctx, key, bytes.NewReader(data))
 }
 
-func createObjectKey(meta MetaRef) string {
+func createObjectKey(meta Ref, folderName string) string {
 	filename := fmt.Sprintf("%x-%x-%v-%v-%x", meta.MinFingerprint, meta.MaxFingerprint, meta.StartTimestamp, meta.EndTimestamp, meta.Checksum)
-	return strings.Join([]string{meta.TableName, meta.TenantID, metasFolder, filename}, delimiter)
+	return strings.Join([]string{meta.TableName, meta.TenantID, folderName, filename}, delimiter)
 }
 
 func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime, error) {
@@ -175,18 +179,88 @@ func (b *BloomShipper) DeleteMeta(ctx context.Context, meta Meta) error {
 	if err != nil {
 		return fmt.Errorf("error updloading meta file: %w", err)
 	}
-	key := createObjectKey(meta.MetaRef)
+	key := createObjectKey(meta.MetaRef.Ref, metasFolder)
 	fmt.Println("uploading to ", key, "periodfrom", periodFrom)
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
-func (b *BloomShipper) GetBlocks(ctx context.Context, references []BlockRef) ([]Block, error) {
-	return nil, nil
+
+func (b *BloomShipper) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
+	blocksChannel := make(chan Block, len(references))
+	errChannel := make(chan error)
+	go func() {
+		defer close(blocksChannel)
+		defer close(errChannel)
+		//todo move concurrency to the config
+		err := concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
+			reference := references[idx]
+			period, err := findPeriod(b.periodicConfigs, reference.StartTimestamp)
+			if err != nil {
+				return fmt.Errorf("error while period lookup: %w", err)
+			}
+			objectClient := b.periodicObjectClients[period]
+			readCloser, _, err := objectClient.GetObject(ctx, createObjectKey(reference.Ref, bloomsFolder))
+			if err != nil {
+				return fmt.Errorf("error while fetching object from storage: %w", err)
+			}
+			blocksChannel <- Block{
+				BlockRef: reference,
+				Data:     readCloser,
+			}
+			return nil
+		})
+		if err != nil {
+			errChannel <- fmt.Errorf("error downloading block file: %w", err)
+		}
+	}()
+	return blocksChannel, errChannel
 }
-func (b *BloomShipper) PutBlocks(ctx context.Context, blocks []Block) error {
-	return nil
+
+func (b *BloomShipper) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
+	results := make([]Block, len(blocks))
+	//todo move concurrency to the config
+	err := concurrency.ForEachJob(ctx, len(blocks), 100, func(ctx context.Context, idx int) error {
+		block := blocks[idx]
+		defer func(Data io.ReadCloser) {
+			_ = Data.Close()
+		}(block.Data)
+
+		period, err := findPeriod(b.periodicConfigs, block.StartTimestamp)
+		if err != nil {
+			return fmt.Errorf("error updloading block file: %w", err)
+		}
+		key := createObjectKey(block.Ref, bloomsFolder)
+		objectClient := b.periodicObjectClients[period]
+		data, err := io.ReadAll(block.Data)
+		if err != nil {
+			return fmt.Errorf("error while reading object data: %w", err)
+		}
+		err = objectClient.PutObject(ctx, key, bytes.NewReader(data))
+		if err != nil {
+			return fmt.Errorf("error updloading block file: %w", err)
+		}
+		block.BlockPath = key
+		results[idx] = block
+		return nil
+	})
+	return results, err
 }
-func (b *BloomShipper) DeleteBlocks(ctx context.Context, blocks []BlockRef) error {
-	return nil
+
+func (b *BloomShipper) DeleteBlocks(ctx context.Context, references []BlockRef) error {
+	//todo move concurrency to the config
+	return concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
+		ref := references[idx]
+		period, err := findPeriod(b.periodicConfigs, ref.StartTimestamp)
+		if err != nil {
+			return fmt.Errorf("error deleting block file: %w", err)
+		}
+		key := createObjectKey(ref.Ref, bloomsFolder)
+		objectClient := b.periodicObjectClients[period]
+		err = objectClient.DeleteObject(ctx, key)
+		if err != nil {
+			return fmt.Errorf("error deleting block file: %w", err)
+		}
+		return nil
+	})
 }
 
 func (b *BloomShipper) Stop() {
@@ -245,14 +319,16 @@ func createMetaRef(objectKey string, tenantID string, tableName string) (MetaRef
 		return MetaRef{}, fmt.Errorf("error parsing checksum %s : %w", parts[4], err)
 	}
 	return MetaRef{
-		TenantID:       tenantID,
-		TableName:      tableName,
-		MinFingerprint: minFingerprint,
-		MaxFingerprint: maxFingerprint,
-		StartTimestamp: startTimestamp,
-		EndTimestamp:   endTimestamp,
-		Checksum:       uint32(checksum),
-		FilePath:       objectKey,
+		Ref: Ref{
+			TenantID:       tenantID,
+			TableName:      tableName,
+			MinFingerprint: minFingerprint,
+			MaxFingerprint: maxFingerprint,
+			StartTimestamp: startTimestamp,
+			EndTimestamp:   endTimestamp,
+			Checksum:       uint32(checksum),
+		},
+		FilePath: objectKey,
 	}, nil
 }
 
