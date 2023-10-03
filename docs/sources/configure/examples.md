@@ -29,7 +29,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: filesystem
-    schema: v13
+    schema: v12
     index:
       prefix: index_
       period: 24h
@@ -68,7 +68,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: s3
-    schema: v13
+    schema: v12
     index:
       prefix: index_
       period: 24h
@@ -123,7 +123,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: gcs
-    schema: v13
+    schema: v12
     index:
       prefix: index_
       period: 24h
@@ -164,7 +164,7 @@ schema_config:
     - from: 2020-05-15
       store: tsdb
       object_store: bos
-      schema: v13
+      schema: v12
       index:
         prefix: index_
         period: 24h
@@ -206,7 +206,7 @@ schema_config:
   - from: "2023-06-15"
     store: tsdb
     object_store: s3
-    schema: v13
+    schema: v12
     index:
         period: 24h
         prefix: index_
@@ -225,7 +225,7 @@ schema_config:
   - from: 2020-05-15
     store: tsdb
     object_store: alibabacloud
-    schema: v13
+    schema: v12
     index:
       prefix: index_
       period: 24h
@@ -294,7 +294,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v13
+      schema: v12
       index:
         period: 24h
         prefix: index_
@@ -325,7 +325,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v13
+      schema: v12
       index:
         period: 24h
         prefix: index_
@@ -363,7 +363,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v13
+      schema: v12
       index:
         period: 24h
         prefix: index_
@@ -417,7 +417,7 @@ schema_config:
   - from: 2020-05-15
     store: aws
     object_store: s3
-    schema: v13
+    schema: v12
     index:
       prefix: loki_
 
@@ -442,7 +442,7 @@ schema_config:
   - from: 2020-05-15
     store: cassandra
     object_store: filesystem
-    schema: v13
+    schema: v12
     index:
       prefix: cassandra_table
       period: 168h

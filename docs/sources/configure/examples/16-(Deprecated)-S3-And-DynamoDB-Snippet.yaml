@@ -6,7 +6,7 @@ schema_config:
   - from: 2020-05-15
     store: aws
     object_store: s3
-    schema: v13
+    schema: v12
     index:
       prefix: loki_
 

@@ -5,7 +5,7 @@ schema_config:
     - from: 2020-10-01
       store: tsdb
       object_store: cos
-      schema: v13
+      schema: v12
       index:
         period: 24h
         prefix: index_

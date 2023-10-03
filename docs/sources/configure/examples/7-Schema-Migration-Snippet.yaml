@@ -17,7 +17,7 @@ schema_config:
   - from: "2023-06-15"
     store: tsdb
     object_store: s3
-    schema: v13
+    schema: v12
     index:
         period: 24h
         prefix: index_
