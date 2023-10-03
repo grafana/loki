@@ -2,6 +2,7 @@ package loki
 
 import (
 	"github.com/grafana/dskit/services"
+
 	"github.com/grafana/loki/pkg/compactor/deletion"
 )
 
