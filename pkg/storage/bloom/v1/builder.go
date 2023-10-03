@@ -35,12 +35,21 @@ type BlockBuilder struct {
 	blooms *BloomBlockBuilder
 }
 
-func NewBlockBuilder(opts BlockOptions, writer BlockWriter) *BlockBuilder {
+func NewBlockBuilder(opts BlockOptions, writer BlockWriter) (*BlockBuilder, error) {
+	index, err := writer.Index()
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing index writer")
+	}
+	blooms, err := writer.Blooms()
+	if err != nil {
+		return nil, errors.Wrap(err, "initializing blooms writer")
+	}
+
 	return &BlockBuilder{
 		opts:   opts,
-		index:  NewIndexBuilder(opts, writer.Index()),
-		blooms: NewBloomBlockBuilder(opts, writer.Blooms()),
-	}
+		index:  NewIndexBuilder(opts, index),
+		blooms: NewBloomBlockBuilder(opts, blooms),
+	}, nil
 }
 
 type SeriesWithBloom struct {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 
+	"github.com/efficientgo/core/errors"
 	"github.com/prometheus/common/model"
 )
 
@@ -67,9 +68,12 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) (SeriesIterator, error) {
 
 	default:
 		// need to load a new page
-		var err error
+		r, err := it.b.reader.Index()
+		if err != nil {
+			return nil, errors.Wrap(err, "getting index reader")
+		}
 		it.curPage, err = it.b.index.NewSeriesPageDecoder(
-			it.b.reader.Index(),
+			r,
 			it.b.index.pageHeaders[it.curPageIndex],
 		)
 		if err != nil {
@@ -96,12 +100,14 @@ func (it *LazySeriesIter) next() bool {
 	for it.curPageIndex < len(it.b.index.pageHeaders) {
 		// first access of next page
 		if it.curPage == nil {
-			var (
-				curHeader = it.b.index.pageHeaders[it.curPageIndex]
-				err       error
-			)
+			curHeader := it.b.index.pageHeaders[it.curPageIndex]
+			r, err := it.b.reader.Index()
+			if err != nil {
+				it.err = errors.Wrap(err, "getting index reader")
+				return false
+			}
 			it.curPage, err = it.b.index.NewSeriesPageDecoder(
-				it.b.reader.Index(),
+				r,
 				curHeader,
 			)
 			if err != nil {
