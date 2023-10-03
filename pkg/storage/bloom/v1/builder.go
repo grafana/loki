@@ -159,7 +159,7 @@ func (b *BloomBlockBuilder) Close() error {
 	// the 8 bytes prior to the checksum
 	b.scratch.PutBE64(uint64(b.offset))
 
-	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
+	crc32Hash := Crc32HashPool.Get()
 	defer Crc32HashPool.Put(crc32Hash)
 	// wrap with final checksum
 	b.scratch.PutHash(crc32Hash)
@@ -171,7 +171,7 @@ func (b *BloomBlockBuilder) Close() error {
 }
 
 func (b *BloomBlockBuilder) flushPage() error {
-	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
+	crc32Hash := Crc32HashPool.Get()
 	defer Crc32HashPool.Put(crc32Hash)
 
 	decompressedLen, compressedLen, err := b.page.writePage(
@@ -184,7 +184,7 @@ func (b *BloomBlockBuilder) flushPage() error {
 	}
 	header := BloomPageHeader{
 		N:               b.page.Count(),
-		Offset:          int(b.offset),
+		Offset:          b.offset,
 		Len:             compressedLen,
 		DecompressedLen: decompressedLen,
 	}
@@ -361,7 +361,7 @@ func chkBounds(chks []ChunkRef) (from, through model.Time) {
 }
 
 func (b *IndexBuilder) flushPage() error {
-	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
+	crc32Hash := Crc32HashPool.Get()
 	defer Crc32HashPool.Put(crc32Hash)
 
 	decompressedLen, compressedLen, err := b.page.writePage(

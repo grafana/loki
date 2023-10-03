@@ -91,14 +91,18 @@ func (b *BlockIndex) DecodeHeaders(r io.ReadSeeker) error {
 	)
 
 	// last 12 bytes are (headers offset: 8 byte u64, checksum: 4 byte u32)
-	r.Seek(-12, io.SeekEnd)
+	if _, err := r.Seek(-12, io.SeekEnd); err != nil {
+		return errors.Wrap(err, "seeking to bloom headers metadata")
+	}
 	dec.B, err = io.ReadAll(r)
 	if err != nil {
 		return errors.Wrap(err, "reading bloom headers metadata")
 	}
 
 	headerOffset := dec.Be64()
-	r.Seek(int64(headerOffset), io.SeekStart)
+	if _, err := r.Seek(int64(headerOffset), io.SeekStart); err != nil {
+		return errors.Wrap(err, "seeking to index headers")
+	}
 	dec.B, err = io.ReadAll(r)
 	if err != nil {
 		return errors.Wrap(err, "reading index page headers")
