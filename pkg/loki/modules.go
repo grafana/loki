@@ -1196,11 +1196,11 @@ func (t *Loki) addCompactorMiddleware(h http.HandlerFunc) http.Handler {
 func (t *Loki) initBloomGateway() (services.Service, error) {
 	logger := log.With(util_log.Logger, "component", "bloom-gateway")
 
-	instanceAddr := t.indexGatewayRingManager.RingLifecycler.GetInstanceAddr()
-	instanceID := t.indexGatewayRingManager.RingLifecycler.GetInstanceID()
-	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.indexGatewayRingManager.Ring, t.Overrides, instanceAddr, instanceID, logger)
+	instanceAddr := t.bloomGatewayRingManager.RingLifecycler.GetInstanceAddr()
+	instanceID := t.bloomGatewayRingManager.RingLifecycler.GetInstanceID()
+	shuffleSharding := bloomgateway.NewShuffleShardingStrategy(t.bloomGatewayRingManager.Ring, t.Overrides, instanceAddr, instanceID, logger)
 
-	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, shuffleSharding, logger, prometheus.DefaultRegisterer)
+	gateway, err := bloomgateway.New(t.Cfg.BloomGateway, t.Cfg.SchemaConfig, t.Cfg.StorageConfig, shuffleSharding, t.clientMetrics, logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
