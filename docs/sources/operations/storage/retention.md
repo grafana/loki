@@ -70,14 +70,14 @@ schema_config:
       - from: "2020-07-31"
         index:
             period: 24h
-            prefix: loki_index_
+            prefix: index_
         object_store: gcs
-        schema: v11
-        store: boltdb-shipper
+        schema: v12
+        store: tsdb
 storage_config:
-    boltdb_shipper:
+    tsdb_shipper:
         active_index_directory: /data/index
-        cache_location: /data/boltdb-cache
+        cache_location: /data/index_cache
         shared_store: gcs
     gcs:
         bucket_name: loki
@@ -235,24 +235,25 @@ Example configuration with GCS with a 28 day retention:
 schema_config:
   configs:
   - from: 2018-04-15
-    store: bigtable
+    store: tsdb
     object_store: gcs
-    schema: v11
+    schema: v12
     index:
       prefix: loki_index_
-      period: 168h
+      period: 24h
 
 storage_config:
-  bigtable:
-    instance: BIGTABLE_INSTANCE
-    project: BIGTABLE_PROJECT
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: gcs
   gcs:
     bucket_name: GCS_BUCKET_NAME
 
 limits_config:
-  max_query_lookback: 672h
+  max_query_lookback: 672h # 28 days
 
 table_manager:
   retention_deletes_enabled: true
-  retention_period: 672h
+  retention_period: 672h # 28 days
 ```
