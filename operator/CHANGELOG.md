@@ -1,6 +1,6 @@
 ## Main
 
-- [10717](https://github.com/grafana/loki/pull/10717) **periklis**: Allow SSE settings in s3 object storage secret
+- [10717](https://github.com/grafana/loki/pull/10717) **periklis**: Allow SSE settings in S3 object storage secret
 - [10715](https://github.com/grafana/loki/pull/10715) **periklis**: Allow endpoint_suffix in azure object storage secret
 - [10562](https://github.com/grafana/loki/pull/10562) **periklis**: Add memberlist IPv6 support
 - [10720](https://github.com/grafana/loki/pull/10720) **JoaoBraveCoding**: Change default replication factor of 1x.medium to 2
