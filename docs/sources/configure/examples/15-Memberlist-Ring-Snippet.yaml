@@ -3,7 +3,6 @@
 
 common:
   ring:
-    instance_addr: 127.0.0.1
     kvstore:
       store: memberlist
   replication_factor: 1
