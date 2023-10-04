@@ -13,8 +13,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 	util_log "github.com/grafana/loki/pkg/util/log"

@@ -15,11 +15,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/storage/chunk"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/retention"
 )
 
 func Test_ChunkIterator(t *testing.T) {
