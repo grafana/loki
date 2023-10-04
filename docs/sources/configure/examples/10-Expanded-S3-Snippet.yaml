@@ -1,14 +1,7 @@
-# S3 configuration supports an expanded configuration. 
+# doc-example:skip-validation=true
+# S3 configuration supports an expanded configuration.
 # Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
 storage_config:
   aws:
     bucketnames: bucket_name1, bucket_name2

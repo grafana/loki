@@ -8,7 +8,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 	"github.com/pkg/errors"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/client/grpc"
+	"github.com/grafana/loki/pkg/compactor/client/grpc"
 	util_log "github.com/grafana/loki/pkg/util/log"
 )
 
