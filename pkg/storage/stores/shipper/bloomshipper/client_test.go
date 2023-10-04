@@ -1,4 +1,4 @@
-package bloom_shipper
+package bloomshipper
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ var (
 	fixedDay = model.TimeFromUnix(time.Date(2023, time.September, 27, 0, 0, 0, 0, time.UTC).Unix())
 )
 
-func Test_BloomShipper_GetMetas(t *testing.T) {
+func Test_BloomClient_GetMetas(t *testing.T) {
 	shipper := createShipper(t)
 
 	var expected []Meta
@@ -64,7 +64,7 @@ func Test_BloomShipper_GetMetas(t *testing.T) {
 	require.ElementsMatch(t, expected, actual)
 }
 
-func Test_BloomShipper_PutMeta(t *testing.T) {
+func Test_BloomClient_PutMeta(t *testing.T) {
 	tests := map[string]struct {
 		source           Meta
 		expectedFilePath string
@@ -120,7 +120,7 @@ func Test_BloomShipper_PutMeta(t *testing.T) {
 
 }
 
-func Test_BloomShipper_DeleteMeta(t *testing.T) {
+func Test_BloomClient_DeleteMeta(t *testing.T) {
 	tests := map[string]struct {
 		source           Meta
 		expectedFilePath string
@@ -172,15 +172,17 @@ func Test_BloomShipper_DeleteMeta(t *testing.T) {
 
 }
 
-func Test_BloomShipper_GetBlocks(t *testing.T) {
+func Test_BloomClient_GetBlocks(t *testing.T) {
 	shipper := createShipper(t)
 	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
-	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "first-period-19621/tenantA/blooms/eeee-ffff-1695272400-1695276000-1")
-	firstBlockData := createBlockFile(t, block1Path)
-	block2Path := filepath.Join(fsNamedStores["folder-2"].Directory, "second-period-19624/tenantA/blooms/aaaa-bbbb-1695531600-1695535200-2")
-	secondBlockData := createBlockFile(t, block2Path)
-	require.FileExists(t, block1Path)
-	require.FileExists(t, block2Path)
+	firstBlockPath := "first-period-19621/tenantA/blooms/eeee-ffff-1695272400-1695276000-1"
+	firstBlockFullPath := filepath.Join(fsNamedStores["folder-1"].Directory, firstBlockPath)
+	firstBlockData := createBlockFile(t, firstBlockFullPath)
+	secondBlockPath := "second-period-19624/tenantA/blooms/aaaa-bbbb-1695531600-1695535200-2"
+	secondBlockFullPath := filepath.Join(fsNamedStores["folder-2"].Directory, secondBlockPath)
+	secondBlockData := createBlockFile(t, secondBlockFullPath)
+	require.FileExists(t, firstBlockFullPath)
+	require.FileExists(t, secondBlockFullPath)
 
 	firstBlockRef := BlockRef{
 		Ref: Ref{
@@ -192,6 +194,7 @@ func Test_BloomShipper_GetBlocks(t *testing.T) {
 			EndTimestamp:   time.Date(2023, time.September, 21, 6, 0, 0, 0, time.UTC).Unix(),
 			Checksum:       1,
 		},
+		BlockPath: firstBlockPath,
 	}
 	secondBlockRef := BlockRef{
 		Ref: Ref{
@@ -203,12 +206,13 @@ func Test_BloomShipper_GetBlocks(t *testing.T) {
 			EndTimestamp:   time.Date(2023, time.September, 24, 6, 0, 0, 0, time.UTC).Unix(),
 			Checksum:       2,
 		},
+		BlockPath: secondBlockPath,
 	}
 
 	blocksToDownload := []BlockRef{firstBlockRef, secondBlockRef}
 
 	blocksCh, errorsCh := shipper.GetBlocks(context.Background(), blocksToDownload)
-	blocks := make(map[BlockRef]string)
+	blocks := make(map[string]string)
 	func() {
 		timout := time.After(5 * time.Second)
 		for {
@@ -224,24 +228,24 @@ func Test_BloomShipper_GetBlocks(t *testing.T) {
 				}
 				blockData, err := io.ReadAll(block.Data)
 				require.NoError(t, err)
-				blocks[block.BlockRef] = string(blockData)
+				blocks[block.BlockRef.BlockPath] = string(blockData)
 
 			}
 		}
 	}()
 
-	firstBlockActualData, exists := blocks[firstBlockRef]
+	firstBlockActualData, exists := blocks[firstBlockRef.BlockPath]
 	require.Truef(t, exists, "data for the first block must be present in the results: %+v", blocks)
 	require.Equal(t, firstBlockData, firstBlockActualData)
 
-	secondBlockActualData, exists := blocks[secondBlockRef]
+	secondBlockActualData, exists := blocks[secondBlockRef.BlockPath]
 	require.True(t, exists, "data for the second block must be present in the results: %+v", blocks)
 	require.Equal(t, secondBlockData, secondBlockActualData)
 
 	require.Len(t, blocks, 2)
 }
 
-func Test_BloomShipper_PutBlocks(t *testing.T) {
+func Test_BloomClient_PutBlocks(t *testing.T) {
 	shipper := createShipper(t)
 	blockForFirstFolderData := "data1"
 	blockForFirstFolder := Block{
@@ -318,7 +322,7 @@ func Test_BloomShipper_PutBlocks(t *testing.T) {
 	require.Equal(t, blockForSecondFolderData, string(savedData))
 }
 
-func Test_BloomShipper_DeleteBlocks(t *testing.T) {
+func Test_BloomClient_DeleteBlocks(t *testing.T) {
 	shipper := createShipper(t)
 	fsNamedStores := shipper.storageConfig.NamedStores.Filesystem
 	block1Path := filepath.Join(fsNamedStores["folder-1"].Directory, "first-period-19621/tenantA/blooms/eeee-ffff-1695272400-1695276000-1")
@@ -419,7 +423,7 @@ func Test_TablesByPeriod(t *testing.T) {
 	}
 }
 
-func createShipper(t *testing.T) *BloomShipper {
+func createShipper(t *testing.T) *BloomClient {
 	periodicConfigs := createPeriodConfigs()
 	namedStores := storage.NamedStores{
 		Filesystem: map[string]storage.NamedFSConfig{
@@ -432,7 +436,7 @@ func createShipper(t *testing.T) *BloomShipper {
 
 	metrics := storage.NewClientMetrics()
 	t.Cleanup(metrics.Unregister)
-	bshipper, err := NewShipper(periodicConfigs, storageConfig, metrics)
+	bshipper, err := NewBloomClient(periodicConfigs, storageConfig, metrics)
 	require.NoError(t, err)
 	return bshipper
 }

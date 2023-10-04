@@ -1,4 +1,4 @@
-package bloom_shipper
+package bloomshipper
 
 import (
 	"bytes"
@@ -62,7 +62,7 @@ type MetaSearchParams struct {
 	EndTimestamp   int64
 }
 
-type MetaShipper interface {
+type MetaClient interface {
 	// Returns all metas that are within MinFingerprint-MaxFingerprint fingerprint range
 	// and intersect time period from StartTimestamp to EndTimestamp.
 	GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error)
@@ -76,20 +76,20 @@ type Block struct {
 	Data io.ReadCloser
 }
 
-type BlockShipper interface {
+type BlockClient interface {
 	GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error)
 	PutBlocks(ctx context.Context, blocks []Block) ([]Block, error)
 	DeleteBlocks(ctx context.Context, blocks []BlockRef) error
 }
 
-type Shipper interface {
-	MetaShipper
-	BlockShipper
+type Client interface {
+	MetaClient
+	BlockClient
 	Stop()
 }
 
 // todo add logger
-func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*BloomShipper, error) {
+func NewBloomClient(periodicConfigs []config.PeriodConfig, storageConfig storage.Config, clientMetrics storage.ClientMetrics) (*BloomClient, error) {
 	periodicObjectClients := make(map[config.DayTime]client.ObjectClient)
 	for _, periodicConfig := range periodicConfigs {
 		objectClient, err := storage.NewObjectClient(periodicConfig.ObjectType, storageConfig, clientMetrics)
@@ -98,20 +98,20 @@ func NewShipper(periodicConfigs []config.PeriodConfig, storageConfig storage.Con
 		}
 		periodicObjectClients[periodicConfig.From] = objectClient
 	}
-	return &BloomShipper{
+	return &BloomClient{
 		periodicConfigs:       periodicConfigs,
 		storageConfig:         storageConfig,
 		periodicObjectClients: periodicObjectClients,
 	}, nil
 }
 
-type BloomShipper struct {
+type BloomClient struct {
 	periodicConfigs       []config.PeriodConfig
 	storageConfig         storage.Config
 	periodicObjectClients map[config.DayTime]client.ObjectClient
 }
 
-func (b *BloomShipper) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
+func (b *BloomClient) GetMetas(ctx context.Context, params MetaSearchParams) ([]Meta, error) {
 	start := model.TimeFromUnix(params.StartTimestamp)
 	end := model.TimeFromUnix(params.EndTimestamp)
 	tablesByPeriod := tablesByPeriod(b.periodicConfigs, start, end)
@@ -145,7 +145,7 @@ func (b *BloomShipper) GetMetas(ctx context.Context, params MetaSearchParams) ([
 	return metas, nil
 }
 
-func (b *BloomShipper) PutMeta(ctx context.Context, meta Meta) error {
+func (b *BloomClient) PutMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
 		return fmt.Errorf("error updloading meta file: %w", err)
@@ -174,7 +174,7 @@ func findPeriod(configs []config.PeriodConfig, timestamp int64) (config.DayTime,
 	}
 	return config.DayTime{}, fmt.Errorf("can not find period for timestamp %d", timestamp)
 }
-func (b *BloomShipper) DeleteMeta(ctx context.Context, meta Meta) error {
+func (b *BloomClient) DeleteMeta(ctx context.Context, meta Meta) error {
 	periodFrom, err := findPeriod(b.periodicConfigs, meta.StartTimestamp)
 	if err != nil {
 		return fmt.Errorf("error updloading meta file: %w", err)
@@ -184,7 +184,7 @@ func (b *BloomShipper) DeleteMeta(ctx context.Context, meta Meta) error {
 	return b.periodicObjectClients[periodFrom].DeleteObject(ctx, key)
 }
 
-func (b *BloomShipper) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
+func (b *BloomClient) GetBlocks(ctx context.Context, references []BlockRef) (chan Block, chan error) {
 	blocksChannel := make(chan Block, len(references))
 	errChannel := make(chan error)
 	go func() {
@@ -215,7 +215,7 @@ func (b *BloomShipper) GetBlocks(ctx context.Context, references []BlockRef) (ch
 	return blocksChannel, errChannel
 }
 
-func (b *BloomShipper) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
+func (b *BloomClient) PutBlocks(ctx context.Context, blocks []Block) ([]Block, error) {
 	results := make([]Block, len(blocks))
 	//todo move concurrency to the config
 	err := concurrency.ForEachJob(ctx, len(blocks), 100, func(ctx context.Context, idx int) error {
@@ -245,7 +245,7 @@ func (b *BloomShipper) PutBlocks(ctx context.Context, blocks []Block) ([]Block, 
 	return results, err
 }
 
-func (b *BloomShipper) DeleteBlocks(ctx context.Context, references []BlockRef) error {
+func (b *BloomClient) DeleteBlocks(ctx context.Context, references []BlockRef) error {
 	//todo move concurrency to the config
 	return concurrency.ForEachJob(ctx, len(references), 100, func(ctx context.Context, idx int) error {
 		ref := references[idx]
@@ -263,13 +263,13 @@ func (b *BloomShipper) DeleteBlocks(ctx context.Context, references []BlockRef) 
 	})
 }
 
-func (b *BloomShipper) Stop() {
+func (b *BloomClient) Stop() {
 	for _, objectClient := range b.periodicObjectClients {
 		objectClient.Stop()
 	}
 }
 
-func (b *BloomShipper) downloadMeta(ctx context.Context, metaRef MetaRef, client client.ObjectClient) (Meta, error) {
+func (b *BloomClient) downloadMeta(ctx context.Context, metaRef MetaRef, client client.ObjectClient) (Meta, error) {
 	meta := Meta{
 		MetaRef: metaRef,
 	}
