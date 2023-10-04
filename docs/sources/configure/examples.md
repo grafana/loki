@@ -39,6 +39,7 @@ storage_config:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
     shared_store: filesystem
+
 ```
 
 
@@ -81,6 +82,7 @@ storage_config:
  aws:
    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
    s3forcepathstyle: true
+
 ```
 
 
@@ -95,6 +97,7 @@ storage_config:
   aws:
     s3: s3://region/bucket_name
       
+
 ```
 
 
@@ -136,6 +139,7 @@ storage_config:
   gcs:
     bucket_name: replace_by_your_bucked_name
     
+
 ```
 
 
@@ -211,6 +215,7 @@ schema_config:
         period: 24h
         prefix: index_
         
+
 ```
 
 
@@ -256,6 +261,7 @@ storage_config:
     sse:
       type: SSE-KMS
       kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
+
 ```
 
 
@@ -263,7 +269,7 @@ storage_config:
 
 ```yaml
 
-# S3 configuration supports an expanded configuration. 
+# S3 configuration supports an expanded configuration.
 # Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
 storage_config:
@@ -280,6 +286,7 @@ storage_config:
       insecure_skip_verify: false
     s3forcepathstyle: true
     
+
 ```
 
 
@@ -402,6 +409,7 @@ memberlist:
   join_members:
     # You can use a headless k8s service for all distributor, ingester and querier components.
     - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
+
 ```
 
 
@@ -416,6 +424,7 @@ compactor:
   working_directory: /tmp/loki/compactor
   shared_store: s3
   compaction_interval: 5m
+
 ```
 
 
@@ -447,6 +456,7 @@ storage_config:
   filesystem:
     directory: /tmp/loki/chunks
     
+
 ```
 
 
@@ -472,5 +482,6 @@ storage_config:
     dynamodb:
       dynamodb_url: dynamodb://access_key:secret_access_key@region
       
+
 ```
 

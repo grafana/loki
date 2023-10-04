@@ -1,3 +1,4 @@
+# doc-example:skip-validation=true
 # This partial configuration uses memberlist for the ring.
 
 common:

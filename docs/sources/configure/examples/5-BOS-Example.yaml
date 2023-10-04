@@ -1,4 +1,4 @@
-# This is a complete configuration to deploy Loki backed by Baidu Object Storage (BOS)
+# This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS)
 # The index will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false

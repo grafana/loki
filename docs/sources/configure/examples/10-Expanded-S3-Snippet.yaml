@@ -1,4 +1,5 @@
-# S3 configuration supports an expanded configuration. 
+# doc-example:skip-validation=true
+# S3 configuration supports an expanded configuration.
 # Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
 storage_config:

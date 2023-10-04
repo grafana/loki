@@ -786,25 +786,26 @@ check-doc: doc
 ###################
 # Example Configs #
 ###################
+CONFIG_DOC_PATH := $(DOC_SOURCES_PATH)/configure
+CONFIG_EXAMPLES_PATH := $(CONFIG_DOC_PATH)/examples
+CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 
 # Validate the example configurations that we provide in ./docs/sources/configure/examples
 # We run the validation only for complete examples, not snippets.
 # Complete examples should contain "Example" in their file name.
-validate-example-configs: loki
-	for f in ./docs/sources/configure/examples/*Example*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+validate-example-configs: #loki
+	for f in $$(grep -rL $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.
 generate-example-config-doc:
-	$(eval CONFIG_DOC_PATH=$(DOC_SOURCES_PATH)/configure)
-	$(eval CONFIG_EXAMPLES_PATH=$(CONFIG_DOC_PATH)/examples)
 	echo "Removing existing doc at $(CONFIG_DOC_PATH)/examples.md and re-generating. . ."
 	# Title and Heading
 	echo -e "---\ntitle: Examples\ndescription: Loki Configuration Examples\n---\n # Examples" > $(CONFIG_DOC_PATH)/examples.md
 	# Append each configuration and its file name to examples.md
 	for f in $$(find $(CONFIG_EXAMPLES_PATH)/*.yaml -printf "%f\n" | sort -k1n); do \
 		echo -e "\n## $$f\n\n\`\`\`yaml\n" >> $(CONFIG_DOC_PATH)/examples.md; \
-		cat $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
+		grep -v $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/$$f >> $(CONFIG_DOC_PATH)/examples.md; \
 		echo -e "\n\`\`\`\n" >> $(CONFIG_DOC_PATH)/examples.md; \
 	done
 

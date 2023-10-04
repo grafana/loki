@@ -1,3 +1,4 @@
+# doc-example:skip-validation=true
 # This partial configuration uses S3 for chunk storage and a KMS CMK for encryption
 
 storage_config:
