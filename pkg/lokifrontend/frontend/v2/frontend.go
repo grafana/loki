@@ -27,7 +27,6 @@ import (
 
 	"github.com/grafana/dskit/tenant"
 
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
 	"github.com/grafana/loki/pkg/querier/queryrange"
@@ -261,64 +260,6 @@ func (f *Frontend) RoundTripGRPC(ctx context.Context, req *httpgrpc.HTTPRequest)
 	}
 }
 
-// TODO: move to codec
-func EncodeRequest(r queryrangebase.Request) (*queryrange.QueryRequest, error) {
-	// TODO(karsten): forward query tags and actor paths in protobuf
-	/*
-		header := make(http.Header)
-		queryTags := getQueryTags(ctx)
-		if queryTags != "" {
-			header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
-		}
-
-		actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
-		if actor != "" {
-			header.Set(httpreq.LokiActorPathHeader, actor)
-		}
-	*/
-
-	switch request := r.(type) {
-	case *queryrange.LokiRequest:
-		return &queryrange.QueryRequest{
-			Request: &queryrange.QueryRequest_Streams{
-				Streams: request,
-			},
-		}, nil
-	case *queryrange.LokiSeriesRequest:
-		return &queryrange.QueryRequest{
-			Request: &queryrange.QueryRequest_Series{
-				Series: request,
-			},
-		}, nil
-	case *queryrange.LokiLabelNamesRequest:
-		return &queryrange.QueryRequest{
-			Request: &queryrange.QueryRequest_Labels{
-				Labels: request,
-			},
-		}, nil
-	case *queryrange.LokiInstantRequest:
-		return &queryrange.QueryRequest{
-			Request: &queryrange.QueryRequest_Instant{
-				Instant: request,
-			},
-		}, nil
-	case *logproto.IndexStatsRequest:
-		return &queryrange.QueryRequest{
-			Request: &queryrange.QueryRequest_Stats{
-				Stats: request,
-			},
-		}, nil
-	case *logproto.VolumeRequest:
-		return &queryrange.QueryRequest{
-			Request: &queryrange.QueryRequest_Volume{
-				Volume: request,
-			},
-		}, nil
-	default:
-		return nil, httpgrpc.Errorf(http.StatusInternalServerError, fmt.Sprintf("invalid request format, got (%T)", r))
-	}
-}
-
 // Do implements queryrangebase.Handler analogous to RoundTripGRPC.
 func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryrangebase.Response, error) {
 	tenantIDs, err := tenant.TenantIDs(ctx)
@@ -332,7 +273,20 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	queryRequest, err := EncodeRequest(req)
+	// TODO(karsten): forward query tags and actor paths in protobuf
+	/*
+		header := make(http.Header)
+		queryTags := getQueryTags(ctx)
+		if queryTags != "" {
+			header.Set(string(httpreq.QueryTagsHTTPHeader), queryTags)
+		}
+
+		actor := httpreq.ExtractHeader(ctx, httpreq.LokiActorPathHeader)
+		if actor != "" {
+			header.Set(httpreq.LokiActorPathHeader, actor)
+		}
+	*/
+	queryRequest, err := queryrange.QueryRequestWrap(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not encode request: %w", err)
 	}
@@ -410,7 +364,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			case *queryrange.QueryResponse_QuantileSketches:
 				return concrete.QuantileSketches, nil
 			default:
-				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%T)", resp.QueryResponse.Response)
+				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported QueryResponse response type, got (%T)", resp.QueryResponse.Response)
 			}
 		}
 

@@ -166,10 +166,19 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	}
 
 	// TODO: handle error
-	req, _ := queryrange.QueryRequestUnwrap(request)
+	req, err := queryrange.QueryRequestUnwrap(request)
+	if err != nil {
+		panic(err)
+	}
 
 	response, err := sp.handler.Do(ctx, req)
-	resp, _ := queryrange.QueryResponseWrap(response)
+	if err != nil {
+		panic(err)
+	}
+	resp, err := queryrange.QueryResponseWrap(response)
+	if err != nil {
+		panic(err)
+	}
 	// TODO(karsten): add error type to QueryResponse
 	/*
 		if err != nil {
