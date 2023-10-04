@@ -11,9 +11,9 @@ import (
 	"go.etcd.io/bbolt"
 	"gopkg.in/yaml.v2"
 
+	"github.com/grafana/loki/pkg/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/config"
 	boltdbcompactor "github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/boltdb/compactor"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/retention"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/tsdb/index"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/util"

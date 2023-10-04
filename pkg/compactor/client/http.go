@@ -13,7 +13,7 @@ import (
 	"github.com/go-kit/log/level"
 	"github.com/grafana/dskit/crypto/tls"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/deletion"
+	"github.com/grafana/loki/pkg/compactor/deletion"
 	"github.com/grafana/loki/pkg/util/log"
 )
 
