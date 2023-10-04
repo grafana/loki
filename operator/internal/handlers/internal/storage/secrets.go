@@ -56,11 +56,15 @@ func extractAzureConfigSecret(s *corev1.Secret) (*storage.AzureStorageConfig, er
 		return nil, kverrors.New("missing secret field", "field", "account_key")
 	}
 
+	// Extract and validate optional fields
+	endpointSuffix := s.Data["endpoint_suffix"]
+
 	return &storage.AzureStorageConfig{
-		Env:         string(env),
-		Container:   string(container),
-		AccountName: string(name),
-		AccountKey:  string(key),
+		Env:            string(env),
+		Container:      string(container),
+		AccountName:    string(name),
+		AccountKey:     string(key),
+		EndpointSuffix: string(endpointSuffix),
 	}, nil
 }
 
