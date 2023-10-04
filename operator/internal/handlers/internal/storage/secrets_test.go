@@ -199,6 +199,19 @@ func TestS3Extract(t *testing.T) {
 			name: "all set with SSE-KMS",
 			secret: &corev1.Secret{
 				Data: map[string][]byte{
+					"endpoint":          []byte("here"),
+					"bucketnames":       []byte("this,that"),
+					"access_key_id":     []byte("id"),
+					"access_key_secret": []byte("secret"),
+					"sse_type":          []byte("SSE-KMS"),
+					"sse_kms_key_id":    []byte("kms-key-id"),
+				},
+			},
+		},
+		{
+			name: "all set with SSE-KMS with encryption context",
+			secret: &corev1.Secret{
+				Data: map[string][]byte{
 					"endpoint":                   []byte("here"),
 					"bucketnames":                []byte("this,that"),
 					"access_key_id":              []byte("id"),
