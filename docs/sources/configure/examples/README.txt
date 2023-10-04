@@ -11,7 +11,6 @@ make generate-example-config-doc
 
 Additionally, you can run the following command to verify that the example is valid.
 Note that validation is skipped for those examples containing the `# doc-example:skip-validation=true` comment.
-files.
 ```bash
 make validate-example-configs
 ```
