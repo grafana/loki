@@ -658,6 +658,8 @@ func Test_DryRun(t *testing.T) {
 		Config: serverww.Config{
 			HTTPListenNetwork: serverww.DefaultNetwork,
 			GRPCListenNetwork: serverww.DefaultNetwork,
+			HTTPListenAddress: localhostConfig.HTTPListenAddress,
+			GRPCListenAddress: localhostConfig.GRPCListenAddress,
 		},
 	}
 
@@ -687,6 +689,11 @@ func Test_DryRun(t *testing.T) {
 	require.IsType(t, &client.Manager{}, p.client)
 }
 
+var localhostConfig = serverww.Config{
+	HTTPListenAddress: "localhost",
+	GRPCListenAddress: "localhost",
+}
+
 func Test_Reload(t *testing.T) {
 	f, err := os.CreateTemp("", "Test_Reload")
 	require.NoError(t, err)
@@ -695,6 +702,7 @@ func Test_Reload(t *testing.T) {
 	cfg := config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
@@ -708,6 +716,7 @@ func Test_Reload(t *testing.T) {
 	expectedConfig := &config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
 		PositionsConfig: positions.Config{
@@ -764,6 +773,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	cfg := config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "string"}}},
 		PositionsConfig: positions.Config{
@@ -775,6 +785,7 @@ func Test_ReloadFail_NotPanic(t *testing.T) {
 	expectedConfig := &config.Config{
 		ServerConfig: server.Config{
 			Reload: true,
+			Config: localhostConfig,
 		},
 		ClientConfig: client.Config{URL: flagext.URLValue{URL: &url.URL{Host: "reloadtesturl"}}},
 		PositionsConfig: positions.Config{
