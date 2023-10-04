@@ -147,21 +147,8 @@ storage_config:
 
 ```yaml
 
-# This is a complete configuration to deploy Loki backed by Baidu Object Storage (BOS)
+# This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS)
 # The index will be shipped to the storage via tsdb-shipper.
-
-auth_enabled: false
-
-server:
-  http_listen_port: 3100
-
-common:
-  ring:
-    instance_addr: 127.0.0.1
-    kvstore:
-      store: inmemory
-  replication_factor: 1
-  path_prefix: /loki
 
 schema_config:
   configs:
