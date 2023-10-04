@@ -2694,6 +2694,15 @@ null
 </td>
 		</tr>
 		<tr>
+			<td>monitoring.selfMonitoring.grafanaAgent.tolerations</td>
+			<td>list</td>
+			<td>Tolerations for GrafanaAgent pods</td>
+			<td><pre lang="json">
+[]
+</pre>
+</td>
+		</tr>
+		<tr>
 			<td>monitoring.selfMonitoring.logsInstance.annotations</td>
 			<td>object</td>
 			<td>LogsInstance annotations</td>
