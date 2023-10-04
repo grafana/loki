@@ -336,6 +336,10 @@ func ResponseToQueryResponse(ctx context.Context, res queryrangebase.Response) (
 
 // TODO: Maybe extend QueryRequest instead.
 func QueryRequestToRequest(res *QueryRequest) (queryrangebase.Request, error) {
+	if res == nil {
+		return nil, nil
+	}
+
 	switch concrete := res.Request.(type) {
 	case *QueryRequest_Series:
 		return concrete.Series, nil
