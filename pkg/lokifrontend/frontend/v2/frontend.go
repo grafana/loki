@@ -387,12 +387,9 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		return nil, ctx.Err()
 
 	case resp := <-freq.response:
-		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
-			stats := stats.FromContext(ctx)
-			stats.Merge(resp.Stats) // Safe if stats is nil.
-		}
 
 		// TODO(karsten): handle HTTP 500 errors from querier.
+		// TODO(karsten): track stats if no error
 
 		if resp.QueryResponse != nil {
 			switch concrete := resp.QueryResponse.Response.(type) {
@@ -413,8 +410,13 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			case *queryrange.QueryResponse_QuantileSketches:
 				return concrete.QuantileSketches, nil
 			default:
-				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.QueryResponse.Response)
+				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%T)", resp.QueryResponse.Response)
 			}
+		}
+
+		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {
+			stats := stats.FromContext(ctx)
+			stats.Merge(resp.Stats) // Safe if stats is nil.
 		}
 
 		httpResp := transport.HttpgrpcToHTTPResponse(resp.HttpResponse)

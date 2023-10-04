@@ -686,7 +686,7 @@ func decodeResponseProtobuf(r *http.Response, req queryrangebase.Request) (query
 		case *QueryResponse_QuantileSketches:
 			return concrete.QuantileSketches.WithHeaders(headers), nil
 		default:
-			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%t)", resp.Response)
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported response type, got (%T)", resp.Response)
 		}
 	}
 }

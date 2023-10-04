@@ -87,6 +87,7 @@ func TestResponseFormat(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
 			handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+				// TODO: return tc.response instead.
 				params, err := ParamsFromRequest(r)
 				if err != nil {
 					return nil, err
