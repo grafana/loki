@@ -5,35 +5,35 @@ The bloom gateway is a component that can be run as a standalone microserivce
 target and provides capabilities for filtering ChunkRefs based on a given list
 of line filter expressions.
 
-		     Querier   Query Frontend
-		        |           |
-		................................... service boundary
-		        |           |
-		        +----+------+
-		             |
-		     indexgateway.Gateway
-		             |
-		   bloomgateway.BloomQuerier
-		             |
-		   bloomgateway.GatewayClient
-		             |
-		  logproto.BloomGatewayClient
-		             |
-		................................... service boundary
-		             |
-		      bloomgateway.Gateway
-		             |
-		       bloomshipper.Store
-		             |
-		      bloomshipper.Shipper
-		             |
-		     bloom_shipper.Shipper
-		             |
-		        ObjectClient
-		             |
-		................................... service boundary
-		             |
-	         object storage
+			     Querier   Query Frontend
+			        |           |
+			................................... service boundary
+			        |           |
+			        +----+------+
+			             |
+			     indexgateway.Gateway
+			             |
+			   bloomgateway.BloomQuerier
+			             |
+			   bloomgateway.GatewayClient
+			             |
+			  logproto.BloomGatewayClient
+			             |
+			................................... service boundary
+			             |
+			      bloomgateway.Gateway
+			             |
+			       bloomshipper.Store
+			             |
+			      bloomshipper.Shipper
+			             |
+	     bloomshipper.BloomFileClient
+			             |
+			        ObjectClient
+			             |
+			................................... service boundary
+			             |
+		         object storage
 */
 package bloomgateway
 
@@ -49,7 +49,6 @@ import (
 
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/storage"
-	"github.com/grafana/loki/pkg/storage/bloom/bloom-shipper"
 	"github.com/grafana/loki/pkg/storage/config"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/bloomshipper"
 )
@@ -70,9 +69,7 @@ type Gateway struct {
 	logger  log.Logger
 	metrics *metrics
 
-	bloomStore   bloomshipper.Store
-	bloomShipper bloomshipper.Shipper
-	bloomClient  bloom_shipper.Shipper
+	bloomStore bloomshipper.Store
 
 	sharding ShardingStrategy
 
@@ -90,17 +87,10 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		ConvertChunkRefToChunkID: schemaCfg.ExternalKey,
 	}
 
-	bloomClient, err := bloom_shipper.NewShipper(schemaCfg.Configs, storageCfg, cm)
+	bloomShipper, err := bloomshipper.NewBloomShipper(logger)
 	if err != nil {
 		return nil, err
 	}
-	g.bloomClient = bloomClient
-
-	bloomShipper, err := bloomshipper.NewBloomShipper(bloomClient)
-	if err != nil {
-		return nil, err
-	}
-	g.bloomShipper = bloomShipper
 
 	bloomStore, err := bloomshipper.NewBloomStore(bloomShipper)
 	if err != nil {

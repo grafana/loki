@@ -5,8 +5,13 @@ import (
 
 	"github.com/go-kit/log"
 	"github.com/grafana/dskit/ring"
-	bloom_shipper "github.com/grafana/loki/pkg/storage/bloom/bloom-shipper"
 )
+
+// TODO(chaudum): Replace this placeholder with actual BlockRef struct.
+type BlockRef struct {
+	FromFp, ThroughFp uint64
+	FromTs, ThroughTs int64
+}
 
 var (
 	// BlocksOwnerSync is the operation used to check the authoritative owners of a block
@@ -36,7 +41,7 @@ type ShardingStrategy interface {
 	// FilterTenants whose indexes should be loaded by the index gateway.
 	// Returns the list of user IDs that should be synced by the index gateway.
 	FilterTenants(ctx context.Context, tenantIDs []string) ([]string, error)
-	FilterBlocks(ctx context.Context, tenantID string, blockRefs []bloom_shipper.BlockRef) ([]bloom_shipper.BlockRef, error)
+	FilterBlocks(ctx context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error)
 }
 
 type ShuffleShardingStrategy struct {
@@ -87,8 +92,8 @@ func getBucket(rangeMin, rangeMax, pos uint64) int {
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *ShuffleShardingStrategy) FilterBlocks(ctx context.Context, tenantID string, blockRefs []bloom_shipper.BlockRef) ([]bloom_shipper.BlockRef, error) {
-	filteredBlockRefs := make([]bloom_shipper.BlockRef, 0, len(blockRefs))
+func (s *ShuffleShardingStrategy) FilterBlocks(ctx context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error) {
+	filteredBlockRefs := make([]BlockRef, 0, len(blockRefs))
 
 	subRing := GetShuffleShardingSubring(s.r, tenantID, s.limits)
 
@@ -97,7 +102,7 @@ func (s *ShuffleShardingStrategy) FilterBlocks(ctx context.Context, tenantID str
 	var err error
 
 	for _, blockRef := range blockRefs {
-		rs, err = subRing.Get(uint32(blockRef.MinFingerprint), BlocksOwnerSync, bufDescs, bufHosts, bufZones)
+		rs, err = subRing.Get(uint32(blockRef.FromFp), BlocksOwnerSync, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +112,7 @@ func (s *ShuffleShardingStrategy) FilterBlocks(ctx context.Context, tenantID str
 			continue
 		}
 
-		rs, err = subRing.Get(uint32(blockRef.MaxFingerprint), BlocksOwnerSync, bufDescs, bufHosts, bufZones)
+		rs, err = subRing.Get(uint32(blockRef.ThroughFp), BlocksOwnerSync, bufDescs, bufHosts, bufZones)
 		if err != nil {
 			return nil, err
 		}
@@ -152,6 +157,6 @@ func (s *NoopStrategy) FilterTenants(ctx context.Context, tenantIDs []string) ([
 }
 
 // FilterBlocks implements ShardingStrategy.
-func (s *NoopStrategy) FilterBlocks(ctx context.Context, tenantID string, blockRefs []bloom_shipper.BlockRef) ([]bloom_shipper.BlockRef, error) {
+func (s *NoopStrategy) FilterBlocks(ctx context.Context, tenantID string, blockRefs []BlockRef) ([]BlockRef, error) {
 	return blockRefs, nil
 }

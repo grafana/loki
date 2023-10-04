@@ -2,22 +2,22 @@ package bloomshipper
 
 import (
 	"context"
-	"math"
 	"time"
 
+	"github.com/go-kit/log"
+	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
-	bloom_shipper "github.com/grafana/loki/pkg/storage/bloom/bloom-shipper"
 )
 
 // TODO(chaudum): This is just a placeholder and needs to be replaced by actual
-// bloom filter interface.
-type BloomFilter interface {
+// bloom block querier interface.
+type BlockQuerier interface {
 }
 
-type ForEachBloomFilterCallback func(f BloomFilter) error
+type ForEachBlockCallback func(bq BlockQuerier) error
 
 type ReadShipper interface {
-	ForEachBloom(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBloomFilterCallback) error
+	ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error
 }
 
 type WriteShipper interface {
@@ -29,68 +29,20 @@ type Shipper interface {
 	Stop()
 }
 
-type BloomShipper struct {
-	client bloom_shipper.Shipper
+type NoopBloomShipper struct {
+	logger log.Logger
 }
 
-func NewBloomShipper(client bloom_shipper.Shipper) (*BloomShipper, error) {
-	return &BloomShipper{client: client}, nil
+func NewBloomShipper(logger log.Logger) (*NoopBloomShipper, error) {
+	return &NoopBloomShipper{logger: log.With(logger, "component", "noop-bloom-shipper")}, nil
 }
 
-func (bs *BloomShipper) Stop() {
-	bs.client.Stop()
+func (bs *NoopBloomShipper) Stop() {
 }
 
-func (bs *BloomShipper) ForEachBloom(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBloomFilterCallback) error {
-	// Assume fingerprints to be sorted in ascending order
-	var minFp uint64 = 0
-	var maxFp uint64 = math.MaxUint64
-	if len(fingerprints) > 0 {
-		minFp = fingerprints[0]
-		maxFp = fingerprints[len(fingerprints)-1]
-	}
-
-	blockRefs, err := bs.loadBlockRefs(ctx, tenant, from, through, minFp, maxFp)
-	if err != nil {
-		return err
-	}
-
-	// TODO(chaudum): Do we need to initialize blocks so they load their data?
-	_, err = bs.client.GetBlocks(ctx, blockRefs)
-	if err != nil {
-		return err
-	}
-
-	// TODO(chaudum) Read blooms from the blocks
-	// for _, block := range blocks {
-	// 	// Iterate over blocks and their bloom filters
-	// 	// For each bloom filter invoke the callback function.
-	// }
-
+func (bs *NoopBloomShipper) ForEachBlock(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64, callback ForEachBlockCallback) error {
+	level.Debug(bs.logger).Log("msg", "ForEachBlock", "tenant", tenant, "from", from, "through", through, "fingerprints", fingerprints)
 	return nil
-}
-
-func (bs *BloomShipper) loadBlockRefs(ctx context.Context, tenant string, start, end time.Time, minFp, maxFp uint64) ([]bloom_shipper.BlockRef, error) {
-	params := bloom_shipper.MetaSearchParams{
-		TenantID:       tenant,
-		MinFingerprint: minFp,
-		MaxFingerprint: maxFp,
-		StartTimestamp: start.UnixNano(),
-		EndTimestamp:   end.UnixNano(),
-	}
-	metas, err := bs.client.GetAll(ctx, params)
-	if err != nil {
-		return nil, err
-	}
-	var maxBlocks int
-	for i := range metas {
-		maxBlocks += len(metas[i].Blocks)
-	}
-	blocks := make([]bloom_shipper.BlockRef, 0, maxBlocks)
-	for i := range metas {
-		blocks = append(blocks, metas[i].Blocks...)
-	}
-	return blocks, nil
 }
 
 type Store interface {
@@ -126,25 +78,17 @@ func (bs *BloomStore) FilterChunkRefs(ctx context.Context, tenant string, from, 
 
 func (bs *BloomStore) blooms(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) (*bloomFilters, error) {
 	bf := &bloomFilters{}
-	bs.shipper.ForEachBloom(ctx, tenant, from, through, fingerprints, func(f BloomFilter) error {
-		bf.add(f)
+	bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq BlockQuerier) error {
 		return nil
 	})
 	return bf, nil
 }
 
 type bloomFilters struct {
-	filters []BloomFilter
 }
 
 func newBloomFilters(size int) *bloomFilters {
-	return &bloomFilters{
-		filters: make([]BloomFilter, 0),
-	}
-}
-
-func (bf *bloomFilters) add(f BloomFilter) {
-	bf.filters = append(bf.filters, f)
+	return &bloomFilters{}
 }
 
 func (bf *bloomFilters) FilterChunkRefs(ctx context.Context, tenant string, from, through time.Time, chunkRefs []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error) {
