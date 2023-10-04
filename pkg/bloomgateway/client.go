@@ -26,8 +26,8 @@ import (
 	"github.com/grafana/loki/pkg/util"
 )
 
-// BloomGatewayGRPCPool represents a pool of gRPC connections to different index gateway instances.
-type BloomGatewayGRPCPool struct {
+// GRPCPool represents a pool of gRPC connections to different index gateway instances.
+type GRPCPool struct {
 	grpc_health_v1.HealthClient
 	logproto.BloomGatewayClient
 	io.Closer
@@ -35,13 +35,13 @@ type BloomGatewayGRPCPool struct {
 
 // NewBloomGatewayGRPCPool instantiates a new pool of GRPC connections for the Bloom Gateway
 // Internally, it also instantiates a protobuf bloom gateway client and a health client.
-func NewBloomGatewayGRPCPool(address string, opts []grpc.DialOption) (*BloomGatewayGRPCPool, error) {
+func NewBloomGatewayGRPCPool(address string, opts []grpc.DialOption) (*GRPCPool, error) {
 	conn, err := grpc.Dial(address, opts...)
 	if err != nil {
 		return nil, errors.Wrap(err, "new grpc pool dial")
 	}
 
-	return &BloomGatewayGRPCPool{
+	return &GRPCPool{
 		Closer:             conn,
 		HealthClient:       grpc_health_v1.NewHealthClient(conn),
 		BloomGatewayClient: logproto.NewBloomGatewayClient(conn),

@@ -87,7 +87,7 @@ func New(cfg Config, schemaCfg config.SchemaConfig, storageCfg storage.Config, s
 		ConvertChunkRefToChunkID: schemaCfg.ExternalKey,
 	}
 
-	bloomShipper, err := bloomshipper.NewBloomShipper(logger)
+	bloomShipper, err := bloomshipper.NewBloomShipper(bloomshipper.Config{}, schemaCfg, storageCfg, cm, logger)
 	if err != nil {
 		return nil, err
 	}

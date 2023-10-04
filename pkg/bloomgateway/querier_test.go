@@ -26,13 +26,13 @@ func (c *noopClient) FilterChunks(ctx context.Context, tenant string, from model
 
 func TestBloomQuerier(t *testing.T) {
 	logger := log.NewNopLogger()
+	tenant := "fake"
 
 	t.Run("client not called when filters are empty", func(t *testing.T) {
 		c := &noopClient{}
 		bq := NewBloomQuerier(c, logger)
 
 		ctx := context.Background()
-		tenant := "fake"
 		through := model.Now()
 		from := through.Add(-12 * time.Hour)
 		chunkRefs := []*logproto.ChunkRef{
@@ -52,7 +52,6 @@ func TestBloomQuerier(t *testing.T) {
 		bq := NewBloomQuerier(c, logger)
 
 		ctx := context.Background()
-		tenant := "fake"
 		through := model.Now()
 		from := through.Add(-12 * time.Hour)
 		chunkRefs := []*logproto.ChunkRef{}
@@ -70,7 +69,6 @@ func TestBloomQuerier(t *testing.T) {
 		bq := NewBloomQuerier(c, logger)
 
 		ctx := context.Background()
-		tenant := "fake"
 		through := model.Now()
 		from := through.Add(-12 * time.Hour)
 		chunkRefs := []*logproto.ChunkRef{
@@ -85,5 +83,4 @@ func TestBloomQuerier(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, res)
 	})
-
 }

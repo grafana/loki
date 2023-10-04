@@ -7,6 +7,8 @@ import (
 	"github.com/go-kit/log"
 	"github.com/go-kit/log/level"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/storage"
+	"github.com/grafana/loki/pkg/storage/config"
 )
 
 // TODO(chaudum): This is just a placeholder and needs to be replaced by actual
@@ -30,11 +32,17 @@ type Shipper interface {
 }
 
 type NoopBloomShipper struct {
+	cfg    Config
 	logger log.Logger
 }
 
-func NewBloomShipper(logger log.Logger) (*NoopBloomShipper, error) {
-	return &NoopBloomShipper{logger: log.With(logger, "component", "noop-bloom-shipper")}, nil
+// NewBloomShipper creates a new BloomShipper struct.
+// TODO(chaudum): Replace NoopBloomShipper with actual implementation.
+func NewBloomShipper(cfg Config, _ config.SchemaConfig, _ storage.Config, _ storage.ClientMetrics, logger log.Logger) (*NoopBloomShipper, error) {
+	return &NoopBloomShipper{
+		cfg:    cfg,
+		logger: log.With(logger, "component", "noop-bloom-shipper"),
+	}, nil
 }
 
 func (bs *NoopBloomShipper) Stop() {
@@ -78,10 +86,10 @@ func (bs *BloomStore) FilterChunkRefs(ctx context.Context, tenant string, from, 
 
 func (bs *BloomStore) blooms(ctx context.Context, tenant string, from, through time.Time, fingerprints []uint64) (*bloomFilters, error) {
 	bf := &bloomFilters{}
-	bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq BlockQuerier) error {
+	err := bs.shipper.ForEachBlock(ctx, tenant, from, through, fingerprints, func(bq BlockQuerier) error {
 		return nil
 	})
-	return bf, nil
+	return bf, err
 }
 
 type bloomFilters struct {
