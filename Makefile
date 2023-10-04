@@ -793,7 +793,7 @@ CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG := "doc-example:skip-validation=true"
 # Validate the example configurations that we provide in ./docs/sources/configure/examples
 # We run the validation only for complete examples, not snippets.
 # Complete examples should contain "Example" in their file name.
-validate-example-configs: #loki
+validate-example-configs: loki
 	for f in $$(grep -rL $(CONFIG_EXAMPLES_SKIP_VALIDATION_FLAG) $(CONFIG_EXAMPLES_PATH)/*.yaml); do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
