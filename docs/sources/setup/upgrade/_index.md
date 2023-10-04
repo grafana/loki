@@ -78,6 +78,10 @@ This new metric will provide a more clear signal that there is an issue with ing
 
 1. `frontend.embedded-cache.max-size-mb` Embedded results cache size now defaults to 100MB.
 
+#### Write dedupe cache is deprecated
+Write dedupe cache is deprecated because it not required by the newer single store indexes ([TSDB]({{< relref "../../operations/storage/tsdb" >}}) and [boltdb-shipper]({{< relref "../../operations/storage/boltdb-shipper" >}})).
+If you using a [legacy index type]({{< relref "../../storage#index-storage" >}}), consider migrating to TSDB (recommended).
+
 #### Embedded cache metric changes
 
 - The following embedded cache metrics are removed. Instead use `loki_cache_fetched_keys`, `loki_cache_hits`, `loki_cache_request_duration_seconds` which instruments requests made to the configured cache (`embeddedcache`, `memcached` or `redis`).
