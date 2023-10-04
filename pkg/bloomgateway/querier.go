@@ -9,12 +9,6 @@ import (
 	"github.com/prometheus/common/model"
 )
 
-type noopBloomQuerier struct{}
-
-func (bq *noopBloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error) {
-	return chunkRefs, nil
-}
-
 // BloomQuerier is a store-level abstraction on top of Client
 // It is used by the index gateway to filter ChunkRefs based on given line fiter expression.
 type BloomQuerier struct {
@@ -27,6 +21,10 @@ func NewBloomQuerier(c Client, logger log.Logger) *BloomQuerier {
 }
 
 func (bq *BloomQuerier) FilterChunkRefs(ctx context.Context, tenant string, from, through model.Time, chunkRefs []*logproto.ChunkRef, filters ...*logproto.LineFilterExpression) ([]*logproto.ChunkRef, error) {
+	// Shortcut that does not require any filtering
+	if len(chunkRefs) == 0 || len(filters) == 0 {
+		return chunkRefs, nil
+	}
 	// The indexes of the chunks slice correspond to the indexes of the fingerprint slice.
 	fingerprints := make([]uint64, 0, len(chunkRefs))
 	chunks := make([][]*logproto.ChunkRef, 0, len(chunkRefs))
