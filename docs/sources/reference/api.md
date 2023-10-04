@@ -27,6 +27,10 @@ A [list of clients]({{< relref "../send-data" >}}) can be found in the clients d
 
 ### Query endpoints
 
+{{% admonition type="note" %}}
+Requests sent to the query endpoints must use valid LogQL syntax. For more information, see the [LogQL]({{< relref "../query" >}}) section of the documentation.
+{{% /admonition %}}
+
 These HTTP endpoints are exposed by the `querier`, `query-frontend`, `read`, and `all` components:
 
 - [`GET /loki/api/v1/query`](#query-logs-at-a-single-point-in-time)
@@ -259,7 +263,7 @@ GET /loki/api/v1/query
 This type of query is often referred to as an instant query. Instant queries are mostly used for metric type LogQL queries.
 It accepts the following query parameters in the URL:
 
-- `query`: The [LogQL]({{< relref "../query" >}}) query to perform.
+- `query`: The [LogQL]({{< relref "../query" >}}) query to perform.  Requests that do not use valid LogQL syntax will return errors.
 - `limit`: The max number of entries to return. It defaults to `100`. Only applies to query types which produce a stream (log lines) response.
 - `time`: The evaluation time for the query as a nanosecond Unix epoch or another [supported format](#timestamps). Defaults to now.
 - `direction`: Determines the sort order of logs. Supported values are `forward` or `backward`. Defaults to `backward`.
