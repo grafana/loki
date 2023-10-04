@@ -10,7 +10,6 @@ import (
 	"github.com/go-kit/log"
 	"github.com/gogo/status"
 	"github.com/grafana/dskit/concurrency"
-	"github.com/grafana/dskit/httpgrpc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -19,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 )
@@ -38,7 +38,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			return nil, loopClient.Context().Err()
 		})
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.HTTPResponse{}, nil)
+		requestHandler.On("Do", mock.Anything, mock.Anything).Return(&queryrange.LokiResponse{}, nil)
 
 		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
 
@@ -73,7 +73,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 		workerCtx, workerCancel := context.WithCancel(context.Background())
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
+		requestHandler.On("Do", mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 			// Cancel the worker context while the query execution is in progress.
 			workerCancel()
 
@@ -82,7 +82,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 
 			// Intentionally slow down the query execution, to double check the worker waits until done.
 			time.Sleep(time.Second)
-		}).Return(&httpgrpc.HTTPResponse{}, nil)
+		}).Return(&queryrange.LokiResponse{}, nil)
 
 		startTime := time.Now()
 		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
@@ -114,7 +114,7 @@ func TestSchedulerProcessor_processQueriesOnSingleStream(t *testing.T) {
 			return nil, status.Error(codes.Unknown, schedulerpb.ErrSchedulerIsNotRunning.Error())
 		})
 
-		requestHandler.On("Handle", mock.Anything, mock.Anything).Return(&httpgrpc.HTTPResponse{}, nil)
+		requestHandler.On("Do", mock.Anything, mock.Anything).Return(&queryrange.LokiResponse{}, nil)
 
 		sp.processQueriesOnSingleStream(workerCtx, nil, "127.0.0.1")
 
