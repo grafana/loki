@@ -51,7 +51,7 @@ storage_config:
 
 # This is a complete configuration to deploy Loki backed by a s3-compatible API
 # like MinIO for storage.
-# The index will be shipped to the storage via tsdb-shipper.
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
 
@@ -108,7 +108,7 @@ storage_config:
 ```yaml
 
 # This is a complete configuration to deploy Loki backed by a GCS.
-# The index will be shipped to storage via tsdb-shipper.
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
 
