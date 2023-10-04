@@ -1,4 +1,4 @@
-# This partial configuration uses Alibaba for chunk storage
+# This partial configuration uses Alibaba for chunk storage.
 
 schema_config:
   configs:

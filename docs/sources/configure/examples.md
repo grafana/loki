@@ -8,7 +8,7 @@ description: Loki Configuration Examples
 
 ```yaml
 
-# This is a complete configuration to deploy Loki backed by the filesystem
+# This is a complete configuration to deploy Loki backed by the filesystem.
 # The index will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
@@ -39,6 +39,8 @@ storage_config:
     active_index_directory: /tmp/loki/index
     cache_location: /tmp/loki/index_cache
     shared_store: filesystem
+  filesystem:
+    directory: /tmp/loki/chunks
 
 ```
 
@@ -91,7 +93,7 @@ storage_config:
 ```yaml
 
 # If you don't wish to hard-code S3 credentials you can also configure an EC2
-# instance role by changing the `storage_config` section
+# instance role by changing the `storage_config` section.
 
 storage_config:
   aws:
@@ -147,7 +149,7 @@ storage_config:
 
 ```yaml
 
-# This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS)
+# This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS).
 # The index will be shipped to the storage via tsdb-shipper.
 
 schema_config:
@@ -174,26 +176,40 @@ storage_config:
 ```
 
 
+## 6-Compactor-Snippet.yaml
+
+```yaml
+
+# This partial configuration sets the compactor to use S3 and run the compaction every 5 minutes.
+# Downloaded chunks for compaction are stored in /loki/compactor.
+
+compactor:
+  working_directory: /tmp/loki/compactor
+  shared_store: s3
+  compaction_interval: 5m
+
+```
+
+
 ## 7-Schema-Migration-Snippet.yaml
 
 ```yaml
 
 schema_config:
   configs:
-    # Starting from 2018-04-15 Loki should store indexes on BoltDB
-    # using weekly periodic tables and chunks on filesystem.
+    # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
+    # using daily periodic tables and chunks on filesystem.
     # The index tables will be prefixed with "index_".
   - from: "2018-04-15"
     store: boltdb-shipper
     object_store: filesystem
-    schema: v12
+    schema: v11
     index:
-        period: 168h
+        period: 24h
         prefix: index_
 
-  # Starting from 2023-6-15 Loki should store indexes on TSDB
+  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v12 schema
   # using daily periodic tables and chunks on AWS S3.
-  # The schema version is also bumped to v13.
   - from: "2023-06-15"
     store: tsdb
     object_store: s3
@@ -210,7 +226,7 @@ schema_config:
 
 ```yaml
 
-# This partial configuration uses Alibaba for chunk storage
+# This partial configuration uses Alibaba for chunk storage.
 
 schema_config:
   configs:
@@ -240,7 +256,7 @@ storage_config:
 
 ```yaml
 
-# This partial configuration uses S3 for chunk storage and a KMS CMK for encryption
+# This partial configuration uses S3 for chunk storage and a KMS CMK for encryption.
 
 storage_config:
   aws:
@@ -400,22 +416,7 @@ memberlist:
 ```
 
 
-## 16-Compactor-Snippet.yaml
-
-```yaml
-
-# This partial configuration sets the compactor to use S3 and run the compaction every 5 minutes.
-# Downloaded chunks for compaction are stored in /loki/compactor.
-
-compactor:
-  working_directory: /tmp/loki/compactor
-  shared_store: s3
-  compaction_interval: 5m
-
-```
-
-
-## 17-(Deprecated)-Cassandra-Snippet.yaml
+## 16-(Deprecated)-Cassandra-Snippet.yaml
 
 ```yaml
 
@@ -447,7 +448,7 @@ storage_config:
 ```
 
 
-## 18-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
+## 17-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
 
 ```yaml
 
