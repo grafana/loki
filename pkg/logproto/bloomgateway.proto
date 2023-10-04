@@ -30,6 +30,5 @@ message FilterChunkRefResponse {
 }
 
 service BloomGateway {
-  rpc FilterChunkRefs(FilterChunkRefRequest) returns (FilterChunkRefResponse) {};
+  rpc FilterChunkRefs(FilterChunkRefRequest) returns (FilterChunkRefResponse) {}
 }
-
