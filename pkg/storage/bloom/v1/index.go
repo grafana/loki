@@ -363,7 +363,9 @@ func (s *SeriesWithOffset) Encode(
 
 func (s *SeriesWithOffset) Decode(dec *encoding.Decbuf, previousFp model.Fingerprint, previousOffset BloomOffset) (model.Fingerprint, BloomOffset, error) {
 	s.Fingerprint = previousFp + model.Fingerprint(dec.Be64())
-	s.Offset.Decode(dec, previousOffset)
+	if err := s.Offset.Decode(dec, previousOffset); err != nil {
+		return 0, BloomOffset{}, errors.Wrap(err, "decoding bloom offset")
+	}
 
 	// TODO(owen-d): use pool
 	s.Chunks = make([]ChunkRef, dec.Uvarint())

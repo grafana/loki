@@ -412,11 +412,12 @@ func (b *IndexBuilder) Close() error {
 	for _, h := range b.pages {
 		h.Encode(b.scratch)
 	}
+
 	// put offset to beginning of header section
 	// cannot be varint encoded because it's offset will be calculated as
 	// the 8 bytes prior to the checksum
 	b.scratch.PutBE64(uint64(b.offset))
-	crc32Hash := Crc32HashPool.Get().(hash.Hash32)
+	crc32Hash := Crc32HashPool.Get()
 	defer Crc32HashPool.Put(crc32Hash)
 	// wrap with final checksum
 	b.scratch.PutHash(crc32Hash)
