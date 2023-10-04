@@ -8,6 +8,7 @@ import (
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
+	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
 type QuerierHandler struct {
@@ -62,6 +63,11 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 			Status: "success",
 			Data:   res.Values,
 		}, nil
+	case *logproto.IndexStatsRequest:
+			// TODO: h.api.IndexStatsHandler(ctx, request)
+			return &queryrange.IndexStatsResponse{
+				Response: &stats.Stats{},
+			}, nil
 	default:
 		// TODO: This should be a user error
 		return nil, fmt.Errorf("unsupported query type %T", req)

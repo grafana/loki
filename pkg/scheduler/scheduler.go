@@ -30,6 +30,7 @@ import (
 	"github.com/grafana/dskit/tenant"
 
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v2/frontendv2pb"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/scheduler/queue"
 	"github.com/grafana/loki/pkg/scheduler/schedulerpb"
 	"github.com/grafana/loki/pkg/util"
@@ -195,6 +196,7 @@ type schedulerRequest struct {
 	tenantID        string
 	queryID         uint64
 	request         *httpgrpc.HTTPRequest
+	queryRequest    *queryrange.QueryRequest
 	statsEnabled    bool
 
 	queueTime time.Time
@@ -337,6 +339,7 @@ func (s *Scheduler) enqueueRequest(frontendContext context.Context, frontendAddr
 		tenantID:        msg.UserID,
 		queryID:         msg.QueryID,
 		request:         msg.HttpRequest,
+		queryRequest:    msg.QueryRequest,
 		statsEnabled:    msg.StatsEnabled,
 	}
 
@@ -482,6 +485,7 @@ func (s *Scheduler) forwardRequestToQuerier(querier schedulerpb.SchedulerForQuer
 			FrontendAddress: req.frontendAddress,
 			HttpRequest:     req.request,
 			StatsEnabled:    req.statsEnabled,
+			QueryRequest:    req.queryRequest,
 		})
 		if err != nil {
 			errCh <- err
