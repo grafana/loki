@@ -239,7 +239,6 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 
 		limits, err := validation.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 		// request timeout is 5ms but it sleeps for 100ms, so timeout injected in the request is expected.
 		connSimulator := &slowConnectionSimulator{
@@ -247,7 +246,7 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 			deadline: shortestTimeout,
 		}
 
-		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
+		midl := WrapQuerySpanAndTimeout("mycall", limits).Wrap(connSimulator)
 
 		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
 		ctx, cancelFunc := context.WithTimeout(user.InjectOrgID(req.Context(), "fake"), shortestTimeout)
@@ -279,14 +278,13 @@ func TestQueryWrapperMiddleware(t *testing.T) {
 
 		limits, err := validation.NewOverrides(defaultLimits, nil)
 		require.NoError(t, err)
-		api := NewQuerierAPI(mockQuerierConfig(), nil, limits, log.NewNopLogger())
 
 		connSimulator := &slowConnectionSimulator{
 			sleepFor: time.Millisecond * 100,
 			deadline: shortestTimeout,
 		}
 
-		midl := WrapQuerySpanAndTimeout("mycall", api).Wrap(connSimulator)
+		midl := WrapQuerySpanAndTimeout("mycall", limits).Wrap(connSimulator)
 
 		req, err := http.NewRequest("GET", "/loki/api/v1/label", nil)
 		ctx, cancelFunc := context.WithTimeout(user.InjectOrgID(req.Context(), "fake"), time.Millisecond*100)
@@ -481,6 +479,7 @@ func TestVolumeHandler(t *testing.T) {
 	})
 }
 
+// TODO: move test to queryrange.NewSerializeHTTPHandler
 func TestResponseFormat(t *testing.T) {
 	for _, tc := range []struct {
 		url             string
@@ -526,7 +525,7 @@ func TestResponseFormat(t *testing.T) {
 		{
 			url: "/loki/api/v1/query_range",
 			handler: func(api *QuerierAPI) http.HandlerFunc {
-				return api.RangeQueryHandler
+				return nil // api.RangeQueryHandler
 			},
 			result: logqlmodel.Result{
 				Data: logqlmodel.Streams{

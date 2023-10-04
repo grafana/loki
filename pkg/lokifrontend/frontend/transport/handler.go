@@ -284,15 +284,7 @@ func (a *grpcRoundTripperToHandlerAdapter) Do(ctx context.Context, req queryrang
 		return nil, err
 	}
 
-	httpResp := &http.Response{
-		StatusCode:    int(grpcResp.Code),
-		Body:          &buffer{buff: grpcResp.Body, ReadCloser: io.NopCloser(bytes.NewReader(grpcResp.Body))},
-		Header:        http.Header{},
-		ContentLength: int64(len(grpcResp.Body)),
-	}
-	for _, h := range grpcResp.Headers {
-		httpResp.Header[h.Key] = h.Values
-	}
+	httpResp := HttpgrpcToHTTPResponse(grpcResp)
 
 	resp, err := a.codec.DecodeResponse(ctx, httpResp, req)
 	if err != nil {

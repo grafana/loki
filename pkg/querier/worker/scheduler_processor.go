@@ -172,16 +172,16 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	resp, _ := queryrange.ResponseToQueryResponse(ctx, response)
 	// TODO(karsten): add error type to QueryResponse
 	/*
-	if err != nil {
-		var ok bool
-		response, ok = httpgrpc.HTTPResponseFromError(err)
-		if !ok {
-			response = &httpgrpc.HTTPResponse{
-				Code: http.StatusInternalServerError,
-				Body: []byte(err.Error()),
+		if err != nil {
+			var ok bool
+			response, ok = httpgrpc.HTTPResponseFromError(err)
+			if !ok {
+				response = &httpgrpc.HTTPResponse{
+					Code: http.StatusInternalServerError,
+					Body: []byte(err.Error()),
+				}
 			}
 		}
-	}
 	*/
 
 	logger = log.With(logger, "frontend", frontendAddress)
@@ -207,9 +207,9 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 		func(c client.PoolClient) error {
 			// Response is empty and uninteresting.
 			_, err = c.(frontendv2pb.FrontendForQuerierClient).QueryResult(ctx, &frontendv2pb.QueryResultRequest{
-				QueryID:      queryID,
-				HttpResponse: nil, // TODO: set http response for backwards compatibility
-				Stats:        stats,
+				QueryID:       queryID,
+				HttpResponse:  nil, // TODO: set http response for backwards compatibility
+				Stats:         stats,
 				QueryResponse: &resp,
 			})
 			if err != nil {

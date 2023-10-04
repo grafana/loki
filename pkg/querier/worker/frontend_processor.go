@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/go-kit/log"
@@ -12,9 +13,9 @@ import (
 	httpgrpc_server "github.com/grafana/dskit/httpgrpc/server"
 	"google.golang.org/grpc"
 
+	"github.com/grafana/loki/pkg/lokifrontend/frontend/transport"
 	"github.com/grafana/loki/pkg/lokifrontend/frontend/v1/frontendv1pb"
 	"github.com/grafana/loki/pkg/querier/queryrange"
-	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_stats "github.com/grafana/loki/pkg/querier/stats"
 )
 
@@ -34,7 +35,8 @@ func newFrontendProcessor(cfg Config, handler RequestHandler, log log.Logger) pr
 	}
 }
 
-// Handles incoming queries from frontend.
+// Handles incoming queries from frontend. This is used if there's no query-scheduler between the frontend and querier.
+// This should be used by Frontend V1.
 type frontendProcessor struct {
 	handler        RequestHandler
 	maxMessageSize int
@@ -96,9 +98,9 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 			// and cancel the query.  We don't actually handle queries in parallel
 			// here, as we're running in lock step with the server - each Recv is
 			// paired with a Send.
-			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(_ queryrangebase.Response, stats *querier_stats.Stats) error {
+			go fp.runRequest(ctx, request.HttpRequest, request.StatsEnabled, func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error {
 				return c.Send(&frontendv1pb.ClientToFrontend{
-					HttpResponse: nil, // TODO: decide if we want to support frontend or not
+					HttpResponse: response,
 					Stats:        stats,
 				})
 			})
@@ -115,7 +117,7 @@ func (fp *frontendProcessor) process(c frontendv1pb.Frontend_ProcessClient) erro
 	}
 }
 
-func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response queryrangebase.Response, stats *querier_stats.Stats) error) {
+func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.HTTPRequest, statsEnabled bool, sendResponse func(response *httpgrpc.HTTPResponse, stats *querier_stats.Stats) error) {
 	var stats *querier_stats.Stats
 	if statsEnabled {
 		stats, ctx = querier_stats.ContextWithEmptyStats(ctx)
@@ -126,34 +128,42 @@ func (fp *frontendProcessor) runRequest(ctx context.Context, request *httpgrpc.H
 	req, _ := queryrange.DefaultCodec.DecodeRequest(ctx, httpReq, nil)
 
 	// TODO return error code
-	response, _ := fp.handler.Do(ctx, req)
-	/*
+	response, err := fp.handler.Do(ctx, req)
+
+	var httpResp *http.Response
+	var grpcResp *httpgrpc.HTTPResponse
+	if err == nil {
+		httpResp, err = queryrange.DefaultCodec.EncodeResponse(ctx, httpReq, response)
+		if err == nil {
+			grpcResp, err = transport.HTTPtoHttpgrpcResponse(httpResp)
+		}
+	}
+
 	if err != nil {
 		var ok bool
-		response, ok = httpgrpc.HTTPResponseFromError(err)
+		grpcResp, ok = httpgrpc.HTTPResponseFromError(err)
 		if !ok {
-			response = &httpgrpc.HTTPResponse{
+			grpcResp = &httpgrpc.HTTPResponse{
 				Code: http.StatusInternalServerError,
 				Body: []byte(err.Error()),
 			}
 		}
 	}
-	*/
 
 	// Ensure responses that are too big are not retried.
 	// TODO
 	/*
-	if len(response.Body) >= fp.maxMessageSize {
-		errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), fp.maxMessageSize)
-		response = &httpgrpc.HTTPResponse{
-			Code: http.StatusRequestEntityTooLarge,
-			Body: []byte(errMsg),
+		if len(response.Body) >= fp.maxMessageSize {
+			errMsg := fmt.Sprintf("response larger than the max (%d vs %d)", len(response.Body), fp.maxMessageSize)
+			response = &httpgrpc.HTTPResponse{
+				Code: http.StatusRequestEntityTooLarge,
+				Body: []byte(errMsg),
+			}
+			level.Error(fp.log).Log("msg", "error processing query", "err", errMsg)
 		}
-		level.Error(fp.log).Log("msg", "error processing query", "err", errMsg)
-	}
 	*/
 
-	if err := sendResponse(response, stats); err != nil {
+	if err := sendResponse(grpcResp, stats); err != nil {
 		level.Error(fp.log).Log("msg", "error processing requests", "err", err)
 	}
 }

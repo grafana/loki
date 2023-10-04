@@ -417,7 +417,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 			}
 		}
 
-		httpResp := transport.HttpgrpcToHTTP(resp.HttpResponse)
+		httpResp := transport.HttpgrpcToHTTPResponse(resp.HttpResponse)
 		return f.codec.DecodeResponse(ctx, httpResp, req)
 	}
 }

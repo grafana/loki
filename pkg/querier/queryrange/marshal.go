@@ -76,8 +76,8 @@ func WriteLabelResponseProtobuf(version loghttp.Version, l logproto.LabelRespons
 	p := QueryResponse{
 		Response: &QueryResponse_Labels{
 			Labels: &LokiLabelNamesResponse{
-				Status:  "success",
-				Data:    l.Values,
+				Status: "success",
+				Data:   l.Values,
 			},
 		},
 	}

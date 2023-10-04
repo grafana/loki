@@ -25,6 +25,10 @@ type grpcRoundTripperAdapter struct {
 	roundTripper GrpcRoundTripper
 }
 
+type Buffer interface {
+	Bytes() []byte
+}
+
 type buffer struct {
 	buff []byte
 	io.ReadCloser
@@ -45,10 +49,10 @@ func (a *grpcRoundTripperAdapter) RoundTrip(r *http.Request) (*http.Response, er
 		return nil, err
 	}
 
-	return HttpgrpcToHTTP(resp), nil
+	return HttpgrpcToHTTPResponse(resp), nil
 }
 
-func HttpgrpcToHTTP(resp *httpgrpc.HTTPResponse) *http.Response {
+func HttpgrpcToHTTPResponse(resp *httpgrpc.HTTPResponse) *http.Response {
 	httpResp := &http.Response{
 		StatusCode:    int(resp.Code),
 		Body:          &buffer{buff: resp.Body, ReadCloser: io.NopCloser(bytes.NewReader(resp.Body))},
@@ -60,4 +64,27 @@ func HttpgrpcToHTTP(resp *httpgrpc.HTTPResponse) *http.Response {
 	}
 
 	return httpResp
+}
+
+func HTTPtoHttpgrpcResponse(resp *http.Response) (*httpgrpc.HTTPResponse, error) {
+	var buf []byte
+	var err error
+	if buffer, ok := resp.Body.(Buffer); ok {
+		buf = buffer.Bytes()
+	} else {
+		buf, err = io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, httpgrpc.Errorf(http.StatusInternalServerError, "error decoding response: %v", err)
+		}
+	}
+
+	grpcResp := &httpgrpc.HTTPResponse{
+		Code: int32(resp.StatusCode),
+		Body: buf,
+	}
+	for k, v := range resp.Header {
+		grpcResp.Headers = append(grpcResp.Headers, &httpgrpc.Header{Key: k, Values: v})
+	}
+
+	return grpcResp, nil
 }

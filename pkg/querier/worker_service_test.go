@@ -1,6 +1,7 @@
 package querier
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
 	querier_worker "github.com/grafana/loki/pkg/querier/worker"
 )
 
@@ -30,6 +32,10 @@ func Test_InitQuerierService(t *testing.T) {
 		}),
 	}
 
+	handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
+		return nil, nil
+	})
+
 	testContext := func(config WorkerServiceConfig, authMiddleware middleware.Interface) (*mux.Router, services.Service) {
 		externalRouter := mux.NewRouter()
 
@@ -44,6 +50,7 @@ func Test_InitQuerierService(t *testing.T) {
 			pathPrefix,
 			mockQueryHandlers,
 			alwaysExternalHandlers,
+			handler,
 			externalRouter,
 			http.HandlerFunc(externalRouter.ServeHTTP),
 			authMiddleware,
