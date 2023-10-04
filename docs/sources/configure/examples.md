@@ -181,7 +181,7 @@ storage_config:
 ```yaml
 
 # This partial configuration sets the compactor to use S3 and run the compaction every 5 minutes.
-# Downloaded chunks for compaction are stored in /loki/compactor.
+# Downloaded index files for compaction are stored in /loki/compactor.
 
 compactor:
   working_directory: /tmp/loki/compactor
@@ -402,7 +402,6 @@ storage_config:
 
 common:
   ring:
-    instance_addr: 127.0.0.1
     kvstore:
       store: memberlist
   replication_factor: 1
