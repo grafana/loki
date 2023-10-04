@@ -346,26 +346,7 @@ func (f *Frontend) Do(ctx context.Context, req queryrangebase.Request) (queryran
 		// TODO(karsten): track stats if no error
 
 		if resp.QueryResponse != nil {
-			switch concrete := resp.QueryResponse.Response.(type) {
-			case *queryrange.QueryResponse_Series:
-				return concrete.Series, nil
-			case *queryrange.QueryResponse_Labels:
-				return concrete.Labels, nil
-			case *queryrange.QueryResponse_Stats:
-				return concrete.Stats, nil
-			case *queryrange.QueryResponse_Prom:
-				return concrete.Prom, nil
-			case *queryrange.QueryResponse_Streams:
-				return concrete.Streams, nil
-			case *queryrange.QueryResponse_Volume:
-				return concrete.Volume, nil
-			case *queryrange.QueryResponse_TopkSketches:
-				return concrete.TopkSketches, nil
-			case *queryrange.QueryResponse_QuantileSketches:
-				return concrete.QuantileSketches, nil
-			default:
-				return nil, httpgrpc.Errorf(http.StatusInternalServerError, "unsupported QueryResponse response type, got (%T)", resp.QueryResponse.Response)
-			}
+			return queryrange.QueryResponseUnwrap(resp.QueryResponse)
 		}
 
 		if stats.ShouldTrackHTTPGRPCResponse(resp.HttpResponse) {

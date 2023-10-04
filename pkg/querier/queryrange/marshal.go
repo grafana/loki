@@ -274,6 +274,29 @@ func ResponseToResult(resp queryrangebase.Response) (logqlmodel.Result, error) {
 	}
 }
 
+func QueryResponseUnwrap(res *QueryResponse) (queryrangebase.Response, error) {
+	switch concrete := res.Response.(type) {
+	case *QueryResponse_Series:
+		return concrete.Series, nil
+	case *QueryResponse_Labels:
+		return concrete.Labels, nil
+	case *QueryResponse_Stats:
+		return concrete.Stats, nil
+	case *QueryResponse_Prom:
+		return concrete.Prom, nil
+	case *QueryResponse_Streams:
+		return concrete.Streams, nil
+	case *QueryResponse_Volume:
+		return concrete.Volume, nil
+	case *QueryResponse_TopkSketches:
+		return concrete.TopkSketches, nil
+	case *QueryResponse_QuantileSketches:
+		return concrete.QuantileSketches, nil
+	default:
+		return nil, fmt.Errorf("unsupported QueryResponse response type, got (%T)", res.Response)
+	}
+}
+
 func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	p := &QueryResponse{}
 
