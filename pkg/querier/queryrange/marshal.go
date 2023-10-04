@@ -316,6 +316,7 @@ func QueryResponseWrap(res queryrangebase.Response) (*QueryResponse, error) {
 	case *LokiLabelNamesResponse:
 		p.Response = &QueryResponse_Labels{response}
 	case *IndexStatsResponse:
+		// TODO: *queryrange.IndexStatsResponse
 		p.Response = &QueryResponse_Stats{response}
 	case *TopKSketchesResponse:
 		p.Response = &QueryResponse_TopkSketches{response}
