@@ -38,6 +38,7 @@ func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, err
 
 	return rt.codec.EncodeResponse(ctx, r, response)
 }
+
 type serializeHTTPHandler struct {
 	codec queryrangebase.Codec
 	next  queryrangebase.Handler
@@ -52,7 +53,7 @@ func NewSerializeHTTPHandler(next queryrangebase.Handler, codec queryrangebase.C
 
 func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
+	sp, ctx := opentracing.StartSpanFromContext(ctx, "serializeHTTPHandler.ServerHTTP")
 	defer sp.Finish()
 
 	request, err := rt.codec.DecodeRequest(ctx, r, nil)
@@ -66,8 +67,21 @@ func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request
 		serverutil.WriteError(err, w)
 	}
 
-	// TODO: pass params and make sure response is the correct type
-	if err := WriteResponse(r, nil, response, w); err != nil {
+	params, err := ParamsFromRequest(request)
+	if err != nil {
+		serverutil.WriteError(err, w)
+	}
+
+	// TODO: we must only wrap a few responses. Ideally the serializers would support these instead of the logmodel.Result
+	// Yet another thing to simplify.
+	v, err := ResponseToResult(response)
+	if err == nil {
+		err = WriteResponse(r, params, v, w)
+	} else {
+		err = WriteResponse(r, params, response, w)
+	}
+
+	if err != nil {
 		serverutil.WriteError(err, w)
 	}
 }

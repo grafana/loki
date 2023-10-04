@@ -780,7 +780,7 @@ func encodeResponseProtobuf(ctx context.Context, res queryrangebase.Response) (*
 	sp, _ := opentracing.StartSpanFromContext(ctx, "codec.EncodeResponse")
 	defer sp.Finish()
 
-	p, err := ResponseToQueryResponse(ctx, res)
+	p, err := QueryResponseWrap(res)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, err.Error())
 	}

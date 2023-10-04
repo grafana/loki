@@ -166,10 +166,10 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 	}
 
 	// TODO: handle error
-	req, _ := queryrange.QueryRequestToRequest(request)
+	req, _ := queryrange.QueryRequestUnwrap(request)
 
 	response, err := sp.handler.Do(ctx, req)
-	resp, _ := queryrange.ResponseToQueryResponse(ctx, response)
+	resp, _ := queryrange.QueryResponseWrap(response)
 	// TODO(karsten): add error type to QueryResponse
 	/*
 		if err != nil {
@@ -210,7 +210,7 @@ func (sp *schedulerProcessor) runRequest(ctx context.Context, logger log.Logger,
 				QueryID:       queryID,
 				HttpResponse:  nil, // TODO: set http response for backwards compatibility
 				Stats:         stats,
-				QueryResponse: &resp,
+				QueryResponse: resp,
 			})
 			if err != nil {
 				level.Error(logger).Log("msg", "error notifying frontend about finished query", "err", err)

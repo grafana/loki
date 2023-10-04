@@ -32,7 +32,7 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 		if err != nil {
 		}
 
-		return queryrange.ValueToResponse(res.Data, params)
+		return queryrange.ResultToResponse(res, params)
 	case *queryrange.LokiInstantRequest:
 		res, err := h.api.InstantQueryHandler(ctx, concrete)
 		if err != nil {
@@ -43,7 +43,7 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 		if err != nil {
 		}
 
-		return queryrange.ValueToResponse(res.Data, params)
+		return queryrange.ResultToResponse(res, params)
 	case *queryrange.LokiLabelNamesRequest:
 		// TODO: LokiLabelNamesRequest should probably be logproto.LabelRequest
 		request := &logproto.LabelRequest{

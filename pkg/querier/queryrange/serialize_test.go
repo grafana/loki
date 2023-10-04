@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/grafana/dskit/user"
+	"github.com/stretchr/testify/require"
+
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/stretchr/testify/require"
 )
 
 func TestResponseFormat(t *testing.T) {
@@ -38,7 +40,7 @@ func TestResponseFormat(t *testing.T) {
 				Statistics: statsResult,
 			},
 			expectedRespone: `{
-				` + statsResultString + `,
+				` + statsResultString + `
 				"streams": [
 				  {
 				    "labels": "{foo=\"bar\"}",
@@ -72,7 +74,7 @@ func TestResponseFormat(t *testing.T) {
 				"status": "success",
 				"data": {
 				  "resultType": "streams",
-				` + statsResultString + `,
+				` + statsResultString + `
 				  "result": [{
 					"stream": {"foo": "bar"},
 					"values": [
@@ -85,15 +87,21 @@ func TestResponseFormat(t *testing.T) {
 	} {
 		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
 			handler := queryrangebase.HandlerFunc(func(ctx context.Context, r queryrangebase.Request) (queryrangebase.Response, error) {
-				return nil, nil // TODO
+				params, err := ParamsFromRequest(r)
+				if err != nil {
+					return nil, err
+				}
+				return ResultToResponse(tc.result, params)
 			})
 			httpHandler := NewSerializeHTTPHandler(handler, DefaultCodec)
 
 			w := httptest.NewRecorder()
-			req := &LokiRequest{} // TODO: define in test cases.
-			encodedReq, err := DefaultCodec.EncodeRequest(context.Background(), req)
-			require.NoError(t, err)
-			httpHandler.ServeHTTP(w, encodedReq)
+			req := httptest.NewRequest(http.MethodGet, tc.url+
+				"?start=0"+
+				"&end=1"+
+				"&query=%7Bfoo%3D%22bar%22%7D", nil)
+			req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
+			httpHandler.ServeHTTP(w, req)
 
 			require.Equalf(t, http.StatusOK, w.Code, "unexpected response: %s", w.Body.String())
 			require.JSONEq(t, tc.expectedRespone, w.Body.String())
