@@ -31,7 +31,6 @@ import (
 	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 	"github.com/grafana/loki/pkg/util"
 	util_log "github.com/grafana/loki/pkg/util/log"
-	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -714,68 +713,4 @@ func validateMatchers(ctx context.Context, limits Limits, matchers []*labels.Mat
 	}
 
 	return nil
-}
-
-type serializeRoundTripper struct {
-	codec queryrangebase.Codec
-	next  queryrangebase.Handler
-}
-
-func NewSerializeRoundTripper(next queryrangebase.Handler, codec queryrangebase.Codec) http.RoundTripper {
-	return &serializeRoundTripper{
-		next:  next,
-		codec: codec,
-	}
-}
-
-func (rt *serializeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
-	defer sp.Finish()
-
-	request, err := rt.codec.DecodeRequest(ctx, r, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	response, err := rt.next.Do(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	return rt.codec.EncodeResponse(ctx, r, response)
-}
-
-type serializeHTTPHandler struct {
-	codec queryrangebase.Codec
-	next  queryrangebase.Handler
-}
-
-func NewSerializeHTTPHandler(next queryrangebase.Handler, codec queryrangebase.Codec) http.Handler {
-	return &serializeHTTPHandler{
-		next:  next,
-		codec: codec,
-	}
-}
-
-func (rt *serializeHTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	sp, ctx := opentracing.StartSpanFromContext(ctx, "limitedRoundTripper.do")
-	defer sp.Finish()
-
-	request, err := rt.codec.DecodeRequest(ctx, r, nil)
-	if err != nil {
-		// TODO: should be HTTP 400
-		serverutil.WriteError(err, w)
-	}
-
-	response, err := rt.next.Do(ctx, request)
-	if err != nil {
-		serverutil.WriteError(err, w)
-	}
-
-	// TODO: pass params and make sure response is the correct type
-	if err := WriteResponse(r, nil, response, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
 }

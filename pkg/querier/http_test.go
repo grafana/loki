@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logqlmodel"
 	"github.com/grafana/loki/pkg/logqlmodel/stats"
 	"github.com/grafana/loki/pkg/validation"
 
@@ -479,102 +478,6 @@ func TestVolumeHandler(t *testing.T) {
 	})
 }
 
-// TODO: move test to queryrange.NewSerializeHTTPHandler
-func TestResponseFormat(t *testing.T) {
-	for _, tc := range []struct {
-		url             string
-		accept          string
-		handler         func(api *QuerierAPI) http.HandlerFunc
-		result          logqlmodel.Result
-		expectedRespone string
-	}{
-		{
-			url: "/api/prom/query",
-			handler: func(api *QuerierAPI) http.HandlerFunc {
-				return api.LogQueryHandler
-			},
-			result: logqlmodel.Result{
-				Data: logqlmodel.Streams{
-					logproto.Stream{
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345).UTC(),
-								Line:      "super line",
-							},
-						},
-						Labels: `{foo="bar"}`,
-					},
-				},
-				Statistics: statsResult,
-			},
-			expectedRespone: `{
-				` + statsResultString + `,
-				"streams": [
-				  {
-				    "labels": "{foo=\"bar\"}",
-				    "entries": [
-				      {
-				        "line": "super line",
-				        "ts": "1970-01-02T10:17:36.789012345Z"
-				      }
-				    ]
-				  }
-				]
-			}`,
-		},
-		{
-			url: "/loki/api/v1/query_range",
-			handler: func(api *QuerierAPI) http.HandlerFunc {
-				return nil // api.RangeQueryHandler
-			},
-			result: logqlmodel.Result{
-				Data: logqlmodel.Streams{
-					logproto.Stream{
-						Entries: []logproto.Entry{
-							{
-								Timestamp: time.Unix(0, 123456789012345).UTC(),
-								Line:      "super line",
-							},
-						},
-						Labels: `{foo="bar"}`,
-					},
-				},
-				Statistics: statsResult,
-			},
-			expectedRespone: `{
-				"status": "success",
-				"data": {
-				  "resultType": "streams",
-				` + statsResultString + `,
-				  "result": [{
-					"stream": {"foo": "bar"},
-					"values": [
-					  ["123456789012345", "super line"]
-					]
-				  }]
-				}
-			}`,
-		},
-	} {
-		t.Run(fmt.Sprintf("%s returns the expected format", tc.url), func(t *testing.T) {
-			engine := newEngineMock()
-			engine.On("Query", mock.Anything, mock.Anything).Return(queryMock{tc.result})
-			api := setupAPIWithEngine(engine)
-
-			req := httptest.NewRequest(http.MethodGet, tc.url+
-				"?start=0"+
-				"&end=1"+
-				"&query=%7Bfoo%3D%22bar%22%7D", nil)
-			req = req.WithContext(user.InjectOrgID(context.Background(), "1"))
-
-			w := makeRequest(t, tc.handler(api), req)
-
-			require.Equalf(t, http.StatusOK, w.Code, "unexpected response: %s", w.Body.String())
-			require.JSONEq(t, tc.expectedRespone, w.Body.String())
-		})
-	}
-}
-
 func makeRequest(t *testing.T, handler http.HandlerFunc, req *http.Request) *httptest.ResponseRecorder {
 	err := req.ParseForm()
 	require.NoError(t, err)
@@ -586,12 +489,5 @@ func makeRequest(t *testing.T, handler http.HandlerFunc, req *http.Request) *htt
 
 func setupAPI(querier *querierMock) *QuerierAPI {
 	api := NewQuerierAPI(Config{}, querier, nil, log.NewNopLogger())
-	return api
-}
-
-func setupAPIWithEngine(engine *engineMock) *QuerierAPI {
-	limits, _ := validation.NewOverrides(validation.Limits{}, mockTenantLimits{})
-	api := NewQuerierAPI(Config{}, nil, limits, log.NewNopLogger())
-	api.engine = engine
 	return api
 }
