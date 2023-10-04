@@ -4,34 +4,12 @@ description: Loki Configuration Examples
 ---
  # Examples
 
-## alibaba-cloud-storage-config.yaml
-
-```yaml
-
-# This partial configuration uses Alibaba for chunk storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    object_store: alibabacloud
-    schema: v11
-    index:
-      prefix: loki_index_
-      period: 168h
-
-storage_config:
-  alibabacloud:
-    bucket: <bucket>
-    endpoint: <endpoint>
-    access_key_id: <access_key_id>
-    secret_access_key: <secret_access_key>
-
-```
-
-
 ## 1-Local-Configuration-Example.yaml
 
 ```yaml
+
+# This is a complete configuration to deploy Loki backed by the filesystem.
+# The index will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
 
@@ -49,12 +27,21 @@ common:
 schema_config:
   configs:
   - from: 2020-05-15
-    store: boltdb-shipper
+    store: tsdb
     object_store: filesystem
-    schema: v11
+    schema: v12
     index:
       prefix: index_
       period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    shared_store: filesystem
+  filesystem:
+    directory: /tmp/loki/chunks
+
 ```
 
 
@@ -62,9 +49,9 @@ schema_config:
 
 ```yaml
 
-# This is a complete configuration to deploy Loki backed by a s3-Comaptible API
-# like MinIO for storage. Loki components will use memberlist ring to shard and
-# the index will be shipped to storage via boltdb-shipper.
+# This is a complete configuration to deploy Loki backed by a s3-compatible API
+# like MinIO for storage.
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
 
 auth_enabled: false
 
@@ -75,27 +62,22 @@ common:
   ring:
     instance_addr: 127.0.0.1
     kvstore:
-      store: memberlist
+      store: inmemory
   replication_factor: 1
-  path_prefix: /loki # Update this accordingly, data will be stored here.
-
-memberlist:
-  join_members:
-  # You can use a headless k8s service for all distributor, ingester and querier components.
-  - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
+  path_prefix: /loki
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: boltdb-shipper
+    store: tsdb
     object_store: s3
-    schema: v11
+    schema: v12
     index:
       prefix: index_
       period: 24h
 
 storage_config:
- boltdb_shipper:
+ tsdb_shipper:
    active_index_directory: /loki/index
    cache_location: /loki/index_cache
    shared_store: s3
@@ -103,10 +85,6 @@ storage_config:
    s3: s3://access_key:secret_access_key@custom_endpoint/bucket_name
    s3forcepathstyle: true
 
-compactor:
-  working_directory: /loki/compactor
-  shared_store: s3
-  compaction_interval: 5m
 ```
 
 
@@ -115,107 +93,101 @@ compactor:
 ```yaml
 
 # If you don't wish to hard-code S3 credentials you can also configure an EC2
-# instance role by changing the `storage_config` section
+# instance role by changing the `storage_config` section.
+
+storage_config:
+  aws:
+    s3: s3://region/bucket_name
+      
+
+```
+
+
+## 4-GCS-Example.yaml
+
+```yaml
+
+# This is a complete configuration to deploy Loki backed by a GCS.
+# Index files will be written locally at /loki/index and, eventually, will be shipped to the storage via tsdb-shipper.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+
+common:
+  ring:
+    instance_addr: 127.0.0.1
+    kvstore:
+      store: inmemory
+  replication_factor: 1
+  path_prefix: /loki
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
+    store: tsdb
+    object_store: gcs
+    schema: v12
     index:
-      prefix: loki_
+      prefix: index_
+      period: 24h
+
 storage_config:
-  aws:
-    s3: s3://region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://region
-      
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: gcs
+  gcs:
+    bucket_name: replace_by_your_bucked_name
+    
+
 ```
 
 
-## 4-BOS-Example.yaml
+## 5-BOS-Example.yaml
 
 ```yaml
+
+# This is a partial configuration to deploy Loki backed by Baidu Object Storage (BOS).
+# The index will be shipped to the storage via tsdb-shipper.
 
 schema_config:
   configs:
     - from: 2020-05-15
-      store: boltdb-shipper
+      store: tsdb
       object_store: bos
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h
 
 storage_config:
-  boltdb_shipper:
+  tsdb_shipper:
     active_index_directory: /loki/index
     cache_location: /loki/index_cache
     shared_store: bos
-
   bos:
     bucket_name: bucket_name_1
     endpoint: bj.bcebos.com
     access_key_id: access_key_id
     secret_access_key: secret_access_key
 
+```
+
+
+## 6-Compactor-Snippet.yaml
+
+```yaml
+
+# This partial configuration sets the compactor to use S3 and run the compaction every 5 minutes.
+# Downloaded index files for compaction are stored in /loki/compactor.
+
 compactor:
   working_directory: /tmp/loki/compactor
-  shared_store: bos
-```
+  shared_store: s3
+  compaction_interval: 5m
 
-
-## 5-S3-And-DynamoDB-Snippet.yaml
-
-```yaml
-
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      
-```
-
-
-## 6-Cassandra-Snippet.yaml
-
-```yaml
-
-# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: cassandra
-    object_store: filesystem
-    schema: v11
-    index:
-      prefix: cassandra_table
-      period: 168h
-
-storage_config:
-  cassandra:
-    username: cassandra
-    password: cassandra
-    addresses: 127.0.0.1
-    auth: true
-    keyspace: lokiindex
-
-  filesystem:
-    directory: /tmp/loki/chunks
-    
 ```
 
 
@@ -225,70 +197,84 @@ storage_config:
 
 schema_config:
   configs:
-    # Starting from 2018-04-15 Loki should store indexes on Cassandra
-    # using weekly periodic tables and chunks on filesystem.
+    # Starting from 2018-04-15 Loki should store indexes on BoltDB with the v11 schema
+    # using daily periodic tables and chunks on filesystem.
     # The index tables will be prefixed with "index_".
   - from: "2018-04-15"
-    store: cassandra
+    store: boltdb-shipper
     object_store: filesystem
     schema: v11
     index:
-        period: 168h
+        period: 24h
         prefix: index_
 
-  # Starting from 2020-6-15 we moved from filesystem to AWS S3 for storing the chunks.
-  - from: "2020-06-15"
-    store: cassandra
+  # Starting from 2023-6-15 Loki should store indexes on TSDB with the v12 schema
+  # using daily periodic tables and chunks on AWS S3.
+  - from: "2023-06-15"
+    store: tsdb
     object_store: s3
-    schema: v11
+    schema: v12
     index:
-        period: 168h
+        period: 24h
         prefix: index_
         
+
 ```
 
 
-## 8-GCS-Snippet.yaml
+## 8-alibaba-cloud-storage-Snippet.yaml
 
 ```yaml
 
-# This partial configuration uses GCS for chunk storage and uses BigTable for index storage
+# This partial configuration uses Alibaba for chunk storage.
 
 schema_config:
   configs:
   - from: 2020-05-15
-    store: bigtable
-    object_store: gcs
-    schema: v11
+    store: tsdb
+    object_store: alibabacloud
+    schema: v12
     index:
-      prefix: loki_index_
-      period: 168h
+      prefix: index_
+      period: 24h
 
 storage_config:
-  bigtable:
-    instance: BIGTABLE_INSTANCE
-    project: BIGTABLE_PROJECT
-  gcs:
-    bucket_name: GCS_BUCKET_NAME
-    
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: alibabacloud
+  alibabacloud:
+    bucket: <bucket>
+    endpoint: <endpoint>
+    access_key_id: <access_key_id>
+    secret_access_key: <secret_access_key>
+
 ```
 
 
-## 9-Expanded-S3-Snippet.yaml
+## 9-S3-With-SSE-KMS-Snippet.yaml
 
 ```yaml
 
-# S3 configuration supports an expanded configuration. 
+# This partial configuration uses S3 for chunk storage and a KMS CMK for encryption.
+
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    sse:
+      type: SSE-KMS
+      kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
+
+```
+
+
+## 10-Expanded-S3-Snippet.yaml
+
+```yaml
+
+# S3 configuration supports an expanded configuration.
 # Either an `s3` endpoint URL can be used, or an expanded configuration can be used.
 
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
 storage_config:
   aws:
     bucketnames: bucket_name1, bucket_name2
@@ -303,32 +289,7 @@ storage_config:
       insecure_skip_verify: false
     s3forcepathstyle: true
     
-```
 
-
-## 10-S3-And-DynamoDB-With-KMS-Snippet.yaml
-
-```yaml
-
-# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage and a KMS CMK for encryption
-
-schema_config:
-  configs:
-  - from: 2020-05-15
-    store: aws
-    object_store: s3
-    schema: v11
-    index:
-      prefix: loki_
-storage_config:
-  aws:
-    s3: s3://access_key:secret_access_key@region/bucket_name
-    sse:
-      type: SSE-KMS
-      kms_key_id: 1234abcd-12ab-34cd-56ef-1234567890ab
-    dynamodb:
-      dynamodb_url: dynamodb://access_key:secret_access_key@region
-      kms_key_id: 0987dcba-09fe-87dc-65ba-ab0987654321
 ```
 
 
@@ -341,14 +302,18 @@ storage_config:
 schema_config:
   configs:
     - from: 2020-10-01
+      store: tsdb
+      object_store: cos
+      schema: v12
       index:
         period: 24h
-        prefix: loki_index_
-      object_store: "cos"
-      schema: v11
-      store: "boltdb-shipper"
+        prefix: index_
 
 storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -368,14 +333,18 @@ storage_config:
 schema_config:
   configs:
     - from: 2020-10-01
+      store: tsdb
+      object_store: cos
+      schema: v12
       index:
         period: 24h
-        prefix: loki_index_
-      object_store: "cos"
-      schema: v11
-      store: "boltdb-shipper"
+        prefix: index_
 
 storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -402,14 +371,18 @@ storage_config:
 schema_config:
   configs:
     - from: 2020-10-01
+      store: tsdb
+      object_store: cos
+      schema: v12
       index:
         period: 24h
-        prefix: loki_index_
-      object_store: "cos"
-      schema: v11
-      store: "boltdb-shipper"
+        prefix: index_
 
 storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/index_cache
+    shared_store: cos
   cos:
     bucketnames: <bucket1, bucket2>
     endpoint: <endpoint>
@@ -417,6 +390,85 @@ storage_config:
     auth_endpoint: <iam_endpoint_for_authentication>
     cr_token_file_path: <path_to_compute_resource_token>
     trusted_profile_name: <name_of_the_trusted_profile> # You can also use trusted_profile_id instead of trusted_profile_name
+
+```
+
+
+## 15-Memberlist-Ring-Snippet.yaml
+
+```yaml
+
+# This partial configuration uses memberlist for the ring.
+
+common:
+  ring:
+    kvstore:
+      store: memberlist
+  replication_factor: 1
+  path_prefix: /loki
+
+memberlist:
+  join_members:
+    # You can use a headless k8s service for all distributor, ingester and querier components.
+    - loki-gossip-ring.loki.svc.cluster.local:7946 # :7946 is the default memberlist port.
+
+```
+
+
+## 16-(Deprecated)-Cassandra-Snippet.yaml
+
+```yaml
+
+# This is a partial config that uses the local filesystem for chunk storage and Cassandra for index storage
+# WARNING - DEPRECATED: The Cassandra index store is deprecated and will be removed in a future release.
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: cassandra
+    object_store: filesystem
+    schema: v12
+    index:
+      prefix: cassandra_table
+      period: 168h
+
+storage_config:
+  cassandra:
+    username: cassandra
+    password: cassandra
+    addresses: 127.0.0.1
+    auth: true
+    keyspace: lokiindex
+
+  filesystem:
+    directory: /tmp/loki/chunks
+    
+
+```
+
+
+## 17-(Deprecated)-S3-And-DynamoDB-Snippet.yaml
+
+```yaml
+
+# This partial configuration uses S3 for chunk storage and uses DynamoDB for index storage
+# WARNING - DEPRECATED: The DynamoDB index store is deprecated and will be removed in a future release.
+
+schema_config:
+  configs:
+  - from: 2020-05-15
+    store: aws
+    object_store: s3
+    schema: v12
+    index:
+      prefix: loki_
+
+storage_config:
+  aws:
+    s3: s3://access_key:secret_access_key@region/bucket_name
+    dynamodb:
+      dynamodb_url: dynamodb://access_key:secret_access_key@region
+      
 
 ```
 
