@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v2"
 
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor/deletionmode"
+	"github.com/grafana/loki/pkg/compactor/deletionmode"
 )
 
 func TestLimitsTagsYamlMatchJson(t *testing.T) {
