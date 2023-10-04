@@ -245,34 +245,79 @@ type SeriesPageDecoder struct {
 	header SeriesHeader
 
 	// state
-	i              int
+	i              int // current index
 	cur            *SeriesWithOffset
 	err            error
-	lastFp         model.Fingerprint
-	previousOffset BloomOffset
+	previousFp     model.Fingerprint // previous series' fingerprint for delta-decoding
+	previousOffset BloomOffset       // previous series' bloom offset for delta-decoding
 }
 
 func (d *SeriesPageDecoder) Reset() {
-	d.cur = nil
-	d.dec.B = d.data
 	d.i = -1
+	d.cur = nil
 	d.err = nil
+	d.previousFp = 0
+	d.previousOffset = BloomOffset{}
+	d.dec.B = d.data
 }
 
 func (d *SeriesPageDecoder) Next() bool {
+	if d.err != nil {
+		return false
+	}
+
 	d.i++
 	if d.i >= d.header.NumSeries {
 		return false
 	}
 
 	var res SeriesWithOffset
-	d.lastFp, d.previousOffset, d.err = res.Decode(&d.dec, d.lastFp, d.previousOffset)
+	d.previousFp, d.previousOffset, d.err = res.Decode(&d.dec, d.previousFp, d.previousOffset)
 	if d.err != nil {
 		return false
 	}
 
 	d.cur = &res
 	return true
+}
+
+func (d *SeriesPageDecoder) Seek(fp model.Fingerprint) {
+	if fp > d.header.ThroughFp || fp < d.header.FromFp {
+		// shortcut: we know the fingerprint is not in this page
+		// so masquerade the index as if we've already iterated through
+		d.i = d.header.NumSeries
+	}
+
+	// if we've seen an error or we've potentially skipped the desired fp, reset the page state
+	if d.Err() != nil || (d.cur != nil && d.cur.Fingerprint >= fp) {
+		d.Reset()
+	}
+
+	for {
+		// previous byte offset in decoder, used for resetting
+		// position after finding the desired fp
+		offset := len(d.data) - d.dec.Len()
+		// previous bloom offset in decoder, used for
+		// resetting position after finding the desired fp
+		// since offsets are delta-encoded
+		previousBloomOffset := d.previousOffset
+		previousFp := d.previousFp
+
+		// iteration finished
+		if ok := d.Next(); !ok {
+			return
+		}
+
+		// we've seeked to the correct location. reverse one step and return
+		cur := d.At()
+		if cur.Fingerprint >= fp {
+			d.i--
+			d.previousOffset = previousBloomOffset
+			d.previousFp = previousFp
+			d.dec.B = d.data[offset:]
+			return
+		}
+	}
 }
 
 func (d *SeriesPageDecoder) At() (res *SeriesWithOffset) {

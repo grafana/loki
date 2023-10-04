@@ -93,6 +93,20 @@ func TestBlockBuilderRoundTrip(t *testing.T) {
 			require.Nil(t, querier.Err())
 			// ensure it's exhausted
 			require.Equal(t, false, querier.Next())
+
+			// test seek
+			i := numSeries / 2
+			half := data[i:]
+			require.Nil(t, querier.Seek(half[0].Series.Fingerprint))
+			for j := 0; j < len(half); j++ {
+				require.Equal(t, true, querier.Next(), "on iteration %d", j)
+				got := querier.At()
+				require.Equal(t, half[j].Series, got.Series)
+				require.Equal(t, half[j].Bloom, got.Bloom)
+				require.Nil(t, querier.Err())
+			}
+			require.Equal(t, false, querier.Next())
+
 		})
 	}
 }

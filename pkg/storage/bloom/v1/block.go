@@ -74,8 +74,8 @@ func NewBlockQuerier(b *Block) *BlockQuerier {
 	}
 }
 
-func (bq *BlockQuerier) Seek(fp model.Fingerprint) {
-	bq.series.Seek(fp)
+func (bq *BlockQuerier) Seek(fp model.Fingerprint) error {
+	return bq.series.Seek(fp)
 }
 
 func (bq *BlockQuerier) Next() bool {

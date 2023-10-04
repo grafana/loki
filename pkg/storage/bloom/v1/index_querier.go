@@ -45,7 +45,7 @@ func (it *LazySeriesIter) ensureInit() {
 }
 
 // Seek returns an iterator over the pages where the first fingerprint is >= fp
-func (it *LazySeriesIter) Seek(fp model.Fingerprint) (SeriesIterator, error) {
+func (it *LazySeriesIter) Seek(fp model.Fingerprint) error {
 	it.ensureInit()
 
 	// first potentially relevant page
@@ -54,37 +54,38 @@ func (it *LazySeriesIter) Seek(fp model.Fingerprint) (SeriesIterator, error) {
 		return header.ThroughFp >= fp
 	})
 
+	page := it.b.index.pageHeaders[desiredPage]
+
 	switch {
-	case desiredPage == len(it.b.index.pageHeaders):
-		return NewEmptyIter[*SeriesWithOffset](nil), nil
+	case desiredPage == len(it.b.index.pageHeaders), page.FromFp > fp:
+		// no overlap exists, either because no page was found with a throughFP >= fp
+		// or because the first page that was found has a fromFP > fp,
+		// meaning successive pages would also have a fromFP > fp
+		// since they're sorted in ascending fp order
+		it.curPageIndex = len(it.b.index.pageHeaders)
+		it.curPage = nil
+		return nil
 
 	case desiredPage == it.curPageIndex && it.curPage != nil:
-		// desired page is the currently loaded page, can reuse
-		it.curPage.Reset()
-		return &MinFingerprintIter{
-			minFp: fp,
-			itr:   it.curPage,
-		}, nil
-
+		// on the right page, no action needed
 	default:
 		// need to load a new page
 		r, err := it.b.reader.Index()
 		if err != nil {
-			return nil, errors.Wrap(err, "getting index reader")
+			return errors.Wrap(err, "getting index reader")
 		}
 		it.curPage, err = it.b.index.NewSeriesPageDecoder(
 			r,
-			it.b.index.pageHeaders[it.curPageIndex],
+			page,
 		)
 		if err != nil {
-			return nil, err
+			return err
 		}
-
-		return &MinFingerprintIter{
-			minFp: fp,
-			itr:   it.curPage,
-		}, nil
+		it.curPageIndex = desiredPage
 	}
+
+	it.curPage.Seek(fp)
+	return nil
 }
 
 func (it *LazySeriesIter) Next() bool {
@@ -148,33 +149,4 @@ func (it *LazySeriesIter) Err() error {
 		return it.curPage.Err()
 	}
 	return nil
-}
-
-type MinFingerprintIter struct {
-	minFp model.Fingerprint
-	itr   *SeriesPageDecoder
-}
-
-func (i *MinFingerprintIter) Next() bool {
-	for {
-		if ok := i.itr.Next(); !ok {
-			return false
-		}
-
-		if i.At().Fingerprint >= i.minFp {
-			return true
-		}
-	}
-}
-
-func (i *MinFingerprintIter) At() *SeriesWithOffset {
-	return i.itr.At()
-}
-
-func (i *MinFingerprintIter) Err() error {
-	return i.itr.Err()
-}
-
-func (i *MinFingerprintIter) Reset() {
-	i.itr.Reset()
 }
