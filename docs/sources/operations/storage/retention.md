@@ -252,8 +252,10 @@ storage_config:
 
 limits_config:
   max_query_lookback: 672h # 28 days
+  retention_period: 672h   # 28 days
 
-table_manager:
-  retention_deletes_enabled: true
-  retention_period: 672h # 28 days
+compactor:
+  working_directory: /data/retention
+  shared_store: gcs
+  retention_enabled: true
 ```
