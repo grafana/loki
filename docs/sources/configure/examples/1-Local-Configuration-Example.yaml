@@ -1,3 +1,6 @@
+# This is a complete configuration to deploy Loki backed by the filesystem.
+# The index will be shipped to the storage via tsdb-shipper.
+
 auth_enabled: false
 
 server:
@@ -14,9 +17,17 @@ common:
 schema_config:
   configs:
   - from: 2020-05-15
-    store: boltdb-shipper
+    store: tsdb
     object_store: filesystem
-    schema: v11
+    schema: v12
     index:
       prefix: index_
       period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /tmp/loki/index
+    cache_location: /tmp/loki/index_cache
+    shared_store: filesystem
+  filesystem:
+    directory: /tmp/loki/chunks

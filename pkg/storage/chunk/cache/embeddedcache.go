@@ -47,13 +47,9 @@ type EmbeddedCache struct {
 
 	done chan struct{}
 
-	entriesAdded    prometheus.Counter
 	entriesAddedNew prometheus.Counter
 	entriesEvicted  *prometheus.CounterVec
 	entriesCurrent  prometheus.Gauge
-	totalGets       prometheus.Counter
-	totalMisses     prometheus.Counter
-	staleGets       prometheus.Counter
 	memoryBytes     prometheus.Gauge
 }
 
@@ -110,65 +106,33 @@ func NewEmbeddedCache(name string, cfg EmbeddedCacheConfig, reg prometheus.Regis
 
 		done: make(chan struct{}),
 
-		entriesAdded: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
-			Name:        "added_total",
-			Help:        "The total number of Put calls on the cache",
-			ConstLabels: prometheus.Labels{"cache": name},
-		}),
-
 		entriesAddedNew: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "added_new_total",
 			Help:        "The total number of new entries added to the cache",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		entriesEvicted: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "evicted_total",
 			Help:        "The total number of evicted entries",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}, []string{"reason"}),
 
 		entriesCurrent: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "entries",
-			Help:        "The total number of entries",
-			ConstLabels: prometheus.Labels{"cache": name},
-		}),
-
-		totalGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
-			Name:        "gets_total",
-			Help:        "The total number of Get calls",
-			ConstLabels: prometheus.Labels{"cache": name},
-		}),
-
-		totalMisses: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
-			Name:        "misses_total",
-			Help:        "The total number of Get calls that had no valid entry",
-			ConstLabels: prometheus.Labels{"cache": name},
-		}),
-
-		staleGets: promauto.With(reg).NewCounter(prometheus.CounterOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
-			Name:        "stale_gets_total",
-			Help:        "The total number of Get calls that had an entry which expired (deprecated)",
+			Help:        "Current number of entries in the cache",
 			ConstLabels: prometheus.Labels{"cache": name},
 		}),
 
 		memoryBytes: promauto.With(reg).NewGauge(prometheus.GaugeOpts{
-			Namespace:   "querier",
-			Subsystem:   "cache",
+			Namespace:   "loki",
+			Subsystem:   "embeddedcache",
 			Name:        "memory_bytes",
 			Help:        "The current cache size in bytes",
 			ConstLabels: prometheus.Labels{"cache": name},
@@ -231,8 +195,6 @@ func (c *EmbeddedCache) Fetch(ctx context.Context, keys []string) (found []strin
 
 // Store implements Cache.
 func (c *EmbeddedCache) Store(_ context.Context, keys []string, values [][]byte) error {
-	c.entriesAdded.Inc()
-
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -314,8 +276,6 @@ func (c *EmbeddedCache) put(key string, value []byte) {
 
 // Get returns the stored value against the key and when the key was last updated.
 func (c *EmbeddedCache) Get(_ context.Context, key string) ([]byte, bool) {
-	c.totalGets.Inc()
-
 	c.lock.RLock()
 	defer c.lock.RUnlock()
 
@@ -325,7 +285,6 @@ func (c *EmbeddedCache) Get(_ context.Context, key string) ([]byte, bool) {
 		return entry.value, true
 	}
 
-	c.totalMisses.Inc()
 	return nil, false
 }
 
