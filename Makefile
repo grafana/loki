@@ -788,8 +788,10 @@ check-doc: doc
 ###################
 
 # Validate the example configurations that we provide in ./docs/sources/configure/examples
+# We run the validation only for complete examples, not snippets.
+# Complete examples should contain "Example" in their file name.
 validate-example-configs: loki
-	for f in ./docs/sources/configure/examples/*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
+	for f in ./docs/sources/configure/examples/*Example*.yaml; do echo "Validating provided example config: $$f" && ./cmd/loki/loki -config.file=$$f -verify-config || exit 1; done
 
 # Dynamically generate ./docs/sources/configure/examples.md using the example configs that we provide.
 # This target should be run if any of our example configs change.

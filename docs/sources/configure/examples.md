@@ -214,7 +214,7 @@ schema_config:
 ```
 
 
-## 8-alibaba-cloud-storage-config.yaml
+## 8-alibaba-cloud-storage-Snippet.yaml
 
 ```yaml
 
@@ -384,7 +384,7 @@ storage_config:
 ```
 
 
-## 15-Use-Memberlist-ring.yaml
+## 15-Memberlist-Ring-Snippet.yaml
 
 ```yaml
 
@@ -405,7 +405,7 @@ memberlist:
 ```
 
 
-## 16-Compactor-snippet.yaml
+## 16-Compactor-Snippet.yaml
 
 ```yaml
 
