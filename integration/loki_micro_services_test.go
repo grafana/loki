@@ -685,7 +685,7 @@ func TestQueryTSDB_WithCachedPostings(t *testing.T) {
 	require.NoError(t, err)
 	assertCacheState(t, igwMetrics, &expectedCacheState{
 		cacheName: "store.index-cache-read.embedded-cache",
-		gets:      50,
+		gets:      53,
 		misses:    1,
 		added:     1,
 	})
