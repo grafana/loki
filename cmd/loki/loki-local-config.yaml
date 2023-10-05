@@ -26,9 +26,9 @@ query_range:
 schema_config:
   configs:
     - from: 2020-10-24
-      store: boltdb-shipper
+      store: tsdb
       object_store: filesystem
-      schema: v11
+      schema: v12
       index:
         prefix: index_
         period: 24h

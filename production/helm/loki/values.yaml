@@ -631,6 +631,8 @@ monitoring:
       enableConfigReadAPI: false
       # -- The name of the PriorityClass for GrafanaAgent pods
       priorityClassName: null
+      # -- Tolerations for GrafanaAgent pods
+      tolerations: []
     # PodLogs configuration
     podLogs:
       # -- PodLogs annotations

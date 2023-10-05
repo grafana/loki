@@ -16,11 +16,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
 
+	"github.com/grafana/loki/pkg/compactor"
 	"github.com/grafana/loki/pkg/storage/chunk/client"
 	"github.com/grafana/loki/pkg/storage/chunk/client/local"
 	"github.com/grafana/loki/pkg/storage/chunk/client/util"
 	"github.com/grafana/loki/pkg/storage/config"
-	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/compactor"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/storage"
 	"github.com/grafana/loki/pkg/storage/stores/shipper/indexshipper/testutil"
 	util_log "github.com/grafana/loki/pkg/util/log"
