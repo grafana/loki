@@ -16,6 +16,11 @@ Entries should include a reference to the pull request that introduced the chang
 ## 5.26.0
 
 - [ENHANCEMENT] Allow emptyDir data volumes for backend and write (via `X.persistence.volumeClaimsEnabled: false`)
+
+## 5.25.0
+
+- [BUGFIX] Add complete object schema to single-binary volumeClaimTemplate to avoid synchronization issues
+
 ## 5.24.0
 
 - [ENHANCEMENT] #10613 Allow tolerations for GrafanaAgent pods
