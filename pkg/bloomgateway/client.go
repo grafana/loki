@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math"
 	"math/rand"
 
 	"github.com/go-kit/log"
@@ -269,13 +270,32 @@ func (c *GatewayClient) doForAddrs(addrs []string, fn func(logproto.BloomGateway
 // The indexes of the returned slices correspond to each other.
 // Returns an error in case the bloom gateway ring could not get the
 // corresponding replica set for a given fingerprint.
+// Warning: This function becomes inefficient when the number of fingerprints is very large.
 func (c *GatewayClient) serverAddrsForFingerprints(tenantID string, fingerprints []uint64) ([]uint64, [][]string, error) {
 	subRing := GetShuffleShardingSubring(c.ring, tenantID, c.limits)
 
-	addresses := make([][]string, len(fingerprints))
+	rs, err := subRing.GetAllHealthy(BlocksRead)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "bloom gateway get healthy instances")
+	}
+
+	var numTokens int
+	for _, instanceDesc := range rs.Instances {
+		numTokens += len(instanceDesc.Tokens)
+	}
+
+	numFingerprints := len(fingerprints)
+	if numFingerprints > int(float64(numTokens)*math.Log2(float64(numFingerprints))) {
+		// TODO(chaudum): Implement algorithm in O(n * m * log(k) + n) instead of O(k) by iterating over ring tokens
+		// and finding corresponding fingerprint ranges using binary search.
+		// n .. number of instances
+		// m .. number of tokens per instance
+		// k .. number of fingerprints
+		level.Warn(c.logger).Log("msg", "using an inefficient algorithm to determin server addresses for fingerprints", "fingerprints", numFingerprints, "tokens", numTokens)
+	}
+
+	addresses := make([][]string, numFingerprints)
 	bufDescs, bufHosts, bufZones := ring.MakeBuffersForGet()
-	var rs ring.ReplicationSet
-	var err error
 
 	for idx, key := range fingerprints {
 		rs, err = subRing.Get(uint32(key), BlocksRead, bufDescs, bufHosts, bufZones)
