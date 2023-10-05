@@ -748,7 +748,7 @@ func assertCacheState(t *testing.T, metrics string, e *expectedCacheState) {
 
 	hits, found := mfs["loki_cache_hits"]
 	require.True(t, found)
-	require.Equal(t, getValueFromMF(gets, lbs)-e.misses, getValueFromMF(hits, lbs))
+	require.Equal(t, e.misses, getValueFromMF(gets, lbs)-getValueFromMF(hits, lbs))
 }
 
 type expectedCacheState struct {
