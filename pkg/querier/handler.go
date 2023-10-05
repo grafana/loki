@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/querier/queryrange/queryrangebase"
-	"github.com/grafana/loki/pkg/storage/stores/index/stats"
 )
 
 type QuerierHandler struct {
@@ -64,10 +64,17 @@ func (h *QuerierHandler) Do(ctx context.Context, req queryrangebase.Request) (qu
 			Data:   res.Values,
 		}, nil
 	case *logproto.IndexStatsRequest:
-			// TODO: h.api.IndexStatsHandler(ctx, request)
-			return &queryrange.IndexStatsResponse{
-				Response: &stats.Stats{},
-			}, nil
+		request := loghttp.NewRangeQueryWithDefaults()
+		request.Start = concrete.From.Time()
+		request.End =  concrete.Through.Time()
+		request.Query = concrete.GetQuery()
+		request.UpdateStep()
+		
+		result, err := h.api.IndexStatsHandler(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		return &queryrange.IndexStatsResponse{Response: result}, nil
 	default:
 		// TODO: This should be a user error
 		return nil, fmt.Errorf("unsupported query type %T", req)

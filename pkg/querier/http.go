@@ -347,28 +347,16 @@ func (q *QuerierAPI) SeriesHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // IndexStatsHandler queries the index for the data statistics related to a query
-func (q *QuerierAPI) IndexStatsHandler(w http.ResponseWriter, r *http.Request) {
-	req, err := loghttp.ParseIndexStatsQuery(r)
-	if err != nil {
-		serverutil.WriteError(httpgrpc.Errorf(http.StatusBadRequest, err.Error()), w)
-		return
-	}
-
+func (q *QuerierAPI) IndexStatsHandler(ctx context.Context, req *loghttp.RangeQuery) (*logproto.IndexStatsResponse, error) {
+	// TODO(karsten): we might want to change IndexStats to receive a logproto.IndexStatsRequest instead
 	// TODO(owen-d): log metadata, record stats?
-	resp, err := q.querier.IndexStats(r.Context(), req)
+	resp, err := q.querier.IndexStats(ctx, req)
 	if resp == nil {
 		// Some stores don't implement this
 		resp = &index_stats.Stats{}
 	}
 
-	if err != nil {
-		serverutil.WriteError(err, w)
-		return
-	}
-
-	if err := queryrange.WriteResponse(r, nil, resp, w); err != nil {
-		serverutil.WriteError(err, w)
-	}
+	return resp, err
 }
 
 //TODO(trevorwhitney): add test for the handler split
